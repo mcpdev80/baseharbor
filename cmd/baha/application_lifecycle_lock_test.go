@@ -16,6 +16,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/mcpdev80/baseharbor/internal/coreinstallation"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
+	"github.com/mcpdev80/baseharbor/internal/stableid"
 )
 
 // Production-path binding cells for t-20261018-r27-mutation-lock (RUNDE 1).
@@ -567,5 +568,132 @@ func TestTargetLifecycleLockRejectsSecondProcess(t *testing.T) {
 	out, err := child.CombinedOutput()
 	if ee, ok := err.(*exec.ExitError); !ok || ee.ExitCode() != 3 {
 		t.Fatalf("second process entered the Target lifecycle owner concurrently; exit=%v output:\n%s", err, out)
+	}
+}
+
+// TestUnenforcingFilesystemFailsClosedWithoutRetry is the command-path
+// regression for 0427-179 r2: the filesystem-does-not-enforce condition is a
+// classifiable remediation failure, not ordinary lock contention. When the
+// per-app acquire routes through the production retry seam
+// (lockApplicationTargetLifecycle), a filesystem that cannot enforce the
+// cross-process flock must fail CLOSED IMMEDIATELY with the actionable
+// filesystem remediation text, never enter the 15-second bounded retry loop.
+// The probe is stubbed to FREE (a child that acquires proves enforcement is
+// dropped) so the production AcquireAppLifecycleLock returns
+// ErrLockFilesystemNotEnforcing without a second real OS process. A fast
+// return under a sub-second deadline proves the retry loop is bypassed; the
+// 15s retry would otherwise elapse and hide the cause behind the generic
+// acquisition-deadline message. Fairness (destroy-priority) and the bounded
+// retry remain intact for genuine held-lock contention.
+func TestUnenforcingFilesystemFailsClosedWithoutRetry(t *testing.T) {
+	target := configureTestTarget(t)
+	root, err := deployment.TargetStateRoot(target.Name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(root, 0700); err != nil {
+		t.Fatal(err)
+	}
+
+	origProbe := stableid.LockProbeFunc
+	stableid.LockProbeFunc = func(string) (bool, error) { return true, nil }
+	defer func() { stableid.LockProbeFunc = origProbe }()
+
+	start := time.Now()
+	_, cerr := lockApplicationTargetLifecycle(resolvedApplication{
+		Target:             target,
+		TargetStateRoot:    root,
+		DeploymentIdentity: deployment.DeploymentIdentity{DeploymentID: "app-unenforcing"},
+		Manifest:           application.New("app-unenforcing", "dev", false, false, false),
+	}, false)
+	elapsed := time.Since(start)
+
+	if cerr == nil {
+		t.Fatalf("acquire succeeded while the filesystem cannot enforce the lock cross-process; mutual exclusion is advisory-only")
+	}
+	if !strings.Contains(cerr.Error(), "does not enforce the lifecycle lock") {
+		t.Fatalf("want the actionable filesystem remediation, got: %v", cerr)
+	}
+	if strings.Contains(cerr.Error(), "acquisition deadline of 15s") {
+		t.Fatalf("the not-enforcing failure was masked by the 15s contention retry: %v", cerr)
+	}
+	if elapsed > time.Second {
+		t.Fatalf("acquire took %v on a not-enforcing filesystem; the bounded 15s retry loop must be bypassed for immediate fail-closed", elapsed)
+	}
+}
+
+// TestGenuineContentionStillEntersBoundedRetry proves the command-path fix does
+// not discard the bounded, destroy-priority retry for genuine flock contention.
+// While a holder keeps the per-app lock, a destroy (allowPriority) must observe
+// a real held-lock contention result and win within the finite bound; the
+// not-enforcing fix must not collapse this path. The holder is created with the
+// probe stubbed to HELD (correctly enforcing) so the acquire succeeds and holds.
+func TestGenuineContentionStillEntersBoundedRetry(t *testing.T) {
+	target := configureTestTarget(t)
+	root, err := deployment.TargetStateRoot(target.Name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(root, 0700); err != nil {
+		t.Fatal(err)
+	}
+
+	origProbe := stableid.LockProbeFunc
+	stableid.LockProbeFunc = func(string) (bool, error) { return false, nil }
+	defer func() { stableid.LockProbeFunc = origProbe }()
+
+	holderDone := make(chan struct{})
+	go func() {
+		unlock, herr := lockApplicationTargetLifecycle(resolvedApplication{
+			Target:             target,
+			TargetStateRoot:    root,
+			DeploymentIdentity: deployment.DeploymentIdentity{DeploymentID: "app-contended"},
+			Manifest:           application.New("app-contended", "dev", false, false, false),
+		}, false)
+		if herr != nil {
+			t.Errorf("up holder failed: %v", herr)
+			close(holderDone)
+			return
+		}
+		time.Sleep(300 * time.Millisecond)
+		unlock()
+		close(holderDone)
+	}()
+
+	select {
+	case <-holderDone:
+		t.Fatal("holder exited before destroy started")
+	case <-time.After(120 * time.Millisecond):
+	}
+
+	destroyAcquired := make(chan struct{})
+	go func() {
+		start := time.Now()
+		destroyUnlock, derr := lockApplicationTargetLifecycle(resolvedApplication{
+			Target:             target,
+			TargetStateRoot:    root,
+			DeploymentIdentity: deployment.DeploymentIdentity{DeploymentID: "app-contended"},
+			Manifest:           application.New("app-contended", "dev", false, false, false),
+		}, true)
+		elapsed := time.Since(start)
+		if derr != nil {
+			t.Errorf("destroy failed to acquire within the bounded window (err=%v): %v", derr, elapsed)
+			close(destroyAcquired)
+			return
+		}
+		if elapsed > 5*time.Second {
+			destroyUnlock()
+			t.Errorf("destroy took too long (%v) after holder release; bounded retry bound violated", elapsed)
+			close(destroyAcquired)
+			return
+		}
+		destroyUnlock()
+		close(destroyAcquired)
+	}()
+
+	select {
+	case <-destroyAcquired:
+	case <-time.After(5 * time.Second):
+		t.Fatal("destroy never acquired within the bounded window")
 	}
 }

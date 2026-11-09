@@ -32,6 +32,8 @@ const (
 	lifecycleLockHelperEnv       = "BAHA_TEST_LOCK_HELPER"
 	lifecycleLockHelperChildEnv  = "BAHA_TEST_LOCK_HELPER_CHILD"
 	lifecycleLockHelperAcquireEn = "BAHA_TEST_LOCK_HELPER_ACQUIRE"
+
+	lifecycleLockCrossChildEnv = "BAHA_TEST_LOCK_CHILD"
 )
 
 func TestLifecycleLockExcludesTwoSeparateProcesses(t *testing.T) {
@@ -138,6 +140,9 @@ func TestMain(m *testing.M) {
 			fmt.Fprintln(os.Stderr, "helper mode requested without a child body selector")
 			os.Exit(2)
 		}
+	}
+	if os.Getenv(lifecycleLockCrossChildEnv) == "1" {
+		lockCrossProcessChild()
 	}
 	os.Exit(m.Run())
 }

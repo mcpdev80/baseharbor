@@ -14,6 +14,26 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+// ErrLockFilesystemNotEnforcing is returned when a lock was acquired but the
+// underlying filesystem does NOT enforce the advisory flock across processes.
+// The returned lock is NOT safe to trust for mutual exclusion on that target,
+// so AcquireLifecycleLock / AcquireBootstrapLock / AcquireAppLifecycleLock /
+// AcquireTargetWideLifecycleLock fail closed instead of emitting false
+// security. Callers must NOT retry this as ordinary contention: it is a
+// classifiable remediation condition, so callers that route the acquire through
+// a bounded retry loop (e.g. cmd/baha/application_lifecycle_lock.go) must
+// detect it with errors.Is and fail closed immediately with the actionable
+// filesystem remediation. It is exported (unlike the probe-unavailable
+// sentinel) precisely so the coreinstallation boundary and CLI callers can
+// classify it.
+var ErrLockFilesystemNotEnforcing = errors.New(
+	"this filesystem does not enforce the lifecycle lock across processes; " +
+		"the per-process flock() is advisory-only here and cannot be trusted for " +
+		"mutual exclusion. Move the state root to an enforcing local filesystem " +
+		"(e.g. the target's local state directory, not a network or overlay " +
+		"filesystem that drops flock cross-process enforcement) and retry; do not " +
+		"delete the lock file to work around this")
+
 // lockNamed opens the named kernel lock file under root and takes an exclusive,
 // non-blocking advisory lock. The lifecycle lock and the bootstrap lock use
 // DIFFERENT files (see lifecycleLockFile / bootstrapLockFile) so that bootstrap
@@ -32,6 +52,21 @@ func lockNamed(root string, name string) (func(), error) {
 		}
 		_ = file.Close()
 		return nil, err
+	}
+	// Validity probe: an advisory flock is only safe when the filesystem
+	// enforces it across processes. On some runtime filesystems (network,
+	// certain overlay stacks) a second OS process can still acquire the same
+	// file while we hold the lock, so the mutual-exclusion guarantee would be
+	// advisory-only. Prove enforcement with a short-lived child that tries to
+	// take the same lock; if it acquires, fail closed.
+	if free, perr := lockProbeRun(filepath.Join(root, name)); perr != nil {
+		_ = unix.Flock(fd, unix.LOCK_UN)
+		_ = file.Close()
+		return nil, perr
+	} else if free {
+		_ = unix.Flock(fd, unix.LOCK_UN)
+		_ = file.Close()
+		return nil, ErrLockFilesystemNotEnforcing
 	}
 	if err := file.Truncate(0); err != nil {
 		_ = unix.Flock(fd, unix.LOCK_UN)
