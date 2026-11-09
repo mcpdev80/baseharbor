@@ -10,4 +10,3 @@ func (r resolvedApplication) ResourceLabel() string {
 	}
 	return r.DeploymentIdentity.Target + "/" + r.DeploymentIdentity.Application + "/" + r.DeploymentIdentity.Environment
 }
-
