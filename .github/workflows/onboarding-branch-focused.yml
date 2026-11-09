@@ -34,6 +34,8 @@ jobs:
         run: |
           set -euo pipefail
           for file in internal/onboardingbundle/*.go internal/workstationenrollment/http/delegated_enroll*.go internal/database/local_tenant_bootstrap.go cmd/baha/onboarding_local_grant.go cmd/baha/onboarding_initial_tenant.go cmd/baha/onboarding_invite_command.go cmd/baha/onboarding_import_command.go cmd/baha/workstation_revocation.go cmd/baha/onboarding_command.go internal/controlplaneruntime/workstation_auth.go internal/onboardingwizard/onboardingwizard.go internal/onboardingwizard/wizard_test.go internal/database/operator_bootstrap.go internal/controlplaneruntime/server.go internal/controlplaneruntime/server_run.go cmd/baha/onboarding.go cmd/baha/serve_managed_tls.go cmd/baha/management_remote_connection.go cmd/baha/management_remote_machine.go cmd/baha/management_remote_source_upload.go internal/operatorauth/authorization.go internal/operatorauth/authorization_test.go; do
-            gofmt -w "$file"
-            printf 'FMTFILE|%s|%s\n' "$file" "$(base64 -w0 "$file")"
+            if [ -n "$(gofmt -l "$file")" ]; then
+              printf 'Go formatting violation: %s\n' "$file" >&2
+              exit 1
+            fi
           done
