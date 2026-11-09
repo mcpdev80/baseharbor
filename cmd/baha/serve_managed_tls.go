@@ -38,8 +38,10 @@ func managedCoreTLSEndpoints(cfg controlplaneruntime.Config) (string, string, er
 	if err != nil {
 		return "", "", fmt.Errorf("invalid public connector address: %w", err)
 	}
-	if !usableNodeHost(apiHost) || !usableNodeHost(connectorHost) {
-		return "", "", errors.New("Core LAN TLS requires public non-loopback API and connector names/IPs")
+	if !usableNodeHost(apiHost) || !usableNodeHost(connectorHost) ||
+		strings.HasSuffix(strings.ToLower(apiHost), ".localhost") ||
+		strings.HasSuffix(strings.ToLower(connectorHost), ".localhost") {
+		return "", "", errors.New("Core LAN TLS requires public non-loopback API and connector names/IPs; *.localhost is not routable from a workstation")
 	}
 	apiPort := apiURL.Port()
 	if apiPort == "" {

@@ -31,6 +31,7 @@ func TestManagedCoreLANServingTLSEndpoints(t *testing.T) {
 		{"loopback public API", cfg, "https://127.0.0.1:8443", "192.168.6.178:9443"},
 		{"loopback connector", cfg, "https://192.168.6.178:8443", "127.0.0.1:9443"},
 		{"HTTP public API", cfg, "http://192.168.6.178:8443", "192.168.6.178:9443"},
+		{"localhost pseudo-domain", cfg, "https://auth.baha.localhost:8443", "192.168.6.178:9443"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Setenv("BASEHARBOR_API_PUBLIC_URL", tc.api)
