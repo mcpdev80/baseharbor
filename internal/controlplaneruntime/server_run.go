@@ -335,8 +335,17 @@ func registerOperatorAPI(ctx context.Context, mux *http.ServeMux, cfg Config, de
 		if err != nil {
 			return err
 		}
-		// The scoped one-use bootstrap exchange stays behind the existing
-		// identity/tenant middleware on the protected operator API.
+		// Only an already minted, short-lived workstation grant may cross
+		// the OIDC boundary. The public endpoint cannot create grants or
+		// access machine/operator APIs, and consumes the exact grant once.
+		delegated, ok := handler.(interface {
+			ServeDelegatedEnroll(http.ResponseWriter, *http.Request)
+		})
+		if !ok {
+			return errors.New("workstation enrollment is missing the one-use grant boundary")
+		}
+		mux.HandleFunc("/api/v1/workstations/enroll", delegated.ServeDelegatedEnroll)
+		// Grant creation stays behind the existing operator/tenant policy.
 		operatorMux.Handle("/api/v1/workstations/bootstrap", handler)
 		operatorMux.Handle("/api/v1/workstations/enroll", handler)
 	}
