@@ -79,3 +79,31 @@ func TestPrivateOnboardingDirectoryPreflight(t *testing.T) {
 		t.Fatal("symlinked remote profile directory accepted")
 	}
 }
+
+func TestEnsurePrivateOnboardingDirectory(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "private")
+	if err := ensurePrivateOnboardingDirectory(dir); err != nil {
+		t.Fatalf("create private directory: %v", err)
+	}
+	info, err := os.Lstat(dir)
+	if err != nil || info.Mode().Perm() != 0o700 {
+		t.Fatalf("created directory is not 0700: %v %v", info, err)
+	}
+	if err := ensurePrivateOnboardingDirectory(dir); err != nil {
+		t.Fatalf("reuse owned directory: %v", err)
+	}
+	if err := os.Chmod(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := ensurePrivateOnboardingDirectory(dir); err == nil {
+		t.Fatal("permissive directory accepted")
+	}
+	link := filepath.Join(root, "link")
+	if err := os.Symlink(root, link); err != nil {
+		t.Fatal(err)
+	}
+	if err := ensurePrivateOnboardingDirectory(link); err == nil {
+		t.Fatal("symlinked directory accepted")
+	}
+}
