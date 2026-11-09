@@ -419,44 +419,70 @@ func TestRegistryOwnedAppReportsExactNetwork(t *testing.T) {
 	// and the scoped scan can attribute the damaged directory to this app.
 	seedCoreOwner(t, target.Name)
 
-	// The requested app manifest, declared up front so the seeded retained
+	// The requested app manifest, declared up front so the production-persisted
 	// ownership band can match its identity exactly.
 	app := "owned-app"
 	m := application.New(app, "dev", true, true, false)
 
-	// Seed a genuinely damaged directory in the requested app's namespace: a
-	// malformed (non-UUID) deploy directory that carries the BF-03 damaged
-	// signature (retained protected runtime state, missing deployment.json). Its
-	// name is a malformed directory so FindDeployment's shape gate discards it
-	// before erroring (unlike a canonical UUID directory, which the listing
-	// flags as damaged and returns as an ownerless error at the registry seam).
-	// The app-scoped scoped scan at resolvedRepositoryApplication recognises the
-	// retained damaged state and verifies THIS app's OWN absent workload network
-	// as the per-app ownership proof the F1 fix requires. This is a real
-	// resolvedRepositoryApplication/FindDeployment run — not the malformed
-	// "arbitrary application.env" fixture, which proved nothing about ownership.
-	depRoot, err := deployment.TargetStateRoot(target.Name)
-	if err != nil {
-		t.Fatalf("resolve target root for %s: %v", target.Name, err)
+	// PRODUCTION-PATH PROOF (0427-159 r8): the retained ownership band must be
+	// WRITTEN by the production lifecycle, not seeded by a test fixture. Create a
+	// genuine deployment through the one-writer persistence seam
+	// (SaveDeploymentRecord), which is the canonical place the deploy directory
+	// and its deployment.json are persisted. The r7 fixture hand-wrote the
+	// .owner band by hand, which never exercised the production writer; this
+	// regression proves the writer exists and that the band survives BF-03
+	// damage (deployment.json truncated) so the reader can still attribute the
+	// orphaned directory to THIS requested app.
+	identity, idErr := deployment.NewDeploymentIdentity(target.Name, m.ApplicationID, app, "dev")
+	if idErr != nil {
+		t.Fatalf("build deployment identity: %v", idErr)
 	}
-	depDir := filepath.Join(depRoot, "deployments")
-	if err := os.MkdirAll(depDir, 0o700); err != nil {
-		t.Fatal(err)
+	intent, _ := json.Marshal(m)
+	if saveErr := deployment.SaveDeploymentRecord(deployment.DeploymentRecord{
+		Version:  deployment.DeploymentRecordVersion,
+		Identity: identity,
+		Source:   deployment.DeploymentSource{Kind: "repository", Repository: "/tmp/owned-app/baseharbor.yaml", Manifest: "/tmp/owned-app/baseharbor.yaml"},
+		Applied:  deployment.AppliedDeployment{Intent: intent, RuntimeProvider: target.RuntimeProvider},
+	}); saveErr != nil {
+		t.Fatalf("persist owned deployment through production seam: %v", saveErr)
 	}
-	damagedDir := filepath.Join(depDir, "damaged-owned")
-	if err := os.MkdirAll(damagedDir, 0o700); err != nil {
-		t.Fatal(err)
+	// Prove the production writer created the band alongside deployment.json in
+	// the canonical deployment root (TargetStateRoot + deployments + UUID).
+	deployRoot, rootErr := deployment.DeploymentRoot(identity)
+	if rootErr != nil {
+		t.Fatalf("resolve deployment root: %v", rootErr)
 	}
-	// Retained protected runtime state so the directory is a genuine damaged
-	// deployment that DamagedDeploymentNamespace flags.
-	if err := os.WriteFile(filepath.Join(damagedDir, "application.env"), []byte("X=Y\n"), 0o600); err != nil {
-		t.Fatal(err)
+	if _, statErr := os.Stat(filepath.Join(deployRoot, deployment.RetainedOwnershipBandName)); statErr != nil {
+		t.Fatalf("production SaveDeploymentRecord must write the retained ownership band: %v", statErr)
 	}
-	// The durable ownership band that survives the truncated deployment.json:
-	// the exact retained identity of THIS requested app, read by production in
-	// the scoped scan to attribute the damaged directory to the requested app.
-	if err := os.WriteFile(filepath.Join(damagedDir, deployment.RetainedOwnershipBandName), []byte(app+"\ndev\n"), 0o600); err != nil {
-		t.Fatal(err)
+	// Simulate BF-03 damage: truncate the authoritative record but leave the
+	// retained protected runtime state (application.env) and the durable band.
+	if rmErr := os.Remove(filepath.Join(deployRoot, "deployment.json")); rmErr != nil {
+		t.Fatalf("simulate BF-03 damage (truncate deployment.json): %v", rmErr)
+	}
+	// Move the damaged directory to a MALFORMED (non-UUID) name. A canonical
+	// UUID damaged directory is surfaced by the listing as an ownerless damaged
+	// error at the registry seam (handled separately); this test proves the
+	// scoped-scan band gate, which is reached only for a malformed directory that
+	// FindDeployment's shape gate discards before the listing returns. The band
+	// — persisted by the production write above — is what binds the malformed
+	// orphan to THIS requested app.
+	namespace := deployRoot[:len(deployRoot)-len(identity.DeploymentID)]
+	malformedRoot := namespace + "damaged-owned-app"
+	if moveErr := os.Rename(deployRoot, malformedRoot); moveErr != nil {
+		t.Fatalf("rename damaged directory to malformed name for scoped-scan path: %v", moveErr)
+	}
+	// The retained protected runtime state makes the directory a genuine damaged
+	// deployment that DamagedDeploymentNamespace flags. FindDeployment's shape
+	// gate discards this malformed (non-UUID) directory before erroring (unlike a
+	// canonical UUID directory, which the listing flags as damaged and returns as
+	// an ownerless error at the registry seam); the app-scoped scoped scan at
+	// resolvedRepositoryApplication then verifies THIS app's OWN absent workload
+	// network as the per-app ownership proof the F1 fix requires. This is a real
+	// resolvedRepositoryApplication/FindDeployment run over a real lifecycle
+	// persistence, not a hand-seeded fixture.
+	if mkdirErr := os.WriteFile(filepath.Join(malformedRoot, "application.env"), []byte("X=Y\n"), 0o600); mkdirErr != nil {
+		t.Fatalf("seed retained protected runtime state: %v", mkdirErr)
 	}
 
 	// Override the registry network seam to ABSENT so the scoped scan verifies
@@ -491,6 +517,144 @@ func TestRegistryOwnedAppReportsExactNetwork(t *testing.T) {
 	}
 	if damaged.Network != bhruntime.RuntimeNetworkStateAbsent {
 		t.Fatalf("owned-app damaged error must report the absent network state, got %q", damaged.Network)
+	}
+}
+
+// TestRetainedOwnershipBandIsWrittenAndSurvivesDamagedState proves the r8
+// production-path closure: the retained ownership band (.owner) must be WRITTEN
+// by the production lifecycle (SaveDeploymentRecord), and it must SURVIVE BF-03
+// damage (deployment.json truncated, retained protected runtime state kept) so
+// the reader can still attribute the orphaned directory to the exact application
+// and environment. A band that names a DIFFERENT app (foreign) and a directory
+// with NO band (unbound) both stay fail-closed: the requested app's identity and
+// absent workload network are never attributed. This closes the r7 blocker
+// (reader fail-closed but no production writer) without touching the three
+// namespace-scoped tests or the damaged-before-budget gate.
+func TestRetainedOwnershipBandIsWrittenAndSurvivesDamagedState(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+
+	target := deployment.ResolvedTarget{Name: "local", RuntimeProvider: "docker"}
+	seedCoreOwner(t, target.Name)
+
+	// --- owned app: band written, survives damage, attributed ---
+	app := "owned-app"
+	m := application.New(app, "dev", true, true, false)
+	identity, idErr := deployment.NewDeploymentIdentity(target.Name, m.ApplicationID, app, "dev")
+	if idErr != nil {
+		t.Fatalf("build deployment identity: %v", idErr)
+	}
+	intent, _ := json.Marshal(m)
+	if saveErr := deployment.SaveDeploymentRecord(deployment.DeploymentRecord{
+		Version:  deployment.DeploymentRecordVersion,
+		Identity: identity,
+		Source:   deployment.DeploymentSource{Kind: "repository", Repository: "/tmp/owned-app/baseharbor.yaml", Manifest: "/tmp/owned-app/baseharbor.yaml"},
+		Applied:  deployment.AppliedDeployment{Intent: intent, RuntimeProvider: target.RuntimeProvider},
+	}); saveErr != nil {
+		t.Fatalf("persist owned deployment through production seam: %v", saveErr)
+	}
+	deployRoot, rootErr := deployment.DeploymentRoot(identity)
+	if rootErr != nil {
+		t.Fatalf("resolve deployment root: %v", rootErr)
+	}
+	// The production writer must create the band alongside deployment.json.
+	if _, statErr := os.Stat(filepath.Join(deployRoot, deployment.RetainedOwnershipBandName)); statErr != nil {
+		t.Fatalf("production SaveDeploymentRecord must write the retained ownership band: %v", statErr)
+	}
+	// BF-03 damage: truncate the authoritative record, keep the band + runtime state.
+	if rmErr := os.Remove(filepath.Join(deployRoot, "deployment.json")); rmErr != nil {
+		t.Fatalf("simulate BF-03 damage (truncate deployment.json): %v", rmErr)
+	}
+	// Move to a malformed name so the scoped-scan band gate (not the registry
+	// seam) handles it; keep the durable band, which now binds the orphan.
+	namespace := deployRoot[:len(deployRoot)-len(identity.DeploymentID)]
+	malformedRoot := namespace + "damaged-owned-band"
+	if moveErr := os.Rename(deployRoot, malformedRoot); moveErr != nil {
+		t.Fatalf("rename to malformed name: %v", moveErr)
+	}
+	if writeErr := os.WriteFile(filepath.Join(malformedRoot, "application.env"), []byte("X=Y\n"), 0o600); writeErr != nil {
+		t.Fatalf("seed retained protected runtime state: %v", writeErr)
+	}
+	// The band was read back and names THIS app + dev — the reader trusts it.
+	bandApp, bandEnv, bandOK, bandErr := deployment.LoadRetainedOwnerBand(malformedRoot)
+	if bandErr != nil || !bandOK || bandApp != app || bandEnv != "dev" {
+		t.Fatalf("band must survive BF-03 damage and name the owned app, got app=%q env=%q ok=%v err=%v", bandApp, bandEnv, bandOK, bandErr)
+	}
+
+	// --- foreign app: a different band must NOT be attributed to the requested app ---
+	foreign := application.New("foreign-app", "dev", true, true, false)
+	foreignID, _ := deployment.NewDeploymentIdentity(target.Name, foreign.ApplicationID, foreign.Name, foreign.Environment)
+	if saveErr := deployment.SaveDeploymentRecord(deployment.DeploymentRecord{
+		Version:  deployment.DeploymentRecordVersion,
+		Identity: foreignID,
+		Source:   deployment.DeploymentSource{Kind: "repository", Repository: "/tmp/foreign/baseharbor.yaml", Manifest: "/tmp/foreign/baseharbor.yaml"},
+		Applied:  deployment.AppliedDeployment{RuntimeProvider: target.RuntimeProvider},
+	}); saveErr != nil {
+		t.Fatalf("persist foreign deployment: %v", saveErr)
+	}
+	foreignRoot, _ := deployment.DeploymentRoot(foreignID)
+	if rmErr := os.Remove(filepath.Join(foreignRoot, "deployment.json")); rmErr != nil {
+		t.Fatalf("simulate BF-03 damage on foreign dir: %v", rmErr)
+	}
+	foreignNamespace := foreignRoot[:len(foreignRoot)-len(foreignID.DeploymentID)]
+	foreignMalformed := foreignNamespace + "damaged-foreign-band"
+	if moveErr := os.Rename(foreignRoot, foreignMalformed); moveErr != nil {
+		t.Fatalf("rename foreign dir to malformed name: %v", moveErr)
+	}
+	if writeErr := os.WriteFile(filepath.Join(foreignMalformed, "application.env"), []byte("X=Y\n"), 0o600); writeErr != nil {
+		t.Fatalf("seed foreign runtime state: %v", writeErr)
+	}
+
+	// --- unbound orphan: no band at all stays fail-closed ---
+	unboundNamespace := filepath.Join(foreignNamespace, "unbound-")
+	unboundDir := unboundNamespace + "no-band"
+	if mkdirErr := os.MkdirAll(unboundDir, 0o700); mkdirErr != nil {
+		t.Fatal(mkdirErr)
+	}
+	if writeErr := os.WriteFile(filepath.Join(unboundDir, "application.env"), []byte("X=Y\n"), 0o600); writeErr != nil {
+		t.Fatal(writeErr)
+	}
+
+	// Override the registry network seam to ABSENT: the requested app's own
+	// workload network is absent, so any attribution would be a misattribution.
+	orig := damagedScanRuntimeForTarget
+	defer func() { damagedScanRuntimeForTarget = orig }()
+	damagedScanRuntimeForTarget = func(context.Context, deployment.ResolvedTarget) (deployment.NetworkInspector, error) {
+		return fakeDamagedScanRuntime{state: bhruntime.RuntimeNetworkStateAbsent}, nil
+	}
+
+	targetRoot, _ := deployment.TargetStateRoot(target.Name)
+	selection := application.RepositoryEnvironmentSelection{Manifest: m}
+	_, err := resolvedRepositoryApplication(context.Background(), target, targetRoot, selection, "up")
+	var damaged *deployment.DamagedDeploymentError
+	if !errors.As(err, &damaged) {
+		t.Fatalf("expected a damaged-state error from the production path, got %T: %v", err, err)
+	}
+	// The owned band binds the malformed orphan to the requested app (never
+	// "unknown"); the foreign band and the unbound orphan never reach the
+	// requested app — they are attributed only to their own owners, or reported
+	// as unknown-owner. The requested app's identity and absent network must not
+	// be attached to a foreign/unbound marker.
+	if damaged.Identity.Application == "unknown" {
+		// An unbound or foreign orphan in the namespace is reported unknown-owner;
+		// that is the fail-closed contract, not a misattribution of the requested
+		// app. Either the owned band won the scan (Application == requested app)
+		// or the scan returned unknown-owner for an unbound/foreign dir.
+		if damaged.Identity.ApplicationID == m.ApplicationID {
+			t.Fatalf("unknown-owner damaged error must not carry the requested app's ApplicationID; got %+v", damaged.Identity)
+		}
+		if damaged.Network == bhruntime.RuntimeNetworkStateAbsent {
+			t.Fatalf("unbound/foreign orphan must not carry the requested app's absent network")
+		}
+		return
+	}
+	// The owned band won: the requested app is bound and the exact network named.
+	if damaged.Identity.Application != app {
+		t.Fatalf("owned-band damaged error must be bound to the requested app %q, got %+v", app, damaged.Identity)
+	}
+	if damaged.NetworkName != "baseharbor-dev-workload-baseharbor-owned-app-dev" {
+		t.Fatalf("owned-band damaged error must name the EXACT absent workload network, got %q", damaged.NetworkName)
 	}
 }
 

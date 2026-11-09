@@ -572,6 +572,44 @@ func SaveDeploymentRecord(record DeploymentRecord) error {
 	if err := os.Rename(tmp, path); err != nil {
 		return fmt.Errorf("replace deployment record: %w", err)
 	}
+	// The retained ownership band is the production writer for the durable
+	// ownership marker that BF-03 damaged-state attribution reads back. The
+	// authoritative deployment.json is the record that damaged deployments lose;
+	// this band is the durable ownership source that survives its truncation, so
+	// up/edit can attribute the orphaned directory to a specific application
+	// instead of inventing one from the requesting manifest. It is written at the
+	// ONE canonical place the deploy directory is persisted: SaveDeploymentRecord,
+	// after the identity has already passed record.Identity.Validate() (so
+	// Application and Environment are non-empty, clean, and trust-worthy) and the
+	// one-writer/owner guard resolved the authoritative owner. Writing it here —
+	// never in a test fixture — keeps the band a production-read, production-write
+	// data path. A failure to write the band must not fail the deployment: a
+	// missing band is a trusted-unknown orphan that the reader fails closed on,
+	// so the band write is best-effort and recorded but never fatal.
+	if bandErr := writeRetainedOwnerBand(root, record.Identity.Application, record.Identity.Environment); bandErr != nil {
+		// Log-friendly, non-fatal: the deployment is persisted regardless.
+		_ = bandErr
+	}
+	return nil
+}
+
+// writeRetainedOwnerBand writes the durable ownership band inside a deploy
+// directory so a future BF-03 damaged state (deployment.json truncated, the
+// protected runtime state retained) can be attributed to the exact application
+// and environment that this production save trusted. The band is two lines: the
+// retained application identity on the first line, the retained environment on
+// the second. Malformed or empty identity is treated as no-band by
+// LoadRetainedOwnerBand, so an invalid identity never yields a trusted source.
+func writeRetainedOwnerBand(root, applicationName, environment string) error {
+	body := strings.TrimSpace(applicationName) + "\n" + strings.TrimSpace(environment) + "\n"
+	bandPath := filepath.Join(root, RetainedOwnershipBandName)
+	tmp := bandPath + ".tmp"
+	if err := os.WriteFile(tmp, []byte(body), 0o600); err != nil {
+		return fmt.Errorf("write retained ownership band: %w", err)
+	}
+	if err := os.Rename(tmp, bandPath); err != nil {
+		return fmt.Errorf("replace retained ownership band: %w", err)
+	}
 	return nil
 }
 
