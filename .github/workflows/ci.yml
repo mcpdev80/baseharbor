@@ -1383,7 +1383,7 @@ jobs:
           elif [ "${#packages[@]}" -gt 0 ]; then
             mapfile -t selected < <(python3 scripts/pr-draft-go-packages.py "${packages[@]}")
             test "${#selected[@]}" -gt 0
-            go test "${selected[@]}" -count=1
+            go test -p 1 "${selected[@]}" -count=1
           fi
           if [ "$ci_changed" = true ]; then
             go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -shellcheck=

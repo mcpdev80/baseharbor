@@ -79,6 +79,9 @@ func dialVerifiedRemoteCore(ctx context.Context, target, runtime, expectedTenant
 		path = filepath.Join(root, "remote-connections", target, "profile.json")
 	}
 	file, err := os.Open(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, fmt.Errorf("remote management connection profile not configured (BASEHARBOR_CONNECTION_PROFILE): %w", err)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("open remote connection profile: %w", err)
 	}

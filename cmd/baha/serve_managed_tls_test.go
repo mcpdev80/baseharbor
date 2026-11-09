@@ -10,6 +10,7 @@ import (
 func TestManagedCoreLANServingTLSEndpoints(t *testing.T) {
 	cfg := controlplaneruntime.Config{
 		ListenAddr:          "192.168.6.178:8443",
+		ConnectorEnrollmentEnabled: true,
 		ConnectorListenAddr: "192.168.6.178:9443",
 	}
 	t.Setenv("BASEHARBOR_API_PUBLIC_URL", "https://192.168.6.178:8443")
