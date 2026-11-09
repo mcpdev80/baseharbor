@@ -321,8 +321,8 @@ func resolvedRepositoryApplication(ctx context.Context, target deployment.Resolv
 		// network. A band naming a DIFFERENT application is foreign and likewise
 		// must not be attributed to the requested app. Only a band whose retained
 		// identity matches this app binds the damage to the requested app.
-		bandApp, bandEnv, bandOK, bandErr := deployment.LoadRetainedOwnerBand(damagedDir)
-		if bandErr != nil || !bandOK || bandApp != m.Name || bandEnv != m.Environment {
+		bandID, bandApp, bandEnv, bandOK, bandErr := deployment.LoadRetainedOwnerBand(damagedDir)
+		if bandErr != nil || !bandOK || bandID != m.ApplicationID || bandApp != m.Name || bandEnv != m.Environment {
 			damagedIdentity := deployment.DeploymentIdentity{
 				Target:        target.Name,
 				Application:   "unknown",

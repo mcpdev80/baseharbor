@@ -222,22 +222,22 @@ const RetainedOwnershipBandName = ".owner"
 // cannot be read from the authoritative record — the band is the source of
 // truth, and a malformed/foreign orphan that never recorded a band yields false
 // so the caller reports an explicit unknown-owner, record-only error.
-func LoadRetainedOwnerBand(root string) (application, environment string, ok bool, err error) {
+func LoadRetainedOwnerBand(root string) (applicationID, application, environment string, ok bool, err error) {
 	data, readErr := os.ReadFile(filepath.Join(root, RetainedOwnershipBandName))
 	if errors.Is(readErr, os.ErrNotExist) {
-		return "", "", false, nil
+		return "", "", "", false, nil
 	}
 	if readErr != nil {
-		return "", "", false, fmt.Errorf("inspect retained ownership band: %w", readErr)
+		return "", "", "", false, fmt.Errorf("inspect retained ownership band: %w", readErr)
 	}
-	// The band is two lines: the retained application identity on the first
-	// line, the retained environment on the second. Anything malformed is not a
-	// trusted ownership source.
+	// The band is three lines: the retained application id (canonical identity),
+	// then the application name, then the environment. A malformed band (fewer
+	// than three lines, or any empty line) is not a trusted ownership source.
 	lines := strings.Split(strings.TrimRight(string(data), "\n"), "\n")
-	if len(lines) < 2 || strings.TrimSpace(lines[0]) == "" || strings.TrimSpace(lines[1]) == "" {
-		return "", "", false, nil
+	if len(lines) < 3 || strings.TrimSpace(lines[0]) == "" || strings.TrimSpace(lines[1]) == "" || strings.TrimSpace(lines[2]) == "" {
+		return "", "", "", false, nil
 	}
-	return strings.TrimSpace(lines[0]), strings.TrimSpace(lines[1]), true, nil
+	return strings.TrimSpace(lines[0]), strings.TrimSpace(lines[1]), strings.TrimSpace(lines[2]), true, nil
 }
 
 // DamagedDeploymentNamespace reports whether the deployments namespace of a

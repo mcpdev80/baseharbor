@@ -566,20 +566,19 @@ func SaveDeploymentRecord(record DeploymentRecord) error {
 	// data path. A failure to write the band must not fail the deployment: a
 	// missing band is a trusted-unknown orphan that the reader fails closed on,
 	// so the band write is best-effort and recorded but never fatal.
-	if bandErr := writeRetainedOwnerBand(root, record.Identity.Application, record.Identity.Environment); bandErr != nil {
-		// Log-friendly, non-fatal: the deployment is persisted regardless.
-		_ = bandErr
+	if bandErr := writeRetainedOwnerBand(root, record.Identity); bandErr != nil {
+		return fmt.Errorf("persist retained ownership band: %w", bandErr)
 	}
 	return nil
 }
 
 // writeRetainedOwnerBand writes the durable ownership band inside a deploy
 // directory so a BF-03 damaged state (deployment.json truncated, runtime state
-// retained) can be attributed to the exact application/environment this save
-// trusted. The band is two lines (application, environment); an invalid identity
-// is treated as no-band by LoadRetainedOwnerBand.
-func writeRetainedOwnerBand(root, applicationName, environment string) error {
-	body := strings.TrimSpace(applicationName) + "\n" + strings.TrimSpace(environment) + "\n"
+// retained) can be attributed to the exact identity this save trusted. The band
+// is three lines (application id, application name, environment); an invalid
+// identity is treated as no-band by LoadRetainedOwnerBand.
+func writeRetainedOwnerBand(root string, id DeploymentIdentity) error {
+	body := strings.TrimSpace(id.ApplicationID) + "\n" + strings.TrimSpace(id.Application) + "\n" + strings.TrimSpace(id.Environment) + "\n"
 	bandPath := filepath.Join(root, RetainedOwnershipBandName)
 	tmp := bandPath + ".tmp"
 	if err := os.WriteFile(tmp, []byte(body), 0o600); err != nil {

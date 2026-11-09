@@ -576,10 +576,10 @@ func TestRetainedOwnershipBandIsWrittenAndSurvivesDamagedState(t *testing.T) {
 	if writeErr := os.WriteFile(filepath.Join(malformedRoot, "application.env"), []byte("X=Y\n"), 0o600); writeErr != nil {
 		t.Fatalf("seed retained protected runtime state: %v", writeErr)
 	}
-	// The band was read back and names THIS app + dev — the reader trusts it.
-	bandApp, bandEnv, bandOK, bandErr := deployment.LoadRetainedOwnerBand(malformedRoot)
-	if bandErr != nil || !bandOK || bandApp != app || bandEnv != "dev" {
-		t.Fatalf("band must survive BF-03 damage and name the owned app, got app=%q env=%q ok=%v err=%v", bandApp, bandEnv, bandOK, bandErr)
+	// The band was read back and names THIS app + dev + ApplicationID — the reader trusts it.
+	bandID, bandApp, bandEnv, bandOK, bandErr := deployment.LoadRetainedOwnerBand(malformedRoot)
+	if bandErr != nil || !bandOK || bandID != m.ApplicationID || bandApp != app || bandEnv != "dev" {
+		t.Fatalf("band must survive BF-03 damage and name the owned identity, got id=%q app=%q env=%q ok=%v err=%v", bandID, bandApp, bandEnv, bandOK, bandErr)
 	}
 
 	// --- foreign app: a different band must NOT be attributed to the requested app ---
@@ -655,6 +655,64 @@ func TestRetainedOwnershipBandIsWrittenAndSurvivesDamagedState(t *testing.T) {
 	}
 	if damaged.NetworkName != "baseharbor-dev-workload-baseharbor-owned-app-dev" {
 		t.Fatalf("owned-band damaged error must name the EXACT absent workload network, got %q", damaged.NetworkName)
+	}
+
+	// r10 (act-1499-review-r9): same name + environment, DIFFERENT canonical
+	// ApplicationID. The owned band names the requested app's ApplicationID, so a
+	// damaged directory belonging to a sibling deployment with the same name and
+	// environment but a different ApplicationID must NOT be attributed to the
+	// requested app — it must stay unknown-owner and never receive the requested
+	// app's network.
+	sibling := application.New(app, "dev", true, true, false)
+	if sibling.ApplicationID == m.ApplicationID {
+		t.Fatalf("test fixture: sibling ApplicationID must differ from the owned one")
+	}
+	siblingID, sibErr := deployment.NewDeploymentIdentity(target.Name, sibling.ApplicationID, app, "dev")
+	if sibErr != nil {
+		t.Fatalf("build sibling deployment identity: %v", sibErr)
+	}
+	siblingIntent, _ := json.Marshal(sibling)
+	if saveErr := deployment.SaveDeploymentRecord(deployment.DeploymentRecord{
+		Version:  deployment.DeploymentRecordVersion,
+		Identity: siblingID,
+		Source:   deployment.DeploymentSource{Kind: "repository", Repository: "/tmp/sibling/baseharbor.yaml", Manifest: "/tmp/sibling/baseharbor.yaml"},
+		Applied:  deployment.AppliedDeployment{Intent: siblingIntent, RuntimeProvider: target.RuntimeProvider},
+	}); saveErr != nil {
+		t.Fatalf("persist sibling deployment through production seam: %v", saveErr)
+	}
+	siblingRoot, sibRootErr := deployment.DeploymentRoot(siblingID)
+	if sibRootErr != nil {
+		t.Fatalf("resolve sibling deployment root: %v", sibRootErr)
+	}
+	// BF-03 damage on the SIBLING dir: truncate its record, keep its band + state.
+	// Its band now carries the sibling ApplicationID, not the requested app's.
+	if rmErr := os.Remove(filepath.Join(siblingRoot, "deployment.json")); rmErr != nil {
+		t.Fatalf("simulate BF-03 damage on sibling dir: %v", rmErr)
+	}
+	siblingNamespace := siblingRoot[:len(siblingRoot)-len(siblingID.DeploymentID)]
+	siblingMalformed := siblingNamespace + "damaged-sibling-same-name"
+	if moveErr := os.Rename(siblingRoot, siblingMalformed); moveErr != nil {
+		t.Fatalf("rename sibling dir to malformed name: %v", moveErr)
+	}
+	if writeErr := os.WriteFile(filepath.Join(siblingMalformed, "application.env"), []byte("X=Y\n"), 0o600); writeErr != nil {
+		t.Fatalf("seed sibling runtime state: %v", writeErr)
+	}
+
+	// Resolve the requested app again: the sibling band (same name/env,
+	// different ApplicationID) must fail-closed, never attributing the sibling's
+	// directory to the requested app's identity or network.
+	_, sibErr2 := resolvedRepositoryApplication(context.Background(), target, targetRoot, selection, "up")
+	if !errors.As(sibErr2, &damaged) {
+		t.Fatalf("expected a damaged-state error for the same-name sibling, got %T: %v", sibErr2, sibErr2)
+	}
+	if damaged.Identity.ApplicationID == m.ApplicationID || damaged.Identity.ApplicationID == sibling.ApplicationID {
+		t.Fatalf("same-name/different-id sibling must stay unknown-owner, got %+v", damaged.Identity)
+	}
+	if damaged.Identity.Application != "unknown" {
+		t.Fatalf("same-name/different-id sibling must be unknown-owner, got %+v", damaged.Identity)
+	}
+	if damaged.Network != bhruntime.RuntimeNetworkStateAbsent {
+		t.Fatalf("same-name/different-id sibling must NOT receive the requested app's absent network, got %+v", damaged.Network)
 	}
 }
 
