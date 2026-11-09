@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
@@ -127,6 +128,45 @@ func buildTargetDefinitionChangePlan(ctx context.Context, name, recoveryFile str
 		}
 	} else if !errors.Is(statErr, os.ErrNotExist) {
 		return p, runtimeMutationOwnerError()
+	}
+	// A detached Target strands its deployment records: the one-installation-owner
+	// seam fails closed on the now ownerless Target, so the records cannot be
+	// resolved by `app destroy --uuid --full-reset` or `destroy --all` (which
+	// lists them as SKIPPED) and no later operation reaches them. Refuse the detach
+	// while collectable orphans are attached, naming them and the collect path. This
+	// runs before the deployment-inventory loop (which fails closed on the same
+	// ownerless Target) so the refusal names the orphans instead of a generic
+	// inventory error. Visible refusal, never a silent removal.
+	orphans, orphanErr := deployment.CollectableOrphans(name)
+	if orphanErr != nil {
+		return p, orphanErr
+	}
+	if len(orphans) > 0 {
+		ids := make([]string, len(orphans))
+		for i, record := range orphans {
+			ids[i] = record.Identity.DeploymentID
+		}
+		missing := 0
+		for _, record := range orphans {
+			if !deployment.SourceAvailable(record.Source) {
+				missing++
+			}
+		}
+		message := "Target " + name + " has " + strconv.Itoa(len(orphans)) + " deployment record(s) that would become uncollectable on detach"
+		if missing > 0 {
+			message += " (" + strconv.Itoa(missing) + " with source repository unavailable)"
+		}
+		message += ": " + strings.Join(ids, ", ")
+		message += ". Until a supported per-record recovery exists (see 0427-173) or the source repository is restored, no supported command collects these individual ownerless records; keep the Target definition attached for operator recovery. The installation-wide 'baha destroy --all' selects owned runtime resources and skips unregistered deployment state, so it does not collect valid ownerless records; restore the Target and let 'baha app destroy' run normally."
+		return p, &machine.Error{
+			Code:        machine.ErrorOwnershipAmbiguous,
+			CauseCode:   "target_definition_collectable_orphans",
+			Message:     message,
+			Resource:    name,
+			Next:        "Keep the Target definition attached: no supported command collects these individual ownerless records in this state. The authoritative Core installation owner of the Target must be restored (the one-installation-owner seam fails closed on an ownerless Target, so neither 'app destroy --uuid --full-reset' nor 'destroy --all' reaches the records) and, for the normal heal, the original source repository/manifest that owns each record must be available; once the Target owner and sources are restored, run 'baha app destroy' normally against the attached records. If the Core owner or source repository cannot be restored, there is no supported cleanup command and the records must stay attached for manual operator recovery.",
+			Remediation: "operator_review",
+			Cause:       deployment.ErrTargetDetachedWithOrphans,
+		}
 	}
 	records, err := deployment.ListDeployments(name)
 	if err != nil {
