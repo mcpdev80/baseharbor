@@ -91,55 +91,16 @@ var TenantOwnerResolver func(targetName string) (bool, error)
 var TargetLoanVerifier func(targetName string) (*coreinstallation.State, error)
 
 func VerifyDeploymentOwner(targetName, targetRoot, deploymentID string) error {
-	if TenantOwnerResolver != nil {
-		// Grant-only hook: only an affirmative (true, nil) authorizes the
-		// (Coreless) tenant target through this path. Any other result —
-		// (false, nil), (false, err), or (true, err) — means the hook did not
-		// authorize access, so resolution falls through to the standard
-		// single-installation-owner verification below. A resolver that does not
-		// grant can never bypass that check: it is never an early return and
-		// never a foreign-installation shortcut in the !authorized branch.
-		authorized, resolveErr := TenantOwnerResolver(targetName)
-		if resolveErr != nil {
-			return resolveErr
-		}
-		if authorized {
-			// The consumer has established a genuine authorized-owner path for
-			// this (Coreless) tenant target; the single-installation-owner
-			// requirement does not apply.
-			return nil
-		}
-		// Not granted by the hook: fall through to the authoritative
-		// coreinstallation.Load owner check instead of returning early.
+	installation, tenantAuthorized, err := resolveOwnerLoad(targetName, targetRoot, nil)
+	if err != nil {
+		return err
 	}
-	installation, err := coreinstallation.Load(targetRoot)
-	loaned := false
-	if err != nil && errors.Is(err, os.ErrNotExist) && TargetLoanVerifier != nil {
-		// Owner loan seam (card t-20261106-r27-remote-up-podman-owner-missing,
-		// card 0427-117): resolve a genuinely ownerless Local-access Target
-		// against the one installation its boot Target owns. The loan verifier
-		// re-checks that the boot installation is genuine, READY, and that the
-		// boot Target differs from the requested one; here the loaned identity
-		// governs the requested Target's deployment namespace (the loan's
-		// purpose), so the namespace-installation binding below stays checked
-		// against targetName.
-		// A refusal — any error or a nil state — keeps the ORIGINAL
-		// fail-closed sentinel ErrDeploymentOwnerMissing: loan guard details must
-		// never replace the contract error shape (the caller's errors.Is checks
-		// and the never-delivered-destroy recognition in cmd/baha depend on it).
-		// The nil default keeps every production path byte-identical.
-		loanedState, loanErr := TargetLoanVerifier(targetName)
-		if loanErr != nil || loanedState == nil {
-			return ErrDeploymentOwnerMissing
-		}
-		installation = *loanedState
-		loaned = true
-	} else if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return ErrDeploymentOwnerMissing
-		}
-		// An invalid/foreign installation.json is not an owner either.
-		return ErrDeploymentOwnerForeign
+	if tenantAuthorized {
+		// The tenant grant hook established a genuine authorized-owner path for
+		// this Coreless target; the one-installation-owner directory check does
+		// not apply.
+		_ = deploymentID
+		return nil
 	}
 	_ = installation
 	// The deployment namespace is targets/<target>/deployments. The deployment
@@ -160,18 +121,98 @@ func VerifyDeploymentOwner(targetName, targetRoot, deploymentID string) error {
 			}
 		}
 	}
-	// Loan path only: resolve the two order-independent guarantees of the
-	// owner-loan seam via the extracted helper (see deployment_owner_loan.go).
-	// The `loaned` guard keeps this out of the normal production path, where
-	// VerifyDeploymentOwnerAgainstOwner already ran its own guarantee set and a
-	// stray TargetStateRoot failure must not change the contract result.
-	if loaned {
-		if err := verifyLoanOwnerGuarantees(targetName, targetRoot); err != nil {
-			return err
-		}
-	}
 	_ = deploymentID
 	return nil
+}
+
+// resolveOwnerLoad applies the one-installation-owner load: the tenant grant
+// hook, then the authoritative Core installation load, then the owner-loan seam
+// (card t-20261106-r27-remote-up-podman-owner-missing, 0427-117). It returns the
+// resolved installation and the load error.
+//
+// A non-nil ownerBatch caches the resolved installation so a batched list reads
+// installation.json once per Target (applying the loan seam once) instead of
+// once per deployment. The batch caches only the resolved installation; it never
+// records a per-deployment ownership conclusion. The fail-closed error shape is
+// byte-identical to the single-record path: a missing installation fails closed
+// with ErrDeploymentOwnerMissing (the loan seam granting or not), and an
+// invalid/foreign installation.json fails closed with ErrDeploymentOwnerForeign.
+func resolveOwnerLoad(targetName, targetRoot string, ownerBatch *ownerBatch) (coreinstallation.State, bool, error) {
+	if ownerBatch != nil {
+		if ownerBatch.owner != nil {
+			// A cached owner was already loan-checked by the first resolve; reuse
+			// it without re-entering the load. The per-deployment directory
+			// conclusion still runs in VerifyDeploymentOwner against this State.
+			return *ownerBatch.owner, false, nil
+		}
+		// Not granted by the hook: fall through to the authoritative
+		// coreinstallation.Load owner check instead of returning early.
+	}
+	if TenantOwnerResolver != nil {
+		// Grant-only hook: only an affirmative (true, nil) authorizes the
+		// (Coreless) tenant target through this path. Any other result —
+		// (false, nil), (false, err), or (true, err) — means the hook did not
+		// authorize access, so resolution falls through to the standard
+		// single-installation-owner verification below. A resolver that does not
+		// grant can never bypass that check: it is never an early return and
+		// never a foreign-installation shortcut in the !authorized branch.
+		authorized, resolveErr := TenantOwnerResolver(targetName)
+		if resolveErr != nil {
+			return coreinstallation.State{}, false, resolveErr
+		}
+		if authorized {
+			// The consumer has established a genuine authorized-owner path for
+			// this (Coreless) tenant target; the single-installation-owner
+			// requirement does not apply.
+			return coreinstallation.State{}, true, nil
+		}
+	}
+	installation, err := coreinstallation.Load(targetRoot)
+	if ownerBatch != nil {
+		ownerBatch.loads++
+	}
+	if err != nil && errors.Is(err, os.ErrNotExist) && TargetLoanVerifier != nil {
+		// Owner loan seam (card t-20261106-r27-remote-up-podman-owner-missing,
+		// card 0427-117): resolve a genuinely ownerless Local-access Target
+		// against the one installation its boot Target owns. The loan verifier
+		// re-checks that the boot installation is genuine, READY, and that the
+		// boot Target differs from the requested one; here the loaned identity
+		// governs the requested Target's deployment namespace (the loan's
+		// purpose), so the namespace-installation binding below stays checked
+		// against targetName.
+		// A refusal — any error or a nil state — keeps the ORIGINAL
+		// fail-closed sentinel ErrDeploymentOwnerMissing: loan guard details must
+		// never replace the contract error shape (the caller's errors.Is checks
+		// and the never-delivered-destroy recognition in cmd/baha depend on it).
+		// The nil default keeps every production path byte-identical.
+		loanedState, loanErr := TargetLoanVerifier(targetName)
+		if loanErr != nil || loanedState == nil {
+			return coreinstallation.State{}, false, ErrDeploymentOwnerMissing
+		}
+		installation = *loanedState
+		if ownerBatch != nil {
+			// Loan path only: resolve the two order-independent guarantees of the
+			// owner-loan seam via the extracted helper (see deployment_owner_loan.go).
+			// The guarantee set must hold before a loaned owner is cached; a cached
+			// owner is only ever reused after this check passed once.
+			if gerr := verifyLoanOwnerGuarantees(targetName, targetRoot); gerr != nil {
+				return coreinstallation.State{}, false, gerr
+			}
+			owner := installation
+			ownerBatch.owner = &owner
+		}
+	} else if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return coreinstallation.State{}, false, ErrDeploymentOwnerMissing
+		}
+		// An invalid/foreign installation.json is not an owner either.
+		return coreinstallation.State{}, false, ErrDeploymentOwnerForeign
+	}
+	if ownerBatch != nil {
+		owner := installation
+		ownerBatch.owner = &owner
+	}
+	return installation, false, nil
 }
 
 // deploymentDirForTarget resolves the deployments namespace of a Target
