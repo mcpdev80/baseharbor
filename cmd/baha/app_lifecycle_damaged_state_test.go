@@ -395,6 +395,87 @@ func TestRegistryUpFailsClosedNamingRecordAndNetworkAbsent(t *testing.T) {
 	}
 }
 
+// TestRegistryOwnedAppReportsExactNetwork proves the F1 trusted-owner half of the
+// production path: a damaged deploy directory that lives in the requested app's
+// deployments namespace, with a genuine authoritative Core owner, is diagnosed
+// with the EXACT workload network of the requested app when that network is
+// genuinely absent for this app's retained-identity name/environment. This is a
+// real resolvedRepositoryApplication/FindDeployment run — the requested app has
+// no existing record, FindDeployment returns the request untouched, and the
+// app-scoped DamagedDeploymentNamespaceScoped verifies the requested app's OWN
+// absent network and names it exactly. It is distinct from the ownerless case
+// (TestRegistryForeignOrphanNoFalseAttributionToRequestedApp), where the
+// damaged directory is an unbound orphan and the path withholds any network
+// diagnosis. The network name here is asserted verbatim, not as a generic
+// substring, so a fabricated or foreign network cannot masquerade as THIS app's
+// diagnosis.
+func TestRegistryOwnedAppReportsExactNetwork(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+
+	target := deployment.ResolvedTarget{Name: "local", RuntimeProvider: "docker"}
+	// A genuine Core owner so verifyDeploymentOwnerAtSeam admits the namespace
+	// and the scoped scan can attribute the damaged directory to this app.
+	seedCoreOwner(t, target.Name)
+
+	// Seed a damaged directory in the requested app's namespace: a retained
+	// protected deploy directory whose deployment.json is missing. The name is a
+	// malformed (non-UUID) directory so FindDeployment's shape gate discards it
+	// before erroring; the app-scoped scoped scan still recognises the retained
+	// damaged state and verifies THIS app's network.
+	app := "owned-app"
+	depRoot, err := deployment.TargetStateRoot(target.Name)
+	if err != nil {
+		t.Fatalf("resolve target root for %s: %v", target.Name, err)
+	}
+	depDir := filepath.Join(depRoot, "deployments")
+	if err := os.MkdirAll(depDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	damagedDir := filepath.Join(depDir, "damaged-owned")
+	if err := os.MkdirAll(damagedDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(damagedDir, "application.env"), []byte("X=Y\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// Override the registry network seam to ABSENT so the scoped scan verifies
+	// this app's own absent network rather than a present/foreign one.
+	orig := damagedScanRuntimeForTarget
+	defer func() { damagedScanRuntimeForTarget = orig }()
+	damagedScanRuntimeForTarget = func(context.Context, deployment.ResolvedTarget) (deployment.NetworkInspector, error) {
+		return fakeDamagedScanRuntime{state: bhruntime.RuntimeNetworkStateAbsent}, nil
+	}
+
+	m := application.New(app, "dev", true, true, false)
+	targetRoot, err := deployment.TargetStateRoot(target.Name)
+	if err != nil {
+		t.Fatalf("resolve target root for %s: %v", target.Name, err)
+	}
+	selection := application.RepositoryEnvironmentSelection{Manifest: m}
+	_, err = resolvedRepositoryApplication(context.Background(), target, targetRoot, selection, "up")
+	var damaged *deployment.DamagedDeploymentError
+	if !errors.As(err, &damaged) {
+		t.Fatalf("expected a damaged-state error from the production path for the owned app, got %T: %v", err, err)
+	}
+	// The owned app's identity is bound from the trusted retained manifest, so
+	// the damaged error carries the requested app (never "unknown").
+	if damaged.Identity.Application != app {
+		t.Fatalf("owned-app damaged error must be bound to the requested app %q, got %+v", app, damaged.Identity)
+	}
+	// The exact workload network for owned-app/dev is asserted verbatim: this is
+	// the F1 trusted-owner proof, not a generic substring match.
+	wantNetwork := "baseharbor-dev-workload-baseharbor-owned-app-dev"
+	if damaged.NetworkName != wantNetwork {
+		t.Fatalf("owned-app damaged error must name the EXACT absent workload network %q, got %q", wantNetwork, damaged.NetworkName)
+	}
+	if damaged.Network != bhruntime.RuntimeNetworkStateAbsent {
+		t.Fatalf("owned-app damaged error must report the absent network state, got %q", damaged.Network)
+	}
+}
+
 // TestRegistryForeignOrphanNoFalseAttributionToRequestedApp proves the F3
 // no-false-attribution invariant through the REAL production path: a damaged
 // deploy directory that belongs to a DIFFERENT (foreign) app (seeded as a valid
