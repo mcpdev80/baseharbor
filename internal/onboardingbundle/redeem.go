@@ -15,6 +15,8 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"math/big"
+	"strings"
 	"time"
 
 	ws "github.com/mcpdev80/baseharbor/internal/workstationenrollment"
@@ -103,8 +105,15 @@ func Redeem(ctx context.Context, b Bundle, now time.Time) (EnrolledIdentity, err
 	if _,err:=leaf.Verify(x509.VerifyOptions{Roots:roots,CurrentTime:now,KeyUsages:[]x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth}});err!=nil {
 		return zero,fmt.Errorf("%w: Core leaf chain invalid",ErrInvalid)
 	}
-	if leaf.SerialNumber.String()!=reply.Serial || len(leaf.URIs)!=1 || leaf.URIs[0].String()!=scope.Identity() ||
-		leaf.IsCA || !leaf.NotAfter.Equal(reply.ExpiresAt) {
+	// Managed OpenBao and the local test issuer both report hex serials; the
+	// former may separate octets with colons. Never compare decimal and hex
+	// textual representations of the same certificate serial.
+	serialText := strings.ReplaceAll(strings.ToLower(reply.Serial), ":", "")
+	reportedSerial, ok := new(big.Int).SetString(serialText, 16)
+	if !ok || reportedSerial.Cmp(leaf.SerialNumber)!=0 ||
+		len(leaf.URIs)!=1 || leaf.URIs[0].String()!=scope.Identity() ||
+		leaf.IsCA || leaf.NotAfter.Sub(reply.ExpiresAt) > time.Second ||
+		reply.ExpiresAt.Sub(leaf.NotAfter) > time.Second {
 		return zero,fmt.Errorf("%w: Core leaf identity not bound to invitation",ErrInvalid)
 	}
 	publicExpected,err:=x509.MarshalPKIXPublicKey(&key.PublicKey)
