@@ -179,6 +179,11 @@ func remoteApplicationMutation(ctx context.Context, target deployment.ResolvedTa
 	if err != nil {
 		return err
 	}
+	if operation == "apply" {
+		if err := validateRemoteSelectedSources(name, environment); err != nil {
+			return err
+		}
+	}
 	core, err := dialVerifiedRemoteCore(ctx, target.Name, target.RuntimeProvider, target.TenantID)
 	if err != nil {
 		return machine.Wrap(machine.ErrorAuthenticationFailed, err,
