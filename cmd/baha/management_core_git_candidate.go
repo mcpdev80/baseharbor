@@ -57,8 +57,9 @@ func prepareStagedCoreGitCandidate(ctx context.Context, source development.Sourc
 	if err != nil {
 		return stagedCoreGitCandidate{}, err
 	}
+	retained := false
 	defer func() {
-		if err != nil {
+		if !retained {
 			_ = os.RemoveAll(ownedRoot)
 		}
 	}()
@@ -92,6 +93,7 @@ func prepareStagedCoreGitCandidate(ctx context.Context, source development.Sourc
 		SourceRepository: source.Repository,
 		SourceRevision:   source.Ref,
 	}
+	retained = true
 	return stagedCoreGitCandidate{Root: ownedRoot, Fingerprint: fingerprint, Submission: submission}, nil
 }
 
