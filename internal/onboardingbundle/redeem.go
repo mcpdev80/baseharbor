@@ -93,7 +93,12 @@ func Redeem(ctx context.Context, b Bundle, now time.Time) (EnrolledIdentity, err
 	req.Header.Set("Content-Type", "application/json")
 	transport := &http.Transport{TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12, RootCAs: roots}}
 	defer transport.CloseIdleConnections()
-	client := &http.Client{Transport: transport, Timeout: 20 * time.Second}
+	client := &http.Client{
+		Transport: transport,
+		Timeout:   20 * time.Second,
+		// The one-use bearer must never be forwarded to a redirected URL.
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}
 	resp, err := client.Do(req)
 	if err != nil {
 		return zero, fmt.Errorf("%w: Core TLS enrollment failed: %v", ErrInvalid, err)
@@ -146,8 +151,8 @@ func Redeem(ctx context.Context, b Bundle, now time.Time) (EnrolledIdentity, err
 	if err != nil || !bytes.Equal(publicExpected, publicActual) {
 		return zero, fmt.Errorf("%w: Core returned another device's key", ErrInvalid)
 	}
-	if reply.TrustPEM == "" || !roots.AppendCertsFromPEM([]byte(reply.TrustPEM)) {
-		return zero, fmt.Errorf("%w: Core omitted authoritative trust", ErrInvalid)
+	if !bytes.Equal([]byte(reply.TrustPEM), []byte(b.CAPEM)) {
+		return zero, fmt.Errorf("%w: Core returned trust different from the pinned invitation CA", ErrInvalid)
 	}
 	privateDER, err := x509.MarshalECPrivateKey(key)
 	if err != nil {
