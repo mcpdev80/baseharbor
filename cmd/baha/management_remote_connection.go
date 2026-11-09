@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"path/filepath"
 	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
@@ -17,6 +18,7 @@ import (
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/operatorauth"
+	"github.com/mcpdev80/baseharbor/internal/deployment"
 )
 
 const remoteConnectionProfileVersion = "baseharbor.connection-profile/v1"
@@ -41,6 +43,9 @@ type remoteConnectionProfile struct {
 		RuntimeProvider string `json:"runtime_provider"`
 		Scope           string `json:"scope,omitempty"`
 	} `json:"targets"`
+	Device *struct {
+		IdentityDir string `json:"identity_dir"`
+	} `json:"device,omitempty"`
 	Access *struct {
 		Issuer   string   `json:"issuer"`
 		ClientID string   `json:"client_id"`
@@ -67,7 +72,9 @@ func verifyRemoteManagementConnection(ctx context.Context, target, runtime, expe
 func dialVerifiedRemoteCore(ctx context.Context, target, runtime, expectedTenant string) (*verifiedRemoteCore, error) {
 	path := strings.TrimSpace(os.Getenv("BASEHARBOR_CONNECTION_PROFILE"))
 	if path == "" {
-		return nil, errors.New("remote management connection profile not configured (BASEHARBOR_CONNECTION_PROFILE)")
+		root, err := deployment.DataRoot()
+		if err != nil { return nil, err }
+		path = filepath.Join(root, "remote-connections", target, "profile.json")
 	}
 	file, err := os.Open(path)
 	if err != nil {
@@ -119,25 +126,39 @@ func dialVerifiedRemoteCore(ctx context.Context, target, runtime, expectedTenant
 		return nil, errors.New("remote target is not declared by the connection profile")
 	}
 
-	// The login is intentionally scoped to the requested Target/environment.
-	// No token is substituted from another Target, tenant or local Core.
-	session, err := operatorauth.LoadSession(target, "dev")
-	if err != nil || !session.ValidAt(time.Now()) {
-		return nil, errors.New("remote Core requires a valid operator OIDC session for the selected target")
-	}
-	if profile.Access != nil && (profile.Access.Issuer != session.Issuer || profile.Access.ClientID != session.ClientID) {
-		return nil, errors.New("remote OIDC issuer/client differs from the pinned connection")
+	var deviceCert *tls.Certificate
+	var bearerToken string
+	var expectedOperatorIssuer string
+	if profile.Device != nil {
+		// A verified enrolled workstation uses only its private key and
+		// bounded mTLS identity. It must never silently fall back to OIDC or
+		// inherit another Target's token.
+		keyFile := filepath.Join(profile.Device.IdentityDir, "private-key.pem")
+		leafFile := filepath.Join(profile.Device.IdentityDir, "certificate.pem")
+		pair, err := tls.LoadX509KeyPair(leafFile, keyFile)
+		if err != nil { return nil, errors.New("verified workstation certificate is unavailable") }
+		deviceCert = &pair
+	} else {
+		session, err := operatorauth.LoadSession(target, "dev")
+		if err != nil || !session.ValidAt(time.Now()) {
+			return nil, errors.New("remote Core requires a valid operator OIDC session for the selected target")
+		}
+		if profile.Access != nil && (profile.Access.Issuer != session.Issuer || profile.Access.ClientID != session.ClientID) {
+			return nil, errors.New("remote OIDC issuer/client differs from the pinned connection")
+		}
+		bearerToken = session.IDToken
+		expectedOperatorIssuer = session.Issuer
 	}
 	client := &http.Client{
 		Timeout:       15 * time.Second,
-		Transport:     &http.Transport{TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS13, RootCAs: roots}},
+		Transport:     &http.Transport{TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS13, RootCAs: roots, Certificates: func() []tls.Certificate { if deviceCert != nil { return []tls.Certificate{*deviceCert} }; return nil }()}},
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 	}
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(profile.Core.URL, "/")+"/api/v1/management/installation", nil)
 	if err != nil {
 		return nil, err
 	}
-	request.Header.Set("Authorization", "Bearer "+session.IDToken)
+	if bearerToken != "" { request.Header.Set("Authorization", "Bearer "+bearerToken) }
 	response, err := client.Do(request)
 	if err != nil {
 		return nil, fmt.Errorf("verify live remote Core: %w", err)
@@ -158,9 +179,9 @@ func dialVerifiedRemoteCore(ctx context.Context, target, runtime, expectedTenant
 	if decoded.Decode(&identity) != nil || decoded.Decode(new(any)) != io.EOF ||
 		identity.Version != managementInstallationVersion ||
 		identity.InstallationID != profile.Core.InstallationID ||
-		identity.IdentityIssuer == "" || identity.OperatorIssuer != session.Issuer ||
+		identity.IdentityIssuer == "" || (expectedOperatorIssuer != "" && identity.OperatorIssuer != expectedOperatorIssuer) ||
 		identity.TenantID != tenant {
 		return nil, errors.New("remote Core installation, OIDC issuer or tenant does not match pinned connection")
 	}
-	return &verifiedRemoteCore{client: client, origin: strings.TrimRight(profile.Core.URL, "/"), token: session.IDToken, target: target, tenant: tenant}, nil
+	return &verifiedRemoteCore{client: client, origin: strings.TrimRight(profile.Core.URL, "/"), token: bearerToken, target: target, tenant: tenant}, nil
 }
