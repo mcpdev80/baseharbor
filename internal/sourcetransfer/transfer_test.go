@@ -125,7 +125,7 @@ func TestConflictsInvalidInputAndChunkIntegrity(t *testing.T) {
 	if _, _, err := s.Begin(old); !errors.Is(err, ErrConflict) {
 		t.Fatalf("stale base accepted: %v", err)
 	}
-	for _, p := range []string{"../secret", "a/../../secret", ".git/config", ".env", "a\\b"} {
+	for _, p := range []string{"../secret", "a/../../secret", ".git/config", ".env", ".env.production", ".npmrc", ".netrc", ".baseharbor/tokens.json", "a\\b"} {
 		if err := validatePath(p); err == nil {
 			t.Fatalf("accepted %q", p)
 		}
@@ -146,5 +146,24 @@ func TestSymlinkAndConfidentialPathRejected(t *testing.T) {
 	putFixture(t, root, ".env", "PASSWORD=secret")
 	if _, _, err := Capture(context.Background(), root, "dev", "demo", "dev", ""); err == nil || !strings.Contains(err.Error(), "forbidden") {
 		t.Fatalf("secret path not denied: %v", err)
+	}
+}
+
+func TestSourceCaptureDoesNotTransmitLocalInfrastructureSecrets(t *testing.T) {
+	root := t.TempDir()
+	putFixture(t, root, "baseharbor.yaml", "name: demo\n")
+	for _, name := range []string{
+		".baseharbor/operator-token.json",
+		".aws/credentials", ".ssh/id_ed25519", ".kube/config",
+		".docker/config.json", ".terraform/terraform.tfstate",
+	} {
+		putFixture(t, root, name, "DO_NOT_UPLOAD")
+	}
+	snapshot, contents, err := Capture(context.Background(), root, "dev", "demo", "dev", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snapshot.Files) != 1 || len(contents) != 1 || snapshot.Files[0].Path != "baseharbor.yaml" {
+		t.Fatalf("local infrastructure secret was captured: %v", snapshot.Files)
 	}
 }

@@ -101,7 +101,7 @@ func validatePath(p string) error {
 		return fmt.Errorf("invalid source path %q", p)
 	}
 	for _, part := range strings.Split(p, "/") {
-		if part == ".." || part == ".git" || part == ".env" || part == ".ssh" || part == ".aws" || part == ".gnupg" || p == ".baseharbor/init.env" {
+		if part == ".." || part == ".git" || part == ".env" || strings.HasPrefix(part, ".env.") || part == ".ssh" || part == ".aws" || part == ".gnupg" || part == ".kube" || part == ".terraform" || part == ".npmrc" || part == ".netrc" || part == ".pypirc" || part == ".docker" || part == "id_rsa" || part == "id_ed25519" || part == ".baseharbor" {
 			return fmt.Errorf("source path %q contains forbidden material", p)
 		}
 	}
@@ -154,7 +154,7 @@ func Capture(ctx context.Context, root, target, app, environment, base string) (
 		p := filepath.ToSlash(rel)
 		if d.IsDir() {
 			switch d.Name() {
-			case ".git", "node_modules", ".next", "dist", "build", ".venv", "venv", "__pycache__":
+			case ".git", ".baseharbor", ".terraform", ".aws", ".ssh", ".kube", ".gnupg", ".docker", "node_modules", ".next", "dist", "build", ".venv", "venv", "__pycache__":
 				return filepath.SkipDir
 			}
 			return validatePath(p)
