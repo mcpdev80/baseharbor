@@ -696,10 +696,13 @@ func assertOnDiskIdentityMatches(root string, id DeploymentIdentity) error {
 		return fmt.Errorf("read deployment record before delete %s: %w", root, err)
 	}
 	var record DeploymentRecord
-	if err := json.Unmarshal(data, &record); err != nil || record.Version != DeploymentRecordVersion || record.Identity != id {
-		if err != nil {
-			return &machine.Error{Code: machine.ErrorInternal, CauseCode: "DEPLOYMENT_RECORD_MALFORMED", Message: fmt.Sprintf("deployment record %s is not a valid deployment record: %v", root, err), Resource: root, Next: "Re-authorize the current record; do not remove a record whose storage is corrupt.", Remediation: "operator_review"}
-		}
+	if err := json.Unmarshal(data, &record); err != nil {
+		return &machine.Error{Code: machine.ErrorInternal, CauseCode: "DEPLOYMENT_RECORD_MALFORMED", Message: fmt.Sprintf("deployment record %s is not a valid deployment record: %v", root, err), Resource: root, Next: "Re-authorize the current record; do not remove a record whose storage is corrupt.", Remediation: "operator_review"}
+	}
+	if record.Version != DeploymentRecordVersion {
+		return &machine.Error{Code: machine.ErrorInternal, CauseCode: "DEPLOYMENT_RECORD_VERSION", Message: fmt.Sprintf("deployment record %s has version %d, expected %d", root, record.Version, DeploymentRecordVersion), Resource: root, Next: "Re-authorize the current record; do not remove a record whose storage version is unsupported.", Remediation: "operator_review"}
+	}
+	if record.Identity != id {
 		return &machine.Error{Code: machine.ErrorOwnershipAmbiguous, CauseCode: "IDENTITY_DRIFT", Message: fmt.Sprintf("deployment record %s identity %v drifted from authorized %v", root, record.Identity, id), Resource: root, Next: "The deployment record changed between authorization and deletion; re-run to authorize the current record.", Remediation: "operator_review"}
 	}
 	return nil

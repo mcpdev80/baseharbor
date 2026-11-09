@@ -300,6 +300,15 @@ func requirePruneName(args []string, command string) (string, error) {
 	}
 }
 
+// pruneDriftHook is a package-internal test seam (production path keeps it nil, so
+// no behaviour changes): it fires inside the registered MCP prune handler after the
+// handler captures the authorized identity (the read that authorizes A) and before
+// it runs the mutation. The drift regression rewrites the on-disk record to a
+// drifted identity (B) through it, so the registered handler's own authorization →
+// DeleteDeploymentRecord path — including the on-disk identity guard — is asserted
+// fail-closed on drift. Style follows the existing cmd/baha observedAt seam.
+var pruneDriftHook func()
+
 // resolvePruneByName pins exactly one deployment record by exact NAME, naming
 // every match when a name is ambiguous (0427-149 name-duplicate guard). It
 // deliberately skips the authored-manifest load and the applied-backend-selection
@@ -407,6 +416,18 @@ func registerMCPAppPruneTool(server *mcp.Server, store application.Store) {
 			// same-name record replacement between the two cannot redirect the
 			// deletion.
 			authorizedIdentity := resolved.DeploymentIdentity
+			// Test seam (package-internal only, production path untouched): fired
+			// after the handler captured the authorized identity (read #1) and
+			// before it runs the mutation. A test uses it to deterministically
+			// rewrite the on-disk record to a drifted identity (B) between the
+			// handler's authorization and DeleteDeploymentRecord, so the registered
+			// handler's own resolve/authorize/mutate path — including the on-disk
+			// identity guard in DeleteDeploymentRecord — is asserted fail-closed on
+			// drift. nil default means no observable behaviour change. Style
+			// follows the existing cmd/baha observedAt seam.
+			if pruneDriftHook != nil {
+				pruneDriftHook()
+			}
 			if err := authorizeResolvedMCPOperation(ctx, "app.prune", resolved, ""); err != nil {
 				return machineMCPFailure(err)
 			}
