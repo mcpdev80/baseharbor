@@ -40,12 +40,36 @@ def discover_cli_tests():
     return sorted(names)
 
 
+# These seven regressions share one production owner-loan fixture contract.
+# Go tests in the same source file must retain their original package-run
+# ordering: splitting isolated/proven/unmarked cells across independent test
+# processes changes their shared test bootstrap and hides/provokes failures.
+OWNER_LOAN_FILE = "deployment_owner_loan_regression_test.go"
+
+
+def owner_loan_cohort():
+    source = ROOT / "cmd/baha" / OWNER_LOAN_FILE
+    if not source.is_file():
+        raise RuntimeError("required owner-loan regression source missing")
+    names = set(re.findall(r"^func (Test[A-Za-z0-9_]+)\(", source.read_text(), re.M))
+    if len(names) < 7:
+        raise RuntimeError("owner-loan regression cohort incomplete")
+    return names
+
+
+def shard_key(name, cohort):
+    return OWNER_LOAN_FILE if name in cohort else name
+
+
 def selected_tests(all_names, shard):
     if not re.fullmatch(r"cli-[0-2]", shard):
         raise ValueError("unknown CLI shard")
     index = int(shard[-1])
+    cohort = owner_loan_cohort()
+    if not cohort <= set(all_names):
+        raise RuntimeError("owner-loan cohort not fully discovered in Go test inventory")
     return [name for name in all_names
-            if int.from_bytes(hashlib.sha256(name.encode()).digest()[:8], "big") % CLI_SHARDS == index]
+            if int.from_bytes(hashlib.sha256(shard_key(name, cohort).encode()).digest()[:8], "big") % CLI_SHARDS == index]
 
 
 def cli(shard):
