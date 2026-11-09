@@ -69,7 +69,35 @@ func listDeploymentRecords(root, target string, bestEffort bool) ([]DeploymentRe
 			continue
 		}
 		deploymentID := entry.Name()
+		// Canonical directory-name invariant (bug-hunt BF-03): a deployment
+		// directory is a per-deploy UUIDv4. A directory whose name is not a
+		// valid UUIDv4 can never be a deployment — the registry path re-derives
+		// fresh UUIDs (`NewDeploymentIdentity`/`ValidateDeploymentID`), so a
+		// malformed name is not a truncated deployment and must NOT be advertised
+		// as deployment damage. Gate on the shape BEFORE classifying so a
+		// non-UUID entry (a foreign app's directory, a stray folder, etc.) is
+		// discarded rather than mistaken for a damaged deployment. The
+		// damaged-signature / artifact logic below is unchanged for a valid UUID.
+		if err := ValidateDeploymentID(deploymentID); err != nil {
+			continue
+		}
 		path := filepath.Join(root, deploymentID, "deployment.json")
+		// Damaged deployment state precedes every downstream check: a retained
+		// deploy directory without its authoritative deployment.json is the
+		// signature from bug-hunt BF-03. A damaged directory is already broken,
+		// so the one-installation-owner check must not mask it with a
+		// "no authoritative installation owner" result — the precise,
+		// recoverable damaged-state error wins. Listing it as a plain
+		// "incomplete" warning would let the caller fall through to a generic
+		// repository inspection (the "file limit exceeded" path) instead of the
+		// real condition.
+		if damaged, damageErr := DamagedDirectoryState(filepath.Join(root, deploymentID)); damageErr == nil && damaged {
+			if bestEffort {
+				warnings = append(warnings, &DamagedDeploymentError{Identity: DeploymentIdentity{Target: target, DeploymentID: deploymentID}, Root: filepath.Join(root, deploymentID)})
+				continue
+			}
+			return nil, nil, &DamagedDeploymentError{Identity: DeploymentIdentity{Target: target, DeploymentID: deploymentID}, Root: filepath.Join(root, deploymentID)}
+		}
 		if err := verifyDeploymentOwnerAtSeam(target, deploymentID); err != nil {
 			if bestEffort {
 				// A non-missing owner error (an unreadable installation, or a

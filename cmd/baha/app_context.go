@@ -16,6 +16,32 @@ import (
 
 var applicationEnvironmentOverride string
 
+// damagedScanRuntimeForTarget is the seam the damaged-state network check uses
+// to obtain a runtime inspector for a resolved target. It defaults to a closure
+// over detectRuntimeForTarget (whose result satisfies the minimal inspector
+// surface) and is overridden by tests with a fake inspector so the
+// record-plus-network damage can be exercised without a live runtime.
+var damagedScanRuntimeForTarget = func(ctx context.Context, t deployment.ResolvedTarget) (deployment.NetworkInspector, error) {
+	provider, err := detectRuntimeForTarget(ctx, t)
+	if err != nil {
+		return nil, err
+	}
+	return provider, nil
+}
+
+// inspectDamagedNetworkForTarget resolves the runtime inspector for a registry
+// damaged-scan enrichment, returning a nil inspector when the runtime cannot be
+// resolved so the damaged error stays record-only (never fabricating an absent
+// network from an unverifiable inspect). It mirrors damagedScanRuntimeForTarget
+// but treats a resolution failure as a nil inspector rather than an error.
+func inspectDamagedNetworkForTarget(ctx context.Context, t deployment.ResolvedTarget) deployment.NetworkInspector {
+	inspector, err := damagedScanRuntimeForTarget(ctx, t)
+	if err != nil {
+		return nil
+	}
+	return inspector
+}
+
 func pushApplicationEnvironmentOverride(environment string) func() {
 	previous := applicationEnvironmentOverride
 	applicationEnvironmentOverride = strings.TrimSpace(environment)
@@ -126,7 +152,7 @@ func resolveApplicationEnvironment(ctx context.Context, _ application.Store, arg
 			if err != nil {
 				return resolvedApplication{}, err
 			}
-			resolved, resolveErr := resolvedRepositoryApplication(target, targetRoot, selection, command)
+			resolved, resolveErr := resolvedRepositoryApplication(ctx, target, targetRoot, selection, command)
 			if resolveErr != nil {
 				return resolvedApplication{}, resolveErr
 			}
@@ -208,7 +234,7 @@ func eligibleNeverDeliveredLocalDestroy(target deployment.ResolvedTarget, target
 	}) == nil
 }
 
-func resolvedRepositoryApplication(target deployment.ResolvedTarget, targetRoot string, selection application.RepositoryEnvironmentSelection, command ...string) (resolvedApplication, error) {
+func resolvedRepositoryApplication(ctx context.Context, target deployment.ResolvedTarget, targetRoot string, selection application.RepositoryEnvironmentSelection, command ...string) (resolvedApplication, error) {
 	m := selection.Manifest
 	existing, found, err := deployment.FindDeployment(target.Name, m.ApplicationID, m.Environment)
 	// A locally initialized application may be destroyed before its first
@@ -220,6 +246,26 @@ func resolvedRepositoryApplication(target deployment.ResolvedTarget, targetRoot 
 		found, err = false, nil
 	}
 	if err != nil {
+		// A registry-path damaged-state error (found in the deployment listing
+		// for THIS target) is a target-level damaged-state conflict, not the
+		// requested application's damage. The deploy directory is a per-deploy
+		// UUID with no retained deployment.json, so there is NO trusted retained
+		// identity source that binds it to the requested app — its owner is
+		// unknown. Attributing the requested application's record or workload
+		// network to it would mislabel a foreign/unknown-owner orphan as the
+		// requested app's BF-03 damage (bug-hunt no-false-attribution invariant).
+		//
+		// Report the record half under an explicit unknown-owner identity and do
+		// NOT enrich with the requested app's network half. Only a damaged entry
+		// bound to the requested app by a trusted retained identity source may
+		// carry the requested app's record/network diagnosis.
+		if damaged, ok := deployment.DamagedDeploymentState(err, nil); ok && damaged != nil && damaged.Ownerless() {
+			damaged.Identity.Target = target.Name
+			damaged.Identity.Application = "unknown"
+			damaged.Identity.ApplicationID = ""
+			damaged.Identity.Environment = ""
+			return resolvedApplication{}, damaged
+		}
 		return resolvedApplication{}, err
 	}
 
@@ -240,6 +286,68 @@ func resolvedRepositoryApplication(target deployment.ResolvedTarget, targetRoot 
 	deploymentRoot, err := deployment.DeploymentRoot(id)
 	if err != nil {
 		return resolvedApplication{}, err
+	}
+	// Damaged deployment state precedes the generic repository-inspection budget
+	// check (bug-hunt BF-03): a retained deploy directory without its
+	// deployment.json must surface the precise, recoverable damaged-state error
+	// instead of the misleading "repository inspection file limit exceeded"
+	// message. FindDeployment already returned no authoritative record, so the
+	// damage is discovered by scanning the deployment namespace for a retained,
+	// orphaned deploy directory that only carries the never-delivered proof.
+	//
+	// The app-scoped scan additionally verifies THIS app's workload runtime
+	// network (source of truth: the retained manifest identity, never the UUID
+	// deploy directory) so the observed record-plus-network damage is reported
+	// together. An unrelated app's orphaned directory is still flagged, but its
+	// network is not attributed to this resolved app.
+	runtimeForDamagedScan, runtimeErr := damagedScanRuntimeForTarget(ctx, target)
+	if runtimeErr != nil {
+		// A runtime that cannot be resolved must not suppress the record damage:
+		// fall back to the namespace-only scan with a nil inspector.
+		runtimeForDamagedScan = nil
+	}
+	damaged, damagedDir, networkName, networkDamage, netErr := deployment.DamagedDeploymentNamespaceScoped(
+		target.Name, m.ApplicationID, m.Environment, m.Name, runtimeForDamagedScan,
+	)
+	if netErr != nil {
+		return resolvedApplication{}, netErr
+	} else if damaged {
+		// BUG-HUNT BF-03 / 0427-159 r6 (F1): the deploy directory is a per-deploy
+		// UUID with no deployment.json, so the only trusted basis to attribute it
+		// to THIS requested app is the durable ownership band that survived the
+		// record's truncation (production reads it via LoadRetainedOwnerBand).
+		// Without a band that names THIS requested app the directory is an
+		// unbound orphan and must NOT acquire the requesting app's identity or
+		// network. A band naming a DIFFERENT application is foreign and likewise
+		// must not be attributed to the requested app. Only a band whose retained
+		// identity matches this app binds the damage to the requested app.
+		bandID, bandApp, bandEnv, bandOK, bandErr := deployment.LoadRetainedOwnerBand(damagedDir)
+		if bandErr != nil || !bandOK || bandID != m.ApplicationID || bandApp != m.Name || bandEnv != m.Environment {
+			damagedIdentity := deployment.DeploymentIdentity{
+				Target:        target.Name,
+				Application:   "unknown",
+				Environment:   "",
+				ApplicationID: "",
+			}
+			return resolvedApplication{}, &deployment.DamagedDeploymentError{
+				Identity:    damagedIdentity,
+				Root:        damagedDir,
+				Network:     "",
+				NetworkName: "",
+			}
+		}
+		id := deployment.DeploymentIdentity{
+			Target:        target.Name,
+			Application:   m.Name,
+			Environment:   m.Environment,
+			ApplicationID: m.ApplicationID,
+		}
+		return resolvedApplication{}, &deployment.DamagedDeploymentError{
+			Identity:    id,
+			Root:        damagedDir,
+			Network:     networkDamage,
+			NetworkName: networkName,
+		}
 	}
 	return resolvedApplication{
 		Target:              target,
@@ -485,15 +593,7 @@ func resolveIncompleteRegisteredApplication(
 	store := application.Store{Root: filepath.Join(deploymentRoot, "state"), Namespace: target.Name}
 	manifests, err := store.List()
 	if err != nil {
-		return resolvedApplication{}, false, &machine.Error{
-			Code:        machine.ErrorOwnershipAmbiguous,
-			CauseCode:   "INCOMPLETE_DEPLOYMENT_STATE",
-			Message:     fmt.Sprintf("incomplete deployment %s/%s cannot be reconstructed safely", id.Target, id.DeploymentID),
-			Resource:    id.Target + "/" + id.DeploymentID,
-			Next:        "Inspect the protected deployment state before cleanup.",
-			Remediation: "operator_review",
-			Cause:       err,
-		}
+		return resolvedApplication{}, false, incompleteError(id, "INCOMPLETE_DEPLOYMENT_STATE", "cannot be reconstructed safely", err)
 	}
 
 	var matches []application.Manifest
@@ -508,26 +608,12 @@ func resolveIncompleteRegisteredApplication(
 	}
 	if len(matches) == 0 {
 		if len(manifests) == 0 {
-			return resolvedApplication{}, false, &machine.Error{
-				Code:        machine.ErrorOwnershipAmbiguous,
-				CauseCode:   "INCOMPLETE_DEPLOYMENT_STATE",
-				Message:     fmt.Sprintf("incomplete deployment %s/%s has no protected application identity", id.Target, id.DeploymentID),
-				Resource:    id.Target + "/" + id.DeploymentID,
-				Next:        "Inspect the protected deployment state before cleanup.",
-				Remediation: "operator_review",
-			}
+			return resolvedApplication{}, false, incompleteError(id, "INCOMPLETE_DEPLOYMENT_STATE", "has no protected application identity", nil)
 		}
 		return resolvedApplication{}, false, nil
 	}
 	if len(matches) > 1 {
-		return resolvedApplication{}, false, &machine.Error{
-			Code:        machine.ErrorOwnershipAmbiguous,
-			CauseCode:   "INCOMPLETE_DEPLOYMENT_IDENTITY_AMBIGUOUS",
-			Message:     fmt.Sprintf("protected state for deployment %s/%s contains multiple matching application identities", id.Target, id.DeploymentID),
-			Resource:    id.Target + "/" + id.DeploymentID,
-			Next:        "Inspect the protected deployment state before cleanup.",
-			Remediation: "operator_review",
-		}
+		return resolvedApplication{}, false, incompleteError(id, "INCOMPLETE_DEPLOYMENT_IDENTITY_AMBIGUOUS", "contains multiple matching application identities", nil)
 	}
 
 	m := matches[0]
@@ -535,15 +621,7 @@ func resolveIncompleteRegisteredApplication(
 	id.Application = m.Name
 	id.Environment = m.Environment
 	if err := id.Validate(); err != nil {
-		return resolvedApplication{}, false, &machine.Error{
-			Code:        machine.ErrorOwnershipAmbiguous,
-			CauseCode:   "INCOMPLETE_DEPLOYMENT_IDENTITY_MISMATCH",
-			Message:     fmt.Sprintf("protected application state does not provide a valid stable identity for deployment %s/%s", id.Target, id.DeploymentID),
-			Resource:    id.Target + "/" + id.DeploymentID,
-			Next:        "Inspect the protected deployment state before cleanup.",
-			Remediation: "operator_review",
-			Cause:       err,
-		}
+		return resolvedApplication{}, false, incompleteError(id, "INCOMPLETE_DEPLOYMENT_IDENTITY_MISMATCH", "does not provide a valid stable identity", err)
 	}
 	manifestPath := filepath.Join(store.Root, m.Name, "baseharbor.yaml")
 	if commandRequiresLiveSource(command) {
@@ -567,6 +645,22 @@ func resolveIncompleteRegisteredApplication(
 		FromRepository:       false,
 		IncompleteDeployment: true,
 	}, true, nil
+}
+
+// incompleteError builds the machine error for an incomplete-deployment failure.
+// All four call sites share the same resource/next/remediation shape, so this
+// helper keeps the four cause codes and messages readable instead of repeating
+// the boilerplate around each one.
+func incompleteError(id deployment.DeploymentIdentity, causeCode, messageSuffix string, cause error) *machine.Error {
+	return &machine.Error{
+		Code:        machine.ErrorOwnershipAmbiguous,
+		CauseCode:   causeCode,
+		Message:     fmt.Sprintf("incomplete deployment %s/%s %s", id.Target, id.DeploymentID, messageSuffix),
+		Resource:    id.Target + "/" + id.DeploymentID,
+		Next:        "Inspect the protected deployment state before cleanup.",
+		Remediation: "operator_review",
+		Cause:       cause,
+	}
 }
 
 func commandRequiresLiveSource(command string) bool {

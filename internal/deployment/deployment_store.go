@@ -49,14 +49,10 @@ var ErrDeploymentOwnerAccessDenied = errors.New("deployment state directory for 
 var ErrDeploymentOwnerMalformedState = errors.New("deployment state directory for its Target holds a Core installation that could not be validated; the installation.json is present but malformed or incompatible — restore a genuine Core installation before its state is loadable")
 
 // verifyDeploymentOwnerAtSeam enforces the one-installation-owner rule on every
-// production read/write path in this package. It derives the Target's runtime
-// root (targets/<target>/runtime) from the canonical data layout and delegates
-// to the exported VerifyDeploymentOwner, so the authoritative check runs at the
-// storage seam and cannot be bypassed by a caller that only holds an identity.
-//
-// Tenant-managed targets are Coreless by design; the check is resolved through
-// the same VerifyDeploymentOwner path and fails closed unless an authorized
-// tenant owner path is established by the governing contract.
+// production read/write path. It derives the Target's runtime root
+// (targets/<target>/runtime) from the canonical data layout and delegates to the
+// exported VerifyDeploymentOwner, so the authoritative check runs at the storage
+// seam and cannot be bypassed by a caller that only holds an identity.
 func verifyDeploymentOwnerAtSeam(targetName, deploymentID string) error {
 	if err := ValidateTargetName(targetName); err != nil {
 		return err
@@ -74,27 +70,14 @@ func verifyDeploymentOwnerAtSeam(targetName, deploymentID string) error {
 // deployment namespace.
 //
 // The deployment record identity is intentionally untouched: a deployment is
-// keyed by its own UUID plus Target, and its record identity is never rewritten
-// to carry the installation. Ownership is proven at the storage path, not by
-// embedding an installation reference. A missing installation fails closed; a
-// foreign installation (one whose durable identity does not own this Target)
-// fails closed and preserves the existing record identity. The deployment
-// directory itself need not pre-exist: first-run init creates it under the owner,
-// so absence of the directory is not itself a missing-owner condition.
-//
-// Durable identity binding of a deployment to the owner installation's
-// installation.ID is intentionally out of scope for this seam: the storage
-// owner is proven here at the Target's runtime root. The durable
-// installation.ID binding that closes copied/rewritten-identity attacks is
-// provided by the authority contract (follow-up), not invented by this layer.
-//
-// Tenant-managed targets are Coreless by design: they have no single Core
-// installation to own the deployment, so the one-installation-owner binding
-// does not apply. A tenant target is authorized only through the consumer-
-// provided tenantOwnerResolver, which routes access to its genuine authorized
-// installation owner (for example a validated remote project binding). The
-// resolver defaults to fail-closed, so no tenant target is admitted without an
-// explicit authorized path.
+// keyed by its own UUID plus Target, so ownership is proven at the storage
+// path, not by embedding an installation reference. A missing installation
+// fails closed; a foreign installation preserves the existing record identity.
+// The deploy directory need not pre-exist (first-run init creates it under the
+// owner), so its absence is not a missing-owner condition. Durable
+// installation.ID binding lives in the authority contract, not this seam;
+// Coreless tenant targets are authorized only through the consumer-provided
+// TenantOwnerResolver, which defaults to fail-closed.
 var TenantOwnerResolver func(targetName string) (bool, error)
 
 // TargetLoanVerifier implements the owner loan (card
@@ -102,10 +85,8 @@ var TenantOwnerResolver func(targetName string) (bool, error)
 // a genuinely ownerless Local-access Target resolve against the one genuine,
 // READY Core installation its boot Target owns, so the authorized remote-podman
 // `app up` path can record its deployment owner from a normal `baha` binary.
-// The consumer binding (cmd/baha.deploymentTargetLoanVerifier) grants the loan
-// only for a Local-access Target whose boot Core is genuine and READY; every
-// connector/remote/managed, tenant, foreign, unmarked or non-READY case keeps
-// the original fail-closed sentinel ErrDeploymentOwnerMissing.
+// The consumer binding grants the loan only for a Local-access Target whose boot
+// Core is genuine and READY; every other case keeps fail-closed.
 var TargetLoanVerifier func(targetName string) (*coreinstallation.State, error)
 
 func VerifyDeploymentOwner(targetName, targetRoot, deploymentID string) error {
@@ -236,13 +217,12 @@ func deploymentTargetFromDir(deploymentDir string) (string, bool) {
 
 // testHookAfterGuardRead is a package-internal test seam (production path keeps
 // it nil, so no behaviour changes): it fires inside SaveDeploymentRecord exactly
-// after the one-writer guard has read the persisted previous record (the guard
-// has established previousExists and the authoritative owner) and immediately
-// before the preferences-retention re-read. A test uses it to deterministically
-// mutate the on-disk record — e.g. delete deployment.json to reproduce a record
-// that vanishes between the two in-process reads — so the real SaveDeploymentRecord
-// path (not just the loaders in isolation) can be asserted fail-closed. Style
-// follows the existing cmd/baha observedAt seam.
+// after the one-writer guard has read the persisted previous record (establishing
+// previousExists and the authoritative owner) and immediately before the
+// preferences-retention re-read. A test uses it to deterministically mutate the
+// on-disk record — e.g. delete deployment.json to reproduce a record vanishing
+// between the two in-process reads — so the real SaveDeploymentRecord path (not
+// just the loaders in isolation) can be asserted fail-closed.
 var testHookAfterGuardRead func()
 
 type DeploymentIdentity struct {
@@ -572,6 +552,41 @@ func SaveDeploymentRecord(record DeploymentRecord) error {
 	if err := os.Rename(tmp, path); err != nil {
 		return fmt.Errorf("replace deployment record: %w", err)
 	}
+	// The retained ownership band is the production writer for the durable
+	// ownership marker that BF-03 damaged-state attribution reads back. The
+	// authoritative deployment.json is the record that damaged deployments lose;
+	// this band is the durable ownership source that survives its truncation, so
+	// up/edit can attribute the orphaned directory to a specific application
+	// instead of inventing one from the requesting manifest. It is written at the
+	// ONE canonical place the deploy directory is persisted: SaveDeploymentRecord,
+	// after the identity has already passed record.Identity.Validate() (so
+	// Application and Environment are non-empty, clean, and trust-worthy) and the
+	// one-writer/owner guard resolved the authoritative owner. Writing it here —
+	// never in a test fixture — keeps the band a production-read, production-write
+	// data path. A failure to write the band must not fail the deployment: a
+	// missing band is a trusted-unknown orphan that the reader fails closed on,
+	// so the band write is best-effort and recorded but never fatal.
+	if bandErr := writeRetainedOwnerBand(root, record.Identity); bandErr != nil {
+		return fmt.Errorf("persist retained ownership band: %w", bandErr)
+	}
+	return nil
+}
+
+// writeRetainedOwnerBand writes the durable ownership band inside a deploy
+// directory so a BF-03 damaged state (deployment.json truncated, runtime state
+// retained) can be attributed to the exact identity this save trusted. The band
+// is three lines (application id, application name, environment); an invalid
+// identity is treated as no-band by LoadRetainedOwnerBand.
+func writeRetainedOwnerBand(root string, id DeploymentIdentity) error {
+	body := strings.TrimSpace(id.ApplicationID) + "\n" + strings.TrimSpace(id.Application) + "\n" + strings.TrimSpace(id.Environment) + "\n"
+	bandPath := filepath.Join(root, RetainedOwnershipBandName)
+	tmp := bandPath + ".tmp"
+	if err := os.WriteFile(tmp, []byte(body), 0o600); err != nil {
+		return fmt.Errorf("write retained ownership band: %w", err)
+	}
+	if err := os.Rename(tmp, bandPath); err != nil {
+		return fmt.Errorf("replace retained ownership band: %w", err)
+	}
 	return nil
 }
 
@@ -634,14 +649,12 @@ func loadDeploymentRecordFile(target, deploymentID, path string, expected *Deplo
 
 // loadPersistedOwnerForGuard reads the reconciliation owner and the conflict
 // flag from the persisted previous deployment record WITHOUT running the full
-// validate() path, so a corrupt or unrecognised persisted owner (e.g. a value
-// that is neither baseharbor nor external) can still be observed and normalised
-// before the one-writer guard. It fails closed on a missing, unparseable, or
-// structurally-broken record (identity/version/JSON failures), i.e. it only
-// returns a usable owner for a structurally-valid record whose persisted owner
-// value may be corrupt. os.ErrNotExist is preserved as a nil owner with a
-// non-nil error so the guard can distinguish "no previous record" from "previous
-// record with a corrupt owner".
+// validate() path, so a corrupt/unrecognised persisted owner can still be
+// observed and normalised before the one-writer guard. It fails closed on a
+// missing, unparseable, or structurally-broken record; it only returns a usable
+// owner for a structurally-valid record whose persisted owner value may be
+// corrupt. os.ErrNotExist is preserved as a nil owner with a non-nil error so
+// the guard distinguishes "no previous record" from "previous corrupt owner".
 func loadPersistedOwnerForGuard(target, deploymentID, path string) (owner string, conflict bool, exists bool, err error) {
 	data, readErr := os.ReadFile(path)
 	if readErr != nil {
@@ -750,13 +763,10 @@ func SourceAvailable(source DeploymentSource) bool {
 }
 
 // refuseOneWriterMutation enforces ADR 0022 §2 at the apply path: exactly one
-// active reconciliation owner per managed resource set. It runs after the
-// applied selection's single-record validation and before any state is written.
-//
-// It observes the deployment's own observed state: a recorded conflict (two
-// active owners for the same resource set) fails closed, and a direct
+// active reconciliation owner per managed resource set. It observes the
+// deployment's own observed state: a recorded conflict fails closed, a direct
 // (BaseHarbor-owned) mutation is refused while an external reconciler already
-// owns the resource. An absent observed state (direct mode, no external owner)
+// owns the resource; an absent observed state (direct mode, no external owner)
 // is the normal happy path and passes.
 func refuseOneWriterMutation(record DeploymentRecord) error {
 	applied := record.Applied.Delivery
@@ -776,11 +786,10 @@ func refuseOneWriterMutation(record DeploymentRecord) error {
 // normalisePersistedOwner mirrors Selection.Normalize for a persisted
 // reconciliation owner read from a previous deployment record: it trims and
 // lower-cases the value, and collapses any value that is neither "" nor a
-// recognised owner (baseharbor|external) — a corrupt or unknown persisted owner
-// — to "" (unset). This keeps the one-writer guard from either silently blocking
-// (an unknown owner that is neither direct- nor delegated-legal) or silently
-// attesting an owner that the validate() switch would otherwise reject, so the
-// absent/corrupt value defers to the applied selection's mode.
+// recognised owner (baseharbor|external) to "" (unset). This keeps the one-writer
+// guard from silently blocking an unknown owner or silently attesting an owner
+// the validate() switch would reject, so the absent/corrupt value defers to the
+// applied selection's mode.
 func normalisePersistedOwner(owner string) string {
 	normalised := delivery.ReconciliationOwner(strings.ToLower(strings.TrimSpace(owner)))
 	if normalised != delivery.OwnerBaseHarbor && normalised != delivery.OwnerExternal {

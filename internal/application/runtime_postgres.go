@@ -31,6 +31,15 @@ func RuntimeProjectName(m Manifest) string {
 	return "baseharbor-" + m.Name + "-" + m.Environment
 }
 
+// RuntimeProjectNameForApp derives the workload runtime project name from the
+// retained application name and environment alone. It is used by the
+// damaged-state network check, where the deploy directory is a per-deploy UUID
+// carrying no application name, so the manifest/record identity is the only
+// source of truth for the workload network name.
+func RuntimeProjectNameForApp(applicationName, environment string) string {
+	return "baseharbor-" + applicationName + "-" + environment
+}
+
 func RuntimeProjectNameForStore(store Store, m Manifest) string {
 	namespace := strings.TrimSpace(strings.ReplaceAll(store.Namespace, ".", "-"))
 	if namespace == "" {
