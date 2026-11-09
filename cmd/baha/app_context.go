@@ -124,10 +124,18 @@ func refuseRegistryApplicationIDConflict(targetName string) error {
 	return nil
 }
 
-func resolveApplicationEnvironment(ctx context.Context, _ application.Store, args []string, command, environment string) (resolved resolvedApplication, err error) {
+func resolveApplicationEnvironment(ctx context.Context, _ application.Store, args []string, command, environment string, selectedDeploymentID ...string) (resolved resolvedApplication, err error) {
+	// The optional last argument is the deployment id the operator selected
+	// explicitly (the uuid-addressed repair). Omitting it — every other caller
+	// — keeps the behaviour below identical to the shared path.
+	selected := ""
+	if len(selectedDeploymentID) > 0 {
+		selected = strings.TrimSpace(selectedDeploymentID[0])
+	}
+
 	defer func() {
 		if err == nil {
-			resolved.Manifest, err = resolveAppliedBackendSelection(resolved, command)
+			resolved.Manifest, err = appliedBackendSelection(resolved, selected, command)
 		}
 	}()
 	ctx = localWorkloadScope(ctx, applicationBoundaryOperation(command))
@@ -145,10 +153,18 @@ func resolveApplicationEnvironment(ctx context.Context, _ application.Store, arg
 	// one-NAME limit. It routes directly at the registry seam below and
 	// bypasses the CWD/name resolution; it is also the repair door on a
 	// poisoned registry (0427-175), so the registry-conflict gate must not
-	// pre-empt an explicitly targeted uuid command.
+	// pre-empt an explicitly targeted uuid command. The split list produces the
+	// selector value and every selector usage error, so a malformed or
+	// value-less selector still fails closed here. The command seam's explicit
+	// selection only has to win where the split list cannot see it: the
+	// environment splitter consumes the --uuid FLAG and leaves the bare VALUE
+	// behind, so the pair can read as NO selector at all.
 	selectionUUID, uuidErr := extractApplicationUUID(filtered)
 	if uuidErr != nil {
 		return resolvedApplication{}, uuidErr
+	}
+	if selected != "" {
+		selectionUUID = selected
 	}
 	nameArgs := withoutUUIDSelector(filtered)
 	if len(nameArgs) > 1 {
@@ -285,15 +301,7 @@ func eligibleNeverDeliveredLocalDestroy(target deployment.ResolvedTarget, target
 
 func resolvedRepositoryApplication(ctx context.Context, target deployment.ResolvedTarget, targetRoot string, selection application.RepositoryEnvironmentSelection, command ...string) (resolvedApplication, error) {
 	m := selection.Manifest
-	existing, found, err := deployment.FindDeployment(target.Name, m.ApplicationID, m.Environment)
-	// A locally initialized application may be destroyed before its first
-	// deployment record exists. The one-shot initialization proof is consumed
-	// BEFORE the first persistence, so it cannot authorize deletion of an
-	// existing deployment. This exception changes only discovery for destroy:
-	// storage read/write ownership checks still fail closed.
-	if err != nil && len(command) > 0 && eligibleNeverDeliveredLocalDestroy(target, targetRoot, m, command[0], err) {
-		found, err = false, nil
-	}
+	existing, found, err := registeredRepositoryDeployment(context.Background(), target, targetRoot, m, command)
 	if err != nil {
 		// A registry-path damaged-state error (found in the deployment listing
 		// for THIS target) is a target-level damaged-state conflict, not the
@@ -424,7 +432,9 @@ func resolveRegisteredApplication(ctx context.Context, target deployment.Resolve
 	if strings.TrimSpace(deploymentUUID) != "" {
 		for _, record := range records {
 			if record.Identity.DeploymentID == deploymentUUID {
-				return resolveRecordByIdentity(ctx, target, targetRoot, record, command)
+				// The uuid selector IS the selection: pass it through so the
+				// record stays authoritative for its identity (0427-175).
+				return resolveRecordByIdentity(ctx, target, targetRoot, record, command, deploymentUUID)
 			}
 		}
 		return resolvedApplication{}, &machine.Error{
@@ -558,7 +568,38 @@ func resolveRegisteredApplication(ctx context.Context, target deployment.Resolve
 // authoritative deployment record. It is shared by the name filter (exact
 // match) and the --uuid selector so both paths hydrate identical state and
 // behave identically for a name-colliding deployment.
-func resolveRecordByIdentity(ctx context.Context, target deployment.ResolvedTarget, targetRoot string, record deployment.DeploymentRecord, command string) (resolvedApplication, error) {
+//
+// The optional selection argument names the deployment the operator addressed
+// explicitly (the uuid-addressed repair); what that changes is at
+// recordSourceApplication and appliedBackendSelection. The repair deletes a
+// directory, so the identity resolved here must be the identity selected, and
+// it is rechecked before returning (0427-175). Nothing here writes.
+func resolveRecordByIdentity(ctx context.Context, target deployment.ResolvedTarget, targetRoot string, record deployment.DeploymentRecord, command string, selection ...string) (resolvedApplication, error) {
+	selected := ""
+	if len(selection) > 0 {
+		selected = strings.TrimSpace(selection[0])
+	}
+	resolved, err := resolveRecordByIdentityProjecting(ctx, target, targetRoot, record, command, selected)
+	if err != nil {
+		return resolvedApplication{}, err
+	}
+	if selected != "" && resolved.DeploymentIdentity.DeploymentID != selected {
+		// One unbroken chain, checked once at its end: the resolution above
+		// keeps the record's own identity through source hydration and the
+		// backend projection, so if the resolved deployment is not the one the
+		// operator selected, some seam routed to the sibling. The repair
+		// deletes a directory, so it must stop before any mutation (0427-175).
+		return resolvedApplication{}, fmt.Errorf("deployment %s did not route the resolution: %s was resolved", selected, resolved.DeploymentIdentity.DeploymentID)
+	}
+	return resolved, nil
+}
+
+// resolveRecordByIdentityProjecting hydrates a located record from its source
+// or applied intent, keeping the record's identity unchanged. A non-empty
+// selection makes the record (not the registry) authoritative for identity;
+// see recordSourceApplication and appliedBackendSelection. It finds no record,
+// allocates no state and writes nothing (0427-175).
+func resolveRecordByIdentityProjecting(ctx context.Context, target deployment.ResolvedTarget, targetRoot string, record deployment.DeploymentRecord, command, selectedDeploymentID string) (resolvedApplication, error) {
 	deploymentRoot, err := deployment.DeploymentRoot(record.Identity)
 	if err != nil {
 		return resolvedApplication{}, err
@@ -578,34 +619,14 @@ func resolveRecordByIdentity(ctx context.Context, target deployment.ResolvedTarg
 
 	if resolved.SourceAvailable {
 		selection, sourceErr := application.ResolveRepositoryEnvironment(record.Source.Repository, record.Identity.Environment)
-		if sourceErr == nil {
-			if selection.Manifest.Name != record.Identity.Application || selection.Manifest.Environment != record.Identity.Environment {
-				return resolvedApplication{}, fmt.Errorf("registered source does not match authoritative deployment name/environment")
-			}
-			// Authored intent never supplies identity. This read projects the ID
-			// from the existing authoritative deployment; it allocates no state.
-			if selection.Manifest.ApplicationID == "" {
-				selection.Manifest.ApplicationID = record.Identity.ApplicationID
-			}
-			if selection.Manifest.ApplicationID != record.Identity.ApplicationID {
-				return resolvedApplication{}, fmt.Errorf(
-					"registered source resolves application_id %q, expected %q",
-					selection.Manifest.ApplicationID,
-					record.Identity.ApplicationID,
-				)
-			}
-			selection, sourceErr = resolveRepositoryLifecycleIntent(ctx, target, selection, command)
-			if sourceErr != nil {
-				return resolvedApplication{}, sourceErr
-			}
-			resolved.DeploymentIdentity.Application = selection.Manifest.Name
-			resolved.Manifest = selection.Manifest
-			resolved.ManifestPath = selection.ManifestPath
-			resolved.RepositoryRoot = selection.RepositoryRoot
-			resolved.FromRepository = true
-			return resolved, nil
+		switch {
+		case sourceErr != nil:
+			resolved.SourceAvailable = false
+		case selection.Manifest.Name != record.Identity.Application || selection.Manifest.Environment != record.Identity.Environment:
+			return resolvedApplication{}, fmt.Errorf("registered source does not match authoritative deployment name/environment")
+		default:
+			return recordSourceApplication(ctx, target, resolved, record, selection, command, selectedDeploymentID)
 		}
-		resolved.SourceAvailable = false
 	}
 
 	if commandRequiresLiveSource(command) {

@@ -46,22 +46,60 @@ type applicationDestroyExecution struct {
 	coreRuntime         bhruntime.RuntimeProvider
 	platformFiles       bhruntime.Files
 	destroyOpenBaoScope bool
+	// selection carries the explicit deployment-id selection of the command
+	// invocation (the uuid-addressed repair) down to the mutation seam, which
+	// refuses to delete anything but the record that was selected (0427-175).
+	selection []string
 }
 
 func newApplicationDestroyExecution(ctx context.Context, store application.Store, args []string, out, errOut io.Writer) (*applicationDestroyExecution, error) {
+	// --uuid DEPLOYMENT-ID is the identity the registry-conflict repair
+	// advertises ('baha app destroy --uuid <id> --full-reset', 0427-175), so it
+	// must be routed to the resolver instead of dropped. extractApplicationUUID
+	// reads the selector from the raw command arguments; the positional scan
+	// uses the same list with the whole option pair removed, because the
+	// selector VALUE is an identifier, never a NAME (the environment splitter
+	// consumes only the FLAG and leaves the bare VALUE behind, app_context.go).
+	// NAME and --uuid select through different seams and a combination could
+	// name two deployments (0427-149/0427-175).
 	filtered, environment, err := extractApplicationEnvironment(args, "destroy")
 	if err != nil {
 		return nil, err
+	}
+	// The selector is read from the SAME arguments the resolver below receives,
+	// so the command and the resolver can never disagree about the identity
+	// (0427-175). A malformed or value-less selector fails here with the shared
+	// usage error, before anything is resolved.
+	selectorUUID, uuidErr := extractApplicationUUID(args)
+	if uuidErr != nil {
+		return nil, uuidErr
 	}
 	name, confirmed, fullReset, err := parseDestroyArgs(filtered)
 	if err != nil {
 		return nil, err
 	}
+	// NAME and --uuid select through different seams and are mutually exclusive:
+	// combining them could name two deployments (0427-149/0427-175).
+	if name != "" && selectorUUID != "" {
+		return nil, usageError("baha app destroy accepts either NAME or --uuid DEPLOYMENT-ID, not both", "Address the twin to retire by uuid, or the application by NAME.")
+	}
+	// The resolver must receive the selector as an intact option pair: --uuid
+	// routes at the registry seam, whose record is the authoritative identity,
+	// so authorization, preflight and mutation below keep working on the
+	// SELECTED twin and never on a same-named sibling (0427-175). Without a
+	// selector the arguments keep their previous positional-name behaviour
+	// verbatim.
 	var appArgs []string
-	if name != "" {
+	switch {
+	case selectorUUID != "":
+		appArgs = []string{"--uuid", selectorUUID}
+	case name != "":
 		appArgs = []string{name}
 	}
-	resolved, err := resolveApplicationEnvironment(ctx, store, appArgs, "destroy", environment)
+	// The selected deployment id travels with the call so that authorization,
+	// preflight and the mutation below all act on THAT record and on nothing
+	// else (0427-175).
+	resolved, err := resolveApplicationEnvironment(ctx, store, appArgs, "destroy", environment, selectorUUID)
 	if err != nil {
 		return nil, err
 	}
@@ -71,7 +109,7 @@ func newApplicationDestroyExecution(ctx context.Context, store application.Store
 	}
 
 	if isRemoteApplication(resolved) {
-		return &applicationDestroyExecution{resolved: resolved, manifest: m, term: cli.NewTerminal(ctx, out, errOut), out: out, confirmed: confirmed, fullReset: fullReset}, nil
+		return &applicationDestroyExecution{resolved: resolved, manifest: m, term: cli.NewTerminal(ctx, out, errOut), out: out, confirmed: confirmed, fullReset: fullReset, selection: appArgs}, nil
 	}
 	files, runtimeErr := application.ExistingRuntimeFiles(resolved.Store, m)
 	partialRuntime := false
@@ -98,6 +136,7 @@ func newApplicationDestroyExecution(ctx context.Context, store application.Store
 		files:           files,
 		runtimeErr:      runtimeErr,
 		partialRuntime:  partialRuntime,
+		selection:       appArgs,
 	}, nil
 }
 
@@ -596,6 +635,14 @@ func (e *applicationDestroyExecution) removeApplicationState() error {
 	}
 	if err := deployment.DeleteDeploymentRecord(e.resolved.DeploymentIdentity); err != nil {
 		return fmt.Errorf("remove target deployment record after verified destruction: %w", err)
+	}
+	// The repair deletes a directory, so the path it took must be the path the
+	// operator selected. A selection that drifted onto another twin would leave
+	// the requested record in place and silently retire a different application
+	// (0427-175); fail closed instead of pretending the poison is repaired.
+	if selectedID, ok := selectedDeploymentIDFromArguments(e.selection); ok &&
+		selectedID != "" && e.resolved.DeploymentIdentity.DeploymentID != selectedID {
+		return fmt.Errorf("deployment selection %s did not route the removal: %s was removed", selectedID, e.resolved.DeploymentIdentity.DeploymentID)
 	}
 
 	e.term.Section("Application")

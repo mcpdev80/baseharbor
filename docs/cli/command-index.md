@@ -20,7 +20,7 @@ Find exact options with `baha COMMAND --help`. [Global options](global-options.m
 | `baha app cache` | Open the managed cache console for the current application | `baha app cache [INSTANCE] [--app NAME]` | [↗](applications.md) |
 | `baha app create` | Create an application manifest in BaseHarbor state | `baha app create NAME [--environment ENV] [--sql\|--sql-instance NAME] [--cache\|--cache-instance NAME] [--key-value\|--key-value-instance NAME] [--document-db\|--document-db-instance NAME] [--messaging-queue\|--messaging-queue-instance NAME] [--messaging-pubsub\|--messaging-pubsub-instance NAME] [--messaging-stream\|--messaging-stream-instance NAME] [--s3\|--s3-bucket NAME] [--secrets\|--require-secret NAME]...` | [↗](applications.md) |
 | `baha app creds` | Show connection metadata without revealing credentials by default | `baha app creds postgres\|valkey [INSTANCE] [--app NAME] [--reveal]` | [↗](applications.md) |
-| `baha app destroy` | Retire owned application runtime while retaining data and recovery state | `baha app destroy [NAME] [--yes] [--full-reset]` | [↗](applications.md) |
+| `baha app destroy` | Retire owned application runtime while retaining data and recovery state | `baha app destroy [NAME] [--uuid DEPLOYMENT-ID] [--yes] [--full-reset]` | [↗](applications.md) |
 | `baha app doctor` | Diagnose and safely repair an application's runtime | `baha app doctor [NAME] [--fix --yes]` | [↗](applications.md) |
 | `baha app down` | Stop an application runtime while preserving persistent data | `baha app down [NAME]` | [↗](applications.md) |
 | `baha app edit` | Edit current application needs with preview and impact consent | `baha app edit [NAME] [-e ENV\|--environment ENV]` | [↗](applications.md) |

@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -153,12 +154,22 @@ func TestConcurrentInitAcrossRealProcessesIsSerializedOrRefused(t *testing.T) {
 		t.Fatalf("parked first registration failed: %v", saveErr)
 	}
 
-	if childErr == nil {
-		// The child "succeeded" only legitimately if it CONVERGED — i.e. it
-		// did not persist a second record. The record count below is the
-		// authority either way; a zero exit while it created a twin is the
-		// defect, so just assert on the registry.
-		_ = out
+	// The child's witness lines, not its exit code, are the evidence: a zero
+	// exit that persisted a twin is exactly the defect, and an exit with no
+	// seam witness is a crash rather than a refusal. The registry count below
+	// stays the authority (0427-175).
+	joined := string(out)
+	switch {
+	case strings.Contains(joined, childWitnessRefusedBusy):
+		// Serialized behind the parked parent: the correct racing outcome.
+	case strings.Contains(joined, childWitnessConverged):
+		// Refused by the duplicate scan and converged on the winner: correct.
+	case strings.Contains(joined, childWitnessPersisted):
+		// The child wrote its own record; that is only tolerable when the
+		// guards still leave exactly ONE claim for the application_id, which
+		// the registry count below decides.
+	default:
+		t.Fatalf("the child reported no seam outcome (want busy refusal, convergence or a persisted record); err=%v output:\n%s", childErr, out)
 	}
 
 	records, lerr := deployment.ListDeployments(target.Name)
@@ -189,9 +200,24 @@ func concurrentInitChildDispatch() {
 	manifest := os.Getenv("BAHA_175_MANIFEST")
 	appID := os.Getenv("BAHA_175_APP_ID")
 	name := os.Getenv("BAHA_175_APP_NAME")
-	id, err := deployment.NewDeploymentIdentity(target, appID, name+"-child", "dev")
+	env := os.Getenv("BAHA_175_ENV")
+	if env == "" {
+		env = "dev"
+	}
+	// The child races the SAME application identity as the parked parent (same
+	// application NAME, application_id and environment) under a fresh
+	// deployment uuid — exactly what a second 'baha app init' does. The point
+	// of the cell is that this must never become a second registration.
+	id, err := deployment.NewDeploymentIdentity(target, appID, name, env)
 	if err != nil {
 		panic(err)
+	}
+	// The seam witness fires inside the registry write lock, after the claim
+	// scan and before the persistence (deployment.SaveDeploymentRecord), so the
+	// parent can prove the child actually reached the registration path rather
+	// than exiting 0 for an unrelated reason (0427-175).
+	deployment.TestHookAfterRegistryClaimEnter = func() {
+		fmt.Fprintln(os.Stderr, childWitnessReachedSeam)
 	}
 	err = deployment.SaveDeploymentRecord(deployment.DeploymentRecord{
 		Version:  deployment.DeploymentRecordVersion,
@@ -201,13 +227,28 @@ func concurrentInitChildDispatch() {
 	})
 	switch {
 	case err == nil:
+		fmt.Fprintln(os.Stderr, childWitnessPersisted)
 		os.Exit(0)
-	case errors.Is(err, deployment.ErrDuplicateApplicationID),
-		errors.Is(err, deployment.ErrRegistryConcurrentWrite),
+	case errors.Is(err, deployment.ErrDuplicateApplicationID):
+		// The duplicate scan converged on the parent's registration.
+		fmt.Fprintln(os.Stderr, childWitnessConverged)
+		os.Exit(3)
+	case errors.Is(err, deployment.ErrRegistryConcurrentWrite),
 		strings.Contains(err.Error(), "resource temporarily unavailable"):
-		// The correct racing outcome: refused, nothing written.
+		// The correct racing outcome: refused by the busy lock, nothing written.
+		fmt.Fprintln(os.Stderr, childWitnessRefusedBusy)
 		os.Exit(3)
 	default:
 		panic(err)
 	}
 }
+
+// The child's witness lines are the parent's evidence that the child really
+// reached the registration seam and what it found there (0427-175): the parent
+// must not read a bare exit code as convergence.
+const (
+	childWitnessReachedSeam = "BAHA175-CHILD: reached-registration-seam"
+	childWitnessPersisted   = "BAHA175-CHILD: persisted-record"
+	childWitnessConverged   = "BAHA175-CHILD: converged-on-existing-claim"
+	childWitnessRefusedBusy = "BAHA175-CHILD: refused-busy-lock"
+)

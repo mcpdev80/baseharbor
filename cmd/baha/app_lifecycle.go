@@ -204,8 +204,12 @@ func appDestroyCommand(store application.Store) *cli.Command {
 	return &cli.Command{
 		Name:    "destroy",
 		Summary: "Retire owned application runtime while retaining data and recovery state",
-		Usage:   "baha app destroy [NAME] [--yes] [--full-reset]",
-		Long:    "Shows the current provider consequence plan before retiring owned workload/provider runtime and application routes. Default destruction retains persistent data, credentials, recovery material and the canonical deployment owner for reactivation with apply. Provider changes require two explicit acknowledgements of the current impact plan; --yes alone does not supply those acknowledgements. --full-reset selects the separate destructive cleanup path, including owned application state, while preserving authored source and repository Compose data.",
+		// --uuid DEPLOYMENT-ID is accepted (0427-175): it is the only
+		// unambiguous identity on a registry poisoned by two records claiming
+		// one application_id, and the conflict message advertises exactly this
+		// shape as the repair.
+		Usage: "baha app destroy [NAME] [--uuid DEPLOYMENT-ID] [--yes] [--full-reset]",
+		Long:  "Shows the current provider consequence plan before retiring owned workload/provider runtime and application routes. Default destruction retains persistent data, credentials, recovery material and the canonical deployment owner for reactivation with apply. Provider changes require two explicit acknowledgements of the current impact plan; --yes alone does not supply those acknowledgements. --full-reset selects the separate destructive cleanup path, including owned application state, while preserving authored source and repository Compose data.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 			filtered, format, err := parseReadOutputArgs(args, "app destroy")
 			if err != nil {
@@ -330,12 +334,22 @@ func parseDestroyArgs(args []string) (string, bool, bool, error) {
 	var name string
 	confirmed := false
 	fullReset := false
-	for _, arg := range args {
+	// The --uuid FLAG is consumed by extractApplicationEnvironment, but its bare
+	// VALUE stays in the list it returns. Neither token may enter the positional
+	// scan: the value would be taken for the application NAME (the wrong target
+	// on a poisoned registry, 0427-175) and the flag would trip the unknown-
+	// option branch. Drop the flag here and the value with it (the index skips
+	// one). The selector itself is captured by extractApplicationUUID.
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
 		switch {
 		case arg == "--yes":
 			confirmed = true
 		case arg == "--full-reset":
 			fullReset = true
+		case arg == "--uuid":
+			i++
+		case strings.HasPrefix(arg, "--uuid="):
 		case strings.HasPrefix(arg, "-"):
 			return "", false, false, usageError("unknown option "+arg, "Run 'baha app destroy --help' for available options.")
 		default:
