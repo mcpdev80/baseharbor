@@ -60,8 +60,20 @@ def cli(shard):
         events = [json.loads(line) for line in result.stdout.splitlines() if line.strip()]
     except ValueError as exc:
         raise RuntimeError("invalid Go JSON test output") from exc
-    if result.returncode or any(event.get("Action") == "fail" for event in events):
-        raise RuntimeError("CLI shard failed:\n" + result.stdout[-18000:] + result.stderr[-3000:])
+    failed = sorted({event.get("Test", "(package)") for event in events
+                     if event.get("Action") == "fail"})
+    if result.returncode or failed:
+        details = []
+        for name in failed:
+            related = [event.get("Output", "") for event in events
+                       if event.get("Action") == "output" and
+                       (event.get("Test") == name or
+                        (name == "(package)" and not event.get("Test")))]
+            details.append(name + ":\n" + "".join(related)[-12000:])
+        raise RuntimeError("CLI shard failed: " + ", ".join(failed) +
+                           "\n" + "\n".join(details) +
+                           "\nExit: " + str(result.returncode) +
+                           "\nstderr: " + result.stderr[-3000:])
     executed = {event["Test"] for event in events
                 if event.get("Action") == "run" and event.get("Test") in selected}
     passed = {event["Test"] for event in events
