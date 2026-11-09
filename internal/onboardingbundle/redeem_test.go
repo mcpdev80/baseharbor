@@ -9,7 +9,6 @@ import (
 	"crypto/x509/pkix"
 	"encoding/json"
 	"encoding/pem"
-	"fmt"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -96,7 +95,7 @@ func testCoreServer(t *testing.T, tamper bool) (*httptest.Server, Bundle) {
 		if err!=nil{http.Error(w,"could not sign",500);return}
 		w.Header().Set("Content-Type","application/json")
 		_ = json.NewEncoder(w).Encode(enrollReply{
-			InstallationID:b.InstallationID,Station:b.Station,Serial:fmt.Sprintf("%x",serial),
+			InstallationID:b.InstallationID,Station:b.Station,Serial:serial.Text(16),
 			LeafPEM:string(pem.EncodeToMemory(&pem.Block{Type:"CERTIFICATE",Bytes:der})),
 			TrustPEM:string(caPEM),ExpiresAt:exp,
 		})
@@ -114,7 +113,7 @@ func TestRedeemOneUseCSRAndRejectReplay(t *testing.T) {
 	identity,err:=Redeem(context.Background(),b,time.Now())
 	if err!=nil {t.Fatalf("one-use enrollment denied: %v",err)}
 	if identity.InstallationID!=b.InstallationID || identity.Station!=b.Station || len(identity.PrivateKeyPEM)==0 {
-		t.Fatalf("bound workstation identity missing: %+v",identity)
+		t.Fatal("bound workstation identity is missing")
 	}
 	if _,err:=Redeem(context.Background(),b,time.Now());err==nil {
 		t.Fatal("one-use invitation replay succeeded")
