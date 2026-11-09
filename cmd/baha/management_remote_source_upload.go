@@ -30,7 +30,7 @@ func (c *verifiedRemoteCore) uploadLocalSource(ctx context.Context, target, name
 	if err != nil {
 		return "", err
 	}
-	req.Header.Set("Authorization", "Bearer "+c.token)
+	if c.token != "" { req.Header.Set("Authorization", "Bearer "+c.token) }
 	resp, err := c.client.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("read current source snapshot: %w", err)
@@ -70,7 +70,7 @@ func (c *verifiedRemoteCore) uploadLocalSource(ctx context.Context, target, name
 	if err != nil {
 		return "", err
 	}
-	req.Header.Set("Authorization", "Bearer "+c.token)
+	if c.token != "" { req.Header.Set("Authorization", "Bearer "+c.token) }
 	req.Header.Set("Content-Type", "application/json")
 	resp, err = c.client.Do(req)
 	if err != nil {
@@ -126,7 +126,7 @@ func (c *verifiedRemoteCore) uploadLocalSource(ctx context.Context, target, name
 			if err != nil {
 				return "", err
 			}
-			request.Header.Set("Authorization", "Bearer "+c.token)
+			if c.token != "" { request.Header.Set("Authorization", "Bearer "+c.token) }
 			request.Header.Set("Content-Type", "application/json")
 			reply, err := c.client.Do(request)
 			if err != nil {
@@ -149,7 +149,7 @@ func (c *verifiedRemoteCore) uploadLocalSource(ctx context.Context, target, name
 	if err != nil {
 		return "", err
 	}
-	request.Header.Set("Authorization", "Bearer "+c.token)
+	if c.token != "" { request.Header.Set("Authorization", "Bearer "+c.token) }
 	reply, err := c.client.Do(request)
 	if err != nil {
 		return "", fmt.Errorf("commit source snapshot: %w", err)
