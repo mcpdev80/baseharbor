@@ -81,6 +81,9 @@ func restoreRemoteApplication(ctx context.Context, resolved resolvedApplication)
 }
 
 func executeRemoteApplicationApply(ctx context.Context, resolved resolvedApplication, out io.Writer) error {
+	if err := deployment.EvaluateDeploymentAdmission(resolved.Target.DeploymentPolicy, nil); err != nil {
+		return err
+	}
 	unlock, err := lockApplicationTargetLifecycle(resolved, false)
 	if err != nil {
 		return err

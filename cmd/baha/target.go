@@ -164,7 +164,7 @@ func targetCommand() *cli.Command {
 	return &cli.Command{
 		Name:    "target",
 		Summary: "Inspect and manage BaseHarbor deployment targets",
-		Usage:   "baha target [list|show|create|delete|activate|deactivate] [-o json|--output json|--json]",
+		Usage:   "baha target [list|show|policy|create|delete|activate|deactivate] [-o json|--output json|--json]",
 		Run:     inspectTargetCommand,
 		Children: []*cli.Command{
 			{
@@ -243,10 +243,11 @@ func targetCommand() *cli.Command {
 				},
 			},
 			targetShowCommand(),
+			targetPolicyCommand(),
 			{
 				Name:    "create",
 				Summary: "Create a deployment target",
-				Usage:   "baha target create NAME --runtime-provider PROVIDER --access ACCESS --access-provider PROVIDER --reference REFERENCE [--scope SCOPE] [--tenant-id UUID] [--default] [--docker-endpoint SOCKET | --docker-context CONTEXT] [--docker-mode rootless|rootful]; baha target create NAME --from-recovery PATH",
+				Usage:   "baha target create NAME --runtime-provider PROVIDER --access ACCESS --access-provider PROVIDER --reference REFERENCE [--scope SCOPE] [--tenant-id UUID] [--deployment-preset development|test|staging|production|custom] [--default] [--docker-endpoint SOCKET | --docker-context CONTEXT] [--docker-mode rootless|rootful]; baha target create NAME --from-recovery PATH",
 				Run:     createTarget,
 			},
 			{
@@ -487,10 +488,12 @@ func createTarget(ctx context.Context, args []string, out, errOut io.Writer) err
 		return nil
 	}
 	var runtimeProvider, accessProvider, accessName, reference, scope, tenantID, dockerEndpoint, dockerContext, dockerMode string
+	var deploymentPreset, deploymentBranches string
+	policyFlags := make(map[string]string)
 	makeDefault := false
 	for i := 1; i < len(args); i++ {
 		switch args[i] {
-		case "--provider", "--runtime-provider", "--access-provider", "--access", "--reference", "--scope", "--tenant-id", "--docker-endpoint", "--docker-context", "--docker-mode":
+		case "--provider", "--runtime-provider", "--access-provider", "--access", "--reference", "--scope", "--tenant-id", "--docker-endpoint", "--docker-context", "--docker-mode", "--deployment-preset", "--deployment-branches", "--deployment-dirty", "--deployment-commit", "--deployment-remote-commit", "--deployment-approval", "--deployment-image-digest":
 			if i+1 >= len(args) || strings.HasPrefix(args[i+1], "-") {
 				return usageError(args[i]+" requires a value", "Run 'baha target create --help' for usage.")
 			}
@@ -515,11 +518,17 @@ func createTarget(ctx context.Context, args []string, out, errOut io.Writer) err
 				dockerContext = value
 			case "--docker-mode":
 				dockerMode = value
+			case "--deployment-preset":
+				deploymentPreset = value
+			case "--deployment-branches":
+				deploymentBranches = value
+			case "--deployment-dirty", "--deployment-commit", "--deployment-remote-commit", "--deployment-approval", "--deployment-image-digest":
+				policyFlags[key] = value
 			}
 		case "--default":
 			makeDefault = true
 		default:
-			return unknownOptionUsage("baha target create", args[i], "--provider", "--runtime-provider", "--access-provider", "--access", "--reference", "--scope", "--tenant-id", "--default", "--docker-endpoint", "--docker-context", "--docker-mode")
+			return unknownOptionUsage("baha target create", args[i], "--provider", "--runtime-provider", "--access-provider", "--access", "--reference", "--scope", "--tenant-id", "--default", "--docker-endpoint", "--docker-context", "--docker-mode", "--deployment-preset", "--deployment-branches", "--deployment-dirty", "--deployment-commit", "--deployment-remote-commit", "--deployment-approval", "--deployment-image-digest")
 		}
 	}
 	if runtimeProvider == "" || accessName == "" || reference == "" {
@@ -532,7 +541,11 @@ func createTarget(ctx context.Context, args []string, out, errOut io.Writer) err
 			return usageError("non-local target access requires --access-provider", "Example: baha target create docker-remote --runtime-provider docker --access node-a --access-provider baseharbor-node-connector --reference node-a")
 		}
 	}
-	result, err := createTargetDefinition(ctx, machineTargetCreateInput{Name: name, RuntimeProvider: runtimeProvider, AccessProvider: accessProvider, Access: accessName, Reference: reference, Scope: scope, TenantID: tenantID, Default: makeDefault, DockerEndpoint: dockerEndpoint, DockerContext: dockerContext, DockerMode: dockerMode})
+	policy, err := resolveTargetDeploymentPolicyFlags(deploymentPreset, deploymentBranches, policyFlags)
+	if err != nil {
+		return err
+	}
+	result, err := createTargetDefinition(ctx, machineTargetCreateInput{Name: name, RuntimeProvider: runtimeProvider, AccessProvider: accessProvider, Access: accessName, Reference: reference, Scope: scope, TenantID: tenantID, Default: makeDefault, DockerEndpoint: dockerEndpoint, DockerContext: dockerContext, DockerMode: dockerMode, DeploymentPolicy: policy})
 	if err != nil {
 		return err
 	}

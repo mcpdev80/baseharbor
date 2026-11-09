@@ -391,6 +391,14 @@ var errCandidateAlreadyImmutable = errors.New(
 )
 
 func recordDeploymentBeforeMutation(ctx context.Context, resolved resolvedApplication, state string, rawCandidateConsent string) (deployment.DeploymentRecord, error) {
+	// Defense in depth: every admission path must pass before writing a pending
+	// deployment. The legacy caller has no trusted provenance yet, so configured
+	// restrictive Targets are refused instead of trusting user-provided fields.
+	if state == "applying" {
+		if err := deployment.EvaluateDeploymentAdmission(resolved.Target.DeploymentPolicy, nil); err != nil {
+			return deployment.DeploymentRecord{}, err
+		}
+	}
 	if !resolved.SourceAvailable {
 		return deployment.DeploymentRecord{}, fmt.Errorf("cannot record pending deployment without available source")
 	}

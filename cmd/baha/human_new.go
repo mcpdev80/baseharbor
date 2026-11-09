@@ -166,7 +166,11 @@ func guidedNewLocalTargetWithInput(ctx context.Context, in io.Reader, out, errOu
 		fmt.Fprintln(out, "Cancelled. No changes were made.")
 		return nil
 	}
-	return createTarget(ctx, args, out, errOut)
+	policyArgs, err := guidedTargetDeploymentPolicy(reader, out)
+	if err != nil {
+		return err
+	}
+	return createTarget(ctx, append(args, policyArgs...), out, errOut)
 }
 
 func guidedCreateProvider(ctx context.Context, out, errOut io.Writer) error {

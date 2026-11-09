@@ -129,6 +129,9 @@ Aktuelle Daten liefert `baha agent describe -o json` (`cli_coverage`). Nach Code
 | `baha target deactivate` | Darstellung |  |  | Clears persisted local user selection; machine clients omit explicit target to resolve configured defaults. |
 | `baha target delete` | semantisch | CLI -o json / typed MCP result | baseharbor.target.delete |  |
 | `baha target list` | semantisch | CLI -o json / typed MCP result | baseharbor.target.list |  |
+| `baha target policy` | Darstellung |  |  | Command group; invoke its supported subcommands. |
+| `baha target policy set` | Darstellung |  |  | Geschuetzte lokale Target-Policy-Aenderung mit CAS; fuer Remote-Targets wird keine lokale Policy-Aenderung anstelle der Core-Operator-Autoritaet zugelassen. |
+| `baha target policy show` | semantisch | CLI -o json / typed MCP result | baseharbor.target |  |
 | `baha target show` | semantisch | CLI -o json / typed MCP result | baseharbor.target |  |
 | `baha trust` | Darstellung |  |  | Command group; invoke its supported subcommands. |
 | `baha trust export` | semantisch | CLI --json (--output is CA destination) / typed MCP result | baseharbor.trust.export |  |

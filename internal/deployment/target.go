@@ -50,12 +50,13 @@ type OperatorAuthEnvironmentConfig struct {
 }
 
 type TargetDefinition struct {
-	TenantID     string                                   `yaml:"tenant-id,omitempty" json:"tenant_id,omitempty"`
-	Runtime      RuntimeDefinition                        `yaml:"runtime" json:"runtime"`
-	Access       TargetAccess                             `yaml:"access" json:"access"`
-	Scope        string                                   `yaml:"scope,omitempty" json:"scope,omitempty"`
-	OpenBao      OpenBaoTargetConfig                      `yaml:"openbao,omitempty" json:"openbao,omitempty"`
-	OperatorAuth map[string]OperatorAuthEnvironmentConfig `yaml:"operator-auth,omitempty" json:"operator_auth,omitempty"`
+	TenantID         string                                   `yaml:"tenant-id,omitempty" json:"tenant_id,omitempty"`
+	Runtime          RuntimeDefinition                        `yaml:"runtime" json:"runtime"`
+	Access           TargetAccess                             `yaml:"access" json:"access"`
+	Scope            string                                   `yaml:"scope,omitempty" json:"scope,omitempty"`
+	OpenBao          OpenBaoTargetConfig                      `yaml:"openbao,omitempty" json:"openbao,omitempty"`
+	OperatorAuth     map[string]OperatorAuthEnvironmentConfig `yaml:"operator-auth,omitempty" json:"operator_auth,omitempty"`
+	DeploymentPolicy *TargetDeploymentPolicy                  `yaml:"deployment-policy,omitempty" json:"deployment_policy,omitempty"`
 }
 
 type PromptConfig struct {
@@ -79,15 +80,16 @@ type Config struct {
 }
 
 type ResolvedTarget struct {
-	DockerEndpoint  string `json:"docker_endpoint,omitempty"`
-	DockerContext   string `json:"docker_context,omitempty"`
-	DockerMode      string `json:"docker_mode,omitempty"`
-	TenantID        string `json:"tenant_id,omitempty"`
-	Name            string `json:"name"`
-	RuntimeProvider string `json:"runtime_provider"`
-	AccessProvider  string `json:"access_provider"`
-	AccessReference string `json:"access_reference"`
-	Scope           string `json:"scope,omitempty"`
+	DockerEndpoint   string                  `json:"docker_endpoint,omitempty"`
+	DockerContext    string                  `json:"docker_context,omitempty"`
+	DockerMode       string                  `json:"docker_mode,omitempty"`
+	TenantID         string                  `json:"tenant_id,omitempty"`
+	Name             string                  `json:"name"`
+	RuntimeProvider  string                  `json:"runtime_provider"`
+	AccessProvider   string                  `json:"access_provider"`
+	AccessReference  string                  `json:"access_reference"`
+	Scope            string                  `json:"scope,omitempty"`
+	DeploymentPolicy *TargetDeploymentPolicy `json:"deployment_policy,omitempty"`
 }
 
 func ConfigPath() (string, error) {
@@ -236,6 +238,11 @@ func (c Config) Validate() error {
 		}
 	}
 	for name, target := range c.Targets {
+		if target.DeploymentPolicy != nil {
+			if err := target.DeploymentPolicy.Validate(); err != nil {
+				return fmt.Errorf("target %q deployment policy: %w", name, err)
+			}
+		}
 		if target.Runtime.DockerEndpoint != "" && target.Runtime.DockerContext != "" {
 			return fmt.Errorf("target %q selects both Docker endpoint and context", name)
 		}
@@ -342,15 +349,16 @@ func (c Config) ResolveTarget(explicit, activated string) (ResolvedTarget, error
 	}
 	access := c.Access[target.Access.Reference]
 	return ResolvedTarget{
-		DockerEndpoint:  target.Runtime.DockerEndpoint,
-		DockerContext:   target.Runtime.DockerContext,
-		DockerMode:      target.Runtime.DockerMode,
-		Name:            name,
-		TenantID:        target.TenantID,
-		RuntimeProvider: target.Runtime.Provider,
-		AccessProvider:  access.Provider,
-		AccessReference: target.Access.Reference,
-		Scope:           target.Scope,
+		DockerEndpoint:   target.Runtime.DockerEndpoint,
+		DockerContext:    target.Runtime.DockerContext,
+		DockerMode:       target.Runtime.DockerMode,
+		Name:             name,
+		TenantID:         target.TenantID,
+		RuntimeProvider:  target.Runtime.Provider,
+		AccessProvider:   access.Provider,
+		AccessReference:  target.Access.Reference,
+		Scope:            target.Scope,
+		DeploymentPolicy: target.DeploymentPolicy,
 	}, nil
 }
 
