@@ -84,6 +84,14 @@ Für einen ausdrücklich freigegebenen LAN-Zugriff:
    `node add` das Enrollment auf Basis der verifizierten
    `node-authority-profile.json`.
 
+`baha serve` verifiziert den Operator-OIDC-Issuer über dieselbe verwaltete
+Trust-Auflösung wie `baha login`: zuerst ein explizites
+`BASEHARBOR_OPERATOR_OIDC_CA_FILE` (fehlend oder kein Zertifikat bricht ab),
+dann die verwaltete CA, die der Bootstrap für den owned Core-Target geschrieben
+hat, danach den zustandsweiten Standardpfad. Die verwaltete CA wird dem
+System-Trust-Pool nur hinzugefügt; eine Installation in den System-Trust ist
+nicht erforderlich und die Prüfung wird nie abgeschwächt.
+
 Das Gateway-Zertifikat stammt aus der bereits vorhandenen verwalteten
 OpenBao-Service-PKI. Die API- und Connector-Zertifikate werden normalerweise getrennt
 bereitgestellt. Für eine ausdrücklich verwaltete LAN-Einrichtung kann

@@ -274,6 +274,15 @@ type workstationEnrollmentProvider interface {
 	WorkstationEnrollmentHTTP(context.Context, ws.Store, *pgxpool.Pool, string) (http.Handler, error)
 }
 
+// operatorOIDCVerifier builds the operator API token verifier.
+// cfg.OperatorOIDCTrustFile adds the managed operator CA on top of the system
+// trust pool (additive only), so `baha serve` verifies a managed-Keycloak
+// issuer exactly like `baha login` does; an empty value keeps the previous
+// system-trust-only behavior. TLS verification is never disabled.
+func operatorOIDCVerifier(ctx context.Context, cfg Config) (*auth.OIDCVerifier, error) {
+	return auth.NewOIDCVerifier(ctx, auth.Config{Issuer: cfg.OIDCIssuer, Audiences: cfg.OIDCAudiences, TrustFile: cfg.OperatorOIDCTrustFile})
+}
+
 func registerOperatorAPI(ctx context.Context, mux *http.ServeMux, cfg Config, deps serverDependencies, machineExecutor machinehttp.Executor) error {
 	if !cfg.operatorAPIEnabled() {
 		return nil
@@ -281,7 +290,7 @@ func registerOperatorAPI(ctx context.Context, mux *http.ServeMux, cfg Config, de
 	if deps.pool == nil {
 		return ErrMissingDatabaseURL
 	}
-	verifier, err := auth.NewOIDCVerifier(ctx, auth.Config{Issuer: cfg.OIDCIssuer, Audiences: cfg.OIDCAudiences})
+	verifier, err := operatorOIDCVerifier(ctx, cfg)
 	if err != nil {
 		return err
 	}

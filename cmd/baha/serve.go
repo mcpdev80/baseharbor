@@ -40,6 +40,17 @@ func serveCommand(store application.Store) *cli.Command {
 			if err := bindServeToOwnedOperatorOIDC(&cfg); err != nil {
 				return err
 			}
+			// The operator API verifies its OIDC issuer over HTTPS. A managed
+			// Core bootstraps its own CA, so reuse the documented operator
+			// trust resolution here too; system trust stays the default and
+			// the managed CA is only added on top.
+			if cfg.RuntimeAppName == "" && strings.TrimSpace(cfg.OIDCIssuer) != "" {
+				trustFile, err := resolveServeOperatorOIDCTrustFile(ctx, cfg)
+				if err != nil {
+					return err
+				}
+				cfg.OperatorOIDCTrustFile = trustFile
+			}
 			// Opt-in LAN setup uses the Core's existing authenticated service
 			// issuer. Prepare both trusted serving leaves before publishing
 			// an enrollment authority profile; a missing SAN fails closed.

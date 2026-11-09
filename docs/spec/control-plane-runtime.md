@@ -83,6 +83,13 @@ intentional LAN setup, the owner must:
    explicit API/connector listener and public addresses. `node add`
    consumes the resulting verified `node-authority-profile.json`.
 
+`baha serve` verifies the operator OIDC issuer through the same managed trust
+resolution as `baha login`: an explicit `BASEHARBOR_OPERATOR_OIDC_CA_FILE`
+(missing or non-certificate content fails closed), then the managed CA the
+bootstrap wrote for the owned Core Target, then the state-wide default. The
+managed CA is added on top of the system trust pool only; no OS system-trust
+installation is required and verification is never weakened.
+
 The gateway's service certificate is issued by the existing OpenBao-backed
 service PKI for the configured DNS route. The control-plane API and connector server normally use separately prepared
 keypairs. For an explicitly managed LAN setup, setting
