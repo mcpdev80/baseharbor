@@ -355,8 +355,11 @@ func TestUpNameResumesThroughCommandEntrypoint(t *testing.T) {
 		t.Fatalf("up NAME did not resolve the registered deployment: %v", registeredErr)
 	}
 
-	// --- (2) alias parity: both entrypoints must resolve the same registered
-	// NAME; a coreless application can legitimately return success.
+	// --- (2) NAME-resolution parity: both entrypoints must resolve the
+	// registered NAME. Their lifecycle outcomes are intentionally different:
+	// 'up' may provision an application from source, whereas 'app up' only
+	// resumes materialized runtime state and can return not-applied. A failed
+	// resume must never be mistaken for an unknown deployment name.
 	var appUpOut bytes.Buffer
 	appUpErr := runWithIO(machineNoninteractiveContext(t.Context()),
 		[]string{"app", "up", name, "--yes", "--skip-memory-preflight", "--plain"},
@@ -364,8 +367,8 @@ func TestUpNameResumesThroughCommandEntrypoint(t *testing.T) {
 	if appUpErr != nil && strings.Contains(appUpErr.Error(), "no registered deployment") {
 		t.Fatalf("app up NAME did not resolve the registered deployment: %v", appUpErr)
 	}
-	if (registeredErr == nil) != (appUpErr == nil) {
-		t.Fatalf("up/app up NAME lifecycle outcome diverged: up=%v app-up=%v", registeredErr, appUpErr)
+	if appUpErr != nil && !strings.Contains(appUpErr.Error(), "runtime has not been applied") {
+		t.Fatalf("app up NAME failed beyond the expected resume boundary: %v", appUpErr)
 	}
 
 	// --- (3) unknown NAME through the command entrypoint fails closed: the top-level
