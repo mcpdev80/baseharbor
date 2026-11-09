@@ -119,7 +119,7 @@ func stopApplicationRuntimeWithResult(ctx context.Context, resolved resolvedAppl
 	if err := authorizeApplicationOperation(ctx, "app.stop", resolved); err != nil {
 		return result, err
 	}
-	unlock, err := lockApplicationTargetLifecycle(resolved)
+	unlock, err := lockApplicationTargetLifecycle(resolved, true)
 	if err != nil {
 		return result, err
 	}

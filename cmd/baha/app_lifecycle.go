@@ -246,7 +246,7 @@ func executeApplicationDestroyLifecycle(ctx context.Context, store application.S
 		return err
 	}
 	if isRemoteApplication(execution.resolved) {
-		unlock, err := lockApplicationTargetLifecycle(execution.resolved)
+		unlock, err := lockApplicationTargetLifecycle(execution.resolved, true)
 		if err != nil {
 			return err
 		}
@@ -288,7 +288,9 @@ func executeApplicationDestroyLifecycle(ctx context.Context, store application.S
 		}
 		return recordApplicationAudit(ctx, execution.resolved, "destroy", "success", "ownership verified", "retained remote Application publication destroyed with owned cleanup verified")
 	}
-	unlock, err := lockApplicationTargetLifecycle(execution.resolved)
+	// destroy takes priority over concurrent up/apply so it cannot be starved
+	// by a continuous stream of writers on the same target.
+	unlock, err := lockApplicationTargetLifecycle(execution.resolved, true)
 	if err != nil {
 		return err
 	}

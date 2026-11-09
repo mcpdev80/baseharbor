@@ -180,7 +180,7 @@ func runAppNewWizard(ctx context.Context, out, errOut io.Writer) error {
 			fmt.Fprintln(out, "Return to the preserved checklist; no changes were made.")
 			continue
 		}
-		unlock, lockErr := lockApplicationTargetLifecycle(resolved)
+		unlock, lockErr := lockApplicationTargetLifecycle(resolved, false)
 		if lockErr != nil {
 			return lockErr
 		}

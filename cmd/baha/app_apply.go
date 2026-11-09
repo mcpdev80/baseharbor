@@ -95,7 +95,7 @@ func runApplicationApplyLifecycle(ctx context.Context, store application.Store, 
 	if isRemoteApplication(execution.resolved) {
 		return evidence, executeRemoteApplicationApply(ctx, execution.resolved, out)
 	}
-	unlock, err := lockApplicationTargetLifecycle(execution.resolved)
+	unlock, err := lockApplicationTargetLifecycle(execution.resolved, false)
 	if err != nil {
 		return evidence, err
 	}

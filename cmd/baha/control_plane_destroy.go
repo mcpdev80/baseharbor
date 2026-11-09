@@ -98,7 +98,7 @@ func destroySelectedControlPlane(parent context.Context, confirmed bool, out io.
 	if _, err := os.Lstat(root); err != nil {
 		return err
 	}
-	unlock, err := lockApplicationTargetLifecycle(resolvedApplication{Target: target, TargetStateRoot: root})
+	unlock, err := lockApplicationTargetLifecycle(resolvedApplication{Target: target, TargetStateRoot: root}, true)
 	if err != nil {
 		return err
 	}

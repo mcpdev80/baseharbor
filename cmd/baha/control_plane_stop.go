@@ -42,7 +42,7 @@ func runtimeDownWithResult(parent context.Context, out io.Writer) (controlPlaneS
 	if err != nil {
 		return result, err
 	}
-	unlock, err := lockApplicationTargetLifecycle(resolvedApplication{Target: target, TargetStateRoot: root})
+	unlock, err := lockApplicationTargetLifecycle(resolvedApplication{Target: target, TargetStateRoot: root}, true)
 	if err != nil {
 		return result, err
 	}

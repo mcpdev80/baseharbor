@@ -28,3 +28,14 @@ func AcquireStateFileLock(root string) (func(), error) {
 func AcquireBootstrapLock(root string) (func(), error) {
 	return stableid.AcquireBootstrapLock(root)
 }
+
+// AcquireAppLifecycleLock re-exports the stableid per-app lifecycle lock with
+// the same signature callers across the product expect. See internal/stableid
+// for the authoritative implementation: the lock is keyed by the application's
+// OWN deployments directory (root/deployments/<scope>) so two independent
+// applications that share a host Target do not serialize each other, while two
+// writers to the same application still do. The Target as a whole is protected
+// by an independent owner lock (AcquireLifecycleLock), not by this per-app lock.
+func AcquireAppLifecycleLock(root string, scope string) (func(), error) {
+	return stableid.AcquireAppLifecycleLock(root, scope)
+}

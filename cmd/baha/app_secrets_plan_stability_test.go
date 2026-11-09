@@ -72,7 +72,7 @@ func TestFreshSecretsPlanAcknowledgementsRemainBoundBeforeMutation(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	unlock, err := lockApplicationTargetLifecycle(execution.resolved)
+	unlock, err := lockApplicationTargetLifecycle(execution.resolved, false)
 	if err != nil {
 		t.Fatal(err)
 	}
