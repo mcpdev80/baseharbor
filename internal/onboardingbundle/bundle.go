@@ -1,0 +1,111 @@
+// Package onboardingbundle describes a short-lived, recipient-bound invitation
+// exported by an already authorized Core operator. It never carries an admin
+// password, TLS private key, or persistent Core credential.
+package onboardingbundle
+
+import (
+	"crypto/x509"
+	"encoding/json"
+	"encoding/pem"
+	"errors"
+	"fmt"
+	"io"
+	"net"
+	"net/url"
+	"os"
+	"strings"
+	"time"
+
+	ws "github.com/mcpdev80/baseharbor/internal/workstationenrollment"
+)
+
+const Contract = "baseharbor.workstation-onboard/v1"
+const MaxBytes int64 = 64 << 10
+
+var ErrInvalid = errors.New("invalid or expired workstation onboarding bundle")
+
+// Bundle is a *transport envelope*, not permission to bypass Core operator
+// authentication. The Core must mint Token and Nonce for exactly this Scope,
+// persist their digests durably and consume the grant exactly once on enroll.
+// The Workstation produces its own CSR and private key.
+type Bundle struct {
+	ContractVersion string    `json:"contract_version"`
+	CoreURL         string    `json:"core_url"`
+	CAPEM           string    `json:"ca_pem"`
+	InstallationID  string    `json:"installation_id"`
+	Station         string    `json:"station"`
+	Token           string    `json:"token"`
+	Nonce           string    `json:"nonce"`
+	ExpiresAt       time.Time `json:"expires_at"`
+}
+
+func (b Bundle) Validate(now time.Time) error {
+	if b.ContractVersion != Contract {
+		return fmt.Errorf("%w: unsupported contract version", ErrInvalid)
+	}
+	if err := (ws.Scope{TenantID: b.InstallationID, Station: b.Station}).Validate(); err != nil {
+		return fmt.Errorf("%w: invalid installation or workstation", ErrInvalid)
+	}
+	u, err := url.Parse(b.CoreURL)
+	if err != nil || u.Scheme != "https" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.Path != "" || u.Host == "" {
+		return fmt.Errorf("%w: Core address must be an HTTPS origin", ErrInvalid)
+	}
+	if strings.Contains(u.Host, "@") || strings.Contains(u.Host, "%") {
+		return fmt.Errorf("%w: invalid Core authority", ErrInvalid)
+	}
+	host := u.Hostname()
+	if host == "" || strings.ContainsAny(host, " /\\") || net.ParseIP(host) == nil && strings.Contains(host, ":") {
+		return fmt.Errorf("%w: invalid Core host", ErrInvalid)
+	}
+	roots := x509.NewCertPool()
+	if !roots.AppendCertsFromPEM([]byte(b.CAPEM)) {
+		return fmt.Errorf("%w: missing valid public Core CA", ErrInvalid)
+	}
+	for _, credential := range []string{b.Token, b.Nonce} {
+		if len(credential) < 32 || len(credential) > 512 || strings.TrimSpace(credential) != credential || strings.ContainsAny(credential, "\r\n") {
+			return fmt.Errorf("%w: missing one-use enrollment grant", ErrInvalid)
+		}
+	}
+	if b.ExpiresAt.IsZero() || !b.ExpiresAt.After(now) || b.ExpiresAt.After(now.Add(15*time.Minute)) {
+		return fmt.Errorf("%w: enrollment grant expired or exceeds 15-minute lifetime", ErrInvalid)
+	}
+	if block, _ := pem.Decode([]byte(b.CAPEM)); block == nil || block.Type != "CERTIFICATE" {
+		return fmt.Errorf("%w: CA material is not a public certificate", ErrInvalid)
+	}
+	if strings.Contains(b.CAPEM, "PRIVATE KEY") {
+		return fmt.Errorf("%w: private key is forbidden", ErrInvalid)
+	}
+	return nil
+}
+
+// Read refuses symlinks, world-readable bundles, trailing data, and files over
+// the bounded limit before their bearer grants are ever sent over the network.
+func Read(path string, now time.Time) (Bundle, error) {
+	var empty Bundle
+	fi, err := os.Lstat(path)
+	if err != nil {
+		return empty, err
+	}
+	if !fi.Mode().IsRegular() || fi.Mode().Perm()&0o077 != 0 || fi.Size() > MaxBytes {
+		return empty, fmt.Errorf("%w: bundle must be a private regular file (0600, <=64 KiB)", ErrInvalid)
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return empty, err
+	}
+	defer f.Close()
+	dec := json.NewDecoder(io.LimitReader(f, MaxBytes+1))
+	dec.DisallowUnknownFields()
+	var b Bundle
+	if err := dec.Decode(&b); err != nil {
+		return empty, fmt.Errorf("%w: %v", ErrInvalid, err)
+	}
+	var trailing any
+	if err := dec.Decode(&trailing); err != io.EOF {
+		return empty, fmt.Errorf("%w: unexpected trailing content", ErrInvalid)
+	}
+	if err := b.Validate(now); err != nil {
+		return empty, err
+	}
+	return b, nil
+}
