@@ -143,6 +143,14 @@ func EnsureManagedOperatorOIDC(ctx context.Context, runtime KeycloakRuntime, iss
 	if _, err := admin.reconcileClient(ctx, realm, client); err != nil {
 		return ManagedOperatorOIDC{}, err
 	}
+	// First-owner onboarding must work after "up --control-plane-only".
+	// No application has been applied yet, so the shared Keycloak development
+	// gateway route does not exist. Publish the already-owned shared route
+	// before verifying the canonical HTTPS discovery endpoint; never weaken
+	// discovery verification or substitute the internal Keycloak URL.
+	if err := ensureLocalKeycloakDevelopmentRoute(ctx, app, namespace, runtime, issuer, files); err != nil {
+		return ManagedOperatorOIDC{}, fmt.Errorf("publish managed operator Keycloak gateway route: %w", err)
+	}
 	publicClient, err := keycloakPublicHTTPClient(files)
 	if err != nil {
 		return ManagedOperatorOIDC{}, err
