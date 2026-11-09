@@ -741,11 +741,12 @@ func nodeConnect(ctx context.Context, args []string, out, errOut io.Writer) erro
 		return machine.Wrap(machine.ErrorRuntimeUnavailable, err, "Inspect 'systemctl --user status baseharbor-node-connector.service' and connector logs.", true)
 	}
 	_ = os.Remove(bundlePath)
-	result := nodeConnectResult{ContractVersion: machine.ContractVersion, TargetID: bundle.TargetID, NodeID: bundle.NodeID, Service: filepath.Base(unitPath), State: "connected"}
+	result := nodeConnectResult{ContractVersion: machine.ContractVersion, TargetID: bundle.TargetID, NodeID: bundle.NodeID, Service: filepath.Base(unitPath), State: "started"}
 	if format == outputJSON {
 		return writeJSON(out, result)
 	}
-	fmt.Fprintf(out, "Node %s connected as Target %s.\n", bundle.NodeID, bundle.TargetID)
+	fmt.Fprintf(out, "Node %s connector service started for Target %s.\n", bundle.NodeID, bundle.TargetID)
 	fmt.Fprintln(out, "Connector service: baseharbor-node-connector.service")
+	fmt.Fprintln(out, "Enrollment and live Core session are not yet verified. Check node status from the Core authority.")
 	return nil
 }

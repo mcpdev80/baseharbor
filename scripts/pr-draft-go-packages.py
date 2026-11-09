@@ -11,6 +11,10 @@ def select(changed_files, listing, module):
     prefix = module + "/"
     for line in listing.splitlines():
         name, owner, deps = line.split("|", 2)
+        # `go list -test` includes synthetic executables and bracketed test variants.
+        # They are not valid package paths for `go test`.
+        if name.endswith(".test") or " [" in name:
+            continue
         package = owner or name
         if package == module or package.startswith(prefix):
             all_packages.add(package)
