@@ -75,6 +75,8 @@ func TestBundleValidationFailsClosed(t *testing.T) {
 		"missing CA":         func(b *Bundle) { b.CAPEM = "" },
 		"private key":        func(b *Bundle) { b.CAPEM += "\nPRIVATE KEY" },
 		"missing grant":      func(b *Bundle) { b.Token = "" },
+		"malformed Core ID": func(b *Bundle) { b.CoreInstallationID = "evil" },
+		"same Core and tenant": func(b *Bundle) { b.CoreInstallationID = b.InstallationID },
 		"wrong version":      func(b *Bundle) { b.ContractVersion = "unknown" },
 	}
 	for name, mutate := range cases {
