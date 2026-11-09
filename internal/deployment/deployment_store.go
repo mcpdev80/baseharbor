@@ -74,10 +74,9 @@ func verifyDeploymentOwnerAtSeam(targetName, deploymentID string) error {
 // path, not by embedding an installation reference. A missing installation
 // fails closed; a foreign installation preserves the existing record identity.
 // The deploy directory need not pre-exist (first-run init creates it under the
-// owner), so its absence is not a missing-owner condition. The durable
-// installation.ID binding that closes identity-copy attacks lives in the
-// authority contract, not this seam. Tenant-managed targets are Coreless by
-// design: they are authorized only through the consumer-provided
+// owner), so its absence is not a missing-owner condition. Durable
+// installation.ID binding lives in the authority contract, not this seam;
+// Coreless tenant targets are authorized only through the consumer-provided
 // TenantOwnerResolver, which defaults to fail-closed.
 var TenantOwnerResolver func(targetName string) (bool, error)
 
@@ -575,12 +574,10 @@ func SaveDeploymentRecord(record DeploymentRecord) error {
 }
 
 // writeRetainedOwnerBand writes the durable ownership band inside a deploy
-// directory so a future BF-03 damaged state (deployment.json truncated, the
-// protected runtime state retained) can be attributed to the exact application
-// and environment that this production save trusted. The band is two lines: the
-// retained application identity on the first line, the retained environment on
-// the second. Malformed or empty identity is treated as no-band by
-// LoadRetainedOwnerBand, so an invalid identity never yields a trusted source.
+// directory so a BF-03 damaged state (deployment.json truncated, runtime state
+// retained) can be attributed to the exact application/environment this save
+// trusted. The band is two lines (application, environment); an invalid identity
+// is treated as no-band by LoadRetainedOwnerBand.
 func writeRetainedOwnerBand(root, applicationName, environment string) error {
 	body := strings.TrimSpace(applicationName) + "\n" + strings.TrimSpace(environment) + "\n"
 	bandPath := filepath.Join(root, RetainedOwnershipBandName)
