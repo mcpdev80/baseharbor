@@ -59,10 +59,6 @@ func (e *bahaMachineExecutor) executeHTTPApply(
 		if err := development.ValidateImmutableRemoteSources(*input.SourceModel); err != nil {
 			return nil, machine.Wrap(machine.ErrorValidationFailed, err, "Use immutable Git commit SHAs or OCI image digests.", false)
 		}
-		// Existing Core-side apply resolves the pre-registered source only.
-		// Until authenticated artifact acquisition and exact candidate binding
-		// are implemented, applying it would risk deploying a different image.
-		return nil, machine.NewError(machine.ErrorUnsupported, "Core cannot yet acquire and verify the requested Git/OCI source before mutation.", "Configure a server-authorized immutable source candidate; direct source-selection apply is not yet supported.", false)
 	}
 	ctx = withTargetOverride(ctx, input.Target)
 	ctx = withMemoryPreflightOverride(ctx, input.SkipMemoryPreflight)
@@ -77,6 +73,17 @@ func (e *bahaMachineExecutor) executeHTTPApply(
 	}
 	if err := ensureResolvedHTTPContext(operationContext, resolved); err != nil {
 		return nil, err
+	}
+	if input.SourceModel != nil {
+		// A Core-registered clean Git worktree at the exact commit can be
+		// used through the existing source lifecycle. Do not fetch URLs
+		// provided by the workstation or reinterpret OCI as local files.
+		if len(input.SourceModel.Sources) != 1 || resolved.DeploymentRecord == nil {
+			return nil, machine.NewError(machine.ErrorUnsupported, "Remote source requires one registered Core-owned immutable Git checkout.", "Register the exact Git source with the owning Core before apply.", false)
+		}
+		if err := verifyCoreGitCheckout(ctx, input.SourceModel.Sources[0], resolved.DeploymentRecord.Source); err != nil {
+			return nil, machine.Wrap(machine.ErrorSourceMissing, err, "Ensure the Core-registered Git checkout matches the selected remote and commit and contains no local changes.", false)
+		}
 	}
 
 	reportHTTPProgress(report, "apply", "Converging desired application state.", 35)
