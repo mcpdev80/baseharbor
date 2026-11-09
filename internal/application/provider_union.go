@@ -1,6 +1,7 @@
 package application
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 
@@ -94,6 +95,10 @@ func ResolveProviderPlan(snapshot ResolutionSnapshot, consumers []ConsumerIntent
 		if consumer.Active {
 			fp, requirements, err := resolveRetainedConsumerFootprint(snapshot, consumer)
 			if err != nil {
+				var resolution *ResolutionError
+				if errors.As(err, &resolution) && resolution.Consumer == "" {
+					resolution.Consumer = consumer.Key
+				}
 				return ProviderPlan{}, fmt.Errorf("consumer %s: %w", consumer.Key, err)
 			}
 			wanted = requirements

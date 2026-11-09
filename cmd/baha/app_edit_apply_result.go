@@ -274,7 +274,9 @@ func defaultAppEditAuthorities(store application.Store, args []string) appEditAu
 			return nil, err
 		}
 		explicit := append(append([]application.ProviderPreference(nil), snapshotPreferences...), stored...)
-		return appProviderChoicesWithPreferences(resolved.Manifest, snapshot, newAppCapabilitySelection(appCapabilitySelectionInput{Current: requirements}), explicit)
+		// The Edit choices authority is the same selection-view surface as
+		// the wizard.
+		return appProviderChoicesWithView(resolved.Manifest, snapshot, newAppCapabilitySelection(appCapabilitySelectionInput{Current: requirements}), explicit, true)
 	}
 	planner := func(ctx context.Context, target string, requirements []capability.Requirement, preferences []application.ProviderPreference) (application.ProviderImpactPlan, error) {
 		resolved, err := reresolve(ctx, target)
