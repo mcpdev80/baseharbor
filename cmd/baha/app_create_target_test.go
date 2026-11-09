@@ -73,7 +73,7 @@ func TestCreateTargetManagedApplicationRegistersResolvableDeployment(t *testing.
 
 func TestCreateTargetManagedApplicationPersistsImmutableGitSourceSelection(t *testing.T) {
 	target := configureTestTarget(t)
-	manifest := application.New("remote-git-source", "dev", false, false, false)
+	manifest := application.New("remote-git-source", "dev", true, false, false)
 	model := development.SourceModel{
 		SchemaVersion: development.SourceModelVersion, Application: manifest.Name,
 		Sources: []development.SourceDefinition{{
