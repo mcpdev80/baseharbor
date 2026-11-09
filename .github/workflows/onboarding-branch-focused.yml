@@ -30,6 +30,16 @@ jobs:
         run: |
           set -euo pipefail
           go test -p 1 ./internal/onboardingbundle ./internal/workstationenrollment/http
+          go test -p 1 ./cmd/baha -run '^
+      - name: Emit canonical gofmt sources for branch-only reconciliation
+        shell: bash
+        run: |
+          set -euo pipefail
+          for file in internal/onboardingbundle/*.go internal/workstationenrollment/http/delegated_enroll*.go cmd/baha/onboarding_local_grant.go cmd/baha/onboarding_invite_command.go cmd/baha/onboarding_command.go; do
+            gofmt -w "$file"
+            printf 'FMTFILE|%s|%s\n' "$file" "$(base64 -w0 "$file")"
+          done
+ -count=1
       - name: Emit canonical gofmt sources for branch-only reconciliation
         shell: bash
         run: |
