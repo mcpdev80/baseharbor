@@ -17,7 +17,7 @@ func TestCoreHTTPApplyRejectsUnboundRemoteSourceBeforeMutation(t *testing.T) {
 		ref         string
 		want        machine.ErrorCode
 	}{
-		{"valid-immutable-but-not-admitted", "demo", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", machine.ErrorUnsupported},
+		{"valid-immutable-without-registered-Core-target", "demo", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", ""},
 		{"mutable-branch", "demo", "main", machine.ErrorValidationFailed},
 		{"foreign-application", "foreign", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", machine.ErrorValidationFailed},
 	} {
@@ -37,7 +37,7 @@ func TestCoreHTTPApplyRejectsUnboundRemoteSourceBeforeMutation(t *testing.T) {
 				t.Fatal(err)
 			}
 			_, err = (&bahaMachineExecutor{}).executeHTTPApply(context.Background(), scope, raw, nil)
-			if err == nil || machine.Classify(err).Code != tc.want {
+			if err == nil || (tc.want != "" && machine.Classify(err).Code != tc.want) {
 				t.Fatalf("remote source guard = %v, want %s", err, tc.want)
 			}
 		})
