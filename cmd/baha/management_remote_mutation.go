@@ -180,8 +180,24 @@ func remoteApplicationMutation(ctx context.Context, target deployment.ResolvedTa
 		return err
 	}
 	if operation == "apply" {
-		if err := validateRemoteSelectedSources(name, environment); err != nil {
-			return err
+		sourceModel, sourceErr := selectedRemoteSourceModel(name, environment)
+		if sourceErr != nil {
+			return sourceErr
+		}
+		if sourceModel != nil {
+			var request map[string]json.RawMessage
+			if err := json.Unmarshal(payload, &request); err != nil {
+				return err
+			}
+			pinned, err := json.Marshal(sourceModel)
+			if err != nil {
+				return err
+			}
+			request["source_model"] = pinned
+			payload, err = json.Marshal(request)
+			if err != nil {
+				return err
+			}
 		}
 	}
 	core, err := dialVerifiedRemoteCore(ctx, target.Name, target.RuntimeProvider, target.TenantID)
