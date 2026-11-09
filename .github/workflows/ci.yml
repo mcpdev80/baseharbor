@@ -708,11 +708,14 @@ jobs:
         shell: bash
         env:
           SELECTED_MATRIX: ${{ steps.incremental.outputs.matrix || steps.plan.outputs.matrix }}
+          VERIFIED_BASE: ${{ steps.plan.outputs.trusted_base_sha }}
+          VERIFIED_HEAD: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
           python3 - <<'PY'
           import json
           import os
+          import subprocess
 
           plan = json.load(open('pr-plan.json'))
           requested = {row['id'] for row in plan['required_validation_checks']}
@@ -728,7 +731,20 @@ jobs:
               raise SystemExit('duplicate PR validation check')
           if any(check != 'not-required' and check not in requested for check in keys):
               raise SystemExit('matrix selected a validation absent from trusted plan')
-          scope = 'full' if 'go-unit-tests' in requested else (
+          # The exact verified source diff controls the executor's own full
+          # regression even before the new planner policy reaches develop.
+          changed = subprocess.check_output(
+              ['git', 'diff', '--name-only', '--diff-filter=ACMRT',
+               os.environ['VERIFIED_BASE'], os.environ['VERIFIED_HEAD']],
+              text=True).splitlines()
+          unit_executor = {
+              'scripts/pr-go-unit-shard.py',
+              'scripts/pr-unit-database.sh',
+              'scripts/test_pr_go_unit_shard.py',
+              'scripts/test_pr_unit_database_route.py',
+          }
+          scope = 'full' if ('go-unit-tests' in requested or
+                             unit_executor.intersection(changed)) else (
               'cli' if 'cli-package-tests' in requested else 'none')
           remaining = [row for row in rows
                        if row['check'] not in ('go-unit-tests', 'cli-package-tests')]
