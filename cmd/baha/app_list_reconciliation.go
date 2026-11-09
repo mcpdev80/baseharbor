@@ -75,4 +75,3 @@ func printListNextActions(out io.Writer, items []deployment.DeploymentRecord) {
 		}
 	}
 }
-
