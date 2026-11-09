@@ -20,11 +20,11 @@ func TestManagedCoreRegistrationPinsSourceOnLaterApply(t *testing.T) {
 	}
 	model := development.SourceModel{
 		SchemaVersion: development.SourceModelVersion,
-		Application: manifest.Name,
+		Application:   manifest.Name,
 		Sources: []development.SourceDefinition{{
 			ID: "app", Type: development.SourceRepository,
 			Repository: "https://git.example/pinned-managed-app.git",
-			Ref: strings.Repeat("a", 40),
+			Ref:        strings.Repeat("a", 40),
 		}},
 		Components: []development.ComponentSource{{Component: "app", Source: "app"}},
 	}
@@ -55,6 +55,9 @@ func TestManagedCoreRegistrationPinsSourceOnLaterApply(t *testing.T) {
 	}
 	if bound, err := bindRegisteredCoreSource(resolved, nil); err != nil || bound != nil {
 		t.Fatalf("legacy managed app with no SourceModel was changed: %+v, %v", bound, err)
+	}
+	if _, err := bindRegisteredCoreSource(resolved, &model); err == nil {
+		t.Fatal("unregistered client-supplied source bypassed Core authority")
 	}
 }
 

@@ -22,7 +22,10 @@ func bindRegisteredCoreSource(resolved resolvedApplication, supplied *developmen
 	}
 	stored, _, err := development.LoadSourceModel(resolved.ManifestPath)
 	if errors.Is(err, development.ErrWorkspaceModelMissing) {
-		return supplied, nil
+		if supplied != nil {
+			return nil, fmt.Errorf("source was supplied for an existing managed application without a Core-registered source; explicit source admission is required")
+		}
+		return nil, nil
 	}
 	if err != nil {
 		return nil, fmt.Errorf("Core-managed source selection is invalid: %w", err)
