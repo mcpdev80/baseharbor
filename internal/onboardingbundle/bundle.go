@@ -35,6 +35,8 @@ type Bundle struct {
 	CoreURL         string    `json:"core_url"`
 	CAPEM           string    `json:"ca_pem"`
 	InstallationID  string    `json:"installation_id"`
+	CoreInstallationID string `json:"core_installation_id"`
+	RuntimeProvider string    `json:"runtime_provider"`
 	Station         string    `json:"station"`
 	Token           string    `json:"token"`
 	Nonce           string    `json:"nonce"`
@@ -47,6 +49,10 @@ func (b Bundle) Validate(now time.Time) error {
 	}
 	if err := (ws.Scope{TenantID: b.InstallationID, Station: b.Station}).Validate(); err != nil {
 		return fmt.Errorf("%w: invalid installation or workstation", ErrInvalid)
+	}
+	if b.CoreInstallationID == "" || b.CoreInstallationID == b.InstallationID ||
+		(b.RuntimeProvider != "docker" && b.RuntimeProvider != "podman") {
+		return fmt.Errorf("%w: missing distinct Core installation identity or invalid runtime", ErrInvalid)
 	}
 	u, err := url.Parse(b.CoreURL)
 	if err != nil || u.Scheme != "https" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.Path != "" || u.Host == "" {
