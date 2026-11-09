@@ -55,6 +55,11 @@ func runOnboardImport(ctx context.Context, args []string, out io.Writer) error {
 		return err
 	}
 	identityRoot := filepath.Join(dataRoot, "remote-workstations")
+	for _, dir := range []string{profileDir, identityRoot} {
+		if err := checkPrivateOnboardingDirectory(dir); err != nil {
+			return err
+		}
+	}
 	expectedIdentity := filepath.Join(identityRoot, bundle.InstallationID+"-"+bundle.Station)
 	if _, err := os.Lstat(expectedIdentity); err == nil {
 		return errors.New("workstation identity already exists; refusing replacement")
@@ -228,4 +233,18 @@ func writeExclusiveOnboardingProfile(path string, payload []byte) (err error) {
 		return err
 	}
 	return file.Close()
+}
+
+func checkPrivateOnboardingDirectory(path string) error {
+	info, err := os.Lstat(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if !info.IsDir() || info.Mode().Perm()&0o077 != 0 {
+		return fmt.Errorf("onboarding directory must be a private real directory (0700): %s", path)
+	}
+	return nil
 }
