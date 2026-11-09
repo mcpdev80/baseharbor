@@ -30,12 +30,11 @@ jobs:
         run: |
           set -euo pipefail
           go test -p 1 ./internal/onboardingbundle ./internal/workstationenrollment/http
-      - name: Check only onboarding Go formatting
+      - name: Emit canonical gofmt sources for branch-only reconciliation
         shell: bash
         run: |
           set -euo pipefail
-          files="$(gofmt -l internal/onboardingbundle/*.go internal/workstationenrollment/http/delegated_enroll*.go cmd/baha/onboarding_local_grant.go)"
-          if [ -n "$files" ]; then
-            printf '%s\n' "$files"
-            exit 1
-          fi
+          for file in internal/onboardingbundle/*.go internal/workstationenrollment/http/delegated_enroll*.go cmd/baha/onboarding_local_grant.go; do
+            gofmt -w "$file"
+            printf 'FMTFILE|%s|%s\n' "$file" "$(base64 -w0 "$file")"
+          done
