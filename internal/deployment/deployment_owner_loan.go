@@ -2,6 +2,7 @@ package deployment
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"strings"
 
@@ -15,10 +16,18 @@ import (
 // resolve a genuinely-appeared local owner WITHOUT re-entering the loan path
 // (which would recurse). The loan seam itself calls the full VerifyDeploymentOwner.
 func VerifyDeploymentOwnerAgainstOwner(targetName, targetRoot, deploymentID string) error {
-	installation, err := coreinstallation.Load(targetRoot)
+	installation, err := resolveInstallationLoad(targetRoot)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return ErrDeploymentOwnerMissing
+		}
+		// A Core installation that cannot be read (permission denied, an open or
+		// stat failure) is a host-state access problem, not an owner condition.
+		// Classify it distinctly and never masquerade it as a foreign
+		// installation. A file that loads but is itself invalid or foreign stays
+		// ErrDeploymentOwnerForeign below.
+		if isAccessDeniedLoadError(err) {
+			return fmt.Errorf("%w: %w", ErrDeploymentOwnerAccessDenied, err)
 		}
 		// An invalid/foreign installation.json is not an owner either.
 		return ErrDeploymentOwnerForeign

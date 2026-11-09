@@ -30,6 +30,18 @@ var ErrDeploymentOwnerMissing = errors.New("deployment has no authoritative inst
 // identity is preserved and the mismatch is rejected, never adopted.
 var ErrDeploymentOwnerForeign = errors.New("deployment state directory is not owned by the installation under its Target; foreign installation cannot own this deployment")
 
+// ErrDeploymentOwnerAccessDenied is returned when the Core installation under a
+// Target cannot be READ at all — a permission-denied or other OS-level access
+// failure on the installation.json — rather than being present but foreign. A
+// missing or unreadable installation is a host-state access problem, not a
+// foreign-owner condition: the one-installation-owner rule never reads a file it
+// cannot open, so it must fail closed on this specific error and never surface a
+// misleading "foreign installation" message for a file that is simply not
+// accessible to this user. The wrapped fs error carries the path and the
+// underlying cause so the CLI can name the file and point at ownership and
+// permissions as the repair.
+var ErrDeploymentOwnerAccessDenied = errors.New("deployment state directory for its Target is not readable; the Core installation.json is not accessible to this user — check owner and permissions before its state is loadable")
+
 // verifyDeploymentOwnerAtSeam enforces the one-installation-owner rule on every
 // production read/write path in this package. It derives the Target's runtime
 // root (targets/<target>/runtime) from the canonical data layout and delegates
@@ -112,7 +124,7 @@ func VerifyDeploymentOwner(targetName, targetRoot, deploymentID string) error {
 		// Not granted by the hook: fall through to the authoritative
 		// coreinstallation.Load owner check instead of returning early.
 	}
-	installation, err := coreinstallation.Load(targetRoot)
+	installation, err := resolveInstallationLoad(targetRoot)
 	loaned := false
 	if err != nil && errors.Is(err, os.ErrNotExist) && TargetLoanVerifier != nil {
 		// Owner loan seam (card t-20261106-r27-remote-up-podman-owner-missing,
@@ -137,6 +149,15 @@ func VerifyDeploymentOwner(targetName, targetRoot, deploymentID string) error {
 	} else if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return ErrDeploymentOwnerMissing
+		}
+		// A Core installation that CANNOT be read (permission denied, an open or
+		// stat failure) is a host-state access problem, not an owner condition.
+		// It is neither missing nor foreign: the rule never reaches content it
+		// cannot even open, so classify it distinctly and never masquerade it as
+		// a foreign installation. A file that loads but is itself invalid or
+		// foreign stays ErrDeploymentOwnerForeign below.
+		if isAccessDeniedLoadError(err) {
+			return fmt.Errorf("%w: %w", ErrDeploymentOwnerAccessDenied, err)
 		}
 		// An invalid/foreign installation.json is not an owner either.
 		return ErrDeploymentOwnerForeign
@@ -746,4 +767,34 @@ func normalisePersistedOwner(owner string) string {
 		return ""
 	}
 	return string(normalised)
+}
+
+// isAccessDeniedLoadError reports whether a coreinstallation.Load failure is a
+// host-state access/read problem rather than a foreign-owner condition. A
+// permission denied, or any OS-level stat/open failure that is neither a
+// "does not exist" nor an "already exists" signal, means the installation.json
+// could not be read — an access-denied, not a foreign installation. Only the
+// file loaded but was itself invalid stays foreign (ErrDeploymentOwnerForeign).
+func isAccessDeniedLoadError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, os.ErrNotExist) {
+		return false
+	}
+	// A genuine permission-denied is unambiguous.
+	if errors.Is(err, os.ErrPermission) {
+		return true
+	}
+	// A stat/open failure on the installation file that is not a "missing" or
+	// "already exists" signal is an access/read problem, never a content one.
+	// A file that loaded but failed content validation is NOT access-denied;
+	// that path does not reach here because coreinstallation.Load returns a
+	// domain error (foreign/incompatible), not an fs error, in that case.
+	var fsErr interface{ Is(error) bool }
+	if errors.As(err, &fsErr) {
+		// Preserve the original fs error for the caller-facing message.
+		return !errors.Is(err, os.ErrNotExist)
+	}
+	return false
 }
