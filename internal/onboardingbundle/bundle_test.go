@@ -104,3 +104,20 @@ func TestReadRequiresPrivateRegularSingleJSON(t *testing.T) {
 	if err:=os.Symlink(path,filepath.Join(dir,"link.json"));err!=nil{t.Fatal(err)}
 	if _,err:=Read(filepath.Join(dir,"link.json"),now);!errors.Is(err,ErrInvalid){t.Fatalf("symlink accepted: %v",err)}
 }
+
+func TestWriteSecureInvitationRefusesOverwrite(t *testing.T) {
+	now := time.Now()
+	b := validBundle(t)
+	privateDir := filepath.Join(t.TempDir(), "owned")
+	if err := os.Mkdir(privateDir, 0o700); err != nil { t.Fatal(err) }
+	path := filepath.Join(privateDir, "onboard.json")
+	if err := Write(path,b,now); err != nil {t.Fatalf("write: %v",err)}
+	fi, err := os.Stat(path)
+	if err != nil {t.Fatal(err)}
+	if fi.Mode().Perm() != 0o600 {t.Fatalf("expected 0600, got %v",fi.Mode())}
+	if got,err:=Read(path,now);err!=nil || got.CoreURL != b.CoreURL {t.Fatalf("roundtrip failed: %+v %v",got,err)}
+	if err := Write(path,b,now);err == nil {t.Fatal("overwrote existing bearer grant")}
+	publicDir:=filepath.Join(t.TempDir(),"public")
+	if err:=os.Mkdir(publicDir,0o755);err!=nil {t.Fatal(err)}
+	if err:=Write(filepath.Join(publicDir,"onboard.json"),b,now);!errors.Is(err,ErrInvalid) {t.Fatalf("unsafe output directory: %v",err)}
+}
