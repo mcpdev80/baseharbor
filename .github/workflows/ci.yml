@@ -488,9 +488,55 @@ jobs:
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           bash scripts/ci-native-installation-destroy.sh
+      - name: Prove isolated Greenfield Core lifecycle on actual engine
+        env:
+          BASEHARBOR_GREENFIELD_NATIVE_ACCEPTANCE: "1"
+          BASEHARBOR_CI_RUNTIME_INTEGRATION: "1"
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          go test -p 1 ./cmd/baha -run '^TestGreenfieldIsolatedCoreNativeInCI$' -count=1 -timeout 16m -json | tee greenfield.jsonl
+          git rev-parse HEAD > greenfield.jsonl.sha
+      - name: Publish exact Greenfield report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: greenfield-proof-${{ matrix.runtime }}
+          path: |
+            greenfield.jsonl
+            greenfield.jsonl.sha
+          if-no-files-found: error
+          retention-days: 1
       - name: Cleanup native runtime
         if: always()
         run: bash scripts/ci-runtime-reset.sh "${{ matrix.runtime }}"
+
+  pr_native_greenfield_proof:
+    name: PR · Native Greenfield two-engine proof
+    needs: [pr_native_impact, pr_native_destroy]
+    if: github.event_name == 'pull_request' && github.base_ref == 'develop' && github.event.pull_request.draft == false && needs.pr_native_impact.outputs.required == 'true' && needs.pr_native_destroy.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: greenfield-proof-docker
+          path: greenfield/docker
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: greenfield-proof-podman
+          path: greenfield/podman
+      - name: Verify both exact-head native reports and teardown
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          python3 scripts/ci-greenfield-isolation-proof.py --sha "$GITHUB_SHA" --docker greenfield/docker/greenfield.jsonl --podman greenfield/podman/greenfield.jsonl
 
   source_format:
     name: PR · Source format
@@ -1172,7 +1218,7 @@ jobs:
 
   pr_selected_final:
     name: PR Selected Checks
-    needs: [workflow_policy, source_format, pr_plan, pr_focused, pr_validations, pr_candidate, pr_consumer_pins, pr_demo_pin, pr_runner_interface, pr_runtime_selected, pr_public_contracts, pr_owner_node_native, pr_native_impact, pr_native_destroy, pr_unit_shards]
+    needs: [workflow_policy, source_format, pr_plan, pr_focused, pr_validations, pr_candidate, pr_consumer_pins, pr_demo_pin, pr_runner_interface, pr_runtime_selected, pr_public_contracts, pr_owner_node_native, pr_native_impact, pr_native_destroy, pr_native_greenfield_proof, pr_unit_shards]
     if: always() && github.event_name == 'pull_request' && github.base_ref == 'develop' && github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     timeout-minutes: 5
