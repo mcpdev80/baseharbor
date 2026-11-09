@@ -15,6 +15,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -22,6 +23,31 @@ import (
 )
 
 const Contract = "baseharbor.workstation-onboard/v1"
+var coreInstallationUUID = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}// Package onboardingbundle describes a short-lived, recipient-bound invitation
+// exported by an already authorized Core operator. It never carries an admin
+// password, TLS private key, or persistent Core credential.
+package onboardingbundle
+
+import (
+	"bytes"
+	"crypto/x509"
+	"encoding/json"
+	"encoding/pem"
+	"errors"
+	"fmt"
+	"io"
+	"net"
+	"net/url"
+	"os"
+	"path/filepath"
+	"regexp"
+	"strings"
+	"time"
+
+	ws "github.com/mcpdev80/baseharbor/internal/workstationenrollment"
+)
+
+)
 const MaxBytes int64 = 64 << 10
 
 var ErrInvalid = errors.New("invalid or expired workstation onboarding bundle")
@@ -50,7 +76,7 @@ func (b Bundle) Validate(now time.Time) error {
 	if err := (ws.Scope{TenantID: b.InstallationID, Station: b.Station}).Validate(); err != nil {
 		return fmt.Errorf("%w: invalid installation or workstation", ErrInvalid)
 	}
-	if b.CoreInstallationID == "" || b.CoreInstallationID == b.InstallationID ||
+	if !coreInstallationUUID.MatchString(b.CoreInstallationID) || b.CoreInstallationID == b.InstallationID ||
 		(b.RuntimeProvider != "docker" && b.RuntimeProvider != "podman") {
 		return fmt.Errorf("%w: missing distinct Core installation identity or invalid runtime", ErrInvalid)
 	}
