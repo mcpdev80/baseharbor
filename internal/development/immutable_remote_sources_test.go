@@ -28,7 +28,7 @@ func TestValidateImmutableRemoteSources(t *testing.T) {
 				source.Repository = ""
 			}
 			model := SourceModel{SchemaVersion: SourceModelVersion, Application: "demo",
-				Sources: []SourceDefinition{source},
+				Sources:    []SourceDefinition{source},
 				Components: []ComponentSource{{Component: "app", Source: "app"}},
 			}
 			err := ValidateImmutableRemoteSources(model)
