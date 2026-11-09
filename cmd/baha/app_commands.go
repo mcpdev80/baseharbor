@@ -38,7 +38,11 @@ func appCreateCommand() *cli.Command {
 				return err
 			}
 			if target.AccessProvider != "" && target.AccessProvider != "local" {
-				result, err := remoteCreateTargetManagedApplication(ctx, target, m)
+				source, err := selectedRemoteSourceModel(m.Name, m.Environment)
+				if err != nil {
+					return err
+				}
+				result, err := remoteCreateTargetManagedApplication(ctx, target, m, source)
 				if err != nil {
 					return err
 				}
