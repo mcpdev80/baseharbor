@@ -63,6 +63,18 @@ class FinalChecks(unittest.TestCase):
         self.assertTrue(final.verify(self.plan, self.needs, head='c'*40))
         self.assertTrue(final.verify(self.plan, self.needs, integration='c'*40))
 
+    def test_selected_go_unit_shards_are_mandatory(self):
+        for selection in ('go-unit-tests', 'cli-package-tests'):
+            with self.subTest(selection=selection):
+                plan = {**self.plan, 'required_validation_checks': [{'id': selection}]}
+                self.assertTrue(final.verify(plan, self.needs))
+                needs = copy.deepcopy(self.needs)
+                needs['pr_unit_shards'] = {'result': 'success'}
+                self.assertEqual([], final.verify(plan, needs))
+                for result in ('failure', 'skipped', 'cancelled'):
+                    needs['pr_unit_shards']['result'] = result
+                    self.assertTrue(final.verify(plan, needs))
+
     def test_optional_failure_is_not_ignored(self):
         self.needs['pr_demo_pin'] = {'result': 'failure'}
         self.assertTrue(final.verify(self.plan, self.needs))
