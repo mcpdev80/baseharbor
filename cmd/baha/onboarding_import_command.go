@@ -32,13 +32,9 @@ func runOnboardImport(ctx context.Context, args []string, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	device, err := onboardingbundle.Redeem(ctx, bundle, time.Now())
-	if err != nil {
-		return err
-	}
-	if err := verifyWorkstationCore(ctx, bundle, device); err != nil {
-		return err
-	}
+	// Check all predictable local conflicts before consuming the one-use
+	// enrollment grant. A rejected or already-configured workstation must not
+	// burn an otherwise valid invitation.
 	targetName := "core-" + strings.ReplaceAll(bundle.CoreInstallationID, "-", "")[:12]
 	cfg, _, err := deployment.LoadConfigForMutation()
 	if err != nil {
@@ -51,7 +47,28 @@ func runOnboardImport(ctx context.Context, args []string, out io.Writer) error {
 	if err != nil {
 		return err
 	}
+	profileDir := filepath.Join(dataRoot, "remote-connections", targetName)
+	profilePath := filepath.Join(profileDir, "profile.json")
+	if _, err := os.Lstat(profilePath); err == nil {
+		return errors.New("remote connection profile already exists; refusing replacement")
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
 	identityRoot := filepath.Join(dataRoot, "remote-workstations")
+	expectedIdentity := filepath.Join(identityRoot, bundle.InstallationID+"-"+bundle.Station)
+	if _, err := os.Lstat(expectedIdentity); err == nil {
+		return errors.New("workstation identity already exists; refusing replacement")
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+
+	device, err := onboardingbundle.Redeem(ctx, bundle, time.Now())
+	if err != nil {
+		return err
+	}
+	if err := verifyWorkstationCore(ctx, bundle, device); err != nil {
+		return err
+	}
 	identityPath, err := onboardingbundle.PersistIdentity(identityRoot, bundle, device, time.Now())
 	if err != nil {
 		return err
@@ -62,16 +79,11 @@ func runOnboardImport(ctx context.Context, args []string, out io.Writer) error {
 			_ = os.RemoveAll(identityPath)
 		}
 	}()
-	profileDir := filepath.Join(dataRoot, "remote-connections", targetName)
 	if err := os.MkdirAll(profileDir, 0o700); err != nil {
 		return err
 	}
-	profilePath := filepath.Join(profileDir, "profile.json")
-	if _, err := os.Lstat(profilePath); err == nil {
-		return errors.New("remote connection profile already exists; refusing replacement")
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return err
-	}
+	// A second collision check handles another CLI process that raced the
+	// preflight. The profile writer below must also use O_EXCL.
 	digest := sha256.Sum256([]byte(bundle.CAPEM))
 	profile := map[string]any{
 		"version": remoteConnectionProfileVersion,
