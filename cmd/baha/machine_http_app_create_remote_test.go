@@ -74,7 +74,7 @@ func TestHTTPAppCreateValidatesSourceModelBeforeRegistration(t *testing.T) {
 		Intent: application.Manifest{Name: "demo", Environment: "dev"},
 		SourceModel: &development.SourceModel{
 			SchemaVersion: development.SourceModelVersion,
-			Application: "demo",
+			Application:   "demo",
 			Sources: []development.SourceDefinition{{
 				ID: "app", Type: development.SourceRepository,
 				Repository: "https://git.example/demo.git", Ref: "main",
