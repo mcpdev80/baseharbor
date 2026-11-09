@@ -593,15 +593,7 @@ func resolveIncompleteRegisteredApplication(
 	store := application.Store{Root: filepath.Join(deploymentRoot, "state"), Namespace: target.Name}
 	manifests, err := store.List()
 	if err != nil {
-		return resolvedApplication{}, false, &machine.Error{
-			Code:        machine.ErrorOwnershipAmbiguous,
-			CauseCode:   "INCOMPLETE_DEPLOYMENT_STATE",
-			Message:     fmt.Sprintf("incomplete deployment %s/%s cannot be reconstructed safely", id.Target, id.DeploymentID),
-			Resource:    id.Target + "/" + id.DeploymentID,
-			Next:        "Inspect the protected deployment state before cleanup.",
-			Remediation: "operator_review",
-			Cause:       err,
-		}
+		return resolvedApplication{}, false, incompleteError(id, "INCOMPLETE_DEPLOYMENT_STATE", "cannot be reconstructed safely", err)
 	}
 
 	var matches []application.Manifest
@@ -616,26 +608,12 @@ func resolveIncompleteRegisteredApplication(
 	}
 	if len(matches) == 0 {
 		if len(manifests) == 0 {
-			return resolvedApplication{}, false, &machine.Error{
-				Code:        machine.ErrorOwnershipAmbiguous,
-				CauseCode:   "INCOMPLETE_DEPLOYMENT_STATE",
-				Message:     fmt.Sprintf("incomplete deployment %s/%s has no protected application identity", id.Target, id.DeploymentID),
-				Resource:    id.Target + "/" + id.DeploymentID,
-				Next:        "Inspect the protected deployment state before cleanup.",
-				Remediation: "operator_review",
-			}
+			return resolvedApplication{}, false, incompleteError(id, "INCOMPLETE_DEPLOYMENT_STATE", "has no protected application identity", nil)
 		}
 		return resolvedApplication{}, false, nil
 	}
 	if len(matches) > 1 {
-		return resolvedApplication{}, false, &machine.Error{
-			Code:        machine.ErrorOwnershipAmbiguous,
-			CauseCode:   "INCOMPLETE_DEPLOYMENT_IDENTITY_AMBIGUOUS",
-			Message:     fmt.Sprintf("protected state for deployment %s/%s contains multiple matching application identities", id.Target, id.DeploymentID),
-			Resource:    id.Target + "/" + id.DeploymentID,
-			Next:        "Inspect the protected deployment state before cleanup.",
-			Remediation: "operator_review",
-		}
+		return resolvedApplication{}, false, incompleteError(id, "INCOMPLETE_DEPLOYMENT_IDENTITY_AMBIGUOUS", "contains multiple matching application identities", nil)
 	}
 
 	m := matches[0]
@@ -643,15 +621,7 @@ func resolveIncompleteRegisteredApplication(
 	id.Application = m.Name
 	id.Environment = m.Environment
 	if err := id.Validate(); err != nil {
-		return resolvedApplication{}, false, &machine.Error{
-			Code:        machine.ErrorOwnershipAmbiguous,
-			CauseCode:   "INCOMPLETE_DEPLOYMENT_IDENTITY_MISMATCH",
-			Message:     fmt.Sprintf("protected application state does not provide a valid stable identity for deployment %s/%s", id.Target, id.DeploymentID),
-			Resource:    id.Target + "/" + id.DeploymentID,
-			Next:        "Inspect the protected deployment state before cleanup.",
-			Remediation: "operator_review",
-			Cause:       err,
-		}
+		return resolvedApplication{}, false, incompleteError(id, "INCOMPLETE_DEPLOYMENT_IDENTITY_MISMATCH", "does not provide a valid stable identity", err)
 	}
 	manifestPath := filepath.Join(store.Root, m.Name, "baseharbor.yaml")
 	if commandRequiresLiveSource(command) {
@@ -675,6 +645,22 @@ func resolveIncompleteRegisteredApplication(
 		FromRepository:       false,
 		IncompleteDeployment: true,
 	}, true, nil
+}
+
+// incompleteError builds the machine error for an incomplete-deployment failure.
+// All four call sites share the same resource/next/remediation shape, so this
+// helper keeps the four cause codes and messages readable instead of repeating
+// the boilerplate around each one.
+func incompleteError(id deployment.DeploymentIdentity, causeCode, messageSuffix string, cause error) *machine.Error {
+	return &machine.Error{
+		Code:        machine.ErrorOwnershipAmbiguous,
+		CauseCode:   causeCode,
+		Message:     fmt.Sprintf("incomplete deployment %s/%s %s", id.Target, id.DeploymentID, messageSuffix),
+		Resource:    id.Target + "/" + id.DeploymentID,
+		Next:        "Inspect the protected deployment state before cleanup.",
+		Remediation: "operator_review",
+		Cause:       cause,
+	}
 }
 
 func commandRequiresLiveSource(command string) bool {
