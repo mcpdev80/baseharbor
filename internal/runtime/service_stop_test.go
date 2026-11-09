@@ -148,10 +148,10 @@ func TestSelectedStopAcceptsRetiredPinnedNativeContainer(t *testing.T) {
 		{Kind: "volume", Name: "linkding-data"},
 	}
 	r := &selectedStopRuntime{
-		before: resources,
-		after: []ProjectResource{{Kind: "volume", Name: "linkding-data"}},
+		before:     resources,
+		after:      []ProjectResource{{Kind: "volume", Name: "linkding-data"}},
 		containers: []RuntimeContainer{pinned},
-		rendered: `{"services":{"web":{"container_name":"linkding-pinned-web"}}}`,
+		rendered:   `{"services":{"web":{"container_name":"linkding-pinned-web"}}}`,
 	}
 	result, err := StopOwnedProjectServices(t.Context(), r, "linkding", "/protected", nil,
 		resources, []string{"web"}, "/protected/compose.yaml")
@@ -178,8 +178,8 @@ func TestSelectedStopRejectsLostUnselectedPinnedContainer(t *testing.T) {
 			{Kind: "volume", Name: "linkding-data"},
 		},
 		containers: []RuntimeContainer{selected, sibling},
-		stopped: []RuntimeContainer{{ID: "web-id", Name: "linkding-pinned-web", Project: "linkding", Service: "web", State: "exited"}},
-		rendered: `{"services":{"web":{"container_name":"linkding-pinned-web"},"worker":{}}}`,
+		stopped:    []RuntimeContainer{{ID: "web-id", Name: "linkding-pinned-web", Project: "linkding", Service: "web", State: "exited"}},
+		rendered:   `{"services":{"web":{"container_name":"linkding-pinned-web"},"worker":{}}}`,
 	}
 	result, err := StopOwnedProjectServices(t.Context(), r, "linkding", "/protected", nil,
 		resources, []string{"web"}, "/protected/compose.yaml")
