@@ -11,7 +11,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 CLI_PACKAGE = "./cmd/baha"
 CLI_SHARDS = 3
-TEST_NAME = re.compile(r"^(?:Test|Example|Fuzz)[A-Za-z0-9_]+$")
+TEST_NAME = re.compile(r"^(?:Test|Example|Fuzz)[A-Za-z0-9_]*$")
 REQUIRED_CLIENT_TESTS = {
     "TestClientCommandsTwoHomesSameDeploymentPrecedence",
     "TestClientCommandsDenialOverTwoHomes",
