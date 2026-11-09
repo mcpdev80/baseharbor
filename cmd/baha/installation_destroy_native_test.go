@@ -47,6 +47,12 @@ func TestInstallationDestroyCurrentChildrenInterruptedVolumeAndRetry(t *testing.
 	if err != nil || !core.Ready {
 		t.Fatalf("real Core bootstrap before installation destroy: ready=%t err=%v\n%s", core.Ready, err, out.String())
 	}
+	// This native fixture explicitly opts in to managed developer credentials.
+	// A Core installation alone does not authorize silent local-credential
+	// bootstrap when its managed OpenBao authority has no credential record.
+	if _, _, err := configureDevelopmentCredentials(ctx, true, "", ""); err != nil {
+		t.Fatalf("initialize consented developer credential authority: %v", err)
+	}
 	t.Chdir(t.TempDir())
 	for name, data := range map[string]string{"compose.yaml": corelessHTTPWorkload, "baseharbor.yaml": "version: 1\napp:\n  name: installation-retry\n  environment: dev\nservices:\n  sql: true\n  identity: true\n"} {
 		if err := os.WriteFile(name, []byte(data), 0600); err != nil {
