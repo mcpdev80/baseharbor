@@ -204,3 +204,26 @@ func TestFirstOwnerWizardDefaultCustomAndCancel(t *testing.T) {
 		}
 	}
 }
+
+func TestExistingCoreDefaultsToOneUseInvitation(t *testing.T) {
+	var output strings.Builder
+	decision, err := Run(context.Background(), Input{
+		In: strings.NewReader("\nyes\n"),
+		Out: &output,
+		Discover: func(context.Context) (InstallState, error) {
+			return InstallState{HasInstallation:true,Targets:[]string{"docker-local"}},nil
+		},
+	})
+	if err != nil { t.Fatalf("existing Core invitation failed: %v",err) }
+	if decision.Mode != ModeInvite || decision.Target != "docker-local" {
+		t.Fatalf("existing Core must default to invitation: %+v",decision)
+	}
+	if !strings.Contains(output.String(),"one-use workstation connection file") {
+		t.Fatalf("default invitation choice was not offered: %s",output.String())
+	}
+}
+func TestInvitationNeedsExistingCoreTarget(t *testing.T) {
+	if err := (Decision{Mode:ModeInvite}).Validate(); err == nil {
+		t.Fatal("invitation without a locally resolved Core Target was permitted")
+	}
+}
