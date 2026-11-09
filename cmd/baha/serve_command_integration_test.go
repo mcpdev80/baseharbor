@@ -17,6 +17,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -98,7 +99,7 @@ func TestServeCommandIntegrationOwnershipOnValidRoot(t *testing.T) {
 	if err := holder.Start(); err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = holder.Process.Kill() }()
+	t.Cleanup(func() { integStopHolder(t, holder) })
 
 	_, boundAddr := integWaitBoundReady(t, ready, holder)
 
@@ -156,6 +157,29 @@ func integWaitBoundReady(t *testing.T, ready string, holder *exec.Cmd) (string, 
 	}
 	t.Fatalf("holder did not report BOUND within timeout")
 	return "", ""
+}
+
+// integStopHolder waits for the serving child to release its ownership lock.
+// SIGTERM is preferred; SIGKILL remains a bounded cleanup fallback.
+func integStopHolder(t *testing.T, holder *exec.Cmd) {
+	t.Helper()
+	if holder.Process == nil {
+		return
+	}
+	done := make(chan error, 1)
+	go func() { done <- holder.Wait() }()
+	_ = holder.Process.Signal(syscall.SIGTERM)
+	select {
+	case <-done:
+		return
+	case <-time.After(10 * time.Second):
+		_ = holder.Process.Kill()
+	}
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Error("serve integration holder did not exit after SIGKILL")
+	}
 }
 
 // integAssertServing polls the /healthz endpoint at addr and requires HTTP 200,
