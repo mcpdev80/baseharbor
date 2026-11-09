@@ -9,8 +9,8 @@ import (
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
-	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/delivery"
+	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/development"
 )
 
@@ -141,7 +141,8 @@ func TestStagedCoreGitCandidateConsentPinsExactArtifact(t *testing.T) {
 		t.Fatal(err)
 	}
 	candidate := stagedCoreGitCandidate{
-		Root: root, Fingerprint: fingerprint,
+		Root:        root,
+		Fingerprint: fingerprint,
 		Submission: delivery.CandidateSubmission{
 			ContractVersion:  delivery.CandidateContractVersion,
 			ApplicationID:    "b13e96c1-83a0-4dd2-90e5-54a2d2f3ee8a",
