@@ -94,8 +94,11 @@ passenden `BASEHARBOR_API_LISTEN_ADDR`- und
 **bereits READY gemeldeten** OpenBao-Service-PKI ausstellen. Das ist eine
 explizite Dev-Option: keine neue CA, keine automatische Netzfreigabe,
 kein ACME und kein allgemeiner PKI-Dienst. Die privaten Schlüssel verbleiben
-im geschützten Core-Target unter `managed-serving/`. Extern bereitgestellte
-Zertifikate werden niemals überschrieben. Domainkonfiguration und Listener eröffnen keine zusätzlichen
+im geschützten Core-Target unter `managed-serving/`. Fehlt in diesem expliziten Modus `BASEHARBOR_API_DATABASE_URL`, verwendet
+die Operator-API die geschützte PostgreSQL-Verbindung und die verifizierte
+Datenbank-CA ihrer lokalen Core-Installation. Zugangsdaten werden niemals an
+Remote-Targets kopiert. Extern bereitgestellte Zertifikate werden niemals
+überschrieben. Domainkonfiguration und Listener eröffnen keine zusätzlichen
 Operator-, Tenant- oder Node-Rechte.
 
 ## Anwendungsbereich des TLS

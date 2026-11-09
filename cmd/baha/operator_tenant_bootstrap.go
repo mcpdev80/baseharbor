@@ -50,25 +50,21 @@ func initialOperatorLocalCoreFiles(ctx context.Context, target deployment.Resolv
 // initializeLocalOperatorTenant runs only after an OIDC code+PKCE login has
 // returned a cryptographically verified principal. The caller explicitly opts
 // in using --init-tenant, and must own the protected local Core installation.
-func initializeLocalOperatorTenant(ctx context.Context, target deployment.ResolvedTarget, principal *identity.Principal, tenantSlug, tenantName string) (database.InitialOperatorTenant, error) {
-	files, err := initialOperatorLocalCoreFiles(ctx, target)
-	if err != nil {
-		return database.InitialOperatorTenant{}, err
-	}
-	if err := database.ValidateInitialOperatorBootstrap(principal, tenantSlug, tenantName, time.Now()); err != nil {
-		return database.InitialOperatorTenant{}, err
-	}
+// locallyOwnedCorePostgresDSN returns the existing protected database binding
+// and its verified TLS root. It is only called after the local Core owner
+// preflight; it never copies bootstrap credentials to a remote Target.
+func locallyOwnedCorePostgresDSN(files bhruntime.Files) (string, error) {
 	cfg, err := bhruntime.LoadConfig(files.Env)
 	if err != nil {
-		return database.InitialOperatorTenant{}, errors.New("protected Core PostgreSQL configuration is unavailable")
+		return "", errors.New("protected Core PostgreSQL configuration is unavailable")
 	}
 	policy, err := serviceaccess.Resolve("prod", "control-plane-postgresql", serviceaccess.AuthenticationNative)
 	if err != nil {
-		return database.InitialOperatorTenant{}, err
+		return "", err
 	}
 	material, err := serviceaccess.ExistingTLSMaterial(policy, filepath.Join(filepath.Dir(files.Compose), "providers", "postgresql", "service-access", "pki"))
 	if err != nil || strings.TrimSpace(material.CA) == "" {
-		return database.InitialOperatorTenant{}, errors.New("verified Core PostgreSQL trust material is unavailable")
+		return "", errors.New("verified Core PostgreSQL trust material is unavailable")
 	}
 	dsn := url.URL{
 		Scheme: "postgres",
@@ -80,7 +76,22 @@ func initializeLocalOperatorTenant(ctx context.Context, target deployment.Resolv
 	query.Set("sslmode", "verify-full")
 	query.Set("sslrootcert", material.CA)
 	dsn.RawQuery = query.Encode()
-	pool, err := database.Open(ctx, database.Config{DSN: dsn.String(), ConnectTimeout: 10 * time.Second})
+	return dsn.String(), nil
+}
+
+func initializeLocalOperatorTenant(ctx context.Context, target deployment.ResolvedTarget, principal *identity.Principal, tenantSlug, tenantName string) (database.InitialOperatorTenant, error) {
+	files, err := initialOperatorLocalCoreFiles(ctx, target)
+	if err != nil {
+		return database.InitialOperatorTenant{}, err
+	}
+	if err := database.ValidateInitialOperatorBootstrap(principal, tenantSlug, tenantName, time.Now()); err != nil {
+		return database.InitialOperatorTenant{}, err
+	}
+	dsn, err := locallyOwnedCorePostgresDSN(files)
+	if err != nil {
+		return database.InitialOperatorTenant{}, err
+	}
+	pool, err := database.Open(ctx, database.Config{DSN: dsn, ConnectTimeout: 10 * time.Second})
 	if err != nil {
 		return database.InitialOperatorTenant{}, errors.New("local operator bootstrap database connection failed; inspect protected Core diagnostics")
 	}

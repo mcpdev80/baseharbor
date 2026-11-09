@@ -91,14 +91,21 @@ func prepareManagedCoreServingTLS(ctx context.Context, cfg *controlplaneruntime.
 	if err != nil || target.Name != cfg.ConnectorAuthorityTarget || (target.AccessProvider != "" && target.AccessProvider != "local") {
 		return errors.New("managed Core LAN TLS requires the selected, locally owned installation Target")
 	}
-	if _, err := initialOperatorLocalCoreFiles(ownedCtx, target); err != nil {
+	files, err := initialOperatorLocalCoreFiles(ownedCtx, target)
+	if err != nil {
 		return fmt.Errorf("verify owned Core before managed LAN certificate issuance: %w", err)
 	}
-	runtime, err := detectRuntimeForTarget(ownedCtx, target)
-	if err != nil {
-		return err
+	// The managed local Core already owns a protected PostgreSQL database
+	// binding. A new remote-serving process must not require its operator to
+	// reconstruct the password or fabricate an external database URL.
+	if strings.TrimSpace(cfg.DatabaseURL) == "" {
+		dsn, err := locallyOwnedCorePostgresDSN(files)
+		if err != nil {
+			return fmt.Errorf("resolve locally owned Core database for operator API: %w", err)
+		}
+		cfg.DatabaseURL = dsn
 	}
-	files, err := existingTargetRuntimeFiles(ownedCtx)
+	runtime, err := detectRuntimeForTarget(ownedCtx, target)
 	if err != nil {
 		return err
 	}

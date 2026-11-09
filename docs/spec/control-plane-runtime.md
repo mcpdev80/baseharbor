@@ -94,7 +94,11 @@ OpenBao service issuer. This is a dev-only opt-in, not a new CA, implicit
 exposure, ACME, generic PKI management or certificate renewal daemon.
 The private serving material stays under the owned Core target's
 `managed-serving/` state directory; certificate SANs match advertised hosts.
-Any explicit BYOC serving certificate configuration remains authoritative. A DNS name and a gateway bind setting do
+When `BASEHARBOR_API_DATABASE_URL` is omitted in this explicit managed Core
+mode, the operator API reuses the locally owned Core's protected PostgreSQL
+connection and existing verified database CA; it never copies bootstrap
+credentials to a remote Target. Any explicit BYOC serving certificate
+configuration remains authoritative. A DNS name and a gateway bind setting do
 not automatically publish `baha serve` or authorize tenant/connector access.
 
 ## TLS scope
