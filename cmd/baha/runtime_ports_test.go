@@ -314,7 +314,20 @@ func TestParseRuntimeUpOptionsAcceptsEnvironmentEqualsForm(t *testing.T) {
 // Unknown NAME fails closed at resolveRegisteredApplication, and `up NAME` and
 // `app up NAME` produce the same resolve outcome (alias parity).
 func TestUpNameResumesThroughCommandEntrypoint(t *testing.T) {
-	target := configureTestTarget(t)
+	// Hermetic isolation: a UNIQUE Target (own XDG root + own docker
+	// project/network) so a Core left running by ANOTHER test can never be
+	// picked up here, plus a leaked BASEHARBOR_TARGET/BASEHARBOR_STATE_DIR is
+	// cleared. See configureIsolatedTestTarget for the full contract.
+	//
+	// The registered-NAME up at (1) runs from the repository root (t.Chdir
+	// below), NOT an empty dir: from an empty CWD `baha up NAME` takes the
+	// fresh-core bootstrap path (installCore boots a real control plane when a
+	// docker daemon is available) and SUCCEEDS, so the "must fail before
+	// runtime realization" assertion only passed when no docker was present
+	// (isolation) and failed deterministically in the hosted matrix. From the
+	// repo root the up resolves the registered deployment and fails at runtime
+	// realization (no running Core) whether or not a daemon is available.
+	target := configureIsolatedTestTarget(t)
 	selection := minimalRepositorySelection(t)
 	initialized, err := resolveRepositoryLifecycleIntent(t.Context(), target, selection, "init")
 	if err != nil {
@@ -331,7 +344,7 @@ func TestUpNameResumesThroughCommandEntrypoint(t *testing.T) {
 	// setup. It fails at runtime realization, which is the step AFTER NAME
 	// resolution succeeds -- the same failure the registered NAME reaches from
 	// `app up NAME`, proving alias parity of the NAME-resolution step.
-	t.Chdir(t.TempDir())
+	t.Chdir(repoRoot)
 	var registeredOut bytes.Buffer
 	registeredErr := runWithIO(machineNoninteractiveContext(t.Context()),
 		[]string{"up", name, "--yes", "--skip-memory-preflight", "--plain"},

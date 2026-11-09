@@ -98,6 +98,82 @@ func configureTestTargetWithOwner(t *testing.T) deployment.ResolvedTarget {
 	return configureTestTarget(t)
 }
 
+// isolatedTargetName returns a per-process, per-test unique Target name whose
+// shared control-plane project (bh-<name>-shared) and default network never
+// collide with another test. configureTestTarget fixes the name at "docker-dev",
+// so every test that boots a real control plane shares ONE docker network
+// (bh-docker-dev-shared); a Core left running by another test on that network
+// is picked up by an isolated-up assertion that expects "no Core here" and makes
+// TestUpNameResumesThroughCommandEntrypoint pass in isolation but fail in the
+// full matrix. A unique Target name gives each test its own isolated network.
+func isolatedTargetName(t *testing.T) string {
+	t.Helper()
+	buf := make([]byte, 4)
+	if _, err := rand.Read(buf); err != nil {
+		t.Fatalf("generate isolated target name: %v", err)
+	}
+	return "itest-" + fmt.Sprintf("%x", buf) + "-" + strconv.FormatInt(time.Now().UnixNano()%100000, 10)
+}
+
+// configureIsolatedTestTarget is the hermetic twin of configureTestTarget. It
+// clears any TARGET/DATA/ENV leaked by an earlier test in the same package
+// (BASEHARBOR_TARGET, BASEHARBOR_STATE_DIR, BASEHARBOR_ENV are set globally by
+// the runtime-integration bootstrap via os.Setenv and never rolled back), then
+// provisions a single fresh XDG root and a UNIQUE Target so its control-plane
+// docker project/network is isolated from every other test. registerTestDeployment
+// and the up entrypoint both resolve their Target from this Test's config, so a
+// leaked BASEHARBOR_TARGET cannot redirect them to a foreign Core.
+//
+// Isolation alone is not enough for TestUpNameResumesThroughCommandEntrypoint:
+// the registered-NAME up must run from the repository root (not an empty dir) so
+// `baha up NAME` resolves the registered deployment and fails at runtime
+// realization (no running Core) instead of taking the fresh-core bootstrap path
+// and booting a real control plane when a docker daemon is available.
+func configureIsolatedTestTarget(t *testing.T) deployment.ResolvedTarget {
+	t.Helper()
+	// Clear leaked globals FIRST: a surviving BASEHARBOR_TARGET from another
+	// lane's bootstrap would make effectiveTarget() ignore this Test's config
+	// and resolve against a foreign, possibly running, Core.
+	t.Setenv("BASEHARBOR_TARGET", "")
+	t.Setenv("BASEHARBOR_STATE_DIR", "")
+	t.Setenv("BASEHARBOR_ENV", "")
+
+	name := isolatedTargetName(t)
+	dataHome := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dataHome)
+	t.Setenv("XDG_DATA_HOME", dataHome)
+	cfg := deployment.Config{
+		Version:       deployment.ConfigVersion,
+		DefaultTarget: name,
+		Access: map[string]deployment.AccessDefinition{
+			"local-docker": {Provider: "local", Reference: "local"},
+		},
+		Targets: map[string]deployment.TargetDefinition{
+			name: {
+				Runtime: deployment.RuntimeDefinition{Provider: "docker"},
+				Access:  deployment.TargetAccess{Reference: "local-docker"},
+				Scope:   "local",
+			},
+		},
+	}
+	if err := cfg.Save(); err != nil {
+		t.Fatal(err)
+	}
+	target, err := cfg.ResolveTarget("", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A managed deployment requires its authoritative Core installation to
+	// govern the Target; register one on the isolated Target so the production
+	// deployment-owner binding passes. The no-op installation writes state only
+	// and boots no container, so up NAME reaches control-plane setup and fails
+	// at runtime realization (no Core) deterministically.
+	if err := registerInstallationForTarget(t, target.Name); err != nil {
+		t.Fatal(err)
+	}
+	return target
+}
+
 // registerInstallationForTarget persists a valid Core installation under the
 // Target's runtime root (targets/<target>/runtime) if one is not already
 // present, so deployment-owner binding passes for managed-deployment tests.
