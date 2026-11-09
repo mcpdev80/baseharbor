@@ -56,3 +56,22 @@ func TestDeveloperReconcileAllowsExplicitlyCorelessLocalBootstrap(t *testing.T) 
 		t.Fatalf("local Coreless bootstrap rejected: err=%v", err)
 	}
 }
+
+func TestDeveloperReconcileRefusesMissingRuntimeForRegisteredCore(t *testing.T) {
+	target := configureTestTarget(t)
+	ctx := withTargetOverride(context.Background(), target.Name)
+	missing := errors.New("registered Core runtime is unavailable")
+	old := openBaoRuntime
+	openBaoRuntime = func(context.Context) (bhruntime.RuntimeProvider, bhruntime.Files, error) {
+		return nil, bhruntime.Files{}, missing
+	}
+	t.Cleanup(func() { openBaoRuntime = old })
+	candidate := devaccess.Credentials{Username: "developer", Password: "untrusted-local"}
+	actual, err := reconcileDeveloperCredentialAuthority(ctx, target.Name, "dev", candidate, false)
+	if !errors.Is(err, missing) {
+		t.Fatalf("registered Core runtime error was not preserved: %v", err)
+	}
+	if actual != (devaccess.Credentials{}) {
+		t.Fatal("registered Core with missing runtime accepted local credentials")
+	}
+}
