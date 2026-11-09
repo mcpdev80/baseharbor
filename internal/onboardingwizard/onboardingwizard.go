@@ -42,12 +42,15 @@ const (
 	ModeRemove Mode = "remove"
 	// ModeOwner configures the first Core operator and tenant through OIDC.
 	ModeOwner Mode = "owner"
+	// ModeInvite exports a protected one-time invite from an existing, local
+	// Core. It is not an operator login or application bootstrap.
+	ModeInvite Mode = "invite"
 )
 
 // Valid reports whether the mode is one of the distinct intents.
 func (m Mode) Valid() bool {
 	switch m {
-	case ModeBootstrap, ModeAttach, ModeImport, ModeRemove, ModeOwner:
+	case ModeBootstrap, ModeAttach, ModeImport, ModeRemove, ModeOwner, ModeInvite:
 		return true
 	}
 	return false
@@ -135,6 +138,10 @@ func (d Decision) Validate() error {
 		return fmt.Errorf("%w: unknown mode %q", ErrInvalidChoice, d.Mode)
 	}
 	switch d.Mode {
+	case ModeInvite:
+		if strings.TrimSpace(d.Target) == "" {
+			return fmt.Errorf("%w: invitation needs the installed local Core Target", ErrIncompleteConfiguration)
+		}
 	case ModeOwner:
 		if strings.TrimSpace(d.TenantSlug) == "" || strings.TrimSpace(d.TenantName) == "" {
 			return fmt.Errorf("%w: first-owner tenant name and slug are required", ErrIncompleteConfiguration)
@@ -253,7 +260,9 @@ func askIntent(ctx context.Context, reader *bufio.Reader, out io.Writer, state I
 		def = "new"
 	}
 	if state.HasInstallation {
+		entries["invite"] = "create a one-use workstation connection file"
 		entries["owner"] = "initialize or verify Core operator and tenant with OIDC"
+		def = "invite"
 	}
 	entries["import"] = "join with a device bundle or team profile you received"
 	entries["remove"] = "remove only this workstation's local connection (nothing remote changes)"
@@ -263,6 +272,10 @@ func askIntent(ctx context.Context, reader *bufio.Reader, out io.Writer, state I
 		return Decision{}, err
 	}
 	switch choice {
+	case "invite":
+		target, err := askTarget(ctx, reader, out, state, preselected)
+		if err != nil { return Decision{}, err }
+		return Decision{Mode:ModeInvite,Target:target}, nil
 	case "owner":
 		return askOwnerTenant(ctx, reader, out)
 	case "new":
