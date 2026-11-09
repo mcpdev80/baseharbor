@@ -149,6 +149,17 @@ baha --target docker-dev up -e dev
 
 Run the last two commands inside an application repository. Confirm `runtime_provider`, access settings and the plan's environment before applying. An explicit `--target` applies to that invocation without relying on the shell's active Target. Target registration alone does not install Docker or validate every provider capability.
 
+## Remote Core-owned Docker/Podman
+
+When the Docker/Podman runtime belongs to the same host as the Core installation, the developer workstation does not need a Node Connector. Configure a remote `baseharbor-core` access Target with the same name and runtime as the Core installation. Its `--tenant-id` must match the operator's actual Core membership; the pinned HTTPS/OIDC profile verifies it again against the live Core. No local runtime is used.
+
+```bash
+baha target create vm-core --runtime-provider docker --access vm-core-management --access-provider baseharbor-core --reference vm-core --tenant-id 6a185ba5-003b-4708-8c91-aafa7d369e53
+baha use vm-core
+```
+
+The pinned `BASEHARBOR_CONNECTION_PROFILE` and valid operator session are required before `baha use`. This creates only a client-side route; the Core stays the authority for source admission, consent and the application lifecycle.
+
 ## Local Docker engine selection
 
 Rootless Docker is the default. The provider resolves and verifies one Unix socket before any lifecycle operation, then uses `docker --host SOCKET` for Compose, inspection, execution, volume recovery and cleanup. A failed or rootful selection never falls back to System Docker.
