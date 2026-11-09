@@ -2,6 +2,8 @@ package application
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
@@ -80,7 +82,11 @@ func (r *RemoteManagedRuntime) SaveSnapshot(stateDir string, record targetsessio
 }
 
 func syncRemoteSnapshot(root *os.Root) error {
-	file, err := root.Open(remoteManagedSnapshotFile)
+	return syncRemoteSnapshotNamed(root, remoteManagedSnapshotFile)
+}
+
+func syncRemoteSnapshotNamed(root *os.Root, name string) error {
+	file, err := root.Open(name)
 	if err != nil {
 		return err
 	}
@@ -96,6 +102,91 @@ func syncRemoteSnapshot(root *os.Root) error {
 	return directory.Sync()
 }
 
+// Revisions retain the old immutable publication while an updated workload
+// is staged and verified. A receipt selects one exact generation; it cannot
+// silently resolve to another Target's or application's source.
+func remoteSnapshotRevisionName(record targetsession.ProjectRecord) (string, error) {
+	if err := record.Validate(); err != nil {
+		return "", err
+	}
+	encoded, err := json.Marshal(record)
+	if err != nil {
+		return "", err
+	}
+	digest := sha256.Sum256(encoded)
+	return "remote-managed-snapshot-" + hex.EncodeToString(digest[:]) + ".json", nil
+}
+
+func (r *RemoteManagedRuntime) SaveSnapshotRevision(stateDir string, record targetsession.ProjectRecord) error {
+	if r == nil || r.runtime == nil || record.BundleID != r.name {
+		return errors.New("remote managed revision selection differs")
+	}
+	if _, err := r.runtime.RestoreProject(record, r.source); err != nil {
+		return err
+	}
+	name, err := remoteSnapshotRevisionName(record)
+	if err != nil {
+		return err
+	}
+	snapshot := remoteManagedSnapshot{Version: 1, Record: record, Files: r.source, Units: r.units, InitUnits: r.initUnits}
+	data, err := json.Marshal(snapshot)
+	if err != nil || len(data) > remoteManagedSnapshotLimit {
+		return errors.New("remote managed revision exceeds protected state limit")
+	}
+	root, err := openRemoteSnapshotRoot(stateDir)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	if existing, err := readRemoteSnapshotNamed(root, name); err == nil {
+		if !reflect.DeepEqual(existing, snapshot) {
+			return errors.New("remote revision identity collides with different bytes")
+		}
+		return syncRemoteSnapshotNamed(root, name)
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	file, err := root.OpenFile(name, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+	if err != nil {
+		return err
+	}
+	if _, err := file.Write(data); err != nil {
+		file.Close()
+		return err
+	}
+	if err := file.Sync(); err != nil {
+		file.Close()
+		return err
+	}
+	if err := file.Close(); err != nil {
+		return err
+	}
+	return syncRemoteSnapshotNamed(root, name)
+}
+
+func readSelectedRemoteSnapshot(root *os.Root, record targetsession.ProjectRecord) (remoteManagedSnapshot, string, error) {
+	name, err := remoteSnapshotRevisionName(record)
+	if err != nil {
+		return remoteManagedSnapshot{}, "", err
+	}
+	if snapshot, err := readRemoteSnapshotNamed(root, name); err == nil {
+		if !reflect.DeepEqual(snapshot.Record, record) {
+			return remoteManagedSnapshot{}, "", errors.New("remote revision receipt differs")
+		}
+		return snapshot, name, nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return remoteManagedSnapshot{}, "", err
+	}
+	snapshot, err := readRemoteSnapshot(root)
+	if err != nil {
+		return remoteManagedSnapshot{}, "", err
+	}
+	if !reflect.DeepEqual(snapshot.Record, record) {
+		return remoteManagedSnapshot{}, "", errors.New("remote publication receipt differs")
+	}
+	return snapshot, remoteManagedSnapshotFile, nil
+}
+
 // RemoveSnapshot is only called after authenticated owned teardown. The exact
 // publication must match the retained deployment before removal.
 func (r *RemoteManagedRuntime) RemoveSnapshot(stateDir string) error {
@@ -107,14 +198,14 @@ func (r *RemoteManagedRuntime) RemoveSnapshot(stateDir string) error {
 		return err
 	}
 	defer root.Close()
-	snapshot, err := readRemoteSnapshot(root)
+	snapshot, name, err := readSelectedRemoteSnapshot(root, r.Record())
 	if err != nil {
 		return err
 	}
 	if !reflect.DeepEqual(snapshot.Record, r.Record()) {
 		return errors.New("remote publication changed before snapshot cleanup")
 	}
-	if err := root.Remove(remoteManagedSnapshotFile); err != nil {
+	if err := root.Remove(name); err != nil {
 		return err
 	}
 	directory, err := root.Open(".")
@@ -137,7 +228,7 @@ func RestoreRemoteManagedSnapshot(transport targetsession.ProjectTransport, scop
 		return nil, err
 	}
 	defer root.Close()
-	snapshot, err := readRemoteSnapshot(root)
+	snapshot, _, err := readSelectedRemoteSnapshot(root, record)
 	if err != nil {
 		return nil, err
 	}
@@ -175,14 +266,18 @@ func openRemoteSnapshotRoot(stateDir string) (*os.Root, error) {
 }
 
 func readRemoteSnapshot(root *os.Root) (remoteManagedSnapshot, error) {
-	info, err := root.Lstat(remoteManagedSnapshotFile)
+	return readRemoteSnapshotNamed(root, remoteManagedSnapshotFile)
+}
+
+func readRemoteSnapshotNamed(root *os.Root, name string) (remoteManagedSnapshot, error) {
+	info, err := root.Lstat(name)
 	if err != nil {
 		return remoteManagedSnapshot{}, err
 	}
 	if !info.Mode().IsRegular() || info.Mode().Perm() != 0600 || info.Mode()&(os.ModeSetuid|os.ModeSetgid|os.ModeSticky) != 0 {
 		return remoteManagedSnapshot{}, errors.New("remote managed snapshot must be a protected regular file")
 	}
-	file, err := root.Open(remoteManagedSnapshotFile)
+	file, err := root.Open(name)
 	if err != nil {
 		return remoteManagedSnapshot{}, err
 	}
