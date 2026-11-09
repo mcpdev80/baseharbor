@@ -17,6 +17,9 @@ import (
 // protections. Each request is independently authorized for an apply to its
 // immutable application/target/environment, including upload chunks.
 func (h *Handler) authorizeSourceTransfer(r *http.Request, m sourcetransfer.Manifest) error {
+	if h.sourceTransfers == nil {
+		return machine.NewError(machine.ErrorUnsupported, "Source transfers require durable Core operation storage.", "Configure RuntimeOperationsDir on the owning Core.", false)
+	}
 	principal, ok := identity.FromContext(r.Context())
 	if !ok {
 		return machine.NewError(machine.ErrorAuthenticationFailed, "Authenticated operator identity is required.", "Authenticate with the configured OIDC provider.", false)
@@ -87,6 +90,10 @@ func (h *Handler) handleSourceTransferCurrent(w http.ResponseWriter, r *http.Req
 	}{current.Digest})
 }
 func (h *Handler) sourceTransferFromRequest(w http.ResponseWriter, r *http.Request) (string, bool) {
+	if h.sourceTransfers == nil {
+		sourceTransferError(w, machine.NewError(machine.ErrorUnsupported, "Source transfers are unavailable.", "Configure durable Core operation storage.", false))
+		return "", false
+	}
 	id := r.PathValue("id")
 	if len(id) != 32 || strings.Trim(id, "0123456789abcdef") != "" {
 		sourceTransferError(w, machine.NewError(machine.ErrorValidationFailed, "Invalid transfer identifier.", "Begin a new source transfer.", false))

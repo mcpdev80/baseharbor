@@ -66,12 +66,15 @@ func New(executor Executor, stateRoot string) (*Handler, error) {
 	if err != nil {
 		return nil, err
 	}
-	transfers, err := sourcetransfer.NewStore(filepath.Join(stateRoot, "source-transfers"))
-	if err != nil {
-		return nil, err
-	}
-	if binder, ok := executor.(interface{ BindSourceTransfers(*sourcetransfer.Store) }); ok {
-		binder.BindSourceTransfers(transfers)
+	var transfers *sourcetransfer.Store
+	if stateRoot != "" {
+		transfers, err = sourcetransfer.NewStore(filepath.Join(stateRoot, "source-transfers"))
+		if err != nil {
+			return nil, err
+		}
+		if binder, ok := executor.(interface{ BindSourceTransfers(*sourcetransfer.Store) }); ok {
+			binder.BindSourceTransfers(transfers)
+		}
 	}
 	h := &Handler{
 		operations:    make([]machine.Operation, 0),
