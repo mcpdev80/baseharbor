@@ -137,7 +137,9 @@ func testCoreServer(t *testing.T, tamper bool, mode ...string) (*httptest.Server
 			InstallationID: b.InstallationID, Station: b.Station, Serial: serial.Text(16),
 			LeafPEM:  string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})),
 			TrustPEM: func() string {
-				if len(mode) > 0 && mode[0] == "foreign-trust" { return "not the invitation CA" }
+				if len(mode) > 0 && mode[0] == "foreign-trust" {
+					return "not the invitation CA"
+				}
 				return string(caPEM)
 			}(), ExpiresAt: exp,
 		})
