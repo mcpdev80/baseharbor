@@ -14,12 +14,14 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/machine"
 	"github.com/mcpdev80/baseharbor/internal/machinehttp"
+	"github.com/mcpdev80/baseharbor/internal/sourcetransfer"
 	"github.com/mcpdev80/baseharbor/internal/targetsession"
 )
 
 type bahaMachineExecutor struct {
 	store             application.Store
 	connectorSessions *targetsession.Pool
+	sourceTransfers *sourcetransfer.Store
 	coreAuthority     *deployment.ResolvedTarget
 	// ownedStateRoot is the durable installation state root this management-host
 	// serve process owns: the server holds the kernel lifecycle lock on it for
@@ -63,6 +65,10 @@ func (e *bahaMachineExecutor) ManagementInstallation(context.Context) (string, s
 		return "", "", errors.New("startup Core installation identity is not ready")
 	}
 	return state.ID, state.IdentityIssuer, nil
+}
+
+func (e *bahaMachineExecutor) BindSourceTransfers(store *sourcetransfer.Store) {
+	e.sourceTransfers = store
 }
 
 func (e *bahaMachineExecutor) BindConnectorSessions(pool *targetsession.Pool) {

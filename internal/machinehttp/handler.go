@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -16,6 +17,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/identity"
 	"github.com/mcpdev80/baseharbor/internal/machine"
 	"github.com/mcpdev80/baseharbor/internal/operatorauth"
+	"github.com/mcpdev80/baseharbor/internal/sourcetransfer"
 )
 
 const (
@@ -44,6 +46,7 @@ type Handler struct {
 	executor          Executor
 	logStreamExecutor LogStreamExecutor
 	executions        *executionStore
+	sourceTransfers   *sourcetransfer.Store
 	mux               *http.ServeMux
 	terminals         *terminalStore
 	// backgroundRunExecution gates how the terminal execution is launched after
@@ -63,11 +66,19 @@ func New(executor Executor, stateRoot string) (*Handler, error) {
 	if err != nil {
 		return nil, err
 	}
+	transfers, err := sourcetransfer.NewStore(filepath.Join(stateRoot, "source-transfers"))
+	if err != nil {
+		return nil, err
+	}
+	if binder, ok := executor.(interface{ BindSourceTransfers(*sourcetransfer.Store) }); ok {
+		binder.BindSourceTransfers(transfers)
+	}
 	h := &Handler{
 		operations:    make([]machine.Operation, 0),
 		operationByID: make(map[string]machine.Operation),
 		executor:      executor,
 		executions:    executions,
+		sourceTransfers: transfers,
 		mux:           http.NewServeMux(),
 		terminals:     newTerminalStore(),
 	}
@@ -95,6 +106,10 @@ func New(executor Executor, stateRoot string) (*Handler, error) {
 		binding := bindings[key]
 		h.mux.HandleFunc(binding.Method+" "+binding.Href, handler)
 	}
+	h.mux.HandleFunc("GET /api/v1/machine/source-transfers", h.handleSourceTransferCurrent)
+	h.mux.HandleFunc("POST /api/v1/machine/source-transfers", h.handleSourceTransferBegin)
+	h.mux.HandleFunc("PUT /api/v1/machine/source-transfers/{id}", h.handleSourceTransferPut)
+	h.mux.HandleFunc("POST /api/v1/machine/source-transfers/{id}/commit", h.handleSourceTransferCommit)
 	return h, nil
 }
 

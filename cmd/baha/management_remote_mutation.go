@@ -179,20 +179,32 @@ func remoteApplicationMutation(ctx context.Context, target deployment.ResolvedTa
 	if err != nil {
 		return err
 	}
-	if operation == "apply" {
-		sourceModel, sourceErr := selectedRemoteSourceModel(name, environment)
-		if sourceErr != nil {
-			return sourceErr
-		}
-		payload, err = remoteApplyPayloadWithSource(payload, sourceModel)
-		if err != nil {
-			return err
-		}
-	}
 	core, err := dialVerifiedRemoteCore(ctx, target.Name, target.RuntimeProvider, target.TenantID)
 	if err != nil {
 		return machine.Wrap(machine.ErrorAuthenticationFailed, err,
 			"Configure and authenticate the pinned remote Core connection for this Target.", false)
+	}
+	if operation == "apply" {
+		root, rootErr := remoteLocalSourceRoot(name, environment)
+		if rootErr != nil {
+			return rootErr
+		}
+		if root != "" {
+			digest, transferErr := core.uploadLocalSource(ctx, target.Name, name, environment, root)
+			if transferErr != nil {
+				return transferErr
+			}
+			payload, err = remotePayloadWithSnapshot(payload, digest)
+		} else {
+			sourceModel, sourceErr := selectedRemoteSourceModel(name, environment)
+			if sourceErr != nil {
+				return sourceErr
+			}
+			payload, err = remoteApplyPayloadWithSource(payload, sourceModel)
+		}
+		if err != nil {
+			return err
+		}
 	}
 	key := explicitKey
 	if key == "" {

@@ -101,7 +101,7 @@ func validatePath(p string) error {
 		return fmt.Errorf("invalid source path %q", p)
 	}
 	for _, part := range strings.Split(p, "/") {
-		if part == ".." || part == ".git" || part == ".env" || part == ".ssh" || part == ".aws" || part == ".gnupg" {
+		if part == ".." || part == ".git" || part == ".env" || part == ".ssh" || part == ".aws" || part == ".gnupg" || p == ".baseharbor/init.env" {
 			return fmt.Errorf("source path %q contains forbidden material", p)
 		}
 	}
@@ -109,6 +109,7 @@ func validatePath(p string) error {
 }
 func manifestDigest(m Manifest) (string, error) {
 	m.Digest = ""
+	m.Base = "" // optimistic-concurrency base is not part of immutable source identity
 	raw, err := json.Marshal(m)
 	if err != nil {
 		return "", err
@@ -446,6 +447,19 @@ func (s *Store) Commit(id string) (Manifest, string, error) {
 	delete(s.active, id)
 	return tx.manifest, destination, nil
 }
+
+// Pending identifies the exact authorized target/application scope for a live
+// transfer. The HTTP gateway must reauthorize every chunk and commit.
+func (s *Store) Pending(id string) (Manifest, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	tx, ok := s.active[id]
+	if !ok {
+		return Manifest{}, errors.New("unknown source transfer")
+	}
+	return tx.manifest, nil
+}
+
 func (s *Store) Abort(id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

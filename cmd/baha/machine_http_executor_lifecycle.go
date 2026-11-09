@@ -6,6 +6,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/applicationlifecycle"
 	"github.com/mcpdev80/baseharbor/internal/development"
 	"github.com/mcpdev80/baseharbor/internal/machine"
@@ -74,13 +75,36 @@ func (e *bahaMachineExecutor) executeHTTPApply(
 	if err := ensureResolvedHTTPContext(operationContext, resolved); err != nil {
 		return nil, err
 	}
-	// The first remote app.create may have pinned Git/OCI in the Core-owned
-	// source model. Do not silently deploy the old managed intent if the
-	// workstation omits that source on a later apply.
-	input.SourceModel, err = bindRegisteredCoreSource(resolved, input.SourceModel)
-	if err != nil {
-		return nil, machine.Wrap(machine.ErrorConflict, err,
-			"Use the immutable source registered on this Core application; a source change needs an explicit authorized operation.", false)
+	if input.SourceSnapshotDigest != "" {
+		if input.SourceModel != nil || e.sourceTransfers == nil {
+			return nil, machine.NewError(machine.ErrorConflict, "Snapshot source conflicts with an unbound immutable source.", "Select one Core-verified source transport.", false)
+		}
+		manifest, root, err := e.sourceTransfers.Current(resolved.Target.Name, resolved.Manifest.Name, resolved.Manifest.Environment)
+		if err != nil || manifest.Digest != input.SourceSnapshotDigest {
+			return nil, machine.NewError(machine.ErrorSourceMissing, "The selected source snapshot is missing or no longer current.", "Upload the exact source bytes and retry.", false)
+		}
+		selection, err := application.ResolveRepositoryEnvironment(root, resolved.Manifest.Environment)
+		if err != nil {
+			return nil, machine.Wrap(machine.ErrorValidationFailed, err, "The uploaded snapshot needs a valid baseharbor.yaml.", false)
+		}
+		if selection.Manifest.Name != resolved.Manifest.Name || selection.Manifest.Environment != resolved.Manifest.Environment ||
+			(selection.Manifest.ApplicationID != "" && selection.Manifest.ApplicationID != resolved.DeploymentIdentity.ApplicationID) {
+			return nil, machine.NewError(machine.ErrorPolicyDenied, "Source snapshot does not belong to the authorized Core application.", "Use the matching application identity.", false)
+		}
+		selection.Manifest.ApplicationID = resolved.DeploymentIdentity.ApplicationID
+		resolved.Manifest = selection.Manifest
+		resolved.ManifestPath = selection.ManifestPath
+		resolved.RepositoryRoot = selection.RepositoryRoot
+		resolved.SourceAvailable = true
+		resolved.FromRepository = true
+		ctx = withVerifiedHTTPSource(ctx, resolved)
+	} else {
+		// Registered immutable sources retain their existing Core-side checks.
+		input.SourceModel, err = bindRegisteredCoreSource(resolved, input.SourceModel)
+		if err != nil {
+			return nil, machine.Wrap(machine.ErrorConflict, err,
+				"Use the immutable source registered on this Core application; a source change needs an explicit authorized operation.", false)
+		}
 	}
 	if input.SourceModel != nil {
 		// A Core-registered clean Git worktree at the exact commit can be
