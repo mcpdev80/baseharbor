@@ -713,6 +713,11 @@ func ensureRuntimeIntegrationTrustPlane(t *testing.T, ctx context.Context) {
 		// after this helper runs (one isolated Core per test), so a mutation
 		// that drops a single test's target fails only that one test at the
 		// gate — a per-test discriminating proof, not a systemic failure.
+		// The bootstrap target is fresh and owns the sole genuine Core
+		// installation of this package. Native application tests select that
+		// owner and isolate work by application/deployment/Compose identity;
+		// an ownerless sibling Target is not an authorized CI shortcut.
+		// Ambient local Core installations are never borrowed or mutated.
 		//
 		// The bootstrap target name is generated fresh per process so a
 		// contaminated or pre-existing Core on a fixed name can never be the
@@ -1206,41 +1211,42 @@ func runtimeIntegrationTrustPlaneCleanupForTest(t *testing.T, marker string) {
 // isolateRuntimeForTest configures a fresh target for the requested runtime.
 // Target and provider are verified through the real deployment resolver, not
 // inferred from environment variables or constructed network names.
+// isolateRuntimeForTest selects the genuine package-owned installation for
+// native lifecycle tests. These tests intentionally use distinct application
+// names, deployment IDs, repository roots and Compose projects; inventing an
+// ownerless Target for each test breaks the one-installation-owner invariant.
+// The bootstrap installation is the only Core this test package creates.
 func isolateRuntimeForTest(t *testing.T, name string) {
 	t.Helper()
 	provider := integrationRuntimeProvider(t)
-	isoTarget := "w169-" + name + "-" + bootstrapTargetSuffix() + "-iso"
-	if err := os.Setenv("BASEHARBOR_TARGET", isoTarget); err != nil {
-		t.Fatalf("set isolated target %q: %v", isoTarget, err)
-	}
-	var buf bytes.Buffer
-	args := []string{"target", "create", isoTarget, "--runtime-provider", provider, "--access", "local", "--access-provider", "local", "--reference", "local"}
-	if err := runWithIO(t.Context(), args, &buf, &buf); err != nil {
-		t.Fatalf("configure isolated %s target %q: %v\n%s", provider, isoTarget, err, buf.String())
+	boot := runtimeIntegrationTrustPlaneTarget
+	if boot.Name == "" || boot.RuntimeProvider != provider {
+		t.Fatalf("native test %q has no captured authoritative %s Core Target: %+v", name, provider, boot)
 	}
 	cfg, err := deployment.LoadConfig()
 	if err != nil {
-		t.Fatalf("load actual target configuration: %v", err)
+		t.Fatalf("load native Core target configuration: %v", err)
 	}
+	resolved, err := cfg.ResolveTarget(boot.Name, "")
+	if err != nil {
+		t.Fatalf("resolve native Core owning target %q: %v", boot.Name, err)
+	}
+	if resolved.RuntimeProvider != provider || (resolved.AccessProvider != "" && resolved.AccessProvider != "local") {
+		t.Fatalf("native Core target changed ownership/provider: %+v", resolved)
+	}
+	stateRoot, err := deployment.TargetStateRoot(resolved.Name)
+	if err != nil {
+		t.Fatalf("resolve native Core state: %v", err)
+	}
+	if err := deployment.VerifyDeploymentOwnerAgainstOwner(resolved.Name, filepath.Join(stateRoot, "runtime"), ""); err != nil {
+		t.Fatalf("native test %q requires genuine Core ownership for target %q: %v", name, resolved.Name, err)
+	}
+	t.Setenv("BASEHARBOR_TARGET", resolved.Name)
 	selected, err := selectedTargetName("", os.Getenv("BASEHARBOR_TARGET"), cfg)
-	if err != nil {
-		t.Fatalf("resolve active target: %v", err)
+	if err != nil || selected != resolved.Name {
+		t.Fatalf("native test %q selected wrong Core: selected=%q err=%v", name, selected, err)
 	}
-	resolved, err := cfg.ResolveTarget(selected, "")
-	if err != nil {
-		t.Fatalf("resolve configured runtime target: %v", err)
-	}
-	if resolved.Name != isoTarget || resolved.RuntimeProvider != provider || resolved.AccessProvider != "local" {
-		t.Fatalf("runtime isolation mismatch: want target=%q provider=%q access=local, got %+v", isoTarget, provider, resolved)
-	}
-	// TEST-SCOPE owner loan marker (card t-20261106-r27-remote-up-podman-owner-missing,
-	// lane w286): this isolated test Target has no installation of its own by
-	// design — the boot Target's genuine Core installation is the single
-	// durable owner. The marker file documents the isolated test Target; the
-	// production owner loan resolves this namespace against the boot Core by
-	// its genuine, READY installation, not by the marker alone.
-	writeBahaTestIsolationMarker(t, isoTarget)
-	t.Logf("isolated runtime resolved from deployment config: target=%q runtime=%q endpoint=%q context=%q", resolved.Name, resolved.RuntimeProvider, resolved.DockerEndpoint, resolved.DockerContext)
+	t.Logf("native test %q uses owning Core target=%q runtime=%q endpoint=%q context=%q; application/project identities remain test-scoped", name, resolved.Name, resolved.RuntimeProvider, resolved.DockerEndpoint, resolved.DockerContext)
 }
 
 func integrationRuntimeProvider(t *testing.T) string {
