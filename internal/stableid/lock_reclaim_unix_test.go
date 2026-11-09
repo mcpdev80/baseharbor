@@ -138,17 +138,24 @@ func lockFilePath(root, scope string) string {
 // the pid matches (pid reuse). This pins that lockHolderLive treats a live
 // holder as live.
 func TestStaleAppLockLiveBootStillBlocks(t *testing.T) {
+	// A receipt for the current live process carries the OS-observed start time
+	// and the current boot id; lockHolderLive must judge it live.
 	rec := lockHolderRecord{
 		pid:       os.Getpid(),
-		startTime: time.Now().Unix(),
+		startTime: currentProcessStartTime(),
 		bootID:    lockHolderBootID(),
 	}
 	if !lockHolderLive(rec) {
 		t.Fatal("a receipt for the current live process with matching boot-id was judged stale")
 	}
 	// A dead pid is always stale.
-	if lockHolderLive(lockHolderRecord{pid: 999999, bootID: lockHolderBootID()}) {
+	if lockHolderLive(lockHolderRecord{pid: 999999, startTime: currentProcessStartTime(), bootID: lockHolderBootID()}) {
 		t.Fatal("a dead pid was judged live")
+	}
+	// A live pid with a DIFFERENT start time is a recycled pid (same boot, pid
+	// reassigned after the original holder died): stale.
+	if lockHolderLive(lockHolderRecord{pid: os.Getpid(), startTime: currentProcessStartTime() - 1, bootID: lockHolderBootID()}) {
+		t.Fatal("a live pid with a mismatched start time (recycled pid) was judged live")
 	}
 }
 
@@ -173,6 +180,47 @@ func TestReclaimLeavesForeignReceiptUntouched(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(deploymentsDir, foreign)); err != nil {
 		t.Fatal("foreign receipt was removed")
+	}
+}
+
+// TestReclaimFailsClosedOnMalformedReceipt proves a magic-header receipt with a
+// non-positive or missing startTime is rejected by parseLockHolderRecord and
+// left untouched (never deleted): a bare pid==0 line must never be treated as a
+// reclaimable holder. This is the r2 fail-closed contract.
+func TestReclaimFailsClosedOnMalformedReceipt(t *testing.T) {
+	root := t.TempDir()
+	deploymentsDir := filepath.Join(root, "deployments")
+	if err := os.MkdirAll(deploymentsDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	cases := map[string]string{
+		"magic but pid==0":             lockHolderHeader + "0\n",
+		"magic with garbage pid":       lockHolderHeader + "notapid\n",
+		"magic with zero startTime":    lockHolderHeader + "12345\nstartTime=0\n",
+		"magic with missing startTime": lockHolderHeader + "12345\nbootID=x\n",
+	}
+	for name, content := range cases {
+		name, content := name, content
+		t.Run(name, func(t *testing.T) {
+			name := ".malformed.app_installation.lock"
+			if err := os.WriteFile(filepath.Join(deploymentsDir, name), []byte(content), 0600); err != nil {
+				t.Fatal(err)
+			}
+			// parseLockHolderRecord must reject all malformed receipts.
+			if rec, ok := parseLockHolderRecord([]byte(content)); ok || rec.pid > 0 {
+				t.Fatalf("%s: malformed receipt was accepted as valid", name)
+			}
+			reclaimed, err := reclaimStaleAppLock(deploymentsDir, name)
+			if err != nil {
+				t.Fatalf("reclaim returned an error: %v", err)
+			}
+			if reclaimed {
+				t.Fatalf("%s: malformed receipt was reclaimed", name)
+			}
+			if _, err := os.Stat(filepath.Join(deploymentsDir, name)); err != nil {
+				t.Fatalf("%s: malformed receipt was removed", name)
+			}
+		})
 	}
 }
 

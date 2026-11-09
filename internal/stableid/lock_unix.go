@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"time"
 
 	"golang.org/x/sys/unix"
 )
@@ -71,18 +70,20 @@ func parseLockHolderRecord(buf []byte) (lockHolderRecord, bool) {
 	if !strings.HasPrefix(text, lockHolderHeader) {
 		return lockHolderRecord{}, false
 	}
-	rec := lockHolderRecord{bootID: ""}
+	var rec lockHolderRecord
 	// The pid is the bare token after the header on the first line. Trim at the
 	// first newline so a trailing startTime/bootID line does not break Atoi.
 	if rest := strings.TrimPrefix(text, lockHolderHeader); rest != "" {
 		if nl := strings.IndexByte(rest, '\n'); nl >= 0 {
 			rest = rest[:nl]
 		}
-		if v, err := strconv.Atoi(strings.TrimSpace(rest)); err == nil {
+		v, err := strconv.Atoi(strings.TrimSpace(rest))
+		if err == nil && v > 0 {
 			rec.pid = v
 		}
 	}
 	// Read the remaining key=value lines.
+	startTimeSeen := false
 	for _, line := range strings.Split(text, "\n") {
 		line = strings.TrimSpace(line)
 		if line == lockHolderHeader+strconv.Itoa(rec.pid) {
@@ -96,12 +97,76 @@ func parseLockHolderRecord(buf []byte) (lockHolderRecord, bool) {
 		case "startTime":
 			if v, err := strconv.ParseInt(val, 10, 64); err == nil {
 				rec.startTime = v
+				startTimeSeen = true
 			}
 		case "bootID":
 			rec.bootID = val
 		}
 	}
+	// Fail closed: a genuine receipt the product writes always carries a
+	// positive pid and a positive startTime. A malformed or truncated line that
+	// only matches the magic header (pid==0, unparsable pid, or startTime
+	// absent/<=0) is rejected with ok=false so reclaimStaleAppLock leaves it
+	// untouched. A bare pid==0 must never be treated as a reclaimable holder —
+	// that would let a truncated or foreign line delete a live owner's receipt.
+	if rec.pid <= 0 || !startTimeSeen || rec.startTime <= 0 {
+		return lockHolderRecord{}, false
+	}
 	return rec, true
+}
+
+// currentProcessStartTime returns the calling process's OS-observed start time
+// as whole seconds since the unix epoch, derived from /proc/<pid>/stat field 22
+// (starttime, in clock ticks since boot) divided by the tick rate. This is the
+// holder's real kernel start instant, not the wall-clock moment the receipt is
+// written: reclaim re-reads the same field for the live pid and a mismatch
+// proves the pid was recycled. It returns 0 on any platform (or read) that
+// cannot supply it, where the caller falls back to boot-id alone.
+func currentProcessStartTime() int64 {
+	tick, ok := processStartTicks(os.Getpid())
+	if !ok {
+		return 0
+	}
+	return tick / clockTickCount()
+}
+
+// processStartTicks reads /proc/<pid>/stat field 22 (the holder's start time in
+// clock ticks since boot) for the given pid. It returns ok=false when the
+// field cannot be read (non-Linux, missing file, malformed line), never an
+// error — a caller must treat an unreadable field as "no start-time hint".
+func processStartTicks(pid int) (int64, bool) {
+	data, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid))
+	if err != nil {
+		return 0, false
+	}
+	// /proc/<pid>/stat renders as "<pid> (<comm>) <state> ..."; the comm field
+	// may contain spaces or parentheses, so split on the final ')' to reach the
+	// first space-separated field after it, whose 19th following token is field
+	// 22 (starttime).
+	brace := strings.LastIndex(string(data), ")")
+	if brace < 0 {
+		return 0, false
+	}
+	fields := strings.Fields(string(data)[brace+1:])
+	// After the closing ')': field 3 (state) is fields[0]; field 22 (starttime)
+	// is fields[19].
+	if len(fields) < 20 {
+		return 0, false
+	}
+	ticks, err := strconv.ParseInt(fields[19], 10, 64)
+	if err != nil || ticks < 0 {
+		return 0, false
+	}
+	return ticks, true
+}
+
+// clockTickCount returns the system clock tick rate (ticks per second). Linux
+// defines HZ as 100 in this context; we use that well-known default so
+// starttime ticks convert to coarse seconds. Precise precision is not required:
+// the reuse check compares two readings of the same field, so any consistent
+// rate suffices, and the fail-closed dead-holder path never depends on it.
+func clockTickCount() int64 {
+	return 100
 }
 
 // lockHolderBootID returns a machine-wide boot identifier that, combined with
@@ -151,13 +216,26 @@ func lockHolderLive(rec lockHolderRecord) bool {
 		// another user's holder — treat it as live.
 		return true
 	}
-	// pid is alive. If a boot-id is present on both sides, a mismatch means the
-	// receipt is from an earlier boot: the original holder is gone and the pid
-	// was later reassigned on the current boot, so reclaim. A match (same boot)
-	// stays live. With no boot-id source we cannot prove reuse, so a live pid
-	// stays live (fail-closed).
+	// pid is alive. Reuse is caught two ways:
+	//   - boot-id present on both sides but different: the receipt is from an
+	//     earlier boot, the original holder is gone, and the kernel later
+	//     reassigned this pid on the current boot -> reclaim.
+	//   - boot-id unavailable (both empty) but startTime present on both sides
+	//     and different: re-read the *recorded* pid's own kernel start time via
+	//     /proc/<pid>/stat and compare it to the receipt's startTime. A
+	//     genuinely live holder started at that instant and matches; a different
+	//     value means the pid was recycled between the receipt's write and now.
+	//     The compare is against the recorded pid, never the caller's own pid,
+	//     because the receipt belongs to a possibly different process.
 	if rec.bootID != "" && lockHolderBootID() != "" {
 		return rec.bootID == lockHolderBootID()
+	}
+	if rec.startTime > 0 {
+		ticks, ok := processStartTicks(rec.pid)
+		if !ok {
+			return true
+		}
+		return rec.startTime == ticks/clockTickCount()
 	}
 	return true
 }
@@ -245,7 +323,7 @@ func lockNamed(root string, name string) (func(), error) {
 	// foreign text or a pre-0427-180 bare-pid line.
 	if _, err := file.Write(lockHolderRecord{
 		pid:       os.Getpid(),
-		startTime: time.Now().Unix(),
+		startTime: currentProcessStartTime(),
 		bootID:    lockHolderBootID(),
 	}.lockHolderBytes()); err != nil {
 		_ = unix.Flock(fd, unix.LOCK_UN)
