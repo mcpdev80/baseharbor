@@ -394,3 +394,80 @@ func TestRegistryUpFailsClosedNamingRecordAndNetworkAbsent(t *testing.T) {
 		t.Fatal("foreign orphan's absent network must not be attributed to the resolved app")
 	}
 }
+
+// TestRegistryForeignOrphanNoFalseAttributionToRequestedApp proves the F3
+// no-false-attribution invariant through the REAL production path: a damaged
+// deploy directory that belongs to a DIFFERENT (foreign) app (seeded as a valid
+// UUID with a Core owner) exists while the requested app (whose workload network
+// is absent) is resolved. FindDeployment returns the foreign damaged error
+// (listDeploymentRecords returns before the application_id filter). With the
+// raw pre-fix code resolvedRepositoryApplication enriches that error with the
+// requested app's absent network (misattribution). With the F3 fix the same
+// listing error is reported as an unknown-owner conflict that does NOT name the
+// requested app's record or network.
+func TestRegistryForeignOrphanNoFalseAttributionToRequestedApp(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+
+	target := deployment.ResolvedTarget{Name: "local", RuntimeProvider: "docker"}
+	seedCoreOwner(t, target.Name)
+
+	// Seed the foreign damaged directory: a valid UUID with retained state and
+	// no deployment.json (the BF-03 damaged signature).
+	foreign := application.New("foreign-app", "dev", true, true, false)
+	foreignID, err := deployment.NewDeploymentIdentity(target.Name, foreign.ApplicationID, foreign.Name, foreign.Environment)
+	if err != nil {
+		t.Fatal(err)
+	}
+	intent, err := json.Marshal(foreign)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := deployment.SaveDeploymentRecord(deployment.DeploymentRecord{
+		Version:  deployment.DeploymentRecordVersion,
+		Identity: foreignID,
+		Source:   deployment.DeploymentSource{Kind: "repository", Repository: "/nonexistent/foreign", Manifest: "/nonexistent/foreign/baseharbor.yaml"},
+		Applied:  deployment.AppliedDeployment{Intent: intent, RuntimeProvider: target.RuntimeProvider},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	root, _ := deployment.DeploymentRoot(foreignID)
+	if err := os.WriteFile(filepath.Join(root, "application.env"), []byte("X=Y\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(filepath.Join(root, "deployment.json")); err != nil {
+		t.Fatal(err)
+	}
+
+	// Request a DIFFERENT app whose workload network is absent. Override the
+	// registry network seam to ABSENT so that, had the fix regressed, the foreign
+	// orphan's absent network would be attributed to the requested app.
+	orig := damagedScanRuntimeForTarget
+	defer func() { damagedScanRuntimeForTarget = orig }()
+	damagedScanRuntimeForTarget = func(context.Context, deployment.ResolvedTarget) (deployment.NetworkInspector, error) {
+		return fakeDamagedScanRuntime{state: bhruntime.RuntimeNetworkStateAbsent}, nil
+	}
+
+	m := application.New("requested-app", "dev", true, true, false)
+	targetRoot, _ := deployment.TargetStateRoot(target.Name)
+	selection := application.RepositoryEnvironmentSelection{Manifest: m}
+	_, err = resolvedRepositoryApplication(context.Background(), target, targetRoot, selection, "up")
+	var damaged *deployment.DamagedDeploymentError
+	if !errors.As(err, &damaged) {
+		t.Fatalf("expected a damaged-state error from the production path, got %T: %v", err, err)
+	}
+	// The F3 fix: the damaged error must be reported as an unknown-owner
+	// conflict (Application == "unknown"), never carrying the requested app's
+	// record identity (Application / ApplicationID), and never the requested
+	// app's absent workload network.
+	if damaged.Identity.Application == "requested-app" {
+		t.Fatalf("foreign orphan must not acquire the requested app's identity; got %+v", damaged.Identity)
+	}
+	if damaged.Identity.ApplicationID == m.ApplicationID {
+		t.Fatalf("foreign orphan must not acquire the requested app's application_id; got %+v", damaged.Identity)
+	}
+	if damaged.Network == bhruntime.RuntimeNetworkStateAbsent {
+		t.Fatalf("foreign orphan's absent network must NOT be attributed to the requested app; got network=%q", damaged.Network)
+	}
+}

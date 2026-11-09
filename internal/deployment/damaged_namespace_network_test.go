@@ -175,3 +175,50 @@ func TestDamagedDeploymentNamespaceScopedNoFalseAttributionToForeignApp(t *testi
 		t.Fatalf("network name = %q, want the derived workload network for the resolved app", networkName)
 	}
 }
+
+// TestListDeploymentRecordsDiscardsMalformedDirectoryNames proves the F2
+// canonical directory-name invariant: a non-UUID deploy directory (even one that
+// carries the BF-03 damaged signature) is discarded by listDeploymentRecords,
+// never advertised as a deployment, and a valid-UUID damaged directory is still
+// flagged. This is the no-false-admission half of the F3 invariant: malformed
+// names cannot masquerade as valid deployment IDs.
+func TestListDeploymentRecordsDiscardsMalformedDirectoryNames(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+
+	target := "local"
+	depDir := deploymentsNamespaceForTest(t, target)
+
+	// A valid-UUID damaged directory: retained state, no deployment.json.
+	validUUID := "11111111-1111-1111-1111-111111111111"
+	validDir := filepath.Join(depDir, validUUID)
+	if err := os.MkdirAll(validDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(validDir, "application.env"), []byte("X=Y\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// A malformed (non-UUID) directory carrying the SAME damaged signature.
+	malformedDir := filepath.Join(depDir, "foreign-orphan")
+	if err := os.MkdirAll(malformedDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(malformedDir, "application.env"), []byte("X=Y\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	_, warnings, err := ListDeploymentsForDisplay(target)
+	if err != nil {
+		t.Fatalf("listing: %v", err)
+	}
+	for _, w := range warnings {
+		if _, ok := DamagedDeploymentState(w, nil); ok {
+			t.Fatalf("malformed directory name must not be advertised as deployment damage; warning = %v", w)
+		}
+	}
+	// The valid UUID is still present (record absent -> incomplete warning, not
+	// damage, because no proven Core owner is seeded here); the malformed dir is
+	// simply skipped.
+}

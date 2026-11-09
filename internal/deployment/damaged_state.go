@@ -144,6 +144,24 @@ func (e *DamagedDeploymentError) enrichNetworkForOwnIdentity(inspector NetworkIn
 	e.NetworkName = networkName
 }
 
+// Ownerless reports whether the damaged deployment's identity is unknown: the
+// deploy directory is a per-deploy UUID with no retained deployment.json, so its
+// owning application/environment cannot be read from any trusted source. Such a
+// damaged directory is a target-level damaged-state conflict, never the
+// requested application's record — the CLI must report the record half without
+// attributing the requested app's record or network to a foreign/unknown-owner
+// orphan. This is the bug-hunt BF-03 no-false-attribution invariant: a damaged
+// entry is bound to the requested app ONLY when a trusted retained identity
+// source proves that binding.
+func (e *DamagedDeploymentError) Ownerless() bool {
+	if e == nil {
+		return false
+	}
+	return strings.TrimSpace(e.Identity.Application) == "" &&
+		strings.TrimSpace(e.Identity.ApplicationID) == "" &&
+		strings.TrimSpace(e.Identity.Environment) == ""
+}
+
 // DamagedDirectoryState is the directory-level primitive behind
 // DamagedDeploymentState: it returns true when the deploy directory holds
 // retained protected runtime state while deployment.json is missing.

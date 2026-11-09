@@ -247,27 +247,23 @@ func resolvedRepositoryApplication(ctx context.Context, target deployment.Resolv
 	}
 	if err != nil {
 		// A registry-path damaged-state error (found in the deployment listing
-		// for THIS target/app) carries only the record half AND is missing the
-		// retained Application/Environment identity — the deploy directory is a
-		// per-deploy UUID with no record to read them from. Reconstruct the
-		// retained identity from the request parameters (the caller already knows
-		// the requested application_id, manifest name and environment) and verify
-		// THIS deployment's retained-identity workload network via the runtime
-		// seam, enriching the error with the network half only when it is
-		// genuinely ABSENT for that exact identity — an ownership check on a
-		// missing network, never a fabricated absent from an unrelated or
-		// failed inspect.
-		if damaged, ok := deployment.DamagedDeploymentState(err, inspectDamagedNetworkForTarget(ctx, target)); ok && damaged != nil {
-			if damaged.Identity.ApplicationID == "" {
-				damaged.Identity.ApplicationID = m.ApplicationID
-			}
-			if damaged.Identity.Application == "" {
-				damaged.Identity.Application = m.Name
-			}
-			if damaged.Identity.Environment == "" {
-				damaged.Identity.Environment = m.Environment
-			}
-			damaged.EnrichNetworkForOwnIdentity(inspectDamagedNetworkForTarget(ctx, target))
+		// for THIS target) is a target-level damaged-state conflict, not the
+		// requested application's damage. The deploy directory is a per-deploy
+		// UUID with no retained deployment.json, so there is NO trusted retained
+		// identity source that binds it to the requested app — its owner is
+		// unknown. Attributing the requested application's record or workload
+		// network to it would mislabel a foreign/unknown-owner orphan as the
+		// requested app's BF-03 damage (bug-hunt no-false-attribution invariant).
+		//
+		// Report the record half under an explicit unknown-owner identity and do
+		// NOT enrich with the requested app's network half. Only a damaged entry
+		// bound to the requested app by a trusted retained identity source may
+		// carry the requested app's record/network diagnosis.
+		if damaged, ok := deployment.DamagedDeploymentState(err, nil); ok && damaged != nil && damaged.Ownerless() {
+			damaged.Identity.Target = target.Name
+			damaged.Identity.Application = "unknown"
+			damaged.Identity.ApplicationID = ""
+			damaged.Identity.Environment = ""
 			return resolvedApplication{}, damaged
 		}
 		return resolvedApplication{}, err
