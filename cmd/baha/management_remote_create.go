@@ -12,13 +12,29 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
+	"github.com/mcpdev80/baseharbor/internal/development"
 	"github.com/mcpdev80/baseharbor/internal/machine"
 )
 
 // remoteCreateTargetManagedApplication registers target-managed Application
 // Intent on the verified Core. It does not transfer workstation source files:
 // repository-owned sources require a separate authorized source admission.
-func remoteCreateTargetManagedApplication(ctx context.Context, target deployment.ResolvedTarget, intent application.Manifest) (applicationAdoptionResult, error) {
+func remoteCreateTargetManagedApplication(ctx context.Context, target deployment.ResolvedTarget, intent application.Manifest, selected ...*development.SourceModel) (applicationAdoptionResult, error) {
+	if len(selected) > 1 {
+		return applicationAdoptionResult{}, errors.New("only one source model may be supplied")
+	}
+	var source *development.SourceModel
+	if len(selected) == 1 {
+		source = selected[0]
+	}
+	if source != nil {
+		if source.Application != intent.Name {
+			return applicationAdoptionResult{}, errors.New("remote source model belongs to another application")
+		}
+		if err := development.ValidateImmutableRemoteSources(*source); err != nil {
+			return applicationAdoptionResult{}, err
+		}
+	}
 	if intent.ApplicationID != "" || strings.TrimSpace(intent.Name) == "" || strings.TrimSpace(intent.Environment) == "" {
 		return applicationAdoptionResult{}, errors.New("remote app create requires explicit intent without a client-assigned application ID")
 	}
@@ -27,7 +43,7 @@ func remoteCreateTargetManagedApplication(ctx context.Context, target deployment
 		return applicationAdoptionResult{}, machine.Wrap(machine.ErrorAuthenticationFailed, err,
 			"Configure and authenticate the pinned remote Core connection for this Target.", false)
 	}
-	raw, err := json.Marshal(machineApplicationCreateInput{Target: target.Name, Intent: intent})
+	raw, err := json.Marshal(machineApplicationCreateInput{Target: target.Name, Intent: intent, SourceModel: source})
 	if err != nil {
 		return applicationAdoptionResult{}, err
 	}
