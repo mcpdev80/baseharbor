@@ -10,6 +10,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
+	"github.com/mcpdev80/baseharbor/internal/delivery"
 	"github.com/mcpdev80/baseharbor/internal/development"
 )
 
@@ -126,5 +127,43 @@ func TestFingerprintStagedCandidateIncludesExecutableMode(t *testing.T) {
 	}
 	if before == after {
 		t.Fatal("candidate fingerprint did not bind the Git executable bit")
+	}
+}
+
+func TestStagedCoreGitCandidateConsentPinsExactArtifact(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "app.yaml")
+	if err := os.WriteFile(path, []byte("version: one\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	fingerprint, err := fingerprintStagedCandidate(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	candidate := stagedCoreGitCandidate{
+		Root: root, Fingerprint: fingerprint,
+		Submission: delivery.CandidateSubmission{
+			ContractVersion: delivery.CandidateContractVersion,
+			ApplicationID: "b13e96c1-83a0-4dd2-90e5-54a2d2f3ee8a",
+			TargetName: "remote-docker",
+			SourceRepository: "https://git.example/demo.git",
+			SourceRevision: strings.Repeat("a", 40),
+		},
+	}
+	if err := confirmStagedCoreGitCandidate(candidate, ""); err == nil {
+		t.Fatal("missing approval consent accepted")
+	}
+	if err := confirmStagedCoreGitCandidate(candidate, strings.Repeat("b", 64)); err == nil {
+		t.Fatal("wrong approval consent accepted")
+	}
+	exact := delivery.CandidateConsentDigest(candidate.Submission)
+	if err := confirmStagedCoreGitCandidate(candidate, exact); err != nil {
+		t.Fatalf("exact staged candidate consent rejected: %v", err)
+	}
+	if err := os.WriteFile(path, []byte("version: two\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := confirmStagedCoreGitCandidate(candidate, exact); err == nil {
+		t.Fatal("staged source mutation after confirmation was accepted")
 	}
 }
