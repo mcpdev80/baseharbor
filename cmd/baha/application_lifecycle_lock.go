@@ -72,7 +72,15 @@ func lockApplicationTargetLifecycle(resolved resolvedApplication, allowPriority 
 		return unlock, nil
 	}
 
-	unlock, err := coreinstallation.AcquireLifecycleLock(resolved.TargetStateRoot)
+	// Target-wide whole-Target lifecycle mutation (remote/destroy/stop/control
+	// plane): route through the target-wide scan path so the shared
+	// .installation.lock is held for the whole mutation and held per-app dotfiles
+	// are scanned. This fails closed while a local app lifecycle is active and
+	// fails closed on a scan error — a target-wide mutation can never overlap a
+	// local app lifecycle. The scan is not retryable contention: a held app is a
+	// genuine conflict, so any failure here fails closed rather than entering the
+	// bounded retry loop.
+	unlock, err := coreinstallation.AcquireTargetWideLifecycleLock(resolved.TargetStateRoot)
 	if err != nil {
 		return nil, fmt.Errorf("Target application lifecycle is active: %w", err)
 	}

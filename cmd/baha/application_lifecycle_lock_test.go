@@ -249,6 +249,116 @@ func TestSharedConsumersSerializeOnAppOwner(t *testing.T) {
 	}
 }
 
+// TestProductionTargetWideMutationCannotOverlapLocalAppLifecycle is the F3
+// production regression in direction 1: a local app holds its per-app lock and a
+// REAL target-wide lifecycle mutation through the production seam
+// (lockApplicationTargetLifecycle, the remote/destroy/stop else-branch that now
+// routes through coreinstallation.AcquireTargetWideLifecycleLock) must fail
+// closed — it must not begin while the app lifecycle is held.
+func TestProductionTargetWideMutationCannotOverlapLocalAppLifecycle(t *testing.T) {
+	target := configureTestTarget(t)
+	root, err := deployment.TargetStateRoot(target.Name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(root, 0700); err != nil {
+		t.Fatal(err)
+	}
+
+	// A local app holds its per-app lock through the production per-app path.
+	appUnlock, aerr := lockApplicationTargetLifecycle(resolvedApplication{
+		Target:             target,
+		TargetStateRoot:    root,
+		DeploymentIdentity: deployment.DeploymentIdentity{DeploymentID: "app-lived"},
+		Manifest:           application.New("app-lived", "dev", false, false, false),
+	}, false)
+	if aerr != nil {
+		t.Fatalf("local app acquire: %v", aerr)
+	}
+	t.Cleanup(appUnlock)
+
+	// A real target-wide mutation through the production seam (destroy/remote
+	// else-branch) must fail closed while the app lifecycle is held.
+	wideUnlock, werr := lockApplicationTargetLifecycle(resolvedApplication{
+		Target:             target,
+		TargetStateRoot:    root,
+		DeploymentIdentity: deployment.DeploymentIdentity{}, // no app id => target-wide
+		Manifest:           application.New("ghost", "dev", false, false, false),
+	}, true)
+	if werr == nil {
+		wideUnlock()
+		t.Fatal("target-wide mutation began while a local app lifecycle was held")
+	}
+}
+
+// TestProductionAppCannotBeginDuringTargetWideScan is the F3 production
+// regression in the opposite direction: while the production target-wide path
+// holds .installation.lock to run its scan, a concurrent local app must not be
+// able to create its per-app dotfile (it fails on the held target-wide lock).
+func TestProductionAppCannotBeginDuringTargetWideScan(t *testing.T) {
+	target := configureTestTarget(t)
+	root, err := deployment.TargetStateRoot(target.Name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(root, 0700); err != nil {
+		t.Fatal(err)
+	}
+
+	// The target-wide mutation holds .installation.lock (its scan window).
+	wideUnlock, werr := coreinstallation.AcquireTargetWideLifecycleLock(root)
+	if werr != nil {
+		t.Fatalf("target-wide acquire: %v", werr)
+	}
+	// While the scan holds the lock, a local app cannot begin its lifecycle.
+	// The per-app primitive AcquireAppLifecycleLock takes the same
+	// .installation.lock critical section and must fail fast on flock contention
+	// (not begin during the held scan).
+	appUnlock, aerr := coreinstallation.AcquireAppLifecycleLock(root, "app-late")
+	if aerr == nil {
+		appUnlock()
+		t.Fatal("a local app began its lifecycle during a held target-wide scan")
+	}
+
+	// Once the scan releases, the app can begin normally (the critical section
+	// is open again and no dotfile is held).
+	wideUnlock()
+	appUnlock, aerr = coreinstallation.AcquireAppLifecycleLock(root, "app-late")
+	if aerr != nil {
+		t.Fatalf("local app could not begin after the target-wide scan released: %v", aerr)
+	}
+	appUnlock()
+}
+
+// TestProductionTargetWideScanFailsClosedOnScanError is the F3 fail-closed
+// requirement: a target-wide scan over a corrupt/unreadable deployments namespace
+// must fail closed, never treat the error as an empty scan. This verifies the
+// production AcquireTargetWideLifecycleLock path directly.
+func TestProductionTargetWideScanFailsClosedOnScanError(t *testing.T) {
+	root := t.TempDir()
+	if err := os.Chmod(root, 0700); err != nil {
+		t.Fatal(err)
+	}
+	// Create a deployments dir we can make unreadable (non-root only). If the
+	// process is root, skip: root bypasses permission checks and the failure
+	// cannot be reproduced.
+	deploymentsDir := filepath.Join(root, "deployments")
+	if err := os.MkdirAll(deploymentsDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if os.Getuid() == 0 {
+		t.Skip("root bypasses directory permission checks; cannot reproduce a scan error")
+	}
+	if err := os.Chmod(deploymentsDir, 0000); err != nil {
+		t.Skipf("cannot chmod deployments dir: %v", err)
+	}
+	defer os.Chmod(deploymentsDir, 0700)
+
+	if _, serr := coreinstallation.AcquireTargetWideLifecycleLock(root); serr == nil {
+		t.Fatal("target-wide scan did not fail closed over an unreadable deployments namespace")
+	}
+}
+
 // TestIndependentAppsDoNotSerializeOnSharedTarget is the per-app scope cell:
 // two INDEPENDENT service-less applications that merely share one Target run in
 // parallel. This PROVES the serialization wall is per-app, not per-target:

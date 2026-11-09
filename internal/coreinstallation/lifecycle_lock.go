@@ -35,7 +35,19 @@ func AcquireBootstrapLock(root string) (func(), error) {
 // OWN deployments directory (root/deployments/<scope>) so two independent
 // applications that share a host Target do not serialize each other, while two
 // writers to the same application still do. The Target as a whole is protected
-// by an independent owner lock (AcquireLifecycleLock), not by this per-app lock.
+// by an independent owner lock (AcquireTargetWideLifecycleLock), not by this
+// per-app lock.
 func AcquireAppLifecycleLock(root string, scope string) (func(), error) {
 	return stableid.AcquireAppLifecycleLock(root, scope)
+}
+
+// AcquireTargetWideLifecycleLock re-exports the stableid target-wide lifecycle
+// acquire path with the same signature production callers expect. See
+// internal/stableid for the authoritative implementation: it holds the shared
+// .installation.lock exclusively for the whole whole-Target lifecycle mutation
+// and scans for held per-app dotfiles, failing closed on an active app lifecycle
+// or a scan error, so a target-wide mutation can never overlap a local app while
+// unrelated apps still converge in parallel.
+func AcquireTargetWideLifecycleLock(root string) (func(), error) {
+	return stableid.AcquireTargetWideLifecycleLock(root)
 }

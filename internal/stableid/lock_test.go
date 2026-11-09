@@ -149,7 +149,10 @@ func TestLocalAppLifecycleCannotOverlapTargetWideMutation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("local app acquire: %v", err)
 	}
-	if !deploymentsHaveAppLocks(root) {
+	if held, scanErr := deploymentsHaveAppLocks(root); scanErr != nil {
+		localUnlock()
+		t.Fatalf("target-wide scan error: %v", scanErr)
+	} else if !held {
 		localUnlock()
 		t.Fatal("target-wide scan did not observe the held per-app dotfile")
 	}
@@ -187,7 +190,9 @@ func TestLocalAppLifecycleCannotOverlapTargetWideMutation(t *testing.T) {
 	// last per-app dotfile so the target is free for a target-wide mutation.
 	nextUnlock()
 	localUnlock()
-	if deploymentsHaveAppLocks(root) {
+	if held, scanErr := deploymentsHaveAppLocks(root); scanErr != nil {
+		t.Fatalf("scan error after release: %v", scanErr)
+	} else if held {
 		t.Fatal("per-app dotfiles remain after all local apps released")
 	}
 }
