@@ -88,14 +88,14 @@ func bindExplicitSelectionToConnection(
 			return machine.NewError(
 				machine.ErrorConflict,
 				fmt.Sprintf("target %q has no verified management connection; the installation identity is required", target),
-				"Install a BaseHarbor Core for this Target (baha core install) so the management connection is present, then re-run baha use.",
+				"Install a BaseHarbor Core for this Target with `baha up --control-plane-only` so the management connection is present, then re-run baha use.",
 				false,
 			)
 		}
 		return machine.NewError(
 			machine.ErrorConflict,
 			fmt.Sprintf("target %q has no verified management connection: %v", target, err),
-			"Install a BaseHarbor Core for this Target (baha core install) so the management connection is present, then re-run baha use.",
+			"Install a BaseHarbor Core for this Target with `baha up --control-plane-only` so the management connection is present, then re-run baha use.",
 			false,
 		)
 	}
@@ -115,7 +115,7 @@ func bindExplicitSelectionToConnection(
 			return machine.NewError(
 				machine.ErrorConflict,
 				fmt.Sprintf("target %q has no verified management connection: %v", target, err),
-				"Install a BaseHarbor Core for this Target (baha core install) so the management connection is present, then re-run baha use.",
+				"Verify the BaseHarbor Core for this Target with `baha up --control-plane-only` so its management connection is reachable, then re-run baha use.",
 				false,
 			)
 		}
@@ -126,7 +126,7 @@ func bindExplicitSelectionToConnection(
 			return machine.NewError(
 				machine.ErrorConflict,
 				fmt.Sprintf("target %q has no verified management connection: %v", target, err),
-				"Install a BaseHarbor Core for this Target (baha core install) so the management connection is present, then re-run baha use.",
+				"Verify the BaseHarbor Core for this Target with `baha up --control-plane-only` so its management connection is reachable, then re-run baha use.",
 				false,
 			)
 		}

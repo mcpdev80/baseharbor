@@ -198,7 +198,7 @@ func boundManagementConnectionIdentity(ctx context.Context, target string) (stri
 	if err != nil {
 		return "", machine.NewError(machine.ErrorConflict,
 			fmt.Sprintf("target %q has no verified BaseHarbor installation: %v", target, err),
-			"Install a BaseHarbor Core for this Target (baha core install) or select the correct Target, then re-run onboarding.", false)
+			"Verify the BaseHarbor Core for this Target with `baha up --control-plane-only` so its management connection is reachable, or select the correct Target, then re-run onboarding.", false)
 	}
 	selection := coreinstallation.ConnectionSelection{
 		InstallationID: state.ID,
