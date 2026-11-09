@@ -508,7 +508,7 @@ func writeDanglingRecordWithMissingSource(t *testing.T, target, name, environmen
 		Environment:   environment,
 	}
 	writeDeploymentRecordDirect(t, deployment.DeploymentRecord{
-		Version: deployment.DeploymentRecordVersion,
+		Version:  deployment.DeploymentRecordVersion,
 		Identity: id,
 		Source:   deployment.DeploymentSource{Kind: "repository", Repository: filepath.Join(t.TempDir(), "gone")},
 		Applied:  deployment.AppliedDeployment{RuntimeProvider: "docker", Delivery: delivery.Direct(), Intent: json.RawMessage(intent)},
