@@ -42,7 +42,7 @@ class GoUnitShardTests(unittest.TestCase):
 
     def test_cli_shard_rejects_skipped_mandatory_client_tests(self):
         names = sorted(shards.REQUIRED_CLIENT_TESTS | {f"TestExtra{i}" for i in range(40)})
-        chosen = shards.selected_tests(names, "cli-0")
+        chosen = shards.selected_tests(names, "cli-1")
         required = shards.REQUIRED_CLIENT_TESTS & set(chosen)
         self.assertTrue(required)
         events = []
@@ -55,7 +55,7 @@ class GoUnitShardTests(unittest.TestCase):
         execution = subprocess.CompletedProcess(["go"], 0, stdout="\n".join(map(json.dumps, events)))
         with patch.object(shards, "run", side_effect=[listed, execution]):
             with self.assertRaisesRegex(RuntimeError, "required-not-passed"):
-                shards.cli("cli-0")
+                shards.cli("cli-1")
 
     def test_non_cli_inventory_excludes_cli_but_keeps_all_other_packages(self):
         listed = subprocess.CompletedProcess(["go"], 0, stdout="\n".join((
