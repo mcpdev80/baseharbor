@@ -312,6 +312,30 @@ func resolvedRepositoryApplication(ctx context.Context, target deployment.Resolv
 	if netErr != nil {
 		return resolvedApplication{}, netErr
 	} else if damaged {
+		// BUG-HUNT BF-03 / 0427-159 r6 (F1): the deploy directory is a per-deploy
+		// UUID with no deployment.json, so the only trusted basis to attribute it
+		// to THIS requested app is the durable ownership band that survived the
+		// record's truncation (production reads it via LoadRetainedOwnerBand).
+		// Without a band that names THIS requested app the directory is an
+		// unbound orphan and must NOT acquire the requesting app's identity or
+		// network. A band naming a DIFFERENT application is foreign and likewise
+		// must not be attributed to the requested app. Only a band whose retained
+		// identity matches this app binds the damage to the requested app.
+		bandApp, bandEnv, bandOK, bandErr := deployment.LoadRetainedOwnerBand(damagedDir)
+		if bandErr != nil || !bandOK || bandApp != m.Name || bandEnv != m.Environment {
+			damagedIdentity := deployment.DeploymentIdentity{
+				Target:        target.Name,
+				Application:   "unknown",
+				Environment:   "",
+				ApplicationID: "",
+			}
+			return resolvedApplication{}, &deployment.DamagedDeploymentError{
+				Identity:    damagedIdentity,
+				Root:        damagedDir,
+				Network:     "",
+				NetworkName: "",
+			}
+		}
 		id := deployment.DeploymentIdentity{
 			Target:        target.Name,
 			Application:   m.Name,

@@ -419,12 +419,22 @@ func TestRegistryOwnedAppReportsExactNetwork(t *testing.T) {
 	// and the scoped scan can attribute the damaged directory to this app.
 	seedCoreOwner(t, target.Name)
 
-	// Seed a damaged directory in the requested app's namespace: a retained
-	// protected deploy directory whose deployment.json is missing. The name is a
-	// malformed (non-UUID) directory so FindDeployment's shape gate discards it
-	// before erroring; the app-scoped scoped scan still recognises the retained
-	// damaged state and verifies THIS app's network.
+	// The requested app manifest, declared up front so the seeded retained
+	// ownership band can match its identity exactly.
 	app := "owned-app"
+	m := application.New(app, "dev", true, true, false)
+
+	// Seed a genuinely damaged directory in the requested app's namespace: a
+	// malformed (non-UUID) deploy directory that carries the BF-03 damaged
+	// signature (retained protected runtime state, missing deployment.json). Its
+	// name is a malformed directory so FindDeployment's shape gate discards it
+	// before erroring (unlike a canonical UUID directory, which the listing
+	// flags as damaged and returns as an ownerless error at the registry seam).
+	// The app-scoped scoped scan at resolvedRepositoryApplication recognises the
+	// retained damaged state and verifies THIS app's OWN absent workload network
+	// as the per-app ownership proof the F1 fix requires. This is a real
+	// resolvedRepositoryApplication/FindDeployment run — not the malformed
+	// "arbitrary application.env" fixture, which proved nothing about ownership.
 	depRoot, err := deployment.TargetStateRoot(target.Name)
 	if err != nil {
 		t.Fatalf("resolve target root for %s: %v", target.Name, err)
@@ -437,19 +447,27 @@ func TestRegistryOwnedAppReportsExactNetwork(t *testing.T) {
 	if err := os.MkdirAll(damagedDir, 0o700); err != nil {
 		t.Fatal(err)
 	}
+	// Retained protected runtime state so the directory is a genuine damaged
+	// deployment that DamagedDeploymentNamespace flags.
 	if err := os.WriteFile(filepath.Join(damagedDir, "application.env"), []byte("X=Y\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// The durable ownership band that survives the truncated deployment.json:
+	// the exact retained identity of THIS requested app, read by production in
+	// the scoped scan to attribute the damaged directory to the requested app.
+	if err := os.WriteFile(filepath.Join(damagedDir, deployment.RetainedOwnershipBandName), []byte(app+"\ndev\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
 	// Override the registry network seam to ABSENT so the scoped scan verifies
-	// this app's own absent network rather than a present/foreign one.
+	// THIS app's own absent workload network as the per-app ownership proof —
+	// not a present or foreign network.
 	orig := damagedScanRuntimeForTarget
 	defer func() { damagedScanRuntimeForTarget = orig }()
 	damagedScanRuntimeForTarget = func(context.Context, deployment.ResolvedTarget) (deployment.NetworkInspector, error) {
 		return fakeDamagedScanRuntime{state: bhruntime.RuntimeNetworkStateAbsent}, nil
 	}
 
-	m := application.New(app, "dev", true, true, false)
 	targetRoot, err := deployment.TargetStateRoot(target.Name)
 	if err != nil {
 		t.Fatalf("resolve target root for %s: %v", target.Name, err)
@@ -550,5 +568,95 @@ func TestRegistryForeignOrphanNoFalseAttributionToRequestedApp(t *testing.T) {
 	}
 	if damaged.Network == bhruntime.RuntimeNetworkStateAbsent {
 		t.Fatalf("foreign orphan's absent network must NOT be attributed to the requested app; got network=%q", damaged.Network)
+	}
+	// The strengthened F3 contract (0427-159 r6): the foreign orphan must be
+	// reported as an explicit unknown-owner, record-only conflict — blank
+	// ApplicationID and Environment, no NetworkName, no network state, and a
+	// record-only error message (no fabricated workload-network half).
+	if damaged.Identity.Application != "unknown" {
+		t.Fatalf("foreign orphan must be reported with Application == \"unknown\"; got %+v", damaged.Identity)
+	}
+	if strings.TrimSpace(damaged.Identity.ApplicationID) != "" {
+		t.Fatalf("foreign orphan must report a blank ApplicationID; got %q", damaged.Identity.ApplicationID)
+	}
+	if strings.TrimSpace(damaged.Identity.Environment) != "" {
+		t.Fatalf("foreign orphan must report a blank Environment; got %q", damaged.Identity.Environment)
+	}
+	if strings.TrimSpace(damaged.NetworkName) != "" {
+		t.Fatalf("foreign orphan must report no NetworkName; got %q", damaged.NetworkName)
+	}
+	if damaged.Network != "" {
+		t.Fatalf("foreign orphan must report no network state; got %q", damaged.Network)
+	}
+	if !strings.Contains(strings.ToLower(damaged.Error()), "deployment.json") {
+		t.Fatalf("foreign orphan error must be a record-only damaged-state message; got: %q", damaged.Error())
+	}
+}
+
+// TestRegistryMalformedForeignOrphanNoFalseAttributionWithDifferentManifest proves
+// the coexistence half of the r5/F2 recipe: a malformed (non-UUID) foreign orphan
+// coexisting in the target-wide namespace with a DIFFERENT repository manifest
+// must never acquire the requested app's identity or workload network. The
+// requested app's own workload network is verified ABSENT, so without a per-app
+// verifiable retained ownership band the scoped scan would otherwise bind the
+// malformed orphan to the requested app — the F1 fix rejects that attribution and
+// reports the malformed orphan as an unknown-owner, record-only conflict.
+func TestRegistryMalformedForeignOrphanNoFalseAttributionWithDifferentManifest(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+
+	target := deployment.ResolvedTarget{Name: "local", RuntimeProvider: "docker"}
+	seedCoreOwner(t, target.Name)
+
+	m := application.New("requested-app", "dev", true, true, false)
+	depRoot, err := deployment.TargetStateRoot(target.Name)
+	if err != nil {
+		t.Fatalf("resolve target root for %s: %v", target.Name, err)
+	}
+	depDir := filepath.Join(depRoot, "deployments")
+	if err := os.MkdirAll(depDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	// A malformed (non-UUID) foreign orphan carrying only an arbitrary artifact.
+	malformedDir := filepath.Join(depDir, "foreign-orphan")
+	if err := os.MkdirAll(malformedDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(malformedDir, "application.env"), []byte("X=Y\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// Requested app's own workload network is ABSENT — the one per-app-verifiable
+	// basis the F1 fix would otherwise use to bind the malformed orphan.
+	orig := damagedScanRuntimeForTarget
+	defer func() { damagedScanRuntimeForTarget = orig }()
+	damagedScanRuntimeForTarget = func(context.Context, deployment.ResolvedTarget) (deployment.NetworkInspector, error) {
+		return fakeDamagedScanRuntime{state: bhruntime.RuntimeNetworkStateAbsent}, nil
+	}
+
+	selection := application.RepositoryEnvironmentSelection{Manifest: m}
+	_, err = resolvedRepositoryApplication(context.Background(), target, depRoot, selection, "up")
+	var damaged *deployment.DamagedDeploymentError
+	if !errors.As(err, &damaged) {
+		t.Fatalf("expected a damaged-state error from the production path, got %T: %v", err, err)
+	}
+	// The malformed foreign orphan coexisting with a different manifest must NOT
+	// acquire the requested app's identity or network: it is reported as an
+	// explicit unknown-owner, record-only conflict.
+	if damaged.Identity.Application != "unknown" {
+		t.Fatalf("malformed foreign orphan must not acquire the requested app's identity; got %+v", damaged.Identity)
+	}
+	if damaged.Identity.ApplicationID == m.ApplicationID {
+		t.Fatalf("malformed foreign orphan must not acquire the requested app's application_id; got %+v", damaged.Identity)
+	}
+	if damaged.Network == bhruntime.RuntimeNetworkStateAbsent {
+		t.Fatalf("malformed foreign orphan must not carry the requested app's absent network; got network=%q", damaged.Network)
+	}
+	if strings.TrimSpace(damaged.Identity.Environment) != "" {
+		t.Fatalf("malformed foreign orphan must report a blank Environment; got %q", damaged.Identity.Environment)
+	}
+	if !strings.Contains(strings.ToLower(damaged.Error()), "deployment.json") {
+		t.Fatalf("malformed foreign orphan error must be a record-only damaged-state message; got: %q", damaged.Error())
 	}
 }

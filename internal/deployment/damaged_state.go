@@ -203,6 +203,43 @@ func DamagedDirectoryState(root string) (bool, error) {
 	return false, nil
 }
 
+// RetainedOwnershipBandName is the protected file inside a damaged deploy
+// directory that proves WHICH application a truncated deployment belonged to.
+// The authoritative deployment.json is the record that BF-03 damage truncates;
+// the band is the durable ownership marker that survives that deletion, so the
+// up/edit resolver can still attribute the orphaned directory to a specific
+// application instead of inventing one from the requesting manifest.
+const RetainedOwnershipBandName = ".owner"
+
+// LoadRetainedOwnerBand reads the retained ownership band from a damaged deploy
+// directory and returns the application identity that production recorded when
+// the deployment was materialized. It returns (application, environment, true)
+// when a readable band is present, ("", "", false) when the directory carries
+// no band (an unbound orphan), and an error only for an unreadable band.
+//
+// This is the durable ownership binding the bug-hunt r5 recipe requires: the
+// deploy directory is a per-deploy UUID with no deployment.json, so its identity
+// cannot be read from the authoritative record — the band is the source of
+// truth, and a malformed/foreign orphan that never recorded a band yields false
+// so the caller reports an explicit unknown-owner, record-only error.
+func LoadRetainedOwnerBand(root string) (application, environment string, ok bool, err error) {
+	data, readErr := os.ReadFile(filepath.Join(root, RetainedOwnershipBandName))
+	if errors.Is(readErr, os.ErrNotExist) {
+		return "", "", false, nil
+	}
+	if readErr != nil {
+		return "", "", false, fmt.Errorf("inspect retained ownership band: %w", readErr)
+	}
+	// The band is two lines: the retained application identity on the first
+	// line, the retained environment on the second. Anything malformed is not a
+	// trusted ownership source.
+	lines := strings.Split(strings.TrimRight(string(data), "\n"), "\n")
+	if len(lines) < 2 || strings.TrimSpace(lines[0]) == "" || strings.TrimSpace(lines[1]) == "" {
+		return "", "", false, nil
+	}
+	return strings.TrimSpace(lines[0]), strings.TrimSpace(lines[1]), true, nil
+}
+
 // DamagedDeploymentNamespace reports whether the deployments namespace of a
 // Target holds any directory whose deployment.json is missing while protected
 // runtime state was already materialized - the bug-hunt BF-03 "damaged
@@ -291,6 +328,24 @@ func DamagedDeploymentNamespaceScoped(
 		return false, "", "", "", err
 	}
 	if !damaged || runtime == nil || strings.TrimSpace(appName) == "" {
+		return damaged, root, "", "", nil
+	}
+	// BUG-HUNT BF-03 / 0427-159 r6 (F1): the deploy directory is a per-deploy
+	// UUID with no deployment.json, so the only trusted basis to attribute it to
+	// THIS requested app is a durable, production-read ownership band that
+	// survived the record's truncation. Without a band the directory is an
+	// unbound orphan and must NOT acquire the requesting app's identity or
+	// network. A band that names a DIFFERENT application is foreign: the
+	// requested app must not inherit its identity either. Only a band whose
+	// retained identity matches THIS app binds the damage to the requested app.
+	bandApp, bandEnv, bandOK, bandErr := LoadRetainedOwnerBand(root)
+	if bandErr != nil || !bandOK || bandApp != appName {
+		return damaged, root, "", "", nil
+	}
+	if bandEnv != environment {
+		// The band names a different environment than the requested app: the
+		// damaged directory does not belong to THIS requested identity, so it
+		// must not acquire its network.
 		return damaged, root, "", "", nil
 	}
 	// Derive the workload project name from the retained app identity, not from
