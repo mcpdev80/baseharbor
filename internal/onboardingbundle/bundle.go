@@ -4,9 +4,9 @@
 package onboardingbundle
 
 import (
+	"bytes"
 	"crypto/x509"
 	"encoding/json"
-	"bytes"
 	"encoding/pem"
 	"errors"
 	"fmt"

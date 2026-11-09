@@ -41,12 +41,12 @@ func TestPersistIdentityRefusesForeignOrIncompleteMaterial(t *testing.T) {
 	now := time.Now()
 	bogus := EnrolledIdentity{
 		InstallationID: invite.InstallationID,
-		Station: "other-station",
-		Serial: "22",
-		ExpiresAt: now.Add(time.Hour),
-		PrivateKeyPEM: []byte("not a key"),
+		Station:        "other-station",
+		Serial:         "22",
+		ExpiresAt:      now.Add(time.Hour),
+		PrivateKeyPEM:  []byte("not a key"),
 		CertificatePEM: []byte("not a certificate"),
-		TrustPEM: []byte(invite.CAPEM),
+		TrustPEM:       []byte(invite.CAPEM),
 	}
 	root := filepath.Join(t.TempDir(), "device")
 	if _, err := PersistIdentity(root, invite, bogus, now); !errors.Is(err, ErrInvalid) {

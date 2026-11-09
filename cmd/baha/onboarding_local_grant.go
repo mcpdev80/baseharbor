@@ -54,13 +54,13 @@ func issueLocalWorkstationInvitation(ctx context.Context, target deployment.Reso
 	// before the protected real grant is durably created.
 	bundle := onboardingbundle.Bundle{
 		ContractVersion: onboardingbundle.Contract,
-		CoreURL: coreOrigin,
-		CAPEM: string(trust.PEM),
-		InstallationID: scope.TenantID,
-		Station: scope.Station,
-		Token: strings.Repeat("A", 48),
-		Nonce: strings.Repeat("B", 48),
-		ExpiresAt: time.Now().Add(5*time.Minute),
+		CoreURL:         coreOrigin,
+		CAPEM:           string(trust.PEM),
+		InstallationID:  scope.TenantID,
+		Station:         scope.Station,
+		Token:           strings.Repeat("A", 48),
+		Nonce:           strings.Repeat("B", 48),
+		ExpiresAt:       time.Now().Add(5 * time.Minute),
 	}
 	if err := bundle.Validate(time.Now()); err != nil {
 		return fmt.Errorf("invalid managed Core invitation authority: %w", err)
@@ -69,7 +69,7 @@ func issueLocalWorkstationInvitation(ctx context.Context, target deployment.Reso
 	if err != nil {
 		return err
 	}
-	pool, err := database.Open(check, database.Config{DSN:dsn, ConnectTimeout:10*time.Second})
+	pool, err := database.Open(check, database.Config{DSN: dsn, ConnectTimeout: 10 * time.Second})
 	if err != nil {
 		return errors.New("local Core enrollment database is not available")
 	}

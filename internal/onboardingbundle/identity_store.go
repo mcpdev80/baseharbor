@@ -125,13 +125,17 @@ func validateEnrolledMaterial(b Bundle, identity EnrolledIdentity, now time.Time
 		return fmt.Errorf("%w: invalid private workstation key", ErrInvalid)
 	}
 	key, err := x509.ParseECPrivateKey(keyBlock.Bytes)
-	if err != nil { return fmt.Errorf("%w: invalid private workstation key", ErrInvalid) }
+	if err != nil {
+		return fmt.Errorf("%w: invalid private workstation key", ErrInvalid)
+	}
 	leafBlock, rest := pem.Decode(identity.CertificatePEM)
 	if leafBlock == nil || leafBlock.Type != "CERTIFICATE" || len(bytes.TrimSpace(rest)) != 0 {
 		return fmt.Errorf("%w: invalid workstation leaf", ErrInvalid)
 	}
 	leaf, err := x509.ParseCertificate(leafBlock.Bytes)
-	if err != nil { return fmt.Errorf("%w: invalid workstation leaf", ErrInvalid) }
+	if err != nil {
+		return fmt.Errorf("%w: invalid workstation leaf", ErrInvalid)
+	}
 	roots := x509.NewCertPool()
 	if !roots.AppendCertsFromPEM([]byte(b.CAPEM)) {
 		return fmt.Errorf("%w: missing workstation trust", ErrInvalid)
@@ -146,7 +150,9 @@ func validateEnrolledMaterial(b Bundle, identity EnrolledIdentity, now time.Time
 		return fmt.Errorf("%w: foreign workstation identity", ErrInvalid)
 	}
 	keyPub, err := x509.MarshalPKIXPublicKey(&key.PublicKey)
-	if err != nil { return err }
+	if err != nil {
+		return err
+	}
 	certPub, err := x509.MarshalPKIXPublicKey(leaf.PublicKey)
 	if err != nil || !bytes.Equal(keyPub, certPub) {
 		return fmt.Errorf("%w: workstation private key does not match certificate", ErrInvalid)

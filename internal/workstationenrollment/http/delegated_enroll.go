@@ -1,9 +1,9 @@
 package workstationenrollmenthttp
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
-	"context"
 	"io"
 	"net/http"
 	"time"
@@ -72,11 +72,11 @@ func (h *ProductionHandler) ServeDelegatedEnroll(w http.ResponseWriter, r *http.
 	}
 	writeJSON(w, http.StatusOK, EnrollResponse{
 		InstallationID: scope.TenantID,
-		Station: scope.Station,
-		Serial: result.Serial,
-		ExpiresAt: result.ExpiresAt,
-		LeafPEM: string(result.Certificate),
-		TrustPEM: string(result.Trust.PEM),
-		At: time.Now().UTC(),
+		Station:        scope.Station,
+		Serial:         result.Serial,
+		ExpiresAt:      result.ExpiresAt,
+		LeafPEM:        string(result.Certificate),
+		TrustPEM:       string(result.Trust.PEM),
+		At:             time.Now().UTC(),
 	})
 }
