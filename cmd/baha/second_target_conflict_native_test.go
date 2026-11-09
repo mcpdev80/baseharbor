@@ -59,10 +59,23 @@ func TestSecondSameHostCoreNativeConflictInCI(t *testing.T) {
 		t.Fatalf("first configured Core %q has no live containers under %q", first, firstProject)
 	}
 
-	isolateRuntimeForTest(t, "second-target-conflict")
-	second := strings.TrimSpace(os.Getenv("BASEHARBOR_TARGET"))
-	if second == "" || second == first {
-		t.Fatalf("second selection must be distinct: first=%q second=%q", first, second)
+	// The shared native fixture deliberately selects the sole owning Core.
+	// This negative test requires a second, distinct Target on that same
+	// engine, rather than isolateRuntimeForTest (which selects the owner).
+	second := "w169-second-core-" + bootstrapTargetSuffix()
+	var registration bytes.Buffer
+	if err := runWithIO(ctx, []string{
+		"target", "create", second,
+		"--runtime-provider", kind,
+		"--access", "local",
+		"--access-provider", "local",
+		"--reference", "local",
+	}, &registration, &registration); err != nil {
+		t.Fatalf("register second same-engine Target: %v; output=%s", err, registration.String())
+	}
+	t.Setenv("BASEHARBOR_TARGET", second)
+	if selected, err := effectiveTarget(ctx); err != nil || selected.Name != second || selected.Name == first {
+		t.Fatalf("second selection must be distinct: first=%q second=%q err=%v", first, selected.Name, err)
 	}
 	secondProject := bhruntime.SharedProjectName(second)
 	conflict, err := detectSharedCoreOwnerConflict(ctx)
