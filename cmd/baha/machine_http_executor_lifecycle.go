@@ -74,6 +74,14 @@ func (e *bahaMachineExecutor) executeHTTPApply(
 	if err := ensureResolvedHTTPContext(operationContext, resolved); err != nil {
 		return nil, err
 	}
+	// The first remote app.create may have pinned Git/OCI in the Core-owned
+	// source model. Do not silently deploy the old managed intent if the
+	// workstation omits that source on a later apply.
+	input.SourceModel, err = bindRegisteredCoreSource(resolved, input.SourceModel)
+	if err != nil {
+		return nil, machine.Wrap(machine.ErrorConflict, err,
+			"Use the immutable source registered on this Core application; a source change needs an explicit authorized operation.", false)
+	}
 	if input.SourceModel != nil {
 		// A Core-registered clean Git worktree at the exact commit can be
 		// used through the existing source lifecycle. Do not fetch URLs
