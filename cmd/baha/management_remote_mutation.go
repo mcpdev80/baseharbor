@@ -33,7 +33,7 @@ func remoteMutationArgs(operation string, args []string) (string, string, json.R
 			"Use --environment dev; other environments require their own verified operator login.")
 	}
 	name, candidate, consentPath := "", "", ""
-	candidateSeen := false
+	candidateSeen, consentSeen := false, false
 	approval, noBackup, fullReset, skipMemory := false, false, false, false
 	for i := 0; i < len(filtered); i++ {
 		arg := filtered[i]
@@ -48,15 +48,17 @@ func remoteMutationArgs(operation string, args []string) (string, string, json.R
 			skipMemory = true
 		case arg == "--provider-consent-file":
 			i++
-			if i >= len(filtered) || strings.HasPrefix(filtered[i], "-") || consentPath != "" {
+			if i >= len(filtered) || strings.HasPrefix(filtered[i], "-") || consentSeen {
 				return "", "", nil, usageError("missing or duplicate provider consent file", "Pass one --provider-consent-file PATH containing an explicitly approved current plan.")
 			}
 			consentPath = filtered[i]
+			consentSeen = true
 		case strings.HasPrefix(arg, "--provider-consent-file="):
-			if consentPath != "" {
+			if consentSeen {
 				return "", "", nil, usageError("duplicate provider consent file", "Pass only one current plan consent file.")
 			}
 			consentPath = strings.TrimPrefix(arg, "--provider-consent-file=")
+			consentSeen = true
 		case arg == "--confirm-candidate":
 			i++
 			if candidateSeen || i >= len(filtered) || strings.HasPrefix(filtered[i], "-") {
@@ -77,6 +79,12 @@ func remoteMutationArgs(operation string, args []string) (string, string, json.R
 			}
 			name = arg
 		}
+	}
+	if consentSeen && strings.TrimSpace(consentPath) == "" {
+		return "", "", nil, usageError("empty provider consent file", "Pass a non-empty --provider-consent-file PATH containing the approved current plan.")
+	}
+	if candidateSeen && strings.TrimSpace(candidate) == "" {
+		return "", "", nil, usageError("empty candidate confirmation digest", "Pass the exact candidate SHA-256 digest or omit --confirm-candidate.")
 	}
 	if strings.TrimSpace(name) == "" {
 		return "", "", nil, usageError("remote application mutation needs an explicit NAME",
