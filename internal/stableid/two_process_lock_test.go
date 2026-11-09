@@ -144,5 +144,6 @@ func TestMain(m *testing.M) {
 	if os.Getenv(lifecycleLockCrossChildEnv) == "1" {
 		lockCrossProcessChild()
 	}
+	reclaimTestMain()
 	os.Exit(m.Run())
 }

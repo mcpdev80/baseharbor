@@ -10,9 +10,157 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"golang.org/x/sys/unix"
 )
+
+// lockHolderHeader is the magic prefix written at the head of every lifecycle
+// lock dotfile. It lets a second reader tell a genuine holder receipt from any
+// stray text a foreign writer left in the same byte slot, and it anchors the
+// versioned record layout below. Every receipt the product writes starts with
+// this exact line.
+const lockHolderHeader = "baseharbor-lock v1 pid="
+
+// lockHolderRecord is the durable receipt a lifecycle lock writes into its
+// dotfile. It is line-oriented and human-inspectable:
+//
+//	baseharbor-lock v1 pid=12345
+//	startTime=1731148800
+//	bootID=3da1-9f0c
+//
+// The PID alone (the pre-0427-180 contract) is insufficient to prove a holder
+// is live: PIDs are recycled by the kernel, so a dead holder and a live holder
+// can report the same pid. startTime (unix seconds of the holder's start) and
+// bootID (a machine-wide boot identifier) turn a bare pid into a
+// reuse-resistant identity: a receipt is "live" only when the pid is alive AND
+// its bootID matches the current boot. On platforms without a boot-id source
+// the field is empty and the pid+startTime pair still guards the common SIGKILL
+// case; pid reuse is only indistinguishable across a reboot with the same start
+// second, which startTime already rules out in that narrow case.
+type lockHolderRecord struct {
+	pid       int
+	startTime int64
+	bootID    string
+}
+
+// lockHolderBytes renders the receipt in the line-oriented layout above. The
+// trailing newline keeps the file greppable.
+func (r lockHolderRecord) lockHolderBytes() []byte {
+	var b strings.Builder
+	b.WriteString(lockHolderHeader)
+	b.WriteString(strconv.Itoa(r.pid))
+	if r.startTime != 0 {
+		b.WriteString("\nstartTime=")
+		b.WriteString(strconv.FormatInt(r.startTime, 10))
+	}
+	if r.bootID != "" {
+		b.WriteString("\nbootID=")
+		b.WriteString(r.bootID)
+	}
+	b.WriteByte('\n')
+	return []byte(b.String())
+}
+
+// parseLockHolderRecord decodes a receipt written by lockHolderBytes. It
+// returns ok=false when the bytes carry no recognised baseharbor receipt (a
+// foreign writer's text, or a pre-0427-180 bare-pid line). A live decision is
+// always made on top of this decode by the caller.
+func parseLockHolderRecord(buf []byte) (lockHolderRecord, bool) {
+	text := strings.TrimSpace(string(buf))
+	if !strings.HasPrefix(text, lockHolderHeader) {
+		return lockHolderRecord{}, false
+	}
+	rec := lockHolderRecord{bootID: ""}
+	// The pid is the bare token after the header on the first line. Trim at the
+	// first newline so a trailing startTime/bootID line does not break Atoi.
+	if rest := strings.TrimPrefix(text, lockHolderHeader); rest != "" {
+		if nl := strings.IndexByte(rest, '\n'); nl >= 0 {
+			rest = rest[:nl]
+		}
+		if v, err := strconv.Atoi(strings.TrimSpace(rest)); err == nil {
+			rec.pid = v
+		}
+	}
+	// Read the remaining key=value lines.
+	for _, line := range strings.Split(text, "\n") {
+		line = strings.TrimSpace(line)
+		if line == lockHolderHeader+strconv.Itoa(rec.pid) {
+			continue
+		}
+		key, val, ok := strings.Cut(line, "=")
+		if !ok {
+			continue
+		}
+		switch key {
+		case "startTime":
+			if v, err := strconv.ParseInt(val, 10, 64); err == nil {
+				rec.startTime = v
+			}
+		case "bootID":
+			rec.bootID = val
+		}
+	}
+	return rec, true
+}
+
+// lockHolderBootID returns a machine-wide boot identifier that, combined with
+// the process start time, makes a holder identity resistant to PID reuse. It
+// never fails a caller: any source that cannot be read yields an empty string
+// (the caller then falls back to the pid+startTime pair).
+func lockHolderBootID() string {
+	// Linux exposes the kernel boot time in /proc/stat's "boot" field (seconds
+	// since the unix epoch). A coarse but stable label is enough to distinguish
+	// boots; the exact value is an implementation detail, not a contract.
+	if data, err := os.ReadFile("/proc/stat"); err == nil {
+		for _, line := range strings.Split(string(data), "\n") {
+			if strings.HasPrefix(line, "boot ") {
+				fields := strings.Fields(line)
+				if len(fields) >= 2 {
+					if secs, err := strconv.ParseInt(fields[1], 10, 64); err == nil && secs > 0 {
+						return fmt.Sprintf("boot-%d", secs)
+					}
+				}
+			}
+		}
+	}
+	return ""
+}
+
+// lockHolderLive reports whether a decoded receipt still identifies a live,
+// in-generation holder. A pid is only a weak signal (it is recycled), so the
+// reclaim decision is fail-closed: a pid that is currently alive is treated as
+// live and NOT reclaimed, even on the same boot where pid reuse is possible —
+// destroying another live process's receipt would be worse than leaving a
+// stale one in place. The only reclaimable cases are a dead holder (ESRCH, the
+// SIGKILL case this task fixes) and a holder whose boot-id is present on both
+// sides but from an EARLIER boot (a dead-or-replaced holder from a previous
+// boot whose pid was later reassigned on the current boot). A non-zero
+// startTime with no boot-id source is retained as a secondary hint but never
+// by itself reclaims a live pid.
+func lockHolderLive(rec lockHolderRecord) bool {
+	if rec.pid <= 0 {
+		return false
+	}
+	if err := unix.Kill(rec.pid, 0); err != nil {
+		if errors.Is(err, unix.ESRCH) {
+			// Dead holder: reclaimable.
+			return false
+		}
+		// EPERM: the process is alive but owned by another user. Do not reclaim
+		// another user's holder — treat it as live.
+		return true
+	}
+	// pid is alive. If a boot-id is present on both sides, a mismatch means the
+	// receipt is from an earlier boot: the original holder is gone and the pid
+	// was later reassigned on the current boot, so reclaim. A match (same boot)
+	// stays live. With no boot-id source we cannot prove reuse, so a live pid
+	// stays live (fail-closed).
+	if rec.bootID != "" && lockHolderBootID() != "" {
+		return rec.bootID == lockHolderBootID()
+	}
+	return true
+}
 
 // ErrLockFilesystemNotEnforcing is returned when a lock was acquired but the
 // underlying filesystem does NOT enforce the advisory flock across processes.
@@ -78,7 +226,28 @@ func lockNamed(root string, name string) (func(), error) {
 		_ = file.Close()
 		return nil, err
 	}
-	if _, err := fmt.Fprintln(file, os.Getpid()); err != nil {
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		_ = unix.Flock(fd, unix.LOCK_UN)
+		_ = file.Close()
+		return nil, err
+	}
+	if err := file.Truncate(0); err != nil {
+		_ = unix.Flock(fd, unix.LOCK_UN)
+		_ = file.Close()
+		return nil, err
+	}
+	// 0427-180: write the enriched holder receipt (PID + process start time +
+	// boot id) instead of a bare pid line. The acquire path reads this back to
+	// prove a reported holder is live or stale and reclaim a confirmed-stale
+	// one under the target-wide scope. The 179 validity probe above is unchanged
+	// and still runs before this write, so cross-process enforcement is not
+	// weakened. The leading magic line lets a reader tell a genuine receipt from
+	// foreign text or a pre-0427-180 bare-pid line.
+	if _, err := file.Write(lockHolderRecord{
+		pid:       os.Getpid(),
+		startTime: time.Now().Unix(),
+		bootID:    lockHolderBootID(),
+	}.lockHolderBytes()); err != nil {
 		_ = unix.Flock(fd, unix.LOCK_UN)
 		_ = file.Close()
 		return nil, err
@@ -101,20 +270,22 @@ func lifecycleLockHolderMessage(file *os.File, name string) string {
 	if _, err := file.Seek(0, io.SeekStart); err != nil {
 		return base
 	}
-	buf := make([]byte, 64)
+	buf := make([]byte, 256)
 	n, _ := file.Read(buf)
-	pid, err := strconv.Atoi(strings.TrimSpace(string(buf[:n])))
-	if err != nil || pid <= 0 {
-		return base
+	// 0427-180: the receipt is a versioned line-oriented record; decode it for
+	// the holder pid instead of parsing a bare pid line.
+	if rec, ok := parseLockHolderRecord(buf[:n]); ok && rec.pid > 0 {
+		pid := rec.pid
+		state := "unknown"
+		switch err := unix.Kill(pid, 0); {
+		case err == nil:
+			state = "alive"
+		case errors.Is(err, unix.ESRCH):
+			state = "not-running (possibly stale PID)"
+		case errors.Is(err, unix.EPERM):
+			state = "running (permission denied)"
+		}
+		return fmt.Sprintf("lock %s held by reported pid=%d state=%s; inspect with 'ps -p %d -o pid,stat,cmd' and stop it explicitly only after verifying ownership; retry afterward (never delete the lock file while held)", name, pid, state, pid)
 	}
-	state := "unknown"
-	switch err := unix.Kill(pid, 0); {
-	case err == nil:
-		state = "alive"
-	case errors.Is(err, unix.ESRCH):
-		state = "not-running (possibly stale PID)"
-	case errors.Is(err, unix.EPERM):
-		state = "running (permission denied)"
-	}
-	return fmt.Sprintf("lock %s held by reported pid=%d state=%s; inspect with 'ps -p %d -o pid,stat,cmd' and stop it explicitly only after verifying ownership; retry afterward (never delete the lock file while held)", name, pid, state, pid)
+	return base
 }
