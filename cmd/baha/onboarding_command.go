@@ -19,13 +19,16 @@ func onboardCommand() *cli.Command {
 	return &cli.Command{
 		Name:    "onboard",
 		Summary: "Guided onboarding: attach a workstation to a BaseHarbor installation",
-		Usage:   "baha onboard [--target NAME] [--json] | baha onboard --init-tenant [-e ENV] [--tenant-slug SLUG --tenant-name NAME]",
+		Usage:   "baha onboard [--target NAME] [--json] | baha onboard --invite [--target NAME] [--core-url HTTPS_URL] [--station LABEL] [--output PRIVATE_FILE] | baha onboard --init-tenant [-e ENV] [--tenant-slug SLUG --tenant-name NAME]",
 		Long:    "Guided path from a fresh workstation to a functioning installation with minimal questions. Bootstrap and attach are distinct intents; joining an existing installation never re-installs services and never repeats credential entry while a valid reusable connection exists. Cancel and EOF change nothing.",
 		Run:     runOnboardCommand,
 	}
 }
 
 func runOnboardCommand(ctx context.Context, args []string, out, errOut io.Writer) error {
+	if len(args) > 0 && args[0] == "--invite" {
+		return runOnboardInvite(ctx, args[1:], out)
+	}
 	// First-owner setup reuses the exact same owner-bound OIDC + PKCE + tenant
 	// transaction as baha login; the wizard never creates an independent admin.
 	if len(args) > 0 && args[0] == "--init-tenant" {
