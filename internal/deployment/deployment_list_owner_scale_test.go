@@ -186,3 +186,187 @@ func TestBatchCacheNeverSearchesDeploymentOwnership(t *testing.T) {
 		t.Fatalf("authoritative installation load: %v", loadErr)
 	}
 }
+
+// TestBatchedListClassifiesAccessForeignMissing proves F1: the best-effort
+// batched list classifies each card-174/144 failure with the truthful Kind
+// instead of collapsing every owner failure into "missing". Each kind is
+// isolated in its own home so the three deployments hit three distinct code
+// paths, and a best-effort list records each warning with its own Kind and its
+// preserved typed cause.
+func TestBatchedListClassifiesAccessForeignMissing(t *testing.T) {
+	target := "local"
+
+	// (1) missing owner: no Core installation under the Target. The
+	// best-effort warning must be Kind "missing" with ErrDeploymentOwnerMissing.
+	t.Run("missing", func(t *testing.T) {
+		data := t.TempDir()
+		cfg := t.TempDir()
+		t.Setenv("BASEHARBOR_STATE_DIR", "")
+		t.Setenv("XDG_DATA_HOME", data)
+		t.Setenv("XDG_CONFIG_HOME", cfg)
+		id := testDeploymentIdentity(t, target, "app-missing", "dev")
+		deployNS := filepath.Join(data, "baseharbor", "targets", target, "deployments")
+		if err := os.MkdirAll(filepath.Join(deployNS, id.DeploymentID), 0o700); err != nil {
+			t.Fatalf("mkdir: %v", err)
+		}
+		_, warnings, batch := listDeploymentRecordsBatched(deployNS, target, true)
+		if batch == nil {
+			t.Fatal("missing-owner list returned no batch")
+		}
+		assertWarnKind(t, warnings, id.DeploymentID, "missing", ErrDeploymentOwnerMissing)
+	})
+
+	// (2) foreign owner: the single installation.json governs a different
+	// Target. The best-effort warning must be Kind "foreign" with
+	// ErrDeploymentOwnerForeign.
+	t.Run("foreign", func(t *testing.T) {
+		data := t.TempDir()
+		cfg := t.TempDir()
+		t.Setenv("BASEHARBOR_STATE_DIR", "")
+		t.Setenv("XDG_DATA_HOME", data)
+		t.Setenv("XDG_CONFIG_HOME", cfg)
+		provisionOwnerForTarget(t, target)
+		ownerRuntime := filepath.Join(data, "baseharbor", "targets", target, "runtime")
+		makeInstallationForeign(t, ownerRuntime)
+		id := testDeploymentIdentity(t, target, "app-foreign", "dev")
+		deployNS := filepath.Join(data, "baseharbor", "targets", target, "deployments")
+		if err := os.MkdirAll(filepath.Join(deployNS, id.DeploymentID), 0o700); err != nil {
+			t.Fatalf("mkdir: %v", err)
+		}
+		_, warnings, _ := listDeploymentRecordsBatched(deployNS, target, true)
+		assertWarnKind(t, warnings, id.DeploymentID, "foreign", ErrDeploymentOwnerForeign)
+	})
+
+	// (3) access-denied tenant: a grant-only TenantOwnerResolver that denies the
+	// Target with a concrete error. The best-effort warning must be Kind "access"
+	// and carry that resolver error as its typed cause.
+	t.Run("access", func(t *testing.T) {
+		data := t.TempDir()
+		cfg := t.TempDir()
+		t.Setenv("BASEHARBOR_STATE_DIR", "")
+		t.Setenv("XDG_DATA_HOME", data)
+		t.Setenv("XDG_CONFIG_HOME", cfg)
+		prev := TenantOwnerResolver
+		accessDeniedErr := errors.New("tenant access denied: no authorized Coreless owner for " + target)
+		TenantOwnerResolver = func(string) (bool, error) { return false, accessDeniedErr }
+		defer func() { TenantOwnerResolver = prev }()
+		id := testDeploymentIdentity(t, target, "app-access", "dev")
+		deployNS := filepath.Join(data, "baseharbor", "targets", target, "deployments")
+		if err := os.MkdirAll(filepath.Join(deployNS, id.DeploymentID), 0o700); err != nil {
+			t.Fatalf("mkdir: %v", err)
+		}
+		_, warnings, _ := listDeploymentRecordsBatched(deployNS, target, true)
+		assertWarnKind(t, warnings, id.DeploymentID, "access", nil)
+		for _, w := range warnings {
+			if se, ok := DeploymentRecordState(w); ok && se.Identity.DeploymentID == id.DeploymentID {
+				if !errors.Is(se.Err, accessDeniedErr) {
+					t.Fatalf("access-denied warning must preserve the resolver error %v, got %v", accessDeniedErr, se.Err)
+				}
+			}
+		}
+	})
+}
+
+// assertWarnKind finds the warning for deploymentID and asserts its Kind and,
+// when wantErr is non-nil, that its preserved cause matches wantErr via
+// errors.Is.
+func assertWarnKind(t *testing.T, warnings []error, deploymentID, wantKind string, wantErr error) {
+	t.Helper()
+	var found *DeploymentRecordStateError
+	for _, w := range warnings {
+		if se, ok := DeploymentRecordState(w); ok && se.Identity.DeploymentID == deploymentID {
+			found = se
+			break
+		}
+	}
+	if found == nil {
+		t.Fatalf("no best-effort warning recorded for deployment %s", deploymentID)
+	}
+	if found.Kind != wantKind {
+		t.Fatalf("%s owner failure must be classified Kind %q, got %q (%v)", wantKind, wantKind, found.Kind, found.Err)
+	}
+	if wantErr != nil && !errors.Is(found.Err, wantErr) {
+		t.Fatalf("%s owner failure must carry a cause matching %v, got %v", wantKind, wantErr, found.Err)
+	}
+}
+
+// TestBatchedListForeignToleranceControl proves the card-144 foreign-record
+// tolerance is unchanged by batching: a best-effort list over a Target whose
+// installation.json governs a foreign Target returns zero protected records and
+// surfaces a foreign-kind warning. Batching must not silently adopt a foreign
+// owner.
+func TestBatchedListForeignToleranceControl(t *testing.T) {
+	data := t.TempDir()
+	cfg := t.TempDir()
+	t.Setenv("BASEHARBOR_STATE_DIR", "")
+	t.Setenv("XDG_DATA_HOME", data)
+	t.Setenv("XDG_CONFIG_HOME", cfg)
+
+	target := "local"
+	provisionOwnerForTarget(t, target)
+	ownerRuntime := filepath.Join(data, "baseharbor", "targets", target, "runtime")
+	makeInstallationForeign(t, ownerRuntime)
+
+	foreignID := testDeploymentIdentity(t, target, "app-144", "dev")
+	deployNS := filepath.Join(data, "baseharbor", "targets", target, "deployments")
+	if err := os.MkdirAll(filepath.Join(deployNS, foreignID.DeploymentID), 0o700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	listed, warnings, batch := listDeploymentRecordsBatched(deployNS, target, true)
+	if len(listed) != 0 {
+		t.Fatalf("144 foreign-owner best-effort list must return zero protected records, got %d", len(listed))
+	}
+	if batch == nil || batch.loads == 0 {
+		t.Fatal("foreign-owner list must still resolve the owner exactly once")
+	}
+	var sawForeign bool
+	for _, w := range warnings {
+		if se, ok := DeploymentRecordState(w); ok && se.Kind == "foreign" {
+			sawForeign = true
+		}
+	}
+	if !sawForeign {
+		t.Fatal("144 foreign-owner best-effort list must surface a foreign-kind warning")
+	}
+}
+
+// TestBatchedListOncePerTargetResolverBound widens F2's measured bound: the
+// authoritative installation-load bound must hold even when the tenant resolver
+// is exercised for a Coreless target. With a grant-only TenantOwnerResolver that
+// denies (false, nil) and therefore falls through to coreinstallation.Load for
+// each record, the batch must still read installation.json exactly once per
+// Target — the resolver is a grant-only hook and never caches an ownership
+// conclusion, while the batch serves every record from its single cached load.
+func TestBatchedListOncePerTargetResolverBound(t *testing.T) {
+	data := t.TempDir()
+	cfg := t.TempDir()
+	t.Setenv("BASEHARBOR_STATE_DIR", "")
+	t.Setenv("XDG_DATA_HOME", data)
+	t.Setenv("XDG_CONFIG_HOME", cfg)
+
+	target := "local"
+	provisionOwnerForTarget(t, target)
+
+	prev := TenantOwnerResolver
+	TenantOwnerResolver = func(string) (bool, error) { return false, nil }
+	defer func() { TenantOwnerResolver = prev }()
+
+	// Five records under one owned Target.
+	for i := 0; i < 5; i++ {
+		id := testDeploymentIdentity(t, target, "app-resolver-"+itoa(i), "dev")
+		deployNS := filepath.Join(data, "baseharbor", "targets", target, "deployments")
+		if err := os.MkdirAll(filepath.Join(deployNS, id.DeploymentID), 0o700); err != nil {
+			t.Fatalf("mkdir: %v", err)
+		}
+	}
+	_, _, batch := listDeploymentRecordsBatched(
+		filepath.Join(data, "baseharbor", "targets", target, "deployments"), target, true,
+	)
+	if batch == nil {
+		t.Fatal("listDeploymentRecordsBatched returned no batch")
+	}
+	if batch.loads != 1 {
+		t.Fatalf("authoritative installation-load bound broken: %d reads for 5 records; expected exactly 1 once-per-Target even with the tenant resolver denied per batch", batch.loads)
+	}
+}

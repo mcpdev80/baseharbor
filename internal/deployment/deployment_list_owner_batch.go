@@ -143,6 +143,26 @@ func VerifyDeploymentOwnerBatched(targetName, deploymentID string, ownerBatch *o
 	return verifyDeploymentOwnerAgainstInstallation(targetName, installation, deploymentID)
 }
 
+// classifyOwnerFailure maps a batched owner-check failure to the Kind that a
+// best-effort list's public warning must report. It never collapses the
+// card-174/144 modes: a genuine missing owner is "missing", a foreign (rewritten
+// or different-Target) installation is "foreign", and any other typed cause —
+// currently a tenant access-scope denial surfaced by the grant-only
+// TenantOwnerResolver — is "access". The original error is preserved by the
+// caller on the DeploymentRecordStateError; this only selects the label.
+func classifyOwnerFailure(err error) string {
+	switch {
+	case err == nil:
+		return ""
+	case errors.Is(err, ErrDeploymentOwnerMissing):
+		return "missing"
+	case errors.Is(err, ErrDeploymentOwnerForeign):
+		return "foreign"
+	default:
+		return "access"
+	}
+}
+
 // listDeploymentRecordsBatched reads the deployment.json in every deployment
 // directory under root, verifying each directory against the Target's Core
 // installation before its record is read. Fail-closed on an unavailable owner,
@@ -170,7 +190,13 @@ func listDeploymentRecordsBatched(root, target string, bestEffort bool) ([]Deplo
 		path := filepath.Join(root, deploymentID, "deployment.json")
 		if err := VerifyDeploymentOwnerBatched(target, deploymentID, batch); err != nil {
 			if bestEffort {
-				warnings = append(warnings, &DeploymentRecordStateError{Identity: DeploymentIdentity{Target: target, DeploymentID: deploymentID}, Kind: "missing", Err: err})
+				// A best-effort list must not collapse the three card-174/144
+				// failure modes into a single "missing" label: a tenant
+				// access-scope denial and a foreign-owner mismatch each carry a
+				// distinct contract meaning. Classify the original typed cause
+				// truthfully and preserve it (Unwrap) so downstream
+				// errors.Is(err, ErrDeploymentOwnerX) checks still match.
+				warnings = append(warnings, &DeploymentRecordStateError{Identity: DeploymentIdentity{Target: target, DeploymentID: deploymentID}, Kind: classifyOwnerFailure(err), Err: err})
 				continue
 			}
 			batch.err = err
