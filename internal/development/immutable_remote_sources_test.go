@@ -46,6 +46,7 @@ func TestRemoteGitRejectsUnsafeOrNonRemoteLocations(t *testing.T) {
 	}{
 		{"https://github.com/org/app.git", true},
 		{"ssh://git@example.org/org/app.git", true},
+		{"ssh://deploy@example.org/org/app.git", true},
 		{"git@example.org:org/app.git", true},
 		{"/tmp/checkout", false},
 		{"file:///tmp/checkout", false},
