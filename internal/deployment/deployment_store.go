@@ -565,27 +565,26 @@ func saveDeploymentRecord(record DeploymentRecord) error {
 	if err := os.MkdirAll(root, 0o700); err != nil {
 		return fmt.Errorf("create deployment state: %w", err)
 	}
-	// Persist the GUARDED record, not the caller-supplied one. The guard above
-	// resolved the authoritative owner into guardRecord (and carried any prior
-	// Conflict flag); the retention above restored owned preferences into
-	// guardRecord too. Serialising `record` here would persist the
-	// caller-supplied Observed.Owner (which a delegated update can forge) and,
-	// worse, the caller-supplied preferences (dropping retained ones); serialise
-	// guardRecord so the persisted owner and retained preferences are canonical.
-	// When the guard refuses a mutation the file is never written (store bytes
-	// unchanged).
+	// Persist the GUARDED record (atomic write + retained ownership band).
+	return persistDeploymentRecord(guardRecord, record, root)
+}
+
+// persistDeploymentRecord serialises the guarded record and atomically replaces
+// the deployment.json, then writes the retained ownership band. It is the only
+// place a deploy directory's record is persisted (SaveDeploymentRecord).
+//
+// The rename is the last word on the persisted bytes, and it is identity-checked
+// (0427-175): a deployment.json that belongs to another deployment uuid is never
+// replaced. The registry write lock keeps every other locking writer out across
+// claim → scan → create → rename; this check additionally refuses a foreign
+// claim that predates the lock. A process killed between the temp write and the
+// rename can leave at most a stale temp file, never a torn or clobbered record.
+func persistDeploymentRecord(guardRecord DeploymentRecord, record DeploymentRecord, root string) error {
 	data, err := json.MarshalIndent(guardRecord, "", "  ")
 	if err != nil {
 		return fmt.Errorf("encode deployment record: %w", err)
 	}
 	path := filepath.Join(root, "deployment.json")
-	// The rename below is the last word on the persisted bytes, and it is
-	// identity-checked (0427-175): a deployment.json that belongs to another
-	// deployment uuid is never replaced. The registry write lock keeps every
-	// other locking writer out across claim → scan → create → rename; this
-	// check additionally refuses a foreign claim that predates the lock. A
-	// process killed between the temp write and the rename can leave at most a
-	// stale temp file, never a torn or clobbered record.
 	if err := refuseForeignDeploymentClaim(record.Identity, path); err != nil {
 		return err
 	}
