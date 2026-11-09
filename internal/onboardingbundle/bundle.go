@@ -63,6 +63,14 @@ func (b Bundle) Validate(now time.Time) error {
 	if !roots.AppendCertsFromPEM([]byte(b.CAPEM)) {
 		return fmt.Errorf("%w: missing valid public Core CA", ErrInvalid)
 	}
+	block, _ := pem.Decode([]byte(b.CAPEM))
+	if block == nil || block.Type != "CERTIFICATE" {
+		return fmt.Errorf("%w: CA material is not a public certificate", ErrInvalid)
+	}
+	cert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil || !cert.IsCA || cert.KeyUsage&x509.KeyUsageCertSign == 0 {
+		return fmt.Errorf("%w: trust anchor is not a signing CA", ErrInvalid)
+	}
 	for _, credential := range []string{b.Token, b.Nonce} {
 		if len(credential) < 32 || len(credential) > 512 || strings.TrimSpace(credential) != credential || strings.ContainsAny(credential, "\r\n") {
 			return fmt.Errorf("%w: missing one-use enrollment grant", ErrInvalid)
@@ -70,9 +78,6 @@ func (b Bundle) Validate(now time.Time) error {
 	}
 	if b.ExpiresAt.IsZero() || !b.ExpiresAt.After(now) || b.ExpiresAt.After(now.Add(15*time.Minute)) {
 		return fmt.Errorf("%w: enrollment grant expired or exceeds 15-minute lifetime", ErrInvalid)
-	}
-	if block, _ := pem.Decode([]byte(b.CAPEM)); block == nil || block.Type != "CERTIFICATE" {
-		return fmt.Errorf("%w: CA material is not a public certificate", ErrInvalid)
 	}
 	if strings.Contains(b.CAPEM, "PRIVATE KEY") {
 		return fmt.Errorf("%w: private key is forbidden", ErrInvalid)
