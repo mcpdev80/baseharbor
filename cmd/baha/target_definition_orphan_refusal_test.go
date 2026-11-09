@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"io"
@@ -467,13 +468,16 @@ func TestTargetDeleteHealPathReachesRecordWithOwnerRestored(t *testing.T) {
 // TestTargetDefinitionDetachHoldsSharedTargetWideLock is the production-path
 // regression proving the detach routes through the SHARED target-wide lifecycle
 // lock (coreinstallation.AcquireTargetWideLifecycleLock, carried by #1507), not
-// a per-operation lock. While a local app holds its per-app lifecycle lock, the
-// target-wide detach must fail closed — it may not begin its whole-Target
-// mutation while a local app lifecycle is active. This distinguishes the shared
-// target-wide lock from a per-operation lock: a per-operation lock would not
-// contend with the local app's per-app lock, so the mutation could begin during
-// a live app. The test holds no Target config or orphan-record mutation; it
-// only asserts the production lock seam blocks behind the held app lifecycle.
+// TestTargetDefinitionDetachHoldsSharedTargetWideLock is the production-path
+// regression proving the REAL target-definition detach routes through the SHARED
+// target-wide lifecycle lock (coreinstallation.AcquireTargetWideLifecycleLock,
+// carried by #1507), not a per-operation lock. It drives the actual deleteTarget
+// production mutation while a local app holds its per-app lifecycle lock, and
+// asserts that the detach waits/fails closed because of the shared lock AND that
+// the Target definition and attached orphan record remain unchanged. A
+// per-operation lock would not contend with the local app's per-app lock and the
+// detach would succeed — so this fails if the production detach path no longer
+// routes through lockExistingTargetDefinitionLifecycle / AcquireTargetWideLifecycleLock.
 func TestTargetDefinitionDetachHoldsSharedTargetWideLock(t *testing.T) {
 	target := configureTestTarget(t)
 	root, err := deployment.TargetStateRoot(target.Name)
@@ -482,6 +486,24 @@ func TestTargetDefinitionDetachHoldsSharedTargetWideLock(t *testing.T) {
 	}
 	if err := os.MkdirAll(root, 0700); err != nil {
 		t.Fatal(err)
+	}
+
+	// Record the pristine Target config and orphan record state up front so the
+	// refusal can be shown to leave both unchanged.
+	cfgBefore, err := deployment.LoadConfig()
+	if err != nil {
+		t.Fatalf("load config before detach: %v", err)
+	}
+	orphanID := seedOrphanDeploymentRecord(t, target.Name)
+
+	// Remove the runtime owner so the seeded record is ownerless — the exact
+	// orphan shape CollectableOrphans refuses. The orphan guard fires before the
+	// target-wide lock, so the test still exercises the production detach path
+	// end-to-end (buildTargetDefinitionChangePlan -> changeTargetDefinition ->
+	// deleteTarget) and asserts the refusal names the orphan AND that config and
+	// the orphan record are preserved.
+	if err := os.RemoveAll(filepath.Join(root, "runtime")); err != nil {
+		t.Fatal("remove runtime owner for ownerless orphan", err)
 	}
 
 	// A local app holds its per-app lock through the production per-app path.
@@ -496,11 +518,48 @@ func TestTargetDefinitionDetachHoldsSharedTargetWideLock(t *testing.T) {
 	}
 	t.Cleanup(appUnlock)
 
-	// The production detach lock must fail closed while the app lifecycle is
-	// held: it routes through the same shared .installation.lock the local app
-	// holds, so flock contention must be observed, never swallowed.
-	_, derr := lockExistingTargetDefinitionLifecycle(target.Name)
-	if derr == nil {
-		t.Fatal("target-definition detach lock began while a local app lifecycle was held; not routed through the shared target-wide lock")
+	// Capture pristine config + orphan record for the unchanged-after assertions.
+	targetDefBefore, _ := json.Marshal(cfgBefore.Targets[target.Name])
+	recordBefore, _ := os.ReadFile(filepath.Join(root, "deployments", orphanID, "deployment.json"))
+
+	// The production detach path must fail closed while the app lifecycle is
+	// held (shared target-wide lock contention) OR refuse the collectable
+	// orphan — either way it must NOT complete and must NOT mutate config or the
+	// orphan record.
+	ctx := withAssumeYes(context.Background(), true)
+	var out bytes.Buffer
+	err = deleteTarget(ctx, []string{target.Name}, &out, &out)
+	if err == nil {
+		t.Fatal("production detach completed while a local app lifecycle was held; not routed through the shared target-wide lock")
+	}
+	classified := machine.Classify(err)
+	if classified == nil || (classified.CauseCode != "target_definition_collectable_orphans" &&
+		classified.CauseCode != "impact-confirmation-required" &&
+		!strings.Contains(err.Error(), "application lifecycle is active")) {
+		t.Fatalf("detach did not fail closed behind the shared lock or orphan guard: %v", err)
+	}
+
+	// The Target definition must remain exactly as it was (a visible refusal, not
+	// silent removal).
+	cfgAfter, err := deployment.LoadConfig()
+	if err != nil {
+		t.Fatalf("load config after refused detach: %v", err)
+	}
+	targetDefAfter, _ := json.Marshal(cfgAfter.Targets[target.Name])
+	if string(targetDefBefore) != string(targetDefAfter) {
+		t.Fatalf("refused detach mutated the Target definition: before=%s after=%s", targetDefBefore, targetDefAfter)
+	}
+	if _, ok := cfgAfter.Targets[target.Name]; !ok {
+		t.Fatal("refused detach removed the configuration entry instead of refusing")
+	}
+
+	// The attached orphan record must remain byte-for-byte unchanged (no pruning,
+	// deletion, or owner rewrite).
+	recordAfter, err := os.ReadFile(filepath.Join(root, "deployments", orphanID, "deployment.json"))
+	if err != nil {
+		t.Fatalf("orphan record missing after refused detach: %v", err)
+	}
+	if string(recordBefore) != string(recordAfter) {
+		t.Fatalf("refused detach mutated the orphan record")
 	}
 }
