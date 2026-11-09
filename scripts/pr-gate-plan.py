@@ -1496,6 +1496,12 @@ def targeted_plan(diff, requirements, mapping, repository='.',
             area = 'go-module-dependency'
             require(CODE_CHECKS)
             require(CLI_CHECKS)
+        elif path in ('scripts/pr-go-unit-shard.py', 'scripts/pr-unit-database.sh',
+                         'scripts/test_pr_go_unit_shard.py', 'scripts/test_pr_unit_database_route.py'):
+            # Changes to the unit-test sharding executor require full Go proof.
+            # Ordinary product changes still use their precisely selected checks.
+            area = 'go-unit-executor'
+            require(CI_CHECKS + CONSERVATIVE_CHECKS)
         elif (path.startswith('scripts/ci-') or path.startswith('scripts/pr-') or
               path.startswith('scripts/test_pr_') or
               path.startswith('scripts/verify-') or
