@@ -165,3 +165,32 @@ func fingerprintStagedCandidate(root string) (string, error) {
 	}
 	return hex.EncodeToString(sum.Sum(nil)), nil
 }
+// confirmStagedCoreGitCandidate checks consent against the exact immutable
+// repository+commit identity that the owning Core staged. This is read-only;
+// deployment records are changed only by the existing lifecycle authority.
+func confirmStagedCoreGitCandidate(candidate stagedCoreGitCandidate, rawDigest string) error {
+	if candidate.Root == "" || candidate.Fingerprint == "" {
+		return fmt.Errorf("Core candidate has no staged content")
+	}
+	if rawDigest == "" {
+		return missingCandidateConsentError(candidate.Submission)
+	}
+	consent, err := finalizeCandidateConsent(rawDigest, "operator", candidate.Submission)
+	if err != nil {
+		return err
+	}
+	if consent == nil {
+		return missingCandidateConsentError(candidate.Submission)
+	}
+	if err := candidate.Submission.Validate(consent); err != nil {
+		return err
+	}
+	actual, err := fingerprintStagedCandidate(candidate.Root)
+	if err != nil {
+		return fmt.Errorf("revalidate staged Core candidate bytes: %w", err)
+	}
+	if actual != candidate.Fingerprint {
+		return fmt.Errorf("staged Core candidate changed since immutable source admission")
+	}
+	return nil
+}
