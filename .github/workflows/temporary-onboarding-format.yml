@@ -1,0 +1,49 @@
+name: Temporary one-shot onboarding formatting
+on:
+  push:
+    branches:
+      - feat/0427-zero-friction-core-workstation-onboarding
+    paths:
+      - .github/workflows/temporary-onboarding-format.yml
+permissions:
+  contents: write
+jobs:
+  format-once:
+    if: github.repository == 'mcpdev80/baseharbor'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: true
+          ref: feat/0427-zero-friction-core-workstation-onboarding
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Format all 11 and remove temporary workflow in same commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          files=(
+            cmd/baha/management_remote_connection.go
+            cmd/baha/management_remote_machine.go
+            cmd/baha/management_remote_source_upload.go
+            cmd/baha/serve_managed_tls.go
+            internal/controlplaneruntime/server_run.go
+            internal/database/operator_bootstrap.go
+            internal/onboardingbundle/bundle_test.go
+            internal/onboardingbundle/redeem_test.go
+            internal/onboardingwizard/onboardingwizard.go
+            internal/onboardingwizard/wizard_test.go
+            internal/operatorauth/authorization_test.go
+          )
+          gofmt -w "${files[@]}"
+          test -z "$(gofmt -l "${files[@]}")"
+          git rm .github/workflows/temporary-onboarding-format.yml
+          git add -- "${files[@]}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git diff --cached --quiet && { echo "No changes to commit"; exit 1; }
+          git commit -m "style(onboard): format all 11 Go files from PR draft CI"
+          git push origin HEAD:feat/0427-zero-friction-core-workstation-onboarding
