@@ -198,6 +198,15 @@ func setupBootstrapLeftoverMarker() string {
 // claim; TestMain calls it before the package test run starts (the cell
 // marker path or the fixture marker named by the regression subprocess).
 func claimBootstrapLeftoverMarker(marker string) {
+	// Ensure the parent data directory exists: on a runner the DataRoot (HOME)
+	// fallback path may not be materialized, and a bare os.WriteFile would fail
+	// with a missing-directory error that leaves the durable claim unwritten.
+	if dir := filepath.Dir(marker); dir != "" {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			fmt.Fprintf(os.Stderr, "bootstrap leftover marker dir: %v\n", err)
+			return
+		}
+	}
 	if err := os.WriteFile(marker, []byte(strconv.Itoa(os.Getpid())+"\n"), 0o600); err != nil {
 		fmt.Fprintf(os.Stderr, "bootstrap leftover marker setup failed: %v\n", err)
 	}
