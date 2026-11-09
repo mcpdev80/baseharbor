@@ -140,13 +140,13 @@ belegen keine Pre-Release-Bereitschaft.
 
 Jede Anwendungs-Umgebung wird pro Target genau einmal registriert: Die
 Kombination aus application_id und Umgebung identifiziert ein Deployment, und
- Erstregistrierungen sind gegen gleichzeitige Registrierungen serialisiert,
+Erstregistrierungen sind gegen gleichzeitige Registrierungen serialisiert,
 damit racende `baha app init`-Läufe keine Duplikate anlegen können. Namen
 dürfen sich wiederholen; die Identität ist das UUID-Paar, nicht der Name.
 
 Hält ein Target, das vor dieser Serialisierung registriert wurde, bereits zwei
 Deployments für eine Anwendungs-Identität, scheitern alle Planungskommandos auf
-dem Target sicht­bar und nennen beide kollidierenden Deployment-UUIDs.
+dem Target sichtbar und nennen beide kollidierenden Deployment-UUIDs.
 `baha app list` zeigt die Zwillinge weiterhin; jedes wird per UUID stillgelegt:
 
 ```bash
