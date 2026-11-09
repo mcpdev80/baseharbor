@@ -49,6 +49,8 @@ func validBundle(t *testing.T) Bundle {
 		CoreURL:         "https://192.0.2.8:18443",
 		CAPEM:           string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})),
 		InstallationID:  "11111111-1111-4111-8111-111111111111",
+		CoreInstallationID: "33333333-3333-4333-8333-333333333333",
+		RuntimeProvider: "docker",
 		Station:         "workstation-a",
 		Token:           strings.Repeat("T", 48),
 		Nonce:           strings.Repeat("N", 48),
