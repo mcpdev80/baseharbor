@@ -134,3 +134,26 @@ Voraussetzung. Fehlgeschlagene oder unterbrochene Ausführung bleibt teilweise
 erledigt und wiederaufnehmbar. Release-Bereitschaft benötigt die jeweils erforderliche
 Provider-, Mutationspfad- und native Ökosystem-Abnahme. Einzelne grüne Fixtures
 belegen keine Pre-Release-Bereitschaft.
+
+
+### Deploymente Identität und Wiederherstellung
+
+Jede Anwendungs-Umgebung wird pro Target genau einmal registriert: Die
+Kombination aus application_id und Umgebung identifiziert ein Deployment, und
+ Erstregistrierungen sind gegen gleichzeitige Registrierungen serialisiert,
+damit racende `baha app init`-Läufe keine Duplikate anlegen können. Namen
+dürfen sich wiederholen; die Identität ist das UUID-Paar, nicht der Name.
+
+Hält ein Target, das vor dieser Serialisierung registriert wurde, bereits zwei
+Deployments für eine Anwendungs-Identität, scheitern alle Planungskommandos auf
+dem Target sicht­bar und nennen beide kollidierenden Deployment-UUIDs.
+`baha app list` zeigt die Zwillinge weiterhin; jedes wird per UUID stillgelegt:
+
+```bash
+baha app destroy --uuid <deployment-uuid> --full-reset
+```
+
+Anschließend das Target mit `baha app list` nachprüfen. Kommandos mit `--uuid`
+bleiben auf einem solchen Target nutzbar; name-adressierte nicht, bis das
+Duplikat stillgelegt ist. Das Paar `(application_id, environment)` ist die
+System-Identität nach ADR 0017.
