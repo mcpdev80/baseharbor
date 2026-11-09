@@ -2,6 +2,7 @@ package deployment
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 
@@ -99,8 +100,25 @@ func (b *ownerBatch) loadOwner() (*coreinstallation.State, error) {
 			b.owner = &owner
 		}
 	} else if err != nil {
+		// Reuse the central owner-load classification (deployment_owner_
+		// classification.go / VerifyDeploymentOwner) so the batched owner load
+		// never folds a genuine read failure into a foreign-owner verdict.
+		// os.ErrNotExist stays Missing (card 174); a Core installation that
+		// cannot be READ (permission denied, an open/stat failure) is a
+		// host-state access problem, not a foreign installation, so it is
+		// surfaced as ErrDeploymentOwnerAccessDenied; a present-but-malformed
+		// installation is its own fail-closed named error; only a positively-
+		// loaded identity whose Target diverges is foreign. This keeps the
+		// batched path byte-identical in classification to the single-record
+		// path.
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, ErrDeploymentOwnerMissing
+		}
+		if isAccessDeniedLoadError(err) {
+			return nil, fmt.Errorf("%w: %w", ErrDeploymentOwnerAccessDenied, err)
+		}
+		if isMalformedInstallationLoadError(err) {
+			return nil, fmt.Errorf("%w: %w", ErrDeploymentOwnerMalformedState, err)
 		}
 		return nil, ErrDeploymentOwnerForeign
 	} else if b != nil {

@@ -2,6 +2,7 @@ package deployment
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -368,5 +369,102 @@ func TestBatchedListOncePerTargetResolverBound(t *testing.T) {
 	}
 	if batch.loads != 1 {
 		t.Fatalf("authoritative installation-load bound broken: %d reads for 5 records; expected exactly 1 once-per-Target even with the tenant resolver denied per batch", batch.loads)
+	}
+}
+
+// TestBatchedListClassifiesAccessDeniedFileError covers the card-174 fix on PR
+// #1511 r4: the batched owner-load previously folded EVERY load error except
+// os.ErrNotExist into ErrDeploymentOwnerForeign, so a Core installation that
+// could not be READ (permission denied) was mis-classified as a foreign owner.
+// The batched list must instead reuse the central owner-load classification:
+// an unreadable installation is ErrDeploymentOwnerAccessDenied (Kind "access"),
+// never foreign, never missing. This exercises the file-level load seam
+// (resolveInstallationLoad -> coreinstallation.Load) deterministically through
+// the package-internal test seam, independent of root-dependent file
+// permissions on CI runners.
+func TestBatchedListClassifiesAccessDeniedFileError(t *testing.T) {
+	for _, bestEffort := range []bool{true, false} {
+		bestEffort := bestEffort
+		t.Run(fmt.Sprintf("bestEffort=%v", bestEffort), func(t *testing.T) {
+			t.Setenv("BASEHARBOR_STATE_DIR", "")
+			data := t.TempDir()
+			cfg := t.TempDir()
+			t.Setenv("XDG_DATA_HOME", data)
+			t.Setenv("XDG_CONFIG_HOME", cfg)
+			target := "local"
+			provisionOwnerForTarget(t, target)
+
+			identity := testDeploymentIdentity(t, target, "app-access-denied", "dev")
+			deployNS := filepath.Join(data, "baseharbor", "targets", target, "deployments")
+			if err := os.MkdirAll(filepath.Join(deployNS, identity.DeploymentID), 0o700); err != nil {
+				t.Fatalf("mkdir deployment dir: %v", err)
+			}
+
+			// Inject a deterministic permission-denied at the authoritative
+			// installation-load seam: the genuine Core exists but cannot be read.
+			permErr := newPermissionDeniedError()
+			testLoadInstallationForOwner = func(root string) (coreinstallation.State, error) {
+				return coreinstallation.State{}, permErr
+			}
+			defer restoreTestLoadOwner(t)
+
+			records, warnings, batch := listDeploymentRecordsBatched(deployNS, target, bestEffort)
+
+			// The once-per-Target bound still holds: one authoritative read,
+			// which failed with permission denied.
+			if batch != nil && batch.loads != 1 {
+				t.Fatalf("authoritative installation-load bound broken: %d reads; expected exactly 1", batch.loads)
+			}
+
+			normalErr := batch.err
+			if bestEffort {
+				// Best-effort must surface a per-record warning whose Kind is
+				// "access" and whose preserved cause is ErrDeploymentOwnerAccessDenied
+				// (not foreign, not missing). No protected record is returned.
+				if len(records) != 0 {
+					t.Fatalf("access-denied batch list must return zero records, got %d", len(records))
+				}
+				var found *DeploymentRecordStateError
+				for _, w := range warnings {
+					if se, ok := DeploymentRecordState(w); ok && se.Identity.DeploymentID == identity.DeploymentID {
+						found = se
+					}
+				}
+				if found == nil {
+					t.Fatal("best-effort access-denied list must surface a record warning")
+				}
+				if found.Kind != "access" {
+					t.Fatalf("access-denied best-effort warning must be Kind \"access\", got %q (%v)", found.Kind, found.Err)
+				}
+				if !errors.Is(found.Err, ErrDeploymentOwnerAccessDenied) {
+					t.Fatalf("access-denied best-effort warning must carry ErrDeploymentOwnerAccessDenied, got %v", found.Err)
+				}
+				if !errors.Is(found.Err, newPermissionDeniedError()) {
+					t.Fatalf("access-denied warning must preserve the underlying permission error, got %v", found.Err)
+				}
+				if errors.Is(found.Err, ErrDeploymentOwnerForeign) {
+					t.Fatalf("access-denied warning must NOT be classified foreign: %v", found.Err)
+				}
+			} else {
+				// Normal list must fail closed with the access-denied sentinel —
+				// never ErrDeploymentOwnerForeign, never ErrDeploymentOwnerMissing,
+				// and never return a record for an unreadable owner.
+				if normalErr == nil {
+					t.Fatal("normal access-denied list must fail closed")
+				}
+				if len(records) != 0 {
+					t.Fatalf("normal access-denied list must return zero records, got %d", len(records))
+				}
+				if !errors.Is(normalErr, ErrDeploymentOwnerAccessDenied) {
+					t.Fatalf("normal access-denied list must fail with ErrDeploymentOwnerAccessDenied, got %v", normalErr)
+				}
+				if errors.Is(normalErr, ErrDeploymentOwnerForeign) {
+					t.Fatalf("normal access-denied list must NOT be classified foreign: %v", normalErr)
+				}
+				if errors.Is(normalErr, ErrDeploymentOwnerMissing) {
+					t.Fatalf("normal access-denied list must NOT be classified missing: %v", normalErr)
+				}
+			}
+		})
 	}
 }
