@@ -51,3 +51,31 @@ func TestWriteExclusiveOnboardingProfileRejectsSymlink(t *testing.T) {
 		t.Fatalf("symlink target changed: %v", err)
 	}
 }
+
+func TestPrivateOnboardingDirectoryPreflight(t *testing.T) {
+	root := t.TempDir()
+	missing := filepath.Join(root, "not-created")
+	if err := checkPrivateOnboardingDirectory(missing); err != nil {
+		t.Fatalf("a missing directory is valid before creation: %v", err)
+	}
+	private := filepath.Join(root, "private")
+	if err := os.Mkdir(private, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := checkPrivateOnboardingDirectory(private); err != nil {
+		t.Fatalf("private directory rejected: %v", err)
+	}
+	if err := os.Chmod(private, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := checkPrivateOnboardingDirectory(private); err == nil {
+		t.Fatal("public identity directory accepted")
+	}
+	link := filepath.Join(root, "linked")
+	if err := os.Symlink(root, link); err != nil {
+		t.Fatal(err)
+	}
+	if err := checkPrivateOnboardingDirectory(link); err == nil {
+		t.Fatal("symlinked remote profile directory accepted")
+	}
+}
