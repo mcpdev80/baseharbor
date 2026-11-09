@@ -14,13 +14,19 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// errLockFilesystemNotEnforcing is returned when a lock was acquired but the
+// ErrLockFilesystemNotEnforcing is returned when a lock was acquired but the
 // underlying filesystem does NOT enforce the advisory flock across processes.
 // The returned lock is NOT safe to trust for mutual exclusion on that target,
 // so AcquireLifecycleLock / AcquireBootstrapLock / AcquireAppLifecycleLock /
 // AcquireTargetWideLifecycleLock fail closed instead of emitting false
-// security. Callers retry after moving or fixing the target state root.
-var errLockFilesystemNotEnforcing = errors.New(
+// security. Callers must NOT retry this as ordinary contention: it is a
+// classifiable remediation condition, so callers that route the acquire through
+// a bounded retry loop (e.g. cmd/baha/application_lifecycle_lock.go) must
+// detect it with errors.Is and fail closed immediately with the actionable
+// filesystem remediation. It is exported (unlike the probe-unavailable
+// sentinel) precisely so the coreinstallation boundary and CLI callers can
+// classify it.
+var ErrLockFilesystemNotEnforcing = errors.New(
 	"this filesystem does not enforce the lifecycle lock across processes; " +
 		"the per-process flock() is advisory-only here and cannot be trusted for " +
 		"mutual exclusion. Move the state root to an enforcing local filesystem " +
@@ -60,7 +66,7 @@ func lockNamed(root string, name string) (func(), error) {
 	} else if free {
 		_ = unix.Flock(fd, unix.LOCK_UN)
 		_ = file.Close()
-		return nil, errLockFilesystemNotEnforcing
+		return nil, ErrLockFilesystemNotEnforcing
 	}
 	if err := file.Truncate(0); err != nil {
 		_ = unix.Flock(fd, unix.LOCK_UN)

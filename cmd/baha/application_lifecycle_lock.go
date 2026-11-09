@@ -9,6 +9,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/coreinstallation"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
+	"github.com/mcpdev80/baseharbor/internal/stableid"
 )
 
 // lockApplicationTargetLifecycle serialises lifecycle mutation of a SINGLE
@@ -60,10 +61,15 @@ func lockApplicationTargetLifecycle(resolved resolvedApplication, allowPriority 
 		if err != nil {
 			// An owner-missing or foreign root is a hard fail-closed condition, not
 			// contention: surface it immediately so a Coreless/never-delivered app
-			// is never stuck in the bounded retry loop. Only genuine flock
-			// contention (a different writer holding the same app owner) enters
-			// the retry loop.
-			if errors.Is(err, deployment.ErrDeploymentOwnerMissing) ||
+			// is never stuck in the bounded retry loop. A filesystem that does NOT
+			// enforce the lock across processes is a classifiable remediation
+			// condition, not contention either: it never resolves by waiting, so
+			// surface the actionable filesystem cause immediately instead of
+			// retrying for the full 15s deadline and hiding it behind the generic
+			// acquisition-deadline message. Only genuine flock contention (a
+			// different writer holding the same app owner) enters the retry loop.
+			if errors.Is(err, stableid.ErrLockFilesystemNotEnforcing) ||
+				errors.Is(err, deployment.ErrDeploymentOwnerMissing) ||
 				errors.Is(err, deployment.ErrDeploymentOwnerForeign) {
 				return nil, err
 			}

@@ -67,9 +67,9 @@ func lockCrossProcessChild() {
 // lock (the unenforcing filesystem case) and asserts the returned free flag is
 // true. This pins the probe contract that drives the fail-closed path.
 func TestCrossProcessProbeReturnsFreeWhenChildAcquires(t *testing.T) {
-	origProbe := lockProbeFunc
-	lockProbeFunc = func(string) (bool, error) { return true, nil }
-	defer func() { lockProbeFunc = origProbe }()
+	origProbe := LockProbeFunc
+	LockProbeFunc = func(string) (bool, error) { return true, nil }
+	defer func() { LockProbeFunc = origProbe }()
 
 	free, perr := lockProbeRun("/unused/path")
 	if perr != nil {
@@ -84,9 +84,9 @@ func TestCrossProcessProbeReturnsFreeWhenChildAcquires(t *testing.T) {
 // HELD via a stub (simulating a correctly-enforcing kernel) so the acquire
 // proceeds rather than failing closed spuriously.
 func TestCrossProcessProbeReturnsHeldWhenLockGenuinelyFree(t *testing.T) {
-	origProbe := lockProbeFunc
-	lockProbeFunc = func(string) (bool, error) { return false, nil }
-	defer func() { lockProbeFunc = origProbe }()
+	origProbe := LockProbeFunc
+	LockProbeFunc = func(string) (bool, error) { return false, nil }
+	defer func() { LockProbeFunc = origProbe }()
 
 	free, perr := lockProbeRun("/unused/path")
 	if perr != nil {
@@ -109,15 +109,15 @@ func TestAcquireLifecycleLockFailsClosedOnUnenforcingFilesystem(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	origProbe := lockProbeFunc
-	lockProbeFunc = func(string) (bool, error) { return true, nil }
-	defer func() { lockProbeFunc = origProbe }()
+	origProbe := LockProbeFunc
+	LockProbeFunc = func(string) (bool, error) { return true, nil }
+	defer func() { LockProbeFunc = origProbe }()
 
 	_, err := AcquireLifecycleLock(root)
 	if err == nil {
 		t.Fatalf("acquire succeeded while the filesystem is unenforcing; mutual exclusion is advisory-only (the defect)")
 	}
-	if !errors.Is(err, errLockFilesystemNotEnforcing) {
+	if !errors.Is(err, ErrLockFilesystemNotEnforcing) {
 		t.Fatalf("want the not-enforcing failure, got: %v", err)
 	}
 }

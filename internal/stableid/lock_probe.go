@@ -24,6 +24,14 @@ var lockProbeSource string
 // lockProbeRunDefault.
 var lockProbeFunc = lockProbeRunDefault
 
+// LockProbeFunc is the exported boundary seam for the cross-process probe so
+// that callers in other packages (notably the cmd/baha command-path regression
+// for the lifecycle lock) can inject a not-enforcing probe without a second
+// real OS process. The CLI package overrides this ONLY in tests to drive the
+// real retry-loop decision; production code never sets it, so production runs
+// lockProbeRunDefault. It is a test seam, never a production hook.
+var LockProbeFunc = lockProbeRunDefault
+
 // errProbeUnavailable is returned when neither the embedded probe binary nor a
 // Go toolchain can run the cross-process probe. It is NOT a lock failure: the
 // caller cannot verify cross-process enforcement, so AcquireLifecycleLock (and
@@ -41,7 +49,7 @@ var errProbeUnavailable = errors.New("cross-process lock probe cannot run on thi
 // across processes, so the caller must fail closed rather than trust a lock it
 // cannot verify is exclusive.
 func lockProbeRun(lockPath string) (free bool, err error) {
-	return lockProbeFunc(lockPath)
+	return LockProbeFunc(lockPath)
 }
 
 // lockProbeRunDefault implements lockProbeFunc with the real embedded binary
