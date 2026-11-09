@@ -291,6 +291,38 @@ func resolveRegisteredApplication(ctx context.Context, target deployment.Resolve
 				Remediation: "operator_review",
 			}
 		}
+		// A non-missing owner error (an unreadable owner, or a present-but-
+		// malformed Core state) is a host-state problem, not an absent
+		// deployment. The best-effort list tagged the offending warning either
+		// "access-denied" or "malformed"; propagate the true verdict here
+		// instead of folding it into the generic "no registered deployment"
+		// lie that previously hid the real cause (path + right / valid state).
+		for _, warning := range warnings {
+			stateErr, ok := deployment.DeploymentRecordState(warning)
+			if !ok {
+				continue
+			}
+			if stateErr.Kind == "access-denied" {
+				return resolvedApplication{}, &machine.Error{
+					Code:        machine.ErrorInternal,
+					CauseCode:   "deployment_owner_access_denied",
+					Message:     fmt.Sprintf("deployment state for %s/%s/%s is not readable by this user: %v", stateErr.Identity.Target, stateErr.Identity.Application, stateErr.Identity.Environment, stateErr.Err),
+					Resource:    target.Name + "/" + stateErr.Identity.DeploymentID,
+					Next:        "Inspect the Core installation.json under targets/<target>/runtime and restore owner/permissions so its state becomes loadable.",
+					Remediation: "operator_review",
+				}
+			}
+			if stateErr.Kind == "malformed" {
+				return resolvedApplication{}, &machine.Error{
+					Code:        machine.ErrorInternal,
+					CauseCode:   "deployment_owner_malformed_state",
+					Message:     fmt.Sprintf("deployment state for %s/%s/%s holds a Core installation that could not be validated: %v", stateErr.Identity.Target, stateErr.Identity.Application, stateErr.Identity.Environment, stateErr.Err),
+					Resource:    target.Name + "/" + stateErr.Identity.DeploymentID,
+					Next:        "Restore a genuine Core installation under targets/<target>/runtime before its state is loadable.",
+					Remediation: "operator_review",
+				}
+			}
+		}
 		if environment == "" {
 			return resolvedApplication{}, &machine.Error{
 				Code:      machine.ErrorNotFound,

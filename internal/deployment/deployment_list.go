@@ -72,7 +72,15 @@ func listDeploymentRecords(root, target string, bestEffort bool) ([]DeploymentRe
 		path := filepath.Join(root, deploymentID, "deployment.json")
 		if err := verifyDeploymentOwnerAtSeam(target, deploymentID); err != nil {
 			if bestEffort {
-				warnings = append(warnings, &DeploymentRecordStateError{Identity: DeploymentIdentity{Target: target, DeploymentID: deploymentID}, Kind: "missing", Err: err})
+				// A non-missing owner error (an unreadable installation, or a
+				// present-but-malformed Core state) is a host-state problem, not a
+				// "missing" record: folding it into the generic missing-owner kind
+				// would let the CLI path (resolveRegisteredApplication) re-classify
+				// it as "no registered deployment". Keep it distinct so the CLI
+				// can propagate the true access-denied / malformed-state verdict
+				// instead of the lie.
+				kind := classifyOwnerWarning(err)
+				warnings = append(warnings, &DeploymentRecordStateError{Identity: DeploymentIdentity{Target: target, DeploymentID: deploymentID}, Kind: kind, Err: err})
 				continue
 			}
 			return nil, nil, err
