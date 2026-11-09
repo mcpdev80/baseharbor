@@ -87,8 +87,20 @@ func remoteMutationArgs(operation string, args []string) (string, string, json.R
 		return "", "", nil, usageError("empty candidate confirmation digest", "Pass the exact candidate SHA-256 digest or omit --confirm-candidate.")
 	}
 	if strings.TrimSpace(name) == "" {
-		return "", "", nil, usageError("remote application mutation needs an explicit NAME",
-			"Use the application name already registered on the remote Core; the workstation source is not uploaded implicitly.")
+		// Use only the application selector from the existing local contract.
+		// Source paths and workstation-owned identity are never sent to Core;
+		// Core remains the sole authority for the registered application.
+		path, findErr := application.FindRepositoryManifest(".")
+		if findErr != nil {
+			return "", "", nil, usageError("remote application name is unavailable",
+				"Pass a registered application NAME or run from a repository containing baseharbor.yaml.")
+		}
+		local, loadErr := application.LoadManifestFile(path)
+		if loadErr != nil || strings.TrimSpace(local.Name) == "" || local.Environment != environment {
+			return "", "", nil, usageError("remote repository application selector is invalid or differs from the selected environment",
+				"Review the local baseharbor.yaml application/environment or pass an explicit registered application NAME.")
+		}
+		name = local.Name
 	}
 	var consent *application.ProviderChangeConsent
 	if consentPath != "" {
