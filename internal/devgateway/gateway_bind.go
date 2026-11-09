@@ -28,4 +28,3 @@ func gatewayBindAddress(routes []Route) (string, error) {
 	}
 	return ip.String(), nil
 }
-
