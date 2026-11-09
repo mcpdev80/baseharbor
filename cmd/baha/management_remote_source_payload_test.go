@@ -25,7 +25,7 @@ func TestRemoteApplyPayloadTransportsOnlyPinnedGitOrOCIModel(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			model := development.SourceModel{
 				SchemaVersion: development.SourceModelVersion, Application: "demo",
-				Sources: []development.SourceDefinition{test.source},
+				Sources:    []development.SourceDefinition{test.source},
 				Components: []development.ComponentSource{{Component: "app", Source: "app"}},
 			}
 			payload, err := remoteApplyPayloadWithSource(json.RawMessage(`{"name":"demo","environment":"dev"}`), &model)
