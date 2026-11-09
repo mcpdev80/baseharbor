@@ -27,8 +27,16 @@ func TestLifecycleLockContentionExplainsPIDStateAndSafeRelease(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := strings.TrimSpace(string(holder)); got != strconv.Itoa(os.Getpid()) {
-		t.Fatalf("reported holder pid = %q, want %d", got, os.Getpid())
+	// The receipt is a versioned, line-oriented record (0427-180) whose first
+	// field is the holder pid. The pre-0427-180 contract was the bare pid line;
+	// the pid is still the authoritative holder identity, so assert it via the
+	// documented decoder rather than a brittle whole-line match.
+	rec, ok := parseLockHolderRecord(holder)
+	if !ok {
+		t.Fatalf("receipt is not a recognised baseharbor record: %q", strings.TrimSpace(string(holder)))
+	}
+	if rec.pid != os.Getpid() {
+		t.Fatalf("reported holder pid = %d, want %d", rec.pid, os.Getpid())
 	}
 	other, err := AcquireLifecycleLock(root)
 	if err == nil {

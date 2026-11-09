@@ -126,6 +126,18 @@ func AcquireAppLifecycleLock(root string, scope string) (func(), error) {
 	if err != nil {
 		return nil, err
 	}
+	// 0427-180: while holding the shared .installation.lock, reclaim a per-app
+	// dotfile whose recorded holder is provably stale (dead, or pid reused on a
+	// different boot / start second) BEFORE creating this app's dotfile. The
+	// decision runs inside the same critical section the target-wide scan
+	// shares, so the read-decide-remove is atomic against that scan and a live
+	// holder is never reclaimed. The kernel flock still blocks a live same-scope
+	// writer here; only a confirmed-stale receipt is removed — this is self-help
+	// for the SIGKILLed-holder case, not a bypass of cross-process contention.
+	if _, serr := reclaimStaleAppLock(deploymentsDir, lockName); serr != nil {
+		wideUnlock()
+		return nil, serr
+	}
 	appUnlock, err := lockNamed(deploymentsDir, lockName)
 	if err != nil {
 		wideUnlock()
@@ -176,6 +188,46 @@ func deploymentsHaveAppLocks(root string) (bool, error) {
 		}
 	}
 	return false, nil
+}
+
+// reclaimStaleAppLock inspects the per-app dotfile at <deploymentsDir>/<lockName>
+// and removes it ONLY when its recorded holder is provably stale (dead, or a
+// different boot-id / start second than the current process). It is called by
+// the per-app acquire path while holding the shared .installation.lock, so the
+// read-decide-remove is atomic against the target-wide scan: a live holder is
+// never reclaimed, and a torn/SIGKILLed receipt is removed under the same
+// critical section the scan shares, so the scan can never observe a
+// half-created or half-removed dotfile.
+//
+// A missing dotfile is "nothing to reclaim"; an unreadable deployments
+// namespace fails closed (never a free pass); a foreign or malformed receipt
+// is treated as a live holder and left in place (do not destroy another
+// writer's state on a decode guess).
+func reclaimStaleAppLock(deploymentsDir, lockName string) (reclaimed bool, err error) {
+	receiptPath := filepath.Join(deploymentsDir, lockName)
+	buf, rerr := os.ReadFile(receiptPath)
+	if rerr != nil {
+		if errors.Is(rerr, os.ErrNotExist) {
+			return false, nil
+		}
+		return false, rerr
+	}
+	rec, ok := parseLockHolderRecord(buf)
+	if !ok {
+		// Not a baseharbor receipt we wrote: leave it untouched.
+		return false, nil
+	}
+	if lockHolderLive(rec) {
+		return false, nil
+	}
+	// Confirmed stale (dead holder, or pid reused on a different boot /
+	// different start second): remove the receipt under the lock. If the dotfile
+	// disappears or changes under us, another writer is racing — fail closed
+	// rather than remove someone else's fresh receipt.
+	if rerr := os.Remove(receiptPath); rerr != nil && !errors.Is(rerr, os.ErrNotExist) {
+		return false, rerr
+	}
+	return true, nil
 }
 
 // AcquireTargetWideLifecycleLock is the target-wide production acquire path for
