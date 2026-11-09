@@ -87,6 +87,17 @@ func extractPinnedGitArchive(input io.Reader, destination string) error {
 		if !filepath.IsLocal(name) || name == "." || strings.HasPrefix(name, ".git"+string(filepath.Separator)) || name == ".git" {
 			return fmt.Errorf("Git candidate archive contains an unsafe path")
 		}
+		// Native git archive emits a global PAX header carrying the commit
+		// comment. It is metadata only, never a file to materialize.
+		// Refuse any PAX record capable of rewriting paths or links.
+		if header.Typeflag == tar.TypeXGlobalHeader {
+			for key := range header.PAXRecords {
+				if key != "comment" {
+					return fmt.Errorf("Git candidate contains unsupported global PAX metadata %q", key)
+				}
+			}
+			continue
+		}
 		target := filepath.Join(destination, name)
 		switch header.Typeflag {
 		case tar.TypeDir:
