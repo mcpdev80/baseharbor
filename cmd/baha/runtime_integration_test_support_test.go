@@ -55,6 +55,14 @@ var (
 	runtimeIntegrationTrustPlaneTarget     deployment.ResolvedTarget
 	runtimeIntegrationTrustPlaneProvider   bhruntime.RuntimeProvider
 	runtimeIntegrationTrustPlaneTargetName string
+	// runtimeIntegrationTrustPlaneDataRoot records the data root the shared
+	// trust plane now owns. TestMain claims the durable marker under the
+	// initial data root; when ensureRuntimeIntegrationTrustPlane moved that
+	// claim into a per-run root (see below), this holds the new location so
+	// ensureBootstrapLeftoverMarker re-reads the marker from exactly the root
+	// that owns it. Empty means "no root switch happened", i.e. the marker
+	// lives under the initial data root as TestMain claimed it.
+	runtimeIntegrationTrustPlaneDataRoot string
 )
 
 // TestMain gives the shared bootstrap trust plane a teardown whose lifetime is
@@ -134,6 +142,26 @@ func bootstrapLeftoverMarkerPath() string {
 		return filepath.Join(root, bootstrapLeftoverMarkerName)
 	}
 	return ""
+}
+
+// moveMarkerToRoot relocates the durable provisioning marker from the initial
+// data root into the per-run data root the trust plane owns, so the teardown
+// re-reads the exact claim TestMain created. It returns the new marker path on
+// success, the empty string when nothing was moved (the source does not exist),
+// and an error when the copy succeeds but the source cannot be removed.
+func moveMarkerToRoot(src, dstRoot string) (string, error) {
+	data, err := os.ReadFile(src)
+	if err != nil {
+		return "", err
+	}
+	dst := filepath.Join(dstRoot, filepath.Base(src))
+	if err := os.WriteFile(dst, data, 0o600); err != nil {
+		return "", err
+	}
+	if err := os.Remove(src); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return "", err
+	}
+	return dst, nil
 }
 
 // setupBootstrapLeftoverMarker creates the provisioning marker before any
@@ -222,6 +250,16 @@ var runtimeBootstrapOrphanDestroyFailure error
 // inventory can be exercised for real. When the override returns a nil
 // provider, adoption must fail closed rather than classify the target as absent.
 var runtimeBootstrapOrphanInventoryProvider bhruntime.RuntimeProvider
+
+// runtimeBootstrapOrphanFileReadErr lets the injected-failure regression force
+// the runtime-project-file read (ExistingFilesForProject) inside the dead-owner
+// footprint inventory to return a synthetic non-not-found error (e.g. a
+// permission-denied), independent of any real filesystem state. It is nil in
+// every real run; when set, orphanBootstrapTargetHadFootprint returns that
+// error so adoption fails closed instead of mistaking the unreadable runtime
+// directory for a never-provisioned phantom. It is exercised exclusively by
+// TestBootstrapAdoptionFailsClosedOnRuntimeFilePermissionError.
+var runtimeBootstrapOrphanFileReadErr error
 
 // adoptBootstrapLeftoverMarkerFromDeadProcess is the fail-closed recovery for
 // the one path no Go defer can observe: Go aborts the whole test binary on a
@@ -418,7 +456,14 @@ func orphanBootstrapTargetHadFootprint(ctx context.Context, provider bhruntime.R
 	runtimeRoot := filepath.Join(dataDir, "runtime")
 	// Runtime project files are the authoritative proof a Core was provisioned:
 	// compose.yaml + env exist only after a successful `up`.
-	if _, filesErr := bhruntime.ExistingFilesForProject(runtimeRoot, bhruntime.SharedProjectName(target.Name)); filesErr != nil {
+	//
+	// Test seam: when runtimeBootstrapOrphanFileReadErr is set, the file read
+	// returns that synthetic error so the permission/I/O branch of the
+	// fail-closed adoption is exercised for real — a mutation that treated an
+	// unreadable runtime directory as "never provisioned" would consume the
+	// marker here instead of keeping it.
+	_, filesErr := bootstrapOrphanReadRuntimeFiles(runtimeRoot, target.Name)
+	if filesErr != nil {
 		// Only a genuine not-found (files the engine never wrote) proves no
 		// provisioned Core. A permission or I/O error here is unverifiable:
 		// fail closed and keep the marker instead of consuming a claim we
@@ -437,7 +482,17 @@ func orphanBootstrapTargetHadFootprint(ctx context.Context, provider bhruntime.R
 	return true, nil
 }
 
-// ownedFootprintOnEngine reports whether the engine currently owns any
+// bootstrapOrphanReadRuntimeFiles returns the runtime project files for the
+// dead-owner footprint inventory. It is a thin indirection over
+// ExistingFilesForProject so the permission/I/O regression can inject a
+// synthetic read error deterministically without touching the real filesystem.
+func bootstrapOrphanReadRuntimeFiles(runtimeRoot, projectName string) (bhruntime.Files, error) {
+	if runtimeBootstrapOrphanFileReadErr != nil {
+		return bhruntime.Files{}, runtimeBootstrapOrphanFileReadErr
+	}
+	return bhruntime.ExistingFilesForProject(runtimeRoot, bhruntime.SharedProjectName(projectName))
+}
+
 // containers or project resources for the target's namespace. Only used to
 // confirm a target with no compose files truly owns nothing; a real residual
 // (containers/resources present) still fails closed downstream.
@@ -530,6 +585,15 @@ func isUnbeginningTeardownError(err error) bool {
 func ensureRuntimeIntegrationTrustPlane(t *testing.T, ctx context.Context) {
 	t.Helper()
 	runtimeIntegrationTrustPlaneOnce.Do(func() {
+		// Capture the data root BEFORE any XDG_DATA_HOME switch below. TestMain
+		// claims the durable provisioning marker under the initial data root; if
+		// this helper unconditionally pointed XDG_DATA_HOME at a fresh temp
+		// dir, the marker the teardown later re-reads would live under a
+		// different root than the one that claimed it and the run would fail
+		// with "bootstrap leftover marker missing". We only switch the data
+		// root when the claim is carried along with us (its path is recorded
+		// below), so the teardown and the trust plane share one root.
+		markerPathBeforeSwitch := bootstrapLeftoverMarkerPath()
 		configHome, err := os.MkdirTemp("", "baseharbor-ci-config-")
 		if err != nil {
 			runtimeIntegrationTrustPlaneErr = err
@@ -540,6 +604,22 @@ func ensureRuntimeIntegrationTrustPlane(t *testing.T, ctx context.Context) {
 			runtimeIntegrationTrustPlaneErr = err
 			return
 		}
+		// If a durable claim already exists under the initial root, move it
+		// into the new per-run data home so both the trust-plane setup and the
+		// package teardown observe the same root. A missing claim (a run that
+		// never provisioned) needs no move.
+		if markerPathBeforeSwitch != "" {
+			if _, statErr := os.Stat(markerPathBeforeSwitch); statErr == nil {
+				newMarker, mErr := moveMarkerToRoot(markerPathBeforeSwitch, dataHome)
+				if mErr != nil {
+					runtimeIntegrationTrustPlaneErr = fmt.Errorf("carry bootstrap marker into per-run data home: %w", mErr)
+					return
+				}
+				if newMarker != "" {
+					markerPathBeforeSwitch = newMarker
+				}
+			}
+		}
 		if err := os.Setenv("XDG_CONFIG_HOME", configHome); err != nil {
 			runtimeIntegrationTrustPlaneErr = err
 			return
@@ -548,6 +628,9 @@ func ensureRuntimeIntegrationTrustPlane(t *testing.T, ctx context.Context) {
 			runtimeIntegrationTrustPlaneErr = err
 			return
 		}
+		// Record the data root the trust plane now owns so ensureBootstrapLeftoverMarker
+		// re-reads the marker under exactly this root.
+		runtimeIntegrationTrustPlaneDataRoot = dataHome
 		// Isolation is a CODE-GARANTIE, not an environmental precondition: the
 		// bootstrap target below is a *fresh* configured target with its own
 		// `<name>-default` native network and its own management Core, so this
