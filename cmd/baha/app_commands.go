@@ -133,7 +133,7 @@ func appListCommand() *cli.Command {
 					if deployment.SourceAvailable(item.Source) {
 						source = "OK"
 					}
-					fmt.Fprintf(out, "%-20s %-20s %-12s %-12s %-10s %s\n", item.Identity.Target, item.Identity.Application, item.Identity.Environment, item.Applied.RuntimeProvider, item.Observed.State, source)
+					fmt.Fprintf(out, "%-20s %-20s %-12s %-12s %-10s %s\n", item.Identity.Target, item.Identity.Application, item.Identity.Environment, item.Applied.RuntimeProvider, reconciledListState(item), source)
 				}
 				return nil
 			}
@@ -143,11 +143,10 @@ func appListCommand() *cli.Command {
 				if deployment.SourceAvailable(item.Source) {
 					source = "OK"
 				}
-				fmt.Fprintf(out, "%-20s %-12s %-10s %s\n", item.Identity.Application, item.Identity.Environment, item.Observed.State, source)
-				if source == "MISSING" {
-					fmt.Fprintf(errOut, "  %s/%s: source repository gone (MISSING) - remove the dangling record with `baha app prune %s`, or re-run 'baha up' once the repo is restored\n", item.Identity.Target, item.Identity.Application, item.Identity.Application)
-				}
+				fmt.Fprintf(out, "%-20s %-12s %-10s %s\n", item.Identity.Application, item.Identity.Environment, reconciledListState(item), source)
+
 			}
+			printListNextActions(out, items)
 			return nil
 		},
 	}

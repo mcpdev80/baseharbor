@@ -132,3 +132,28 @@ func TestStatusNotAppliedRendersExpectedLifecycleState(t *testing.T) {
 		t.Fatalf("not-applied status must not render DEGRADED:\n%s", got)
 	}
 }
+
+// BF-04 regression: a degraded status (failed workload after a SIGKILL) must
+// surface an actionable next-step — rebuild with `baha up` or remove with
+// `baha app destroy` — rather than an opaque pointer to the verbose command.
+func TestStatusDegradedRendersActionableRebuildHint(t *testing.T) {
+	result := application.StatusResult{
+		Application: "mailflow",
+		Environment: "production",
+		State:       "degraded",
+		Ready:       false,
+		Checks: []application.StatusCheck{
+			{Name: "workload", OK: false, Detail: "workload container is not active"},
+		},
+	}
+
+	var out bytes.Buffer
+	renderApplicationStatus(context.Background(), &out, &out, result)
+	got := out.String()
+
+	for _, wanted := range []string{"DEGRADED", "baha up", "baha app destroy"} {
+		if !strings.Contains(got, wanted) {
+			t.Fatalf("degraded status missing actionable hint %q:\n%s", wanted, got)
+		}
+	}
+}

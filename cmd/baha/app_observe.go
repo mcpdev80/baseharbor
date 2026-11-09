@@ -147,8 +147,9 @@ func renderApplicationStatusWithExtra(ctx context.Context, out, errOut io.Writer
 	} else {
 		fmt.Fprintln(out, "\nDEGRADED")
 		fmt.Fprintln(out, "\nNext:")
-		fmt.Fprintln(out, "  baha doctor")
-		fmt.Fprintln(out, "  baha status --verbose")
+		fmt.Fprintln(out, "  baha up # rebuild the failed/degraded workload (unit is not active)")
+		fmt.Fprintln(out, "  baha app destroy # or remove it if the workload is gone for good")
+		fmt.Fprintln(out, "  baha doctor # see which managed capability or workload check failed")
 	}
 }
 
