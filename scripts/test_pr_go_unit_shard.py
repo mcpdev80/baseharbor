@@ -15,13 +15,23 @@ spec.loader.exec_module(shards)
 class GoUnitShardTests(unittest.TestCase):
     def test_every_discovered_cli_test_is_assigned_exactly_once(self):
         names = ["TestA", "TestB", "TestC", "TestD", "TestE", "ExampleFoo", "FuzzBar"]
-        partitions = [shards.selected_tests(names, f"cli-{index}") for index in range(3)]
+        with patch.object(shards, "owner_loan_cohort", return_value=set()):
+            partitions = [shards.selected_tests(names, f"cli-{index}") for index in range(3)]
         self.assertEqual(set(names), set().union(*map(set, partitions)))
         self.assertEqual(len(names), sum(map(len, partitions)))
-        self.assertEqual(partitions, [shards.selected_tests(names, f"cli-{index}")
-                                      for index in range(3)])
+        with patch.object(shards, "owner_loan_cohort", return_value=set()):
+            self.assertEqual(partitions, [shards.selected_tests(names, f"cli-{index}")
+                                          for index in range(3)])
         with self.assertRaises(ValueError):
             shards.selected_tests(names, "cli-9")
+
+    def test_owner_loan_tests_keep_their_shared_process_order(self):
+        cohort = shards.owner_loan_cohort()
+        self.assertGreaterEqual(len(cohort), 7)
+        assignments = [index for index in range(3)
+                       if cohort.intersection(shards.selected_tests(sorted(cohort), f"cli-{index}"))]
+        self.assertEqual(1, len(assignments))
+        self.assertEqual(cohort, set(shards.selected_tests(sorted(cohort), f"cli-{assignments[0]}")))
 
     def test_missing_go_test_inventory_rejected(self):
         response = subprocess.CompletedProcess(["go"], 0, stdout="ok\n")
@@ -36,13 +46,14 @@ class GoUnitShardTests(unittest.TestCase):
         fake_green = subprocess.CompletedProcess(["go"], 0, stdout=json.dumps({
             "Action": "pass", "Package": "github.com/mcpdev80/baseharbor/cmd/baha"
         }))
-        with patch.object(shards, "run", side_effect=[listed, fake_green]):
+        with patch.object(shards, "owner_loan_cohort", return_value=set()), patch.object(shards, "run", side_effect=[listed, fake_green]):
             with self.assertRaisesRegex(RuntimeError, "incomplete"):
                 shards.cli("cli-0")
 
     def test_cli_shard_rejects_skipped_mandatory_client_tests(self):
         names = sorted(shards.REQUIRED_CLIENT_TESTS | {f"TestExtra{i}" for i in range(40)})
-        chosen = shards.selected_tests(names, "cli-1")
+        with patch.object(shards, "owner_loan_cohort", return_value=set()):
+            chosen = shards.selected_tests(names, "cli-1")
         required = shards.REQUIRED_CLIENT_TESTS & set(chosen)
         self.assertTrue(required)
         events = []
@@ -53,7 +64,7 @@ class GoUnitShardTests(unittest.TestCase):
             ))
         listed = subprocess.CompletedProcess(["go"], 0, stdout="\n".join(names))
         execution = subprocess.CompletedProcess(["go"], 0, stdout="\n".join(map(json.dumps, events)))
-        with patch.object(shards, "run", side_effect=[listed, execution]):
+        with patch.object(shards, "owner_loan_cohort", return_value=set()), patch.object(shards, "run", side_effect=[listed, execution]):
             with self.assertRaisesRegex(RuntimeError, "required-not-passed"):
                 shards.cli("cli-1")
 
