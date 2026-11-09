@@ -552,7 +552,7 @@ func TestBootstrapTestMainStructureGuaranteesTeardown(t *testing.T) {
 	runner := source[strings.Index(source, "func runRuntimeIntegrationTestMain"):]
 	runner = runner[:strings.Index(runner, "\n}\n")+2]
 	productionAdopt := strings.Index(runner, "adoptBootstrapLeftoverMarkerFromDeadProcess(")
-	deferIndex := strings.Index(runner, "destroyBootstrapTrustPlaneAtPackageEnd(marker)")
+	deferIndex := strings.Index(runner, "destroyBootstrapTrustPlaneAtPackageEnd(")
 	if productionAdopt < 0 || deferIndex < 0 {
 		t.Fatal("runRuntimeIntegrationTestMain must keep both the dead-owner adoption and the deferred package-end teardown")
 	}

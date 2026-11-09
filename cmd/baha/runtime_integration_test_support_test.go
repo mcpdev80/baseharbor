@@ -115,7 +115,23 @@ func runRuntimeIntegrationTestMain(m *testing.M) (code int) {
 		// os.Exit(code) is non-zero when a real teardown failed. The teardown is
 		// FAIL-OPEN: a teardown failure is never a silent success.
 		defer func() {
-			if err := destroyBootstrapTrustPlaneAtPackageEnd(marker); err != nil {
+			// Remove the durable marker from the exact per-run data root this
+			// process owns, not from the stale path captured before
+			// ensureRuntimeIntegrationTrustPlane switched XDG_DATA_HOME. TestMain
+			// claims the marker under the initial data root; the helper then
+			// carries the claim into dataHome and owns the teardown there.
+			// Prefer the tracked root (runtimeIntegrationTrustPlaneDataRoot) so
+			// the removal is correct even if an intervening t.Setenv had
+			// temporarily cleared XDG_DATA_HOME; fall back to the marker path
+			// still visible in the current env.
+			currentMarker := marker
+			if runtimeIntegrationTrustPlaneDataRoot != "" {
+				currentMarker = filepath.Join(runtimeIntegrationTrustPlaneDataRoot, bootstrapLeftoverMarkerName)
+			}
+			if currentMarker == "" {
+				currentMarker = marker
+			}
+			if err := destroyBootstrapTrustPlaneAtPackageEnd(currentMarker); err != nil {
 				code = 1
 			}
 		}()
