@@ -175,12 +175,26 @@ func eligibleNeverDeliveredLocalDestroy(target deployment.ResolvedTarget, target
 	deployments := filepath.Join(targetRoot, "deployments")
 	if info, err := os.Lstat(deployments); err == nil {
 		// Initialization may leave an empty namespace; a symlink or a
-		// populated namespace is never a never-delivered proof.
+		// populated namespace is never a never-delivered proof. The per-app
+		// lifecycle lock lives at <root>/deployments/.<id>.app_installation.lock
+		// (a hidden dotfile, not a deployment directory); dotfiles are ignored
+		// here so a lock file is never read as a persisted deployment (card
+		// 0427-176).
 		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
 			return false
 		}
 		entries, err := os.ReadDir(deployments)
-		if err != nil || len(entries) != 0 {
+		if err != nil {
+			return false
+		}
+		nonDot := 0
+		for _, e := range entries {
+			if strings.HasPrefix(e.Name(), ".") {
+				continue
+			}
+			nonDot++
+		}
+		if nonDot != 0 {
 			return false
 		}
 	} else if !errors.Is(err, os.ErrNotExist) {

@@ -45,28 +45,36 @@ func lockApplicationTargetLifecycle(resolved resolvedApplication, allowPriority 
 		return nil, fmt.Errorf("Target lifecycle state is unprotected or noncanonical")
 	}
 
-	// The per-app lock key is the application's deployments directory. The
-	// scope is the deployment id when present (unambiguous per-writer identity),
-	// else the manifest name — both stable within one target.
-	scope := resolved.DeploymentIdentity.DeploymentID
-	if scope == "" {
-		scope = resolved.Manifest.Name
-	}
-	if scope == "" {
-		return nil, fmt.Errorf("cannot lock: application deployment identity is unknown")
+	// The per-app lock key is the application's deployment identity. For local
+	// repository applications the lock is keyed inside the application's OWN
+	// deployments namespace (<root>/deployments/.<id>.app_installation.lock), so
+	// two independent apps on one target do not serialize each other. Remote
+	// applications (no local deployment id, must not stage a local deployments
+	// member) and control-plane operations (destroy/stop of the whole target,
+	// which carry no application identity) keep the existing per-target
+	// serialization via the target name, so neither stages a local deployments
+	// member and control-plane stays strictly serialized per target.
+	if resolved.DeploymentIdentity.DeploymentID != "" && !isRemoteApplication(resolved) {
+		scope := resolved.DeploymentIdentity.DeploymentID
+		unlock, err := coreinstallation.AcquireAppLifecycleLock(resolved.TargetStateRoot, scope)
+		if err != nil {
+			// An owner-missing or foreign root is a hard fail-closed condition, not
+			// contention: surface it immediately so a Coreless/never-delivered app
+			// is never stuck in the bounded retry loop. Only genuine flock
+			// contention (a different writer holding the same app owner) enters
+			// the retry loop.
+			if errors.Is(err, deployment.ErrDeploymentOwnerMissing) ||
+				errors.Is(err, deployment.ErrDeploymentOwnerForeign) {
+				return nil, err
+			}
+			return acquireLifecycleUnderRetry(nil, allowPriority, resolved.TargetStateRoot, scope)
+		}
+		return unlock, nil
 	}
 
-	unlock, err := coreinstallation.AcquireAppLifecycleLock(resolved.TargetStateRoot, scope)
+	unlock, err := coreinstallation.AcquireLifecycleLock(resolved.TargetStateRoot)
 	if err != nil {
-		// An owner-missing or foreign root is a hard fail-closed condition, not
-		// contention: surface it immediately so a Coreless/never-delivered app is
-		// never stuck in the bounded retry loop. Only genuine flock contention
-		// (a different writer holding the same app owner) enters the retry loop.
-		if errors.Is(err, deployment.ErrDeploymentOwnerMissing) ||
-			errors.Is(err, deployment.ErrDeploymentOwnerForeign) {
-			return nil, err
-		}
-		return acquireLifecycleUnderRetry(unlock, allowPriority, resolved.TargetStateRoot, scope)
+		return nil, fmt.Errorf("Target application lifecycle is active: %w", err)
 	}
 	return unlock, nil
 }

@@ -15,16 +15,19 @@ import (
 const (
 	lifecycleLockFile = ".installation.lock"
 	bootstrapLockFile = ".bootstrap.lock"
-	// appLifecycleLockFile is the per-Application lifecycle lock. It lives under
-	// a per-app lock directory (root/lock/<scope>) that is INDEPENDENT of the
+	// appLifecycleLockFile is the per-Application lifecycle lock. It lives as a
+	// hidden dotfile <root>/deployments/.<scope>.app_installation.lock inside the
 	// deployments namespace, so that two independent service-less applications
 	// that merely share a host Target do not serialize each other, while two
-	// writers to the SAME application still do. The deployments namespace is left
-	// untouched so owner/never-delivered checks that key off it keep working. The
-	// Target itself is protected by an INDEPENDENT owner lock (the per-target
-	// lifecycle lock), not by this per-app lock.
+	// writers to the SAME application still do. The leading dot keeps this lock
+	// file out of listDeploymentRecords (directories only) and from the
+	// never-delivered empty check (dotfiles ignored), so a lock file is never
+	// read as a partial deployment record.
 	appLifecycleLockFile = "app_installation.lock"
-	appLockNamespace     = "lock"
+	// AppLifecycleLockFileName is the per-Application lifecycle lock file name,
+	// exported so callers can recognize a deployments dir that holds only this
+	// lock (e.g. never-delivered detection in cmd/baha).
+	AppLifecycleLockFileName = "app_installation.lock"
 )
 
 // AcquireLifecycleLock serializes bootstrap and provider upgrades of one
@@ -46,12 +49,13 @@ func AcquireLifecycleLock(root string) (func(), error) {
 }
 
 // AcquireAppLifecycleLock serialises lifecycle mutation of a SINGLE application
-// across releases. The key is a per-app lock directory
-// (<root>/lock/<scope>) that is independent of the deployments namespace, so
-// the caller's owner/never-delivered checks that key off deployments keep
-// working. Two independent applications that share a host Target therefore do
-// NOT serialize each other: each holds its own per-app lock. A second writer to
-// the SAME application still fails with the kernel flock contention. The kernel
+// across releases. The key is a hidden dotfile lock
+// (<root>/deployments/.<scope>.app_installation.lock) inside the deployments
+// namespace but as a dotfile, so listDeploymentRecords (directories only) and
+// the never-delivered empty check (dotfiles ignored) never see it as a partial
+// deployment. Two independent applications that share a host Target therefore
+// do NOT serialize each other: each holds its own per-app lock. A second writer
+// to the SAME application still fails with the kernel flock contention. The
 // releases the lock on process exit; durable update receipts still govern
 // recovery after an interrupted mutation. The caller must release the returned
 // lock after all verification completes.
@@ -77,11 +81,21 @@ func AcquireAppLifecycleLock(root string, scope string) (func(), error) {
 	if !info.IsDir() || info.Mode().Perm()&0077 != 0 {
 		return nil, errors.New("Application lifecycle lock requires a private per-app state directory")
 	}
-	appRoot := filepath.Join(root, appLockNamespace, scope)
-	if err := os.MkdirAll(appRoot, 0700); err != nil {
+	// Key the lock at <root>/deployments/.<scope>.app_installation.lock. The
+	// deployments namespace already exists for a local application target;
+	// create it if missing. The leading dot keeps this lock file out of
+	// listDeploymentRecords (which only treats directories as deployment
+	// records) and from the never-delivered empty check (which ignores
+	// dotfiles), so a lock file is never read as a partial deployment record.
+	// lockNamed(root, name) locks root/<name> as a single dotfile, so the
+	// deployments dir is the lock root and the full dotfile name (dot + scope
+	// + "." + lock file) is the name.
+	deploymentsDir := filepath.Join(root, "deployments")
+	if err := os.MkdirAll(deploymentsDir, 0700); err != nil {
 		return nil, err
 	}
-	return lockNamed(appRoot, appLifecycleLockFile)
+	lockName := "." + scope + "." + appLifecycleLockFile
+	return lockNamed(deploymentsDir, lockName)
 }
 
 // AcquireStateFileLock reuses the existing kernel lock for another existing

@@ -114,11 +114,12 @@ func TestAcquireAppLifecycleLockIsPerAppScope(t *testing.T) {
 	a()
 	b()
 
-	// The per-app lock file lives under <root>/lock/<scope> (independent of the
-	// deployments namespace) and is separate from the shared per-target
-	// .installation.lock.
+	// The per-app lock file lives under <root>/deployments/.<scope>.app_installation.lock
+	// (a hidden dotfile inside the deployments namespace) and is separate from
+	// the shared per-target .installation.lock.
 	for _, scope := range []string{"app-a", "app-b", "shared-app"} {
-		if _, err := os.Stat(filepath.Join(root, "lock", scope, "app_installation.lock")); err != nil {
+		lockPath := filepath.Join(root, "deployments", "."+scope+".app_installation.lock")
+		if _, err := os.Stat(lockPath); err != nil {
 			t.Fatalf("per-app lock file missing for scope %q: %v", scope, err)
 		}
 	}
@@ -138,7 +139,7 @@ func TestAcquireAppLifecycleLockRejectsForeignRoot(t *testing.T) {
 	if _, err := AcquireAppLifecycleLock(root, "app"); err == nil {
 		t.Fatal("foreign per-app root admitted")
 	}
-	if _, err := os.Stat(filepath.Join(root, "deployments", "app")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(root, "deployments", ".app.app_installation.lock")); !os.IsNotExist(err) {
 		t.Fatal("unsafe directory was modified by the per-app lock")
 	}
 }
