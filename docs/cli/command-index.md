@@ -125,12 +125,15 @@ Find exact options with `baha COMMAND --help`. [Global options](global-options.m
 | `baha stack list` | List built-in, user and repository Stack Profiles | `baha stack list [-o json\|--output json]` | [↗](development.md) |
 | `baha stack show` | Show a resolved Stack Profile | `baha stack show NAME [-o json\|--output json]` | [↗](development.md) |
 | `baha status` | Show application status in a repository, otherwise control-plane status | `baha status [-o json\|--output json]` | [↗](core.md) |
-| `baha target` | Inspect and manage BaseHarbor deployment targets | `baha target [list\|show\|create\|delete\|activate\|deactivate] [-o json\|--output json\|--json]` | [↗](targets.md) |
+| `baha target` | Inspect and manage BaseHarbor deployment targets | `baha target [list\|show\|policy\|create\|delete\|activate\|deactivate] [-o json\|--output json\|--json]` | [↗](targets.md) |
 | `baha target activate` | Persist the active deployment target for this user | `baha target activate NAME` | [↗](targets.md) |
-| `baha target create` | Create a deployment target | `baha target create NAME --runtime-provider PROVIDER --access ACCESS --access-provider PROVIDER --reference REFERENCE [--scope SCOPE] [--tenant-id UUID] [--default] [--docker-endpoint SOCKET \| --docker-context CONTEXT] [--docker-mode rootless\|rootful]; baha target create NAME --from-recovery PATH` | [↗](targets.md) |
+| `baha target create` | Create a deployment target | `baha target create NAME --runtime-provider PROVIDER --access ACCESS --access-provider PROVIDER --reference REFERENCE [--scope SCOPE] [--tenant-id UUID] [--deployment-preset development\|test\|staging\|production\|custom] [--default] [--docker-endpoint SOCKET \| --docker-context CONTEXT] [--docker-mode rootless\|rootful]; baha target create NAME --from-recovery PATH` | [↗](targets.md) |
 | `baha target deactivate` | Clear persisted active deployment target | `baha target deactivate` | [↗](targets.md) |
 | `baha target delete` | Detach target configuration with protected recovery; preserve runtime and data | `baha target delete NAME` | [↗](targets.md) |
 | `baha target list` | List configured targets | `baha target list [-o json\|--output json\|--json]` | [↗](targets.md) |
+| `baha target policy` | Inspect or change editable Target deployment policy | `baha target policy <show\|set> NAME` | [↗](targets.md) |
+| `baha target policy set` | Update the protected deployment policy without changing Runtime or Access | `baha target policy set NAME [--deployment-preset development\|test\|staging\|production\|custom\|none] [--deployment-branches BRANCHES] [--deployment-dirty yes\|no] [--deployment-commit yes\|no] [--deployment-remote-commit yes\|no] [--deployment-approval yes\|no] [--deployment-image-digest yes\|no]` | [↗](targets.md) |
+| `baha target policy show` | Show the persisted deployment policy of a Target | `baha target policy show NAME` | [↗](targets.md) |
 | `baha target show` | Show one target | `baha target show [NAME] [-o json\|--output json\|--json]` | [↗](targets.md) |
 | `baha trust` | Inspect, export or explicitly install the managed local BaseHarbor CA | `baha trust <status\|export\|install\|uninstall> [options]` | [↗](security-trust.md) |
 | `baha trust export` | Export only the public managed-local CA certificate | `baha trust export --output PATH` | [↗](security-trust.md) |

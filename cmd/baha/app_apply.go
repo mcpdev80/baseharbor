@@ -12,6 +12,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/cli"
+	"github.com/mcpdev80/baseharbor/internal/deployment"
 	logsprovider "github.com/mcpdev80/baseharbor/internal/logs"
 	"github.com/mcpdev80/baseharbor/internal/machine"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
@@ -97,6 +98,12 @@ func executeApplicationApplyLifecycle(ctx context.Context, store application.Sto
 func runApplicationApplyLifecycle(ctx context.Context, store application.Store, args []string, out, errOut io.Writer, hooks applicationApplyLifecycleHooks) (evidence applicationApplyLifecycleEvidence, lifecycleErr error) {
 	execution, err := newApplicationApplyExecution(ctx, store, args, out, errOut)
 	if err != nil {
+		return evidence, err
+	}
+	// The owning Core must reject configured Target restrictions before any
+	// local or remote runtime side effects. Trusted provenance is not yet
+	// available on this legacy path; never infer it from client metadata.
+	if err := deployment.EvaluateDeploymentAdmission(execution.resolved.Target.DeploymentPolicy, nil); err != nil {
 		return evidence, err
 	}
 	if isRemoteApplication(execution.resolved) {
