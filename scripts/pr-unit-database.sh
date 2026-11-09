@@ -30,7 +30,22 @@ if [ "$ready" != true ]; then
 fi
 
 export BASEHARBOR_TEST_DATABASE_URL="postgres://postgres:postgres@127.0.0.1:5433/baseharbor_test?sslmode=disable"
-go test ./... -count=1
+mode="${1:-all}"
+case "$mode" in
+  all)
+    go test ./... -count=1
+    ;;
+  cli-0|cli-1|cli-2|packages)
+    python3 scripts/pr-go-unit-shard.py --mode "$mode"
+    exit 0
+    ;;
+  owner)
+    ;;
+  *)
+    echo "Unsupported Go unit shard: $mode" >&2
+    exit 2
+    ;;
+esac
 
 # Keep the first-owner onboarding and node authorization contract mandatory.
 # Go exits successfully if -run matches nothing, so assert exact PASS events.

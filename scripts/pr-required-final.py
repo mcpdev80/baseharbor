@@ -29,6 +29,8 @@ def verify(plan, needs, *, head=None, integration=None):
     if not gates and not checks:
         errors.append('no selected checks')
     required = set(BASE_JOBS)
+    if any(check['id'] in ('go-unit-tests', 'cli-package-tests') for check in checks):
+        required.add('pr_unit_shards')
     for gate in gates:
         parts = gate.split('/')
         if len(parts) == 3 and parts[0] == 'atomic' and parts[1] in ('docker', 'podman'):

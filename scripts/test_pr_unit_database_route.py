@@ -10,7 +10,10 @@ class PRUnitDatabaseRouteTests(unittest.TestCase):
     def test_go_unit_check_uses_ephemeral_db_only_in_selected_check(self):
         workflow = (ROOT / ".github/workflows/ci.yml").read_text()
         self.assertIn("go-unit-tests) bash scripts/pr-unit-database.sh ;;", workflow)
-        self.assertEqual(1, workflow.count("bash scripts/pr-unit-database.sh"))
+        self.assertEqual(2, workflow.count("bash scripts/pr-unit-database.sh"))
+        self.assertIn("pr_unit_shards:", workflow)
+        self.assertIn("unit_scope:", workflow)
+        self.assertIn("Require complete selected Go shard coverage", workflow)
 
     def test_database_script_preserves_real_test_failure_and_cleans_up(self):
         fixture = (ROOT / "scripts/pr-unit-database.sh").read_text()
@@ -20,7 +23,9 @@ class PRUnitDatabaseRouteTests(unittest.TestCase):
             "POSTGRES_DB=baseharbor_test", "POSTGRES_PASSWORD=postgres",
             'trap cleanup EXIT', 'docker rm -f "$name"',
             'docker exec "$name" pg_isready',
-            "BASEHARBOR_TEST_DATABASE_URL=", "go test ./... -count=1"
+            "BASEHARBOR_TEST_DATABASE_URL=", "go test ./... -count=1",
+            'python3 scripts/pr-go-unit-shard.py --mode "$mode"',
+            "cli-0|cli-1|cli-2|packages"
         ):
             self.assertIn(required, fixture)
 

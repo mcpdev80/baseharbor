@@ -541,7 +541,9 @@ jobs:
       contents: read
       actions: read
     outputs:
-      matrix: ${{ steps.incremental.outputs.matrix || steps.plan.outputs.matrix }}
+      matrix: ${{ steps.unit_split.outputs.validation_matrix }}
+      unit_scope: ${{ steps.unit_split.outputs.unit_scope }}
+      unit_matrix: ${{ steps.unit_split.outputs.unit_matrix }}
       consumer_mode: ${{ steps.plan.outputs.consumer_mode }}
       runtime_matrix: ${{ steps.incremental.outputs.runtime_matrix || steps.plan.outputs.runtime_matrix }}
       runtime_required: ${{ steps.plan.outputs.runtime_required }}
@@ -700,6 +702,66 @@ jobs:
           name: trusted-pr-plan
           path: pr-plan.json
           retention-days: 30
+
+      - name: Route only required Go tests into mandatory parallel shards
+        id: unit_split
+        shell: bash
+        env:
+          SELECTED_MATRIX: ${{ steps.incremental.outputs.matrix || steps.plan.outputs.matrix }}
+          VERIFIED_BASE: ${{ steps.plan.outputs.trusted_base_sha }}
+          VERIFIED_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          import subprocess
+
+          plan = json.load(open('pr-plan.json'))
+          requested = {row['id'] for row in plan['required_validation_checks']}
+          selected = json.loads(os.environ['SELECTED_MATRIX'])
+          rows = selected['include']
+          if not isinstance(rows, list) or not rows or any(
+              not isinstance(row, dict) or not isinstance(row.get('check'), str)
+              for row in rows
+          ):
+              raise SystemExit('malformed PR validation matrix; refusing missing tests')
+          keys = [row['check'] for row in rows]
+          if len(set(keys)) != len(keys):
+              raise SystemExit('duplicate PR validation check')
+          if any(check != 'not-required' and check not in requested for check in keys):
+              raise SystemExit('matrix selected a validation absent from trusted plan')
+          # The exact verified source diff controls the executor's own full
+          # regression even before the new planner policy reaches develop.
+          changed = subprocess.check_output(
+              ['git', 'diff', '--name-only', '--diff-filter=ACMRT',
+               os.environ['VERIFIED_BASE'], os.environ['VERIFIED_HEAD']],
+              text=True).splitlines()
+          unit_executor = {
+              'scripts/pr-go-unit-shard.py',
+              'scripts/pr-unit-database.sh',
+              'scripts/test_pr_go_unit_shard.py',
+              'scripts/test_pr_unit_database_route.py',
+          }
+          scope = 'full' if ('go-unit-tests' in requested or
+                             unit_executor.intersection(changed)) else (
+              'cli' if 'cli-package-tests' in requested else 'none')
+          remaining = [row for row in rows
+                       if row['check'] not in ('go-unit-tests', 'cli-package-tests')]
+          if not remaining:
+              remaining = [{'check': 'not-required'}]
+          shards = ['cli-0', 'cli-1', 'cli-2']
+          if scope == 'full':
+              shards.extend(('packages', 'owner'))
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write('validation_matrix=' + json.dumps(
+                  {'include': remaining}, separators=(',', ':')) + '\n')
+              output.write('unit_scope=' + scope + '\n')
+              output.write('unit_matrix=' + json.dumps(
+                  {'include': [{'shard': shard} for shard in shards]},
+                  separators=(',', ':')) + '\n')
+          print('Required Go scope:', scope, 'original selections:', keys)
+          PY
 
   pr_runner_interface:
     name: PR · Runner Interface
@@ -867,6 +929,7 @@ jobs:
           python3 scripts/test_ci_keycloak_single_route.py
           python3 scripts/test_pr_ci_fallback.py
           python3 scripts/test_pr_unit_database_route.py
+           python3 scripts/test_pr_go_unit_shard.py
           python3 scripts/test_pr_runtime_source.py
           python3 scripts/test_pr_gate_dependencies.py
           python3 scripts/test_pr_incremental_reuse.py
@@ -879,6 +942,29 @@ jobs:
           python3 scripts/test_develop_targeted_workflow.py
           python3 scripts/test_develop_ecosystem_final.py
           python3 scripts/test_targeted_gate_ref.py
+
+  pr_unit_shards:
+    name: PR · Go unit · ${{ matrix.shard }}
+    needs: pr_plan
+    if: github.event_name == 'pull_request' && github.base_ref == 'develop' && github.event.pull_request.draft == false && needs.pr_plan.outputs.unit_scope != 'none'
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.pr_plan.outputs.unit_matrix) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Execute selected Go tests with isolated PostgreSQL
+        shell: bash
+        run: bash scripts/pr-unit-database.sh "${{ matrix.shard }}"
 
   pr_validations:
     name: PR · Validation · ${{ matrix.check }}
@@ -1086,7 +1172,7 @@ jobs:
 
   pr_selected_final:
     name: PR Selected Checks
-    needs: [workflow_policy, source_format, pr_plan, pr_focused, pr_validations, pr_candidate, pr_consumer_pins, pr_demo_pin, pr_runner_interface, pr_runtime_selected, pr_public_contracts, pr_owner_node_native, pr_native_impact, pr_native_destroy]
+    needs: [workflow_policy, source_format, pr_plan, pr_focused, pr_validations, pr_candidate, pr_consumer_pins, pr_demo_pin, pr_runner_interface, pr_runtime_selected, pr_public_contracts, pr_owner_node_native, pr_native_impact, pr_native_destroy, pr_unit_shards]
     if: always() && github.event_name == 'pull_request' && github.base_ref == 'develop' && github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -1115,6 +1201,18 @@ jobs:
             true) test "$NATIVE_RESULT" = success ;;
             false) test "$NATIVE_RESULT" = skipped ;;
             *) echo "REJECT: no authoritative native impact classification" >&2; exit 1 ;;
+          esac
+      - name: Require complete selected Go shard coverage
+        shell: bash
+        env:
+          UNIT_SCOPE: ${{ needs.pr_plan.outputs.unit_scope }}
+          UNIT_RESULT: ${{ needs.pr_unit_shards.result }}
+        run: |
+          set -euo pipefail
+          case "$UNIT_SCOPE" in
+            full|cli) test "$UNIT_RESULT" = success ;;
+            none) test "$UNIT_RESULT" = skipped ;;
+            *) echo "REJECT: Go test selection missing or invalid" >&2; exit 1 ;;
           esac
       - name: Require normal selected job results
         env:
