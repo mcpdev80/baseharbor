@@ -141,6 +141,15 @@ func bootstrapLeftoverMarkerPath() string {
 	if root := strings.TrimSpace(os.Getenv("XDG_DATA_HOME")); root != "" {
 		return filepath.Join(root, bootstrapLeftoverMarkerName)
 	}
+	// Fall back to the deployment DataRoot contract: on a runner (or plain
+	// invocation) where neither BASEHARBOR_STATE_DIR nor XDG_DATA_HOME is set,
+	// the durable marker still lives beside the runtime state so TestMain and
+	// ensureRuntimeIntegrationTrustPlane agree on one root. Without this the
+	// marker is never created and the teardown fails with
+	// "bootstrap leftover marker missing".
+	if root, err := deployment.DataRoot(); err == nil && root != "" {
+		return filepath.Join(root, bootstrapLeftoverMarkerName)
+	}
 	return ""
 }
 
