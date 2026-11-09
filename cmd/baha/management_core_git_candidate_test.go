@@ -106,3 +106,26 @@ func TestPrepareStagedCoreGitCandidateRejectsForeignManifest(t *testing.T) {
 		t.Fatal("foreign application manifest accepted as a Core-owned candidate")
 	}
 }
+
+
+func TestFingerprintStagedCandidateIncludesExecutableMode(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "entrypoint.sh")
+	if err := os.WriteFile(path, []byte("#!/bin/sh\necho ready\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	before, err := fingerprintStagedCandidate(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(path, 0700); err != nil {
+		t.Fatal(err)
+	}
+	after, err := fingerprintStagedCandidate(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if before == after {
+		t.Fatal("candidate fingerprint did not bind the Git executable bit")
+	}
+}
