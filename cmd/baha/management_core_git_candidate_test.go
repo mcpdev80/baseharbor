@@ -107,7 +107,6 @@ func TestPrepareStagedCoreGitCandidateRejectsForeignManifest(t *testing.T) {
 	}
 }
 
-
 func TestFingerprintStagedCandidateIncludesExecutableMode(t *testing.T) {
 	root := t.TempDir()
 	path := filepath.Join(root, "entrypoint.sh")
