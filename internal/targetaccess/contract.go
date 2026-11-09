@@ -89,9 +89,9 @@ func BuiltInDescriptor(kind ProviderKind) (Descriptor, bool) {
 		}, true
 	case ProviderCoreRemote:
 		return Descriptor{
-			Kind: ProviderCoreRemote,
+			Kind:            ProviderCoreRemote,
 			ContractVersion: ContractVersion,
-			Remote: true,
+			Remote:          true,
 			Capabilities: Capabilities{
 				Connect: true, PeerIdentity: true,
 			},
