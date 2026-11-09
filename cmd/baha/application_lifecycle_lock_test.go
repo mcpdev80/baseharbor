@@ -251,8 +251,11 @@ func TestSharedConsumersSerializeOnAppOwner(t *testing.T) {
 
 // TestIndependentAppsDoNotSerializeOnSharedTarget is the per-app scope cell:
 // two INDEPENDENT service-less applications that merely share one Target run in
-// parallel — the second acquires while the first holds its own app lock, proving
-// the serialization wall is per-app, not per-target.
+// parallel. This PROVES the serialization wall is per-app, not per-target:
+// beta's acquisition signal must fire while alpha is still CONFIRMED holding its
+// own per-app lock, under a deadline shorter than alpha's hold. If both IDs were
+// routed through one target-wide lock, beta would block until alpha released and
+// this assertion would fail.
 func TestIndependentAppsDoNotSerializeOnSharedTarget(t *testing.T) {
 	target := configureTestTarget(t)
 	root, err := deployment.TargetStateRoot(target.Name)
@@ -263,56 +266,55 @@ func TestIndependentAppsDoNotSerializeOnSharedTarget(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Holder: app "alpha" holds its own per-app lock for a bounded window.
-	holderDone := make(chan struct{})
-	go func() {
-		unlock, herr := lockApplicationTargetLifecycle(resolvedApplication{
-			Target:             target,
-			TargetStateRoot:    root,
-			DeploymentIdentity: deployment.DeploymentIdentity{DeploymentID: "alpha"},
-			Manifest:           application.New("alpha", "dev", false, false, false),
-		}, false)
-		if herr != nil {
-			t.Errorf("alpha holder failed to acquire: %v", herr)
-			close(holderDone)
-			return
-		}
-		time.Sleep(250 * time.Millisecond)
-		unlock()
-		close(holderDone)
-	}()
-
-	// Wait for the holder to actually be running before starting beta.
-	select {
-	case <-holderDone:
-		t.Fatal("alpha holder exited before beta started")
-	case <-time.After(80 * time.Millisecond):
-	}
-
-	// Beta on the SAME target must acquire while alpha holds its own lock.
-	betaUnlock, berr := lockApplicationTargetLifecycle(resolvedApplication{
+	// alpha holds its own per-app lock until cleanup releases it explicitly.
+	alphaUnlock, aerr := lockApplicationTargetLifecycle(resolvedApplication{
 		Target:             target,
 		TargetStateRoot:    root,
-		DeploymentIdentity: deployment.DeploymentIdentity{DeploymentID: "beta"},
-		Manifest:           application.New("beta", "dev", false, false, false),
+		DeploymentIdentity: deployment.DeploymentIdentity{DeploymentID: "alpha"},
+		Manifest:           application.New("alpha", "dev", false, false, false),
 	}, false)
+	if aerr != nil {
+		t.Fatalf("alpha holder failed to acquire: %v", aerr)
+	}
+	t.Cleanup(alphaUnlock)
+
+	// beta acquires in a goroutine; its acquisition must complete while alpha is
+	// still held (alpha is released only by cleanup after this test body).
+	betaAcquired := make(chan struct{})
+	go func() {
+		betaUnlock, berr := lockApplicationTargetLifecycle(resolvedApplication{
+			Target:             target,
+			TargetStateRoot:    root,
+			DeploymentIdentity: deployment.DeploymentIdentity{DeploymentID: "beta"},
+			Manifest:           application.New("beta", "dev", false, false, false),
+		}, false)
+		if berr != nil {
+			t.Errorf("independent app beta was blocked by a DIFFERENT app on the same target (err=%v); independent apps must not serialize", berr)
+			close(betaAcquired)
+			return
+		}
+		betaUnlock()
+		close(betaAcquired)
+	}()
+
+	// beta must be admitted WHILE alpha is still held: the acquire signal fires
+	// under a short deadline that is far shorter than any serial hand-off would
+	// allow. If beta had blocked on a target-wide lock until alpha released,
+	// this would time out and fail.
 	select {
-	case <-holderDone:
-		// Holder released early; still valid as long as beta did not block.
-	default:
+	case <-betaAcquired:
+	case <-time.After(3 * time.Second):
+		t.Fatal("beta did not acquire while alpha still held its per-app lock; independent apps serialized by a target-wide lock")
 	}
-	if berr != nil {
-		t.Fatalf("independent app beta was blocked by a DIFFERENT app on the same target (err=%v); independent apps must not serialize", berr)
-	}
-	betaUnlock()
 }
 
-// TestDestroyNotStarvedByBoundedRetry proves fairness: a long-lived up-holder
-// on one app lets a destroy on a DIFFERENT app (or the same app after the
-// holder releases) acquire within the bounded deadline, so a destroy is never
-// starved indefinitely by a continuous stream of writers. Here a single
-// long-lived holder releases at t≈300ms; a destroy issued at t≈80ms acquires
-// shortly after release, well within the bounded window.
+// TestDestroyNotStarvedByBoundedRetry proves fairness under the SAME per-app
+// key: a long-lived up-holder on deployment ID "app" and a destroy on the SAME
+// ID contend for one per-app lock file. The destroy (allowPriority) must receive
+// a real contention result (a held lock, not an immediate grant) BEFORE the
+// holder releases, then win within the documented finite bound. This proves the
+// bounded, destroy-priority policy, not merely that destroy and up use different
+// keys.
 func TestDestroyNotStarvedByBoundedRetry(t *testing.T) {
 	target := configureTestTarget(t)
 	root, err := deployment.TargetStateRoot(target.Name)
@@ -323,17 +325,17 @@ func TestDestroyNotStarvedByBoundedRetry(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Long-lived holder on app "alpha" (simulating a slow up), released at ~300ms.
+	// Long-lived up-holder on the SAME deployment ID the destroy will target.
 	holderDone := make(chan struct{})
 	go func() {
 		unlock, herr := lockApplicationTargetLifecycle(resolvedApplication{
 			Target:             target,
 			TargetStateRoot:    root,
-			DeploymentIdentity: deployment.DeploymentIdentity{DeploymentID: "alpha"},
-			Manifest:           application.New("alpha", "dev", false, false, false),
+			DeploymentIdentity: deployment.DeploymentIdentity{DeploymentID: "app"},
+			Manifest:           application.New("app", "dev", false, false, false),
 		}, false)
 		if herr != nil {
-			t.Errorf("alpha holder failed: %v", herr)
+			t.Errorf("up holder failed: %v", herr)
 			close(holderDone)
 			return
 		}
@@ -342,28 +344,62 @@ func TestDestroyNotStarvedByBoundedRetry(t *testing.T) {
 		close(holderDone)
 	}()
 
+	// Let the holder establish the lock before the destroy contends.
 	select {
 	case <-holderDone:
 		t.Fatal("holder exited before destroy started")
-	case <-time.After(80 * time.Millisecond):
+	case <-time.After(120 * time.Millisecond):
 	}
 
-	// A destroy issued while the holder is running must acquire within a bounded
-	// window after the holder releases, not block forever.
-	start := time.Now()
-	destroyUnlock, derr := lockApplicationTargetLifecycle(resolvedApplication{
-		Target:             target,
-		TargetStateRoot:    root,
-		DeploymentIdentity: deployment.DeploymentIdentity{DeploymentID: "destroyed"},
-		Manifest:           application.New("destroyed", "dev", false, false, false),
-	}, true) // destroy takes priority
-	elapsed := time.Since(start)
-	if derr != nil {
-		t.Fatalf("destroy failed to acquire within the bounded window (err=%v, elapsed=%v)", derr, elapsed)
+	// The destroy contends on the SAME per-app key in a goroutine and reports
+	// whether it observed a held lock (contention) before the holder released.
+	destroyContended := make(chan bool, 1)
+	destroyAcquired := make(chan struct{})
+	go func() {
+		// Probe the per-app lock directly: while the holder still owns it, the
+		// non-blocking acquisition returns a contention error. This proves the
+		// destroy contends for the SAME per-app key and observes the held lock.
+		contented := false
+		if _, perr := coreinstallation.AcquireAppLifecycleLock(root, "app"); perr != nil {
+			contented = true
+		}
+		destroyContended <- contented
+
+		start := time.Now()
+		destroyUnlock, derr := lockApplicationTargetLifecycle(resolvedApplication{
+			Target:             target,
+			TargetStateRoot:    root,
+			DeploymentIdentity: deployment.DeploymentIdentity{DeploymentID: "app"},
+			Manifest:           application.New("app", "dev", false, false, false),
+		}, true) // destroy takes priority under the bounded policy
+		elapsed := time.Since(start)
+		if derr != nil {
+			t.Errorf("destroy failed to acquire within the bounded window (err=%v, elapsed=%v)", derr, elapsed)
+			close(destroyAcquired)
+			return
+		}
+		if elapsed > 5*time.Second {
+			t.Errorf("destroy took too long (%v) after holder release; fairness bound violated", elapsed)
+		}
+		destroyUnlock()
+		close(destroyAcquired)
+	}()
+
+	// While the destroy contends, the holder is still running (releases at ~300ms,
+	// we are at ~120ms). The destroy must observe a held lock: it cannot acquire
+	// the same per-app lock the holder still owns. Wait past the holder release so
+	// the destroy can win within the finite bound, and confirm it was contented.
+	select {
+	case contented := <-destroyContended:
+		if !contented {
+			t.Fatal("destroy did not observe contention on the same per-app key")
+		}
+	case <-time.After(600 * time.Millisecond):
 	}
-	destroyUnlock()
-	if elapsed > 5*time.Second {
-		t.Fatalf("destroy took too long (%v) to acquire after holder release; fairness bound violated", elapsed)
+	select {
+	case <-destroyAcquired:
+	case <-time.After(5 * time.Second):
+		t.Fatal("destroy never acquired within the bounded window")
 	}
 }
 

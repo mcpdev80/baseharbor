@@ -60,10 +60,22 @@ func AcquireLifecycleLock(root string) (func(), error) {
 // recovery after an interrupted mutation. The caller must release the returned
 // lock after all verification completes.
 //
-// The Target as a whole is still protected by an independent owner lock
-// (AcquireTargetOwnerLock), which the CLI layers on top of this per-app lock.
-// This split is what lets independent apps converge in parallel while the same
-// app stays strictly serialized.
+// Cross-operation coordination (card 0427-176 r2): the per-app dotfile is
+// created inside a brief exclusive critical section guarded by the shared
+// target-wide owner lock (.installation.lock under <root>). The per-app dotfile
+// persists as the per-app "active" signal; a target-wide mutation (stop/destroy
+// of the whole target, or a Target-definition change) takes the same
+// .installation.lock exclusively and scans the deployments namespace for held
+// per-app dotfiles, so it can never overlap a local application lifecycle while
+// unrelated apps still converge in parallel. Dotfile creation and the target-wide
+// scan share the .installation.lock critical section, so there is no
+// check-then-act race. This is proven by
+// TestLocalAppLifecycleCannotOverlapTargetWideMutation: a local app holds its
+// per-app lock while a target-wide stop must wait, and a target-wide stop
+// blocks a concurrent local app.
+//
+// The returned unlock releases the per-app dotfile and removes the dotfile so
+// the target-wide scan no longer sees it as an active app.
 func AcquireAppLifecycleLock(root string, scope string) (func(), error) {
 	if root == "" {
 		return nil, errors.New("lock root is required")
@@ -95,7 +107,50 @@ func AcquireAppLifecycleLock(root string, scope string) (func(), error) {
 		return nil, err
 	}
 	lockName := "." + scope + "." + appLifecycleLockFile
-	return lockNamed(deploymentsDir, lockName)
+	// Take the shared target-wide owner lock exclusively as a brief critical
+	// section, then create the per-app dotfile inside it so a target-wide scan
+	// that also holds this lock never races dotfile creation. The
+	// .installation.lock is released immediately after (only the per-app dotfile
+	// persists as the active signal), so unrelated apps still converge in
+	// parallel and a target-wide mutation can grab the target-wide lock freely
+	// while scanning. A concurrent target-wide mutation already holds
+	// .installation.lock, so this acquires nothing and the dotfile is never
+	// created — a local app cannot overlap a target-wide mutation.
+	wideUnlock, err := lock(root)
+	if err != nil {
+		return nil, err
+	}
+	appUnlock, err := lockNamed(deploymentsDir, lockName)
+	if err != nil {
+		wideUnlock()
+		return nil, err
+	}
+	wideUnlock()
+	return func() { _ = os.Remove(deploymentsDir + "/" + lockName); appUnlock() }, nil
+}
+
+// deploymentsHaveAppLocks reports whether the deployments namespace still holds a
+// per-app lifecycle dotfile. Only dotfiles ending in <dot>.app_installation.lock
+// count; a genuine deployment directory (a normal directory entry) is a real
+// deployment, not a per-app lock, and does not count as an active app. This is
+// the target-wide scan a target-wide mutation (stop/destroy of the whole target,
+// or a Target-definition change) uses to prove a local app lifecycle cannot
+// overlap it.
+func deploymentsHaveAppLocks(root string) bool {
+	deploymentsDir := filepath.Join(root, "deployments")
+	entries, err := os.ReadDir(deploymentsDir)
+	if err != nil {
+		return false
+	}
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		if strings.HasPrefix(e.Name(), ".") && strings.HasSuffix(e.Name(), "."+appLifecycleLockFile) {
+			return true
+		}
+	}
+	return false
 }
 
 // AcquireStateFileLock reuses the existing kernel lock for another existing
