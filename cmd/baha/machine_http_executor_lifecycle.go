@@ -84,6 +84,10 @@ func (e *bahaMachineExecutor) executeHTTPApply(
 		if err := verifyCoreGitCheckout(ctx, input.SourceModel.Sources[0], resolved.DeploymentRecord.Source); err != nil {
 			return nil, machine.Wrap(machine.ErrorSourceMissing, err, "Ensure the Core-registered Git checkout matches the selected remote and commit and contains no local changes.", false)
 		}
+		// The checkout may change after this read-only inspection. Do not
+		// mutate the runtime until an immutable Core-owned candidate snapshot
+		// is bound under the existing application lifecycle lock.
+		return nil, machine.NewError(machine.ErrorUnsupported, "Pinned Core Git checkout verified, but immutable candidate staging is not yet supported.", "Stage and bind an immutable Core-owned Git candidate before applying this revision.", false)
 	}
 
 	reportHTTPProgress(report, "apply", "Converging desired application state.", 35)
