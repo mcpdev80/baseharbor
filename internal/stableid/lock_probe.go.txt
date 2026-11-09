@@ -1,0 +1,40 @@
+// Standalone cross-process flock probe.
+//
+// Usage: lock_probe <lock-path>
+//
+// Opens <lock-path> and attempts LOCK_EX|LOCK_NB with no wait. It exits 0 when
+// it acquires the lock (the lock the caller holds is NOT enforced across
+// processes), and 1 when the kernel correctly blocks the acquire. Any other
+// outcome exits 2. This runs as a short-lived separate OS process so the
+// caller can prove — not assume — that its advisory flock is exclusive.
+//
+// This source is embedded by lock_probe.go and either compiled into a
+// prebuilt Linux/AMD64 binary (testdata/lock-probe-linux-amd64, used directly
+// on CI runners where no Go toolchain is guaranteed) or built on demand via
+// the toolchain fallback on other platforms. It imports only the Go standard
+// library (syscall) so no external module resolution or download is needed.
+package main
+
+import (
+	"os"
+	"syscall"
+)
+
+func main() {
+	if len(os.Args) < 2 {
+		os.Exit(2)
+	}
+	lockPath := os.Args[1]
+	fd, err := syscall.Open(lockPath, syscall.O_CREAT|syscall.O_RDWR|syscall.O_NOFOLLOW, 0600)
+	if err != nil {
+		os.Exit(2)
+	}
+	if err = syscall.Flock(fd, syscall.LOCK_EX|syscall.LOCK_NB); err == nil {
+		_ = syscall.Flock(fd, syscall.LOCK_UN)
+		os.Exit(0)
+	}
+	if err == syscall.EWOULDBLOCK || err == syscall.EAGAIN {
+		os.Exit(1)
+	}
+	os.Exit(2)
+}
