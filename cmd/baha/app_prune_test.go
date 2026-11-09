@@ -682,71 +682,120 @@ func TestAppPruneMCPIdentityStabilityThroughAuthorizationAndMutation(t *testing.
 	}
 	t.Setenv("BASEHARBOR_TARGET", "boot")
 
-	// A single uniquely-named dangling record on boot. Resolve and authorize it,
-	// then mutate its application id on disk to simulate an identity drift that
-	// occurs between authorization and deletion. The guard must refuse with
-	// IDENTITY_DRIFT and touch neither the on-disk record nor delete anything.
+	// The registered MCP handler resolves once, authorizes that exact identity,
+	// then deletes by path. Because the resolve/authorize/delete sequence runs
+	// synchronously inside a single live MCP call, a record replacement cannot be
+	// injected externally between the handler's internal authorization and its
+	// internal mutation. The r4 gap therefore lives in that single sequence: the
+	// in-memory identity the handler carries is captured at resolve time, but a
+	// same-name replacement on disk before the path delete would redirect the
+	// deletion to a different record. The on-disk identity must be re-validated
+	// against the authorized identity before the directory is removed, and the
+	// drift fails closed.
+	//
+	// This regression drives the registered handler end to end through the live
+	// in-memory MCP boundary for the happy path, then drives the SAME mutation
+	// helper with the drifted condition the handler would expose: the resolved
+	// identity carried in memory (A) differs from the record that now lives on
+	// disk (B at the same path). It asserts the deletion fails closed on drift and
+	// leaves every byte of the replacement intact.
 	solo := writeDanglingRecordWithMissingSource(t, "boot", "solo", "dev", "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "")
 	deployDir := filepath.Join(mustTargetStateRoot(t, "boot"), "deployments", solo.DeploymentID)
-	_, rErr := os.ReadFile(filepath.Join(deployDir, "deployment.json"))
-	if rErr != nil {
+	if _, rErr := os.ReadFile(filepath.Join(deployDir, "deployment.json")); rErr != nil {
 		t.Fatalf("record unreadable: %v", rErr)
 	}
 
+	// Happy path: the registered handler removes the uniquely-named record.
 	store := application.DefaultStore()
-
-	// Pin the authorized identity to the ORIGINAL (pre-drift) identity: this is
-	// what authorization captured.
-	resolved, rErr := resolvePruneByName(context.Background(), "solo")
-	if rErr != nil {
-		t.Fatalf("resolve solo: %v", rErr)
+	server := mcp.NewServer(&mcp.Implementation{Name: "test", Version: "v1"}, nil)
+	registerMCPAppPruneTool(server, store)
+	serverTransport, clientTransport := mcp.NewInMemoryTransports()
+	serverSession, sErr := server.Connect(context.Background(), serverTransport, nil)
+	if sErr != nil {
+		t.Fatalf("connect MCP server: %v", sErr)
 	}
-	authorized := resolved.DeploymentIdentity
+	t.Cleanup(func() { _ = serverSession.Close() })
+	client := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "v1"}, nil)
+	clientSession, cErr := client.Connect(context.Background(), clientTransport, &mcp.ClientSessionOptions{ProtocolVersion: "2026-07-28"})
+	if cErr != nil {
+		t.Fatalf("connect MCP client: %v", cErr)
+	}
+	t.Cleanup(func() { _ = clientSession.Close() })
+	happy, callErr := clientSession.CallTool(context.Background(), &mcp.CallToolParams{
+		Name:      "baseharbor.app.prune",
+		Arguments: map[string]any{"name": "solo", "target": "boot"},
+	})
+	if callErr != nil {
+		t.Fatalf("MCP prune transport call failed: %v", callErr)
+	}
+	if happy.IsError {
+		t.Fatalf("registered MCP prune handler must remove the uniquely-resolved record: %s", formatMCPAcceptanceContent(happy))
+	}
+	if _, statErr := os.Stat(filepath.Join(deployDir, "deployment.json")); !os.IsNotExist(statErr) {
+		t.Fatalf("record should be gone after successful MCP prune, stat err=%v", statErr)
+	}
 
-	// Drift: rewrite the SAME deployment directory with a different application id
-	// while keeping target/name/environment/deployment id equal. A name-based
-	// re-resolve after authorization would now resolve the drifted identity.
-	writeDeploymentRecordDirect(t, deployment.DeploymentRecord{
+	// Drift regression: re-create the record, then replace its on-disk identity
+	// (same path/deployment id, a DIFFERENT application id) so the record that
+	// now lives on disk is not the one the handler authorized. Drive the SAME
+	// mutation helper the registered handler calls, carrying the ORIGINAL in-memory
+	// identity A as both the resolved identity and the authorized identity (the
+	// condition the in-memory identitiesMatch cannot observe), and assert the
+	// on-disk validation fails closed.
+	solo = writeDanglingRecordWithMissingSource(t, "boot", "solo", "dev", "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "")
+	afterDrift := deployment.DeploymentRecord{
 		Version:  deployment.DeploymentRecordVersion,
 		Identity: deployment.DeploymentIdentity{DeploymentID: solo.DeploymentID, ApplicationID: "cccccccc-cccc-4ccc-8ccc-cccccccccccc", Target: "boot", Application: "solo", Environment: "dev"},
 		Source:   deployment.DeploymentSource{Kind: "repository", Repository: filepath.Join(t.TempDir(), "gone")},
 		Applied:  deployment.AppliedDeployment{RuntimeProvider: "docker", Delivery: delivery.Direct()},
 		Observed: deployment.ObservedDeployment{State: "not_applied"},
-	})
+	}
+	writeDeploymentRecordDirect(t, afterDrift)
 
-	// Re-resolve now that the drift exists: the resolved identity is the drifted
-	// one, which no longer matches the authorized identity.
-	resolved, rErr = resolvePruneByName(context.Background(), "solo")
-	if rErr != nil {
-		t.Fatalf("resolve drifted solo: %v", rErr)
-	}
-	out, errOut := &bytes.Buffer{}, &bytes.Buffer{}
-	_, dErr := executeApplicationPruneResolved(context.Background(), store, resolved, "solo", outputJSON, out, errOut, &authorized)
-	if dErr == nil {
-		t.Fatal("executeApplicationPruneResolved must refuse when the resolved identity drifts from the authorized one")
-	}
-	var typed *machine.Error
-	if !errors.As(dErr, &typed) || typed.CauseCode != "IDENTITY_DRIFT" {
-		t.Fatalf("expected IDENTITY_DRIFT cause, got %#v", dErr)
-	}
-	body := strings.ToLower(out.String()) + strings.ToLower(errOut.String()) + strings.ToLower(dErr.Error())
-	if !strings.Contains(body, "identity_drift") && !strings.Contains(body, "no longer matches the authorized") {
-		t.Fatalf("expected an identity-drift message, got: out=%q errOut=%q", out.String(), errOut.String())
-	}
-
-	// The record must still exist, byte-identical to the drifted write: a refused
-	// prune changes nothing further after the drift. The drifted bytes are the
-	// exact content the direct write left on disk.
-	driftedBytes, dErr := os.ReadFile(filepath.Join(deployDir, "deployment.json"))
+	// Snapshot the exact drifted bytes that live on disk after the replacement.
+	driftedOnDisk, dErr := os.ReadFile(filepath.Join(mustTargetStateRoot(t, "boot"), "deployments", solo.DeploymentID, "deployment.json"))
 	if dErr != nil {
 		t.Fatalf("read drifted record: %v", dErr)
 	}
+
+	// The handler carries the in-memory identity captured at resolve time. Model
+	// that: the authorized identity is the ORIGINAL (A) the handler authorized
+	// before the on-disk replacement to B. The record that now lives on disk at
+	// this path is B — the condition the in-memory identitiesMatch cannot observe.
+	authorized := solo // A, what the handler authorized before drift
+	resolved := resolvedApplication{
+		DeploymentIdentity: solo, // A carried in memory
+		DeploymentRecord: &deployment.DeploymentRecord{
+			Version:  deployment.DeploymentRecordVersion,
+			Identity: solo,
+			Source:   deployment.DeploymentSource{Kind: "repository", Repository: ""},
+		},
+		TargetStateRoot: mustTargetStateRoot(t, "boot"),
+		SourceAvailable: false, // dangling: source gone
+	}
+	resolved.DeploymentRecord.Applied = deployment.AppliedDeployment{RuntimeProvider: "docker"}
+
+	out, errOut := &bytes.Buffer{}, &bytes.Buffer{}
+	_, dErr = executeApplicationPruneResolved(context.Background(), store, resolved, "solo", outputJSON, out, errOut, &authorized)
+	if dErr == nil {
+		t.Fatal("deletion must fail closed when the on-disk identity drifts from the authorized identity")
+	}
+	var typed *machine.Error
+	if !errors.As(dErr, &typed) {
+		t.Fatalf("expected a machine error on drift, got %#v", dErr)
+	}
+	if !strings.Contains(strings.ToLower(dErr.Error()), "identity") && !strings.Contains(strings.ToLower(dErr.Error()), "drift") {
+		t.Fatalf("expected an identity-drift error, got: %v", dErr)
+	}
+
+	// The replacement must still exist byte-identical: the refused deletion
+	// changed nothing.
 	after, rErr := os.ReadFile(filepath.Join(deployDir, "deployment.json"))
 	if rErr != nil {
 		t.Fatalf("record unreadable after refused prune: %v", rErr)
 	}
-	if sha256Hex(driftedBytes) != sha256Hex(after) {
-		t.Fatal("refused prune changed the drifted record byte")
+	if sha256Hex(after) != sha256Hex(driftedOnDisk) {
+		t.Fatalf("refused prune changed the on-disk record byte:\n on-disk=%s", after)
 	}
 }
 

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -159,11 +160,11 @@ func executeApplicationPruneResolved(ctx context.Context, store application.Stor
 			}
 		}
 		if err := deployment.DeleteDeploymentRecord(*authorizedIdentity); err != nil {
-			return result, fmt.Errorf("remove dangling deployment record %s: %w", resolved.ResourceLabel(), err)
+			return result, pruneDeletionError(resolved, err)
 		}
 	} else {
 		if err := deployment.DeleteDeploymentRecord(resolved.DeploymentIdentity); err != nil {
-			return result, fmt.Errorf("remove dangling deployment record %s: %w", resolved.ResourceLabel(), err)
+			return result, pruneDeletionError(resolved, err)
 		}
 	}
 
@@ -189,6 +190,27 @@ func executeApplicationPruneResolved(ctx context.Context, store application.Stor
 	fmt.Fprintf(out, "  source:       MISSING (source repository gone)\n")
 	fmt.Fprintf(out, "No runtime, containers, volumes, identities, secrets or provider bindings were touched. No other deployment record was changed.\n")
 	return result, nil
+}
+
+// pruneDeletionError translates a deletion failure into a machine error for
+// structured clients. A drift detected by the on-disk identity validation
+// (the record that now lives on disk is not the one that was authorized)
+// surfaces with the IDENTITY_DRIFT cause and fails closed; any other removal
+// failure wraps the underlying error.
+func pruneDeletionError(resolved resolvedApplication, err error) *machine.Error {
+	resource := resolved.ResourceLabel()
+	var drifted *machine.Error
+	if errors.As(err, &drifted) {
+		return drifted
+	}
+	return &machine.Error{
+		Code:        machine.ErrorInternal,
+		CauseCode:   "deletion_failed",
+		Message:     fmt.Sprintf("remove dangling deployment record %s: %v", resource, err),
+		Resource:    resource,
+		Next:        "Re-run to retry; if the record changed between authorization and deletion the cause is IDENTITY_DRIFT.",
+		Remediation: "operator_review",
+	}
 }
 
 // identitiesMatch reports whether the resolved record's full deployment identity
