@@ -85,11 +85,14 @@ parser-only test as a complete onboarding PASS.
 The branch now includes the strict portable invitation contract, bounded
 owner-only file transfer, a TLS-pinned redemption client that generates its
 own CSR and verifies the issued leaf against its invitation scope, and
-atomic private workstation identity staging. Unit-level negative and
-one-use/replay tests are committed.
+atomic private workstation identity staging. The Core's workstation handler
+also exposes a narrowly scoped TLS-only delegated grant-consumption route
+outside OIDC, while operator-authorized grant creation remains inside OIDC.
+Unit-level negative, foreign-scope, one-use/replay and import tests are
+committed; neither native compilation nor physical E2E has passed yet.
 
 **NOT YET COMPLETE:** the owner-authorized local Core grant issuer and
-first-tenant bootstrap, the dedicated grant-authorized enrollment route,
+first-tenant bootstrap, the local-host grant issuer and the authenticated workstation request context,
 the protected Target/connection transaction and Core API authentication
 for the enrolled workstation are still missing. No CLI end-to-end success
 may be claimed from these isolated tests; do not open the PR or run the
