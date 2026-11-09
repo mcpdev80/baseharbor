@@ -34,10 +34,10 @@ func newCoreSigningTestIssuer(t *testing.T) *coreSigningTestIssuer {
 	now := time.Now()
 	ca := &x509.Certificate{
 		SerialNumber: big.NewInt(101),
-		Subject: pkix.Name{CommonName: "Core signing test CA"},
-		NotBefore: now.Add(-time.Minute),
-		NotAfter: now.Add(48 * time.Hour),
-		IsCA: true, BasicConstraintsValid: true,
+		Subject:      pkix.Name{CommonName: "Core signing test CA"},
+		NotBefore:    now.Add(-time.Minute),
+		NotAfter:     now.Add(48 * time.Hour),
+		IsCA:         true, BasicConstraintsValid: true,
 		KeyUsage: x509.KeyUsageCertSign,
 	}
 	der, err := x509.CreateCertificate(rand.Reader, ca, ca, pub, key)
@@ -70,9 +70,9 @@ func (i *coreSigningTestIssuer) SignCoreCSR(_ context.Context, request serviceac
 	}
 	certificate := &x509.Certificate{
 		SerialNumber: big.NewInt(202),
-		Subject: pkix.Name{CommonName: request.Identity},
-		NotBefore: now.Add(-time.Minute), NotAfter: now.Add(time.Hour),
-		KeyUsage: x509.KeyUsageDigitalSignature,
+		Subject:      pkix.Name{CommonName: request.Identity},
+		NotBefore:    now.Add(-time.Minute), NotAfter: now.Add(time.Hour),
+		KeyUsage:    x509.KeyUsageDigitalSignature,
 		ExtKeyUsage: usage, DNSNames: dns, URIs: csr.URIs,
 	}
 	der, err := x509.CreateCertificate(rand.Reader, certificate, i.ca, csr.PublicKey, i.caKey)
@@ -81,8 +81,8 @@ func (i *coreSigningTestIssuer) SignCoreCSR(_ context.Context, request serviceac
 	}
 	return serviceaccess.IssuedCertificate{
 		Certificate: pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}),
-		IssuingCA: pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: i.ca.Raw}),
-		ExpiresAt: certificate.NotAfter, Serial: certificate.SerialNumber.Text(16),
+		IssuingCA:   pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: i.ca.Raw}),
+		ExpiresAt:   certificate.NotAfter, Serial: certificate.SerialNumber.Text(16),
 	}, nil
 }
 

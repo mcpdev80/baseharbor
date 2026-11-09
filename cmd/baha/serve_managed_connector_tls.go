@@ -44,8 +44,8 @@ func issueManagedCoreConnectorTLS(ctx context.Context, issuer serviceaccess.Core
 		return result, err
 	}
 	csrDER, err := x509.CreateCertificateRequest(rand.Reader, &x509.CertificateRequest{
-		Subject: pkix.Name{CommonName: identity},
-		URIs: []*url.URL{uri},
+		Subject:  pkix.Name{CommonName: identity},
+		URIs:     []*url.URL{uri},
 		DNSNames: []string{host},
 	}, key)
 	if err != nil {
@@ -53,9 +53,9 @@ func issueManagedCoreConnectorTLS(ctx context.Context, issuer serviceaccess.Core
 	}
 	request := serviceaccess.CSRSigningRequest{
 		Identity: identity,
-		CSRPEM: pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE REQUEST", Bytes: csrDER}),
+		CSRPEM:   pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE REQUEST", Bytes: csrDER}),
 		DNSNames: []string{host},
-		TTL: 24 * time.Hour,
+		TTL:      24 * time.Hour,
 	}
 	if _, err := request.ValidateCore(); err != nil {
 		return result, fmt.Errorf("verify Core Connector CSR identity: %w", err)
