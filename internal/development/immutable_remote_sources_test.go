@@ -38,3 +38,25 @@ func TestValidateImmutableRemoteSources(t *testing.T) {
 		})
 	}
 }
+
+func TestRemoteGitRejectsUnsafeOrNonRemoteLocations(t *testing.T) {
+	for _, tc := range []struct {
+		url string
+		ok  bool
+	}{
+		{"https://github.com/org/app.git", true},
+		{"ssh://git@example.org/org/app.git", true},
+		{"git@example.org:org/app.git", true},
+		{"/tmp/checkout", false},
+		{"file:///tmp/checkout", false},
+		{"http://example.org/app.git", false},
+		{"git://example.org/app.git", false},
+		{"https://user:password@example.org/app.git", false},
+		{"https://example.org/app.git?token=secret", false},
+		{"https://example.org/app.git#main", false},
+	} {
+		if err := validateRemoteGitLocation(tc.url); (err == nil) != tc.ok {
+			t.Errorf("Git source %q validation = %v, want allowed=%t", tc.url, err, tc.ok)
+		}
+	}
+}
