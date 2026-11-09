@@ -45,5 +45,8 @@ func validateRemoteSelectedSources(applicationName, environment string) error {
 	if err := development.ValidateImmutableRemoteSources(model); err != nil {
 		return fmt.Errorf("remote application source is not immutable: %w", err)
 	}
-	return nil
+	// The current Machine HTTP apply contract has no source-selection field.
+	// Never accept a pinned workstation selection and silently deploy an
+	// unrelated or stale source already registered on the Core.
+	return errors.New("remote source is pinned locally but the Core apply contract cannot bind or verify the selected Git commit/OCI digest; refusing to deploy a different server-side revision")
 }
