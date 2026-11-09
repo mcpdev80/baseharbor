@@ -81,7 +81,13 @@ func runOnboardInvite(ctx context.Context, args []string, out io.Writer) error {
 		}
 		outputFile = filepath.Join(privateDir, "baseharbor-onboard-"+station+".json")
 	}
-	if err := issueLocalWorkstationInvitation(ctx, target, station, coreURL, outputFile); err != nil {
+	// Provision only the local Core tenancy identity. This is not an OIDC
+	// impersonation or a remote administrative bootstrap.
+	target, err = ensureLocalOnboardingTenant(ctx, target)
+	if err != nil {
+		return err
+	}
+	if err := issueLocalWorkstationInvitation(withTargetOverride(ctx, target.Name), target, station, coreURL, outputFile); err != nil {
 		return err
 	}
 	_, err = fmt.Fprintf(out, "One-use workstation invitation: %s\nTransfer this private file to the developer workstation. Do not print its contents.\n", outputFile)
