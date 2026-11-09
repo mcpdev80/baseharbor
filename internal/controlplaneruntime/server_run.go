@@ -396,7 +396,27 @@ func registerOperatorAPI(ctx context.Context, mux *http.ServeMux, cfg Config, de
 	if err != nil {
 		return err
 	}
-	mux.Handle("/api/", protected)
+	if cfg.WorkstationEnrollmentEnabled {
+		revoker, ok := machineExecutor.(workstationRevocationReader)
+		if !ok {
+			return errors.New("Core requires workstation OpenBao CRL authority for device access")
+		}
+		device, err := workstationDeviceMiddleware(deps.pool, cfg.TLSClientCAFile, revoker, operatorMux)
+		if err != nil { return err }
+		mux.Handle("/api/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Only a client that deliberately presented an enrolled leaf and
+			// did not supply a human OIDC Bearer token selects device auth.
+			// All browser/OIDC calls retain exactly the existing middleware.
+			if r.TLS != nil && len(r.TLS.PeerCertificates) != 0 &&
+				r.Header.Get("Authorization") == "" {
+				device.ServeHTTP(w, r)
+				return
+			}
+			protected.ServeHTTP(w, r)
+		}))
+	} else {
+		mux.Handle("/api/", protected)
+	}
 	return nil
 }
 
