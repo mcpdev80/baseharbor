@@ -340,6 +340,14 @@ jobs:
         id: unit_tests
         run: go test ./...
 
+      # The package suite may provision a test Core using the shared docker-dev
+      # engine. Native lifecycle tests must start from a clean, independently
+      # owned CI runtime. Use the dedicated runner's existing reset contract,
+      # never relax the production same-engine Core ownership guard.
+      - name: Reset dedicated CI runtime before native integration
+        shell: bash
+        run: bash scripts/ci-runtime-reset.sh docker
+
       - name: Run runtime integration tests serially
         id: runtime_integration
         env:

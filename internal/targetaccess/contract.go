@@ -12,6 +12,7 @@ type ProviderKind string
 
 const (
 	ProviderLocal         ProviderKind = "local"
+	ProviderCoreRemote    ProviderKind = "baseharbor-core"
 	ProviderNodeConnector ProviderKind = "baseharbor-node-connector"
 	ProviderNativeAPI     ProviderKind = "native-api"
 )
@@ -84,6 +85,15 @@ func BuiltInDescriptor(kind ProviderKind) (Descriptor, bool) {
 			Remote:          false,
 			Capabilities: Capabilities{
 				Connect: true, Stream: true, ExecTransport: true, TypedRealization: true,
+			},
+		}, true
+	case ProviderCoreRemote:
+		return Descriptor{
+			Kind:            ProviderCoreRemote,
+			ContractVersion: ContractVersion,
+			Remote:          true,
+			Capabilities: Capabilities{
+				Connect: true, PeerIdentity: true,
 			},
 		}, true
 	case ProviderNodeConnector:

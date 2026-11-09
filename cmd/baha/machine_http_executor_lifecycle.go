@@ -6,7 +6,9 @@ import (
 	"io"
 	"strings"
 
+	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/applicationlifecycle"
+	"github.com/mcpdev80/baseharbor/internal/development"
 	"github.com/mcpdev80/baseharbor/internal/machine"
 	"github.com/mcpdev80/baseharbor/internal/machinehttp"
 )
@@ -51,8 +53,17 @@ func (e *bahaMachineExecutor) executeHTTPApply(
 	if err := bindHTTPApplicationSelectors(operationContext, &input.Target, &input.Environment, &input.Name); err != nil {
 		return nil, err
 	}
+	if input.SourceModel != nil {
+		if input.SourceModel.Application != input.Name {
+			return nil, machine.NewError(machine.ErrorValidationFailed, "Remote source selection does not belong to the selected application.", "Use the matching source model for this registered application.", false)
+		}
+		if err := development.ValidateImmutableRemoteSources(*input.SourceModel); err != nil {
+			return nil, machine.Wrap(machine.ErrorValidationFailed, err, "Use immutable Git commit SHAs or OCI image digests.", false)
+		}
+	}
 	ctx = withTargetOverride(ctx, input.Target)
 	ctx = withMemoryPreflightOverride(ctx, input.SkipMemoryPreflight)
+	ctx = withCandidateConsentDigest(ctx, input.ConfirmCandidate)
 	ctx = withProviderChangeConsent(ctx, input.ProviderChangeConsent)
 	args := machineApplicationArgs(input.Name, input.Environment)
 
@@ -63,6 +74,63 @@ func (e *bahaMachineExecutor) executeHTTPApply(
 	}
 	if err := ensureResolvedHTTPContext(operationContext, resolved); err != nil {
 		return nil, err
+	}
+	if input.SourceSnapshotDigest != "" {
+		if input.SourceModel != nil || e.sourceTransfers == nil {
+			return nil, machine.NewError(machine.ErrorConflict, "Snapshot source conflicts with an unbound immutable source.", "Select one Core-verified source transport.", false)
+		}
+		manifest, root, err := e.sourceTransfers.Current(resolved.Target.Name, resolved.Manifest.Name, resolved.Manifest.Environment)
+		if err != nil || manifest.Digest != input.SourceSnapshotDigest {
+			return nil, machine.NewError(machine.ErrorSourceMissing, "The selected source snapshot is missing or no longer current.", "Upload the exact source bytes and retry.", false)
+		}
+		selection, err := application.ResolveRepositoryEnvironment(root, resolved.Manifest.Environment)
+		if err != nil {
+			return nil, machine.Wrap(machine.ErrorValidationFailed, err, "The uploaded snapshot needs a valid baseharbor.yaml.", false)
+		}
+		if selection.Manifest.Name != resolved.Manifest.Name || selection.Manifest.Environment != resolved.Manifest.Environment ||
+			(selection.Manifest.ApplicationID != "" && selection.Manifest.ApplicationID != resolved.DeploymentIdentity.ApplicationID) {
+			return nil, machine.NewError(machine.ErrorPolicyDenied, "Source snapshot does not belong to the authorized Core application.", "Use the matching application identity.", false)
+		}
+		selection.Manifest.ApplicationID = resolved.DeploymentIdentity.ApplicationID
+		resolved.Manifest = selection.Manifest
+		resolved.ManifestPath = selection.ManifestPath
+		resolved.RepositoryRoot = selection.RepositoryRoot
+		resolved.SourceAvailable = true
+		resolved.FromRepository = true
+		ctx = withVerifiedHTTPSource(ctx, resolved)
+	} else {
+		// Registered immutable sources retain their existing Core-side checks.
+		input.SourceModel, err = bindRegisteredCoreSource(resolved, input.SourceModel)
+		if err != nil {
+			return nil, machine.Wrap(machine.ErrorConflict, err,
+				"Use the immutable source registered on this Core application; a source change needs an explicit authorized operation.", false)
+		}
+	}
+	if input.SourceModel != nil {
+		// A Core-registered clean Git worktree at the exact commit can be
+		// used through the existing source lifecycle. Do not fetch URLs
+		// provided by the workstation or reinterpret OCI as local files.
+		if len(input.SourceModel.Sources) != 1 || resolved.DeploymentRecord == nil {
+			return nil, machine.NewError(machine.ErrorUnsupported, "Remote source requires one registered Core-owned immutable Git checkout.", "Register the exact Git source with the owning Core before apply.", false)
+		}
+		candidate, err := prepareStagedCoreGitCandidate(ctx,
+			input.SourceModel.Sources[0], resolved.DeploymentRecord.Source,
+			resolved.DeploymentIdentity, resolved.Manifest)
+		if err != nil {
+			return nil, machine.Wrap(machine.ErrorSourceMissing, err, "Ensure the Core-registered Git checkout matches the selected remote, commit and application identity.", false)
+		}
+		defer candidate.Close()
+		if err := confirmStagedCoreGitCandidate(candidate, input.ConfirmCandidate); err != nil {
+			return nil, machine.Wrap(machine.ErrorApprovalRequired, err,
+				"Confirm the exact staged Git candidate returned by the owning Core before deployment.", false)
+		}
+		// The staged bytes and operator consent are now verified together.
+		// The existing apply lifecycle still reads its registered source
+		// directly, not this staged tree: do not allow a TOCTOU bypass or
+		// falsely imply that the runtime consumed the approved artifact.
+		return nil, machine.NewError(machine.ErrorUnsupported,
+			"Pinned Git candidate and consent verified, but immutable Connector delivery is not yet bound to this artifact.",
+			"Bind this exact staged tree to the existing Core-owned deployment transaction before applying.", false)
 	}
 
 	reportHTTPProgress(report, "apply", "Converging desired application state.", 35)
@@ -112,6 +180,10 @@ func (e *bahaMachineExecutor) executeHTTPUpdate(
 	}
 	if err := ensureResolvedHTTPContext(operationContext, resolved); err != nil {
 		return nil, err
+	}
+	if err := rejectUnboundRegisteredSourceMutation(resolved, "updated"); err != nil {
+		return nil, machine.Wrap(machine.ErrorUnsupported, err,
+			"Use the Core-owned immutable source/candidate workflow before attempting an update.", false)
 	}
 	if applicationUpdateHasDurableState(resolved.Manifest) && strings.TrimSpace(input.BackupPasswordFile) == "" && !input.NoBackup {
 		return nil, &machine.Error{
@@ -167,6 +239,10 @@ func (e *bahaMachineExecutor) executeHTTPRepair(
 	}
 	if err := ensureResolvedHTTPContext(operationContext, resolved); err != nil {
 		return nil, err
+	}
+	if err := rejectUnboundRegisteredSourceMutation(resolved, "repaired"); err != nil {
+		return nil, machine.Wrap(machine.ErrorUnsupported, err,
+			"Use the Core-owned immutable source/candidate workflow before attempting repair.", false)
 	}
 	reportHTTPProgress(report, "repair", "Repairing safely reconcilable drift.", 40)
 	if err := executeApplicationRepairLifecycle(ctx, e.store, append(args, "--fix", "--yes"), io.Discard, io.Discard); err != nil {

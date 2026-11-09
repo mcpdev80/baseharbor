@@ -36,28 +36,34 @@ type Config struct {
 	ConnectorTLSCAFile           string
 	OIDCIssuer                   string
 	OIDCAudiences                []string
-	TLSCertFile                  string
-	TLSKeyFile                   string
-	TLSClientCAFile              string
-	RuntimeAppName               string
-	RuntimeEnvironment           string
-	RuntimeSecretsEnabled        bool
-	RuntimeOpenBaoURL            string
-	RuntimeOpenBaoCAFile         string
-	RuntimeCredentialsFile       string
-	RuntimeTokenFile             string
-	RuntimePermissionsFile       string
-	RuntimeServiceTokensFile     string
-	RuntimeExecutorURL           string
-	RuntimeExecutorCAFile        string
-	RuntimeExecutorCertFile      string
-	RuntimeExecutorKeyFile       string
-	RuntimeOperationsDir         string
-	RuntimeMetricsTargetsDir     string
-	RuntimeDocsListenAddr        string
-	RuntimeBuildVersion          string
-	RuntimeBuildCommit           string
-	ShutdownTimeout              time.Duration
+	// OperatorOIDCTrustFile optionally adds the managed operator CA to the
+	// OIDC discovery trust pool, on top of the system trust pool (additive
+	// only; verification is never weakened). It lets `baha serve` verify a
+	// managed operator issuer the same way `baha login` does, without OS
+	// system-trust surgery.
+	OperatorOIDCTrustFile    string
+	TLSCertFile              string
+	TLSKeyFile               string
+	TLSClientCAFile          string
+	RuntimeAppName           string
+	RuntimeEnvironment       string
+	RuntimeSecretsEnabled    bool
+	RuntimeOpenBaoURL        string
+	RuntimeOpenBaoCAFile     string
+	RuntimeCredentialsFile   string
+	RuntimeTokenFile         string
+	RuntimePermissionsFile   string
+	RuntimeServiceTokensFile string
+	RuntimeExecutorURL       string
+	RuntimeExecutorCAFile    string
+	RuntimeExecutorCertFile  string
+	RuntimeExecutorKeyFile   string
+	RuntimeOperationsDir     string
+	RuntimeMetricsTargetsDir string
+	RuntimeDocsListenAddr    string
+	RuntimeBuildVersion      string
+	RuntimeBuildCommit       string
+	ShutdownTimeout          time.Duration
 }
 
 func (c Config) operatorAPIEnabled() bool {

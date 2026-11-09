@@ -459,8 +459,13 @@ networks:
 	// READY→written-archive. backup uses a password-file gate, not an interactive
 	// impact confirmation, but the runtime must already be applied and verified.
 	out.Reset()
-	backupFile := filepath.Join(t.TempDir(), "pinned.bhbackup")
-	backupCmd := []string{"app", "backup", "--output", backupFile}
+	backupDir := t.TempDir()
+	passwordFile := filepath.Join(backupDir, "backup-password")
+	if err := os.WriteFile(passwordFile, []byte("baseharbor-pinned-workload-ci-only-backup-secret\n"), 0o600); err != nil {
+		t.Fatalf("create isolated native CI backup password: %v", err)
+	}
+	backupFile := filepath.Join(backupDir, "pinned.bhbackup")
+	backupCmd := []string{"app", "backup", "--password-file", passwordFile, "--output", backupFile}
 	if err := runWithIO(ctx, backupCmd, &out, &out); err != nil {
 		t.Fatalf("backup pinned-workload application: %v\n%s", err, out.String())
 	}

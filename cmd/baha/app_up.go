@@ -43,6 +43,13 @@ func appUpCommand(store application.Store) *cli.Command {
 		Usage:   "baha app up [NAME] [--yes|-y] [--skip-memory-preflight]",
 		Long:    "Starts a previously materialized BaseHarbor application runtime using its existing runtime definition, credentials and persistent data; required application secrets are verified before workload start and missing values fail closed. Repository workloads are started after their BaseHarbor backend and per-application secret broker are ready. Workload-only applications skip the empty managed-runtime start and resume their repository Compose workload directly. Without NAME it resolves the nearest repository baseharbor.yaml. --yes accepts allowed confirmations but never invents unresolved selections or operator authentication configuration.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
+			target, err := effectiveTarget(ctx)
+			if err != nil {
+				return err
+			}
+			if target.AccessProvider != "" && target.AccessProvider != "local" {
+				return remoteApplicationMutation(ctx, target, "apply", args, out)
+			}
 			opts, err := parseAppUpOptions(args)
 			if err != nil {
 				return err

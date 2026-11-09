@@ -102,18 +102,31 @@ func executeRemoteApplicationApply(ctx context.Context, resolved resolvedApplica
 	if err != nil {
 		return err
 	}
+	var previousRuntime *application.RemoteManagedRuntime
+	var previousIntent application.Manifest
+	var previousRecord *deployment.DeploymentRecord
 	if previous != nil {
-		runtime, intent, err := restoreRemoteApplication(ctx, resolved)
+		previousRuntime, previousIntent, err = restoreRemoteApplication(ctx, resolved)
 		if err != nil {
 			return err
 		}
-		if !reflect.DeepEqual(intent, resolved.Manifest) {
-			return errors.New("remote Application desired state differs from retained publication; inspect before changing its lifecycle")
+		old, loadErr := deployment.LoadDeploymentRecord(resolved.DeploymentIdentity)
+		if loadErr != nil {
+			return loadErr
 		}
-		if err := runtime.ApplyApplication(ctx, intent, true); err != nil {
-			return err
+		desiredDigest, fingerprintErr := repositoryDesiredStateFingerprint(ctx, resolved)
+		if fingerprintErr != nil {
+			return fingerprintErr
 		}
-		return recordVerifiedRemoteReactivation(resolved, intent)
+		if reflect.DeepEqual(previousIntent, resolved.Manifest) && old.Source.Digest == desiredDigest {
+			if err := previousRuntime.ApplyApplication(ctx, previousIntent, true); err != nil {
+				return err
+			}
+			return recordVerifiedRemoteReactivation(resolved, previousIntent)
+		}
+		// An altered source needs a new immutable remote publication. Reusing
+		// the old project would falsely claim READY for bytes never delivered.
+		previousRecord = &old
 	}
 	// A pure-client remote Application never bootstraps or binds a local Core.
 	// Only an intent that needs a managed runtime broker (secrets, identity,
@@ -176,7 +189,11 @@ func executeRemoteApplicationApply(ctx context.Context, resolved resolvedApplica
 		return err
 	}
 	if err := runtime.Publish(ctx, func(project targetsession.ProjectRecord) error {
-		if err := runtime.SaveSnapshot(resolved.stateRoot(), project); err != nil {
+		if previousRecord != nil {
+			if err := runtime.SaveSnapshotRevision(resolved.stateRoot(), project); err != nil {
+				return err
+			}
+		} else if err := runtime.SaveSnapshot(resolved.stateRoot(), project); err != nil {
 			return err
 		}
 		pending.Applied.RemoteProject = &project
@@ -185,6 +202,17 @@ func executeRemoteApplicationApply(ctx context.Context, resolved resolvedApplica
 		return err
 	}
 	if err := runtime.ApplyApplication(ctx, resolved.Manifest, false); err != nil {
+		if previousRecord != nil {
+			// The old publication is immutable and still retained. Attempt a
+			// bounded, verified restoration before recovering the old receipt.
+			if restoreErr := previousRuntime.ApplyApplication(ctx, previousIntent, true); restoreErr != nil {
+				return errors.Join(err, fmt.Errorf("previous remote publication rollback failed: %w", restoreErr))
+			}
+			if recordErr := deployment.SaveDeploymentRecord(*previousRecord); recordErr != nil {
+				return errors.Join(err, fmt.Errorf("restore previous Core deployment receipt: %w", recordErr))
+			}
+			return fmt.Errorf("new remote publication failed, previous deployment restored: %w", err)
+		}
 		return errors.Join(err, recordObservedDeployment(resolved, "failed", false))
 	}
 	if err := application.ReconcileReferenceProviderRegistryAt(resolved.TargetStateRoot, resolved.Manifest); err != nil {

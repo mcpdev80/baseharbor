@@ -57,6 +57,58 @@ TLS
 
 Die aktuelle geschützte API-Oberfläche enthält die anwendungsgeheimen Endpunkte. Geheimwerte werden niemals durch einen enthüllen Endpunkt freigelegt.
 
+## Entwicklungsgateway im LAN (explizite Freigabe)
+
+Eine reine Core-Installation kann den verwalteten Operator-Keycloak vor dem
+ersten App-Deployment einrichten. Dazu wird die gemeinsam genutzte Gateway-
+Route vor dem Abruf der OIDC-Discovery erzeugt.
+
+Standardmäßig lauscht das Gateway nur auf `127.0.0.1`. Namen unter
+`*.baha.localhost` oder `*.localhost` eignen sich nicht als Adresse für
+andere Rechner.
+
+Für einen ausdrücklich freigegebenen LAN-Zugriff:
+
+1. Mit `baha dev domain DOMAIN` einen auf beiden Rechnern auflösbaren
+   Ziel-Domainnamen konfigurieren. Insbesondere muss `auth.DOMAIN` von
+   beiden Rechnern auf den Core-Host zeigen.
+2. `BASEHARBOR_DEV_GATEWAY_BIND_ADDRESS` beim Aufruf
+   `baha login --init-tenant` und bei späteren Gateway-Reconciles auf die
+   konkrete, nicht lokale IPv4-Adresse des Core-Hosts setzen. Ein leerer
+   Wert behält den bisherigen Loopback-Standard. Wildcard-Binds sind
+   verboten.
+3. Die echte verwaltete Core-CA über die vorgesehenen Operator- und
+   Verbindungsprofile verifizieren. Keine TLS-Prüfung abschalten.
+4. `baha serve` mit vorbereiteten, CA-signierten API- und Connector-
+   Zertifikaten und korrekten SAN-Einträgen starten. Erst danach erstellt
+   `node add` das Enrollment auf Basis der verifizierten
+   `node-authority-profile.json`.
+
+`baha serve` verifiziert den Operator-OIDC-Issuer über dieselbe verwaltete
+Trust-Auflösung wie `baha login`: zuerst ein explizites
+`BASEHARBOR_OPERATOR_OIDC_CA_FILE` (fehlend oder kein Zertifikat bricht ab),
+dann die verwaltete CA, die der Bootstrap für den owned Core-Target geschrieben
+hat, danach den zustandsweiten Standardpfad. Die verwaltete CA wird dem
+System-Trust-Pool nur hinzugefügt; eine Installation in den System-Trust ist
+nicht erforderlich und die Prüfung wird nie abgeschwächt.
+
+Das Gateway-Zertifikat stammt aus der bereits vorhandenen verwalteten
+OpenBao-Service-PKI. Die API- und Connector-Zertifikate werden normalerweise getrennt
+bereitgestellt. Für eine ausdrücklich verwaltete LAN-Einrichtung kann
+`baha serve` mit `BASEHARBOR_MANAGED_CORE_TLS=true` sowie
+`BASEHARBOR_API_PUBLIC_URL`, `BASEHARBOR_CONNECTOR_PUBLIC_ADDRESS` und
+passenden `BASEHARBOR_API_LISTEN_ADDR`- und
+`BASEHARBOR_CONNECTOR_LISTEN_ADDR`-Werten beide Zertifikate aus der
+**bereits READY gemeldeten** OpenBao-Service-PKI ausstellen. Das ist eine
+explizite Dev-Option: keine neue CA, keine automatische Netzfreigabe,
+kein ACME und kein allgemeiner PKI-Dienst. Die privaten Schlüssel verbleiben
+im geschützten Core-Target unter `managed-serving/`. Fehlt in diesem expliziten Modus `BASEHARBOR_API_DATABASE_URL`, verwendet
+die Operator-API die geschützte PostgreSQL-Verbindung und die verifizierte
+Datenbank-CA ihrer lokalen Core-Installation. Zugangsdaten werden niemals an
+Remote-Targets kopiert. Extern bereitgestellte Zertifikate werden niemals
+überschrieben. Domainkonfiguration und Listener eröffnen keine zusätzlichen
+Operator-, Tenant- oder Node-Rechte.
+
 ## Anwendungsbereich des TLS
 
 Diese Laufzeit verbraucht ein bereits vorbereitetes Zertifikat/Schlüsselpaar. Zertifikatsausgabe, ACME, interne PKI, BYOC Entdeckung, Kettenbau und Erneuerung gehören zum dedizierten Zertifikatsmanagement-Meilenstein und werden hier absichtlich nicht umgesetzt.

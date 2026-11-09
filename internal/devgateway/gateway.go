@@ -399,7 +399,15 @@ func Reconcile(ctx context.Context, runtime Runtime, issuer serviceaccess.Issuer
 	if err := saveState(files.State, current); err != nil {
 		return err
 	}
-	if err := os.WriteFile(files.Compose, []byte(renderCompose(files, current.Routes, trustTargets, hostPort)), 0o600); err != nil {
+	// Remote workstation access is opt-in. Never expose the default
+	// *.localhost development names on a LAN listener: remote hosts resolve
+	// those names to themselves. The selected bind address must be one
+	// concrete non-loopback IP on the Core host, not a wildcard.
+	bindHost, err := gatewayBindAddress(current.Routes)
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(files.Compose, []byte(renderComposeBound(files, current.Routes, trustTargets, hostPort, bindHost)), 0o600); err != nil {
 		return err
 	}
 	if err := runtime.ConfigProject(ctx, files.Project, files.Compose, files.Env); err != nil {

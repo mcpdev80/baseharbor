@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
+	"github.com/mcpdev80/baseharbor/internal/development"
 )
 
 func TestCreateTargetManagedApplicationRegistersResolvableDeployment(t *testing.T) {
@@ -66,5 +68,60 @@ func TestCreateTargetManagedApplicationRegistersResolvableDeployment(t *testing.
 
 	if _, err := createTargetManagedApplication(context.Background(), manifest); !errors.Is(err, application.ErrExists) {
 		t.Fatalf("second create error = %v, want ErrExists", err)
+	}
+}
+
+func TestCreateTargetManagedApplicationPersistsImmutableGitSourceSelection(t *testing.T) {
+	target := configureTestTarget(t)
+	manifest := application.New("remote-git-source", "dev", true, false, false)
+	model := development.SourceModel{
+		SchemaVersion: development.SourceModelVersion, Application: manifest.Name,
+		Sources: []development.SourceDefinition{{
+			ID: "app", Type: development.SourceRepository,
+			Repository: "https://git.example/remote-git-source.git", Ref: strings.Repeat("a", 40),
+		}},
+		Components: []development.ComponentSource{{Component: "app", Source: "app"}},
+	}
+	path, err := createTargetManagedApplication(context.Background(), manifest, &model)
+	if err != nil {
+		t.Fatalf("persist immutable remote Git selection: %v", err)
+	}
+	record, found, err := deployment.FindDeployment(target.Name, manifest.ApplicationID, "dev")
+	if err != nil || !found || record.Source.Kind != "managed" {
+		t.Fatalf("Core-owned application registration failed: record=%+v found=%v error=%v", record, found, err)
+	}
+	restored, _, err := development.LoadSourceModel(path)
+	if err != nil {
+		t.Fatalf("Core did not retain source selection: %v", err)
+	}
+	if restored.Sources[0].Ref != model.Sources[0].Ref ||
+		restored.Sources[0].Repository != model.Sources[0].Repository {
+		t.Fatalf("Core mutated immutable source selection: %+v", restored)
+	}
+	// Persisting the source selection does not create a Git checkout, run
+	// builds or claim the source has been admitted for a deployment.
+	if record.Observed.State == "ready" || record.Observed.Ready {
+		t.Fatalf("source registration falsely claimed ready: %+v", record.Observed)
+	}
+}
+
+func TestCreateTargetManagedApplicationRejectsMutableOrForeignSources(t *testing.T) {
+	configureTestTarget(t)
+	manifest := application.New("remote-source-failclosed", "dev", false, false, false)
+	model := development.SourceModel{
+		SchemaVersion: development.SourceModelVersion, Application: manifest.Name,
+		Sources: []development.SourceDefinition{{
+			ID: "app", Type: development.SourceRepository,
+			Repository: "https://git.example/remote-source.git", Ref: "main",
+		}},
+		Components: []development.ComponentSource{{Component: "app", Source: "app"}},
+	}
+	if _, err := createTargetManagedApplication(context.Background(), manifest, &model); err == nil {
+		t.Fatal("Core accepted mutable Git branch during first registration")
+	}
+	model.Sources[0].Ref = strings.Repeat("a", 40)
+	model.Application = "foreign"
+	if _, err := createTargetManagedApplication(context.Background(), manifest, &model); err == nil {
+		t.Fatal("Core accepted a source declaration for another application")
 	}
 }

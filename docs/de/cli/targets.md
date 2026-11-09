@@ -143,6 +143,17 @@ baha --target docker-dev up -e dev
 
 Technische Bezeichner: `runtime_provider`.
 
+## Remote-Zugriff auf Core-lokales Docker/Podman
+
+Wenn Docker/Podman auf demselben Host wie Core laeuft, benoetigt der Entwicklungsrechner keinen Node Connector. Er verwendet ein Target mit Access-Provider `baseharbor-core`, dem Namen und der Runtime der Core-Installation. Die `--tenant-id` muss der echten Operator-Mitgliedschaft entsprechen und wird gegen das angeheftete HTTPS/OIDC-Profil sowie den aktiven Core verifiziert. Die lokale Runtime des Entwicklungsrechners wird nicht verwendet.
+
+```bash
+baha target create vm-core --runtime-provider docker --access vm-core-management --access-provider baseharbor-core --reference vm-core --tenant-id 11111111-1111-4111-8111-111111111111
+baha use vm-core
+```
+
+Vor `baha use` sind `BASEHARBOR_CONNECTION_PROFILE` und eine gueltige Operator-Session erforderlich. Das Target legt nur eine Client-Route an; Quelladmission, Zustimmung und Application-Lifecycle verbleiben beim Core.
+
 ## Lokale Docker-Engine auswählen
 
 Rootless-Docker ist der Standard. Vor jeder Lifecycle-Aktion löst der Provider genau einen Unix-Socket auf und verifiziert ihn. Compose, Inspektion, Exec, Volume-Recovery und Cleanup verwenden danach `docker --host SOCKET`. Eine nicht erreichbare oder unerwartet Rootful laufende Engine führt zum Abbruch; es gibt keinen Wechsel zu System-Docker.

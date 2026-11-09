@@ -39,7 +39,7 @@ func operatorLoginCommand() *cli.Command {
 			if err != nil {
 				return err
 			}
-			if !operatorauth.ManagedEnvironment(environment) && !initTenant {
+			if !operatorauth.ManagedEnvironment(environment) && !initTenant && (target.AccessProvider == "" || target.AccessProvider == "local") {
 				_, found, err := resolveStoredOperatorAuthBoundary(target.Name, environment)
 				if err != nil {
 					return err

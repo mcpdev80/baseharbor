@@ -40,7 +40,13 @@ func renderCaddyfile(routes []Route, listenPort int) string {
 	return b.String()
 }
 
-func renderCompose(files Files, routes []Route, _ map[string]string, hostPort int) string {
+func renderCompose(files Files, routes []Route, trust map[string]string, hostPort int) string {
+	return renderComposeBound(files, routes, trust, hostPort, "127.0.0.1")
+}
+
+// renderComposeBound is called only after the explicit non-loopback listener
+// has been validated. The default development gateway remains loopback-only.
+func renderComposeBound(files Files, routes []Route, _ map[string]string, hostPort int, bindHost string) string {
 	networks := map[string]string{}
 	routeNetwork := map[string]string{}
 	for _, route := range routes {
@@ -60,7 +66,7 @@ func renderCompose(files Files, routes []Route, _ map[string]string, hostPort in
 	b.WriteString("    tmpfs:\n      - /tmp:rw,noexec,nosuid,nodev\n      - /run/baseharbor:rw,exec,nosuid,nodev,mode=1777\n      - /config:rw,noexec,nosuid,nodev,mode=1777\n      - /data:rw,noexec,nosuid,nodev,mode=1777\n")
 	b.WriteString("    entrypoint: [\"/bin/sh\", \"-ec\"]\n")
 	b.WriteString("    command:\n      - cat /usr/bin/caddy > /run/baseharbor/caddy && chmod 0755 /run/baseharbor/caddy && exec /run/baseharbor/caddy run --watch --config /gateway/Caddyfile --adapter caddyfile\n")
-	fmt.Fprintf(&b, "    ports:\n      - \"127.0.0.1:%d:%d\"\n", hostPort, hostPort)
+	fmt.Fprintf(&b, "    ports:\n      - \"%s:%d:%d\"\n", bindHost, hostPort, hostPort)
 	b.WriteString("    volumes:\n")
 	fmt.Fprintf(&b, "      - %q\n", filepath.Dir(files.Caddyfile)+":/gateway:ro")
 	b.WriteString("    networks:\n")

@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/applicationruntimeapi"
 	"github.com/mcpdev80/baseharbor/internal/applicationruntimeauth"
@@ -31,6 +30,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/runtimeobservability"
 	"github.com/mcpdev80/baseharbor/internal/runtimeresourceapi"
 	"github.com/mcpdev80/baseharbor/internal/targetenrollment"
+	"github.com/mcpdev80/baseharbor/internal/tenancy"
 	ws "github.com/mcpdev80/baseharbor/internal/workstationenrollment"
 )
 
@@ -274,6 +274,15 @@ type workstationEnrollmentProvider interface {
 	WorkstationEnrollmentHTTP(context.Context, ws.Store, *pgxpool.Pool, string) (http.Handler, error)
 }
 
+// operatorOIDCVerifier builds the operator API token verifier.
+// cfg.OperatorOIDCTrustFile adds the managed operator CA on top of the system
+// trust pool (additive only), so `baha serve` verifies a managed-Keycloak
+// issuer exactly like `baha login` does; an empty value keeps the previous
+// system-trust-only behavior. TLS verification is never disabled.
+func operatorOIDCVerifier(ctx context.Context, cfg Config) (*auth.OIDCVerifier, error) {
+	return auth.NewOIDCVerifier(ctx, auth.Config{Issuer: cfg.OIDCIssuer, Audiences: cfg.OIDCAudiences, TrustFile: cfg.OperatorOIDCTrustFile})
+}
+
 func registerOperatorAPI(ctx context.Context, mux *http.ServeMux, cfg Config, deps serverDependencies, machineExecutor machinehttp.Executor) error {
 	if !cfg.operatorAPIEnabled() {
 		return nil
@@ -281,7 +290,7 @@ func registerOperatorAPI(ctx context.Context, mux *http.ServeMux, cfg Config, de
 	if deps.pool == nil {
 		return ErrMissingDatabaseURL
 	}
-	verifier, err := auth.NewOIDCVerifier(ctx, auth.Config{Issuer: cfg.OIDCIssuer, Audiences: cfg.OIDCAudiences})
+	verifier, err := operatorOIDCVerifier(ctx, cfg)
 	if err != nil {
 		return err
 	}
@@ -330,6 +339,34 @@ func registerOperatorAPI(ctx context.Context, mux *http.ServeMux, cfg Config, de
 		// identity/tenant middleware on the protected operator API.
 		operatorMux.Handle("/api/v1/workstations/bootstrap", handler)
 		operatorMux.Handle("/api/v1/workstations/enroll", handler)
+	}
+	// Installation identity is disclosed only after the standard OIDC and
+	// tenant middleware has authenticated the calling operator. The executor
+	// pins the Core at startup; request Targets cannot alter this value.
+	if identity, ok := machineExecutor.(interface {
+		ManagementInstallation(context.Context) (string, string, error)
+	}); ok {
+		operatorMux.HandleFunc("GET /api/v1/management/installation", func(w http.ResponseWriter, r *http.Request) {
+			tenant, valid := tenancy.FromContext(r.Context())
+			if !valid || tenant.TenantID == "" || tenant.ExternalIdentityID == "" {
+				http.Error(w, "operator tenant is unavailable", http.StatusForbidden)
+				return
+			}
+			installationID, issuer, err := identity.ManagementInstallation(r.Context())
+			if err != nil || installationID == "" || issuer == "" {
+				http.Error(w, "Core installation identity is unavailable", http.StatusServiceUnavailable)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("Cache-Control", "no-store")
+			_ = json.NewEncoder(w).Encode(struct {
+				Version        string `json:"version"`
+				InstallationID string `json:"installation_id"`
+				IdentityIssuer string `json:"identity_issuer"`
+				OperatorIssuer string `json:"operator_issuer"`
+				TenantID       string `json:"tenant_id"`
+			}{Version: "baseharbor.management-installation/v1", InstallationID: installationID, IdentityIssuer: issuer, OperatorIssuer: cfg.OIDCIssuer, TenantID: tenant.TenantID})
+		})
 	}
 	operatorMux.Handle("/api/v1/apps/", secretHandler)
 	if machineExecutor != nil {

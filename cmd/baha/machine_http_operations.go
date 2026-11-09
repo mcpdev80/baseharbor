@@ -46,6 +46,7 @@ var httpOperationKinds = map[string]httpOperationKind{
 	"runtime.restart":      httpRuntimeMutation,
 	"workspace.update":     httpPlatformMutation,
 	"app.new":              httpPlatformMutation,
+	"app.create":           httpPlatformMutation,
 	"provider.add":         httpPlatformMutation,
 	"provider.remove":      httpPlatformMutation,
 	"organization.set":     httpPlatformMutation,

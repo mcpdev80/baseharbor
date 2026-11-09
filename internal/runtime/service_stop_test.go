@@ -136,6 +136,58 @@ func TestSelectedStopAcceptsPinnedContainerName(t *testing.T) {
 	}
 }
 
+// TestSelectedStopAcceptsRetiredPinnedNativeContainer proves that backup
+// may remove a selected, explicitly named Docker container while preserving
+// all declared data volumes and unrelated processes. An absent selected
+// process is not an absent retained ownership resource.
+func TestSelectedStopAcceptsRetiredPinnedNativeContainer(t *testing.T) {
+	pinned := RuntimeContainer{ID: "pinned-id", Name: "linkding-pinned-web", Project: "linkding", Service: "web", Running: true, State: "running"}
+	resources := []ProjectResource{
+		{Kind: "container", Name: "linkding-web-1"},
+		{Kind: "container", Name: "linkding-pinned-web"},
+		{Kind: "volume", Name: "linkding-data"},
+	}
+	r := &selectedStopRuntime{
+		before:     resources,
+		after:      []ProjectResource{{Kind: "volume", Name: "linkding-data"}},
+		containers: []RuntimeContainer{pinned},
+		rendered:   `{"services":{"web":{"container_name":"linkding-pinned-web"}}}`,
+	}
+	result, err := StopOwnedProjectServices(t.Context(), r, "linkding", "/protected", nil,
+		resources, []string{"web"}, "/protected/compose.yaml")
+	if err != nil || !result.Verified || len(result.Removed) != 2 || len(result.Retained) != 1 {
+		t.Fatalf("selected pinned native retirement: %+v %v", result, err)
+	}
+}
+
+// The same native resource is never allowed to disappear if its process was
+// an unrelated service, even when a selected pinned container is retired.
+func TestSelectedStopRejectsLostUnselectedPinnedContainer(t *testing.T) {
+	selected := RuntimeContainer{ID: "web-id", Name: "linkding-pinned-web", Project: "linkding", Service: "web", Running: true, State: "running"}
+	sibling := RuntimeContainer{ID: "sibling-id", Name: "linkding-worker-1", Project: "linkding", Service: "worker", Running: true, State: "running"}
+	resources := []ProjectResource{
+		{Kind: "container", Name: "linkding-web-1"},
+		{Kind: "container", Name: "linkding-pinned-web"},
+		{Kind: "container", Name: "linkding-worker-1"},
+		{Kind: "volume", Name: "linkding-data"},
+	}
+	r := &selectedStopRuntime{
+		before: resources,
+		after: []ProjectResource{
+			{Kind: "container", Name: "linkding-pinned-web"},
+			{Kind: "volume", Name: "linkding-data"},
+		},
+		containers: []RuntimeContainer{selected, sibling},
+		stopped:    []RuntimeContainer{{ID: "web-id", Name: "linkding-pinned-web", Project: "linkding", Service: "web", State: "exited"}},
+		rendered:   `{"services":{"web":{"container_name":"linkding-pinned-web"},"worker":{}}}`,
+	}
+	result, err := StopOwnedProjectServices(t.Context(), r, "linkding", "/protected", nil,
+		resources, []string{"web"}, "/protected/compose.yaml")
+	if err == nil || result.Verified {
+		t.Fatalf("missing unselected container was admitted: %+v", result)
+	}
+}
+
 // TestSelectedStopRejectsUnplannedPinnedReplica proves that a container of the
 // selected service carrying a native name outside the rendered planned set is
 // still rejected on the selected-stop path; a matching native name alone never

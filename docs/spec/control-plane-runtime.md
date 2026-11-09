@@ -57,6 +57,57 @@ TLS
 
 The current protected API surface contains the application-secret endpoints. Secret values are never exposed through a reveal endpoint.
 
+## Explicit LAN development gateway
+
+A core-only installation can bootstrap the managed operator Keycloak realm
+without first deploying an application. The shared Keycloak gateway route is
+created by the first-owner onboarding path before canonical OIDC discovery.
+
+By default the development gateway stays on `127.0.0.1`, and canonical
+`*.baha.localhost` names are **not** valid from another workstation. For an
+intentional LAN setup, the owner must:
+
+1. Configure a real DNS domain for the **Core target** with
+   `baha dev domain DOMAIN` before first-owner OIDC onboarding. In particular,
+   `auth.DOMAIN` must resolve to the Core host from both hosts.
+2. Set `BASEHARBOR_DEV_GATEWAY_BIND_ADDRESS` to the Core host's **actual
+   non-loopback IPv4 address** for the `baha login --init-tenant` process (and
+   subsequent gateway reconcile processes). An empty value retains the
+   loopback-only default. Wildcard addresses and `*.localhost` routes fail
+   closed for a LAN listener.
+3. Trust the **actual** managed Core CA on the workstation through the
+   documented operator trust / HTTPS connection-profile boundaries. Never
+   disable TLS verification and never generate a fake operator session.
+4. Start `baha serve` with a real CA-signed HTTPS API and connector keypair
+   that both cover the advertised LAN host/IP in their SANs, and set the
+   explicit API/connector listener and public addresses. `node add`
+   consumes the resulting verified `node-authority-profile.json`.
+
+`baha serve` verifies the operator OIDC issuer through the same managed trust
+resolution as `baha login`: an explicit `BASEHARBOR_OPERATOR_OIDC_CA_FILE`
+(missing or non-certificate content fails closed), then the managed CA the
+bootstrap wrote for the owned Core Target, then the state-wide default. The
+managed CA is added on top of the system trust pool only; no OS system-trust
+installation is required and verification is never weakened.
+
+The gateway's service certificate is issued by the existing OpenBao-backed
+service PKI for the configured DNS route. The control-plane API and connector server normally use separately prepared
+keypairs. For an explicitly managed LAN setup, setting
+`BASEHARBOR_MANAGED_CORE_TLS=true`, `BASEHARBOR_API_PUBLIC_URL` and
+`BASEHARBOR_CONNECTOR_PUBLIC_ADDRESS`, together with concrete matching
+`BASEHARBOR_API_LISTEN_ADDR` and `BASEHARBOR_CONNECTOR_LISTEN_ADDR`, enables
+`baha serve` to issue both serving certificates from the **existing READY**
+OpenBao service issuer. This is a dev-only opt-in, not a new CA, implicit
+exposure, ACME, generic PKI management or certificate renewal daemon.
+The private serving material stays under the owned Core target's
+`managed-serving/` state directory; certificate SANs match advertised hosts.
+When `BASEHARBOR_API_DATABASE_URL` is omitted in this explicit managed Core
+mode, the operator API reuses the locally owned Core's protected PostgreSQL
+connection and existing verified database CA; it never copies bootstrap
+credentials to a remote Target. Any explicit BYOC serving certificate
+configuration remains authoritative. A DNS name and a gateway bind setting do
+not automatically publish `baha serve` or authorize tenant/connector access.
+
 ## TLS scope
 
 This runtime consumes an already prepared certificate/key pair. Certificate issuance, ACME, internal PKI, BYOC discovery, chain construction and renewal belong to the dedicated certificate-management milestone and are intentionally not implemented here.

@@ -91,18 +91,19 @@ func (r resolvedApplication) stateRoot() string {
 	return r.DeploymentStateRoot
 }
 
-// ResourceLabel renders the canonical "target/name/environment" resource
-// reference used across machine errors, JSON results and human output. It is
-// shared by every app command so the dangling-record command reports the exact
-// same resource id the registry uses.
-func (r resolvedApplication) ResourceLabel() string {
-	if r.DeploymentRecord != nil {
-		return r.DeploymentRecord.Identity.Target + "/" + r.DeploymentRecord.Identity.Application + "/" + r.DeploymentRecord.Identity.Environment
-	}
-	return r.DeploymentIdentity.Target + "/" + r.DeploymentIdentity.Application + "/" + r.DeploymentIdentity.Environment
+type verifiedHTTPSourceContextKey struct{}
+
+func withVerifiedHTTPSource(ctx context.Context, source resolvedApplication) context.Context {
+	return context.WithValue(ctx, verifiedHTTPSourceContextKey{}, source)
 }
 
 func resolveApplication(ctx context.Context, store application.Store, args []string, command string) (resolvedApplication, error) {
+	if verified, ok := ctx.Value(verifiedHTTPSourceContextKey{}).(resolvedApplication); ok {
+		if (command != "apply" && command != "status") || !verified.SourceAvailable || verified.RepositoryRoot == "" {
+			return resolvedApplication{}, errors.New("verified HTTP source is not available for this operation")
+		}
+		return verified, nil
+	}
 	ctx = localWorkloadScope(ctx, applicationBoundaryOperation(command))
 	return resolveApplicationEnvironment(ctx, store, args, command, applicationEnvironmentOverride)
 }

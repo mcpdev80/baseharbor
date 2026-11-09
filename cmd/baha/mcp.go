@@ -13,6 +13,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/applicationlifecycle"
 	"github.com/mcpdev80/baseharbor/internal/cli"
+	"github.com/mcpdev80/baseharbor/internal/development"
 	"github.com/mcpdev80/baseharbor/internal/evidence"
 	"github.com/mcpdev80/baseharbor/internal/machine"
 	"github.com/mcpdev80/baseharbor/internal/operatorauth"
@@ -98,7 +99,10 @@ type machineApplicationStopInput struct {
 }
 
 type machineApplyInput struct {
+	SourceModel           *development.SourceModel           `json:"source_model,omitempty" jsonschema:"optional immutable Git/OCI source declarations; Core must verify exact artifact binding before apply"`
+	SourceSnapshotDigest  string                             `json:"source_snapshot_digest,omitempty" jsonschema:"Core-verified immutable developer source snapshot identifier"`
 	ProviderChangeConsent *application.ProviderChangeConsent `json:"provider_change_consent,omitempty" jsonschema:"explicit plan-bound acknowledgement stages and separate data deletion consent from the displayed provider impact plan"`
+	ConfirmCandidate      string                             `json:"confirm_candidate,omitempty" jsonschema:"operator-confirmed exact repository candidate content digest"`
 	Target                string                             `json:"target,omitempty" jsonschema:"optional BaseHarbor deployment target; otherwise uses BASEHARBOR_TARGET or configured default-target"`
 	Name                  string                             `json:"name,omitempty" jsonschema:"optional stored application name; omit inside an application repository"`
 	Environment           string                             `json:"environment,omitempty" jsonschema:"optional deployment environment selected from repository intent"`

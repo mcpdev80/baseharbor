@@ -44,6 +44,8 @@ func (e *bahaMachineExecutor) executeHTTPPlatformMutation(
 
 	case "workspace.update":
 		return executeHTTPWorkspaceUpdate(ctx, operationContext, raw, report)
+	case "app.create":
+		return executeHTTPAppCreate(ctx, operationContext, raw)
 	case "app.new":
 		return executeHTTPAppNew(ctx, operationContext, raw, report)
 	case "provider.add", "provider.remove":
@@ -88,6 +90,36 @@ func executeHTTPWorkspaceUpdate(
 	}
 	reportHTTPProgress(report, "workspace", "Workspace update completed.", 100)
 	return result, nil
+}
+
+// executeHTTPAppCreate exposes the already-authorized target-managed Intent
+// creation contract. This does not import workstation filesystem paths or
+// source bytes; it creates a canonical remote application identity only.
+func executeHTTPAppCreate(ctx context.Context, operationContext machine.OperationContext, raw json.RawMessage) (any, error) {
+	var input machineApplicationCreateInput
+	if err := decodeHTTPInput(raw, &input); err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(operationContext.Target) == "" ||
+		strings.TrimSpace(operationContext.Application) == "" ||
+		strings.TrimSpace(operationContext.Environment) == "" {
+		return nil, machine.NewError(machine.ErrorValidationFailed,
+			"Remote app creation requires explicit Target, application and environment selectors.",
+			"Provide all three authorized operation selectors.", false)
+	}
+	target, err := bindHTTPSelector("target", operationContext.Target, input.Target)
+	if err != nil {
+		return nil, err
+	}
+	input.Intent.Name, err = bindHTTPSelector("application", operationContext.Application, input.Intent.Name)
+	if err != nil {
+		return nil, err
+	}
+	input.Intent.Environment, err = bindHTTPSelector("environment", operationContext.Environment, input.Intent.Environment)
+	if err != nil {
+		return nil, err
+	}
+	return createMachineApplicationWithSource(withTargetOverride(ctx, target), input.Intent, input.SourceModel)
 }
 
 func executeHTTPAppNew(
