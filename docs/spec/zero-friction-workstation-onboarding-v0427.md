@@ -82,6 +82,15 @@ Likewise the current `redeemOnboardingBundle` generates a CSR but discards
 the associated private key. These gaps must not be hidden by treating a
 parser-only test as a complete onboarding PASS.
 
-The initial branch work provides only the strict portable invitation contract
-and defensive file tests. It does not claim an operational import or grant
-issuer until all these boundaries are implemented and tested.
+The branch now includes the strict portable invitation contract, bounded
+owner-only file transfer, a TLS-pinned redemption client that generates its
+own CSR and verifies the issued leaf against its invitation scope, and
+atomic private workstation identity staging. Unit-level negative and
+one-use/replay tests are committed.
+
+**NOT YET COMPLETE:** the owner-authorized local Core grant issuer and
+first-tenant bootstrap, the dedicated grant-authorized enrollment route,
+the protected Target/connection transaction and Core API authentication
+for the enrolled workstation are still missing. No CLI end-to-end success
+may be claimed from these isolated tests; do not open the PR or run the
+expensive full PR CI until those integration boundaries are implemented.
