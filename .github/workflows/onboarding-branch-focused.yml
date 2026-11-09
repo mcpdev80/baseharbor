@@ -29,7 +29,18 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          go test -p 1 ./internal/onboardingbundle ./internal/workstationenrollment/http ./internal/database
+          go test -p 1 ./internal/onboardingbundle ./internal/workstationenrollment/http
+          go test -p 1 ./internal/database -run '^
+          go test -p 1 ./cmd/baha -run '^$' -count=1
+      - name: Emit canonical gofmt source for branch integration
+        shell: bash
+        run: |
+          set -euo pipefail
+          for file in internal/onboardingbundle/*.go internal/workstationenrollment/http/delegated_enroll*.go internal/database/local_tenant_bootstrap.go cmd/baha/onboarding_local_grant.go cmd/baha/onboarding_initial_tenant.go cmd/baha/onboarding_invite_command.go cmd/baha/onboarding_import_command.go cmd/baha/workstation_revocation.go cmd/baha/onboarding_command.go internal/controlplaneruntime/workstation_auth.go; do
+            gofmt -w "$file"
+            printf 'FMTFILE|%s|%s\n' "$file" "$(base64 -w0 "$file")"
+          done
+
           go test -p 1 ./cmd/baha -run '^$' -count=1
       - name: Emit canonical gofmt source for branch integration
         shell: bash
