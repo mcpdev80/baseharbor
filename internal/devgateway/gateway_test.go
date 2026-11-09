@@ -396,3 +396,30 @@ func TestRenderedGatewayBoundsRepeatedRuntimeErrors(t *testing.T) {
 		t.Fatal("generated proxy configuration leaks state path")
 	}
 }
+
+func TestGatewayLANBindingIsExplicitAndFailsClosed(t *testing.T) {
+	routes := []Route{{Host: "auth.baha.localhost"}}
+	if got, err := gatewayBindAddress(routes); err != nil || got != "127.0.0.1" {
+		t.Fatalf("default listener = %q: %v", got, err)
+	}
+	for _, value := range []string{"0.0.0.0", "::", "localhost", "127.0.0.2", "169.254.1.2", "224.0.0.1"} {
+		t.Run(value, func(t *testing.T) {
+			t.Setenv("BASEHARBOR_DEV_GATEWAY_BIND_ADDRESS", value)
+			if _, err := gatewayBindAddress(routes); err == nil {
+				t.Fatalf("unsafe listener %q accepted", value)
+			}
+		})
+	}
+	t.Setenv("BASEHARBOR_DEV_GATEWAY_BIND_ADDRESS", "192.168.6.178")
+	if _, err := gatewayBindAddress(routes); err == nil {
+		t.Fatal("localhost-only issuer exposed on LAN")
+	}
+	routes[0].Host = "auth.baha.example.test"
+	if got, err := gatewayBindAddress(routes); err != nil || got != "192.168.6.178" {
+		t.Fatalf("explicit LAN listener = %q: %v", got, err)
+	}
+	compose := renderComposeBound(Files{}, routes, nil, 18443, "192.168.6.178")
+	if !strings.Contains(compose, "192.168.6.178:18443:18443") || strings.Contains(compose, "127.0.0.1:18443:18443") {
+		t.Fatalf("LAN listener was not bound to the selected interface:\n%s", compose)
+	}
+}

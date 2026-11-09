@@ -310,6 +310,28 @@ func DestroyTarget(ctx context.Context, runtime Runtime, target string) error {
 	return os.RemoveAll(files.Dir)
 }
 
+// gatewayBindAddress deliberately requires a real routable IP and explicit
+// target-scoped DNS names before a gateway can leave the loopback interface.
+// TLS remains mandatory and is issued by the existing managed service PKI;
+// the workstation must trust its actual CA and resolve the canonical hosts.
+func gatewayBindAddress(routes []Route) (string, error) {
+	host := strings.TrimSpace(os.Getenv("BASEHARBOR_DEV_GATEWAY_BIND_ADDRESS"))
+	if host == "" || host == "127.0.0.1" {
+		return "127.0.0.1", nil
+	}
+	ip := net.ParseIP(host)
+	if ip == nil || ip.IsLoopback() || ip.IsUnspecified() || ip.IsLinkLocalUnicast() || ip.IsMulticast() || ip.To4() == nil {
+		return "", errors.New("development gateway LAN listener requires an explicit non-loopback IPv4 address; wildcard and hostname binds are forbidden")
+	}
+	for _, route := range routes {
+		name := strings.ToLower(strings.TrimSuffix(strings.TrimSpace(route.Host), "."))
+		if name == "localhost" || strings.HasSuffix(name, ".localhost") {
+			return "", errors.New("development gateway LAN listener requires a configured resolvable target domain; *.localhost is loopback-only (configure: baha dev domain DOMAIN)")
+		}
+	}
+	return ip.String(), nil
+}
+
 func Reconcile(ctx context.Context, runtime Runtime, issuer serviceaccess.Issuer, target string) error {
 	if runtime == nil {
 		return errors.New("development gateway runtime is required")
@@ -399,7 +421,15 @@ func Reconcile(ctx context.Context, runtime Runtime, issuer serviceaccess.Issuer
 	if err := saveState(files.State, current); err != nil {
 		return err
 	}
-	if err := os.WriteFile(files.Compose, []byte(renderCompose(files, current.Routes, trustTargets, hostPort)), 0o600); err != nil {
+	// Remote workstation access is opt-in. Never expose the default
+	// *.localhost development names on a LAN listener: remote hosts resolve
+	// those names to themselves. The selected bind address must be one
+	// concrete non-loopback IP on the Core host, not a wildcard.
+	bindHost, err := gatewayBindAddress(current.Routes)
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(files.Compose, []byte(renderComposeBound(files, current.Routes, trustTargets, hostPort, bindHost)), 0o600); err != nil {
 		return err
 	}
 	if err := runtime.ConfigProject(ctx, files.Project, files.Compose, files.Env); err != nil {
