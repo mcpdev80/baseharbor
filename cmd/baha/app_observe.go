@@ -265,6 +265,40 @@ func appDoctorCommand(store application.Store) *cli.Command {
 			if err != nil {
 				return err
 			}
+			if target, targetErr := effectiveTarget(ctx); targetErr != nil {
+				return targetErr
+			} else if target.AccessProvider != "" && target.AccessProvider != "local" {
+				nameArgs, environment, splitErr := extractApplicationEnvironment(filtered, "doctor")
+				if splitErr != nil {
+					return splitErr
+				}
+				if len(nameArgs) == 1 {
+					if environment == "" {
+						environment = "dev"
+					}
+					result, readErr := remoteMachineRead(ctx, target, "doctor", nameArgs[0], environment, nil)
+					if readErr != nil {
+						return readErr
+					}
+					var doctor applicationDoctorResult
+					if err := json.Unmarshal(result, &doctor); err != nil || doctor.ContractVersion != machine.ContractVersion ||
+						doctor.Target != target.Name || doctor.Application != nameArgs[0] || doctor.Environment != environment {
+						return errors.New("remote Core application doctor does not match the selected application")
+					}
+					if format == outputJSON {
+						if err := writeJSON(out, doctor); err != nil {
+							return err
+						}
+					} else {
+						renderApplicationDoctor(ctx, out, errOut, application.Manifest{Name: doctor.Application, Environment: doctor.Environment}, doctor.Checks, repositoryWorkloadStatus{}, nil,
+							application.WorkloadSecurityReport{}, doctor.Healthy, doctor.ServiceTLS, nil, nil, nil)
+					}
+					if !doctor.Healthy {
+						return cli.Presented(errors.New("application doctor found one or more failures"))
+					}
+					return nil
+				}
+			}
 			resolved, resolveErr := resolveApplication(ctx, store, filtered, "doctor")
 			if resolveErr != nil {
 				return resolveErr
