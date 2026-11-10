@@ -279,7 +279,7 @@ func (h *ProductionHandler) ServeDeviceRenew(w http.ResponseWriter, r *http.Requ
 	}
 	tenant, ok := tenancy.FromContext(r.Context())
 	if !ok || tenant.TenantID == "" || !strings.HasPrefix(tenant.ExternalIdentityID, "workstation/") ||
-		r.TLS == nil || len(r.TLS.PeerCertificates) != 1 || h == nil || h.Enrollment == nil {
+		r.TLS == nil || len(r.TLS.PeerCertificates) == 0 || h == nil || h.Enrollment == nil {
 		writeError(w, http.StatusForbidden, ws.ErrDenied)
 		return
 	}
