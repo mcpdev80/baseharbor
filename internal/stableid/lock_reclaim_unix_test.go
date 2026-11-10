@@ -68,6 +68,11 @@ func TestStaleAppLockReclaimedBySubsequentAcquire(t *testing.T) {
 		t.Fatalf("per-app lock dotfile never appeared; the holder child did not acquire")
 	}
 
+	if _, err := os.Stat(lockPath); err != nil {
+		_ = killProcessForce(hold)
+		waitForProcessExit(hold)
+		t.Fatalf("holder reported readiness without a complete per-app lock receipt: %v", err)
+	}
 	// Kill the holder with SIGKILL: no cleanup, the kernel just drops the flock.
 	if err := killProcessForce(hold); err != nil {
 		t.Fatalf("failed to SIGKILL the holder: %v", err)
