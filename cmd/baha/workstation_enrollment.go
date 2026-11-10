@@ -34,7 +34,7 @@ func (e *bahaMachineExecutor) WorkstationEnrollmentHTTP(ctx context.Context, sto
 	}
 	startup := withTargetOverride(ctx, authorityTarget)
 	target, err := effectiveTarget(startup)
-	if err != nil || target.Name != authorityTarget || target.AccessProvider != string(targetaccess.ProviderLocal) ||
+	if err != nil || target.Name != authorityTarget || (target.AccessProvider != "" && target.AccessProvider != string(targetaccess.ProviderLocal)) ||
 		(target.RuntimeProvider != "docker" && target.RuntimeProvider != "podman") {
 		return nil, errors.New("Workstation authority Target must resolve to a local Docker or Podman Core")
 	}
