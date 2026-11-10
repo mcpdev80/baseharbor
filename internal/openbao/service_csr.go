@@ -16,7 +16,10 @@ import (
 
 const corePKIRoleCommand = `exec bao write baseharbor-pki/roles/baseharbor-core allow_any_name=true allow_localhost=true allow_ip_sans=false allowed_uri_sans="spiffe://baseharbor/platform/core/*" enforce_hostnames=false key_type=any key_usage=DigitalSignature client_flag=false server_flag=true use_csr_common_name=false use_csr_sans=true ttl=24h max_ttl=24h generate_lease=true`
 
-const workstationPKIRoleCommand = `exec bao write baseharbor-pki/roles/baseharbor-workstations allow_any_name=true allow_localhost=false allow_ip_sans=false allowed_uri_sans="spiffe://baseharbor/workstations/*" enforce_hostnames=false key_type=any key_usage=DigitalSignature client_flag=true server_flag=false use_csr_common_name=false use_csr_sans=true ttl=43800h max_ttl=43800h generate_lease=true`
+// Workstation certificates are long-lived identities (up to five years). Do
+// not tie their revocation to the short-lived manager token used to issue
+// them: OpenBao would revoke the sign lease when that token expires.
+const workstationPKIRoleCommand = `exec bao write baseharbor-pki/roles/baseharbor-workstations allow_any_name=true allow_localhost=false allow_ip_sans=false allowed_uri_sans="spiffe://baseharbor/workstations/*" enforce_hostnames=false key_type=any key_usage=DigitalSignature client_flag=true server_flag=false use_csr_common_name=false use_csr_sans=true ttl=43800h max_ttl=43800h generate_lease=false`
 
 const nodePKIRoleCommand = `exec bao write baseharbor-pki/roles/baseharbor-nodes allow_any_name=true allow_localhost=false allow_ip_sans=false allowed_uri_sans="spiffe://baseharbor/platform/connectors/*" enforce_hostnames=false key_type=any key_usage=DigitalSignature client_flag=true server_flag=false use_csr_common_name=false use_csr_sans=true ttl=24h max_ttl=24h generate_lease=true`
 
