@@ -510,7 +510,12 @@ jobs:
             go build -o "$RUNNER_TEMP/baha-onboarding-native" ./cmd/baha
             export BASEHARBOR_CI_BAHA_BINARY="$RUNNER_TEMP/baha-onboarding-native"
           fi
-          go test -p 1 ./cmd/baha -run "$test_regex" -count=1 -timeout 20m -json | tee greenfield.jsonl
+          if ! go test -p 1 ./cmd/baha -run "$test_regex" -count=1 -timeout 20m -json | tee greenfield.jsonl; then
+            if [ "$onboarding_required" = true ]; then
+              journalctl --user --no-pager -o cat -n 800 2>/dev/null | grep 'baseharbor-workstation-enroll:' | tail -n 12 || true
+            fi
+            exit 1
+          fi
           git rev-parse HEAD > greenfield.jsonl.sha
           if [ "$onboarding_required" = true ]; then
             python3 scripts/ci-onboarding-native-proof.py --input greenfield.jsonl --test TestWorkstationOnboardingRemoteNativeInCI
