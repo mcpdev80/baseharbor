@@ -42,6 +42,24 @@ func authorizeApplicationProviderChanges(ctx context.Context, resolved resolvedA
 	return validateApplicationProviderExecution(resolved, current.ProviderPlan.Impact)
 }
 
+// The source transfer proves exact bytes, not application ownership. The
+// previously authorized resolution is the owner: never accept a source that
+// claims a different application, environment or identity.
+func bindAuthoritativeProviderRevalidationIdentity(resolved resolvedApplication, selection application.RepositoryEnvironmentSelection) (application.RepositoryEnvironmentSelection, error) {
+	id := resolved.Manifest.ApplicationID
+	if err := application.ValidateApplicationID(id); err != nil {
+		return selection, classifyProviderChangeConsent(&application.ProviderChangeError{Code: "stale-impact-consent"})
+	}
+	if resolved.DeploymentIdentity.ApplicationID != id ||
+		selection.Manifest.Name != resolved.Manifest.Name ||
+		selection.Manifest.Environment != resolved.Manifest.Environment ||
+		(selection.Manifest.ApplicationID != "" && selection.Manifest.ApplicationID != id) {
+		return selection, classifyProviderChangeConsent(&application.ProviderChangeError{Code: "stale-impact-consent"})
+	}
+	selection.Manifest.ApplicationID = id
+	return selection, nil
+}
+
 func revalidateApplicationProviderIntent(ctx context.Context, resolved resolvedApplication) error {
 	target, err := effectiveTarget(withTargetOverride(ctx, resolved.Target.Name))
 	if err != nil {
@@ -57,8 +75,14 @@ func revalidateApplicationProviderIntent(ctx context.Context, resolved resolvedA
 	if err != nil {
 		return err
 	}
-	// The existing read-only lifecycle resolver loads the canonical identity;
-	// revalidation must not initialize or allocate a new source identity.
+	// Uploaded workstation source intentionally omits the Core-owned ID.
+	// Revalidation must reuse the identity already selected from the
+	// authoritative deployment, not look for a second owner in the uploaded
+	// source root or initialize a different application.
+	selection, err = bindAuthoritativeProviderRevalidationIdentity(resolved, selection)
+	if err != nil {
+		return err
+	}
 	selection, err = resolveRepositoryLifecycleIntent(ctx, resolved.Target, selection, "plan")
 	if err != nil {
 		return err
