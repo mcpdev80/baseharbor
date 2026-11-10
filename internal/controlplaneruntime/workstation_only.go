@@ -78,10 +78,10 @@ func registerWorkstationOnlyAPI(ctx context.Context, mux *http.ServeMux, cfg Con
 			OperatorIssuer string `json:"operator_issuer"`
 			TenantID       string `json:"tenant_id"`
 		}{
-			Version: "baseharbor.management-installation/v1",
+			Version:        "baseharbor.management-installation/v1",
 			InstallationID: id,
 			IdentityIssuer: issuer,
-			TenantID: tenant.TenantID,
+			TenantID:       tenant.TenantID,
 		})
 	})
 	revoker, ok := machineExecutor.(workstationRevocationReader)

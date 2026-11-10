@@ -70,7 +70,7 @@ func TestManagedCoreLANEndpointDefaultsFromConcreteListener(t *testing.T) {
 	t.Setenv("BASEHARBOR_API_PUBLIC_URL", "")
 	t.Setenv("BASEHARBOR_CONNECTOR_PUBLIC_ADDRESS", "")
 	cfg := controlplaneruntime.Config{
-		ListenAddr: "192.168.6.178:18443",
+		ListenAddr:                   "192.168.6.178:18443",
 		WorkstationEnrollmentEnabled: true,
 	}
 	host, connector, err := managedCoreTLSEndpoints(cfg)

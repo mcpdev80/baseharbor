@@ -17,7 +17,7 @@ import (
 func TestOwnedCoreLANAddressOnlyPermitsRoutedPrivateIPv4(t *testing.T) {
 	for _, tc := range []struct {
 		address string
-		valid bool
+		valid   bool
 	}{
 		{"192.168.6.178", true},
 		{"10.10.10.5", true},
@@ -46,11 +46,11 @@ func TestManagedCoreLANEndpointRecordIsCertificateBoundAndPrivate(t *testing.T) 
 	now := time.Now()
 	template := &x509.Certificate{
 		SerialNumber: big.NewInt(71),
-		NotBefore: now.Add(-time.Minute),
-		NotAfter: now.Add(time.Hour),
-		IPAddresses: []net.IP{net.ParseIP(host)},
-		KeyUsage: x509.KeyUsageDigitalSignature,
-		ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		NotBefore:    now.Add(-time.Minute),
+		NotAfter:     now.Add(time.Hour),
+		IPAddresses:  []net.IP{net.ParseIP(host)},
+		KeyUsage:     x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 	}
 	der, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
 	if err != nil {

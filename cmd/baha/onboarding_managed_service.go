@@ -149,8 +149,8 @@ func verifyManagedCoreLANReady(ctx context.Context, target string) error {
 	transport := &http.Transport{TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS13, RootCAs: roots}}
 	defer transport.CloseIdleConnections()
 	client := &http.Client{
-		Transport: transport,
-		Timeout: 2 * time.Second,
+		Transport:     transport,
+		Timeout:       2 * time.Second,
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, origin+"/readyz", nil)

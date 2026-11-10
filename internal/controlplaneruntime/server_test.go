@@ -59,8 +59,8 @@ func TestWorkstationOnlyEnrollmentUsesLocalCoreAuthority(t *testing.T) {
 func TestDeviceOnlyCoreAuthorityNeedsNoOIDCButRemainsTLSProtected(t *testing.T) {
 	cfg := Config{
 		WorkstationEnrollmentEnabled: true,
-		ConnectorAuthorityTarget: "owned-core",
-		DatabaseURL: "postgres://owned/core",
+		ConnectorAuthorityTarget:     "owned-core",
+		DatabaseURL:                  "postgres://owned/core",
 	}
 	if err := cfg.Validate(); !errors.Is(err, ErrMissingTLSFiles) {
 		t.Fatalf("device-only Core rejected before TLS preflight: %v", err)
