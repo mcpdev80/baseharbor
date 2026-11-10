@@ -32,9 +32,15 @@ func remoteMachineRead(ctx context.Context, target deployment.ResolvedTarget, op
 	if operation != "app.list" && application == "" {
 		return nil, machine.NewError(machine.ErrorValidationFailed, "Remote application read needs an explicit application name.", "Pass the application name or run inside a repository with baseharbor.yaml.", false)
 	}
-	payload, err := json.Marshal(input)
-	if err != nil {
-		return nil, fmt.Errorf("encode remote read request: %w", err)
+	var payload []byte
+	if input == nil {
+		payload = []byte("{}")
+	} else {
+		var err error
+		payload, err = json.Marshal(input)
+		if err != nil {
+			return nil, fmt.Errorf("encode remote read request: %w", err)
+		}
 	}
 	core, err := dialVerifiedRemoteCore(ctx, target.Name, target.RuntimeProvider, target.TenantID)
 	if err != nil {
