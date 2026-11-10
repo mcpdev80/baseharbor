@@ -74,4 +74,3 @@ func TestDeviceRenewRefusesOperatorContextAndMissingMTLS(t *testing.T) {
 		t.Fatalf("missing mTLS was accepted: HTTP %d", rec.Code)
 	}
 }
-
