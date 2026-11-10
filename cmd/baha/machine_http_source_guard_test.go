@@ -46,10 +46,10 @@ func TestCoreHTTPApplyRejectsUnboundRemoteSourceBeforeMutation(t *testing.T) {
 
 func TestCoreHTTPApplyStageErrorPreservesMachineCodeAndStage(t *testing.T) {
 	original := &machine.Error{
-		Code: machine.ErrorCapabilityMissing,
+		Code:      machine.ErrorCapabilityMissing,
 		CauseCode: "application_initialization_required",
-		Message: "Application identity has not been initialized.",
-		Next: "Initialize the application first.",
+		Message:   "Application identity has not been initialized.",
+		Next:      "Initialize the application first.",
 	}
 	got := machine.Classify(coreHTTPApplyStageError("execute lifecycle", original))
 	if got.Code != original.Code || got.CauseCode != original.CauseCode || got.Next != original.Next ||
