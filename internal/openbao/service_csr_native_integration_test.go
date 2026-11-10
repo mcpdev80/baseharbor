@@ -116,6 +116,24 @@ func TestNativeOpenBaoManagedCoreAndNodeCSRRotation(t *testing.T) {
 	verifyNativeBaoCertificate(t, oldCore, before.PEM, x509.ExtKeyUsageServerAuth)
 	verifyNativeBaoCoreServerName(t, oldCore, "core.test")
 	verifyNativeBaoCertificate(t, oldNode, before.PEM, x509.ExtKeyUsageClientAuth)
+	// Workstation device identities have their own OpenBao role, distinct from
+	// the Connector and Core PKI scopes. Verify the real AppRole permission,
+	// resulting clientAuth leaf, and isolation in both directions.
+	workstationCSR := nativeBaoCSR(t, "spiffe://baseharbor/workstations/11111111-1111-4111-8111-111111111111/native-device")
+	workstationLeaf, err := issuer.SignWorkstationCSR(ctx, workstationCSR)
+	if err != nil {
+		t.Fatal("real managed workstation CSR signing failed", err)
+	}
+	verifyNativeBaoCertificate(t, workstationLeaf, before.PEM, x509.ExtKeyUsageClientAuth)
+	if _, err := issuer.SignCSR(ctx, workstationCSR); err == nil {
+		t.Fatal("Connector signing accepted workstation identity")
+	}
+	if _, err := issuer.SignWorkstationCSR(ctx, nodeRequest); err == nil {
+		t.Fatal("workstation signing accepted Connector identity")
+	}
+	if _, err := issuer.SignWorkstationCSR(ctx, coreRequest); err == nil {
+		t.Fatal("workstation signing accepted Core identity")
+	}
 	if _, err := issuer.SignCoreCSR(ctx, nodeRequest); err == nil {
 		t.Fatal("node identity crossed the Core issuer boundary")
 	}
