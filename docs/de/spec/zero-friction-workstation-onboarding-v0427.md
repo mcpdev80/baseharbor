@@ -79,3 +79,7 @@ Bis diese Nachweise für den endgültigen PR-Commit erfolgreich sind,
 ist die Änderung nicht mergefähig. Besonders die
 Zertifikatserneuerung sowie Recovery nach teilweise abgeschlossenem
 Import sind mit realen Integrationsfällen zu bestätigen.
+
+## Technische Referenzen und unveraenderliche Grenzen
+
+Die lokale Ausstellung eines einmaligen Grants verwendet `workstationenrollment.Authority.Create`. Der versionierte Datenaustausch liegt unter `internal/onboardingbundle`. Der produktive HTTP-Baustein `ProductionHandler` bleibt an die bestehende Authentifizierungs- beziehungsweise Grant-Grenze gebunden. Ein kuenstlich erzeugtes `identity.Principal{IssuerVerified:true}` ist ausdruecklich verboten; die lokale Bootstrap-Berechtigung muss aus der nachweislich eigenen Core-Installation folgen.
