@@ -1,35 +1,32 @@
-# Connect a developer workstation to BaseHarbor Core
+# Connect a workstation to BaseHarbor Core
 
-BaseHarbor separates the machine that operates Core from the workstation used to develop applications. Core remains the authority for state, security and deployment decisions.
+Use this guide when Core runs on one machine and you develop on another. The workstation connects directly to Core; Node Connector is only needed for separate remote runtime hosts.
 
-## On the Core host
+## 1. Set up Core
 
-Install BaseHarbor and initialize the control plane:
+On the Core host, install BaseHarbor and run:
 
 ```bash
 baha up --control-plane-only
 baha onboard --init-tenant
 ```
 
-The initial operator follows the protected login and identity flow. Set up the Core's reachable management endpoint using the normal TLS and Core configuration.
+Complete the operator login and configure a reachable, TLS-protected management endpoint.
 
-## On the workstation
+## 2. Connect the workstation
 
-Install the BaseHarbor CLI and start the guided connection flow:
+Install `baha` on the workstation, then run:
 
 ```bash
 baha onboard
-baha target list
 baha target show
 ```
 
-The onboarding wizard discovers existing connections and Target choices, reuses a trusted connection when possible, and avoids reinstalling Core on a workstation that is joining an existing installation.
+Follow the prompts to connect to the existing Core. A trusted enrollment bundle may be required. BaseHarbor reuses an existing verified connection.
 
-For a known registered Target, the explicit form is `baha onboard --target NAME`. The wizard may consume a trusted enrollment bundle; do not substitute a manually fabricated TLS identity. The private workstation identity belongs on the workstation.
+## 3. Start an application
 
-## Deploy an application
-
-Once the workstation has a verified Target and an application repository:
+From your application repository:
 
 ```bash
 baha inspect .
@@ -39,6 +36,4 @@ baha up
 baha status
 ```
 
-The optional Node Connector is for separate remote Docker/Podman runtime hosts. It is not the link between the workstation and Core.
-
-See [Targets](../cli/targets.md), [Security and trust](../cli/security-trust.md), and [Getting started](../tutorials/getting-started.md).
+For available options and recovery procedures, see [Target commands](../cli/targets.md) and [Security and trust](../cli/security-trust.md).
