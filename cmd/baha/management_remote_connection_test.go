@@ -54,7 +54,7 @@ func TestRemoteCoreHandshakePinsInstallationIssuerTenantAndCA(t *testing.T) {
 				Context     machine.OperationContext `json:"context"`
 			}
 			if err := json.NewDecoder(r.Body).Decode(&request); err != nil ||
-				(request.OperationID != "status" && request.OperationID != "plan" && request.OperationID != "doctor" && request.OperationID != "app.list" && request.OperationID != "apply" && request.OperationID != "update" && request.OperationID != "destroy" && request.OperationID != "app.stop" && request.OperationID != "app.create") || request.Context.Target != node.Name ||
+				(request.OperationID != "status" && request.OperationID != "plan" && request.OperationID != "doctor" && request.OperationID != "app.preflight" && request.OperationID != "app.list" && request.OperationID != "apply" && request.OperationID != "update" && request.OperationID != "destroy" && request.OperationID != "app.stop" && request.OperationID != "app.create") || request.Context.Target != node.Name ||
 				request.Context.Environment != "dev" || (request.OperationID != "app.list" && request.Context.Application != "demo") ||
 				r.Header.Get("Idempotency-Key") == "" {
 				http.Error(w, "invalid status request", http.StatusBadRequest)
@@ -87,6 +87,9 @@ func TestRemoteCoreHandshakePinsInstallationIssuerTenantAndCA(t *testing.T) {
 				}
 				if request.OperationID == "app.list" {
 					execution.Result = json.RawMessage(`{"contract_version":"v1","deployments":[]}`)
+				}
+				if request.OperationID == "app.preflight" {
+					execution.Result = json.RawMessage(`{"contract_version":"v1","application":"demo","environment":"dev","passed":true,"checks":[]}`)
 				}
 			}
 			w.Header().Set("Location", "/api/v1/machine/executions/remote-status-one")
@@ -165,7 +168,7 @@ func TestRemoteCoreHandshakePinsInstallationIssuerTenantAndCA(t *testing.T) {
 	if err := json.Unmarshal(statusOutput.Bytes(), &verifiedStatus); err != nil || !verifiedStatus.Ready {
 		t.Fatalf("remote status CLI returned no confirmed READY result: %q (%v)", statusOutput.String(), err)
 	}
-	for _, operation := range []string{"plan", "doctor", "app.list"} {
+	for _, operation := range []string{"plan", "doctor", "app.preflight", "app.list"} {
 		t.Run("verified-remote-read-"+operation, func(t *testing.T) {
 			applicationName := "demo"
 			var input any
