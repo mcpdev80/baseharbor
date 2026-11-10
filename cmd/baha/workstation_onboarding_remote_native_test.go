@@ -54,8 +54,9 @@ func TestWorkstationOnboardingRemoteNativeInCI(t *testing.T) {
 	})
 
 	var invitation string
+	invitationRoot := t.TempDir()
 	t.Run("Invitation", func(t *testing.T) {
-		owned := filepath.Join(t.TempDir(), "private")
+		owned := filepath.Join(invitationRoot, "private")
 		if err := os.Mkdir(owned, 0o700); err != nil {
 			t.Fatal(err)
 		}
