@@ -113,10 +113,24 @@ func (i *ServiceIssuer) RevokedStatus(ctx context.Context, serial string) (bool,
 	}
 	const command = `exec bao read -format=json baseharbor-pki/list-revoked`
 	out, execErr := execWithToken(ctx, i.executor, i.files, token, command)
-	if execErr != nil {
-		return false, execErr
+	if execErr == nil {
+		if revoked, err := revokedSerialInResponse(out, serial); err == nil {
+			return revoked, nil
+		}
 	}
-	return revokedSerialInResponse(out, serial)
+	// On a fresh PKI, list-revoked may return HTTP 404 (no LIST results).
+	// Never interpret that response as not-revoked. Instead verify the
+	// issuer-signed, time-valid CRL. Unreadable or invalid CRLs fail closed.
+	crlJSON, err := execWithToken(ctx, i.executor, i.files, token,
+		`exec bao read -format=json baseharbor-pki/cert/crl`)
+	if err != nil {
+		return false, fmt.Errorf("read authoritative OpenBao CRL: %w", err)
+	}
+	ca, err := i.baseCA(ctx)
+	if err != nil {
+		return false, fmt.Errorf("verify authoritative OpenBao CRL signer: %w", err)
+	}
+	return revokedSerialInSignedCRL(crlJSON, serial, ca, time.Now().UTC())
 }
 
 func (i *ServiceIssuer) Status(ctx context.Context) (serviceaccess.IssuerStatus, error) {
