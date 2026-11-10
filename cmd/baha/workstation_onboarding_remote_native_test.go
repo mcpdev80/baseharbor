@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -131,7 +132,7 @@ func TestWorkstationOnboardingRemoteNativeInCI(t *testing.T) {
 		for _, args := range [][]string{
 			{"app", "create", "onboard-native", "--environment", "dev", "--workload-component", "api"},
 			{"app", "apply", "onboard-native", "--environment", "dev"},
-			{"app", "status", "onboard-native", "--environment", "dev"},
+			{"app", "status", "onboard-native", "--environment", "dev", "--json"},
 		} {
 			if args[1] == "apply" {
 				// The first request must fail closed before recording the candidate.
@@ -152,6 +153,15 @@ func TestWorkstationOnboardingRemoteNativeInCI(t *testing.T) {
 			var stdout, stderr bytes.Buffer
 			if err := runWithIO(ctx, args, &stdout, &stderr); err != nil {
 				t.Fatalf("remote CLI operation %v failed over the enrolled device: %v", args, err)
+			}
+			if args[1] == "status" {
+				var observed application.StatusResult
+				if err := json.Unmarshal(stdout.Bytes(), &observed); err != nil {
+					t.Fatalf("remote Core status is not valid JSON: %v\n%s", err, stdout.String())
+				}
+				if !observed.Ready || observed.State != "running" || observed.Application != "onboard-native" {
+					t.Fatalf("remote Core did not observe the deployed workload as ready: state=%q ready=%t application=%q checks=%+v", observed.State, observed.Ready, observed.Application, observed.Checks)
+				}
 			}
 		}
 		applied = true
