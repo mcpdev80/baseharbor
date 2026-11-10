@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/cli"
+	"github.com/mcpdev80/baseharbor/internal/coreinstallation"
 	"github.com/mcpdev80/baseharbor/internal/machine"
 	"github.com/mcpdev80/baseharbor/internal/onboardingwizard"
 )
@@ -36,6 +37,19 @@ func runOnboardCommand(ctx context.Context, args []string, out, errOut io.Writer
 	// transaction as baha login; the wizard never creates an independent admin.
 	if len(args) > 0 && args[0] == "--init-tenant" {
 		return runOnboardInitialTenant(ctx, args[1:], out, errOut)
+	}
+	// On the owning VM a bare "baha onboard" exports the one-use
+	// workstation invitation. Do not send a READY Core owner back through
+	// the client-side attach wizard or demand a browser login.
+	if len(args) == 0 {
+		if target, err := effectiveTarget(ctx); err == nil &&
+			(target.AccessProvider == "" || target.AccessProvider == "local") {
+			if root, err := targetRuntimeStateRoot(target); err == nil {
+				if state, err := coreinstallation.Load(root); err == nil && state.Ready {
+					return runOnboardInvite(ctx, nil, out)
+				}
+			}
+		}
 	}
 	filtered, format, err := parseReadOutputArgs(args, "onboard")
 	if err != nil {
