@@ -27,6 +27,7 @@ func TestSignedCRLFallbackVerifiesFreshnessIssuerAndRevocations(t *testing.T) {
 		IsCA:                  true,
 		BasicConstraintsValid: true,
 		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
+		SubjectKeyId:          []byte{1, 2, 3, 4},
 	}
 	caDER, err := x509.CreateCertificate(rand.Reader, caTemplate, caTemplate, &key.PublicKey, key)
 	if err != nil {
