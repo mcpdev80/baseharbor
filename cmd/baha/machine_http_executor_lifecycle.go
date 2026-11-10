@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"strings"
 
@@ -41,6 +40,20 @@ func (e *bahaMachineExecutor) executeHTTPLifecycle(
 	}
 }
 
+// Preserve the typed machine error code while making the failing Core stage
+// observable through the verified Machine HTTP response. A plain fmt.Errorf
+// wrapper is lost when machine.Classify unwraps an existing typed error.
+func coreHTTPApplyStageError(stage string, err error) error {
+	classified := machine.Classify(err)
+	if classified == nil {
+		return nil
+	}
+	staged := *classified
+	staged.Message = "Core remote apply " + stage + ": " + classified.Message
+	staged.Cause = err
+	return &staged
+}
+
 func (e *bahaMachineExecutor) executeHTTPApply(
 	ctx context.Context,
 	operationContext machine.OperationContext,
@@ -71,7 +84,7 @@ func (e *bahaMachineExecutor) executeHTTPApply(
 	reportHTTPProgress(report, "resolve", "Resolving application and target.", 10)
 	resolved, err := resolveApplication(ctx, e.store, args, "apply")
 	if err != nil {
-		return nil, fmt.Errorf("Core remote apply: resolve registered application: %w", err)
+		return nil, coreHTTPApplyStageError("resolve registered application", err)
 	}
 	if err := ensureResolvedHTTPContext(operationContext, resolved); err != nil {
 		return nil, err
@@ -136,12 +149,12 @@ func (e *bahaMachineExecutor) executeHTTPApply(
 
 	reportHTTPProgress(report, "apply", "Converging desired application state.", 35)
 	if err := executeApplicationApplyLifecycle(ctx, e.store, args, io.Discard, io.Discard); err != nil {
-		return nil, fmt.Errorf("Core remote apply: execute lifecycle: %w", err)
+		return nil, coreHTTPApplyStageError("execute lifecycle", err)
 	}
 	reportHTTPProgress(report, "verify", "Verifying application readiness.", 85)
 	status, err := collectApplicationStatusResult(ctx, e.store, args)
 	if err != nil {
-		return nil, fmt.Errorf("Core remote apply: verify status: %w", err)
+		return nil, coreHTTPApplyStageError("verify status", err)
 	}
 	if !status.Ready {
 		return nil, &machine.Error{
