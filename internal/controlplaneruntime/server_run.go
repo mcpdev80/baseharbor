@@ -285,6 +285,9 @@ func operatorOIDCVerifier(ctx context.Context, cfg Config) (*auth.OIDCVerifier, 
 
 func registerOperatorAPI(ctx context.Context, mux *http.ServeMux, cfg Config, deps serverDependencies, machineExecutor machinehttp.Executor) error {
 	if !cfg.operatorAPIEnabled() {
+		if cfg.WorkstationEnrollmentEnabled && !cfg.ConnectorEnrollmentEnabled {
+			return registerWorkstationOnlyAPI(ctx, mux, cfg, deps, machineExecutor)
+		}
 		return nil
 	}
 	if deps.pool == nil {
