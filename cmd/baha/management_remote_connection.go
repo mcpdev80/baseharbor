@@ -166,6 +166,20 @@ func dialVerifiedRemoteCore(ctx context.Context, target, runtime, expectedTenant
 		}()}},
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 	}
+	if profile.Device != nil {
+		if err := renewRemoteWorkstationIdentity(ctx, client, profile); err != nil {
+			return nil, fmt.Errorf("refresh bound workstation identity: %w", err)
+		}
+		// Re-read the protected leaf after a possible renewal. Every later
+		// request in this invocation must present the registry-current serial.
+		fresh, err := tls.LoadX509KeyPair(
+			filepath.Join(profile.Device.IdentityDir, "certificate.pem"),
+			filepath.Join(profile.Device.IdentityDir, "private-key.pem"))
+		if err != nil {
+			return nil, errors.New("renewed workstation certificate could not be loaded")
+		}
+		client.Transport.(*http.Transport).TLSClientConfig.Certificates = []tls.Certificate{fresh}
+	}
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(profile.Core.URL, "/")+"/api/v1/management/installation", nil)
 	if err != nil {
 		return nil, err
