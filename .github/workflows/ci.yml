@@ -1313,10 +1313,70 @@ jobs:
           PYTHON
 
   pr_draft_focused:
-    name: PR · Draft focused checks
+    name: PR · Draft source and routing
     if: github.event_name == 'pull_request' && github.base_ref == 'develop' && github.event.pull_request.draft == true
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 12
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Validate changed Go formatting and CI routes
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "$BASE_SHA" "$HEAD_SHA"
+          mapfile -d '' -t changed < <(git diff --name-only -z --diff-filter=ACDMRT "$BASE_SHA" "$HEAD_SHA")
+          go_files=()
+          module_changed=false
+          ci_changed=false
+          for file in "${changed[@]}"; do
+            case "$file" in
+              go.mod|go.sum) module_changed=true ;;
+              .github/workflows/*|scripts/pr-*.py|scripts/test_pr_*.py|scripts/ci-*.sh|scripts/test_ci_*.py)
+                ci_changed=true ;;
+            esac
+            case "$file" in
+              *.go) if [ -f "$file" ]; then go_files+=("$file"); fi ;;
+            esac
+          done
+          if [ "${#go_files[@]}" -gt 0 ]; then
+            unformatted="$(gofmt -l "${go_files[@]}")"
+            test -z "$unformatted" || { printf 'Unformatted Go source: %s\n' "$unformatted" >&2; exit 1; }
+          fi
+          if [ "$module_changed" = true ]; then
+            go build ./...
+          fi
+          if [ "$ci_changed" = true ]; then
+            go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -shellcheck=
+            python3 scripts/test_pr_incremental_reuse.py
+            python3 scripts/test_pr_required_final.py
+            python3 scripts/test_ci_check_routes.py
+            python3 scripts/test_pr_gate_plan.py
+            python3 scripts/test_pr_draft_go_packages.py
+          fi
+
+  pr_draft_go_shards:
+    name: PR · Draft Go · ${{ matrix.shard }}
+    if: github.event_name == 'pull_request' && github.base_ref == 'develop' && github.event.pull_request.draft == true
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [cli, database, other]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
     env:
       BASEHARBOR_TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/baseharbor_test?sslmode=disable
     services:
@@ -1333,8 +1393,6 @@ jobs:
           --health-interval 2s
           --health-timeout 5s
           --health-retries 10
-    permissions:
-      contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -1344,53 +1402,47 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
-      - name: Test only changed Go packages and CI routing
+      - name: Test impacted packages in their existing domain
         shell: bash
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          SHARD: ${{ matrix.shard }}
         run: |
           set -euo pipefail
           git fetch --no-tags origin "$BASE_SHA" "$HEAD_SHA"
           mapfile -d '' -t changed < <(git diff --name-only -z --diff-filter=ACDMRT "$BASE_SHA" "$HEAD_SHA")
-          go_files=()
-          packages=()
+          files=()
           module_changed=false
-          ci_changed=false
           for file in "${changed[@]}"; do
             case "$file" in
               go.mod|go.sum) module_changed=true ;;
-              .github/workflows/*|scripts/pr-*.py|scripts/test_pr_*.py|scripts/ci-*.sh|scripts/test_ci_*.py)
-                ci_changed=true ;;
-            esac
-            case "$file" in
-              *.go)
-                if [ -f "$file" ]; then go_files+=("$file"); fi
-                directory="${file%/*}"
-                if [ "$directory" = "$file" ]; then
-                  directory="."
-                fi
-                packages+=("$file")
-                ;;
+              *.go) files+=("$file") ;;
             esac
           done
-          if [ "${#go_files[@]}" -gt 0 ]; then
-            unformatted="$(gofmt -l "${go_files[@]}")"
-            test -z "$unformatted" || { printf 'Unformatted Go source: %s\n' "$unformatted" >&2; exit 1; }
-          fi
           if [ "$module_changed" = true ]; then
-            go build ./...
-          elif [ "${#packages[@]}" -gt 0 ]; then
-            mapfile -t selected < <(python3 scripts/pr-draft-go-packages.py "${packages[@]}")
-            test "${#selected[@]}" -gt 0
-            go test -p 1 "${selected[@]}" -count=1
+            if [ "$SHARD" = other ]; then go test -p 1 ./... -count=1; fi
+            exit 0
           fi
-          if [ "$ci_changed" = true ]; then
-            go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -shellcheck=
-            python3 scripts/test_pr_incremental_reuse.py
-            python3 scripts/test_pr_required_final.py
-            python3 scripts/test_ci_check_routes.py
-            python3 scripts/test_pr_gate_plan.py
-            python3 scripts/test_pr_draft_go_packages.py
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "No changed Go packages."
+            exit 0
           fi
-          echo "Draft checks completed for changed sources." >> "$GITHUB_STEP_SUMMARY"
+          mapfile -t selected < <(python3 scripts/pr-draft-go-packages.py "${files[@]}")
+          test "${#selected[@]}" -gt 0
+          owned=()
+          for package in "${selected[@]}"; do
+            case "$package" in
+              ./cmd/baha) domain=cli ;;
+              ./internal/database|./internal/workstationenrollment/http) domain=database ;;
+              *) domain=other ;;
+            esac
+            if [ "$domain" = "$SHARD" ]; then owned+=("$package"); fi
+          done
+          if [ "${#owned[@]}" -eq 0 ]; then
+            echo "No impacted packages in $SHARD domain."
+            exit 0
+          fi
+          printf 'Selected packages for %s:\n' "$SHARD"
+          printf '%s\n' "${owned[@]}"
+          go test -p 1 "${owned[@]}" -count=1
