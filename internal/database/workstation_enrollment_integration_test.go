@@ -56,6 +56,16 @@ func TestWorkstationEnrollmentDurableStore(t *testing.T) {
 	if err := store.Create(ctx, bootstrapWith(scope, "token", "nonce")); err != nil {
 		t.Fatal(err)
 	}
+	longLivedScope := workstationenrollment.Scope{TenantID: tenantA, Station: "five-year"}
+	longLivedGrant := bootstrapWith(longLivedScope, "long-token", "long-nonce")
+	longLivedGrant.CertificateTTL = workstationenrollment.MaxCertificateTTL
+	if err := store.Create(ctx, longLivedGrant); err != nil {
+		t.Fatalf("create five-year workstation grant: %v", err)
+	}
+	consumed, err := store.Consume(ctx, longLivedScope, "long-token", "long-nonce", workstationenrollment.MaxCertificateTTL)
+	if err != nil || consumed.CertificateTTL != workstationenrollment.MaxCertificateTTL {
+		t.Fatalf("consume five-year workstation grant: ttl=%s err=%v", consumed.CertificateTTL, err)
+	}
 	if err := store.Create(ctx, bootstrapWith(scope, "token2", "nonce2")); !errors.Is(err, workstationenrollment.ErrDenied) {
 		t.Fatal("duplicate live bootstrap admitted")
 	}
