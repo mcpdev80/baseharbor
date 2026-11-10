@@ -506,6 +506,10 @@ jobs:
             export BASEHARBOR_ONBOARDING_NATIVE_ACCEPTANCE=1
             test_regex='^(TestGreenfieldIsolatedCoreNativeInCI|TestWorkstationOnboardingRemoteNativeInCI)$'
           fi
+          if [ "$onboarding_required" = true ]; then
+            go build -o "$RUNNER_TEMP/baha-onboarding-native" ./cmd/baha
+            export BASEHARBOR_CI_BAHA_BINARY="$RUNNER_TEMP/baha-onboarding-native"
+          fi
           go test -p 1 ./cmd/baha -run "$test_regex" -count=1 -timeout 20m -json | tee greenfield.jsonl
           git rev-parse HEAD > greenfield.jsonl.sha
           if [ "$onboarding_required" = true ]; then
