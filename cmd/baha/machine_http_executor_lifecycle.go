@@ -40,6 +40,32 @@ func (e *bahaMachineExecutor) executeHTTPLifecycle(
 	}
 }
 
+// Normalize the verified uploaded source under the already authorized Core
+// identity before provider consent checks. Revalidation must compare the same
+// canonical workload and provider projection that apply actually consumes.
+func prepareVerifiedHTTPSource(ctx context.Context, resolved resolvedApplication, selection application.RepositoryEnvironmentSelection) (resolvedApplication, error) {
+	if selection.Manifest.Name != resolved.Manifest.Name ||
+		selection.Manifest.Environment != resolved.Manifest.Environment ||
+		(selection.Manifest.ApplicationID != "" && selection.Manifest.ApplicationID != resolved.DeploymentIdentity.ApplicationID) {
+		return resolvedApplication{}, machine.NewError(machine.ErrorPolicyDenied, "Source snapshot does not belong to the authorized Core application.", "Use the matching application identity.", false)
+	}
+	selection.Manifest.ApplicationID = resolved.DeploymentIdentity.ApplicationID
+	selection, err := resolveRepositoryLifecycleIntent(ctx, resolved.Target, selection, "plan")
+	if err != nil {
+		return resolvedApplication{}, err
+	}
+	resolved.Manifest = selection.Manifest
+	resolved.ManifestPath = selection.ManifestPath
+	resolved.RepositoryRoot = selection.RepositoryRoot
+	resolved.SourceAvailable = true
+	resolved.FromRepository = true
+	resolved.Manifest, err = resolveAppliedBackendSelection(resolved, "apply")
+	if err != nil {
+		return resolvedApplication{}, err
+	}
+	return resolved, nil
+}
+
 // Preserve the typed machine error code while making the failing Core stage
 // observable through the verified Machine HTTP response. A plain fmt.Errorf
 // wrapper is lost when machine.Classify unwraps an existing typed error.
@@ -105,12 +131,10 @@ func (e *bahaMachineExecutor) executeHTTPApply(
 			(selection.Manifest.ApplicationID != "" && selection.Manifest.ApplicationID != resolved.DeploymentIdentity.ApplicationID) {
 			return nil, machine.NewError(machine.ErrorPolicyDenied, "Source snapshot does not belong to the authorized Core application.", "Use the matching application identity.", false)
 		}
-		selection.Manifest.ApplicationID = resolved.DeploymentIdentity.ApplicationID
-		resolved.Manifest = selection.Manifest
-		resolved.ManifestPath = selection.ManifestPath
-		resolved.RepositoryRoot = selection.RepositoryRoot
-		resolved.SourceAvailable = true
-		resolved.FromRepository = true
+		resolved, err = prepareVerifiedHTTPSource(ctx, resolved, selection)
+		if err != nil {
+			return nil, err
+		}
 		ctx = withVerifiedHTTPSource(ctx, resolved)
 	} else {
 		// Registered immutable sources retain their existing Core-side checks.
