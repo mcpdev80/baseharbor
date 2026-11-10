@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log"
 	"net/http"
 	"time"
 
@@ -59,6 +60,21 @@ func (h *ProductionHandler) ServeDelegatedEnroll(w http.ResponseWriter, r *http.
 	}
 	result, err := h.Enrollment.Enroll(r.Context(), request)
 	if err != nil {
+		// Log only a bounded, static failure category to the owning Core
+		// journal. Neither one-use credentials, CSR data nor installation IDs
+		// are ever logged or returned to the untrusted enrolling client.
+		category := "grant_or_csr_denied"
+		switch err.Error() {
+		case "workstation enrollment signing failed; request a new authorization":
+			category = "issuer_signing_failed"
+		case "workstation enrollment authority trust is unavailable":
+			category = "issuer_trust_unavailable"
+		case "workstation enrollment authority returned invalid certificate material":
+			category = "issued_certificate_invalid"
+		case "workstation enrollment issued identity is revoked or its revocation status is unreadable":
+			category = "issuer_revocation_unavailable"
+		}
+		log.Printf("baseharbor-workstation-enroll: %s", category)
 		writeError(w, http.StatusForbidden, ws.ErrDenied)
 		return
 	}
