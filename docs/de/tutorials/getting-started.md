@@ -1,61 +1,28 @@
-# Einstieg
+# Erste Schritte
 
-Dieser Einstieg bringt eine bestehende Anwendung unter BaseHarbor zum Laufen, ohne dass du Provider-Interna verstehen oder das Manifest manuell bearbeiten musst.
+Mit BaseHarbor kannst du eine vorhandene Anwendung übernehmen oder eine neue erstellen. Du benötigst die `baha`-CLI und ein eingerichtetes Docker- oder Podman-Target. Falls noch keines vorhanden ist, siehe [Targets einrichten](../cli/targets.md).
 
-Mit dem [Bedarfswizard](../how-to/application-needs.md) erstellst du ein Projekt interaktiv, änderst seine Anforderungen und prüfst seinen Target-Footprint.
+## Vorhandene Anwendung übernehmen
 
-## Mit den Anforderungen der Anwendung beginnen
-
-Eine unterstützte lokale Workload ohne verwaltete Capabilities läuft ohne
-Core-Installation und Login. Repository inspizieren und initialisieren, dann
-über den bestehenden Application-Lifecycle planen und starten. SQL ist kein
-impliziter Default. Ein leeres Verzeichnis benötigt weiterhin eine echte
-unterstützte Workload; Intent allein bedeutet nicht READY.
-
-Benötigen ausgewählte Capabilities verwaltete Infrastruktur, verwendet
-BaseHarbor eine kompatible eigene Installation oder fragt interaktiv nach
-expliziter Einrichtung. Ein ausdrücklich installierter Management-Core stellt
-weiterhin **SQL + Secrets + Identity** (PostgreSQL, OpenBao und Keycloak) bereit.
-Die Web Console bleibt optional. TLS und geschützte Zugangsdaten gelten weiter
-für verwaltete Services.
-
-Fehlt der benötigte Core bei nichtinteraktiver App-Ausführung, folgt
-`core_required`; Application-`--yes` erlaubt keinen Core-Bootstrap.
-Automation kann zuerst explizit `baha up --control-plane-only` ausführen.
-Außerhalb eines App-Repositories prüft `baha status` diese Installation.
-Retry verwendet denselben eigenen Core nach geprüfter Readiness.
-
-Shared-Placement verwendet kompatible Provider erneut. Isolierte Provider können
-zusätzliche Ressourcen benötigen; verwaltete native Capabilities verwenden die
-volle bestehende Core-Topologie. [Core-Ressourcen](../explanation/core-resources.md)
-und App-Footprint unterscheiden Messung, Schätzung und unbekannte Werte.
-Die [Application-Befehle](../cli/applications.md) beschreiben unterstützten
-Core-losen Betrieb und seine Grenzen.
-
-Für einen getrennten Entwicklungsrechner mit entferntem Core siehe [Entwicklungsrechner anbinden](../how-to/remote-workstation.md).
-
-## Optional: Ersten Operator für Remote-Management einrichten
-
-Für die Connector-Einschreibung den ersten Operator **lokal auf dem Management-Core** initialisieren, nicht auf dem Remote-Node:
+Öffne das Repository deiner Anwendung und führe aus:
 
 ```bash
-baha up --control-plane-only
-baha login -e dev --init-tenant
-baha whoami -e dev
+baha inspect .
+baha init
+baha plan
+baha up
+baha status
 ```
 
-Das ist nicht der gewöhnliche Trusted-Local-Application-Start. Vor dem Enrollment müssen Issuer und Audience der geschützten Operator-API zum Operator-Realm/-Client passen. Siehe [Erst-Owner-Einrichtung und Connector-Ablauf](../cli/security-trust.md). Der Erst-Owner wird ausdrücklich und getrennt vom Application-Start eingerichtet.
+`inspect` erkennt die Workloads, ohne Dateien zu verändern. `init` erstellt die Anwendungsbeschreibung und fragt nur bei notwendigen Entscheidungen nach. `plan` zeigt die geplanten Änderungen, `up` führt sie aus. `status` zeigt den Zustand und die Adresse der Anwendung.
 
-## Konkretes Beispiel: Go-API mit SQL
+Bei Problemen hilft `baha doctor`. Mit `baha down` stoppst du die Anwendung, ohne persistente Daten zu löschen. `baha up` startet sie erneut.
 
-Voraussetzungen: `baha` ist installiert, Docker oder Podman ist lokal verfügbar und der aktuelle Ordner enthält noch keinen Unterordner `orders-api`. Prüfe zuerst CLI und Target:
+Bei eindeutig erkannten Repositories kannst du für die Automatisierung `baha init --quick` verwenden. Bei Mehrdeutigkeiten ist eine ausdrückliche Auswahl notwendig.
 
-```bash
-baha version
-baha target show
-```
+## Neue Anwendung erstellen
 
-Fehlt ein Target, konfiguriere es anhand der [Target-Befehle](../cli/targets.md). Erzeuge danach eine neue Anwendung:
+Wechsle in einen Ordner, der noch kein Verzeichnis `orders-api` enthält:
 
 ```bash
 baha new application orders-api --stack go --http --sql
@@ -63,138 +30,18 @@ cd orders-api
 baha plan
 baha up -e dev
 baha status
-baha doctor
 ```
 
-`app new` erzeugt `main.go`, `go.mod`, `Dockerfile`, `compose.yaml`, `baseharbor.yaml`, Repository-Metadaten und `.env.example` mit leeren Werten. Das Manifest fordert SQL an und beschreibt den HTTP-Workload `app` auf Port 8080. Der Go-Code verwendet `pgx` und die geschützte Bindung `DATABASE_URL`; vor dem HTTP-Start prüft er die Datenbankverbindung.
+Das Beispiel erstellt eine Go-HTTP-Anwendung mit PostgreSQL. Öffne die von `baha status` angezeigte HTTPS-Adresse und rufe `/healthz` auf. Bei Docker und rootless Podman können die Ports unterschiedlich sein.
 
-Beim ersten `up` beantwortest du die unten beschriebenen Betreiberentscheidungen. Erst eine erfolgreiche Bereitstellung führt zu READY; erzeugte Dateien allein starten keine Runtime. Öffne danach die von `status` angezeigte HTTPS-Adresse und rufe `/healthz` auf. Übernimm den angezeigten Port, da Docker und rootless Podman unterschiedliche Ports verwenden können.
+## Was passiert beim ersten Start?
 
-Eigene Bestell-Endpunkte und Tabellen ergänzt du im erzeugten Code. Das [PostgreSQL-Beispiel](../how-to/postgres.md) zeigt das Einfügen und Lesen einer konkreten Bestellung.
+Eine lokale Anwendung ohne verwaltete Dienste benötigt keinen Core. Fordert sie beispielsweise SQL oder Secrets an, verwendet BaseHarbor eine passende Installation oder fragt vor deren Einrichtung um Zustimmung. Im nichtinteraktiven Modus wird Core nicht stillschweigend installiert.
 
-Nur die Anwendung stoppen und ihre persistenten Daten behalten:
+Gegebenenfalls fragt BaseHarbor nach erforderlichen Secrets, dem Ablageort einer Wiederherstellungsdatei oder einem Port. Geheimnisse werden ohne sichtbare Eingabe erfasst. Die Erstellung der Projektdateien startet noch keine Anwendung.
 
-```bash
-baha down
-```
+Für einen getrennten Entwicklungsrechner und Core-Host siehe [Entwicklungsrechner verbinden](../how-to/remote-workstation.md). Die Einrichtung des ersten Operators und das Enrollment entfernter Hosts sind eigenständige Abläufe.
 
-Mit `baha up` im selben Repository startest du sie wieder.
+## Mehr erfahren
 
-## Bestehendes Repository übernehmen
-
-Bei einer vorhandenen Anwendung folgt auf die optionale Inspektion `baha init` und danach `baha up`. Dafür brauchst du kein neues Scaffold und keine manuelle Compose-Umschreibung.
-
-## 1. Optional: Repository prüfen
-
-```bash
-baha inspect .
-```
-
-Die Inspektion ist schreibgeschützt. BaseHarbor zeigt den erkannten Workload, ersetzbare Infrastruktur und die erkannten Fähigkeiten, ohne das Repository zu verändern.
-
-Detaillierte Nachweise:
-
-```bash
-baha inspect . --verbose
-```
-
-## 2. Portablen Anwendungsvertrag erstellen
-
-```bash
-baha init
-```
-
-BaseHarbor erkennt so viel wie sicher möglich und fragt nur bei Mehrdeutigkeit oder echten Benutzerentscheidungen nach.
-
-Der Wizard kann unter anderem fragen nach:
-
-- der maßgeblichen Workload-Quelle bei mehreren Compose-, Quadlet- oder Kubernetes-Kandidaten;
-- Anwendungs-Workload gegenüber ersetzbarer Infrastruktur;
-- provider-neutralen Anforderungen an SQL, Cache, Objektspeicher und Observability;
-- anwendungseigenen Geheimnissen einschließlich Pflicht-/Optional-Status;
-- automatischer Erzeugung, Eingabe beim ersten Anwenden oder späterer Konfiguration;
-- Berechtigungen der Runtime-API aus konkreten Quellnachweisen.
-
-Vor dem Schreiben von `baseharbor.yaml` zeigt BaseHarbor eine menschenlesbare Zusammenfassung. Rohes YAML erscheint nur als Zusatzdetail unter `--verbose`.
-
-Deterministische Automatisierung bei eindeutiger Erkennung:
-
-```bash
-baha init --quick
-```
-
-`--quick` bricht bei Mehrdeutigkeit der Quelle sicher ab und übernimmt heuristisch erkannte Geheimnis-Kandidaten niemals stillschweigend. Eindeutige Compose-, im Repository gepflegte Quadlet- und rohe Kubernetes-YAML-Quellen können geprüft und übernommen werden, ohne quellenspezifische Namen in den portablen Anwendungsvertrag zu übernehmen.
-
-## 3. Anwendung starten
-
-```bash
-baha up
-```
-
-Beim ersten Lauf kann BaseHarbor nur Informationen abfragen, die es nicht sicher selbst bestimmen darf, zum Beispiel:
-
-- Annahme oder Anpassung des vorgeschlagenen, Target-bezogenen Pfads für die vom Betreiber verwahrte OpenBao-Wiederherstellungsdatei;
-- Wert eines fehlenden verpflichtenden Anwendungsgeheimnisses;
-- Bestätigung eines sicheren Ausweichports.
-
-Interaktive Eingabe von Geheimnissen erfolgt ohne Terminal-Echo. Zugangsdaten für Provider und Runtime werden von BaseHarbor verwaltet und nicht vom Entwickler abgefragt.
-
-Derselbe `baha up`-Lauf konvergiert danach weiter bis READY. Nach erfolgreichem OpenBao-Bootstrap speichert BaseHarbor am effektiven Target nur die Pfadreferenz auf die Wiederherstellungsdatei. Spätere `baha up`-Läufe verwenden diese Referenz automatisch, um den gemeinsam genutzten OpenBao-Provider zu entsperren, wenn die Datei vorhanden ist.
-
-## 4. Ergebnis prüfen
-
-```bash
-baha status
-```
-
-```bash
-baha doctor
-```
-
-Erfolg bedeutet verifizierte Capability-Bereitschaft, nicht nur einen gestarteten Container.
-
-## Fortgeschrittene und Automation-Befehle
-
-Diese Befehle bleiben verfügbar, gehören aber nicht zum notwendigen Standardablauf:
-
-```bash
-baha dev domain
-baha dev credentials
-```
-
-Automatisierung kann weiterhin ausdrücklich `--stdin` verwenden:
-
-```bash
-baha plan
-baha app preflight
-baha app apply
-baha app secret set APP_SECRET
-```
-
-## Durchgängige Referenzdemo
-
-Das externe Repository `mcpdev80/baseharbor-demo` ist der Release-seitige Nachweis dieses Ablaufs. Seine README beschreibt den vollständigen Test vom unveränderten Repository über `baha init` und `baha up` bis READY, Neustart und Aufräumen.
-
-Die Vorabprüfung validiert sowohl den geführten Benutzerablauf als auch deterministische Komponentenpfade. Der finale Release verwendet diese unveränderlichen Nachweise wieder, statt dieselbe aufwendige Matrix erneut auszuführen.
-
-## Nächste Schritte
-
-- [Architektur](../explanation/architecture.md)
-- [Anwendungsvertrag](../explanation/application-contract.md)
-- [Provider](../explanation/providers.md)
-- [Sicherheit](../explanation/security.md)
-- [Umgebungen](../how-to/environments.md)
-- [PostgreSQL](../how-to/postgres.md)
-- [Secrets](../how-to/secrets.md)
-- [Backup und Restore](../how-to/backup-restore.md)
-- [CLI-Überblick](../cli/index.md)
-
-
-## Weitere technische Beispiele
-
-```bash
-printf '%s' "$APP_SECRET" | baha app secret set APP_SECRET --stdin
-```
-
-
-Technische Bezeichner: `baha.localhost`, `https://my-app.baha.localhost`, `https://secrets.baha.localhost`, `127.0.0.1:<port>`.
+[Anwendungsanforderungen](../how-to/application-needs.md) · [Targets](../cli/targets.md) · [Umgebungen](../how-to/environments.md) · [PostgreSQL](../how-to/postgres.md) · [Backup und Restore](../how-to/backup-restore.md) · [CLI-Referenz](../cli/command-index.md)
