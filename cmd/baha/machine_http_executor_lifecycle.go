@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"strings"
 
@@ -70,7 +71,7 @@ func (e *bahaMachineExecutor) executeHTTPApply(
 	reportHTTPProgress(report, "resolve", "Resolving application and target.", 10)
 	resolved, err := resolveApplication(ctx, e.store, args, "apply")
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("Core remote apply: resolve registered application: %w", err)
 	}
 	if err := ensureResolvedHTTPContext(operationContext, resolved); err != nil {
 		return nil, err
@@ -135,12 +136,12 @@ func (e *bahaMachineExecutor) executeHTTPApply(
 
 	reportHTTPProgress(report, "apply", "Converging desired application state.", 35)
 	if err := executeApplicationApplyLifecycle(ctx, e.store, args, io.Discard, io.Discard); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("Core remote apply: execute lifecycle: %w", err)
 	}
 	reportHTTPProgress(report, "verify", "Verifying application readiness.", 85)
 	status, err := collectApplicationStatusResult(ctx, e.store, args)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("Core remote apply: verify status: %w", err)
 	}
 	if !status.Ready {
 		return nil, &machine.Error{
