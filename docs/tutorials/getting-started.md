@@ -40,7 +40,7 @@ baha login -e dev --init-tenant
 baha whoami -e dev
 ```
 
-This is separate from normal trusted-local application setup. Before enrollment, match the protected operator API's issuer/audience to the operator realm/client. See [first-owner setup and Connector flow](../cli/security-trust.md). PR #1437 is still under CI/native acceptance; not released.
+This is separate from normal trusted-local application setup. Before enrollment, match the protected operator API's issuer/audience to the operator realm/client. See [first-owner setup and Connector flow](../cli/security-trust.md). The first-owner setup is deliberately separate from application startup.
 
 ## Try it: a Go order API with SQL
 
