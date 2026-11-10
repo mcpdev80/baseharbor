@@ -297,7 +297,7 @@ func TestDeviceSelfRenewPersistsCurrentSerial(t *testing.T) {
 		t.Fatalf("precondition enrollment failed: HTTP %d", enroll.Code)
 	}
 	var issued struct {
-		Serial string `json:"serial"`
+		Serial  string `json:"serial"`
 		LeafPEM string `json:"leaf_pem"`
 	}
 	if err := json.NewDecoder(enroll.Body).Decode(&issued); err != nil {
