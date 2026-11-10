@@ -1,32 +1,37 @@
 # Connect a workstation to BaseHarbor Core
 
-Use this guide when Core runs on one machine and you develop on another. The workstation connects directly to Core; Node Connector is only needed for separate remote runtime hosts.
+Run BaseHarbor Core on one machine and develop on another. The workstation connects directly to Core; Node Connector is not needed for this connection.
 
-## 1. Set up Core
+## On the Core machine
 
-On the Core host, install BaseHarbor and run:
+Install BaseHarbor, then run:
 
 ```bash
-baha up --control-plane-only
-baha onboard --init-tenant
+baha up
+baha onboard
 ```
 
-Complete the operator login and configure a reachable, TLS-protected management endpoint.
+`baha onboard` creates a short-lived, one-use invitation file for a workstation. Transfer the file securely to the developer's machine. Keep its contents private.
 
-## 2. Connect the workstation
+## On the developer workstation
 
-Install `baha` on the workstation, then run:
+Install the `baha` CLI and import the invitation:
 
 ```bash
-baha onboard
+baha onboard --import /path/to/invitation.json
+```
+
+BaseHarbor verifies the Core, enrolls this workstation using a locally generated private key, and registers the remote Target.
+
+To check the selected Target:
+
+```bash
 baha target show
 ```
 
-Follow the prompts to connect to the existing Core. A trusted enrollment bundle may be required. BaseHarbor reuses an existing verified connection.
+## Run an application
 
-## 3. Start an application
-
-From your application repository:
+From the application repository:
 
 ```bash
 baha inspect .
@@ -36,4 +41,4 @@ baha up
 baha status
 ```
 
-For available options and recovery procedures, see [Target commands](../cli/targets.md) and [Security and trust](../cli/security-trust.md).
+For advanced options and troubleshooting, see [Target commands](../cli/targets.md) and [Security and trust](../cli/security-trust.md).
