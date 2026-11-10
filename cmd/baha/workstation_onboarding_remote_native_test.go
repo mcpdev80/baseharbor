@@ -131,8 +131,11 @@ func TestWorkstationOnboardingRemoteNativeInCI(t *testing.T) {
 		// Exercise the complete real lifecycle, including initial creation.
 		for _, args := range [][]string{
 			{"app", "create", "onboard-native", "--environment", "dev", "--workload-component", "api"},
+			{"app", "plan", "onboard-native", "--environment", "dev", "--json"},
+			{"app", "list", "--json"},
 			{"app", "apply", "onboard-native", "--environment", "dev"},
 			{"app", "status", "onboard-native", "--environment", "dev", "--json"},
+			{"app", "doctor", "onboard-native", "--environment", "dev", "--json"},
 		} {
 			if args[1] == "apply" {
 				// The first request must fail closed before recording the candidate.
@@ -161,6 +164,33 @@ func TestWorkstationOnboardingRemoteNativeInCI(t *testing.T) {
 				}
 				if !observed.Ready || observed.State != "running" || observed.Application != "onboard-native" {
 					t.Fatalf("remote Core did not observe the deployed workload as ready: state=%q ready=%t application=%q checks=%+v", observed.State, observed.Ready, observed.Application, observed.Checks)
+				}
+			}
+			if args[1] == "plan" {
+				var observed applicationLifecyclePlan
+				if err := json.Unmarshal(stdout.Bytes(), &observed); err != nil || observed.Application != "onboard-native" || observed.Environment != "dev" {
+					t.Fatalf("remote Core plan does not describe the selected application: %v\n%s", err, stdout.String())
+				}
+			}
+			if args[1] == "list" {
+				var observed machineApplicationListResult
+				if err := json.Unmarshal(stdout.Bytes(), &observed); err != nil || observed.ContractVersion != machine.ContractVersion {
+					t.Fatalf("remote Core application list has no valid contract: %v\n%s", err, stdout.String())
+				}
+				found := false
+				for _, item := range observed.Deployments {
+					if item.Application == "onboard-native" && item.Environment == "dev" && item.Target == workstationTarget {
+						found = true
+					}
+				}
+				if !found {
+					t.Fatalf("remote Core application list omitted the selected Target deployment: %s", stdout.String())
+				}
+			}
+			if args[1] == "doctor" {
+				var observed applicationDoctorResult
+				if err := json.Unmarshal(stdout.Bytes(), &observed); err != nil || !observed.Healthy || observed.Target != workstationTarget || observed.Application != "onboard-native" {
+					t.Fatalf("remote Core doctor did not report a healthy selected Target application: %v\n%s", err, stdout.String())
 				}
 			}
 		}

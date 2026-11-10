@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -99,6 +100,42 @@ func appListCommand() *cli.Command {
 			if err := authorizeCurrentMCPContext(ctx, "app.list", "", "", ""); err != nil {
 				return err
 			}
+			if target, targetErr := effectiveTarget(ctx); targetErr != nil {
+				return targetErr
+			} else if target.AccessProvider != "" && target.AccessProvider != "local" {
+				result, readErr := remoteMachineRead(ctx, target, "app.list", "", "dev", machineApplicationListInput{AllTargets: allTargets, Target: target.Name})
+				if readErr != nil {
+					return readErr
+				}
+				var listed machineApplicationListResult
+				if err := json.Unmarshal(result, &listed); err != nil || listed.ContractVersion != machine.ContractVersion {
+					return errors.New("remote Core application list has an invalid contract")
+				}
+				for _, item := range listed.Deployments {
+					if !allTargets && item.Target != target.Name {
+						return errors.New("remote Core application list contains a deployment outside the selected Target")
+					}
+				}
+				if format == outputJSON {
+					return writeJSON(out, listed)
+				}
+				for _, warning := range listed.Warnings {
+					fmt.Fprintf(errOut, "[WARN] incomplete deployment state: %s\n", warning)
+				}
+				if len(listed.Deployments) == 0 {
+					fmt.Fprintln(out, "No deployments registered.")
+					return nil
+				}
+				fmt.Fprintf(out, "%-20s %-12s %-10s %s\n", "APPLICATION", "ENVIRONMENT", "STATE", "SOURCE")
+				for _, item := range listed.Deployments {
+					source := "MISSING"
+					if item.SourceAvailable {
+						source = "OK"
+					}
+					fmt.Fprintf(out, "%-20s %-12s %-10s %s\n", item.Application, item.Environment, item.State, source)
+				}
+				return nil
+			}
 			if format == outputJSON {
 				result, err := collectMachineApplicationList(ctx, machineApplicationListInput{AllTargets: allTargets})
 				if err != nil {
@@ -186,6 +223,27 @@ func appPlanCommand(store application.Store) *cli.Command {
 			resolved, err := resolveApplication(ctx, store, filtered, "plan")
 			if err != nil {
 				return err
+			}
+			if isRemoteApplication(resolved) {
+				result, readErr := remoteMachineRead(ctx, resolved.Target, "plan", resolved.Manifest.Name, resolved.Manifest.Environment, nil)
+				if readErr != nil {
+					return readErr
+				}
+				var plan applicationLifecyclePlan
+				if err := json.Unmarshal(result, &plan); err != nil || plan.ContractVersion != machine.ContractVersion ||
+					plan.Application != resolved.Manifest.Name || plan.Environment != resolved.Manifest.Environment {
+					return errors.New("remote Core application plan does not match the selected application")
+				}
+				if format == outputJSON {
+					return writeJSON(out, plan)
+				}
+				fmt.Fprintf(out, "Plan for %s (%s) on Target %s\n", plan.Application, plan.Environment, resolved.Target.Name)
+				for i, action := range plan.Actions {
+					fmt.Fprintf(out, "%d. %s %s - %s\n", i+1, action.Kind, action.Resource, action.Description)
+				}
+				fmt.Fprintf(out, "Core: %s; additional providers: %d; unused providers retained: %d\n", plan.Footprint.Core, len(plan.Footprint.Additional), len(plan.Footprint.Unused))
+				fmt.Fprintln(out, "No changes were made.")
+				return nil
 			}
 			plan, err := buildResolvedApplicationPlan(ctx, resolved)
 			if err != nil {
