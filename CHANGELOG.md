@@ -10,28 +10,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- Remote workstation-to-Core onboarding experience with trusted connection profiles.
-- Editable environment-aware Target deployment policy defaults.
+- Guided Target-scoped access profile assignment and offboarding, managed user invitations through configured identity providers, and scoped team permissions.
+- Workstation onboarding and versioned connection-profile import/export; optional encrypted export of selected local credentials.
+- Independent desired, applied and observed release/component state per deployment stage, with readable version inspection.
+- Immutable deployment candidate resolution using existing OCI artifacts, registry credentials, native image-transfer paths and optional existing registry implementations.
+- Editable Target deployment-policy presets for development, test, staging and production (initial local-Target foundation).
 
 ### Changed
 
-- Local and remote application workflows share a consistent Target/management boundary; the optional Node Connector remains dedicated to remote runtime hosts.
-- More focused development checks reduce unnecessary repeat validation.
+- Local and remote operations use one installation-owned application/deployment state authority and preserve external GitOps ownership.
+- Fresh repositories can attach to registered applications using server-allocated identity; interruptions can be reconciled using persisted execution and recovery records.
+- Remote Node Connector transport, enrollment service and session handling are hardened without making Connector a workstation-to-Core prerequisite.
 
 ### Fixed
 
-- Application identity registration and lifecycle locking are safer under concurrent operations and interrupted commands.
-- Application-list and recovery errors distinguish denied access, unavailable resources and foreign ownership more accurately.
+- Lifecycle locking and registration concurrency, interrupted-operation recovery and permission/foreign-resource error classification are more robust.
+- A range of native Docker/Podman lifecycle, onboarding, CLI wizard cancellation and maintenance regressions have been corrected.
 
 ### Compatibility
 
-- Docker/Compose and rootless Podman/Quadlet remain the primary supported local runtime paths. Console, Demo and Node Connector remain separately versioned integrations.
-- Destructive changes still require explicit, consequence-specific consent; generic `--yes` is not a substitute.
-
-
-### Fixed
-
-- Authoring intent no longer requires `workload.compose` in the generated MCP `baseharbor.author` schema. `#1265` added `Workload.Compose` without a JSON tag, so the schema generator marked it required and rejected valid authoring intent that omits it. `compose` is repository-source provenance (optional per the application-contract spec); the `WorkloadConfig.Compose` field is now tagged `omitempty` so the generated intent keeps it optional while the `compose:` YAML field stays parseable.
+- Docker/Compose and rootless Podman/Quadlet remain the principal local runtime paths; separate Demo, Console and Connector releases require compatible source revisions.
+- Not-yet-qualified end-to-end onboarding, promotion and remote deployment claims must be verified before publication. No automatic migration or Kubernetes/OpenShift expansion is claimed here.
 
 ## [0.4.26]
 
