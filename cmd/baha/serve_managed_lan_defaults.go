@@ -21,7 +21,8 @@ func configureAutomaticOwnedCoreLAN(ctx context.Context, cfg *controlplaneruntim
 	if cfg == nil {
 		return errors.New("Core serving configuration is missing")
 	}
-	if cfg.RuntimeAppName != "" || strings.EqualFold(strings.TrimSpace(os.Getenv("BASEHARBOR_MANAGED_CORE_TLS")), "false") {
+	if cfg.RuntimeAppName != "" || cfg.ConnectorEnrollmentEnabled ||
+		strings.EqualFold(strings.TrimSpace(os.Getenv("BASEHARBOR_MANAGED_CORE_TLS")), "false") {
 		return nil
 	}
 	if cfg.TLSCertFile != "" || cfg.TLSKeyFile != "" || cfg.TLSClientCAFile != "" {

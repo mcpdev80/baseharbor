@@ -88,7 +88,10 @@ func ownedCoreLANEndpointPath(target string) (string, error) {
 
 func saveOwnedCoreLANEndpoint(target, listenAddr, advertisedHost, certificatePath string) error {
 	host, port, err := net.SplitHostPort(listenAddr)
-	if err != nil || port == "" || !usableNodeHost(host) || !usableNodeHost(advertisedHost) {
+	if err != nil || port == "" || !usableNodeHost(host) || !usableNodeHost(advertisedHost) ||
+		net.ParseIP(host) == nil || net.ParseIP(host).IsUnspecified() ||
+		net.ParseIP(host).IsLoopback() || net.ParseIP(host).IsLinkLocalUnicast() ||
+		net.ParseIP(host).IsMulticast() {
 		return errors.New("owned Core LAN endpoint requires a concrete listener and advertised host")
 	}
 	certPEM, err := os.ReadFile(certificatePath)

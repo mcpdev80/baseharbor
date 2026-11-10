@@ -80,7 +80,7 @@ func ensureManagedCoreLANService(ctx context.Context, target string) error {
 		unit.WriteString("Environment=" + strconv.Quote(item) + "\n")
 	}
 	unit.WriteString("ExecStart=" + strconv.Quote(binary) + " serve\n")
-	unit.WriteString("Restart=on-failure\nRestartSec=3\n")
+	unit.WriteString("Restart=always\nRestartSec=3\nRuntimeMaxSec=24h\n")
 	unit.WriteString("UMask=0077\nNoNewPrivileges=true\n")
 	unit.WriteString("\n[Install]\nWantedBy=default.target\n")
 	// Reconfiguration is always explicit and local: refuse to follow a

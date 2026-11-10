@@ -117,3 +117,22 @@ or synthetic green proof can satisfy that gate.
 
 Do not claim review readiness or end-to-end success until these acceptance
 checks are recorded at the final HEAD.
+
+## Automatic LAN HTTPS pairing (local READY Core)
+
+For a local Docker/Podman Core that is already READY, `baha onboard` now
+establishes a supervised user-level Core API service when no API URL has been
+configured. The service selects a concrete routed private IPv4 address,
+listens on 18443, issues a serverAuth leaf from the existing Core OpenBao CA,
+and stores the verified HTTPS origin under the selected installation's
+protected state root. No `BASEHARBOR_MANAGED_CORE_TLS`, API listen/public URL,
+or Node Connector configuration is required. The service restarts under
+systemd and re-evaluates its managed certificate at least once per day.
+
+A configured external/BYOC API listener and explicitly enabled Node Connector
+remain separate authority modes. An ambiguous/no private LAN route fails
+closed rather than advertising loopback, wildcard or an unverified host.
+The client import remains one-time and pinned to the transferred Core CA.
+
+Operator flow: `baha up` on the Core VM, `baha onboard` to issue a private
+invitation, transfer the file, then `baha onboard --import FILE` on the PC.

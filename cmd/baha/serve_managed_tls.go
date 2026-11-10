@@ -100,7 +100,7 @@ func prepareManagedCoreServingTLS(ctx context.Context, cfg *controlplaneruntime.
 	if mode != "" && mode != "true" {
 		return errors.New("BASEHARBOR_MANAGED_CORE_TLS must be true or false")
 	}
-	if mode != "true" && cfg != nil && !cfg.ConnectorEnrollmentEnabled && !cfg.WorkstationEnrollmentEnabled {
+	if mode != "true" && (cfg == nil || !cfg.WorkstationEnrollmentEnabled || cfg.ConnectorEnrollmentEnabled) {
 		return nil
 	}
 	if cfg == nil || cfg.RuntimeAppName != "" ||
