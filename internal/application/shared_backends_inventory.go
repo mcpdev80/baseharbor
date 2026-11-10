@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strings"
 
@@ -51,7 +52,7 @@ func ExistingSharedBackendInventoryAt(dataDir, namespace, environment string) (S
 	inventory.NetworkExternal = state.NetworkExternal
 	canonical := sharedBackendCompose(files, state)
 	actual, err := os.ReadFile(files.Compose)
-	if err != nil || !bytes.Equal(actual, []byte(canonical)) {
+	if err != nil || !sharedBackendComposeMatchesCanonical(actual, []byte(canonical)) {
 		return inventory, errors.New("shared backend runtime differs from its canonical owner shape")
 	}
 	var model struct {
@@ -114,4 +115,73 @@ func ExistingSharedBackendInventoryAt(dataDir, namespace, environment string) (S
 		return inventory.Resources[i].Kind+inventory.Resources[i].Name < inventory.Resources[j].Kind+inventory.Resources[j].Name
 	})
 	return inventory, nil
+}
+
+// sharedBackendComposeMatchesCanonical accepts the exact previous renderer
+// shape only when its sole differences are the fixed Compose user overrides
+// removed for arbitrary-UID platform compatibility. Any other drift remains
+// fail-closed. The next reconciliation writes the current canonical document.
+func sharedBackendComposeMatchesCanonical(actual, canonical []byte) bool {
+	if bytes.Equal(actual, canonical) {
+		return true
+	}
+	var observed map[string]any
+	if yaml.Unmarshal(actual, &observed) != nil {
+		return false
+	}
+	services, ok := observed["services"].(map[string]any)
+	if !ok {
+		return false
+	}
+	allowedByService := make(map[string]string, len(services))
+	for name, rawService := range services {
+		service, ok := rawService.(map[string]any)
+		if !ok {
+			return false
+		}
+		legacyUser, exists := service["user"]
+		if !exists {
+			continue
+		}
+		image, _ := service["image"].(string)
+		want, supported := legacySharedBackendUserForImage(image)
+		if !supported || fmt.Sprint(legacyUser) != want {
+			return false
+		}
+		allowedByService[name] = want
+	}
+	if len(allowedByService) == 0 {
+		return false
+	}
+	if len(allowedByService) == 0 {
+		return false
+	}
+	for name, rawService := range services {
+		service := rawService.(map[string]any)
+		if _, ok := allowedByService[name]; ok {
+			delete(service, "user")
+		}
+	}
+	var expected map[string]any
+	if yaml.Unmarshal(canonical, &expected) != nil {
+		return false
+	}
+	return reflect.DeepEqual(observed, expected)
+}
+
+func legacySharedBackendUserForImage(image string) (string, bool) {
+	switch image {
+	case PostgresUIImage:
+		return "5050:5050", true
+	case CacheUIImage:
+		return "redis", true
+	case UIProxyImage:
+		return "65532:65532", true
+	case "docker.io/library/haproxy:3.2.23-alpine":
+		return "99:99", true
+	case "docker.io/valkey/valkey:9.1.2-alpine":
+		return "999:1000", true
+	default:
+		return "", false
+	}
 }
