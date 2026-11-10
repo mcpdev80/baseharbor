@@ -1,30 +1,35 @@
 # Entwicklungsrechner mit BaseHarbor Core verbinden
 
-Diese Anleitung gilt, wenn Core auf einem anderen Rechner läuft. Der Entwicklungsrechner verbindet sich direkt mit Core. Den Node Connector brauchst du nur für zusätzliche entfernte Runtime-Hosts.
+Core läuft auf einem Rechner, die Entwicklung auf einem anderen. Der Entwickler-PC verbindet sich direkt mit Core. Dafür ist kein Node Connector nötig.
 
-## 1. Core einrichten
+## Auf der Core-VM
 
-Installiere BaseHarbor auf dem Core-Host und führe aus:
+Installiere BaseHarbor und führe aus:
 
 ```bash
-baha up --control-plane-only
-baha onboard --init-tenant
+baha up
+baha onboard
 ```
 
-Schließe die Anmeldung als Operator ab und richte einen erreichbaren, TLS-geschützten Management-Endpunkt ein.
+`baha onboard` erstellt eine kurzzeitig gültige Einladungsdatei, die nur einmal verwendet werden kann. Übertrage sie sicher auf den Entwickler-PC und behandle ihren Inhalt vertraulich.
 
-## 2. Entwicklungsrechner verbinden
+## Auf dem Entwickler-PC
 
-Installiere `baha` auf dem Entwicklungsrechner und führe aus:
+Installiere die `baha`-CLI und importiere die Einladung:
 
 ```bash
-baha onboard
+baha onboard --import /pfad/zur/einladung.json
+```
+
+BaseHarbor prüft die Identität des Core, erstellt den privaten Geräteschlüssel auf dem Entwickler-PC und richtet das Remote-Target ein.
+
+Prüfe anschließend das ausgewählte Target:
+
+```bash
 baha target show
 ```
 
-Folge dem Dialog, um dich mit dem vorhandenen Core zu verbinden. Gegebenenfalls benötigst du ein vertrauenswürdiges Enrollment-Bundle. Eine bereits geprüfte Verbindung wird wiederverwendet.
-
-## 3. Anwendung starten
+## Anwendung starten
 
 Öffne das Anwendungs-Repository und führe aus:
 
@@ -36,4 +41,4 @@ baha up
 baha status
 ```
 
-Weitere Optionen und Hinweise zur Wiederherstellung findest du unter [Target-Befehle](../cli/targets.md) und [Sicherheit](../cli/security-trust.md).
+Weitere Optionen und Fehlerbehebung findest du unter [Target-Befehle](../cli/targets.md) und [Sicherheit](../cli/security-trust.md).
