@@ -53,6 +53,7 @@ func workstationDeviceMiddleware(pool *pgxpool.Pool, caFile string, revocation w
 		}
 		path := r.URL.Path
 		if !(path == "/api/v1/management/installation" && r.Method == http.MethodGet) &&
+			!(path == "/api/v1/workstations/renew" && r.Method == http.MethodPost) &&
 			!strings.HasPrefix(path, "/api/v1/machine/") {
 			http.Error(w, "workstation identity cannot access this operator endpoint", http.StatusForbidden)
 			return
