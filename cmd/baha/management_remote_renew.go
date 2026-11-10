@@ -192,7 +192,8 @@ func renewRemoteWorkstationIdentity(ctx context.Context, client *http.Client, pr
 	pubOwn, err := x509.MarshalPKIXPublicKey(&key.PublicKey)
 	if err != nil || !bytes.Equal(pubNew, pubOwn) || len(leaf.URIs) != 1 ||
 		leaf.URIs[0] == nil || leaf.URIs[0].String() != scope.Identity() ||
-		leaf.IsCA || leaf.SerialNumber.Cmp(old.SerialNumber) == 0 ||
+		leaf.IsCA || strings.TrimLeft(strings.ReplaceAll(strings.ToLower(reply.Serial), ":", ""), "0") != strings.TrimLeft(leaf.SerialNumber.Text(16), "0") ||
+		leaf.SerialNumber.Cmp(old.SerialNumber) == 0 ||
 		leaf.NotAfter.Sub(reply.ExpiresAt) > time.Second ||
 		reply.ExpiresAt.Sub(leaf.NotAfter) > time.Second {
 		_ = staged.Close()
