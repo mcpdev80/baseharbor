@@ -975,7 +975,7 @@ jobs:
           python3 scripts/test_ci_keycloak_single_route.py
           python3 scripts/test_pr_ci_fallback.py
           python3 scripts/test_pr_unit_database_route.py
-           python3 scripts/test_pr_go_unit_shard.py
+          python3 scripts/test_pr_go_unit_shard.py
           python3 scripts/test_pr_runtime_source.py
           python3 scripts/test_pr_gate_dependencies.py
           python3 scripts/test_pr_incremental_reuse.py
