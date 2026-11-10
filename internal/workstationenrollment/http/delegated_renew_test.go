@@ -11,7 +11,6 @@ import (
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/tenancy"
-	wshttp "github.com/mcpdev80/baseharbor/internal/workstationenrollment/http"
 )
 
 func deviceRenewRequest(t *testing.T, station, certificateStation, contextStation string) *http.Request {
@@ -76,4 +75,3 @@ func TestDeviceRenewRefusesOperatorContextAndMissingMTLS(t *testing.T) {
 	}
 }
 
-var _ = (*wshttp.ProductionHandler)(nil).ServeDeviceRenew
