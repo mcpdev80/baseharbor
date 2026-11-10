@@ -1372,7 +1372,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [cli, database, other]
+        shard: [cli-0, cli-1, cli-2, packages]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -1402,7 +1402,7 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
-      - name: Test impacted packages in their existing domain
+      - name: Reuse canonical CLI shards and test selected non-CLI packages
         shell: bash
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
@@ -1421,7 +1421,10 @@ jobs:
             esac
           done
           if [ "$module_changed" = true ]; then
-            if [ "$SHARD" = other ]; then go test -p 1 ./... -count=1; fi
+            case "$SHARD" in
+              cli-0|cli-1|cli-2) python3 scripts/pr-go-unit-shard.py --mode "$SHARD" ;;
+              packages) python3 scripts/pr-go-unit-shard.py --mode packages ;;
+            esac
             exit 0
           fi
           if [ "${#files[@]}" -eq 0 ]; then
@@ -1430,19 +1433,28 @@ jobs:
           fi
           mapfile -t selected < <(python3 scripts/pr-draft-go-packages.py "${files[@]}")
           test "${#selected[@]}" -gt 0
-          owned=()
-          for package in "${selected[@]}"; do
-            case "$package" in
-              ./cmd/baha) domain=cli ;;
-              ./internal/database|./internal/workstationenrollment/http) domain=database ;;
-              *) domain=other ;;
-            esac
-            if [ "$domain" = "$SHARD" ]; then owned+=("$package"); fi
-          done
-          if [ "${#owned[@]}" -eq 0 ]; then
-            echo "No impacted packages in $SHARD domain."
-            exit 0
-          fi
-          printf 'Selected packages for %s:\n' "$SHARD"
-          printf '%s\n' "${owned[@]}"
-          go test -p 1 "${owned[@]}" -count=1
+          case "$SHARD" in
+            cli-0|cli-1|cli-2)
+              for package in "${selected[@]}"; do
+                if [ "$package" = ./cmd/baha ]; then
+                  python3 scripts/pr-go-unit-shard.py --mode "$SHARD"
+                  exit 0
+                fi
+              done
+              echo "CLI not impacted; skipping $SHARD."
+              ;;
+            packages)
+              owned=()
+              for package in "${selected[@]}"; do
+                if [ "$package" != ./cmd/baha ]; then owned+=("$package"); fi
+              done
+              if [ "${#owned[@]}" -eq 0 ]; then
+                echo "No impacted non-CLI Go packages."
+                exit 0
+              fi
+              printf 'Selected non-CLI packages:\n'
+              printf '%s\n' "${owned[@]}"
+              go test -p 1 "${owned[@]}" -count=1
+              ;;
+            *) echo "Unsupported draft shard $SHARD" >&2; exit 2 ;;
+          esac
