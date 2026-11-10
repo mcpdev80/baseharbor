@@ -70,6 +70,7 @@ nav:
   - Target-Konzepte: explanation/targets.md
   - Target-Befehle: cli/targets.md
   - Developer-Zugriff: how-to/developer-access.md
+  - Entfernter Entwicklungsrechner: how-to/remote-workstation.md
 - Provider:
   - Provider-Modell: explanation/providers.md
   - Provider-Befehle: cli/providers.md
