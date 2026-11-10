@@ -721,6 +721,14 @@ func tenantResolvedForTarget(targetName string) (deployment.ResolvedTarget, bool
 	if resolved.TenantID == "" {
 		return resolved, false, true, nil
 	}
+	// A Core-owned local Target legitimately has a TenantID after first-owner
+	// onboarding. That tenant identity does not make it a Connector-managed
+	// Target: retain the real installation-owner check rather than attempting
+	// to validate a non-existent Connector enrollment. Other non-Connector
+	// providers still fail closed through the scope-error path below.
+	if resolved.AccessProvider == "local" {
+		return resolved, false, true, nil
+	}
 	scope, scopeErr := connectorScopeForTarget(resolved)
 	if scopeErr != nil {
 		// Do NOT collapse this into (isTenant=false, ok=true): a tenant whose
