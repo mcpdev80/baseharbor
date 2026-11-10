@@ -249,7 +249,16 @@ func (e *bahaMachineExecutor) executeHTTPUpdate(
 			Next:        "Provide backup_password_file or explicitly set no_backup=true.",
 		}
 	}
-	args := machineApplicationArgs(name, input.Environment)
+	// Local Git update works on a checked-out repository, never on an
+	// uploaded workstation snapshot. Refuse unsupported remote sources before
+	// running the local update parser or attempting a Git fetch.
+	if _, err := inspectGitApplicationUpdate(ctx, resolved.repositoryRoot(), false); err != nil {
+		return nil, machine.Wrap(machine.ErrorUnsupported, err,
+			"Remote app update requires a Core-owned Git worktree. For uploaded Compose sources, submit a new verified source candidate with app apply.", false)
+	}
+	// Name is an authenticated selector, not a positional option of the
+	// repository-local Git update command.
+	args := machineApplicationArgs("", input.Environment)
 	if passwordFile := strings.TrimSpace(input.BackupPasswordFile); passwordFile != "" {
 		args = append(args, "--backup-password-file", passwordFile)
 	}
