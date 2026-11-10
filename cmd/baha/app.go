@@ -112,6 +112,14 @@ func createTargetManagedApplication(ctx context.Context, m application.Manifest,
 			return "", fmt.Errorf("retain immutable Core source selection: %w", err)
 		}
 	}
+	// The authored source deliberately omits the system-owned ApplicationID.
+	// Retain the Core-assigned identity beside it so subsequent read-only
+	// lifecycle resolution never attempts to initialize a second identity.
+	owner := application.Store{Root: filepath.Join(sourceRoot, ".baseharbor", "apps")}
+	if _, err := owner.Sync(m); err != nil {
+		_ = os.RemoveAll(root)
+		return "", fmt.Errorf("retain Core-owned application identity: %w", err)
+	}
 	intent, err := json.Marshal(m)
 	if err != nil {
 		_ = os.RemoveAll(root)
