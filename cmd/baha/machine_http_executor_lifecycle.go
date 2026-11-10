@@ -3,12 +3,14 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/applicationlifecycle"
 	"github.com/mcpdev80/baseharbor/internal/development"
+	"github.com/mcpdev80/baseharbor/internal/delivery"
 	"github.com/mcpdev80/baseharbor/internal/machine"
 	"github.com/mcpdev80/baseharbor/internal/machinehttp"
 )
@@ -173,6 +175,20 @@ func (e *bahaMachineExecutor) executeHTTPApply(
 
 	reportHTTPProgress(report, "apply", "Converging desired application state.", 35)
 	if err := executeApplicationApplyLifecycle(ctx, e.store, args, io.Discard, io.Discard); err != nil {
+		if errors.Is(err, errConsentRequiredForCandidateSubmission) {
+			// The first attempt is a read-only consent discovery: no pending
+			// deployment was written. Return the exact Core-side candidate hash
+			// so a human or automation can explicitly authorize a second attempt.
+			submission, _ := candidateSubmissionForResolvedApp(ctx, resolved)
+			if hash := delivery.CandidateConsentDigest(submission); hash != "" {
+				return nil, &machine.Error{
+					Code:      machine.ErrorApprovalRequired,
+					CauseCode: "candidate_confirmation_required",
+					Message:   "Core requires explicit confirmation of this exact application source candidate.",
+					Next:      "Re-run baha app apply " + input.Name + " --environment " + input.Environment + " --confirm-candidate " + hash,
+				}
+			}
+		}
 		return nil, coreHTTPApplyStageError("execute lifecycle", err)
 	}
 	reportHTTPProgress(report, "verify", "Verifying application readiness.", 85)
