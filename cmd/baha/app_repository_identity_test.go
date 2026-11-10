@@ -143,3 +143,41 @@ func TestProviderPreflightRevalidatesUploadedSourceWithCoreOwnedIdentity(t *test
 		})
 	}
 }
+
+func TestVerifiedHTTPSourceProviderPreflightUsesSameCoreIdentityProjection(t *testing.T) {
+	target := configureTestTarget(t)
+	selection := minimalRepositorySelection(t)
+	m := application.WithWorkloadComponents(application.New("plain", "dev", false, false, false), "api")
+	root, err := deployment.TargetStateRoot(target.Name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolved := resolvedApplication{}
+	resolved.Target = target
+	resolved.TargetStateRoot = root
+	resolved.Manifest = m
+	resolved.DeploymentIdentity = deployment.DeploymentIdentity{
+		Target: target.Name,
+		ApplicationID: m.ApplicationID,
+		Application: m.Name,
+		Environment: m.Environment,
+	}
+	prepared, err := prepareVerifiedHTTPSource(context.Background(), resolved, selection)
+	if err != nil {
+		t.Fatalf("Core rejected its own verified uploaded source: %v", err)
+	}
+	if prepared.Manifest.ApplicationID != m.ApplicationID || !prepared.FromRepository || !prepared.SourceAvailable {
+		t.Fatalf("prepared source lost the authorized Core identity: %+v", prepared)
+	}
+	if err := revalidateApplicationProviderIntent(context.Background(), prepared); err != nil {
+		t.Fatalf("identical uploaded source was rejected as stale provider consent: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(selection.RepositoryRoot, ".baseharbor")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("source normalization wrote workstation-owned identity state: %v", err)
+	}
+	foreign := selection
+	foreign.Manifest.Name = "foreign"
+	if _, err := prepareVerifiedHTTPSource(context.Background(), resolved, foreign); err == nil {
+		t.Fatal("foreign source was accepted as the registered Core application")
+	}
+}
