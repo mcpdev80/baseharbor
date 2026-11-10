@@ -98,3 +98,46 @@ func TestMinimalInitializationRejectsCorruptTargetBeforeAllocating(t *testing.T)
 		t.Fatalf("corrupt Target allocated identity: %v", err)
 	}
 }
+
+func TestProviderPreflightRevalidatesUploadedSourceWithCoreOwnedIdentity(t *testing.T) {
+	target := configureTestTarget(t)
+	selection := minimalRepositorySelection(t)
+	// This resembles an immutable workstation upload: authored YAML has no
+	// machine-owned ID and no local Core identity store in its source root.
+	if selection.Manifest.ApplicationID != "" {
+		t.Fatal("authored fixture unexpectedly claims an application identity")
+	}
+	owned := application.WithWorkloadComponents(application.New("plain", "dev", false, false, false), "api")
+	resolved := resolvedApplication{
+		Target: target,
+		Manifest: owned,
+		DeploymentIdentity: deployment.DeploymentIdentity{
+			Target: target.Name, ApplicationID: owned.ApplicationID,
+			Application: owned.Name, Environment: owned.Environment,
+		},
+	}
+	bound, err := bindAuthoritativeProviderRevalidationIdentity(resolved, selection)
+	if err != nil || bound.Manifest.ApplicationID != owned.ApplicationID {
+		t.Fatalf("Core-owned source identity was not preserved: %+v, %v", bound.Manifest, err)
+	}
+	validated, err := resolveRepositoryLifecycleIntent(context.Background(), target, bound, "plan")
+	if err != nil || validated.Manifest.ApplicationID != owned.ApplicationID {
+		t.Fatalf("read-only Core source preflight lost the identity: %+v, %v", validated.Manifest, err)
+	}
+	if _, err := os.Stat(filepath.Join(selection.RepositoryRoot, ".baseharbor")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("read-only source validation created local identity state: %v", err)
+	}
+	for name, mutate := range map[string]func(*application.RepositoryEnvironmentSelection){
+		"foreign-application": func(s *application.RepositoryEnvironmentSelection) { s.Manifest.Name = "foreign" },
+		"foreign-environment": func(s *application.RepositoryEnvironmentSelection) { s.Manifest.Environment = "prod" },
+		"foreign-identity": func(s *application.RepositoryEnvironmentSelection) { s.Manifest.ApplicationID = application.MustNewApplicationID() },
+	} {
+		t.Run(name, func(t *testing.T) {
+			foreign := selection
+			mutate(&foreign)
+			if _, err := bindAuthoritativeProviderRevalidationIdentity(resolved, foreign); err == nil {
+				t.Fatal("provider source revalidation admitted foreign ownership")
+			}
+		})
+	}
+}
