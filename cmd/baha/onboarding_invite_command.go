@@ -68,7 +68,10 @@ func runOnboardInvite(ctx context.Context, args []string, out io.Writer) error {
 		}
 	}
 	if coreURL == "" {
-		return errors.New("Core LAN HTTPS address is not discoverable; set BASEHARBOR_API_PUBLIC_URL to the existing managed serve URL")
+		coreURL, err = loadOwnedCoreLANEndpoint(target.Name)
+		if err != nil {
+			return fmt.Errorf("managed Core LAN HTTPS endpoint not yet available: %w", err)
+		}
 	}
 	if outputFile == "" {
 		root, err := deployment.DataRoot()
