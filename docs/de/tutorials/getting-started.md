@@ -42,7 +42,7 @@ baha login -e dev --init-tenant
 baha whoami -e dev
 ```
 
-Das ist nicht der gewöhnliche Trusted-Local-Application-Start. Vor dem Enrollment müssen Issuer und Audience der geschützten Operator-API zum Operator-Realm/-Client passen. Siehe [Erst-Owner-Einrichtung und Connector-Ablauf](../cli/security-trust.md). PR #1437 ist noch nicht released oder nativ abgenommen.
+Das ist nicht der gewöhnliche Trusted-Local-Application-Start. Vor dem Enrollment müssen Issuer und Audience der geschützten Operator-API zum Operator-Realm/-Client passen. Siehe [Erst-Owner-Einrichtung und Connector-Ablauf](../cli/security-trust.md). Der Erst-Owner wird ausdrücklich und getrennt vom Application-Start eingerichtet.
 
 ## Konkretes Beispiel: Go-API mit SQL
 
