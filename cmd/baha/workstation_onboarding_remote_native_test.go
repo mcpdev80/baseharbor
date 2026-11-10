@@ -121,8 +121,12 @@ func TestWorkstationOnboardingRemoteNativeInCI(t *testing.T) {
 		}
 		manifest := application.WithWorkloadComponents(application.New("onboard-native", "dev", false, false, false), "api")
 		mustWriteInitializedAuthoredManifest(t, "baseharbor.yaml", manifest)
+		// A fresh Core has no registered application. Registration is a
+		// separate, authoritative machine operation; local repository files
+		// must never be mistaken for an existing remote deployment receipt.
+		// Exercise the complete real lifecycle, including initial creation.
 		for _, args := range [][]string{
-			{"app", "plan", "onboard-native"},
+			{"app", "create", "onboard-native", "--environment", "dev"},
 			{"app", "apply", "onboard-native", "--environment", "dev"},
 			{"app", "status", "onboard-native", "--environment", "dev"},
 			{"app", "update", "onboard-native", "--no-backup"},
