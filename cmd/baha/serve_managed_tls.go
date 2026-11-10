@@ -24,6 +24,21 @@ import (
 func managedCoreTLSEndpoints(cfg controlplaneruntime.Config) (string, string, error) {
 	apiRaw := strings.TrimSpace(os.Getenv("BASEHARBOR_API_PUBLIC_URL"))
 	connectorRaw := strings.TrimSpace(os.Getenv("BASEHARBOR_CONNECTOR_PUBLIC_ADDRESS"))
+	if apiRaw == "" {
+		host, port, err := net.SplitHostPort(cfg.ListenAddr)
+		if err == nil && usableNodeHost(host) && !strings.HasSuffix(strings.ToLower(host), ".localhost") {
+			apiRaw = "https://" + net.JoinHostPort(host, port)
+		}
+	}
+	if connectorRaw == "" && cfg.ConnectorEnrollmentEnabled {
+		host, _, err := net.SplitHostPort(cfg.ListenAddr)
+		if err == nil {
+			_, port, err := net.SplitHostPort(cfg.ConnectorListenAddr)
+			if err == nil && usableNodeHost(host) {
+				connectorRaw = net.JoinHostPort(host, port)
+			}
+		}
+	}
 	if apiRaw == "" || (cfg.ConnectorEnrollmentEnabled && connectorRaw == "") {
 		return "", "", errors.New("managed Core LAN TLS requires the advertised API URL and, only when enabled, the Connector address")
 	}
