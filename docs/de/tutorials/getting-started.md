@@ -32,6 +32,8 @@ und App-Footprint unterscheiden Messung, Schätzung und unbekannte Werte.
 Die [Application-Befehle](../cli/applications.md) beschreiben unterstützten
 Core-losen Betrieb und seine Grenzen.
 
+Für einen getrennten Entwicklungsrechner mit entferntem Core siehe [Entwicklungsrechner anbinden](../how-to/remote-workstation.md).
+
 ## Optional: Ersten Operator für Remote-Management einrichten
 
 Für die Connector-Einschreibung den ersten Operator **lokal auf dem Management-Core** initialisieren, nicht auf dem Remote-Node:
