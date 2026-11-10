@@ -20,8 +20,8 @@ func TestSignedCRLFallbackVerifiesFreshnessIssuerAndRevocations(t *testing.T) {
 	}
 	now := time.Now().UTC()
 	caTemplate := &x509.Certificate{
-		SerialNumber: big.NewInt(1),
-		Subject: pkix.Name{CommonName: "Test OpenBao CA"},
+		SerialNumber:          big.NewInt(1),
+		Subject:               pkix.Name{CommonName: "Test OpenBao CA"},
 		NotBefore:             now.Add(-time.Hour),
 		NotAfter:              now.Add(24 * time.Hour),
 		IsCA:                  true,
@@ -41,14 +41,14 @@ func TestSignedCRLFallbackVerifiesFreshnessIssuerAndRevocations(t *testing.T) {
 		t.Helper()
 		der, err := x509.CreateRevocationList(rand.Reader, template, ca, key)
 		if err != nil {
-		t.Fatal(err)
-	}
+			t.Fatal(err)
+		}
 		encoded, err := json.Marshal(map[string]any{"data": map[string]string{
 			"certificate": string(pem.EncodeToMemory(&pem.Block{Type: "X509 CRL", Bytes: der})),
 		}})
 		if err != nil {
-		t.Fatal(err)
-	}
+			t.Fatal(err)
+		}
 		return string(encoded)
 	}
 	base := &x509.RevocationList{
