@@ -1,6 +1,4 @@
-# Core-Workflow
-
-Den ersten Operator/Tenant initialisiert man nach `baha up --control-plane-only` **explizit** mit `baha login -e dev --init-tenant` auf dem eigenen lokalen Core. Siehe [Security-/Trust-Befehle](security-trust.md). Kandidat PR #1437 ist noch nicht abgenommen; normales `baha up` vergibt keinen Erst-Owner automatisch.
+Den ersten Operator/Tenant initialisiert man nach `baha up --control-plane-only` **explizit** mit `baha login -e dev --init-tenant` auf dem eigenen lokalen Core. Siehe [Security-/Trust-Befehle](security-trust.md). Normales `baha up` vergibt keinen Erst-Owner automatisch.
 
 # Core-Workflow
 
