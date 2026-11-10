@@ -43,6 +43,7 @@ type enrollReply struct {
 	LeafPEM        string    `json:"leaf_pem"`
 	TrustPEM       string    `json:"trust_pem"`
 	ExpiresAt      time.Time `json:"expires_at"`
+	At             time.Time `json:"at"`
 }
 
 // Redeem executes only the one-use enrollment exchange using a grant minted
