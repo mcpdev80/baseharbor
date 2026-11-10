@@ -119,7 +119,7 @@ func Redeem(ctx context.Context, b Bundle, now time.Time) (EnrolledIdentity, err
 		return zero, fmt.Errorf("%w: trailing enrollment response", ErrInvalid)
 	}
 	if reply.InstallationID != b.InstallationID || reply.Station != b.Station ||
-		reply.Serial == "" || !reply.ExpiresAt.After(now) || reply.ExpiresAt.After(now.Add(24*time.Hour)) {
+		reply.Serial == "" || !reply.ExpiresAt.After(now) || reply.ExpiresAt.After(now.Add(ws.MaxCertificateTTL)) {
 		return zero, fmt.Errorf("%w: Core enrollment identity mismatch", ErrInvalid)
 	}
 	block, rest := pem.Decode([]byte(reply.LeafPEM))

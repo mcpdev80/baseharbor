@@ -23,6 +23,7 @@ import (
 func testCoreServer(t *testing.T, tamper bool, mode ...string) (*httptest.Server, Bundle) {
 	t.Helper()
 	now := time.Now().UTC()
+	longLived := len(mode) > 0 && mode[0] == "five-years"
 	caKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		t.Fatal(err)
@@ -31,6 +32,9 @@ func testCoreServer(t *testing.T, tamper bool, mode ...string) (*httptest.Server
 		SerialNumber: big.NewInt(1), Subject: pkix.Name{CommonName: "onboard test CA"},
 		NotBefore: now.Add(-time.Minute), NotAfter: now.Add(time.Hour),
 		IsCA: true, BasicConstraintsValid: true, KeyUsage: x509.KeyUsageCertSign,
+	}
+	if longLived {
+		caTemplate.NotAfter = now.Add(6 * 365 * 24 * time.Hour)
 	}
 	caDer, err := x509.CreateCertificate(rand.Reader, caTemplate, caTemplate, &caKey.PublicKey, caKey)
 	if err != nil {
@@ -118,6 +122,9 @@ func testCoreServer(t *testing.T, tamper bool, mode ...string) (*httptest.Server
 			return
 		}
 		exp := now.Add(time.Hour).Truncate(time.Second)
+		if longLived {
+			exp = now.Add(5 * 365 * 24 * time.Hour).Truncate(time.Second)
+		}
 		serial := big.NewInt(33)
 		if tamper {
 			uri, _ = url.Parse("spiffe://baseharbor/workstations/" + b.InstallationID + "/foreign")
@@ -163,6 +170,17 @@ func TestRedeemOneUseCSRAndRejectReplay(t *testing.T) {
 	}
 	if _, err := Redeem(context.Background(), b, time.Now()); err == nil {
 		t.Fatal("one-use invitation replay succeeded")
+	}
+}
+
+func TestRedeemAcceptsFiveYearWorkstationCertificate(t *testing.T) {
+	_, b := testCoreServer(t, false, "five-years")
+	identity, err := Redeem(context.Background(), b, time.Now())
+	if err != nil {
+		t.Fatalf("five-year workstation enrollment denied: %v", err)
+	}
+	if identity.ExpiresAt.Before(time.Now().Add(5*365*24*time.Hour - time.Minute)) {
+		t.Fatalf("five-year workstation certificate expires too early: %s", identity.ExpiresAt)
 	}
 }
 
