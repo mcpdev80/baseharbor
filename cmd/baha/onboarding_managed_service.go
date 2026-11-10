@@ -37,6 +37,14 @@ func ensureManagedCoreLANService(ctx context.Context, target string) error {
 	if err != nil {
 		return err
 	}
+	if os.Getenv("BASEHARBOR_ONBOARDING_NATIVE_ACCEPTANCE") == "1" {
+		// Native CI builds the actual CLI before running the Go test binary.
+		// A test runner must never become a persistent systemd service.
+		binary = strings.TrimSpace(os.Getenv("BASEHARBOR_CI_BAHA_BINARY"))
+		if binary == "" {
+			return errors.New("native onboarding requires the built BaseHarbor CLI binary")
+		}
+	}
 	binary, err = filepath.EvalSymlinks(binary)
 	if err != nil {
 		return err
