@@ -126,7 +126,7 @@ func TestWorkstationOnboardingRemoteNativeInCI(t *testing.T) {
 		// must never be mistaken for an existing remote deployment receipt.
 		// Exercise the complete real lifecycle, including initial creation.
 		for _, args := range [][]string{
-			{"app", "create", "onboard-native", "--environment", "dev"},
+			{"app", "create", "onboard-native", "--environment", "dev", "--workload-component", "api"},
 			{"app", "apply", "onboard-native", "--environment", "dev"},
 			{"app", "status", "onboard-native", "--environment", "dev"},
 			{"app", "update", "onboard-native", "--no-backup"},
