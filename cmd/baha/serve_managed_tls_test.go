@@ -35,6 +35,9 @@ func TestManagedCoreLANServingTLSEndpoints(t *testing.T) {
 		{"localhost pseudo-domain", cfg, "https://auth.baha.localhost:8443", "192.168.6.178:9443"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			if strings.Contains(tc.name, "connector") {
+				tc.cfg.ConnectorEnrollmentEnabled = true
+			}
 			t.Setenv("BASEHARBOR_API_PUBLIC_URL", tc.api)
 			t.Setenv("BASEHARBOR_CONNECTOR_PUBLIC_ADDRESS", tc.node)
 			if _, _, err := managedCoreTLSEndpoints(tc.cfg); err == nil {
