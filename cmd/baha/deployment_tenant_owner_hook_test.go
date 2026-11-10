@@ -215,3 +215,52 @@ func deploymentStatePath(t *testing.T, target, deploymentID string) string {
 	}
 	return filepath.Join(root, "deployments", deploymentID, "deployment.json")
 }
+
+func TestTenantBoundLocalCoreUsesRealInstallationOwnerWithoutConnector(t *testing.T) {
+	t.Setenv("BASEHARBOR_STATE_DIR", "")
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
+	const name = "core-owner-with-tenant"
+	cfg := deployment.Config{
+		Version:       deployment.ConfigVersion,
+		DefaultTarget: name,
+		Access: map[string]deployment.AccessDefinition{
+			"local": {Provider: "local", Reference: "local"},
+		},
+		Targets: map[string]deployment.TargetDefinition{
+			name: {
+				TenantID: "11111111-1111-4111-8111-111111111111",
+				Runtime:  deployment.RuntimeDefinition{Provider: "docker"},
+				Access:   deployment.TargetAccess{Reference: "local"},
+				Scope:    "local",
+			},
+		},
+	}
+	if err := cfg.Save(); err != nil {
+		t.Fatal(err)
+	}
+	record := deployment.DeploymentRecord{
+		Version: deployment.DeploymentRecordVersion,
+		Identity: deployment.DeploymentIdentity{
+			DeploymentID: "22222222-2222-4222-8222-222222222222",
+			ApplicationID: application.MustNewApplicationID(),
+			Target: name,
+			Application: "tenant-local-core-app",
+			Environment: "dev",
+		},
+		Source: deployment.DeploymentSource{Kind: "managed"},
+		Applied: deployment.AppliedDeployment{RuntimeProvider: "docker"},
+	}
+	// Tenant presence must never bypass Core ownership while it is missing.
+	if err := deployment.SaveDeploymentRecord(record); err == nil {
+		t.Fatal("tenant ID bypassed absent local Core installation ownership")
+	}
+	seedBootInstallation(t, name, "docker")
+	if err := deployment.SaveDeploymentRecord(record); err != nil {
+		t.Fatalf("genuine tenant-bound local Core owner refused without Connector: %v", err)
+	}
+	if _, err := deployment.LoadDeploymentRecord(record.Identity); err != nil {
+		t.Fatalf("tenant-bound local Core record was not readable: %v", err)
+	}
+}
