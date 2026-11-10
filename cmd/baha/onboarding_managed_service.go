@@ -52,15 +52,16 @@ func ensureManagedCoreLANService(ctx context.Context, target string) error {
 	if info, err := os.Stat(binary); err != nil || !info.Mode().IsRegular() {
 		return errors.New("installed BaseHarbor CLI executable is unavailable")
 	}
-	configHome := os.Getenv("XDG_CONFIG_HOME")
-	if configHome == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return err
-		}
-		configHome = filepath.Join(home, ".config")
+	// The systemd user manager resolves unit files from the account's
+	// standard configuration directory, not from the caller's temporary
+	// XDG_CONFIG_HOME (used by isolated onboarding/native test fixtures).
+	// Preserve XDG_CONFIG_HOME in the unit environment for BaseHarbor state,
+	// but install the unit where systemctl --user actually searches for it.
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return err
 	}
-	unitDir := filepath.Join(configHome, "systemd", "user")
+	unitDir := filepath.Join(home, ".config", "systemd", "user")
 	if err := os.MkdirAll(unitDir, 0o700); err != nil {
 		return err
 	}
