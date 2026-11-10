@@ -6,6 +6,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.4.27]
+
+### Added
+
+- Remote workstation-to-Core onboarding experience with trusted connection profiles.
+- Editable environment-aware Target deployment policy defaults.
+
+### Changed
+
+- Local and remote application workflows share a consistent Target/management boundary; the optional Node Connector remains dedicated to remote runtime hosts.
+- More focused development checks reduce unnecessary repeat validation.
+
+### Fixed
+
+- Application identity registration and lifecycle locking are safer under concurrent operations and interrupted commands.
+- Application-list and recovery errors distinguish denied access, unavailable resources and foreign ownership more accurately.
+
+### Compatibility
+
+- Docker/Compose and rootless Podman/Quadlet remain the primary supported local runtime paths. Console, Demo and Node Connector remain separately versioned integrations.
+- Destructive changes still require explicit, consequence-specific consent; generic `--yes` is not a substitute.
+
+
 ### Fixed
 
 - Authoring intent no longer requires `workload.compose` in the generated MCP `baseharbor.author` schema. `#1265` added `Workload.Compose` without a JSON tag, so the schema generator marked it required and rejected valid authoring intent that omits it. `compose` is repository-source provenance (optional per the application-contract spec); the `WorkloadConfig.Compose` field is now tagged `omitempty` so the generated intent keeps it optional while the `compose:` YAML field stays parseable.
