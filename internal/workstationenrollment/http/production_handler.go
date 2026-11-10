@@ -301,6 +301,7 @@ func (h *ProductionHandler) ServeDeviceRenew(w http.ResponseWriter, r *http.Requ
 	scope := ws.Scope{TenantID: tenant.TenantID, Station: station}
 	if req.Station != station || scope.Validate() != nil ||
 		len(r.TLS.PeerCertificates[0].URIs) != 1 ||
+		r.TLS.PeerCertificates[0].URIs[0] == nil ||
 		r.TLS.PeerCertificates[0].URIs[0].String() != scope.Identity() {
 		writeError(w, http.StatusForbidden, ws.ErrDenied)
 		return
