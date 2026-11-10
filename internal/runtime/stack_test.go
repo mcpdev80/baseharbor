@@ -373,8 +373,9 @@ func TestEmbeddedComposeUsesNativeTLSFromFirstStart(t *testing.T) {
 		`"basebackup":{"checkpoint":"fast"}`,
 		"SSL_CERTIFICATE_FILE: /run/baseharbor/tls/server-cert.pem",
 		"SSL_PRIVATE_KEY_FILE: /run/baseharbor/tls-runtime/server-key.pem",
-		"install -d -o postgres -g postgres -m 0700 /run/baseharbor/tls-runtime",
-		"install -o postgres -g postgres -m 0600 /run/baseharbor/tls-source/server-key.pem /run/baseharbor/tls-runtime/server-key.pem",
+		"mkdir -p /run/baseharbor/tls-runtime",
+		"chmod 0600 /run/baseharbor/tls-runtime/server-key.pem /run/baseharbor/tls-runtime/etcd-client-key.pem",
+		"if [ \"$$(id -u)\" = 0 ]; then chown postgres:postgres /run/baseharbor/tls-runtime/server-key.pem /run/baseharbor/tls-runtime/etcd-client-key.pem; fi",
 		`until /bin/sh /run/baseharbor/openbao-init.sh; do`,
 		`attempts=$$((attempts+1))`,
 		`if [ "$${attempts}" -ge 90 ]; then`,
@@ -524,8 +525,6 @@ func TestDataDirKeepsExplicitOverrideSelfContained(t *testing.T) {
 func TestEmbeddedComposeRunsControlPlaneServicesUnprivileged(t *testing.T) {
 	text := string(composeYAML)
 	for _, want := range []string{
-		"user: \"99:99\"",
-		"user: \"100\"",
 		"SKIP_CHOWN: \"1\"",
 		"/openbao/config:rw,noexec,nosuid,nodev,mode=1777",
 		"read_only: true",

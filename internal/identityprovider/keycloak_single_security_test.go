@@ -24,14 +24,16 @@ func TestKeycloakSinglePostgresStartsWithoutPrivilegedEntrypoint(t *testing.T) {
 		t.Fatal(err)
 	}
 	db := compose.Services["keycloak-db"]
-	if db.User != "postgres" || !db.ReadOnly || len(db.CapDrop) != 1 || db.CapDrop[0] != "ALL" || len(db.SecurityOpt) != 1 || db.SecurityOpt[0] != "no-new-privileges:true" {
-		t.Fatalf("single Keycloak SQL lost non-root confinement: %+v", db)
+	if db.User != "" || !db.ReadOnly || len(db.CapDrop) != 1 || db.CapDrop[0] != "ALL" || len(db.SecurityOpt) != 1 || db.SecurityOpt[0] != "no-new-privileges:true" {
+		t.Fatalf("single Keycloak SQL must leave UID assignment to the runtime and remain confined: %+v", db)
 	}
 	if db.Environment["PGDATA"] != "/var/lib/postgresql/18/docker" || len(db.Tmpfs) != 2 {
 		t.Fatal("non-root PostgreSQL data/scratch contract missing")
 	}
-	init := compose.Services["keycloak-db-tls-init"]
-	if !strings.Contains(strings.Join(init.Volumes, "\n"), "keycloak-db-data:/target-data") || !strings.Contains(strings.Join(init.Command, "\n"), `chown "$$uid:$$gid" /target-data /target-data/18 /target-data/18/docker`) {
-		t.Fatal("data volume ownership was not prepared before capability-free SQL start")
+	if _, ok := compose.Services["keycloak-db-tls-init"]; ok {
+		t.Fatal("single Keycloak SQL must not use a root-only ownership init container")
+	}
+	if !strings.Contains(strings.Join(db.Volumes, "\n"), "server-key.pem:/run/baseharbor/db-tls/server-key.pem:ro") || !strings.Contains(strings.Join(db.Command, "\n"), "cp /run/baseharbor/db-tls/server-key.pem /tmp/server-key.pem") {
+		t.Fatal("PostgreSQL must make a private tmpfs key copy as its runtime-assigned UID")
 	}
 }

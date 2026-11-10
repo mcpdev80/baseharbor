@@ -60,7 +60,7 @@ func prepareOpenBaoStorage(stateDir, envPath string, ha bool) error {
 		}
 		config := strings.ReplaceAll(string(data), "  server openbao-2 openbao-member-2:8200\n", "")
 		config = strings.ReplaceAll(config, "  server openbao-3 openbao-member-3:8200\n", "")
-		return os.WriteFile(path, []byte(config), 0644)
+		return WriteContainerReadableProjection(path, []byte(config))
 	}
 	return nil
 }
@@ -123,7 +123,7 @@ PGPASSWORD="$BASEHARBOR_OPENBAO_DB_PASSWORD" PGSSLMODE=verify-ca PGSSLROOTCERT=/
   --username "$BASEHARBOR_OPENBAO_DB_USER" --dbname openbao \
   -Atqc 'SELECT 1' >/dev/null
 `
-	return os.WriteFile(filepath.Join(dir, "openbao-init.sh"), []byte(script), 0o644)
+	return WriteContainerReadableProjection(filepath.Join(dir, "openbao-init.sh"), []byte(script))
 }
 
 func writeOpenBaoHAProxyConfig(stateDir string) error {
@@ -162,7 +162,7 @@ resolvers runtime-dns
   timeout resolve 1s
   timeout retry 1s
 `
-	return os.WriteFile(filepath.Join(dir, "haproxy.cfg"), []byte(config), 0o644)
+	return WriteContainerReadableProjection(filepath.Join(dir, "haproxy.cfg"), []byte(config))
 }
 
 func writeOpenBaoRuntimeConfig(stateDir, user, secret string, ha bool) error {
@@ -202,5 +202,5 @@ listener "tcp" {
 
 api_addr = "https://openbao:8200"
 `, connectionURL, ha)
-	return os.WriteFile(filepath.Join(dir, "openbao.hcl"), []byte(config), 0o644)
+	return WriteContainerReadableProjection(filepath.Join(dir, "openbao.hcl"), []byte(config))
 }

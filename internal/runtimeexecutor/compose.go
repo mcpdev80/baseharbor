@@ -260,7 +260,6 @@ func composeYAMLForNetworks(image string, identity openbao.RuntimeExecutorMTLSFi
 	b.WriteString("  executor:\n")
 	fmt.Fprintf(&b, "    image: %s\n", strconv.Quote(image))
 	b.WriteString("    restart: unless-stopped\n")
-	b.WriteString("    user: \"65532:65532\"\n")
 	b.WriteString("    command: [\"serve\"]\n")
 	b.WriteString("    environment:\n")
 	b.WriteString("      BASEHARBOR_RUNTIME_EXECUTOR_MODE: \"true\"\n")

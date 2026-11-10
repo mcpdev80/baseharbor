@@ -391,9 +391,7 @@ func Reconcile(ctx context.Context, runtime Runtime, issuer serviceaccess.Issuer
 	if err := os.WriteFile(files.Caddyfile, []byte(renderCaddyfile(current.Routes, hostPort)), 0o644); err != nil {
 		return err
 	}
-	uid, gid := gatewayRuntimeIdentity()
-	gatewayEnv := fmt.Sprintf("BASEHARBOR_GATEWAY_UID=%s\nBASEHARBOR_GATEWAY_GID=%s\n", uid, gid)
-	if err := os.WriteFile(files.Env, []byte(gatewayEnv), 0o600); err != nil {
+	if err := os.WriteFile(files.Env, nil, 0o600); err != nil {
 		return err
 	}
 	if err := saveState(files.State, current); err != nil {

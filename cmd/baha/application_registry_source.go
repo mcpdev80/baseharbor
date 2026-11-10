@@ -221,7 +221,15 @@ func (s RegistrySource) run(ctx context.Context, action, ref string) (string, er
 	if run == nil {
 		run = execArtifact
 	}
-	return run(ctx, "oras", action, ref)
+	args := []string{action}
+	if action == "resolve" {
+		// ORAS normally prints only the digest. The registry verifier needs the
+		// complete repository@digest identity so it can prove that the response
+		// belongs to the requested image repository.
+		args = append(args, "--full-reference")
+	}
+	args = append(args, ref)
+	return run(ctx, "oras", args...)
 }
 
 // execArtifact is the production runner backed by os/exec.

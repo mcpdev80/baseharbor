@@ -98,7 +98,7 @@ func withVerifiedHTTPSource(ctx context.Context, source resolvedApplication) con
 
 func resolveApplication(ctx context.Context, store application.Store, args []string, command string) (resolvedApplication, error) {
 	if verified, ok := ctx.Value(verifiedHTTPSourceContextKey{}).(resolvedApplication); ok {
-		if (command != "apply" && command != "status") || !verified.SourceAvailable || verified.RepositoryRoot == "" {
+		if (command != "apply" && command != "status" && command != "init") || !verified.SourceAvailable || verified.RepositoryRoot == "" {
 			return resolvedApplication{}, errors.New("verified HTTP source is not available for this operation")
 		}
 		return verified, nil

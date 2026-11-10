@@ -408,7 +408,6 @@ func writeSharedPostgresUICompose(b *strings.Builder) {
 	b.WriteString(`  shared-pgadmin:
     image: ` + PostgresUIImage + `
     restart: unless-stopped
-    user: "5050:5050"
     read_only: true
     cap_drop: ["ALL"]
     security_opt: ["no-new-privileges:true"]
@@ -447,7 +446,6 @@ func writeSharedCacheUICompose(b *strings.Builder) {
 	b.WriteString(`  shared-cache-ui:
     image: ` + CacheUIImage + `
     restart: unless-stopped
-    user: "redis"
     read_only: true
     cap_drop: ["ALL"]
     security_opt: ["no-new-privileges:true"]
@@ -469,7 +467,6 @@ func writeSharedCacheUICompose(b *strings.Builder) {
   shared-cache-ui-access:
     image: ` + UIProxyImage + `
     restart: unless-stopped
-    user: "65532:65532"
     read_only: true
     cap_drop: ["ALL"]
     security_opt: ["no-new-privileges:true"]
@@ -550,20 +547,15 @@ func writeSharedPostgresClusterCompose(b *strings.Builder, state sharedBackendSt
 		b.WriteString("    entrypoint: [\"/bin/sh\", \"-ec\"]\n")
 		b.WriteString("    command:\n")
 		b.WriteString("      - |\n")
-		b.WriteString("        uid=$$(id -u postgres); gid=$$(id -g postgres)\n")
-		b.WriteString("        chmod 0755 /run/baseharbor\n")
-		b.WriteString("        install -d -o \"$$uid\" -g \"$$gid\" -m 0750 /run/baseharbor/tls\n")
+		b.WriteString("        mkdir -p /run/baseharbor/tls\n")
 		b.WriteString("        cp /run/baseharbor/tls-source/server-cert.pem /run/baseharbor/tls/server-cert.pem\n")
 		b.WriteString("        cp /run/baseharbor/tls-source/server-key.pem /run/baseharbor/tls/server-key.pem\n")
-		b.WriteString("        chown \"0:$$gid\" /run/baseharbor/tls/server-cert.pem /run/baseharbor/tls/server-key.pem\n")
 		b.WriteString("        chmod 0644 /run/baseharbor/tls/server-cert.pem\n")
-		b.WriteString("        chmod 0640 /run/baseharbor/tls/server-key.pem\n")
-		b.WriteString("        stat -c 'baseharbor=%U:%G %a' /run/baseharbor\n")
-		b.WriteString("        stat -c 'tls=%U:%G %a' /run/baseharbor/tls\n")
-		b.WriteString("        stat -c 'key=%U:%G %a' /run/baseharbor/tls/server-key.pem\n")
+		b.WriteString("        chmod 0600 /run/baseharbor/tls/server-key.pem\n")
+		b.WriteString("        if [ \"$$(id -u)\" = 0 ]; then chown postgres:postgres /run/baseharbor/tls/server-key.pem; fi\n")
 		b.WriteString("        exec /bin/sh /launch.sh init\n")
 		b.WriteString("    tmpfs:\n")
-		b.WriteString("      - /run/baseharbor/tls:rw,noexec,nosuid,nodev,mode=0750\n")
+		b.WriteString("      - /run/baseharbor/tls:rw,noexec,nosuid,nodev,mode=1777\n")
 		b.WriteString("    environment:\n")
 		b.WriteString("      SPILO_PROVIDER: local\n")
 		fmt.Fprintf(b, "      SCOPE: %s\n", strconv.Quote(cluster))
@@ -596,7 +588,6 @@ func writeSharedPostgresAccessCompose(b *strings.Builder, state sharedBackendSta
 	fmt.Fprintf(b, "  %s:\n", sharedPostgresAlias())
 	fmt.Fprintf(b, "    image: %s\n", serviceaccess.TCPGatewayImage)
 	b.WriteString("    restart: unless-stopped\n")
-	b.WriteString("    user: \"99:99\"\n")
 	b.WriteString("    read_only: true\n")
 	b.WriteString("    cap_drop: [\"ALL\"]\n")
 	b.WriteString("    security_opt: [\"no-new-privileges:true\"]\n")
@@ -632,7 +623,6 @@ func writeSharedValkeyCompose(b *strings.Builder, app sharedBackendAppState, ins
 		fmt.Fprintf(b, "  %s:\n", service)
 		b.WriteString("    image: docker.io/valkey/valkey:9.1.2-alpine\n")
 		b.WriteString("    restart: unless-stopped\n")
-		b.WriteString("    user: \"999:1000\"\n")
 		b.WriteString("    read_only: true\n")
 		b.WriteString("    cap_drop: [\"ALL\"]\n")
 		b.WriteString("    security_opt: [\"no-new-privileges:true\"]\n")
@@ -674,7 +664,6 @@ func writeSharedValkeyCompose(b *strings.Builder, app sharedBackendAppState, ins
 			fmt.Fprintf(b, "  %s:\n", service)
 			b.WriteString("    image: docker.io/valkey/valkey:9.1.2-alpine\n")
 			b.WriteString("    restart: unless-stopped\n")
-			b.WriteString("    user: \"999:1000\"\n")
 			b.WriteString("    read_only: true\n")
 			b.WriteString("    cap_drop: [\"ALL\"]\n")
 			b.WriteString("    security_opt: [\"no-new-privileges:true\"]\n")

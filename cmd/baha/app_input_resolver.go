@@ -186,6 +186,37 @@ func appInitWithInputResolverCommand(store application.Store) *cli.Command {
 		if err := applyInjectedRepositoryInputs(&opts, injected); err != nil {
 			return err
 		}
+		target, err := effectiveTarget(ctx)
+		if err != nil {
+			return err
+		}
+		if target.AccessProvider != "" && target.AccessProvider != "local" {
+			manifest, err := application.LoadManifestFile(manifestPath)
+			if err != nil {
+				return err
+			}
+			remoteArgs := make([]string, 0, 5)
+			if opts.Hostname != "" {
+				remoteArgs = append(remoteArgs, "--hostname", opts.Hostname)
+			}
+			if opts.TLSMode != "" {
+				remoteArgs = append(remoteArgs, "--tls", opts.TLSMode)
+			}
+			if opts.CertDir != "" {
+				remoteArgs = append(remoteArgs, "--cert-dir", opts.CertDir)
+			}
+			if opts.Yes {
+				remoteArgs = append(remoteArgs, "--yes")
+			}
+			if err := remoteApplicationMutation(ctx, target, "app.configure", remoteArgs, io.Discard); err != nil {
+				return err
+			}
+			if format == outputJSON {
+				return writeJSON(destination, map[string]any{"application": manifest.Name, "environment": manifest.Environment, "target": target.Name, "configured": true})
+			}
+			fmt.Fprintf(out, "Application runtime initialization saved on remote Core Target %s.\n", target.Name)
+			return nil
+		}
 		resolved, err := resolveApplication(ctx, store, nil, "init")
 		if err != nil {
 			return err

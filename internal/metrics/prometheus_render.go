@@ -99,7 +99,6 @@ func providerComposeYAMLWithProviderNetworksAndAccess(placement Placement, regis
 		fmt.Fprintf(&b, "  %s:\n", name)
 		fmt.Fprintf(&b, "    image: %s\n", ProviderImage)
 		b.WriteString("    restart: unless-stopped\n")
-		b.WriteString("    user: \"65534:65534\"\n")
 		b.WriteString("    read_only: true\n")
 		b.WriteString("    command:\n")
 		b.WriteString("      - --config.file=/etc/prometheus/prometheus.yml\n")

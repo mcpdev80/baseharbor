@@ -5,10 +5,29 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/testsupport/serviceissuer"
 )
+
+func TestRabbitMQHAConfigOverridesRestrictiveUmask(t *testing.T) {
+	old := syscall.Umask(0o077)
+	defer syscall.Umask(old)
+	m := Manifest{Version: CurrentVersion, ApplicationID: MustNewApplicationID(), Name: "events", Environment: "dev", HA: true, Services: Services{MessagingQueue: true}}
+	files := RuntimeFiles{Dir: t.TempDir()}
+	if err := ensureRabbitMQHAConfigFiles(files, m); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(files.Dir, "providers", "rabbitmq", defaultServiceInstance, "runtime", "rabbitmq.conf")
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := info.Mode().Perm(); got != 0o644 {
+		t.Fatalf("RabbitMQ consumer config mode = %04o, want 0644", got)
+	}
+}
 
 func TestRabbitMQHARendersThreeMembersStableGatewayAndQuorumConfig(t *testing.T) {
 	m := Manifest{

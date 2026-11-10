@@ -170,7 +170,6 @@ func providerComposeWithManagementUI(base string, access serviceaccess.HTTPGatew
 		return fmt.Sprintf(`  %s:
     image: %s
     restart: unless-stopped
-    user: "seaweed"
     read_only: true
     cap_drop: ["ALL"]
     security_opt: ["no-new-privileges:true"]

@@ -2,7 +2,6 @@ services:
   postgres-member-1:
     image: docker.io/library/postgres:18-alpine
     restart: unless-stopped
-    user: 70:70
     read_only: true
     cap_drop:
     - ALL
@@ -38,7 +37,6 @@ services:
     depends_on:
       postgres-member-1:
         condition: service_started
-    user: 99:99
     read_only: true
     cap_drop:
     - ALL
@@ -116,7 +114,6 @@ services:
   openbao-member-1:
     image: docker.io/openbao/openbao:2.7.1
     restart: unless-stopped
-    user: '100'
     read_only: true
     cap_drop:
     - ALL
@@ -151,7 +148,6 @@ services:
     depends_on:
       openbao-member-1:
         condition: service_started
-    user: 99:99
     read_only: true
     cap_drop:
     - ALL
@@ -177,7 +173,6 @@ services:
   openbao-admin:
     image: docker.io/openbao/openbao:2.7.1
     restart: unless-stopped
-    user: '100'
     read_only: true
     cap_drop:
     - ALL

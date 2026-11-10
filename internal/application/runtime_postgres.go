@@ -403,7 +403,6 @@ func writePostgresComposeService(b *strings.Builder, instance string) {
 	fmt.Fprintf(b, `  %s:
     image: docker.io/library/postgres:18-alpine
     restart: unless-stopped
-    user: "70:70"
     read_only: true
     cap_drop: ["ALL"]
     security_opt: ["no-new-privileges:true"]
@@ -444,7 +443,6 @@ func writePostgresUIComposeService(b *strings.Builder, m Manifest) {
 	b.WriteString(`  postgres-ui:
     image: ` + PostgresUIImage + `
     restart: unless-stopped
-    user: "5050:5050"
     read_only: true
     cap_drop: ["ALL"]
     security_opt: ["no-new-privileges:true"]
@@ -482,7 +480,6 @@ func writeCacheUIComposeServices(b *strings.Builder, m Manifest) {
 	b.WriteString(`  cache-ui:
     image: ` + CacheUIImage + `
     restart: unless-stopped
-    user: "redis"
     read_only: true
     cap_drop: ["ALL"]
     security_opt: ["no-new-privileges:true"]
@@ -502,7 +499,6 @@ func writeCacheUIComposeServices(b *strings.Builder, m Manifest) {
   cache-ui-access:
     image: ` + UIProxyImage + `
     restart: unless-stopped
-    user: "65532:65532"
     read_only: true
     cap_drop: ["ALL"]
     security_opt: ["no-new-privileges:true"]

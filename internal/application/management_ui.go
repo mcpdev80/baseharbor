@@ -470,7 +470,7 @@ func ensurePostgresManagementUI(ctx context.Context, issuer serviceaccess.Issuer
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(filepath.Join(dir, "servers.json"), append(data, '\n'), 0o644); err != nil {
+	if err := writeUIRuntimeProjection(filepath.Join(dir, "servers.json"), append(data, '\n')); err != nil {
 		return err
 	}
 	return nil
@@ -530,12 +530,12 @@ func ensureCacheManagementUI(ctx context.Context, issuer serviceaccess.Issuer, f
 	if err := writeUIRuntimeProjection(filepath.Join(dir, "local.json"), append(data, '\n')); err != nil {
 		return err
 	}
-	if err := os.WriteFile(filepath.Join(dir, "local-production.json"), []byte("{}\n"), 0o644); err != nil {
+	if err := writeUIRuntimeProjection(filepath.Join(dir, "local-production.json"), []byte("{}\n")); err != nil {
 		return err
 	}
 
 	caddy := "{\n  auto_https disable_redirects\n}\n\n:8443 {\n  tls /certs/server.pem /certs/server-key.pem\n  reverse_proxy cache-ui:8081\n}\n"
-	if err := os.WriteFile(filepath.Join(dir, "Caddyfile"), []byte(caddy), 0o644); err != nil {
+	if err := writeUIRuntimeProjection(filepath.Join(dir, "Caddyfile"), []byte(caddy)); err != nil {
 		return err
 	}
 	return nil
@@ -566,7 +566,7 @@ func ensureRabbitMQManagementUI(ctx context.Context, issuer serviceaccess.Issuer
 			upstreams = append(upstreams, rabbitmqMemberServiceName(instance, ordinal)+":15672")
 		}
 		caddy := fmt.Sprintf("{\n  auto_https disable_redirects\n}\n\n:8443 {\n  tls /certs/server.pem /certs/server-key.pem\n  reverse_proxy %s\n}\n", strings.Join(upstreams, " "))
-		if err := os.WriteFile(filepath.Join(dir, "Caddyfile"), []byte(caddy), 0o644); err != nil {
+		if err := writeUIRuntimeProjection(filepath.Join(dir, "Caddyfile"), []byte(caddy)); err != nil {
 			return err
 		}
 	}
@@ -606,7 +606,7 @@ func ensureMongoDBManagementUI(ctx context.Context, issuer serviceaccess.Issuer,
 			return fmt.Errorf("hash MongoDB management UI password: %w", err)
 		}
 		caddy := fmt.Sprintf("{\n  auto_https disable_redirects\n}\n\n:8443 {\n  tls /certs/server.pem /certs/server-key.pem\n  handle /healthz {\n    respond \"ok\" 200\n  }\n  handle {\n    basic_auth {\n      %s %s\n    }\n    reverse_proxy %s:3100\n  }\n}\n", user, string(hash), mongodbUIServiceName(instance))
-		if err := os.WriteFile(filepath.Join(dir, "Caddyfile"), []byte(caddy), 0o644); err != nil {
+		if err := writeUIRuntimeProjection(filepath.Join(dir, "Caddyfile"), []byte(caddy)); err != nil {
 			return err
 		}
 	}

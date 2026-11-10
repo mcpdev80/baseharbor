@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/devaccess"
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
 
@@ -57,7 +58,7 @@ func ensureRabbitMQHAConfigFiles(files RuntimeFiles, m Manifest) error {
 		b.WriteString("default_queue_type = quorum\n")
 		fmt.Fprintf(&b, "quorum_queue.initial_cluster_size = %d\n", rabbitmqMemberCount(m))
 		b.WriteString("cluster_partition_handling = pause_minority\n")
-		if err := os.WriteFile(filepath.Join(root, "rabbitmq.conf"), []byte(b.String()), 0o644); err != nil {
+		if err := bhruntime.WriteContainerReadableProjection(filepath.Join(root, "rabbitmq.conf"), []byte(b.String())); err != nil {
 			return fmt.Errorf("write RabbitMQ HA config for %s: %w", instance, err)
 		}
 	}
@@ -83,7 +84,6 @@ func writeRabbitMQComposeService(b *strings.Builder, m Manifest, instance string
 		fmt.Fprintf(b, "    image: %s\n", image)
 		b.WriteString("    restart: unless-stopped\n")
 		fmt.Fprintf(b, "    hostname: %s\n", service)
-		b.WriteString("    user: \"rabbitmq\"\n")
 		b.WriteString("    read_only: true\n")
 		b.WriteString("    cap_drop: [\"ALL\"]\n")
 		b.WriteString("    cap_add: [\"CHOWN\", \"SETGID\", \"SETUID\"]\n")
@@ -114,7 +114,6 @@ func writeRabbitMQUIComposeService(b *strings.Builder, m Manifest, instance stri
 	fmt.Fprintf(b, `  %s:
     image: %s
     restart: unless-stopped
-    user: "65532:65532"
     read_only: true
     cap_drop: ["ALL"]
     security_opt: ["no-new-privileges:true"]

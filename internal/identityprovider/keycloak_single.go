@@ -3,57 +3,30 @@ package identityprovider
 // The non-HA Core topology uses one PostgreSQL server with a durable data
 // volume. It deliberately does not create Patroni/etcd or HAProxy services.
 func keycloakSingleDataLayerCompose() string {
-	return `  keycloak-db-tls-init:
-    image: docker.io/library/postgres:18-alpine
-    restart: "no"
-    user: "0:0"
-    entrypoint: ["/bin/sh", "-ec"]
-    command:
-      - |
-        uid=$$(id -u postgres); gid=$$(id -g postgres)
-        cp /source/ca.pem /target/ca.pem
-        cp /source/server.pem /target/server.pem
-        cp /source/server-key.pem /target/server-key.pem
-        chown "$$uid:$$gid" /target/ca.pem /target/server.pem /target/server-key.pem
-        chmod 0644 /target/ca.pem /target/server.pem
-        chmod 0600 /target/server-key.pem
-        test ! -L /target-data/18 && test ! -L /target-data/18/docker
-        mkdir -p /target-data/18/docker
-        chown "$$uid:$$gid" /target-data /target-data/18 /target-data/18/docker
-        chmod 0700 /target-data/18 /target-data/18/docker
-    volumes:
-      - ./db-ha/runtime:/source:ro
-      - keycloak-db-tls:/target
-      - keycloak-db-data:/target-data
-    networks:
-      identity-internal: {}
-
-  keycloak-db:
+	return `  keycloak-db:
     image: docker.io/library/postgres:18-alpine
     restart: unless-stopped
-    user: "postgres"
     read_only: true
     cap_drop: ["ALL"]
     security_opt: ["no-new-privileges:true"]
-    depends_on:
-      keycloak-db-tls-init:
-        condition: service_completed_successfully
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${BASEHARBOR_KEYCLOAK_DB_SUPERUSER_PASSWORD}
       POSTGRES_DB: postgres
       PGDATA: /var/lib/postgresql/18/docker
     command:
-      - postgres
-      - -c
-      - ssl=on
-      - -c
-      - ssl_cert_file=/run/baseharbor/db-tls/server.pem
-      - -c
-      - ssl_key_file=/run/baseharbor/db-tls/server-key.pem
+      - /bin/sh
+      - -ec
+      - |
+        cp /run/baseharbor/db-tls/server-key.pem /tmp/server-key.pem
+        chmod 0600 /tmp/server-key.pem
+        if [ "$$(id -u)" = 0 ]; then chown postgres:postgres /tmp/server-key.pem; fi
+        exec /usr/local/bin/docker-entrypoint.sh postgres -c ssl=on -c ssl_cert_file=/run/baseharbor/db-tls/server.pem -c ssl_key_file=/tmp/server-key.pem
     volumes:
       - keycloak-db-data:/var/lib/postgresql
-      - keycloak-db-tls:/run/baseharbor/db-tls:ro
+      - ./db-ha/runtime/ca.pem:/run/baseharbor/db-tls/ca.pem:ro
+      - ./db-ha/runtime/server.pem:/run/baseharbor/db-tls/server.pem:ro
+      - ./db-ha/runtime/server-key.pem:/run/baseharbor/db-tls/server-key.pem:ro
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev,mode=1777
       - /var/run/postgresql:rw,noexec,nosuid,nodev,mode=3777
@@ -69,7 +42,7 @@ func keycloakSingleDataLayerCompose() string {
 }
 
 func keycloakSingleVolumesCompose() string {
-	return "  keycloak-db-data:\n  keycloak-db-tls:\n"
+	return "  keycloak-db-data:\n"
 }
 
 // The shared bootstrap is deliberately identical for single and HA database
@@ -83,8 +56,8 @@ func keycloakDBInitCompose() string {
     cap_drop: ["ALL"]
     security_opt: ["no-new-privileges:true"]
     depends_on:
-      keycloak-db-tls-init:
-        condition: service_completed_successfully
+      keycloak-db:
+        condition: service_started
     environment:
       PGPASSWORD: ${BASEHARBOR_KEYCLOAK_DB_SUPERUSER_PASSWORD}
       BASEHARBOR_KEYCLOAK_DB_USER: ${BASEHARBOR_KEYCLOAK_DB_USER}
@@ -94,7 +67,7 @@ func keycloakDBInitCompose() string {
       PGSSLROOTCERT: /run/baseharbor/db-tls/ca.pem
       PGCONNECT_TIMEOUT: "1"
     volumes:
-      - keycloak-db-tls:/run/baseharbor/db-tls:ro
+      - ./db-ha/runtime/ca.pem:/run/baseharbor/db-tls/ca.pem:ro
     command:
       - /bin/sh
       - -ec

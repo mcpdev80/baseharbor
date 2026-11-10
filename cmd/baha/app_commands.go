@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -44,6 +45,10 @@ func appCreateCommand() *cli.Command {
 				// Remote creation must instead let the authoritative Core
 				// allocate that identity; never send a workstation-owned ID.
 				m.ApplicationID = ""
+				m, repositoryIntent, err := remoteCreateIntentFromRepository(args, m)
+				if err != nil {
+					return err
+				}
 				source, err := selectedRemoteSourceModel(m.Name, m.Environment)
 				if err != nil {
 					return err
@@ -51,6 +56,17 @@ func appCreateCommand() *cli.Command {
 				result, err := remoteCreateTargetManagedApplication(ctx, target, m, source)
 				if err != nil {
 					return err
+				}
+				if repositoryIntent {
+					manifestPath, pathErr := application.FindRepositoryManifest(".")
+					if pathErr != nil {
+						return fmt.Errorf("Core created the application, but the local repository manifest could not be re-read; inspect Target %s before retrying: %w", target.Name, pathErr)
+					}
+					path, syncErr := persistRemoteRepositoryIdentity(filepath.Dir(manifestPath), m, result.ApplicationID)
+					if syncErr != nil {
+						return fmt.Errorf("Core created the application, but its assigned identity could not be stored in the protected local repository state; inspect Target %s before retrying: %w", target.Name, syncErr)
+					}
+					result.Manifest = path
 				}
 				if format == outputJSON {
 					return writeJSON(out, result)

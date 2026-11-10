@@ -196,7 +196,7 @@ func ensureProviderFilesForModeAt(ctx context.Context, issuer serviceaccess.Issu
 		if err != nil {
 			return ProviderFiles{}, fmt.Errorf("read Loki object-storage trust bundle: %w", err)
 		}
-		if err := os.WriteFile(filepath.Join(files.Dir, "object-storage-ca.pem"), trust, 0o644); err != nil {
+		if err := bhruntime.WriteContainerReadableProjection(filepath.Join(files.Dir, "object-storage-ca.pem"), trust); err != nil {
 			return ProviderFiles{}, fmt.Errorf("project Loki object-storage trust bundle: %w", err)
 		}
 		config = lokiHAConfig()

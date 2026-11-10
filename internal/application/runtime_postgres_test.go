@@ -526,8 +526,6 @@ func TestManagedDatabaseAndCacheComposeAreUnprivileged(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, want := range []string{
-		"user: \"70:70\"",
-		"user: \"999:1000\"",
 		"read_only: true",
 		"cap_drop: [\"ALL\"]",
 		"no-new-privileges:true",

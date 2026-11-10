@@ -23,6 +23,10 @@ func (e *bahaMachineExecutor) executeHTTPPlatformMutation(
 	report machinehttp.ProgressReporter,
 ) (any, error) {
 	switch operationID {
+	case "dev.credentials":
+		return executeHTTPDevelopmentCredentials(ctx, operationContext, raw)
+	case "secret.set":
+		return e.executeHTTPApplicationSecretSet(ctx, operationContext, raw)
 	case "openbao.rotate":
 		return executeHTTPManagedRotation(ctx, operationContext, raw, report)
 	case "control-plane.up":
@@ -46,6 +50,8 @@ func (e *bahaMachineExecutor) executeHTTPPlatformMutation(
 		return executeHTTPWorkspaceUpdate(ctx, operationContext, raw, report)
 	case "app.create":
 		return executeHTTPAppCreate(ctx, operationContext, raw)
+	case "app.configure":
+		return e.executeHTTPAppConfigure(ctx, operationContext, raw)
 	case "app.new":
 		return executeHTTPAppNew(ctx, operationContext, raw, report)
 	case "provider.add", "provider.remove":

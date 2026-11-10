@@ -189,7 +189,6 @@ func TestSignedS3RequestUsesSigV4AndPathStyle(t *testing.T) {
 func TestSeaweedFSProviderRunsUnprivileged(t *testing.T) {
 	text := providerComposeYAML()
 	for _, want := range []string{
-		"user: \"1000:1000\"",
 		"read_only: true",
 		"cap_drop: [\"ALL\"]",
 		"no-new-privileges:true",

@@ -121,7 +121,10 @@ backend primary
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
-	return os.WriteFile(path, []byte(b.String()), 0o644)
+	if err := os.WriteFile(path, []byte(b.String()), 0o600); err != nil {
+		return err
+	}
+	return os.Chmod(path, 0o644)
 }
 
 func ensureSharedManagementUIState(state *sharedBackendState, m Manifest, values map[string]string) error {
@@ -279,7 +282,7 @@ func refreshSharedPostgresManagementUIConfig(shared SharedBackendFiles, state sh
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(dir, "servers.json"), append(data, '\n'), 0o644)
+	return writeUIRuntimeProjection(filepath.Join(dir, "servers.json"), append(data, '\n'))
 }
 
 func ensureSharedCacheManagementUI(ctx context.Context, issuer serviceaccess.Issuer, shared SharedBackendFiles, environment string, state sharedBackendState) error {
@@ -366,11 +369,11 @@ func refreshSharedCacheManagementUIConfig(shared SharedBackendFiles, state share
 	if err := writeUIRuntimeProjection(filepath.Join(dir, "local.json"), append(data, '\n')); err != nil {
 		return err
 	}
-	if err := os.WriteFile(filepath.Join(dir, "local-production.json"), []byte("{}\n"), 0o644); err != nil {
+	if err := writeUIRuntimeProjection(filepath.Join(dir, "local-production.json"), []byte("{}\n")); err != nil {
 		return err
 	}
 	caddy := "{\n  auto_https disable_redirects\n}\n\n:8443 {\n  tls /certs/server.pem /certs/server-key.pem\n  reverse_proxy shared-cache-ui:8081\n}\n"
-	return os.WriteFile(filepath.Join(dir, "Caddyfile"), []byte(caddy), 0o644)
+	return writeUIRuntimeProjection(filepath.Join(dir, "Caddyfile"), []byte(caddy))
 }
 
 func sortedSharedBackendApplicationKeys(state sharedBackendState) []string {

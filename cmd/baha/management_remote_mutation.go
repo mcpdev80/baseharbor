@@ -33,6 +33,7 @@ func remoteMutationArgs(operation string, args []string) (string, string, json.R
 			"Use --environment dev; other environments require their own verified operator login.")
 	}
 	name, candidate, consentPath := "", "", ""
+	hostname, tlsMode, certificateDirectory := "", "", ""
 	candidateSeen, consentSeen := false, false
 	approval, noBackup, fullReset, skipMemory := false, false, false, false
 	for i := 0; i < len(filtered); i++ {
@@ -46,6 +47,39 @@ func remoteMutationArgs(operation string, args []string) (string, string, json.R
 			fullReset = true
 		case arg == "--skip-memory-preflight":
 			skipMemory = true
+		case arg == "--hostname":
+			i++
+			if i >= len(filtered) || strings.HasPrefix(filtered[i], "-") || hostname != "" {
+				return "", "", nil, usageError("missing or duplicate hostname", "Pass one --hostname HOST value.")
+			}
+			hostname = filtered[i]
+		case strings.HasPrefix(arg, "--hostname="):
+			if hostname != "" {
+				return "", "", nil, usageError("duplicate hostname", "Pass --hostname once.")
+			}
+			hostname = strings.TrimPrefix(arg, "--hostname=")
+		case arg == "--tls":
+			i++
+			if i >= len(filtered) || strings.HasPrefix(filtered[i], "-") || tlsMode != "" {
+				return "", "", nil, usageError("missing or duplicate TLS mode", "Pass one --tls acme|local|existing value.")
+			}
+			tlsMode = filtered[i]
+		case strings.HasPrefix(arg, "--tls="):
+			if tlsMode != "" {
+				return "", "", nil, usageError("duplicate TLS mode", "Pass --tls once.")
+			}
+			tlsMode = strings.TrimPrefix(arg, "--tls=")
+		case arg == "--cert-dir":
+			i++
+			if i >= len(filtered) || strings.HasPrefix(filtered[i], "-") || certificateDirectory != "" {
+				return "", "", nil, usageError("missing or duplicate certificate directory", "Pass one --cert-dir PATH value.")
+			}
+			certificateDirectory = filtered[i]
+		case strings.HasPrefix(arg, "--cert-dir="):
+			if certificateDirectory != "" {
+				return "", "", nil, usageError("duplicate certificate directory", "Pass --cert-dir once.")
+			}
+			certificateDirectory = strings.TrimPrefix(arg, "--cert-dir=")
 		case arg == "--provider-consent-file":
 			i++
 			if i >= len(filtered) || strings.HasPrefix(filtered[i], "-") || consentSeen {
@@ -165,6 +199,17 @@ func remoteMutationArgs(operation string, args []string) (string, string, json.R
 			ProviderChangeConsent *application.ProviderChangeConsent `json:"provider_change_consent,omitempty"`
 		}{name, environment, true, fullReset, consent})
 		return name, environment, payload, err
+	case "app.configure":
+		if candidate != "" || consent != nil || noBackup || fullReset || skipMemory || certificateDirectory != "" {
+			return "", "", nil, usageError("remote app init received an unsupported option", "Use baha app init --tls local on a remote development Target; certificate paths on the workstation cannot be read by the Core host.")
+		}
+		if tlsMode == "existing" {
+			return "", "", nil, usageError("remote existing-certificate initialization is unavailable", "Install or securely import the certificate on the Core host before selecting TLS mode existing.")
+		}
+		payload, err := json.Marshal(machineApplicationConfigureInput{
+			Name: name, Environment: environment, Hostname: hostname, TLSMode: tlsMode,
+		})
+		return name, environment, payload, err
 	default:
 		return "", "", nil, errors.New("unsupported remote lifecycle operation")
 	}
@@ -184,7 +229,7 @@ func remoteApplicationMutation(ctx context.Context, target deployment.ResolvedTa
 		return machine.Wrap(machine.ErrorAuthenticationFailed, err,
 			"Configure and authenticate the pinned remote Core connection for this Target.", false)
 	}
-	if operation == "apply" {
+	if operation == "apply" || operation == "app.configure" {
 		root, rootErr := remoteLocalSourceRoot(name, environment)
 		if rootErr != nil {
 			return rootErr

@@ -163,8 +163,8 @@ func TestResolveFailsClosedOnMutableTagIdentity(t *testing.T) {
 }
 
 func TestResolveSucceedsWhenReferenceCarriesPinnedDigest(t *testing.T) {
-	// A resolve reply that carries the pinned digest resolves successfully.
-	fake := &fakeExec{output: []string{"Resolved registry.example.invalid/org/app@sha256:" + strings.Repeat("2", 64) + " "}}
+	// ORAS --full-reference emits the complete immutable repository identity.
+	fake := &fakeExec{output: []string{"registry.example.invalid/org/app@sha256:" + strings.Repeat("2", 64) + "\n"}}
 	id, err := (RegistrySource{
 		Kind:     SourceOCIAddressed,
 		Location: "registry.example.invalid/org/app",
@@ -175,6 +175,9 @@ func TestResolveSucceedsWhenReferenceCarriesPinnedDigest(t *testing.T) {
 	}
 	if id.Digest != "sha256:"+strings.Repeat("2", 64) {
 		t.Fatalf("resolved digest=%q", id.Digest)
+	}
+	if len(fake.calls) != 1 || fake.calls[0] != "oras resolve --full-reference registry.example.invalid/org/app:latest" {
+		t.Fatalf("resolve must request ORAS's full repository reference, got %v", fake.calls)
 	}
 }
 
