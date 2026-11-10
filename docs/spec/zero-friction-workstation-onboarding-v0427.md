@@ -91,7 +91,7 @@ Implemented in this feature branch:
 - Negative tests cover replay, foreign identity/CA, redirected enrollment,
   duplicate profiles and mTLS-only remote requests.
 
-Still requiring evidence before opening a PR:
+Still requiring evidence before promoting Draft PR #1521:
 
 - Focused GitHub workflow green at the exact final HEAD, including formatting
   and targeted CLI/device tests. A push is not an end-to-end runtime test.
@@ -99,8 +99,9 @@ Still requiring evidence before opening a PR:
   local invitation export and import on a clean separate workstation.
 - Real remote source upload and app plan/apply/status/change/destroy.
   Confirm target-name translation and tenant authorization.
-- Reissue/renewal after the one-hour device certificate expires. Reimporting
-  an expired one-use invitation is not a durable workflow.
+- Device mTLS self-renewal is now wired before certificate expiry, but its
+  authenticated native Core-to-workstation test and recovery after interruption
+  must pass before this can be considered a durable supported workflow.
 - Recovery after a grant is consumed but device verification or local
   configuration fails. Preflight avoids known conflicts but cannot make
   remote grant consumption and local configuration a distributed transaction.
@@ -108,5 +109,11 @@ Still requiring evidence before opening a PR:
   instead of hidden manual environment setup.
 
 Same-VM Core plus runtime does not require the separate Node Connector.
-Do not claim PR readiness or end-to-end success until these acceptance
+The Draft CI uses the existing deterministic cli-0/cli-1/cli-2 shards.
+The ready-for-review event switches to the normal PR plan, selected validation
+jobs and Docker/Podman native acceptance. Onboarding changes require a real
+invitation/import/remote application test with explicit PASS cells; no skipped
+or synthetic green proof can satisfy that gate.
+
+Do not claim review readiness or end-to-end success until these acceptance
 checks are recorded at the final HEAD.
