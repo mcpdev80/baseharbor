@@ -65,3 +65,22 @@ func TestManagedCoreTLSNeverOverridesBYOCOrCoreAuthority(t *testing.T) {
 		t.Fatalf("default BYOC path changed: %+v %v", cfg, err)
 	}
 }
+
+func TestManagedCoreLANEndpointDefaultsFromConcreteListener(t *testing.T) {
+	t.Setenv("BASEHARBOR_API_PUBLIC_URL", "")
+	t.Setenv("BASEHARBOR_CONNECTOR_PUBLIC_ADDRESS", "")
+	cfg := controlplaneruntime.Config{
+		ListenAddr: "192.168.6.178:18443",
+		WorkstationEnrollmentEnabled: true,
+	}
+	host, connector, err := managedCoreTLSEndpoints(cfg)
+	if err != nil || host != "192.168.6.178" || connector != "" {
+		t.Fatalf("automatic workstation-only LAN endpoint: host=%q connector=%q err=%v", host, connector, err)
+	}
+	for _, bad := range []string{"127.0.0.1:18443", "0.0.0.0:18443", "192.168.6.178:abc"} {
+		cfg.ListenAddr = bad
+		if _, _, err := managedCoreTLSEndpoints(cfg); err == nil {
+			t.Fatalf("unsafe automatic Core LAN listener accepted: %q", bad)
+		}
+	}
+}
