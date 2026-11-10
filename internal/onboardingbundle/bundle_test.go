@@ -50,6 +50,7 @@ func validBundle(t *testing.T) Bundle {
 		CAPEM:              string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})),
 		InstallationID:     "11111111-1111-4111-8111-111111111111",
 		CoreInstallationID: "33333333-3333-4333-8333-333333333333",
+		CoreTarget:         "owned-core",
 		RuntimeProvider:    "docker",
 		Station:            "workstation-a",
 		Token:              strings.Repeat("T", 48),
@@ -76,6 +77,8 @@ func TestBundleValidationFailsClosed(t *testing.T) {
 		"private key":          func(b *Bundle) { b.CAPEM += "\nPRIVATE KEY" },
 		"missing grant":        func(b *Bundle) { b.Token = "" },
 		"malformed Core ID":    func(b *Bundle) { b.CoreInstallationID = "evil" },
+		"missing Core Target":  func(b *Bundle) { b.CoreTarget = "" },
+		"unsafe Core Target":   func(b *Bundle) { b.CoreTarget = "../foreign" },
 		"same Core and tenant": func(b *Bundle) { b.CoreInstallationID = b.InstallationID },
 		"wrong version":        func(b *Bundle) { b.ContractVersion = "unknown" },
 	}

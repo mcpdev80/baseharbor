@@ -35,7 +35,10 @@ func runOnboardImport(ctx context.Context, args []string, out io.Writer) error {
 	// Check all predictable local conflicts before consuming the one-use
 	// enrollment grant. A rejected or already-configured workstation must not
 	// burn an otherwise valid invitation.
-	targetName := "core-" + strings.ReplaceAll(bundle.CoreInstallationID, "-", "")[:12]
+	// The invitation is issued by the owning Core for its configured Target.
+	// Use that immutable Target selector on both ends of Machine HTTP;
+	// a workstation-invented alias would be unknown to the Core authority.
+	targetName := bundle.CoreTarget
 	cfg, _, err := deployment.LoadConfigForMutation()
 	if err != nil {
 		return err

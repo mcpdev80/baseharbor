@@ -23,6 +23,31 @@ import (
 const Contract = "baseharbor.workstation-onboard/v1"
 
 var coreInstallationUUID = regexp.MustCompile("^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
+var coreTargetName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}// Package onboardingbundle defines a strict portable one-use workstation invitation.
+package onboardingbundle
+
+import (
+	"bytes"
+	"crypto/x509"
+	"encoding/json"
+	"encoding/pem"
+	"errors"
+	"fmt"
+	"io"
+	"net"
+	"net/url"
+	"os"
+	"path/filepath"
+	"regexp"
+	"strings"
+	"time"
+
+	ws "github.com/mcpdev80/baseharbor/internal/workstationenrollment"
+)
+
+const Contract = "baseharbor.workstation-onboard/v1"
+
+)
 
 const MaxBytes int64 = 64 << 10
 
@@ -38,6 +63,7 @@ type Bundle struct {
 	CAPEM              string    `json:"ca_pem"`
 	InstallationID     string    `json:"installation_id"`
 	CoreInstallationID string    `json:"core_installation_id"`
+	CoreTarget         string    `json:"core_target"`
 	RuntimeProvider    string    `json:"runtime_provider"`
 	Station            string    `json:"station"`
 	Token              string    `json:"token"`
@@ -53,6 +79,7 @@ func (b Bundle) Validate(now time.Time) error {
 		return fmt.Errorf("%w: invalid installation or workstation", ErrInvalid)
 	}
 	if !coreInstallationUUID.MatchString(b.CoreInstallationID) || b.CoreInstallationID == b.InstallationID ||
+		!coreTargetName.MatchString(b.CoreTarget) ||
 		(b.RuntimeProvider != "docker" && b.RuntimeProvider != "podman") {
 		return fmt.Errorf("%w: missing distinct Core installation identity or invalid runtime", ErrInvalid)
 	}

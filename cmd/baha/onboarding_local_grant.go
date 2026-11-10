@@ -67,6 +67,7 @@ func issueLocalWorkstationInvitation(ctx context.Context, target deployment.Reso
 		CAPEM:              string(trust.PEM),
 		InstallationID:     scope.TenantID,
 		CoreInstallationID: installation.ID,
+		CoreTarget:         target.Name,
 		RuntimeProvider:    target.RuntimeProvider,
 		Station:            scope.Station,
 		Token:              strings.Repeat("A", 48),
