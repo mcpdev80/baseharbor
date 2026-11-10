@@ -141,7 +141,7 @@ func testCoreServer(t *testing.T, tamper bool, mode ...string) (*httptest.Server
 					return "not the invitation CA"
 				}
 				return string(caPEM)
-			}(), ExpiresAt: exp,
+			}(), ExpiresAt: exp, At: now,
 		})
 	})
 	server := httptest.NewUnstartedServer(handler)
