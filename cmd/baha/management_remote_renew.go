@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"context"
-	"crypto/ecdsa"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/tls"
