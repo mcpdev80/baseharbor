@@ -55,3 +55,21 @@ func TestWorkstationOnlyEnrollmentUsesLocalCoreAuthority(t *testing.T) {
 		t.Fatal("an unused connector authority Target was accepted")
 	}
 }
+
+func TestDeviceOnlyCoreAuthorityNeedsNoOIDCButRemainsTLSProtected(t *testing.T) {
+	cfg := Config{
+		WorkstationEnrollmentEnabled: true,
+		ConnectorAuthorityTarget: "owned-core",
+		DatabaseURL: "postgres://owned/core",
+	}
+	if err := cfg.Validate(); !errors.Is(err, ErrMissingTLSFiles) {
+		t.Fatalf("device-only Core rejected before TLS preflight: %v", err)
+	}
+	if cfg.operatorAPIEnabled() {
+		t.Fatal("workstation-only mode invented an OIDC operator")
+	}
+	cfg.ConnectorEnrollmentEnabled = true
+	if err := cfg.Validate(); err == nil || errors.Is(err, ErrMissingTLSFiles) {
+		t.Fatalf("Connector enrollment bypassed operator authentication: %v", err)
+	}
+}
