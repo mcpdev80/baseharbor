@@ -67,6 +67,16 @@ func runOnboardInvite(ctx context.Context, args []string, out io.Writer) error {
 		}
 	}
 	if coreURL == "" {
+		// The owner need not start baha serve or set environment variables.
+		// A managed user service is installed and checked against the
+		// installation's pinned CA before the one-use grant is minted.
+		target, err = ensureLocalOnboardingTenant(ctx, target)
+		if err != nil {
+			return err
+		}
+		if err := ensureManagedCoreLANService(ctx, target.Name); err != nil {
+			return err
+		}
 		coreURL, err = loadOwnedCoreLANEndpoint(target.Name)
 		if err != nil {
 			return fmt.Errorf("managed Core LAN HTTPS endpoint not yet available: %w", err)
@@ -83,11 +93,13 @@ func runOnboardInvite(ctx context.Context, args []string, out io.Writer) error {
 		}
 		outputFile = filepath.Join(privateDir, "baseharbor-onboard-"+station+".json")
 	}
-	// Provision only the local Core tenancy identity. This is not an OIDC
-	// impersonation or a remote administrative bootstrap.
-	target, err = ensureLocalOnboardingTenant(ctx, target)
-	if err != nil {
-		return err
+	// Only the owning Core may mint the invitation. Repeated provisioning is
+	// idempotent and cannot replace a different tenant binding.
+	if target.TenantID == "" {
+		target, err = ensureLocalOnboardingTenant(ctx, target)
+		if err != nil {
+			return err
+		}
 	}
 	if err := issueLocalWorkstationInvitation(withTargetOverride(ctx, target.Name), target, station, coreURL, outputFile); err != nil {
 		return err
