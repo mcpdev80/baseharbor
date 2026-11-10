@@ -1,15 +1,14 @@
 package workstationenrollmenthttp_test
 
 import (
-	"github.com/mcpdev80/baseharbor/internal/tenancy"
-	"net/http/httptest"
-	"encoding/pem"
-	"crypto/x509"
-	"crypto/tls"
 	"bytes"
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
+	"encoding/pem"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -19,6 +18,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/database"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
+	"github.com/mcpdev80/baseharbor/internal/tenancy"
 	ws "github.com/mcpdev80/baseharbor/internal/workstationenrollment"
 	wshttp "github.com/mcpdev80/baseharbor/internal/workstationenrollment/http"
 )
@@ -329,7 +329,9 @@ func TestDeviceSelfRenewPersistsCurrentSerial(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("mTLS self-renewal rejected: HTTP %d body=%s", rec.Code, rec.Body.String())
 	}
-	var renewed struct { Serial string `json:"serial"` }
+	var renewed struct {
+		Serial string `json:"serial"`
+	}
 	if err := json.NewDecoder(rec.Body).Decode(&renewed); err != nil {
 		t.Fatal(err)
 	}
