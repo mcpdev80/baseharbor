@@ -277,3 +277,22 @@ func TestMissingCandidateConsentDoesNotDumpRuntimeStack(t *testing.T) {
 		t.Fatalf("consent refusal emitted runtime stack to stderr: %s", output)
 	}
 }
+
+func TestCandidateConsentUsesActiveSourceNotPreviousCoreRegistration(t *testing.T) {
+	resolved := repoCandidateFixture(t)
+	previous := *resolved.DeploymentRecord
+	previous.Source.Repository = "previous-core-managed-source"
+	resolved.DeploymentRecord = &previous
+
+	submission, _ := candidateSubmissionForResolved(t, resolved)
+	if submission.SourceRepository != resolved.repositoryRoot() {
+		t.Fatalf("candidate consent used stale registration source %q, want uploaded source %q", submission.SourceRepository, resolved.repositoryRoot())
+	}
+	confirmed := delivery.CandidateConsentDigest(submission)
+	if confirmed == "" {
+		t.Fatal("active source has no confirmable candidate digest")
+	}
+	if _, err := recordDeploymentBeforeMutation(withCandidateConsentDigest(context.Background(), confirmed), resolved, "applying", confirmed); err != nil {
+		t.Fatalf("Core prompt and actual source binding disagree: %v", err)
+	}
+}
