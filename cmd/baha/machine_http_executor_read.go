@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
@@ -48,7 +49,7 @@ func (e *bahaMachineExecutor) executeHTTPRead(
 		return executeHTTPWorkspaceRead(ctx, operationID, operationContext, raw)
 	case "runtime.capabilities", "runtime.list", "runtime.inspect", "runtime.metrics":
 		return executeHTTPRuntimeExplorerRead(ctx, operationID, operationContext, raw)
-	case "plan", "status", "doctor", "observe", "evidence":
+	case "plan", "status", "doctor", "observe", "evidence", "app.preflight":
 		return e.executeHTTPApplicationRead(ctx, operationID, operationContext, raw)
 	case "provider.list", "provider.inspect", "provider.verify":
 		return executeHTTPProviderRead(ctx, operationID, raw)
@@ -161,6 +162,19 @@ func (e *bahaMachineExecutor) executeHTTPApplicationRead(ctx context.Context, op
 		return collectApplicationStatusResult(ctx, e.store, args)
 	case "doctor":
 		return collectApplicationDoctor(ctx, e.store, args)
+	case "app.preflight":
+		resolved, err := resolveApplication(ctx, e.store, args, "preflight")
+		if err != nil {
+			return nil, err
+		}
+		result, err := collectApplicationPreflight(ctx, resolved, io.Discard, io.Discard)
+		if err != nil {
+			if len(result.Checks) == 0 {
+				return nil, err
+			}
+			return result, nil
+		}
+		return result, err
 	case "observe":
 		status, err := collectApplicationStatusResult(ctx, e.store, args)
 		if err != nil {

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
@@ -323,9 +324,63 @@ func appPreflightCommand(store application.Store) *cli.Command {
 				return err
 			}
 			args = filtered
+			if target, targetErr := effectiveTarget(ctx); targetErr != nil {
+				return targetErr
+			} else if target.AccessProvider != "" && target.AccessProvider != "local" {
+				nameArgs, environment, splitErr := extractApplicationEnvironment(args, "preflight")
+				if splitErr != nil {
+					return splitErr
+				}
+				if len(nameArgs) != 1 || strings.TrimSpace(nameArgs[0]) == "" {
+					return usageError("remote app preflight needs an explicit application NAME", "Pass baha app preflight NAME --environment dev while connected to the remote Core.")
+				}
+				if environment == "" {
+					environment = "dev"
+				}
+				result, readErr := remoteMachineRead(ctx, target, "app.preflight", nameArgs[0], environment, nil)
+				if readErr != nil {
+					return readErr
+				}
+				var remote applicationPreflightResult
+				if err := json.Unmarshal(result, &remote); err != nil || remote.Application != nameArgs[0] || remote.Environment != environment {
+					return errors.New("remote Core preflight response does not match the selected application")
+				}
+				if format == outputJSON {
+					if err := writeJSON(out, remote); err != nil {
+						return err
+					}
+				} else {
+					preflight.Format(out, remote.Checks)
+				}
+				if !remote.Passed {
+					return cli.Presented(errors.New("application preflight failed"))
+				}
+				return nil
+			}
 			resolved, err := resolveApplication(ctx, store, args, "preflight")
 			if err != nil {
 				return err
+			}
+			if isRemoteApplication(resolved) {
+				result, readErr := remoteMachineRead(ctx, resolved.Target, "app.preflight", resolved.Manifest.Name, resolved.Manifest.Environment, nil)
+				if readErr != nil {
+					return readErr
+				}
+				var remote applicationPreflightResult
+				if err := json.Unmarshal(result, &remote); err != nil || remote.Application != resolved.Manifest.Name || remote.Environment != resolved.Manifest.Environment {
+					return errors.New("remote Core preflight response does not match the selected application")
+				}
+				if format == outputJSON {
+					if err := writeJSON(out, remote); err != nil {
+						return err
+					}
+				} else {
+					preflight.Format(out, remote.Checks)
+				}
+				if !remote.Passed {
+					return cli.Presented(errors.New("application preflight failed"))
+				}
+				return nil
 			}
 			humanOut, humanErr := out, errOut
 			if format == outputJSON {

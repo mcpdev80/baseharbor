@@ -167,3 +167,16 @@ func TestSourceCaptureDoesNotTransmitLocalInfrastructureSecrets(t *testing.T) {
 		t.Fatalf("local infrastructure secret was captured: %v", snapshot.Files)
 	}
 }
+
+func TestSourceCaptureExcludesEnvironmentExample(t *testing.T) {
+	root := t.TempDir()
+	putFixture(t, root, "baseharbor.yaml", "name: demo\n")
+	putFixture(t, root, ".env.example", "APP_SECRET=example-value\n")
+	snapshot, contents, err := Capture(context.Background(), root, "dev", "demo", "dev", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snapshot.Files) != 1 || len(contents) != 1 || snapshot.Files[0].Path != "baseharbor.yaml" {
+		t.Fatalf("environment template was included in the candidate transfer: %v", snapshot.Files)
+	}
+}

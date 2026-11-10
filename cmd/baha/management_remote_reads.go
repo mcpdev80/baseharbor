@@ -19,7 +19,7 @@ import (
 // Connector runtime on the workstation.
 func remoteMachineRead(ctx context.Context, target deployment.ResolvedTarget, operation, application, environment string, input any) (json.RawMessage, error) {
 	switch operation {
-	case "plan", "status", "doctor", "app.list":
+	case "plan", "status", "doctor", "app.preflight", "app.list":
 	default:
 		return nil, fmt.Errorf("unsupported remote read operation %q", operation)
 	}

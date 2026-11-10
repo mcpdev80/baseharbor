@@ -30,6 +30,7 @@ var httpOperationKinds = map[string]httpOperationKind{
 	"runtime.inspect":      httpRead,
 	"runtime.metrics":      httpRead,
 	"plan":                 httpRead,
+	"app.preflight":        httpRead,
 	"status":               httpRead,
 	"doctor":               httpRead,
 	"observe":              httpRead,

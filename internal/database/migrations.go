@@ -146,8 +146,12 @@ func extractDroppedTables(downText string) []string {
 	lower := strings.ToLower(downText)
 	words := strings.Fields(lower)
 	for i := 0; i < len(words); i++ {
-		if words[i] == "table" && i+1 < len(words) {
-			toks := strings.FieldsFunc(words[i+1], func(r rune) bool {
+		if words[i] == "table" && i > 0 && words[i-1] == "drop" && i+1 < len(words) {
+			nameIndex := i + 1
+			if words[nameIndex] == "if" && nameIndex+2 < len(words) && words[nameIndex+1] == "exists" {
+				nameIndex += 2
+			}
+			toks := strings.FieldsFunc(words[nameIndex], func(r rune) bool {
 				return !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '_' || r == '.')
 			})
 			if len(toks) > 0 {

@@ -118,9 +118,23 @@ func Redeem(ctx context.Context, b Bundle, now time.Time) (EnrolledIdentity, err
 	if err := dec.Decode(&extra); err != io.EOF {
 		return zero, fmt.Errorf("%w: trailing enrollment response", ErrInvalid)
 	}
-	if reply.InstallationID != b.InstallationID || reply.Station != b.Station ||
-		reply.Serial == "" || !reply.ExpiresAt.After(now) || reply.ExpiresAt.After(now.Add(ws.MaxCertificateTTL)) {
-		return zero, fmt.Errorf("%w: Core enrollment identity mismatch", ErrInvalid)
+	if reply.InstallationID != b.InstallationID {
+		return zero, fmt.Errorf("%w: Core returned another installation identity", ErrInvalid)
+	}
+	if reply.Station != b.Station {
+		return zero, fmt.Errorf("%w: Core returned another workstation identity", ErrInvalid)
+	}
+	if reply.Serial == "" {
+		return zero, fmt.Errorf("%w: Core returned no certificate serial", ErrInvalid)
+	}
+	if reply.At.IsZero() || reply.At.After(now.Add(time.Minute)) {
+		return zero, fmt.Errorf("%w: Core returned an invalid enrollment timestamp", ErrInvalid)
+	}
+	if !reply.ExpiresAt.After(now) {
+		return zero, fmt.Errorf("%w: workstation certificate is already expired", ErrInvalid)
+	}
+	if reply.ExpiresAt.After(reply.At.Add(ws.MaxCertificateTTL).Add(time.Second)) {
+		return zero, fmt.Errorf("%w: workstation certificate exceeds the supported five-year lifetime", ErrInvalid)
 	}
 	block, rest := pem.Decode([]byte(reply.LeafPEM))
 	if block == nil || block.Type != "CERTIFICATE" || len(bytes.TrimSpace(rest)) != 0 {
