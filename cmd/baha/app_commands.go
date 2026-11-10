@@ -220,6 +220,43 @@ func appPlanCommand(store application.Store) *cli.Command {
 			if err != nil {
 				return err
 			}
+			if target, targetErr := effectiveTarget(ctx); targetErr != nil {
+				return targetErr
+			} else if target.AccessProvider != "" && target.AccessProvider != "local" {
+				nameArgs, environment, splitErr := extractApplicationEnvironment(filtered, "plan")
+				if splitErr != nil {
+					return splitErr
+				}
+				if uuid, uuidErr := extractApplicationUUID(filtered); uuidErr != nil {
+					return uuidErr
+				} else if uuid != "" {
+					return usageError("remote app plan does not accept --uuid", "Run the plan from the selected application's repository or pass its registered NAME.")
+				}
+				if len(nameArgs) == 1 {
+					if environment == "" {
+						environment = "dev"
+					}
+					result, readErr := remoteMachineRead(ctx, target, "plan", nameArgs[0], environment, nil)
+					if readErr != nil {
+						return readErr
+					}
+					var plan applicationLifecyclePlan
+					if err := json.Unmarshal(result, &plan); err != nil || plan.ContractVersion != machine.ContractVersion ||
+						plan.Application != nameArgs[0] || plan.Environment != environment {
+						return errors.New("remote Core application plan does not match the selected application")
+					}
+					if format == outputJSON {
+						return writeJSON(out, plan)
+					}
+					fmt.Fprintf(out, "Plan for %s (%s) on Target %s\n", plan.Application, plan.Environment, target.Name)
+					for i, action := range plan.Actions {
+						fmt.Fprintf(out, "%d. %s %s - %s\n", i+1, action.Kind, action.Resource, action.Description)
+					}
+					fmt.Fprintf(out, "Core: %s; additional providers: %d; unused providers retained: %d\n", plan.Footprint.Core, len(plan.Footprint.Additional), len(plan.Footprint.Unused))
+					fmt.Fprintln(out, "No changes were made.")
+					return nil
+				}
+			}
 			resolved, err := resolveApplication(ctx, store, filtered, "plan")
 			if err != nil {
 				return err
