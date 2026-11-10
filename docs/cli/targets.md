@@ -13,21 +13,6 @@ baha target deactivate
 ```
 
 
-## Deployment policies
-
-Targets can carry an editable deployment policy. New Target presets distinguish development, test, staging and production without restricting existing Targets retroactively. Use `baha target policy show NAME` to inspect the effective persisted policy and `baha target policy set NAME --deployment-preset test` to select a preset. Individual branch, dirty-worktree, commit, approval and image-digest requirements can be overridden deliberately.
-
-The built-in presets are:
-
-| Preset | Branches | Dirty worktree | Commit | Remote commit | Approval | Image digest |
-| --- | --- | --- | --- | --- | --- | --- |
-| development | Any | Allowed | Optional | Optional | Optional | Optional |
-| test | `develop`, `release/*` | Refused | Required | Optional | Optional | Required |
-| staging | `main`, `release/*` | Refused | Required | Optional | Optional | Required |
-| production | `main` | Refused | Required | Required | Required | Required |
-
-Editing a remote Target requires the owning Core's authorized mutation endpoint; workstation-local edits cannot substitute remote policy.
-
 ## Local Core isolation boundary
 
 A single host currently has **one local Core management authority**. Multiple Target names using the same `local` access share its Core runtime and provider/deployment registry; creating a second local Target does **not** create an isolated Core. A conflicting definition fails without mutation:
