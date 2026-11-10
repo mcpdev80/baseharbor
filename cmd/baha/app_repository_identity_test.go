@@ -109,7 +109,7 @@ func TestProviderPreflightRevalidatesUploadedSourceWithCoreOwnedIdentity(t *test
 	}
 	owned := application.WithWorkloadComponents(application.New("plain", "dev", false, false, false), "api")
 	resolved := resolvedApplication{
-		Target: target,
+		Target:   target,
 		Manifest: owned,
 		DeploymentIdentity: deployment.DeploymentIdentity{
 			Target: target.Name, ApplicationID: owned.ApplicationID,
@@ -130,7 +130,9 @@ func TestProviderPreflightRevalidatesUploadedSourceWithCoreOwnedIdentity(t *test
 	for name, mutate := range map[string]func(*application.RepositoryEnvironmentSelection){
 		"foreign-application": func(s *application.RepositoryEnvironmentSelection) { s.Manifest.Name = "foreign" },
 		"foreign-environment": func(s *application.RepositoryEnvironmentSelection) { s.Manifest.Environment = "prod" },
-		"foreign-identity": func(s *application.RepositoryEnvironmentSelection) { s.Manifest.ApplicationID = application.MustNewApplicationID() },
+		"foreign-identity": func(s *application.RepositoryEnvironmentSelection) {
+			s.Manifest.ApplicationID = application.MustNewApplicationID()
+		},
 	} {
 		t.Run(name, func(t *testing.T) {
 			foreign := selection
