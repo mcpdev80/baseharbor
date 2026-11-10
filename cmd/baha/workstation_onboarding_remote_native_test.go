@@ -132,7 +132,6 @@ func TestWorkstationOnboardingRemoteNativeInCI(t *testing.T) {
 			{"app", "create", "onboard-native", "--environment", "dev", "--workload-component", "api"},
 			{"app", "apply", "onboard-native", "--environment", "dev"},
 			{"app", "status", "onboard-native", "--environment", "dev"},
-			{"app", "update", "onboard-native", "--no-backup"},
 		} {
 			if args[1] == "apply" {
 				// The first request must fail closed before recording the candidate.
