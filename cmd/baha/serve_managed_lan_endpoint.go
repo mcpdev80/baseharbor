@@ -88,8 +88,8 @@ func ownedCoreLANEndpointPath(target string) (string, error) {
 
 func saveOwnedCoreLANEndpoint(target, listenAddr, advertisedHost, certificatePath string) error {
 	host, port, err := net.SplitHostPort(listenAddr)
-	if err != nil || host != advertisedHost || port == "" || !usableNodeHost(host) {
-		return errors.New("owned Core LAN endpoint must match its concrete listener")
+	if err != nil || port == "" || !usableNodeHost(host) || !usableNodeHost(advertisedHost) {
+		return errors.New("owned Core LAN endpoint requires a concrete listener and advertised host")
 	}
 	certPEM, err := os.ReadFile(certificatePath)
 	if err != nil {
@@ -100,7 +100,7 @@ func saveOwnedCoreLANEndpoint(target, listenAddr, advertisedHost, certificatePat
 		return errors.New("managed Core serving certificate is invalid")
 	}
 	leaf, err := x509.ParseCertificate(block.Bytes)
-	if err != nil || leaf.VerifyHostname(host) != nil {
+	if err != nil || leaf.VerifyHostname(advertisedHost) != nil {
 		return errors.New("managed Core serving certificate does not cover advertised LAN address")
 	}
 	path, err := ownedCoreLANEndpointPath(target)
@@ -113,7 +113,7 @@ func saveOwnedCoreLANEndpoint(target, listenAddr, advertisedHost, certificatePat
 	payload, err := json.Marshal(ownedCoreLANEndpoint{
 		Version: "baseharbor.core-lan-endpoint/v1",
 		Target:  target,
-		URL:     "https://" + net.JoinHostPort(host, port),
+		URL:     "https://" + net.JoinHostPort(advertisedHost, port),
 	})
 	if err != nil {
 		return err
