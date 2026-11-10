@@ -38,6 +38,10 @@ func appCreateCommand() *cli.Command {
 				return err
 			}
 			if target.AccessProvider != "" && target.AccessProvider != "local" {
+				// manifestFromCreateArgs allocates an ID for local creation.
+				// Remote creation must instead let the authoritative Core
+				// allocate that identity; never send a workstation-owned ID.
+				m.ApplicationID = ""
 				source, err := selectedRemoteSourceModel(m.Name, m.Environment)
 				if err != nil {
 					return err
