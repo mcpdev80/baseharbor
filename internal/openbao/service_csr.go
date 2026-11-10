@@ -76,7 +76,8 @@ func (i *ServiceIssuer) signScopedCSR(ctx context.Context, request serviceaccess
 		return serviceaccess.IssuedCertificate{}, errors.New("managed authority could not sign the node CSR")
 	}
 	var reply struct {
-		Data struct {
+		LeaseID string `json:"lease_id"`
+		Data    struct {
 			Certificate string   `json:"certificate"`
 			PrivateKey  string   `json:"private_key"`
 			IssuingCA   string   `json:"issuing_ca"`
@@ -87,6 +88,9 @@ func (i *ServiceIssuer) signScopedCSR(ctx context.Context, request serviceaccess
 	}
 	if json.Unmarshal([]byte(out), &reply) != nil || reply.Data.PrivateKey != "" || reply.Data.IssuingCA == "" || reply.Data.Serial == "" {
 		return serviceaccess.IssuedCertificate{}, errors.New("managed CSR signing returned invalid public material")
+	}
+	if namespace == "workstations" && reply.LeaseID != "" {
+		return serviceaccess.IssuedCertificate{}, errors.New("managed workstation certificate is tied to a revocable signing lease")
 	}
 	block, rest := pem.Decode([]byte(reply.Data.Certificate))
 	if block == nil || block.Type != "CERTIFICATE" || strings.TrimSpace(string(rest)) != "" {

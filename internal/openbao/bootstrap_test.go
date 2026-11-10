@@ -932,6 +932,17 @@ func TestManagerPolicyPermitsOnlyOwnCapabilityInspection(t *testing.T) {
 	}
 }
 
+func TestManagerPolicyAllowsOnlySelfRevocationForTokenLifecycle(t *testing.T) {
+	if !strings.Contains(managerPolicy, "path \"auth/token/revoke-self\" {\n  capabilities = [\"update\"]\n}") {
+		t.Fatal("manager needs to revoke its own short-lived token so lease-independent workstation behavior can be verified and credentials can be retired")
+	}
+	for _, forbidden := range []string{`path "auth/token/create`, `path "auth/token/revoke"`, `path "auth/token/lookup"`} {
+		if strings.Contains(managerPolicy, forbidden) {
+			t.Fatalf("manager may not manage tokens other than revoking itself: %s", forbidden)
+		}
+	}
+}
+
 // cancellationExecutor: always fails with transient error to trigger retry
 // backoff, then context cancellation during backoff causes probeMemberState
 // to return context.Canceled.

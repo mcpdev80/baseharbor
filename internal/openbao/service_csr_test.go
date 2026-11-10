@@ -24,12 +24,43 @@ type csrPKIFake struct {
 }
 
 func (f *csrPKIFake) ExecProjectInput(ctx context.Context, project, compose, env string, input []byte, service string, args ...string) (string, error) {
-	if strings.Contains(strings.Join(args, " "), "baseharbor-pki/sign/baseharbor-nodes") || strings.Contains(strings.Join(args, " "), "baseharbor-pki/sign/baseharbor-core") {
+	if strings.Contains(strings.Join(args, " "), "baseharbor-pki/sign/baseharbor-nodes") || strings.Contains(strings.Join(args, " "), "baseharbor-pki/sign/baseharbor-core") || strings.Contains(strings.Join(args, " "), "baseharbor-pki/sign/baseharbor-workstations") {
 		f.args = append(f.args, strings.Join(args, " "))
 		f.inputs = append(f.inputs, string(input))
 		return f.reply, nil
 	}
 	return f.servicePKIFake.ExecProjectInput(ctx, project, compose, env, input, service, args...)
+}
+
+func TestWorkstationCSRRejectsLeaseBoundCertificate(t *testing.T) {
+	identity := "spiffe://baseharbor/workstations/tenant/device-a"
+	uri, _ := url.Parse(identity)
+	_, key, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	der, err := x509.CreateCertificateRequest(rand.Reader, &x509.CertificateRequest{Subject: pkix.Name{CommonName: identity}, URIs: []*url.URL{uri}}, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := serviceaccess.CSRSigningRequest{Identity: identity, CSRPEM: pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE REQUEST", Bytes: der}), TTL: time.Hour}
+	ca := serviceissuer.New(t)
+	leaf, err := ca.SignCSR(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	material, err := json.Marshal(map[string]any{
+		"lease_id": "baseharbor-pki/sign/baseharbor-workstations/short-lived-parent",
+		"data":     map[string]any{"certificate": string(leaf.Certificate), "issuing_ca": string(leaf.IssuingCA), "serial_number": leaf.Serial},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fake := &csrPKIFake{reply: string(material)}
+	issuer := NewServiceIssuer(fake, servicePKITestFiles(t))
+	if _, err := issuer.SignWorkstationCSR(context.Background(), request); err == nil || !strings.Contains(err.Error(), "revocable signing lease") {
+		t.Fatalf("workstation issuer accepted a certificate tied to its short-lived signing token: %v", err)
+	}
 }
 
 func TestManagedNodeCSRSignsClientKeyAndReturnsNoPrivateMaterial(t *testing.T) {

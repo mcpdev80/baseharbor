@@ -125,6 +125,50 @@ func TestNativeOpenBaoManagedCoreAndNodeCSRRotation(t *testing.T) {
 		t.Fatal("real managed workstation CSR signing failed", err)
 	}
 	verifyNativeBaoCertificate(t, workstationLeaf, before.PEM, x509.ExtKeyUsageClientAuth)
+	// A workstation certificate must outlive the short-lived AppRole token that
+	// signed it. Explicitly revoke the signing token (the deterministic
+	// equivalent of letting it expire), then query OpenBao's live revocation
+	// status several times as the Core does for repeated device connections.
+	if _, err := workstationCSR.ValidateWorkstation(); err != nil {
+		t.Fatal("workstation CSR did not validate", err)
+	}
+	shortLivedSigningToken, err := managerToken(ctx, executor, files)
+	if err != nil {
+		t.Fatal("could not obtain workstation signing token", err)
+	}
+	workstationPayload, err := json.Marshal(map[string]any{
+		"csr": string(workstationCSR.CSRPEM), "common_name": workstationCSR.Identity,
+		"uri_sans": workstationCSR.Identity, "ttl": workstationCSR.TTL.String(),
+		"format": "pem", "exclude_cn_from_sans": true,
+	})
+	if err != nil {
+		t.Fatal("could not encode workstation signing request", err)
+	}
+	workstationOutput, err := execWithTokenPayload(ctx, executor, files, shortLivedSigningToken,
+		`exec bao write -format=json baseharbor-pki/sign/baseharbor-workstations -`, string(workstationPayload))
+	if err != nil {
+		t.Fatal("short-lived manager token could not sign workstation CSR", err)
+	}
+	var workstationSigningReply struct {
+		Data struct {
+			Serial string `json:"serial_number"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(workstationOutput), &workstationSigningReply); err != nil || workstationSigningReply.Data.Serial == "" {
+		t.Fatal("workstation signing returned no certificate serial", err)
+	}
+	if _, err := execWithToken(ctx, executor, files, shortLivedSigningToken, `exec bao token revoke -self`); err != nil {
+		t.Fatal("could not revoke short-lived workstation signing token", err)
+	}
+	for attempt := 0; attempt < 3; attempt++ {
+		revoked, err := issuer.RevokedStatus(ctx, workstationSigningReply.Data.Serial)
+		if err != nil {
+			t.Fatal("could not read workstation certificate status after signing-token revocation", err)
+		}
+		if revoked {
+			t.Fatal("workstation certificate was revoked with its short-lived signing token; repeated device connections will fail")
+		}
+	}
 	if _, err := issuer.SignCSR(ctx, workstationCSR); err == nil {
 		t.Fatal("Connector signing accepted workstation identity")
 	}
