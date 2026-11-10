@@ -46,6 +46,7 @@ func TestStaleAppLockReclaimedBySubsequentAcquire(t *testing.T) {
 	// and waits on a marker so the parent can kill it while it still holds it.
 	markerDir := t.TempDir()
 	releaseMarker := filepath.Join(markerDir, "release")
+	readyMarker := filepath.Join(markerDir, "ready")
 
 	hold := exec.Command(os.Args[0])
 	hold.Env = append(os.Environ(),
@@ -53,6 +54,7 @@ func TestStaleAppLockReclaimedBySubsequentAcquire(t *testing.T) {
 		"BAHA_TEST_RECLAIM_ROOT="+root,
 		"BAHA_TEST_RECLAIM_SCOPE="+scope,
 		"BAHA_TEST_RECLAIM_RELEASE="+releaseMarker,
+		"BAHA_TEST_RECLAIM_READY="+readyMarker,
 	)
 	if err := hold.Start(); err != nil {
 		t.Fatalf("failed to start holder child: %v", err)
@@ -60,7 +62,7 @@ func TestStaleAppLockReclaimedBySubsequentAcquire(t *testing.T) {
 
 	// Wait for the receipt to appear (the child holds it), up to the holder's
 	// 60s self-release ceiling.
-	if !waitForFile(lockPath, 30*time.Second) {
+	if !waitForFile(readyMarker, 30*time.Second) {
 		_ = killProcessForce(hold)
 		waitForProcessExit(hold)
 		t.Fatalf("per-app lock dotfile never appeared; the holder child did not acquire")
@@ -92,6 +94,7 @@ func TestStaleAppLockStillBlocksLiveHolder(t *testing.T) {
 	}
 	markerDir := t.TempDir()
 	releaseMarker := filepath.Join(markerDir, "release")
+	readyMarker := filepath.Join(markerDir, "ready")
 
 	live := exec.Command(os.Args[0])
 	live.Env = append(os.Environ(),
@@ -99,6 +102,7 @@ func TestStaleAppLockStillBlocksLiveHolder(t *testing.T) {
 		"BAHA_TEST_RECLAIM_ROOT="+root,
 		"BAHA_TEST_RECLAIM_SCOPE="+"live-app",
 		"BAHA_TEST_RECLAIM_RELEASE="+releaseMarker,
+		"BAHA_TEST_RECLAIM_READY="+readyMarker,
 	)
 	if err := live.Start(); err != nil {
 		t.Fatalf("failed to start live holder child: %v", err)
@@ -107,7 +111,7 @@ func TestStaleAppLockStillBlocksLiveHolder(t *testing.T) {
 		_ = killProcessForce(live)
 		waitForProcessExit(live)
 	}()
-	if !waitForFile(lockFilePath(root, "live-app"), 30*time.Second) {
+	if !waitForFile(readyMarker, 30*time.Second) {
 		t.Fatal("live holder did not stage its per-app dotfile")
 	}
 
@@ -234,9 +238,19 @@ func reclaimChild() {
 	root := os.Getenv("BAHA_TEST_RECLAIM_ROOT")
 	scope := os.Getenv("BAHA_TEST_RECLAIM_SCOPE")
 	release := os.Getenv("BAHA_TEST_RECLAIM_RELEASE")
+	ready := os.Getenv("BAHA_TEST_RECLAIM_READY")
 	unlock, err := AcquireAppLifecycleLock(root, scope)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "reclaim holder acquire failed: %v\n", err)
+		os.Exit(1)
+	}
+	// The lock-acquire call has returned: the shared target-wide lock is
+	// released, the per-app flock is held and its receipt is fully written.
+	// Announce only this stable state; observing a newly-created dotfile is
+	// insufficient because creation precedes the kernel-lock handoff.
+	if err := os.WriteFile(ready, []byte("acquired\n"), 0600); err != nil {
+		fmt.Fprintf(os.Stderr, "reclaim holder readiness failed: %v\n", err)
+		unlock()
 		os.Exit(1)
 	}
 	// Hold until the parent signals release OR is killed. If killed, the
