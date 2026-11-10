@@ -82,6 +82,7 @@ nav:
       - Target concepts: explanation/targets.md
       - Target commands: cli/targets.md
       - Developer access: how-to/developer-access.md
+      - Remote workstation: how-to/remote-workstation.md
 
   - Providers:
       - Provider model: explanation/providers.md
