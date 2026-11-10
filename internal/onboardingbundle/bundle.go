@@ -23,31 +23,7 @@ import (
 const Contract = "baseharbor.workstation-onboard/v1"
 
 var coreInstallationUUID = regexp.MustCompile("^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
-var coreTargetName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}// Package onboardingbundle defines a strict portable one-use workstation invitation.
-package onboardingbundle
-
-import (
-	"bytes"
-	"crypto/x509"
-	"encoding/json"
-	"encoding/pem"
-	"errors"
-	"fmt"
-	"io"
-	"net"
-	"net/url"
-	"os"
-	"path/filepath"
-	"regexp"
-	"strings"
-	"time"
-
-	ws "github.com/mcpdev80/baseharbor/internal/workstationenrollment"
-)
-
-const Contract = "baseharbor.workstation-onboard/v1"
-
-)
+var coreTargetName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
 
 const MaxBytes int64 = 64 << 10
 
