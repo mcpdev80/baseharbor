@@ -136,6 +136,10 @@ The client import remains one-time and pinned to the transferred Core CA.
 
 Operator flow: `baha up` on the Core VM, `baha onboard` to issue a private
 invitation, transfer the file, then `baha onboard --import FILE` on the PC.
+The invitation defaults to the maximum five-year workstation certificate;
+`baha onboard --invite --certificate-ttl 1y` selects a shorter lifetime. A
+connected, unexpired workstation identity renews automatically during a later
+Core request when less than 15 minutes remain.
 
 The installer checks systemd user lingering so the Core API remains available
 after logout; if enabling it is not permitted by the host, onboarding fails

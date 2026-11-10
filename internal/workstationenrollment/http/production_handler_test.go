@@ -163,11 +163,13 @@ func TestBootstrapBindsScopeFromTenant(t *testing.T) {
 	e := newMockEnrollment(t)
 	h := handler(t, e)
 	// Valid bootstrap under the authenticated tenant succeeds.
-	if rec := do(t, h, "/bootstrap", bootstrapBody(), ctx(t, tenantA)); rec.Code != http.StatusOK {
+	body := bootstrapBody()
+	body["certificate_ttl_seconds"] = 157680000
+	if rec := do(t, h, "/bootstrap", body, ctx(t, tenantA)); rec.Code != http.StatusOK {
 		t.Fatalf("bootstrap under tenantA = %d, want 200", rec.Code)
 	}
 	// A foreign station label (malformed) is rejected by scope validation.
-	body := bootstrapBody()
+	body = bootstrapBody()
 	body["station"] = "bad-station/escape"
 	if rec := do(t, h, "/bootstrap", body, ctx(t, tenantA)); rec.Code != http.StatusForbidden {
 		t.Fatalf("malformed station bootstrap = %d, want 403", rec.Code)
@@ -184,7 +186,7 @@ func TestBootstrapExpiryRejected(t *testing.T) {
 	e := newMockEnrollment(t)
 	h := handler(t, e)
 	body := bootstrapBody()
-	body["certificate_ttl_seconds"] = 999999 // far beyond the 24h cap
+	body["certificate_ttl_seconds"] = 157680001 // one second beyond the five-year cap
 	if rec := do(t, h, "/bootstrap", body, ctx(t, tenantA)); rec.Code != http.StatusForbidden {
 		t.Fatalf("over-cap TTL bootstrap = %d, want 403", rec.Code)
 	}

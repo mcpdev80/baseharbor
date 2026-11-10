@@ -12,14 +12,16 @@ import (
 	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/deployment"
+	ws "github.com/mcpdev80/baseharbor/internal/workstationenrollment"
 )
 
 func runOnboardInvite(ctx context.Context, args []string, out io.Writer) error {
 	var targetName, station, coreURL, outputFile string
+	certificateTTL := ws.MaxCertificateTTL
 	for i := 0; i < len(args); i++ {
 		flag := args[i]
 		switch flag {
-		case "--target", "--station", "--core-url", "--output":
+		case "--target", "--station", "--core-url", "--output", "--certificate-ttl":
 			if i+1 >= len(args) || strings.TrimSpace(args[i+1]) == "" {
 				return usageError(flag+" requires a value", "Use baha onboard --invite --help.")
 			}
@@ -34,10 +36,16 @@ func runOnboardInvite(ctx context.Context, args []string, out io.Writer) error {
 				coreURL = value
 			case "--output":
 				outputFile = value
+			case "--certificate-ttl":
+				parsedTTL, parseErr := ws.ParseCertificateTTL(value)
+				if parseErr != nil {
+					return usageError("--certificate-ttl must be a positive duration no greater than 5y (for example 5y, 1y, 90d or 24h)", "Choose a shorter workstation identity lifetime.")
+				}
+				certificateTTL = parsedTTL
 			}
 		default:
 			return unknownOptionUsage("baha onboard --invite", flag,
-				"--target", "--station", "--core-url", "--output")
+				"--target", "--station", "--core-url", "--output", "--certificate-ttl")
 		}
 	}
 	if targetName != "" {
@@ -101,7 +109,7 @@ func runOnboardInvite(ctx context.Context, args []string, out io.Writer) error {
 			return err
 		}
 	}
-	if err := issueLocalWorkstationInvitation(withTargetOverride(ctx, target.Name), target, station, coreURL, outputFile); err != nil {
+	if err := issueLocalWorkstationInvitation(withTargetOverride(ctx, target.Name), target, station, coreURL, outputFile, certificateTTL); err != nil {
 		return err
 	}
 	_, err = fmt.Fprintf(out, "One-use workstation invitation: %s\nTransfer this private file to the developer workstation. Do not print its contents.\n", outputFile)

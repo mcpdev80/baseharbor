@@ -20,7 +20,7 @@ import (
 // There is no remote tenant or operator-login fallback. Only the local Core
 // owner with access to the protected runtime files/database can reach this
 // helper; it never returns bearer tokens in stdout or logs.
-func issueLocalWorkstationInvitation(ctx context.Context, target deployment.ResolvedTarget, station, coreOrigin, outputFile string) error {
+func issueLocalWorkstationInvitation(ctx context.Context, target deployment.ResolvedTarget, station, coreOrigin, outputFile string, certificateTTL time.Duration) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -91,7 +91,7 @@ func issueLocalWorkstationInvitation(ctx context.Context, target deployment.Reso
 	if err != nil {
 		return err
 	}
-	grant, err := authority.Create(check, scope, 5*time.Minute, time.Hour)
+	grant, err := authority.Create(check, scope, 5*time.Minute, certificateTTL)
 	if err != nil {
 		return fmt.Errorf("issue single-use workstation authorization: %w", err)
 	}

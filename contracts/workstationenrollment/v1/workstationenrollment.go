@@ -125,7 +125,7 @@ func (r Record) ValidateKindEnforcement() error {
 	if r.Bootstrap.TTLSeconds <= 0 || r.Bootstrap.TTLSeconds > 300 {
 		return ErrInvalidRecord
 	}
-	if r.Bootstrap.CertificateTTLSeconds <= 0 || r.Bootstrap.CertificateTTLSeconds > 86400 {
+	if r.Bootstrap.CertificateTTLSeconds <= 0 || int64(r.Bootstrap.CertificateTTLSeconds) > int64(ws.MaxCertificateTTL/time.Second) {
 		return ErrInvalidRecord
 	}
 	return nil

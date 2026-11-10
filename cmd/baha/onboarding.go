@@ -395,7 +395,11 @@ func commitOnboardingDecision(ctx context.Context, decision onboardingwizard.Dec
 		// Reuse the same locally owned issuer as baha onboard --invite.
 		// The explicit selected Target is never a request-supplied remote
 		// Core or an invitation from an unknown installation.
-		return runOnboardInvite(ctx, []string{"--target", decision.Target}, out)
+		ttl := decision.CertificateTTL
+		if ttl == 0 {
+			ttl = ws.MaxCertificateTTL
+		}
+		return runOnboardInvite(ctx, []string{"--target", decision.Target, "--certificate-ttl", ttl.String()}, out)
 	case onboardingwizard.ModeOwner:
 		// Review consent precedes the only effect: the existing owner-only
 		// Keycloak PKCE login and atomic initial tenant transaction.

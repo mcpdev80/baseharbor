@@ -10,6 +10,7 @@ import (
 	"encoding/pem"
 	"math/big"
 	"net"
+	"strings"
 	"testing"
 	"time"
 
@@ -148,7 +149,11 @@ func (i *Issuer) BaseExpiry(_ context.Context) (time.Time, error) {
 var _ serviceaccess.Issuer = (*Issuer)(nil)
 
 func (i *Issuer) SignCSR(_ context.Context, request serviceaccess.CSRSigningRequest) (serviceaccess.IssuedCertificate, error) {
-	csr, err := request.Validate()
+	validate := request.Validate
+	if strings.HasPrefix(request.Identity, "spiffe://baseharbor/workstations/") {
+		validate = request.ValidateWorkstation
+	}
+	csr, err := validate()
 	if err != nil {
 		return serviceaccess.IssuedCertificate{}, err
 	}

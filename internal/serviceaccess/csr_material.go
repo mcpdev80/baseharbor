@@ -12,7 +12,17 @@ import (
 // ValidateSignedCSR verifies public issuance against the authoritative trust,
 // rather than trusting a CA supplied alongside an arbitrary signed leaf.
 func ValidateSignedCSR(request CSRSigningRequest, issued IssuedCertificate, trust TrustBundle, now time.Time) error {
-	csr, err := request.Validate()
+	return validateSignedCSR(request, issued, trust, now, request.Validate)
+}
+
+// ValidateSignedWorkstationCSR verifies workstation material against the
+// dedicated five-year workstation certificate bound.
+func ValidateSignedWorkstationCSR(request CSRSigningRequest, issued IssuedCertificate, trust TrustBundle, now time.Time) error {
+	return validateSignedCSR(request, issued, trust, now, request.ValidateWorkstation)
+}
+
+func validateSignedCSR(request CSRSigningRequest, issued IssuedCertificate, trust TrustBundle, now time.Time, validate func() (*x509.CertificateRequest, error)) error {
+	csr, err := validate()
 	if err != nil {
 		return err
 	}

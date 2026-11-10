@@ -5,8 +5,47 @@ import (
 	"encoding/hex"
 	"errors"
 	"regexp"
+	"strconv"
+	"strings"
 	"time"
+
+	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
+
+// MaxCertificateTTL is the longest workstation certificate lifetime supported
+// by the enrollment contract. Five years avoids routine developer re-login.
+const MaxCertificateTTL = serviceaccess.MaxWorkstationCertificateTTL
+
+// ParseCertificateTTL accepts Go duration units plus day and year suffixes.
+func ParseCertificateTTL(value string) (time.Duration, error) {
+	value = strings.TrimSpace(strings.ToLower(value))
+	unit := time.Duration(0)
+	for suffix, size := range map[string]time.Duration{"y": 365 * 24 * time.Hour, "d": 24 * time.Hour} {
+		if strings.HasSuffix(value, suffix) {
+			unit = size
+			value = strings.TrimSuffix(value, suffix)
+			break
+		}
+	}
+	var ttl time.Duration
+	var err error
+	if unit != 0 {
+		var count int64
+		count, err = strconv.ParseInt(value, 10, 64)
+		if err == nil && (count <= 0 || count > int64(MaxCertificateTTL/unit)) {
+			err = errors.New("certificate lifetime is outside the supported range")
+		}
+		if err == nil {
+			ttl = time.Duration(count) * unit
+		}
+	} else {
+		ttl, err = time.ParseDuration(value)
+	}
+	if err != nil || ttl <= 0 || ttl > MaxCertificateTTL || ttl%time.Second != 0 {
+		return 0, errors.New("certificate lifetime must be whole seconds and no more than five years")
+	}
+	return ttl, nil
+}
 
 var ErrDenied = errors.New("workstation enrollment is invalid, expired, or consumed")
 

@@ -90,7 +90,7 @@ func renewRemoteWorkstationIdentity(ctx context.Context, client *http.Client, pr
 	}
 	csrPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE REQUEST", Bytes: csrDER})
 	payload, err := json.Marshal(map[string]any{
-		"station": scope.Station, "csr_pem": string(csrPEM), "certificate_ttl_seconds": 3600,
+		"station": scope.Station, "csr_pem": string(csrPEM), "certificate_ttl_seconds": int(ws.MaxCertificateTTL / time.Second),
 	})
 	if err != nil {
 		return err

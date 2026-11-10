@@ -21,6 +21,9 @@ import (
 	"io"
 	"sort"
 	"strings"
+	"time"
+
+	ws "github.com/mcpdev80/baseharbor/internal/workstationenrollment"
 )
 
 // Mode is the wizard entry mode. Bootstrap and attach are distinct intents
@@ -122,14 +125,15 @@ type InstallState struct {
 // Decision is one validated wizard outcome. It carries no mutation hook: the
 // caller executes its commit step exactly once, after review approval.
 type Decision struct {
-	Mode         Mode
-	App          AppIntent
-	Target       string
-	Persistence  Persistence
-	ImportBundle string
-	ImportFile   string
-	TenantSlug   string
-	TenantName   string
+	Mode           Mode
+	App            AppIntent
+	Target         string
+	CertificateTTL time.Duration
+	Persistence    Persistence
+	ImportBundle   string
+	ImportFile     string
+	TenantSlug     string
+	TenantName     string
 }
 
 // Validate enforces the decision invariants independently of the controller.
@@ -141,6 +145,9 @@ func (d Decision) Validate() error {
 	case ModeInvite:
 		if strings.TrimSpace(d.Target) == "" {
 			return fmt.Errorf("%w: invitation needs the installed local Core Target", ErrIncompleteConfiguration)
+		}
+		if d.CertificateTTL < 0 || d.CertificateTTL > ws.MaxCertificateTTL {
+			return fmt.Errorf("%w: workstation certificate lifetime must be no more than five years", ErrIncompleteConfiguration)
 		}
 	case ModeOwner:
 		if strings.TrimSpace(d.TenantSlug) == "" || strings.TrimSpace(d.TenantName) == "" {
@@ -277,7 +284,11 @@ func askIntent(ctx context.Context, reader *bufio.Reader, out io.Writer, state I
 		if err != nil {
 			return Decision{}, err
 		}
-		return Decision{Mode: ModeInvite, Target: target}, nil
+		ttl, err := askCertificateTTL(ctx, reader, out)
+		if err != nil {
+			return Decision{}, err
+		}
+		return Decision{Mode: ModeInvite, Target: target, CertificateTTL: ttl}, nil
 	case "owner":
 		return askOwnerTenant(ctx, reader, out)
 	case "new":
@@ -316,6 +327,34 @@ func askIntent(ctx context.Context, reader *bufio.Reader, out io.Writer, state I
 	}
 	dec.Persistence = persist
 	return dec, nil
+}
+
+func askCertificateTTL(ctx context.Context, reader *bufio.Reader, out io.Writer) (time.Duration, error) {
+	fmt.Fprintln(out, "Workstation certificate lifetime (default: maximum five years; longer means less frequent re-enrollment).")
+	choice, err := askChoice(ctx, reader, out, map[string]string{
+		"5y":     "maximum supported lifetime (recommended for developer workstations)",
+		"1y":     "one year",
+		"90d":    "90 days",
+		"custom": "enter another lifetime (for example 180d or 43800h)",
+	}, "5y")
+	if err != nil {
+		return 0, err
+	}
+	if choice == "5y" {
+		return ws.MaxCertificateTTL, nil
+	}
+	value := choice
+	if choice == "custom" {
+		value, err = ask(ctx, reader, out, "Lifetime", "1y")
+		if err != nil {
+			return 0, err
+		}
+	}
+	ttl, err := ws.ParseCertificateTTL(value)
+	if err != nil {
+		return 0, fmt.Errorf("%w: %s", ErrInvalidChoice, err)
+	}
+	return ttl, nil
 }
 
 // askApplication asks the explicit existing-versus-new decision unless the
@@ -473,6 +512,13 @@ func reviewLines(d Decision) []string {
 	lines := []string{"mode:    " + string(d.Mode)}
 	if d.Target != "" {
 		lines = append(lines, "target:  "+d.Target)
+	}
+	if d.Mode == ModeInvite {
+		ttl := d.CertificateTTL
+		if ttl == 0 {
+			ttl = ws.MaxCertificateTTL
+		}
+		lines = append(lines, "device:  workstation certificate "+ttl.String())
 	}
 	if (d.Mode == ModeOwner || d.Mode == ModeBootstrap) && d.TenantSlug != "" {
 		lines = append(lines, "tenant:  "+d.TenantSlug+" ("+d.TenantName+")", "identity: verified operator OIDC / PKCE")

@@ -6,6 +6,7 @@ import (
 	"io"
 	"strings"
 	"testing"
+	"time"
 )
 
 // wizard_test.go holds the internal-slice regressions for the guided
@@ -208,7 +209,7 @@ func TestFirstOwnerWizardDefaultCustomAndCancel(t *testing.T) {
 func TestExistingCoreDefaultsToOneUseInvitation(t *testing.T) {
 	var output strings.Builder
 	decision, err := Run(context.Background(), Input{
-		In:  strings.NewReader("\nyes\n"),
+		In:  strings.NewReader("\n\nyes\n"),
 		Out: &output,
 		Discover: func(context.Context) (InstallState, error) {
 			return InstallState{HasInstallation: true, Targets: []string{"docker-local"}}, nil
@@ -217,11 +218,24 @@ func TestExistingCoreDefaultsToOneUseInvitation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("existing Core invitation failed: %v", err)
 	}
-	if decision.Mode != ModeInvite || decision.Target != "docker-local" {
+	if decision.Mode != ModeInvite || decision.Target != "docker-local" || decision.CertificateTTL != 5*365*24*time.Hour {
 		t.Fatalf("existing Core must default to invitation: %+v", decision)
 	}
 	if !strings.Contains(output.String(), "one-use workstation connection file") {
 		t.Fatalf("default invitation choice was not offered: %s", output.String())
+	}
+}
+
+func TestInvitationCanChooseShorterCertificateLifetime(t *testing.T) {
+	decision, err := Run(context.Background(), Input{
+		In:  strings.NewReader("\n1y\nyes\n"),
+		Out: io.Discard,
+		Discover: func(context.Context) (InstallState, error) {
+			return InstallState{HasInstallation: true, Targets: []string{"docker-local"}}, nil
+		},
+	})
+	if err != nil || decision.CertificateTTL != 365*24*time.Hour {
+		t.Fatalf("shorter invitation lifetime was not retained: %+v, %v", decision, err)
 	}
 }
 func TestInvitationNeedsExistingCoreTarget(t *testing.T) {

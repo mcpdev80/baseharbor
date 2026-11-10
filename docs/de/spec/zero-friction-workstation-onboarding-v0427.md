@@ -57,6 +57,13 @@ Wenn keine eindeutige sichere LAN-Adresse gefunden wird, wird die
 Konfiguration abgelehnt, anstatt eine Wildcard- oder Loopback-Adresse zu
 veröffentlichen.
 
+Einladungen verwenden standardmäßig das Maximum von fünf Jahren für das
+Workstation-Zertifikat. Im Wizard kann eine kürzere Laufzeit gewählt werden;
+direkt unterstützt `baha onboard --invite --certificate-ttl 1y` zum Beispiel
+ein Jahr. Solange das Client-Zertifikat gültig und nicht widerrufen ist,
+erneuert `baha` es bei einer späteren Core-Anfrage automatisch, sobald weniger
+als 15 Minuten Restlaufzeit bestehen.
+
 Der User-Service wird mit systemd beaufsichtigt und startet zur
 Zertifikatserneuerung mindestens einmal täglich neu. Damit er nach
 Abmeldung weiterläuft, wird systemd-Linger geprüft beziehungsweise
