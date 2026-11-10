@@ -169,6 +169,10 @@ path "baseharbor-pki/sign/baseharbor-nodes" {
   capabilities = ["create", "update"]
 }
 
+path "baseharbor-pki/sign/baseharbor-workstations" {
+  capabilities = ["create", "update"]
+}
+
 path "baseharbor-pki/cert/ca" {
   capabilities = ["read"]
 }
