@@ -157,10 +157,10 @@ func TestVerifiedHTTPSourceProviderPreflightUsesSameCoreIdentityProjection(t *te
 	resolved.TargetStateRoot = root
 	resolved.Manifest = m
 	resolved.DeploymentIdentity = deployment.DeploymentIdentity{
-		Target: target.Name,
+		Target:        target.Name,
 		ApplicationID: m.ApplicationID,
-		Application: m.Name,
-		Environment: m.Environment,
+		Application:   m.Name,
+		Environment:   m.Environment,
 	}
 	prepared, err := prepareVerifiedHTTPSource(context.Background(), resolved, selection)
 	if err != nil {
