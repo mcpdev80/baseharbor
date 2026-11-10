@@ -1,35 +1,32 @@
 # Entwicklungsrechner mit BaseHarbor Core verbinden
 
-BaseHarbor trennt den Management-Core vom Rechner, auf dem Anwendungen entwickelt werden. Core bleibt für Zustand, Sicherheit und Deployments verantwortlich.
+Diese Anleitung gilt, wenn Core auf einem anderen Rechner läuft. Der Entwicklungsrechner verbindet sich direkt mit Core. Den Node Connector brauchst du nur für zusätzliche entfernte Runtime-Hosts.
 
-## Auf dem Core-Host
+## 1. Core einrichten
 
-BaseHarbor installieren und die Control Plane einrichten:
+Installiere BaseHarbor auf dem Core-Host und führe aus:
 
 ```bash
 baha up --control-plane-only
 baha onboard --init-tenant
 ```
 
-Der erste Operator wird über die geschützte Anmeldung initialisiert. Der Core benötigt einen erreichbaren Management-Endpunkt mit korrekter TLS-Konfiguration.
+Schließe die Anmeldung als Operator ab und richte einen erreichbaren, TLS-geschützten Management-Endpunkt ein.
 
-## Auf dem Entwicklungsrechner
+## 2. Entwicklungsrechner verbinden
 
-BaseHarbor CLI installieren und die geführte Verbindung beginnen:
+Installiere `baha` auf dem Entwicklungsrechner und führe aus:
 
 ```bash
 baha onboard
-baha target list
 baha target show
 ```
 
-Der Wizard erkennt bestehende Verbindungen, bietet Targets zur Auswahl und verwendet einen bereits geprüften Zugang wieder. Beim Verbinden mit einem vorhandenen Core werden dessen Dienste nicht erneut installiert.
+Folge dem Dialog, um dich mit dem vorhandenen Core zu verbinden. Gegebenenfalls benötigst du ein vertrauenswürdiges Enrollment-Bundle. Eine bereits geprüfte Verbindung wird wiederverwendet.
 
-Für ein bereits bekanntes Target kann `baha onboard --target NAME` verwendet werden. Ein Enrollment-Bundle muss aus dem vertrauenswürdigen Core stammen. Die private Geräteidentität bleibt auf dem Entwicklungsrechner.
+## 3. Anwendung starten
 
-## Anwendung starten
-
-Sobald das Target verifiziert ist, im Anwendungs-Repository:
+Öffne das Anwendungs-Repository und führe aus:
 
 ```bash
 baha inspect .
@@ -39,6 +36,4 @@ baha up
 baha status
 ```
 
-Der optionale Node Connector bindet entfernte Docker-/Podman-Runtime-Hosts an. Er wird für die Verbindung vom Entwicklungsrechner zum Core nicht benötigt.
-
-Siehe [Targets](../cli/targets.md), [Sicherheit und Vertrauen](../cli/security-trust.md) und [Erste Schritte](../tutorials/getting-started.md).
+Weitere Optionen und Hinweise zur Wiederherstellung findest du unter [Target-Befehle](../cli/targets.md) und [Sicherheit](../cli/security-trust.md).
