@@ -87,9 +87,12 @@ func (c Config) Validate() error {
 		return errors.New("local enrollment authority Target requires connector or workstation enrollment")
 	}
 	if c.WorkstationEnrollmentEnabled {
-		if c.boundRuntimeEnabled() || !c.operatorAPIEnabled() || strings.TrimSpace(c.DatabaseURL) == "" ||
+		if c.boundRuntimeEnabled() || strings.TrimSpace(c.DatabaseURL) == "" ||
 			strings.TrimSpace(c.ConnectorAuthorityTarget) == "" {
-			return errors.New("Workstation enrollment requires the operator API, database and a locally owned authority Target")
+			return errors.New("Workstation enrollment requires the Core database and a locally owned authority Target")
+		}
+		if !c.operatorAPIEnabled() && c.ConnectorEnrollmentEnabled {
+			return errors.New("Connector enrollment requires a configured operator OIDC identity")
 		}
 	}
 	if strings.TrimSpace(c.TLSCertFile) == "" || strings.TrimSpace(c.TLSKeyFile) == "" {
