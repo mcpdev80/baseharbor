@@ -30,6 +30,8 @@ footprint distinguish measured, estimated and unknown values without invented
 savings. See the [application commands](../cli/applications.md) for supported
 Core-less behavior and limits.
 
+For a separate developer workstation connecting to a managed Core, follow [Remote workstation setup](../how-to/remote-workstation.md).
+
 ## Optional: first operator on a remote-management Core
 
 For Connector enrollment, initialize the first operator **on the local management Core**, not on the remote node:
