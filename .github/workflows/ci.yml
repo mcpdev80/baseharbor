@@ -1376,6 +1376,7 @@ jobs:
             python3 scripts/test_ci_check_routes.py
             python3 scripts/test_pr_gate_plan.py
             python3 scripts/test_pr_draft_go_packages.py
+            python3 scripts/test_ci_onboarding_native_proof.py
           fi
 
   pr_draft_go_shards:
