@@ -110,6 +110,9 @@ func ensureManagedCoreLANService(ctx context.Context, target string) error {
 		}
 		return nil
 	}
+	if err := ensureManagedCoreUserLinger(ctx); err != nil {
+		return err
+	}
 	if err := invoke("daemon-reload"); err != nil {
 		return err
 	}
@@ -172,6 +175,26 @@ func verifyManagedCoreLANReady(ctx context.Context, target string) error {
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusOK {
 		return fmt.Errorf("Core LAN HTTPS readiness returned HTTP %d", res.StatusCode)
+	}
+	return nil
+}
+
+func ensureManagedCoreUserLinger(ctx context.Context) error {
+	uid := strconv.Itoa(os.Getuid())
+	inspect := func() (string, error) {
+		command := exec.CommandContext(ctx, "loginctl", "show-user", uid, "--property=Linger", "--value")
+		out, err := command.CombinedOutput()
+		return strings.TrimSpace(string(out)), err
+	}
+	if active, err := inspect(); err == nil && active == "yes" {
+		return nil
+	}
+	command := exec.CommandContext(ctx, "loginctl", "enable-linger", uid)
+	if out, err := command.CombinedOutput(); err != nil {
+		return fmt.Errorf("automatic persistent Core requires systemd user lingering; enable-linger failed: %w (%s)", err, strings.TrimSpace(string(out)))
+	}
+	if active, err := inspect(); err != nil || active != "yes" {
+		return errors.New("Core user lingering is not active; refusing a service that disappears after logout")
 	}
 	return nil
 }

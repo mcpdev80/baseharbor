@@ -136,3 +136,7 @@ The client import remains one-time and pinned to the transferred Core CA.
 
 Operator flow: `baha up` on the Core VM, `baha onboard` to issue a private
 invitation, transfer the file, then `baha onboard --import FILE` on the PC.
+
+The installer checks systemd user lingering so the Core API remains available
+after logout; if enabling it is not permitted by the host, onboarding fails
+with a clear systemd error rather than claiming that the service is durable.

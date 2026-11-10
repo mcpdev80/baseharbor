@@ -10,6 +10,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/deployment"
@@ -143,12 +144,16 @@ func loadOwnedCoreLANEndpoint(target string) (string, error) {
 		return "", errors.New("managed Core endpoint file contains trailing data")
 	}
 	if endpoint.Version != "baseharbor.core-lan-endpoint/v1" || endpoint.Target != target ||
-		!strings.HasPrefix(endpoint.URL, "https://") {
+		validateCoreURL(endpoint.URL) != nil {
 		return "", errors.New("managed Core LAN endpoint belongs to another target or contract")
 	}
 	hostport := strings.TrimPrefix(endpoint.URL, "https://")
 	host, port, err := net.SplitHostPort(hostport)
 	if err != nil || host == "" || port == "" || !usableNodeHost(host) {
+		return "", errors.New("stored Core LAN endpoint is not a concrete HTTPS origin")
+	}
+	numericPort, err := strconv.Atoi(port)
+	if err != nil || numericPort < 1 || numericPort > 65535 {
 		return "", errors.New("stored Core LAN endpoint is not a concrete HTTPS origin")
 	}
 	return endpoint.URL, nil
