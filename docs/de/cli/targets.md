@@ -7,21 +7,6 @@ Targets wählen Deployment-Ziel, Runtime und Zugriffsweg. Sie sind keine Capabil
 Die Auflösung verwendet zuerst globales `--target NAME`, dann das aktivierte Shell-Target, Organisations-/Plattform-Defaults und das konfigurierte Standardtarget. Vor Mutation zeigt `baha target show` Ziel und Herkunft.
 
 
-## Deployment-Richtlinien
-
-Jedes Target kann eine anpassbare Deployment-Richtlinie besitzen. Neue Targets erhalten wählbare Best-Practice-Vorgaben für Entwicklung, Test, Staging und Produktion. Bestehende Targets werden nicht stillschweigend eingeschränkt.
-
-Mit `baha target policy show NAME` zeigst du die gespeicherte Richtlinie. Mit `baha target policy set NAME --deployment-preset test` setzt du eine Vorgabe. Branches, Dirty-Worktree, Commit, Freigabe und Image-Digest lassen sich bewusst anpassen.
-
-| Profil | Erlaubte Branches | Dirty | Commit | Remote-Commit | Freigabe | Image-Digest |
-| --- | --- | --- | --- | --- | --- | --- |
-| development | Alle | Erlaubt | Optional | Optional | Optional | Optional |
-| test | `develop`, `release/*` | Verboten | Pflicht | Optional | Optional | Pflicht |
-| staging | `main`, `release/*` | Verboten | Pflicht | Optional | Optional | Pflicht |
-| production | `main` | Verboten | Pflicht | Pflicht | Pflicht | Pflicht |
-
-Eine Richtlinie für ein entferntes Target kann nur über die autorisierte Core-Schnittstelle geändert werden.
-
 ## Lokaler Docker-Zugriff
 
 ```text
