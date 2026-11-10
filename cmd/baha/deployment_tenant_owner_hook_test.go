@@ -243,13 +243,13 @@ func TestTenantBoundLocalCoreUsesRealInstallationOwnerWithoutConnector(t *testin
 	record := deployment.DeploymentRecord{
 		Version: deployment.DeploymentRecordVersion,
 		Identity: deployment.DeploymentIdentity{
-			DeploymentID: "22222222-2222-4222-8222-222222222222",
+			DeploymentID:  "22222222-2222-4222-8222-222222222222",
 			ApplicationID: application.MustNewApplicationID(),
-			Target: name,
-			Application: "tenant-local-core-app",
-			Environment: "dev",
+			Target:        name,
+			Application:   "tenant-local-core-app",
+			Environment:   "dev",
 		},
-		Source: deployment.DeploymentSource{Kind: "managed"},
+		Source:  deployment.DeploymentSource{Kind: "managed"},
 		Applied: deployment.AppliedDeployment{RuntimeProvider: "docker"},
 	}
 	// Tenant presence must never bypass Core ownership while it is missing.
