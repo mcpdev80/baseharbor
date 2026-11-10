@@ -345,6 +345,13 @@ func registerOperatorAPI(ctx context.Context, mux *http.ServeMux, cfg Config, de
 			return errors.New("workstation enrollment is missing the one-use grant boundary")
 		}
 		mux.HandleFunc("/api/v1/workstations/enroll", delegated.ServeDelegatedEnroll)
+		deviceRenew, ok := handler.(interface {
+			ServeDeviceRenew(http.ResponseWriter, *http.Request)
+		})
+		if !ok {
+			return errors.New("workstation enrollment is missing the mTLS device renewal boundary")
+		}
+		operatorMux.HandleFunc("POST /api/v1/workstations/renew", deviceRenew.ServeDeviceRenew)
 		// Grant creation stays behind the existing operator/tenant policy.
 		operatorMux.Handle("/api/v1/workstations/bootstrap", handler)
 		operatorMux.Handle("/api/v1/workstations/enroll", handler)
