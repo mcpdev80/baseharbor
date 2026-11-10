@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/onboardingbundle"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
@@ -77,19 +78,74 @@ func TestWorkstationOnboardingRemoteNativeInCI(t *testing.T) {
 		}
 	})
 
-	// The following three cells are required but must remain RED until
-	// genuinely implemented, not silently skipped or simulated with a local
-	// fake HTTP server. This prevents promoting an untested new feature.
+	// Switch to a fresh workstation state root; no Docker installation or
+	// owner credentials from the Core fixture may be reused by the client.
+	workstationRoot := t.TempDir()
+	workstationTarget := ""
+	workloadDir := t.TempDir()
+	applied := false
 	t.Run("WorkstationImport", func(t *testing.T) {
 		if invitation == "" {
-			t.Fatal("native invitation is unavailable")
+			t.Fatal("Core did not create an invitation")
 		}
-		t.Fatal("missing E2E fixture: start an actual LAN-mTLS Core API and import on a separately isolated workstation")
+		t.Setenv("BASEHARBOR_STATE_DIR", workstationRoot)
+		t.Setenv("BASEHARBOR_TARGET", "")
+		var output bytes.Buffer
+		if err := runOnboardImport(ctx, []string{invitation}, &output); err != nil {
+			t.Fatalf("fresh workstation cannot enroll against the live Core: %v", err)
+		}
+		cfg, err := deployment.LoadConfig()
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, target := range cfg.TargetNames() {
+			resolved, err := cfg.ResolveTarget(target, "")
+			if err == nil && resolved.AccessProvider == "baseharbor-core" {
+				workstationTarget = target
+			}
+		}
+		if workstationTarget == "" {
+			t.Fatal("import did not configure a remotely authenticated Core Target")
+		}
 	})
 	t.Run("RemoteDeployment", func(t *testing.T) {
-		t.Fatal("missing E2E fixture: verify plan, apply, status and source upload over the imported remote Core target")
+		if workstationTarget == "" {
+			t.Fatal("fresh workstation did not complete remote import")
+		}
+		t.Setenv("BASEHARBOR_STATE_DIR", workstationRoot)
+		t.Setenv("BASEHARBOR_TARGET", workstationTarget)
+		t.Chdir(workloadDir)
+		if err := os.WriteFile("compose.yaml", []byte(corelessHTTPWorkload), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		manifest := application.WithWorkloadComponents(application.New("onboard-native", "dev", false, false, false), "api")
+		mustWriteInitializedAuthoredManifest(t, "baseharbor.yaml", manifest)
+		for _, args := range [][]string{
+			{"app", "plan", "onboard-native"},
+			{"app", "apply", "onboard-native", "--environment", "dev"},
+			{"app", "status", "onboard-native", "--environment", "dev"},
+			{"app", "update", "onboard-native", "--no-backup"},
+		} {
+			var stdout, stderr bytes.Buffer
+			if err := runWithIO(ctx, args, &stdout, &stderr); err != nil {
+				t.Fatalf("remote CLI operation %v failed over the enrolled device: %v", args, err)
+			}
+		}
+		applied = true
 	})
 	t.Run("RemoteDestroy", func(t *testing.T) {
-		t.Fatal("missing E2E fixture: verify remote teardown without destroying a foreign installation")
+		if !applied || workstationTarget == "" {
+			t.Fatal("remote application was not deployed by this test")
+		}
+		t.Setenv("BASEHARBOR_STATE_DIR", workstationRoot)
+		t.Setenv("BASEHARBOR_TARGET", workstationTarget)
+		t.Chdir(workloadDir)
+		var stdout, stderr bytes.Buffer
+		if err := runWithIO(ctx, []string{"app", "destroy", "onboard-native", "--yes"}, &stdout, &stderr); err != nil {
+			t.Fatalf("remote application destroy failed: %v", err)
+		}
+		if _, err := deployment.LoadConfig(); err != nil {
+			t.Fatalf("remote destroy damaged the workstation's target configuration: %v", err)
+		}
 	})
 }
