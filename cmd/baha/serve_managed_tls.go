@@ -78,8 +78,12 @@ func managedCoreTLSEndpoints(cfg controlplaneruntime.Config) (string, string, er
 // client transport, or cross-installation signing authority is introduced.
 // Opt-in is explicit; BYOC/externally prepared serving TLS remains supported.
 func prepareManagedCoreServingTLS(ctx context.Context, cfg *controlplaneruntime.Config) error {
-	if !strings.EqualFold(strings.TrimSpace(os.Getenv("BASEHARBOR_MANAGED_CORE_TLS")), "true") {
+	mode := strings.ToLower(strings.TrimSpace(os.Getenv("BASEHARBOR_MANAGED_CORE_TLS")))
+	if mode == "false" {
 		return nil
+	}
+	if mode != "" && mode != "true" {
+		return errors.New("BASEHARBOR_MANAGED_CORE_TLS must be true or false")
 	}
 	if cfg == nil || cfg.RuntimeAppName != "" ||
 		(!cfg.ConnectorEnrollmentEnabled && !cfg.WorkstationEnrollmentEnabled) ||
@@ -88,6 +92,17 @@ func prepareManagedCoreServingTLS(ctx context.Context, cfg *controlplaneruntime.
 	}
 	if cfg.TLSCertFile != "" || cfg.TLSKeyFile != "" || cfg.ConnectorTLSCertFile != "" || cfg.ConnectorTLSKeyFile != "" || cfg.ConnectorTLSCAFile != "" {
 		return errors.New("managed Core LAN TLS cannot override externally configured API/connector certificate material")
+	}
+	// Explicit endpoint settings remain authoritative. When none are supplied,
+	// derive a single concrete LAN address for this owned Core. Never publish
+	// a wildcard listener or a loopback-only invitation.
+	if strings.TrimSpace(os.Getenv("BASEHARBOR_API_PUBLIC_URL")) == "" &&
+		strings.TrimSpace(cfg.ListenAddr) == "" {
+		address, err := discoverOwnedCoreLANAddress()
+		if err != nil {
+			return fmt.Errorf("discover managed Core LAN listener: %w", err)
+		}
+		cfg.ListenAddr = net.JoinHostPort(address, "18443")
 	}
 	apiHost, connectorHost, err := managedCoreTLSEndpoints(*cfg)
 	if err != nil {
@@ -145,6 +160,9 @@ func prepareManagedCoreServingTLS(ctx context.Context, cfg *controlplaneruntime.
 		// This CA is the same managed trust anchor as the issued workstation
 		// leaf; requesting a device certificate never bypasses OIDC on other routes.
 		cfg.TLSClientCAFile = api.CA
+	}
+	if err := saveOwnedCoreLANEndpoint(target.Name, cfg.ListenAddr, apiHost, cfg.TLSCertFile); err != nil {
+		return fmt.Errorf("publish verified managed LAN endpoint: %w", err)
 	}
 	if cfg.ConnectorEnrollmentEnabled {
 		// Connector enrollment is a separate optional product. Core + Docker
