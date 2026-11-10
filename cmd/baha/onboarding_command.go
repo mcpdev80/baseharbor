@@ -44,9 +44,16 @@ func runOnboardCommand(ctx context.Context, args []string, out, errOut io.Writer
 	if len(args) == 0 {
 		if target, err := effectiveTarget(ctx); err == nil &&
 			(target.AccessProvider == "" || target.AccessProvider == "local") {
-			if root, err := targetRuntimeStateRoot(target); err == nil {
-				if state, err := coreinstallation.Load(root); err == nil && state.Ready {
-					return runOnboardInvite(ctx, nil, out)
+			// Existing local onboarding sessions must retain their guided
+			// manage/remove path. Only a fresh owning Core defaults to an
+			// invitation instead of the attach wizard.
+			if _, found, err := loadOnboardingConnection(target.Name); err != nil {
+				return err
+			} else if !found {
+				if root, err := targetRuntimeStateRoot(target); err == nil {
+					if state, err := coreinstallation.Load(root); err == nil && state.Ready {
+						return runOnboardInvite(ctx, nil, out)
+					}
 				}
 			}
 		}
