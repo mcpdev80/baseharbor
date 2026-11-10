@@ -43,6 +43,13 @@ func bindServeToOwnedOperatorOIDC(cfg *controlplaneruntime.Config) error {
 		return fmt.Errorf("resolve Core operator OIDC boundary: %w", err)
 	}
 	if !found {
+		// A workstation-only managed Core uses the existing local tenant,
+		// protected database and verified client certificates. It must not
+		// manufacture an operator/OIDC account just to pair a developer PC.
+		if cfg.WorkstationEnrollmentEnabled && !cfg.ConnectorEnrollmentEnabled &&
+			strings.TrimSpace(cfg.OIDCIssuer) == "" && len(cfg.OIDCAudiences) == 0 {
+			return nil
+		}
 		return fmt.Errorf("operator OIDC is not configured for Core target %q and environment %q; run first-owner onboarding before enabling enrollment", target, environment)
 	}
 	return matchOwnedOperatorOIDC(cfg, owned)
