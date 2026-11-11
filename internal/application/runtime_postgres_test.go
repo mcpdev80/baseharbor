@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/testsupport/serviceissuer"
@@ -270,12 +271,30 @@ func TestEnsureRuntimeCreatesWorkloadServiceBindingProjection(t *testing.T) {
 	useApplicationScopedDataProviders(t)
 	store := Store{Root: filepath.Join(t.TempDir(), "apps")}
 	m := New("demo", "dev", true, true, false)
-	files, err := EnsureRuntime(context.Background(), serviceissuer.New(t), store, m)
+	var files RuntimeFiles
+	var err error
+	func() {
+		old := syscall.Umask(0o077)
+		defer syscall.Umask(old)
+		files, err = EnsureRuntime(context.Background(), serviceissuer.New(t), store, m)
+	}()
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	root := workloadServiceBindingProjectionDir(files)
+	if err := VerifyWorkloadServiceBindings(m, files); err != nil {
+		t.Fatalf("consumer cannot read workload service bindings under restrictive umask: %v", err)
+	}
+	for _, dir := range []string{root, filepath.Join(root, "postgres"), filepath.Join(root, "valkey")} {
+		info, err := os.Stat(dir)
+		if err != nil {
+			t.Fatalf("projected binding directory %s: %v", dir, err)
+		}
+		if info.Mode().Perm() != 0o755 {
+			t.Fatalf("projected binding directory %s mode = %04o, want 0755", dir, info.Mode().Perm())
+		}
+	}
 	for _, path := range []string{
 		filepath.Join(root, "postgres", "type"),
 		filepath.Join(root, "postgres", "uri"),
