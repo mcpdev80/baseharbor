@@ -35,6 +35,10 @@ func runtimeComponentDataRoot(files application.RuntimeFiles) (string, error) {
 	return bhruntime.DataDir("")
 }
 
+func runtimeBrokerMetricsTarget(m application.Manifest) string {
+	return application.MetricsTargetAlias(m, "runtime-broker-provider") + ":8443"
+}
+
 var errRuntimeBrokerIncompatible = errors.New("runtime broker image is incompatible")
 
 // envAllowMutableDevelopmentRuntimeImage opts a development deployment into the
@@ -134,7 +138,7 @@ func ensureAndStartRuntimeBrokerWithCore(ctx context.Context, progress io.Writer
 		Scope:            capability.ScopeApplication,
 		OwnerApplication: m.Name,
 		MetricsNetwork:   runtimebroker.ObservabilityNetworkNameForRuntime(m, files),
-		MetricsTarget:    "baseharbor-runtime:8443",
+		MetricsTarget:    runtimeBrokerMetricsTarget(m),
 		MetricsPath:      "/metrics",
 		MetricsSecurity: observability.Security{
 			TLSRequired:       true,

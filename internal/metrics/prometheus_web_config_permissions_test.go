@@ -6,6 +6,7 @@ import (
 	"syscall"
 	"testing"
 
+	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/observability"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
@@ -41,8 +42,9 @@ func TestPrometheusConsumerProjectionsOverrideRestrictiveUmask(t *testing.T) {
 
 	root := t.TempDir()
 	targets := filepath.Join(root, "targets")
+	manifest := application.New("demo", "dev", false, false, false)
 	source := observability.MetricsSource{
-		ID: "runtime-broker:demo:dev", Target: "baseharbor-runtime:8443", Path: "/metrics",
+		ID: "runtime-broker:demo:dev", Target: application.MetricsTargetAlias(manifest, "runtime-broker-provider") + ":8443", Path: "/metrics",
 		Security: observability.Security{
 			TLSRequired:       true,
 			TrustFile:         writeMetricsPermissionFixture(t, root, "source-ca.pem"),

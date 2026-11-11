@@ -384,6 +384,35 @@ func TestComposeYAMLBrokerHealthcheckPinsTLSHostnameToLoopback(t *testing.T) {
 	}
 }
 
+func TestRuntimeBrokerMetricsAliasIsUniquePerApplication(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name string) string {
+		t.Helper()
+		path := filepath.Join(dir, name)
+		if err := os.WriteFile(path, []byte("test"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return path
+	}
+	m := application.WithMetricsSource(application.New("full-demo", "dev", false, false, false), "application", "api", 8080, "/metrics")
+	mtls := openbao.RuntimeMTLSFiles{
+		CA: write("ca.pem"), BrokerCert: write("broker-cert.pem"), BrokerKey: write("broker-key.pem"),
+		ClientCert: write("client-cert.pem"), ClientKey: write("client-key.pem"),
+	}
+	got, err := composeYAML(m, mtls, write("runtime-token"), "", "", write("permissions.json"), write("service-tokens.json"), "baseharbor-runtime:test", "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	blocks := strings.SplitN(got, "      observability:\n", 2)
+	if len(blocks) != 2 {
+		t.Fatalf("broker observability network is missing:\n%s", got)
+	}
+	alias := application.MetricsTargetAlias(m, "runtime-broker-provider")
+	if !strings.Contains(blocks[1], "          - "+alias+"\n") || strings.Contains(blocks[1], "          - baseharbor-runtime\n") {
+		t.Fatalf("broker observability network must use the unique scrape alias %q:\n%s", alias, got)
+	}
+}
+
 func TestComposeYAMLBrokerHealthcheckTimingConfiguration(t *testing.T) {
 	dir := t.TempDir()
 	write := func(name string) string {
