@@ -479,10 +479,7 @@ func renderCoreTUIStatus(target, runtime, access, origin string, status controlP
 	} else {
 		fmt.Fprintln(&b, "Readiness    NOT READY")
 	}
-	fmt.Fprintf(&b, "Availability %t\n", status.AvailabilitySatisfied)
-	if status.AvailabilityDetail != "" {
-		fmt.Fprintf(&b, "HA details   %s\n", status.AvailabilityDetail)
-	}
+	fmt.Fprintf(&b, "Availability %s\n", controlPlaneAvailabilitySummary(status.AvailabilityDetail, status.AvailabilitySatisfied))
 	fmt.Fprintln(&b, "\nManaged services")
 	if len(status.Running) == 0 {
 		fmt.Fprintln(&b, "  No running services reported")

@@ -97,6 +97,47 @@ func TestSingleControlPlaneAvailabilityReportsActualTopology(t *testing.T) {
 	}
 }
 
+func TestControlPlaneAvailabilitySummaryIsHumanReadable(t *testing.T) {
+	tests := []struct {
+		name      string
+		detail    string
+		satisfied bool
+		want      string
+	}{
+		{
+			name:      "single instance",
+			detail:    "requested=single resolved=postgresql:1,openbao:1 failover=false running=postgresql:1/1,etcd:0/0,openbao:1/1 satisfied=true",
+			satisfied: true,
+			want:      "Single-instance setup is healthy; failover is not configured.",
+		},
+		{
+			name:      "healthy HA",
+			detail:    "requested=ha resolved=postgresql:3,openbao:3 host-failure-tolerance=false",
+			satisfied: true,
+			want:      "Requested HA topology is healthy on one runtime host; host failure is not covered.",
+		},
+		{
+			name:      "unsatisfied HA",
+			detail:    "requested=ha resolved=postgresql:3,openbao:3",
+			satisfied: false,
+			want:      "Requested HA topology is not satisfied; run 'baha doctor' for details.",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := controlPlaneAvailabilitySummary(tt.detail, tt.satisfied)
+			if got != tt.want {
+				t.Fatalf("summary = %q, want %q", got, tt.want)
+			}
+			for _, internal := range []string{"requested=", "replication-proof=", "configured-replicas="} {
+				if strings.Contains(got, internal) {
+					t.Fatalf("summary leaked diagnostic field %q: %q", internal, got)
+				}
+			}
+		})
+	}
+}
+
 func TestCoreIdentityTopologySeparatesSQLProxyEtcdAndIdentityMembers(t *testing.T) {
 	r := controlPlaneAvailability{HA: true, Satisfied: true, ActualHA: true}
 	r.observeIdentity([]string{"keycloak-1", "keycloak-2", "keycloak-3", "keycloak-db", "keycloak-db-member-1", "keycloak-db-member-2", "keycloak-db-member-3", "keycloak-db-etcd-1", "keycloak-db-etcd-2", "keycloak-db-etcd-3", "keycloak-db-init", "keycloak-db-tls-init", "keycloak-admin"})

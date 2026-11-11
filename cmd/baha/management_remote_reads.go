@@ -138,11 +138,7 @@ func renderRemoteControlPlaneStatus(ctx context.Context, target deployment.Resol
 		if !report.Ready {
 			return errors.New("remote Core is running but not ready")
 		}
-		availability := "SATISFIED"
-		if !report.AvailabilitySatisfied {
-			availability = "UNSATISFIED"
-		}
-		fmt.Fprintf(out, "  %-9s availability · %s\n", availability, report.AvailabilityDetail)
+		fmt.Fprintf(out, "  Availability  %s\n", controlPlaneAvailabilitySummary(report.AvailabilityDetail, report.AvailabilitySatisfied))
 	}
 	result, err := remoteMachineRead(ctx, target, "app.list", "", "dev", machineApplicationListInput{Target: target.Name})
 	if err != nil {

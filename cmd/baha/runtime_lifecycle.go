@@ -66,11 +66,7 @@ func runtimeStatus(parent context.Context, out io.Writer) error {
 		if !result.Ready {
 			return errors.New("runtime is running but not ready")
 		}
-		state := "SATISFIED"
-		if !result.AvailabilitySatisfied {
-			state = "UNSATISFIED"
-		}
-		fmt.Fprintf(out, "  %-9s availability · %s\n", state, result.AvailabilityDetail)
+		fmt.Fprintf(out, "  Availability  %s\n", controlPlaneAvailabilitySummary(result.AvailabilityDetail, result.AvailabilitySatisfied))
 	}
 	records, warnings, listErr := deployment.ListDeploymentsForDisplay(target.Name)
 	fmt.Fprintln(out, "\nApplications")

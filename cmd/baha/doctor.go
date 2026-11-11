@@ -220,7 +220,7 @@ func appendControlPlaneAvailabilityDoctor(ctx context.Context, checks []health.C
 	return append(checks, health.Check{
 		Name:    "control-plane-ha",
 		OK:      report.Satisfied,
-		Message: report.Detail(),
+		Message: controlPlaneAvailabilitySummary(report.Detail(), report.Satisfied),
 	})
 }
 
