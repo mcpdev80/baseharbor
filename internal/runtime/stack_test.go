@@ -553,7 +553,7 @@ func TestSinglePostgresInitializesFreshVolumesWithOnlyChownCapability(t *testing
 	}
 	block := strings.Join(lines, "\n")
 	for _, want := range []string{
-		"    cap_drop:\n    - ALL\n    cap_add:\n    - CHOWN\n",
+		"    cap_drop:\n    - ALL\n    cap_add:\n    - CHOWN\n    - DAC_READ_SEARCH\n    - FOWNER\n    - SETGID\n    - SETUID\n",
 		"    security_opt:\n    - no-new-privileges:true",
 	} {
 		if !strings.Contains(block, want) {

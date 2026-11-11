@@ -410,7 +410,7 @@ func writePostgresComposeService(b *strings.Builder, instance string) {
     restart: unless-stopped
     read_only: true
     cap_drop: ["ALL"]
-    cap_add: ["CHOWN"]
+    cap_add: ["CHOWN", "DAC_READ_SEARCH", "FOWNER", "SETGID", "SETUID"]
     security_opt: ["no-new-privileges:true"]
     entrypoint:
       - /bin/sh
