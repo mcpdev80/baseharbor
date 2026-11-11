@@ -224,6 +224,9 @@ func refreshSharedPostgresManagementUIConfig(shared SharedBackendFiles, state sh
 	if err := writeUIRuntimeProjection(filepath.Join(dir, "password"), []byte(state.ManagementPassword+"\n")); err != nil {
 		return err
 	}
+	if err := writeUIRuntimeProjection(filepath.Join(dir, "pgadmin-entrypoint.sh"), []byte(pgAdminPassfileEntrypoint)); err != nil {
+		return err
+	}
 	ca, host := "", sharedPostgresAlias()
 	if state.CoreSQL != nil {
 		ca, host = bhruntime.CorePostgresCA(*state.CoreSQL), "postgres"
@@ -267,9 +270,9 @@ func refreshSharedPostgresManagementUIConfig(shared SharedBackendFiles, state sh
 			serverMap[strconv.Itoa(index)] = map[string]any{
 				"Name": label, "Group": "BaseHarbor", "Host": host, "Port": 5432,
 				"MaintenanceDB": resource.Database, "Username": resource.Username, "SSLMode": "verify-ca",
-				"PassFile": "/run/baseharbor/pgpass",
+				"PassFile": ".pgpass",
 				"ConnectionParameters": map[string]any{
-					"sslmode": "verify-ca", "sslrootcert": "/run/baseharbor/postgres.ca.pem", "passfile": "/run/baseharbor/pgpass",
+					"sslmode": "verify-ca", "sslrootcert": "BaseHarbor:/postgres.ca.pem", "passfile": ".pgpass",
 				},
 			}
 			index++

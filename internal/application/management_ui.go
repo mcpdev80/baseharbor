@@ -423,6 +423,9 @@ func ensurePostgresManagementUI(ctx context.Context, issuer serviceaccess.Issuer
 	if err := writeUIRuntimeProjection(filepath.Join(dir, "password"), []byte(values[PostgresUIPasswordEnv]+"\n")); err != nil {
 		return err
 	}
+	if err := writeUIRuntimeProjection(filepath.Join(dir, "pgadmin-entrypoint.sh"), []byte(pgAdminPassfileEntrypoint)); err != nil {
+		return err
+	}
 
 	var pgpass strings.Builder
 	servers := map[string]any{"Servers": map[string]any{}}
@@ -455,11 +458,11 @@ func ensurePostgresManagementUI(ctx context.Context, issuer serviceaccess.Issuer
 			"MaintenanceDB": db,
 			"Username":      user,
 			"SSLMode":       "verify-ca",
-			"PassFile":      "/run/baseharbor/pgpass",
+			"PassFile":      ".pgpass",
 			"ConnectionParameters": map[string]any{
 				"sslmode":     "verify-ca",
-				"sslrootcert": "/run/baseharbor/postgres-" + envInstanceToken(instance) + ".ca.pem",
-				"passfile":    "/run/baseharbor/pgpass",
+				"sslrootcert": "BaseHarbor:/postgres-" + envInstanceToken(instance) + ".ca.pem",
+				"passfile":    ".pgpass",
 			},
 		}
 	}
@@ -475,6 +478,20 @@ func ensurePostgresManagementUI(ctx context.Context, issuer serviceaccess.Issuer
 	}
 	return nil
 }
+
+// pgAdmin server mode confines connection files to the authenticated user's
+// storage directory, except certificates exposed through configured shared
+// storage. Stage the generated pgpass for the built-in pgAdmin user at startup
+// so libpq sees a private 0600 file owned by that user.
+const pgAdminPassfileEntrypoint = `#!/bin/sh
+set -eu
+storage_user="$(python3 -c 'import os; u=os.environ["PGADMIN_DEFAULT_EMAIL"]; print(("pga_user_" if u[:1].isdigit() else "") + u.replace("@", "_").replace("/", "slash").replace("\\", "slash"))')"
+storage_dir="/var/lib/pgadmin/storage/$storage_user"
+mkdir -p "$storage_dir"
+cp /run/baseharbor/pgpass "$storage_dir/.pgpass"
+chmod 600 "$storage_dir/.pgpass"
+exec /entrypoint.sh
+`
 
 func ensureCacheManagementUI(ctx context.Context, issuer serviceaccess.Issuer, files RuntimeFiles, m Manifest, values map[string]string) error {
 	dir := filepath.Join(files.Dir, "providers", "management-ui", "cache")
