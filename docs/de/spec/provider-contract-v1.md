@@ -169,7 +169,7 @@ Beobachtete Docker-UIDs sind Diagnosewerte, keine Provider-Anforderungen.
 | Prometheus-Proxy | Beliebige Plattform-UID; Caddy-Konfiguration, Upstream-Trust und TLS schreibgeschützt; private Keys nur für diesen Proxy. |
 | OpenTelemetry Collector | Beliebige Plattform-UID; Konfiguration, CA, Clientzertifikat und Key schreibgeschützt; nur deklarierte Queue-/Speicherpfade beschreibbar. |
 | Loki | Beliebige Plattform-UID; Konfiguration/Trust schreibgeschützt; nur Datenpfade unter `/loki` beschreibbar; Object-Storage-Zugangsdaten nicht in Konfiguration. |
-| Grafana Alloy | Beliebige Plattform-UID; Alloy-Konfiguration schreibgeschützt, nur Statuspfad beschreibbar; Host-Journal ausschließlich über plattformgestützte schreibgeschützte Gruppe/Mount, nicht per UID `0`. |
+| Grafana Alloy | Beliebige Plattform-UID; Alloy-Konfiguration schreibgeschützt. Agent-Zustand liegt auf einem temporären Dateisystem mit Modus `1777`, damit jede zugewiesene Nicht-root-UID ihn anlegen kann; dauerhaft gespeicherte Logs gehören zu Loki. Host-Journal ausschließlich über plattformgestützte schreibgeschützte Gruppe/Mount, nicht per UID `0`. |
 | Tempo | Beliebige Plattform-UID; `tempo.yaml` und öffentliche Object-Storage-CA schreibgeschützt, `/var/tempo` beschreibbarer Datenpfad; S3-Zugangsdaten nicht in `tempo.yaml`. |
 | Runtime-Broker/Executor | Beliebige Plattform-UID; Runtime-Konfiguration, Servicetokens, Workload-Identität und Operationspfade schreibgeschützt, außer deklariertem Status; Keys/Tokens einzelne Secret-Mounts. |
 | Anwendungsworkload | Beliebige Plattform-UID; Bindings, CA-Bundles und Runtime-Identität schreibgeschützt; nur deklarierte Anwendungsdatenpfade beschreibbar. |

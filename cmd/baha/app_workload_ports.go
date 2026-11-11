@@ -28,6 +28,21 @@ const (
 	workloadStartDiagnosticTimeout = 5 * time.Second
 )
 
+type requestedWorkloadPortsContextKey struct{}
+
+func withRequestedWorkloadPorts(ctx context.Context, ports map[string]string) context.Context {
+	copy := make(map[string]string, len(ports))
+	for name, port := range ports {
+		copy[name] = port
+	}
+	return context.WithValue(ctx, requestedWorkloadPortsContextKey{}, copy)
+}
+
+func requestedWorkloadPorts(ctx context.Context) map[string]string {
+	ports, _ := ctx.Value(requestedWorkloadPortsContextKey{}).(map[string]string)
+	return ports
+}
+
 var (
 	composePublishedPortVariableRE = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*):-([0-9]{1,5})\}\s*:`)
 	conflictingHostPortRE          = regexp.MustCompile(`(?i)(?:127\.0\.0\.1:|0\.0\.0\.0:|\[::\]:|\[::1\]:|::1:|host port\s+)([0-9]{1,5})`)
@@ -42,17 +57,14 @@ func ensureRepositoryWorkloadPortsForUp(ctx context.Context, in io.Reader, out i
 	if !resolved.FromRepository {
 		return nil
 	}
-	if _, err := application.ExistingRuntimeFiles(resolved.Store, resolved.Manifest); err == nil {
-		return nil
-	} else if !errors.Is(err, application.ErrRuntimeNotApplied) {
-		return err
-	}
-
 	composeSource, err := selectedRepositoryComposeSource(repoRoot, resolved.Manifest)
 	if err != nil {
 		return err
 	}
 	if composeSource == "" {
+		if len(requestedWorkloadPorts(ctx)) > 0 {
+			return machine.NewError(machine.ErrorValidationFailed, "Workload ports were supplied for an application without a Compose workload.", "Use --workload-port only with a repository Compose workload.", false)
+		}
 		return nil
 	}
 	composePath, err := application.ResolveWorkloadComposeSource(repoRoot, composeSource)
@@ -62,6 +74,17 @@ func ensureRepositoryWorkloadPortsForUp(ctx context.Context, in io.Reader, out i
 	variables, err := workloadPublishedPortVariables(application.WorkloadFiles{Compose: composePath})
 	if err != nil {
 		return fmt.Errorf("inspect configurable workload host ports: %w", err)
+	}
+	requested := requestedWorkloadPorts(ctx)
+	if len(requested) > 0 {
+		if err := persistRequestedRepositoryWorkloadPorts(resolved, variables, requested, out); err != nil {
+			return err
+		}
+	}
+	if _, err := application.ExistingRuntimeFiles(resolved.Store, resolved.Manifest); err == nil {
+		return nil
+	} else if !errors.Is(err, application.ErrRuntimeNotApplied) {
+		return err
 	}
 	if len(variables) == 0 {
 		return nil
@@ -125,6 +148,50 @@ func ensureRepositoryWorkloadPortsForUp(ctx context.Context, in io.Reader, out i
 		}
 		persisted[variable.Name] = strconv.Itoa(fallback)
 		cli.ReportActivityNotice(out, fmt.Sprintf("[UPDATED] workload-port %s host port %d -> %d saved for this deployment", variable.Name, port, fallback))
+	}
+	return nil
+}
+
+func persistRequestedRepositoryWorkloadPorts(resolved resolvedApplication, variables []workloadPublishedPortVariable, requested map[string]string, out io.Writer) error {
+	known := make(map[string]struct{}, len(variables))
+	for _, variable := range variables {
+		known[variable.Name] = struct{}{}
+	}
+	for name, value := range requested {
+		if _, ok := known[name]; !ok {
+			return machine.NewError(machine.ErrorValidationFailed, "A requested workload port does not match a published port variable in the selected Compose file.", "Use the exact variable name from the Compose host-port binding.", false)
+		}
+		port, err := parsePort(value)
+		if err != nil {
+			return machine.NewError(machine.ErrorValidationFailed, "A requested workload port is invalid.", "Choose a TCP port from 1 through 65535.", false)
+		}
+		if !portAvailable(port) {
+			return &machine.Error{Code: machine.ErrorPortConflict, CauseCode: "host_port_in_use", Message: fmt.Sprintf("Requested workload host port %s=%d is already in use.", name, port), Resource: name, Remediation: "requires developer input", Next: "Choose another free host port and retry."}
+		}
+	}
+	files, filesErr := application.ExistingRuntimeFiles(resolved.Store, resolved.Manifest)
+	if filesErr == nil {
+		for name, value := range requested {
+			port, _ := parsePort(value)
+			if err := persistWorkloadPortOverride(files, map[string]string{}, name, port); err != nil {
+				return fmt.Errorf("persist selected workload host port: %w", err)
+			}
+			fmt.Fprintf(out, "[UPDATED] workload-port %s=%d saved for this deployment\n", name, port)
+		}
+		return nil
+	}
+	if !errors.Is(filesErr, application.ErrRuntimeNotApplied) {
+		return filesErr
+	}
+	values := make(map[string]string, len(requested))
+	for name, value := range requested {
+		values[name] = value
+	}
+	if err := updateRepositoryInitValuesAtStateRoot(resolved.stateRoot(), values); err != nil {
+		return fmt.Errorf("persist selected workload host ports: %w", err)
+	}
+	for name, value := range values {
+		fmt.Fprintf(out, "[UPDATED] workload-port %s=%s saved for this deployment\n", name, value)
 	}
 	return nil
 }

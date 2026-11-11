@@ -25,6 +25,10 @@ func remoteMutationArgs(operation string, args []string) (string, string, json.R
 	if err != nil {
 		return "", "", nil, err
 	}
+	filtered, workloadPorts, err := extractRemoteWorkloadPorts(filtered)
+	if err != nil {
+		return "", "", nil, err
+	}
 	if environment == "" {
 		environment = "dev"
 	}
@@ -163,10 +167,11 @@ func remoteMutationArgs(operation string, args []string) (string, string, json.R
 			SkipMemoryPreflight   bool                               `json:"skip_memory_preflight,omitempty"`
 			ConfirmCandidate      string                             `json:"confirm_candidate,omitempty"`
 			ProviderChangeConsent *application.ProviderChangeConsent `json:"provider_change_consent,omitempty"`
-		}{name, environment, skipMemory, candidate, consent})
+			WorkloadPorts         map[string]string                  `json:"workload_ports,omitempty"`
+		}{name, environment, skipMemory, candidate, consent, workloadPorts})
 		return name, environment, payload, err
 	case "update":
-		if !noBackup || approval || fullReset || skipMemory || candidate != "" || consent != nil {
+		if !noBackup || approval || fullReset || skipMemory || candidate != "" || consent != nil || len(workloadPorts) > 0 {
 			return "", "", nil, usageError("remote update requires explicit --no-backup and no unsupported flags",
 				"Remote update with a backup requires a password file on the Core host; use baha app update NAME --environment dev --no-backup only if you accept that risk.")
 		}
@@ -176,7 +181,7 @@ func remoteMutationArgs(operation string, args []string) (string, string, json.R
 		}{environment, true})
 		return name, environment, payload, err
 	case "app.stop":
-		if approval || noBackup || fullReset || skipMemory || candidate != "" {
+		if approval || noBackup || fullReset || skipMemory || candidate != "" || len(workloadPorts) > 0 {
 			return "", "", nil, usageError("remote stop received unsupported lifecycle flags",
 				"Use baha app down NAME --environment dev [--provider-consent-file PATH].")
 		}
@@ -187,7 +192,7 @@ func remoteMutationArgs(operation string, args []string) (string, string, json.R
 		}{name, environment, consent})
 		return name, environment, payload, err
 	case "destroy":
-		if !approval || noBackup || skipMemory || candidate != "" {
+		if !approval || noBackup || skipMemory || candidate != "" || len(workloadPorts) > 0 {
 			return "", "", nil, usageError("remote destroy requires explicit --yes approval",
 				"Use baha app destroy NAME --environment dev --yes [--full-reset]; --yes never replaces provider impact or data-deletion consent.")
 		}
@@ -200,7 +205,7 @@ func remoteMutationArgs(operation string, args []string) (string, string, json.R
 		}{name, environment, true, fullReset, consent})
 		return name, environment, payload, err
 	case "app.configure":
-		if candidate != "" || consent != nil || noBackup || fullReset || skipMemory || certificateDirectory != "" {
+		if candidate != "" || consent != nil || noBackup || fullReset || skipMemory || certificateDirectory != "" || len(workloadPorts) > 0 {
 			return "", "", nil, usageError("remote app init received an unsupported option", "Use baha app init --tls local on a remote development Target; certificate paths on the workstation cannot be read by the Core host.")
 		}
 		if tlsMode == "existing" {
@@ -213,6 +218,39 @@ func remoteMutationArgs(operation string, args []string) (string, string, json.R
 	default:
 		return "", "", nil, errors.New("unsupported remote lifecycle operation")
 	}
+}
+
+func extractRemoteWorkloadPorts(args []string) ([]string, map[string]string, error) {
+	filtered := make([]string, 0, len(args))
+	ports := map[string]string{}
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		value := ""
+		if arg == "--workload-port" {
+			i++
+			if i >= len(args) {
+				return nil, nil, usageError("missing workload port", "Pass --workload-port NAME=PORT.")
+			}
+			value = args[i]
+		} else if strings.HasPrefix(arg, "--workload-port=") {
+			value = strings.TrimPrefix(arg, "--workload-port=")
+		} else {
+			filtered = append(filtered, arg)
+			continue
+		}
+		name, port, ok := strings.Cut(value, "=")
+		if !ok || !validWorkloadEnvironmentName(name) || strings.TrimSpace(port) != port {
+			return nil, nil, usageError("invalid workload port", "Pass --workload-port NAME=PORT with a valid environment name and port.")
+		}
+		if _, duplicate := ports[name]; duplicate {
+			return nil, nil, usageError("duplicate workload port", "Pass each --workload-port NAME=PORT once.")
+		}
+		if _, err := parsePort(port); err != nil {
+			return nil, nil, usageError("invalid workload port", "Choose a TCP port from 1 through 65535.")
+		}
+		ports[name] = port
+	}
+	return filtered, ports, nil
 }
 
 func remoteApplicationMutation(ctx context.Context, target deployment.ResolvedTarget, operation string, args []string, out io.Writer) error {

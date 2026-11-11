@@ -23,6 +23,8 @@ Application-Befehle arbeiten mit dem portablen Contract und seinem Deployment-Zu
 | `baha app update` | Unterstützte Application-Source aktualisieren |
 | `baha destroy` | Application-eigene Ressourcen entfernen |
 
+Für ein Remote-Target wählst du mit `baha app apply NAME --workload-port VARIABLE=PORT` einen freien veröffentlichten Workload-Port. BaseHarbor prüft, ob die Variable im Compose-Workload des Repositorys vorkommt und der Port auf dem Core-Host frei ist, und speichert die Wahl für dieses Deployment. Beispiel: `--workload-port DEMO_HTTPS_PORT=8081` weicht einem Konflikt auf Port 8080 aus, ohne die Repository-Quelle zu ändern.
+
 ## Erzeugen oder übernehmen
 
 In einem übergeordneten Verzeichnis ohne vorhandenen Ordner `shop-api`:

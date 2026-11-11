@@ -72,6 +72,8 @@ Application operations also include:
 
 Use the top-level `baha status`, `baha plan`, `baha doctor`, `baha up` forms for the normal repository-local workflow. Use `baha app ...` when the explicit application namespace is useful for administration or automation.
 
+For a remote Target, select a free published workload port explicitly with `baha app apply NAME --workload-port VARIABLE=PORT`. BaseHarbor verifies that the variable exists in the repository Compose workload and that the port is free on the Core host, then saves it for that deployment. For example, `--workload-port DEMO_HTTPS_PORT=8081` avoids a Core-host conflict on port 8080 without changing the repository source.
+
 ## Machine parity
 
 Where an operation has structured output, human CLI and machine consumers use the same underlying domain result rather than separate lifecycle implementations.

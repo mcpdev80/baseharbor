@@ -107,6 +107,18 @@ func (e *bahaMachineExecutor) executeHTTPApply(
 	ctx = withMemoryPreflightOverride(ctx, input.SkipMemoryPreflight)
 	ctx = withCandidateConsentDigest(ctx, input.ConfirmCandidate)
 	ctx = withProviderChangeConsent(ctx, input.ProviderChangeConsent)
+	if len(input.WorkloadPorts) > 32 {
+		return nil, machine.NewError(machine.ErrorValidationFailed, "Too many workload port selections were supplied.", "Choose ports only for variables used by the selected Compose workload.", false)
+	}
+	for name, value := range input.WorkloadPorts {
+		if !validWorkloadEnvironmentName(name) {
+			return nil, machine.NewError(machine.ErrorValidationFailed, "A workload port selection has an invalid variable name.", "Use the exact variable name from the selected Compose workload.", false)
+		}
+		if _, err := parsePort(value); err != nil {
+			return nil, machine.NewError(machine.ErrorValidationFailed, "A workload port selection is invalid.", "Choose a TCP port from 1 through 65535.", false)
+		}
+	}
+	ctx = withRequestedWorkloadPorts(ctx, input.WorkloadPorts)
 	args := machineApplicationArgs(input.Name, input.Environment)
 
 	reportHTTPProgress(report, "resolve", "Resolving application and target.", 10)

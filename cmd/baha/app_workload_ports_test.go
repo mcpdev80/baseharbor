@@ -185,6 +185,44 @@ func TestEnsureRepositoryWorkloadPortsForUpPersistsAvailableDefault(t *testing.T
 	}
 }
 
+func TestEnsureRepositoryWorkloadPortsPersistsExplicitRemoteSelection(t *testing.T) {
+	repo := t.TempDir()
+	listener, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	port := listener.Addr().(*net.TCPAddr).Port
+	_ = listener.Close()
+	compose := "services:\n  edge:\n    image: caddy:2-alpine\n    ports:\n      - \"${HTTP_PORT:-8080}:80\"\n"
+	if err := os.WriteFile(filepath.Join(repo, "compose.yaml"), []byte(compose), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	manifest := application.WithWorkloadComponents(application.New("demo", "dev", false, false, false), "edge")
+	manifestPath := filepath.Join(repo, "baseharbor.yaml")
+	if err := writeInitializedAuthoredManifest(t, manifestPath, manifest, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, repositoryinspect.RepositoryMetadataName), []byte("version: 1\nworkload-source:\n  kind: compose\n  path: compose.yaml\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	stateRoot := t.TempDir()
+	resolved := resolvedApplication{
+		Manifest: manifest, ManifestPath: manifestPath, DeploymentStateRoot: stateRoot,
+		Store: application.Store{Root: filepath.Join(stateRoot, "state")}, FromRepository: true,
+	}
+	ctx := withRequestedWorkloadPorts(context.Background(), map[string]string{"HTTP_PORT": strconv.Itoa(port)})
+	if err := ensureRepositoryWorkloadPortsForUp(ctx, strings.NewReader(""), &bytes.Buffer{}, resolved, repo); err != nil {
+		t.Fatal(err)
+	}
+	values, err := readSimpleEnvFile(repositoryInitEnvPathFromStateRoot(stateRoot))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if values["HTTP_PORT"] != strconv.Itoa(port) {
+		t.Fatalf("persisted HTTP_PORT = %q, want %d", values["HTTP_PORT"], port)
+	}
+}
+
 func TestUpdateRepositoryInitValuesPreservesDeploymentInputs(t *testing.T) {
 	repo := t.TempDir()
 	if err := updateRepositoryInitValues(repo, map[string]string{

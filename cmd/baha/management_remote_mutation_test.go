@@ -21,6 +21,11 @@ func TestRemoteMutationArgumentsFailClosed(t *testing.T) {
 	}{
 		{"apply", []string{"demo"}, true},
 		{"apply", []string{"demo", "--environment", "dev", "--skip-memory-preflight"}, true},
+		{"apply", []string{"demo", "--workload-port", "DEMO_HTTPS_PORT=8081"}, true},
+		{"apply", []string{"demo", "--workload-port=DEMO_HTTPS_PORT=8081"}, true},
+		{"apply", []string{"demo", "--workload-port", "BAD-NAME=8081"}, false},
+		{"apply", []string{"demo", "--workload-port", "DEMO_HTTPS_PORT=0"}, false},
+		{"apply", []string{"demo", "--workload-port", "DEMO_HTTPS_PORT=8081", "--workload-port", "DEMO_HTTPS_PORT=8082"}, false},
 		{"apply", []string{"demo", "--confirm-candidate", "bogus"}, false},
 		{"apply", []string{"demo", "--confirm-candidate="}, false},
 		{"apply", []string{"demo", "--confirm-candidate", ""}, false},
@@ -52,6 +57,22 @@ func TestRemoteMutationArgumentsFailClosed(t *testing.T) {
 				t.Fatal("unsupported or unapproved remote mutation was accepted")
 			}
 		})
+	}
+}
+
+func TestRemoteApplyCarriesExplicitWorkloadPortSelection(t *testing.T) {
+	_, _, payload, err := remoteMutationArgs("apply", []string{"demo", "--workload-port", "DEMO_HTTPS_PORT=8081"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got struct {
+		WorkloadPorts map[string]string `json:"workload_ports"`
+	}
+	if err := json.Unmarshal(payload, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.WorkloadPorts["DEMO_HTTPS_PORT"] != "8081" || len(got.WorkloadPorts) != 1 {
+		t.Fatalf("remote apply workload ports = %#v", got.WorkloadPorts)
 	}
 }
 
