@@ -38,10 +38,11 @@ Development can remain trusted-local where configured; test/prod operator access
 Connecting a developer workstation to its owning Core is a separate device
 enrollment flow, not an operator OIDC login or Node Connector enrollment. On
 the Core VM use `baha up` followed by `baha onboard`; transfer the resulting
-private JSON invitation to the workstation, import it with
-`baha onboard --import FILE`, and select the reported Target with
-`baha use TARGET`. The Core invitation establishes a least-privilege device
-identity. It does not grant an operator role. See the
+private JSON invitation to the workstation and import it with
+`baha onboard --import FILE`. Accept the suggested workstation alias or pass
+`--target-name NAME`, then select it with `baha use NAME`. The alias is separate
+from the Core Target in the invitation. The invitation establishes a
+least-privilege device identity. It does not grant an operator role. See the
 [Core-to-workstation onboarding contract](../spec/zero-friction-workstation-onboarding-v0427.md).
 
 Human operators continue to use the configured `baha login` OIDC boundary.

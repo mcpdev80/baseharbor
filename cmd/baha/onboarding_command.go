@@ -20,7 +20,7 @@ func onboardCommand() *cli.Command {
 	return &cli.Command{
 		Name:    "onboard",
 		Summary: "Guided onboarding: attach a workstation to a BaseHarbor installation",
-		Usage:   "baha onboard [--target NAME] [--json] | baha onboard --import PRIVATE_FILE | baha onboard --invite [--target NAME] [--core-url HTTPS_URL] [--station LABEL] [--output PRIVATE_FILE] | baha onboard --init-tenant [-e ENV] [--tenant-slug SLUG --tenant-name NAME]",
+		Usage:   "baha onboard [--target NAME] [--json] | baha onboard --import PRIVATE_FILE [--target-name NAME] | baha onboard --invite [--target NAME] [--core-url HTTPS_URL] [--station LABEL] [--output PRIVATE_FILE] | baha onboard --init-tenant [-e ENV] [--tenant-slug SLUG --tenant-name NAME]",
 		Long:    "Guided path from a fresh workstation to a functioning installation with minimal questions. Bootstrap and attach are distinct intents; joining an existing installation never re-installs services and never repeats credential entry while a valid reusable connection exists. Cancel and EOF change nothing.",
 		Run:     runOnboardCommand,
 	}

@@ -29,6 +29,10 @@ func TestRemoteSourceUploadDeltaRoundTripOverTLS(t *testing.T) {
 		}
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/machine/source-transfers":
+			if r.URL.Query().Get("target") != "local" {
+				http.Error(w, "workstation alias leaked to Core", 400)
+				return
+			}
 			m, _, err := store.Current(r.URL.Query().Get("target"), r.URL.Query().Get("application"), r.URL.Query().Get("environment"))
 			if err != nil {
 				w.WriteHeader(http.StatusNotFound)
@@ -80,7 +84,7 @@ func TestRemoteSourceUploadDeltaRoundTripOverTLS(t *testing.T) {
 		}
 	}))
 	defer server.Close()
-	c := &verifiedRemoteCore{client: server.Client(), origin: server.URL, token: "test-session", target: "dev-docker", tenant: "tenant-a"}
+	c := &verifiedRemoteCore{client: server.Client(), origin: server.URL, token: "test-session", target: "dev-docker-1", coreTarget: "local", tenant: "tenant-a"}
 	root := t.TempDir()
 	for p, data := range map[string]string{"baseharbor.yaml": "name: demo\n", "src/main.go": "package main\n", "new.txt": "untracked"} {
 		file := filepath.Join(root, p)
@@ -91,14 +95,14 @@ func TestRemoteSourceUploadDeltaRoundTripOverTLS(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	first, err := c.uploadLocalSource(context.Background(), "dev-docker", "demo", "dev", root)
+	first, err := c.uploadLocalSource(context.Background(), "dev-docker-1", "demo", "dev", root)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if first == "" {
 		t.Fatal("empty remote source digest")
 	}
-	again, err := c.uploadLocalSource(context.Background(), "dev-docker", "demo", "dev", root)
+	again, err := c.uploadLocalSource(context.Background(), "dev-docker-1", "demo", "dev", root)
 	if err != nil || again != first {
 		t.Fatalf("unchanged must preserve snapshot identity: %v", err)
 	}
@@ -108,11 +112,11 @@ func TestRemoteSourceUploadDeltaRoundTripOverTLS(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "src/main.go"), []byte("package main // dirty\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	second, err := c.uploadLocalSource(context.Background(), "dev-docker", "demo", "dev", root)
+	second, err := c.uploadLocalSource(context.Background(), "dev-docker-1", "demo", "dev", root)
 	if err != nil || second == first {
 		t.Fatalf("delta must advance digest: %v", err)
 	}
-	_, dir, err := store.Current("dev-docker", "demo", "dev")
+	_, dir, err := store.Current("local", "demo", "dev")
 	if err != nil {
 		t.Fatal(err)
 	}

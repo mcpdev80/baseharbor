@@ -86,6 +86,12 @@ func issueLocalWorkstationInvitation(ctx context.Context, target deployment.Reso
 		return errors.New("local Core enrollment database is not available")
 	}
 	defer pool.Close()
+	// Existing Core installations may already have a tenant while still
+	// carrying an older schema. Apply embedded migrations before creating a
+	// grant so supported certificate lifetimes are accepted by PostgreSQL.
+	if err := database.Migrate(check, pool); err != nil {
+		return fmt.Errorf("prepare Core schema for workstation invitation: %w", err)
+	}
 	store := database.NewWorkstationEnrollmentStore(pool)
 	authority, err := ws.New(store, issuer, store)
 	if err != nil {

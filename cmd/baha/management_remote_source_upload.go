@@ -21,11 +21,11 @@ import (
 // machine. It carries neither repository credentials nor an unverified branch
 // claim. A verified Core TLS/OIDC session is mandatory for every HTTP request.
 func (c *verifiedRemoteCore) uploadLocalSource(ctx context.Context, target, name, environment, root string) (string, error) {
-	if c == nil || c.client == nil || c.origin == "" || c.target != target || c.tenant == "" {
+	if c == nil || c.client == nil || c.origin == "" || c.target != target || c.serverTargetName() == "" || c.tenant == "" {
 		return "", errors.New("source transfer requires a verified management Core connection")
 	}
 	endpoint := c.origin + "/api/v1/machine/source-transfers"
-	currentURL := endpoint + "?target=" + url.QueryEscape(target) + "&application=" + url.QueryEscape(name) + "&environment=" + url.QueryEscape(environment)
+	currentURL := endpoint + "?target=" + url.QueryEscape(c.serverTargetName()) + "&application=" + url.QueryEscape(name) + "&environment=" + url.QueryEscape(environment)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, currentURL, nil)
 	if err != nil {
 		return "", err
@@ -57,7 +57,7 @@ func (c *verifiedRemoteCore) uploadLocalSource(ctx context.Context, target, name
 		return "", fmt.Errorf("Core refused source snapshot discovery (HTTP %d)", status)
 	}
 	resp.Body.Close()
-	manifest, bytesByPath, err := sourcetransfer.Capture(ctx, root, target, name, environment, base)
+	manifest, bytesByPath, err := sourcetransfer.Capture(ctx, root, c.serverTargetName(), name, environment, base)
 	if err != nil {
 		return "", fmt.Errorf("capture developer source: %w", err)
 	}

@@ -43,15 +43,44 @@ Verwende die aktuelle Baha-CLI und importiere die übertragene Datei:
 
 ```text
 baha onboard --import /path/to/invitation.json
-baha use TARGET
+baha use dev-docker-1
 ```
 
-Verwende für `TARGET` den Namen, den der Import ausgibt. Der Import prüft die
-Core-Identität und CA, erstellt den privaten Geräteschlüssel lokal, löst die
-Einmaleinladung ein und speichert die Remote-Verbindung. `baha use TARGET`
-aktiviert das gewünschte Core-Target ausdrücklich für die folgenden Befehle.
-Anwendungsbefehle werden anschließend auf dem Entwicklungsrechner ausgeführt
-und über dieses Target geleitet, niemals direkt auf der VM.
+Der Import fragt nach einem Target-Namen für die Workstation und schlägt
+`<environment>-<runtime>-<number>` vor, zum Beispiel `dev-docker-1`. Du kannst den
+Vorschlag übernehmen oder einen gültigen, noch freien Namen eingeben. Für
+Automatisierung lässt sich der Name direkt angeben:
+`baha onboard --import FILE --target-name NAME`. Dieser Name ist nur ein lokaler
+Alias; das Core-Target und die Installationsidentität aus der Einladung bleiben
+im geschützten Verbindungsprofil unverändert gebunden. Der Import prüft Core
+und CA, erstellt den privaten Geräteschlüssel lokal, löst die Einmaleinladung
+ein und speichert die Remote-Verbindung. `baha use NAME` wählt den gewünschten
+Core ausdrücklich aus. Ein eigener lokaler Core-Target kann daneben bestehen
+und weiter verwendet werden. Anwendungsbefehle laufen auf dem
+Entwicklungsrechner über das ausgewählte Target, niemals direkt auf der VM.
+
+Prüfe im Anwendungs-Repository zuerst den Quellstand und erstelle oder
+aktualisiere den dort verwalteten BaseHarbor-Vertrag. Registriere ihn danach
+beim ausgewählten Core und starte die Anwendung:
+
+```text
+baha app inspect .
+baha app init
+baha app create APP_NAME
+baha up APP_NAME --environment ENVIRONMENT
+baha status
+baha doctor
+```
+
+`baha app init` schreibt `baseharbor.yaml` in das Repository; es startet keine
+Container. `baha app create APP_NAME` registriert diesen Repository-Vertrag
+beim aktiven Target, ohne die Anwendung zu starten. `baha up APP_NAME`
+konvergiert anschließend die registrierte Anwendung über den Core. Dabei
+gelten dieselben Plan-, Kandidatenbestätigungs-, Provider-Freigabe- und
+Prüfschranken wie bei `baha app apply`; `--yes` darf diese Zustimmungen nicht
+ersetzen. Führe `status` und `doctor` nach dem Start im selben Repository und
+mit demselben ausgewählten Target aus. Ein manueller Schritt `baha serve` ist
+nicht erforderlich.
 
 ## Verbindliche Sicherheits- und Zuständigkeitsanforderungen
 

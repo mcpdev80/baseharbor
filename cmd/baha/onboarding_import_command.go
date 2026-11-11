@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"crypto/sha256"
 	"crypto/tls"
@@ -13,6 +14,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -25,22 +27,36 @@ import (
 // presents the pinned Core CA, consumes the pre-issued grant and proves its
 // installation/tenant identity may create a Target on this workstation.
 func runOnboardImport(ctx context.Context, args []string, out io.Writer) error {
-	if len(args) != 1 || strings.HasPrefix(args[0], "-") {
-		return usageError("baha onboard --import needs exactly one private invitation file", "Run baha onboard --import PATH.")
+	invitationPath, requestedTarget, err := parseOnboardImportArgs(args)
+	if err != nil {
+		return err
 	}
-	bundle, err := onboardingbundle.Read(args[0], time.Now())
+	bundle, err := onboardingbundle.Read(invitationPath, time.Now())
 	if err != nil {
 		return err
 	}
 	// Check all predictable local conflicts before consuming the one-use
 	// enrollment grant. A rejected or already-configured workstation must not
 	// burn an otherwise valid invitation.
-	// The invitation is issued by the owning Core for its configured Target.
-	// Use that immutable Target selector on both ends of Machine HTTP;
-	// a workstation-invented alias would be unknown to the Core authority.
-	targetName := bundle.CoreTarget
+	// The workstation Target name is a local alias. Keep the Core's own Target
+	// selector separately in the protected connection profile; aliases must
+	// never change the authority named by the one-use invitation.
 	cfg, _, err := deployment.LoadConfigForMutation()
 	if err != nil {
+		return err
+	}
+	targetName := requestedTarget
+	if targetName == "" {
+		targetName = nextOnboardingTargetName(cfg, organizationEnvironment(ctx), bundle.RuntimeProvider)
+		if !noInput(ctx) && readerIsTerminal(onboardingInput) {
+			reader := bufio.NewReader(onboardingInput)
+			targetName, err = promptLine(reader, out, "Workstation Target name", targetName)
+			if err != nil {
+				return fmt.Errorf("read workstation Target name: %w", err)
+			}
+		}
+	}
+	if err := deployment.ValidateTargetName(targetName); err != nil {
 		return err
 	}
 	if _, exists := cfg.Targets[targetName]; exists {
@@ -113,6 +129,7 @@ func runOnboardImport(ctx context.Context, args []string, out io.Writer) error {
 		},
 		"targets": []map[string]string{{
 			"name":             targetName,
+			"core_target":      bundle.CoreTarget,
 			"tenant_id":        bundle.InstallationID,
 			"runtime_provider": bundle.RuntimeProvider,
 		}},
@@ -152,8 +169,59 @@ func runOnboardImport(ctx context.Context, args []string, out io.Writer) error {
 			return fmt.Errorf("Core Target enrolled, but activate it with baha target activate %s: %w", targetName, err)
 		}
 	}
-	_, err = fmt.Fprintf(out, "Remote Core %s connected. Target: %s\n", bundle.CoreInstallationID, targetName)
+	_, err = fmt.Fprintf(out, "Remote Core %s connected. Workstation Target: %s (Core Target: %s)\nUse it with: baha use %s\n", bundle.CoreInstallationID, targetName, bundle.CoreTarget, targetName)
 	return err
+}
+
+func parseOnboardImportArgs(args []string) (invitationPath, targetName string, err error) {
+	targetProvided := false
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		switch {
+		case arg == "--target":
+			return "", "", usageError("use --target-name for the imported workstation alias", "Run baha onboard --import PATH [--target-name NAME].")
+		case arg == "--target-name":
+			if targetProvided || i+1 >= len(args) || strings.HasPrefix(args[i+1], "-") {
+				return "", "", usageError("--target-name requires one Target name", "Run baha onboard --import PATH [--target-name NAME].")
+			}
+			i++
+			targetProvided = true
+			targetName = strings.TrimSpace(args[i])
+		case strings.HasPrefix(arg, "--target-name="):
+			if targetProvided {
+				return "", "", usageError("duplicate --target-name", "Pass --target-name once.")
+			}
+			targetProvided = true
+			targetName = strings.TrimSpace(strings.TrimPrefix(arg, "--target-name="))
+		default:
+			if strings.HasPrefix(arg, "-") || invitationPath != "" {
+				return "", "", usageError("baha onboard --import needs one private invitation file", "Run baha onboard --import PATH [--target-name NAME].")
+			}
+			invitationPath = arg
+		}
+	}
+	if invitationPath == "" {
+		return "", "", usageError("baha onboard --import needs one private invitation file", "Run baha onboard --import PATH [--target-name NAME].")
+	}
+	if targetProvided && targetName == "" {
+		return "", "", usageError("--target-name requires one Target name", "Run baha onboard --import PATH [--target-name NAME].")
+	}
+	return invitationPath, targetName, nil
+}
+
+func nextOnboardingTargetName(cfg deployment.Config, environment, runtime string) string {
+	environment = strings.ToLower(strings.TrimSpace(environment))
+	runtime = strings.ToLower(strings.TrimSpace(runtime))
+	if environment == "" {
+		environment = "dev"
+	}
+	prefix := environment + "-" + runtime + "-"
+	for sequence := 1; ; sequence++ {
+		candidate := prefix + strconv.Itoa(sequence)
+		if _, exists := cfg.Targets[candidate]; !exists {
+			return candidate
+		}
+	}
 }
 
 func verifyWorkstationCore(ctx context.Context, bundle onboardingbundle.Bundle, identity onboardingbundle.EnrolledIdentity) error {

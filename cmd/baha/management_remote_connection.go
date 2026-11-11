@@ -39,6 +39,7 @@ type remoteConnectionProfile struct {
 	} `json:"trust"`
 	Targets []struct {
 		Name            string `json:"name"`
+		CoreTarget      string `json:"core_target,omitempty"`
 		TenantID        string `json:"tenant_id"`
 		RuntimeProvider string `json:"runtime_provider"`
 		Scope           string `json:"scope,omitempty"`
@@ -57,11 +58,12 @@ type remoteConnectionProfile struct {
 // Explicit opt-in only; no remote connection is inferred from a name, a
 // missing local installation or a cached last-known connection status.
 type verifiedRemoteCore struct {
-	client *http.Client
-	origin string
-	token  string
-	target string
-	tenant string
+	client     *http.Client
+	origin     string
+	token      string
+	target     string
+	coreTarget string
+	tenant     string
 }
 
 func verifyRemoteManagementConnection(ctx context.Context, target, runtime, expectedTenant string) error {
@@ -115,6 +117,7 @@ func dialVerifiedRemoteCore(ctx context.Context, target, runtime, expectedTenant
 		return nil, errors.New("remote Core CA cannot be verified")
 	}
 	tenant := ""
+	coreTarget := ""
 	for _, item := range profile.Targets {
 		if item.Name != target {
 			continue
@@ -123,6 +126,13 @@ func dialVerifiedRemoteCore(ctx context.Context, target, runtime, expectedTenant
 			return nil, errors.New("remote target is ambiguous or mismatched in connection profile")
 		}
 		tenant = item.TenantID
+		coreTarget = strings.TrimSpace(item.CoreTarget)
+		if coreTarget == "" {
+			coreTarget = item.Name // v1 profiles created before workstation aliases
+		}
+		if err := deployment.ValidateTargetName(coreTarget); err != nil {
+			return nil, errors.New("remote Core Target selector in connection profile is invalid")
+		}
 	}
 	if expectedTenant == "" || tenant != expectedTenant {
 		return nil, errors.New("remote target tenant does not match the configured target authority")
@@ -211,5 +221,5 @@ func dialVerifiedRemoteCore(ctx context.Context, target, runtime, expectedTenant
 		identity.TenantID != tenant {
 		return nil, errors.New("remote Core installation, OIDC issuer or tenant does not match pinned connection")
 	}
-	return &verifiedRemoteCore{client: client, origin: strings.TrimRight(profile.Core.URL, "/"), token: bearerToken, target: target, tenant: tenant}, nil
+	return &verifiedRemoteCore{client: client, origin: strings.TrimRight(profile.Core.URL, "/"), token: bearerToken, target: target, coreTarget: coreTarget, tenant: tenant}, nil
 }

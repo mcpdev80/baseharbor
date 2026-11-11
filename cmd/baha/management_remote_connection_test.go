@@ -144,6 +144,7 @@ func TestRemoteCoreHandshakePinsInstallationIssuerTenantAndCA(t *testing.T) {
 	profile.Trust.SHA256 = hex.EncodeToString(digest[:])
 	profile.Targets = append(profile.Targets, struct {
 		Name            string `json:"name"`
+		CoreTarget      string `json:"core_target,omitempty"`
 		TenantID        string `json:"tenant_id"`
 		RuntimeProvider string `json:"runtime_provider"`
 		Scope           string `json:"scope,omitempty"`
@@ -378,6 +379,7 @@ func TestRemoteCoreHandshakePinsInstallationIssuerTenantAndCA(t *testing.T) {
 			saved := profile
 			targets := append([]struct {
 				Name            string `json:"name"`
+				CoreTarget      string `json:"core_target,omitempty"`
 				TenantID        string `json:"tenant_id"`
 				RuntimeProvider string `json:"runtime_provider"`
 				Scope           string `json:"scope,omitempty"`

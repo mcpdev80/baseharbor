@@ -39,15 +39,41 @@ Use the current Baha CLI and import the transferred file:
 
 ```text
 baha onboard --import /path/to/invitation.json
-baha use TARGET
+baha use dev-docker-1
 ```
 
-Use the Target name reported by the import. Import verifies the Core identity
-and CA, creates the workstation's private key locally, redeems the one-use
-grant, and saves the remote connection. `baha use TARGET` makes the intended
-Core explicit for subsequent commands. Application commands are then run from
-the developer workstation and operate through that Target; they are not run
-directly on the VM.
+The import asks for a workstation Target name and suggests
+`<environment>-<runtime>-<number>`; for example, `dev-docker-1`. Accept the
+suggestion or enter any valid unused Target name. Automation can pass it
+directly with `baha onboard --import FILE --target-name NAME`. This name is only a
+workstation alias: the invitation's Core Target and installation identity
+remain bound in the protected connection profile. Import verifies the Core
+identity and CA, creates the workstation's private key locally, redeems the
+one-use grant, and saves the remote connection. `baha use NAME` explicitly
+selects the intended Core. The workstation may also keep and use its own local
+Core Target independently.
+
+From an application repository, first inspect and create or update its
+repository-owned BaseHarbor contract, then register that contract on the
+selected Core and start it:
+
+```text
+baha app inspect .
+baha app init
+baha app create APP_NAME
+baha up APP_NAME --environment ENVIRONMENT
+baha status
+baha doctor
+```
+
+`baha app init` writes `baseharbor.yaml` in the repository; it does not deploy
+the application. `baha app create APP_NAME` registers that repository contract
+on the active Target without starting containers. `baha up APP_NAME` then
+converges the registered application through the Core. It uses the same plan,
+candidate confirmation, provider-impact consent, and verification gates as
+`baha app apply`; do not bypass those gates with `--yes`. Run `status` and
+`doctor` from the same repository and selected Target after startup. No manual
+`baha serve` step is required.
 
 ## Normative security and ownership requirements
 

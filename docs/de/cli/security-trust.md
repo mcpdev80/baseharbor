@@ -38,9 +38,11 @@ Die Verbindung eines Entwicklungsrechners mit seinem Core ist eine separate
 Geräte-Einschreibung, keine OIDC-Anmeldung eines Operators und keine
 Node-Connector-Einschreibung. Auf der Core-VM `baha up` und danach
 `baha onboard` ausführen. Die private JSON-Einladung auf die Workstation
-übertragen, dort mit `baha onboard --import FILE` importieren und das gemeldete
-Target mit `baha use TARGET` auswählen. Die Einladung registriert eine
-Geräteidentität mit minimalen Rechten, keine Operator-Rolle. Siehe den
+übertragen und dort mit `baha onboard --import FILE` importieren. Übernimm den
+Vorschlag für den lokalen Alias oder gib `--target-name NAME` an; wähle ihn danach
+mit `baha use NAME` aus. Der Alias ist vom Core-Target in der Einladung
+getrennt. Die Einladung registriert eine Geräteidentität mit minimalen Rechten,
+keine Operator-Rolle. Siehe den
 [Ablauf Core-zu-Workstation](../spec/zero-friction-workstation-onboarding-v0427.md).
 
 Menschliche Operatoren melden sich weiterhin über die konfigurierte

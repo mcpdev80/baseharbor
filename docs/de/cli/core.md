@@ -12,10 +12,12 @@ ein und schreibt eine private, einmal verwendbare JSON-Einladung. Ein
 separater `baha serve`-Prozess wird nicht gestartet.
 
 Die Datei sicher übertragen. Auf dem Entwicklungsrechner
-`baha onboard --import FILE` ausführen und anschließend das ausgegebene Target
-mit `baha use TARGET` ausdrücklich auswählen. Alle folgenden
-Application-Lifecycle-Befehle laufen auf dem Entwicklungsrechner über dieses
-Core-Target. Der vollständige verbindliche Ablauf steht in
+`baha onboard --import FILE` ausführen, den Vorschlag für den lokalen Alias wie
+`dev-docker-1` übernehmen oder `--target-name NAME` angeben und ihn mit
+`baha use NAME` ausdrücklich auswählen. Der Alias benennt das Core-Target nicht
+um; der eigene lokale Core-Target bleibt verfügbar. Alle folgenden
+Application-Lifecycle-Befehle laufen auf dem Entwicklungsrechner über das
+ausgewählte Core-Target. Der vollständige verbindliche Ablauf steht in
 [Core-zu-Workstation-Onboarding](../spec/zero-friction-workstation-onboarding-v0427.md).
 
 Die Geräte-Einschreibung ist von der interaktiven OIDC-Anmeldung eines

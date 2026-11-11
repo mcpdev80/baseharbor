@@ -11,9 +11,11 @@ managed LAN HTTPS endpoint and writes a private, one-use JSON invitation. Do
 not start a separate `baha serve` process.
 
 Transfer the invitation securely. On the developer workstation, run
-`baha onboard --import FILE`, then explicitly select the reported Target with
-`baha use TARGET`. Subsequent application lifecycle commands run on the
-workstation through that Core Target. See the normative
+`baha onboard --import FILE`, accept the suggested workstation alias such as
+`dev-docker-1` or pass `--target-name NAME`, then explicitly select it with
+`baha use NAME`. The alias does not rename the Core Target. The workstation's
+own local Core Target remains available. Subsequent application lifecycle
+commands run on the workstation through the selected Core Target. See the normative
 [Core-to-workstation onboarding flow](../spec/zero-friction-workstation-onboarding-v0427.md).
 
 This device enrollment is separate from interactive human-operator OIDC login.
