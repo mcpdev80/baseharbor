@@ -35,3 +35,19 @@ func TestVerifyManagedTelemetryBindingRequiresMaterializedEndpoint(t *testing.T)
 		t.Fatalf("materialized OTLP binding rejected: %v", err)
 	}
 }
+
+func TestRequireManagedTelemetryPreparedWhenRequested(t *testing.T) {
+	manifest := application.WithOTLPTelemetry(application.Manifest{
+		Version: 1, ApplicationID: application.MustNewApplicationID(), Name: "demo", Environment: "dev",
+	}, "traces")
+	if err := requireManagedTelemetryPrepared(manifest, nil); err == nil {
+		t.Fatal("requested telemetry must not silently skip provider preparation")
+	}
+	if err := requireManagedTelemetryPrepared(manifest, &managedTelemetryExecution{}); err != nil {
+		t.Fatalf("prepared telemetry rejected: %v", err)
+	}
+	manifest.Telemetry.OTLP = nil
+	if err := requireManagedTelemetryPrepared(manifest, nil); err != nil {
+		t.Fatalf("application without telemetry rejected: %v", err)
+	}
+}

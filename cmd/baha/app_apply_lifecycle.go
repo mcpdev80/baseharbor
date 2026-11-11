@@ -370,6 +370,9 @@ func (e *applicationApplyExecution) convergeApplicationRuntime(ctx context.Conte
 	}); err != nil {
 		return err
 	}
+	if err := requireManagedTelemetryPrepared(e.manifest, e.providers.telemetry); err != nil {
+		return err
+	}
 	if err := activity(ctx, e.term, "Reconciling telemetry transport", func(progress io.Writer) error {
 		return convergeManagedTelemetry(ctx, progress, e.providers.telemetry)
 	}); err != nil {

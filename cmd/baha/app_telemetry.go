@@ -70,6 +70,13 @@ func convergeManagedTelemetry(ctx context.Context, out io.Writer, prepared *mana
 	return nil
 }
 
+func requireManagedTelemetryPrepared(manifest application.Manifest, prepared *managedTelemetryExecution) error {
+	if application.HasOTLPTelemetry(manifest) && prepared == nil {
+		return fmt.Errorf("OTLP telemetry is requested but no provider execution was prepared")
+	}
+	return nil
+}
+
 func verifyManagedTelemetryBinding(manifest application.Manifest, files application.RuntimeFiles) error {
 	if !application.HasOTLPTelemetry(manifest) {
 		return nil
