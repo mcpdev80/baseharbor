@@ -1,92 +1,109 @@
-# Core-zu-Workstation-Onboarding ohne manuelle Konfiguration (v0.4.27)
+# Core-zu-Workstation-Onboarding ohne manuelle Konfiguration (v0.4.27-Kandidat)
 
-## Bedienvertrag
+## Ablauf
 
-Auf einer frischen VM wird BaseHarbor installiert und der lokale Core gestartet:
+Der Ablauf umfasst zwei Rechner. Core-Einrichtung und Einladungserstellung
+finden auf der Core-VM statt. Nach der Übertragung werden alle
+Anwendungsbefehle vom Entwicklungsrechner über das importierte Core-Target
+ausgeführt.
+
+### Auf der Core-VM
+
+Führe die aktuelle `baha`-CLI außerhalb eines Anwendungs-Repositories aus:
 
 ```text
 baha up
 baha onboard
 ```
 
-Der Core stellt eine zeitlich begrenzte, einmalig verwendbare Einladungsdatei
-mit Dateirechten `0600` bereit. Diese Datei wird privat auf den
-Entwicklungsrechner übertragen. Dort genügt:
+`baha up` richtet die Core-Provider PostgreSQL, OpenBao und Keycloak ein oder
+startet sie. Vor Änderungen am Provider-Zustand prüft Baha, ob ORAS vorhanden
+ist. ORAS löst OCI-Referenzen zu unveränderlichen Digests auf und verifiziert
+Runtime-Artefakte; es ersetzt Docker oder Podman nicht. Fehlt ORAS, erklärt
+Baha den Grund und fragt nach Zustimmung. Bei Zustimmung installiert es das
+offizielle, per Prüfsumme verifizierte Release unter
+`~/.local/bin` des aktuellen Benutzers. Es verwendet weder `sudo` noch eine
+systemweite Paketinstallation. Bei Ablehnung beginnt die Core-Einrichtung
+nicht. `--yes` ist keine Zustimmung zur Installation; installiere ORAS in
+nicht-interaktiven Abläufen separat und starte den Befehl erneut.
+
+`baha onboard` wartet, bis der lokale Core `READY` ist. Danach erstellt es eine
+einmal verwendbare Einladung und gibt den Pfad zur geschützten JSON-Datei aus.
+Es richtet außerdem den verwalteten LAN-HTTPS-Endpunkt ein. Ein separater
+Befehl `baha serve` und eine Browser-Anmeldung gehören nicht zu diesem Ablauf.
+
+Übertrage die JSON-Datei sicher auf den Entwicklungsrechner. Sie enthält einen
+kurzlebigen, einmal verwendbaren Registrierungsschlüssel. Gib ihren Inhalt
+nicht aus, committe sie nicht und lege sie nicht in einem gemeinsam genutzten
+Verzeichnis ab.
+
+### Auf dem Entwicklungsrechner
+
+Verwende die aktuelle Baha-CLI und importiere die übertragene Datei:
 
 ```text
-baha onboard --import FILE
+baha onboard --import /path/to/invitation.json
+baha use TARGET
 ```
 
-Der Client erzeugt seinen privaten Geräteschlüssel lokal, prüft die
-Core-Zertifizierungsstelle und die Installationsidentität, registriert
-ein gerätegebundenes mTLS-Zertifikat und speichert das Remote-Target.
-Ein Node-Connector ist bei Core und Docker/Podman auf derselben VM nicht erforderlich.
-Ein Browser-Login ist für diese Gerätekopplung nicht vorgesehen.
+Verwende für `TARGET` den Namen, den der Import ausgibt. Der Import prüft die
+Core-Identität und CA, erstellt den privaten Geräteschlüssel lokal, löst die
+Einmaleinladung ein und speichert die Remote-Verbindung. `baha use TARGET`
+aktiviert das gewünschte Core-Target ausdrücklich für die folgenden Befehle.
+Anwendungsbefehle werden anschließend auf dem Entwicklungsrechner ausgeführt
+und über dieses Target geleitet, niemals direkt auf der VM.
 
-## Zuständigkeiten und Sicherheit
+## Verbindliche Sicherheits- und Zuständigkeitsanforderungen
 
-Der lokale Core muss dem ausgewählten Target gehören und im Zustand
-`READY` sein. Weder ein fremder Core noch ein Remote-Target darf
-Einladungen über die lokale Bootstrap-Berechtigung ausgeben.
-Die bestehende OpenBao-CA bleibt alleiniger Zertifikatsaussteller.
-Einladungen enthalten nur öffentliches CA-Material, die genaue HTTPS-Adresse,
-eine Installations-ID, den Workstation-Namen sowie kurzlebige
-Einmal-Zugangsdaten. Private Schlüssel bleiben stets auf dem Client.
+1. `baha up` auf dem Core-Rechner verantwortet den Core-Provider- und
+   Bootstrap-Lebenszyklus. Einladungen dürfen nur vom lokal besitzenden Core
+   im Zustand `READY` ausgestellt werden. Remote- oder fremde Installationen
+   müssen geschlossen abgelehnt werden.
+2. `baha onboard` bezieht den initialen Mandanten über die geschützte lokale
+   Bootstrap-Berechtigung. Es darf weder
+   `identity.Principal{IssuerVerified:true}` künstlich erzeugen noch die
+   Authentifizierung der produktiven Operator-API abschwächen.
+3. Die Einladung bindet Core-Installation, exakten HTTPS-Endpunkt, öffentliche
+   CA, Workstation-Kennung, Einmalberechtigung und begrenzte Laufzeit. Die
+   sensible JSON-Datei erhält ausschließlich Benutzerrechte. Das
+   Workstation-Zertifikat läuft standardmäßig fünf Jahre; kürzere Laufzeiten
+   bleiben einstellbar.
+4. Der Import lehnt Symlinks und zu offene Dateirechte, unbekannte Vertrags-
+   felder, falsche CAs, abgelaufene oder bereits eingelöste Einladungen,
+   fremde Installationen und veränderte Endpunkte ab. Der private Schlüssel
+   wird auf der Workstation erstellt und bleibt dort.
+5. Die Registrierung erteilt eine Berechtigung mit minimalen Rechten, keine
+   Operator- oder Administratorrolle. Core-Daten und Eigentümerschaft bleiben
+   erhalten.
+6. Vor dem Speichern prüft der Import das ausgestellte Zertifikat anhand der
+   eingeladenen CA, Installations-ID und SPIFFE-Workstation-Identität. Ein
+   Fehler darf weder verwendbare Teilzugangsdaten noch ein nutzbares Target
+   hinterlassen.
+7. Alle späteren Anwendungsoperationen starten auf dem Entwicklungsrechner
+   und verwenden das ausgewählte Remote-Target. Ein lokaler Runtime-Fallback
+   darf Remote-Fehler nicht verdecken.
 
-Der Import verwirft ungültige, abgelaufene oder bereits verbrauchte Einladungen,
-fremde Installationen und CA-Bindungen, unsichere Dateien sowie lokale
-Profilkonflikte. Die Geräteidentität wird bei Remote-Anfragen gegen die
-persistente Registry und Widerrufsinformationen geprüft. Geräte erhalten
-keine Operator- oder Administratorrolle. Das vorhandene OIDC-Modell bleibt
-für die getrennte Browser-/Operatorverwaltung bestehen.
+## Abnahme
 
-## Automatischer LAN-HTTPS-Endpunkt
+- Frische Core-VM: `baha up` schließt Einrichtung und Abhängigkeitsprüfung ab;
+  `baha onboard` erzeugt eine geschützte JSON-Einladung.
+- Frische Workstation: Der Import prüft und registriert das Gerät. Die
+  ausdrückliche Target-Auswahl verbindet mit dem vorgesehenen Core.
+- Negativtests decken Replay, Ablauf, parallelen Import, nicht autorisierte
+  Geräte, falsche CA, fremden Core, manipulierten Endpunkt, abgelehnten Reset,
+  Symlinks und offene Dateirechte, Rollback bei Teilfehlern sowie den Schutz
+  privater Schlüssel ab.
+- Docker- und Podman-E2E-Pfade prüfen Core `READY`, Einladung, Import auf der
+  Workstation sowie Remote-App-Plan/Apply/Status/Änderung/Destroy. Es dürfen
+  nur eigene Testressourcen entfernt werden.
+- CI gilt nur für den geprüften Quellstand und ersetzt keinen Live-Nachweis
+  von Workstation zu Core.
 
-Bei einem lokalen, startbereiten Core richtet `baha onboard` bei Bedarf
-einen systemd-User-Service für die Core-API ein. Die Software ermittelt eine
-konkrete private IPv4-Adresse, verwendet standardmäßig Port `18443` und
-stellt das dazu passende Serverzertifikat über die bereits vorhandene
-OpenBao-CA aus. Die geprüfte HTTPS-Adresse wird installationsgebunden
-und geschützt gespeichert.
+## Implementierungsgrenzen
 
-Dazu sind keine manuellen Angaben von
-`BASEHARBOR_MANAGED_CORE_TLS`, `BASEHARBOR_API_LISTEN_ADDR` oder
-`BASEHARBOR_API_PUBLIC_URL` erforderlich. Ein explizit konfigurierter
-BYOC-Endpunkt beziehungsweise Node-Connector wird nicht automatisch verändert.
-Wenn keine eindeutige sichere LAN-Adresse gefunden wird, wird die
-Konfiguration abgelehnt, anstatt eine Wildcard- oder Loopback-Adresse zu
-veröffentlichen.
-
-Einladungen verwenden standardmäßig das Maximum von fünf Jahren für das
-Workstation-Zertifikat. Im Wizard kann eine kürzere Laufzeit gewählt werden;
-direkt unterstützt `baha onboard --invite --certificate-ttl 1y` zum Beispiel
-ein Jahr. Solange das Client-Zertifikat gültig und nicht widerrufen ist,
-erneuert `baha` es bei einer späteren Core-Anfrage automatisch, sobald weniger
-als 15 Minuten Restlaufzeit bestehen.
-
-Der User-Service wird mit systemd beaufsichtigt und startet zur
-Zertifikatserneuerung mindestens einmal täglich neu. Damit er nach
-Abmeldung weiterläuft, wird systemd-Linger geprüft beziehungsweise
-aktiviert. Schlägt dies mangels Berechtigung fehl, wird die Inbetriebnahme
-nicht fälschlich als dauerhaft verfügbar bestätigt.
-
-## Abnahme und Nachweis
-
-Der Draft-PR prüft den Go-Code in den vorhandenen Shards `cli-0`,
-`cli-1` und `cli-2` sowie die betroffenen übrigen Pakete.
-Der Wechsel zu `Ready for review` startet die vollständige PR-CI.
-
-Für diese Änderung sind echte Docker- und Podman-E2E-Nachweise
-verpflichtend: Core `READY`, Einladung, Import in eine isolierte
-Workstation, Remote-App-Plan/Apply/Status/Update sowie Destroy.
-Übersprungene, fehlende und fehlgeschlagene Untertests gelten nicht
-als Erfolg. Nur eigene Testressourcen dürfen bereinigt werden.
-
-Bis diese Nachweise für den endgültigen PR-Commit erfolgreich sind,
-ist die Änderung nicht mergefähig. Besonders die
-Zertifikatserneuerung sowie Recovery nach teilweise abgeschlossenem
-Import sind mit realen Integrationsfällen zu bestätigen.
-
-## Technische Referenzen und unveraenderliche Grenzen
-
-Die lokale Ausstellung eines einmaligen Grants verwendet `workstationenrollment.Authority.Create`. Der versionierte Datenaustausch liegt unter `internal/onboardingbundle`. Der produktive HTTP-Baustein `ProductionHandler` bleibt an die bestehende Authentifizierungs- beziehungsweise Grant-Grenze gebunden. Ein kuenstlich erzeugtes `identity.Principal{IssuerVerified:true}` ist ausdruecklich verboten; die lokale Bootstrap-Berechtigung muss aus der nachweislich eigenen Core-Installation folgen.
+Der versionierte Einladungsvertrag liegt unter
+`internal/onboardingbundle`. `workstationenrollment.Authority.Create` erzeugt
+die Einmalberechtigung und speichert nur Token- und Nonce-Digests. Die
+produktiven Machine-APIs bleiben authentifiziert; nur der eng begrenzte
+Einladungsendpunkt nimmt die Einmalberechtigung an. Browser-OIDC bleibt eine
+separate Oberfläche für menschliche Betreiber.

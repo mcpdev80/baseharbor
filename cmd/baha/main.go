@@ -108,6 +108,7 @@ func run(args []string) error {
 }
 
 func runWithIO(ctx context.Context, args []string, out, errOut io.Writer) error {
+	_ = includeInstalledORASOnPath()
 	filtered, opts, showVersion, target, err := extractGlobalOutputOptions(args)
 	if err != nil {
 		return err

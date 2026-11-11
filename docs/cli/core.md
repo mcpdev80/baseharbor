@@ -1,8 +1,23 @@
 # Core workflow commands
 
-First operator/Tenant initialization after `baha up --control-plane-only` is **explicit**: `baha login -e dev --init-tenant` on the locally owned Core. See [Security and trust commands](security-trust.md). Candidate PR #1437 is pending acceptance; ordinary `baha up` never assigns the first tenant owner automatically.
+## Connect a developer workstation
 
-# Core workflow commands
+On the Core VM, outside an application repository, run `baha up` and then
+`baha onboard`. `baha up` starts the Core providers and checks for ORAS before
+changing provider state. If ORAS is missing, Baha explains its OCI digest and
+artifact-verification role and asks before installing a checksum-verified
+user-local copy. `baha onboard` waits for Core readiness, configures the
+managed LAN HTTPS endpoint and writes a private, one-use JSON invitation. Do
+not start a separate `baha serve` process.
+
+Transfer the invitation securely. On the developer workstation, run
+`baha onboard --import FILE`, then explicitly select the reported Target with
+`baha use TARGET`. Subsequent application lifecycle commands run on the
+workstation through that Core Target. See the normative
+[Core-to-workstation onboarding flow](../spec/zero-friction-workstation-onboarding-v0427.md).
+
+This device enrollment is separate from interactive human-operator OIDC login.
+See [Security and trust commands](security-trust.md) for operator authentication.
 
 These commands form the shortest normal BaseHarbor workflow.
 

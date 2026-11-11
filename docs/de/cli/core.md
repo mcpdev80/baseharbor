@@ -1,8 +1,25 @@
 # Core-Workflow
 
-Den ersten Operator/Tenant initialisiert man nach `baha up --control-plane-only` **explizit** mit `baha login -e dev --init-tenant` auf dem eigenen lokalen Core. Siehe [Security-/Trust-Befehle](security-trust.md). Kandidat PR #1437 ist noch nicht abgenommen; normales `baha up` vergibt keinen Erst-Owner automatisch.
+## Entwicklungsrechner verbinden
 
-# Core-Workflow
+Auf der Core-VM außerhalb eines Application-Repositories `baha up` und danach
+`baha onboard` ausführen. `baha up` startet die Core-Provider und prüft ORAS,
+bevor es Provider-Zustand ändert. Fehlt ORAS, erklärt Baha die Auflösung von
+OCI-Digests und die Artefaktverifizierung und fragt vor einer
+prüfsummenverifizierten Installation unter dem aktuellen Benutzer.
+`baha onboard` wartet auf Core-Readiness, richtet den verwalteten LAN-HTTPS-Endpunkt
+ein und schreibt eine private, einmal verwendbare JSON-Einladung. Ein
+separater `baha serve`-Prozess wird nicht gestartet.
+
+Die Datei sicher übertragen. Auf dem Entwicklungsrechner
+`baha onboard --import FILE` ausführen und anschließend das ausgegebene Target
+mit `baha use TARGET` ausdrücklich auswählen. Alle folgenden
+Application-Lifecycle-Befehle laufen auf dem Entwicklungsrechner über dieses
+Core-Target. Der vollständige verbindliche Ablauf steht in
+[Core-zu-Workstation-Onboarding](../spec/zero-friction-workstation-onboarding-v0427.md).
+
+Die Geräte-Einschreibung ist von der interaktiven OIDC-Anmeldung eines
+menschlichen Operators getrennt. Siehe [Security-/Trust-Befehle](security-trust.md).
 
 ## Core gezielt abbauen
 

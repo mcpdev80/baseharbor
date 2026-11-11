@@ -32,21 +32,20 @@ Rotation ersetzt Manager-AppRole, Control-Plane-Datenbankzugangsdaten und manage
 Weiter: [Sicherheit](../explanation/security.md), [Authentifizierung](../explanation/authentication.md), [exakte Befehle (EN)](https://mcpdev80.github.io/baseharbor/cli/security-trust/).
 
 
-## Initialen Operator und Tenant einrichten (v0.4.27, Kandidat)
+## Workstation-Gerät registrieren
 
-Auf dem **lokal gehörenden, bereiten Management-Core** initialisiert der erste Owner ausdrücklich:
+Die Verbindung eines Entwicklungsrechners mit seinem Core ist eine separate
+Geräte-Einschreibung, keine OIDC-Anmeldung eines Operators und keine
+Node-Connector-Einschreibung. Auf der Core-VM `baha up` und danach
+`baha onboard` ausführen. Die private JSON-Einladung auf die Workstation
+übertragen, dort mit `baha onboard --import FILE` importieren und das gemeldete
+Target mit `baha use TARGET` auswählen. Die Einladung registriert eine
+Geräteidentität mit minimalen Rechten, keine Operator-Rolle. Siehe den
+[Ablauf Core-zu-Workstation](../spec/zero-friction-workstation-onboarding-v0427.md).
 
-
-
-Im erweiterten Pfad kannst du `baha login -e dev --init-tenant --tenant-slug acme --tenant-name "Acme GmbH"` verwenden. Der Standard-Tenant heisst `baseharbor`, seine UUID erzeugt der Core.
-
-Diese Erst-Owner-Aktion ist **kein automatischer Bestandteil von `baha up`**. Die Anmeldung verwendet interaktives OIDC Authorization Code + PKCE. Ohne gespeicherte Operator-OIDC-Grenze lässt sich im Einrichtungsdialog Managed/Shared Keycloak oder ein externer OIDC-Provider wählen. Managed Keycloak nutzt ein eigenes umgebungsgebundenes Operator-Realm samt Client, getrennt vom Core-Identity-Realm `baseharbor`.
-
-Erst nach verifizierter, nicht abgelaufener Anmeldung werden Tenant `baseharbor`, die externe Identität (Issuer + Subject) und deren `editor`-Membership atomar mit RLS gespeichert. Derselbe Owner kann wiederholen; andere Owner, fremde bestehende Tenants, Remote-Targets, ungültige Identitäten oder ein nicht bereiter Core scheitern sicher. Es gibt keinen anonymen Erst-Admin-Endpunkt. Unkonfiguriertes `dev` bleibt trusted-local; nach dem expliziten Bootstrap nutzt normales `baha login -e dev` die gespeicherte OIDC-Grenze.
-
-**Vor der Connector-Einschreibung:** `BASEHARBOR_API_OIDC_ISSUER` und `BASEHARBOR_API_OIDC_AUDIENCES` der geschützten Operator-API müssen zum tatsächlichen Operator-Realm/Client passen. Eine API mit `.../realms/baseharbor` akzeptiert keine Token aus `.../realms/bh-operators-dev`. Issuer und Audience über Discovery abgleichen, keine OIDC-/Tenant-Prüfung umgehen.
-
-Anschließend mit `baha node add` einschreiben, mit `baha node connect` verbinden, über `baha app up` bereitstellen und mit `baha doctor` prüfen. Docker und Podman brauchen jeweils echte End-to-End-Nachweise. Die Funktion entsteht in [Core-PR #1437](https://github.com/mcpdev80/baseharbor/pull/1437) und ist **noch weder gemergt noch released oder nativ abgenommen**.
+Menschliche Operatoren melden sich weiterhin über die konfigurierte
+OIDC-Grenze mit `baha login` an. Die Geräteeinschreibung verändert oder
+umgeht diese Authentifizierungsrichtlinie nicht.
 
 ## Weitere Befehlsbeispiele
 
@@ -54,13 +53,6 @@ Anschließend mit `baha node add` einschreiben, mit `baha node connect` verbinde
 baha login
 baha logout
 baha whoami
-```
-
-```bash
-baha target show
-baha up --control-plane-only
-baha login -e dev --init-tenant
-baha whoami -e dev
 ```
 
 ```text

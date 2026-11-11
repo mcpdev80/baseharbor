@@ -15,6 +15,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/coreinstallation"
+	"github.com/mcpdev80/baseharbor/internal/machine"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
@@ -52,6 +53,21 @@ func runtimeUpCommand(ctx context.Context, args []string, out, errOut io.Writer)
 		}
 		if selected.AccessProvider != "" && selected.AccessProvider != "local" {
 			return usageError("remote control-plane bootstrap is not supported by baha up", "Bootstrap Core on its owning host and configure a verified remote management connection; no local Docker fallback is allowed.")
+		}
+	}
+	// Core bootstrap is deliberately independent of an application repository.
+	// Check its native OCI artifact dependency before any provider is changed.
+	coreUp := opts.ControlPlaneOnly || !repositoryApplicationDetectedForUp()
+	if coreUp {
+		target, targetErr := effectiveTarget(ctx)
+		if targetErr != nil {
+			return targetErr
+		}
+		if target.AccessProvider != "" && target.AccessProvider != "local" {
+			return machine.NewError(machine.ErrorCapabilityMissing, "Core bootstrap requires a local installation Target.", "Select the installation's local Core Target.", false)
+		}
+		if err := ensureORASForCoreUp(ctx, applicationInput(ctx, runtimeInput), out, opts.Yes); err != nil {
+			return err
 		}
 	}
 	// `up` is an apply path: the repository-owned candidate submission is bound

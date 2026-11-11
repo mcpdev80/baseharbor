@@ -1,146 +1,100 @@
-# Zero-friction Core → Workstation onboarding (v0.4.27 candidate)
+# Zero-friction Core-to-workstation onboarding (v0.4.27 candidate)
 
-## Human contract
+## Operator flow
 
-From an empty VM:
+This flow has two machines. Core setup and invitation creation happen on the
+Core VM. After the invitation is transferred, all application work is started
+from the developer workstation against the imported Core Target.
+
+### On the Core VM
+
+Run the current `baha` CLI outside an application repository:
 
 ```text
 baha up
 baha onboard
 ```
 
-The local owner receives an expiring invitation file, never a copied
-administrator password. On the developer's workstation:
+`baha up` initializes or starts the Core providers (PostgreSQL, OpenBao and
+Keycloak). Before it changes provider state, it checks for ORAS. ORAS resolves
+OCI references to immutable digests and verifies runtime artifacts; it is not
+a replacement for Docker or Podman. If ORAS is missing, Baha explains the need
+and asks before installing the official, checksum-verified release under the
+current user's `~/.local/bin`. It does not use `sudo` or install packages
+system-wide. Declining leaves Core setup unstarted. Non-interactive `--yes`
+does not imply permission to install; install ORAS separately and rerun.
+
+`baha onboard` waits for the local Core to be READY, then creates a one-use
+invitation and prints the path to its private JSON file. It also configures the
+managed LAN HTTPS endpoint used by the invitation. No separate `baha serve`
+command or browser login is part of this flow.
+
+Transfer that JSON file securely to the developer workstation. The file is a
+short-lived, single-use enrollment grant: do not print it, commit it, or place
+it in a shared directory.
+
+### On the developer workstation
+
+Use the current Baha CLI and import the transferred file:
 
 ```text
-baha onboard --import FILE
+baha onboard --import /path/to/invitation.json
+baha use TARGET
 ```
 
-The import must atomically verify the Core authority, enroll a workstation key
-created on the workstation itself, configure/select the remote Target and
-report READY. No developer-visible tenant UUID, Keycloak realm, CA path or
-server port. The actual command names may be adjusted to retain the existing
-`baha onboard` public surface; do not add a second onboarding backend.
+Use the Target name reported by the import. Import verifies the Core identity
+and CA, creates the workstation's private key locally, redeems the one-use
+grant, and saves the remote connection. `baha use TARGET` makes the intended
+Core explicit for subsequent commands. Application commands are then run from
+the developer workstation and operate through that Target; they are not run
+directly on the VM.
 
-## Required dependencies and ownership
+## Normative security and ownership requirements
 
-1. `baha up` continues to own provider/bootstrap lifecycle.
-2. `baha onboard` on the *local Core host* proves an existing, READY,
-   management-owned installation and obtains/creates an initial tenant through
-   a **separate authenticated local bootstrap authority**. Never fabricate an
-   `identity.Principal{IssuerVerified:true}` or call the existing OIDC-only
-   first-owner operation with a synthetic principal. Remote and unowned roots
-   fail closed. If the protected local bootstrap authority is not implemented,
-   the command must return a clear error rather than offering a password or
-   bypassing authentication.
-3. The owning Core obtains a managed TLS service endpoint with explicit LAN
-   SAN, and binds a recipient workstation label. An existing Core is not
-   destroyed, reinstalled or reset to onboard another workstation.
-4. The Core's existing `workstationenrollment.Authority.Create` mints a
-   token+nonce once, with a bounded grant lifetime. Store **only** their
-   digests; export the sensitive invitation as an owner-only `0600` file.
-   Public CA material, exact HTTPS Core origin, installation UUID, station,
-   token/nonce and expiration form the versioned transport contract in
-   `internal/onboardingbundle`. The invite cannot be used as an ongoing
-   administrator credential.
-5. Workstation import refuses symlinks/world-readable files, unknown contract
-   fields, wrong CA, expired/replayed grants and a foreign installation. Its
-   locally generated private key never travels in the file or over HTTP.
-   Enrollment must be available at a narrowly scoped, one-use **grant**
-   endpoint, not an unauthenticated version of the operator API. All other Core
-   operations retain their verified authorization. Existing production
-   `ProductionHandler` uses authenticated tenancy; do not remove or weaken
-   that guarantee just to make an invite work.
-6. Verify the issued leaf against the provided Core CA, key and SPIFFE
-   workstation identity; atomically persist protected identity and Target
-   connection. A failed verification must leave no usable Target, connection
-   fact or private credential; a repeated import must fail as consumed.
-7. Core API access must recognize this explicit device identity under
-   delegated, least-privilege policy; the client must not be treated as an
-   operator-owner merely because enrollment succeeded. Browser-based OIDC
-   remains an optional **separate** human-owner interface later.
+1. `baha up` on the Core host owns Core provider/bootstrap lifecycle.
+   Invitation creation is available only to the locally owning Core after it
+   is READY. Remote and unowned roots fail closed.
+2. `baha onboard` obtains or creates the initial tenant through the protected
+   local bootstrap authority. It MUST NOT fabricate an
+   `identity.Principal{IssuerVerified:true}` or weaken the authenticated
+   production operator API.
+3. The invitation binds the Core installation, exact HTTPS origin, public CA,
+   workstation label, one-use grant and bounded expiration. The sensitive JSON
+   file is written with owner-only permissions. The default workstation
+   certificate lifetime is five years; a shorter lifetime can be selected.
+4. Workstation import rejects symlinks and permissive files, unknown contract
+   fields, wrong CA, expired or replayed grants, foreign installations and
+   endpoint tampering. The private key is created and retained on the
+   workstation; it never enters the invitation or travels to Core.
+5. Enrollment admits a least-privilege workstation device identity, not an
+   operator or administrator. Existing Core data and ownership are preserved.
+6. Import verifies the issued certificate against the invitation's CA,
+   installation and SPIFFE workstation identity before saving the connection
+   and Target. Failure must not leave usable partial credentials or a usable
+   Target.
+7. Subsequent application lifecycle operations originate on the developer
+   workstation and use the selected remote Target. No local-runtime fallback
+   may conceal a failed remote operation.
 
-## Acceptance before PR
+## Acceptance
 
-- Fresh VM: install, Core READY, endpoint ready and one bounded invitation,
-  with no browser or manual tenant-ID steps.
-- Fresh workstation: one import, secure Core verification, Target selected and
-  CLI app plan/apply/status/change/destroy through remote Core.
-- Negative tests: lost/stolen token replay, expiry, concurrent import,
-  unauthorized second station, incorrect CA, foreign Core, tampered endpoint,
-  remote Core reset refusal, symlink and permissive files, partial enrollment
-  rollback, no private key in exported artifact/logs.
-- Both Docker and Podman native smoke paths; only own fixtures may be removed.
-- No new CI jobs or PR while the integrated branch is incomplete. After
-  implementation, push a single coherent PR and qualify its exact HEAD.
+- Fresh Core VM: `baha up` completes Core setup and dependency preflight;
+  `baha onboard` writes a private JSON invitation.
+- Fresh workstation: import verifies and enrolls the device, then explicit
+  Target selection reaches the intended Core.
+- Negative tests cover grant replay, expiry, concurrent import, unauthorized
+  station, wrong CA, foreign Core, endpoint tampering, reset refusal, symlink
+  and permissive files, partial enrollment rollback, and private-key exclusion.
+- Docker and Podman native paths must verify Core READY, invitation, workstation
+  import, and remote app plan/apply/status/change/destroy. Only owned test
+  resources may be removed.
+- CI is evidence for its exact source head; it does not replace live
+  workstation-to-Core acceptance.
 
-## Current implementation boundary (2026-11-10)
+## Implementation boundaries
 
-Implemented in this feature branch:
-
-- Locally owned Core tenant initialization and protected short-lived grant issuance
-  through baha onboard --invite, without fabricating an OIDC principal.
-- Strict invitation validation, pinned Core CA, one-use enrollment, local CSR
-  and private key, and verified mTLS workstation identity.
-- Explicit device admission through the Core durable registry and revocation
-  authority; only development machine operations are delegated.
-- baha onboard --import FILE preflights local collisions, creates the remote
-  connection profile exclusively and configures an mTLS-backed target.
-- Remote machine discovery, execution and source transfer permit verified
-  device sessions without a bearer token.
-- Negative tests cover replay, foreign identity/CA, redirected enrollment,
-  duplicate profiles and mTLS-only remote requests.
-
-Still requiring evidence before promoting Draft PR #1521:
-
-- Focused GitHub workflow green at the exact final HEAD, including formatting
-  and targeted CLI/device tests. A push is not an end-to-end runtime test.
-- Fresh Docker and Podman Core VM: READY, reachable managed LAN TLS endpoint,
-  local invitation export and import on a clean separate workstation.
-- Real remote source upload and app plan/apply/status/change/destroy.
-  Confirm target-name translation and tenant authorization.
-- Device mTLS self-renewal is now wired before certificate expiry, but its
-  authenticated native Core-to-workstation test and recovery after interruption
-  must pass before this can be considered a durable supported workflow.
-- Recovery after a grant is consumed but device verification or local
-  configuration fails. Preflight avoids known conflicts but cannot make
-  remote grant consumption and local configuration a distributed transaction.
-- Managed Core LAN URL configuration must support genuine zero-touch defaults
-  instead of hidden manual environment setup.
-
-Same-VM Core plus runtime does not require the separate Node Connector.
-The Draft CI uses the existing deterministic cli-0/cli-1/cli-2 shards.
-The ready-for-review event switches to the normal PR plan, selected validation
-jobs and Docker/Podman native acceptance. Onboarding changes require a real
-invitation/import/remote application test with explicit PASS cells; no skipped
-or synthetic green proof can satisfy that gate.
-
-Do not claim review readiness or end-to-end success until these acceptance
-checks are recorded at the final HEAD.
-
-## Automatic LAN HTTPS pairing (local READY Core)
-
-For a local Docker/Podman Core that is already READY, `baha onboard` now
-establishes a supervised user-level Core API service when no API URL has been
-configured. The service selects a concrete routed private IPv4 address,
-listens on 18443, issues a serverAuth leaf from the existing Core OpenBao CA,
-and stores the verified HTTPS origin under the selected installation's
-protected state root. No `BASEHARBOR_MANAGED_CORE_TLS`, API listen/public URL,
-or Node Connector configuration is required. The service restarts under
-systemd and re-evaluates its managed certificate at least once per day.
-
-A configured external/BYOC API listener and explicitly enabled Node Connector
-remain separate authority modes. An ambiguous/no private LAN route fails
-closed rather than advertising loopback, wildcard or an unverified host.
-The client import remains one-time and pinned to the transferred Core CA.
-
-Operator flow: `baha up` on the Core VM, `baha onboard` to issue a private
-invitation, transfer the file, then `baha onboard --import FILE` on the PC.
-The invitation defaults to the maximum five-year workstation certificate;
-`baha onboard --invite --certificate-ttl 1y` selects a shorter lifetime. A
-connected, unexpired workstation identity renews automatically during a later
-Core request when less than 15 minutes remain.
-
-The installer checks systemd user lingering so the Core API remains available
-after logout; if enabling it is not permitted by the host, onboarding fails
-with a clear systemd error rather than claiming that the service is durable.
+The versioned invitation contract lives in `internal/onboardingbundle`.
+`workstationenrollment.Authority.Create` issues and stores only digests for the
+one-use token and nonce. Production machine APIs remain authenticated; only
+the narrowly scoped enrollment-grant endpoint accepts the one-use grant.
+Browser-based OIDC remains a separate human-owner interface.

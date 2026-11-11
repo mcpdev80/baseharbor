@@ -33,26 +33,19 @@ baha whoami
 
 Development can remain trusted-local where configured; test/prod operator access follows the configured authentication boundary.
 
-## Initial operator and tenant bootstrap (v0.4.27 candidate)
+## Workstation device enrollment
 
-On the **locally owned, ready management Core**, explicitly initialize the first operator tenant:
+Connecting a developer workstation to its owning Core is a separate device
+enrollment flow, not an operator OIDC login or Node Connector enrollment. On
+the Core VM use `baha up` followed by `baha onboard`; transfer the resulting
+private JSON invitation to the workstation, import it with
+`baha onboard --import FILE`, and select the reported Target with
+`baha use TARGET`. The Core invitation establishes a least-privilege device
+identity. It does not grant an operator role. See the
+[Core-to-workstation onboarding contract](../spec/zero-friction-workstation-onboarding-v0427.md).
 
-```bash
-baha target show
-baha up --control-plane-only
-baha login -e dev --init-tenant
-baha whoami -e dev
-```
-
-Optional advanced setup: use `baha login -e dev --init-tenant --tenant-slug acme --tenant-name "Acme GmbH"`. The recommended default is tenant `baseharbor` and the Core generates its UUID.
-
-This first-owner operation is **not** performed implicitly by `baha up`. It uses interactive OIDC Authorization Code + PKCE. If no operator OIDC boundary exists for the selected Target/environment, interactive setup can configure managed/shared Keycloak or an external OIDC provider. Managed Keycloak uses a dedicated environment-specific operator realm/client, distinct from the Core Identity `baseharbor` realm.
-
-Only after a verified, unexpired login does BaseHarbor create tenant `baseharbor`, the exact (issuer, subject) external identity and its `editor` membership in one transaction with RLS. Repeating with the same owner is idempotent; different owners, existing foreign tenants, remote Targets, invalid credentials or an unready local Core fail closed. No anonymous first-admin endpoint exists. Unconfigured dev keeps the trusted-local behavior; after explicit setup, ordinary `baha login -e dev` uses the stored operator OIDC boundary.
-
-**Connector prerequisite:** Configure `BASEHARBOR_API_OIDC_ISSUER` and `BASEHARBOR_API_OIDC_AUDIENCES` on the protected operator API to match the actual operator realm/client. An API still using `.../realms/baseharbor` does **not** accept tokens issued by `.../realms/bh-operators-dev`; verify discovery and audience rather than bypassing OIDC or tenant checks.
-
-After first-owner setup, enroll with `baha node add`, establish the connection with `baha node connect`, deploy with `baha app up`, and verify `baha doctor`. Docker and Podman require separate real end-to-end evidence. This functionality is being developed in [Core PR #1437](https://github.com/mcpdev80/baseharbor/pull/1437), **not yet merged, released or natively accepted**.
+Human operators continue to use the configured `baha login` OIDC boundary.
+Device enrollment does not alter or bypass that authentication policy.
 
 ## Connections
 
