@@ -130,7 +130,11 @@ func TestWorkstationOnboardingRemoteNativeInCI(t *testing.T) {
 			t.Fatal(err)
 		}
 		manifest := application.WithWorkloadComponents(application.New("onboard-native", "dev", false, false, false), "api")
-		mustWriteInitializedAuthoredManifest(t, "baseharbor.yaml", manifest)
+		// A fresh remote app has no local application identity: the Core assigns
+		// it during registration. Do not preseed the local Store from application.New.
+		if err := os.WriteFile("baseharbor.yaml", []byte(manifest.AuthoredYAML()), 0o600); err != nil {
+			t.Fatal(err)
+		}
 		// A fresh Core has no registered application. Registration is a
 		// separate, authoritative machine operation; local repository files
 		// must never be mistaken for an existing remote deployment receipt.
