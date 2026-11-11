@@ -547,6 +547,13 @@ func persistRequestedWorkloadPortSelections(ctx context.Context, out io.Writer, 
 	if len(requested) == 0 {
 		return nil
 	}
+	persisted := map[string]string{}
+	persisted, err := readSimpleEnvFile(filepath.Join(files.Dir, workloadPortOverridesFile))
+	if errors.Is(err, os.ErrNotExist) {
+		persisted = map[string]string{}
+	} else if err != nil {
+		return fmt.Errorf("read persisted workload port selections: %w", err)
+	}
 	variables, err := workloadPublishedPortVariables(workload)
 	if err != nil {
 		return fmt.Errorf("inspect configurable workload host ports: %w", err)
@@ -563,7 +570,11 @@ func persistRequestedWorkloadPortSelections(ctx context.Context, out io.Writer, 
 		if parseErr != nil {
 			return machine.NewError(machine.ErrorValidationFailed, "A requested workload port is invalid.", "Choose a TCP port from 1 through 65535.", false)
 		}
-		if !portAvailable(port) {
+		// Reapplying an already materialized application commonly finds its own
+		// published port bound by that application's running container. Preserve
+		// an identical persisted selection; Compose still detects a conflicting
+		// owner if a start or recreation is needed later in the lifecycle.
+		if persisted[name] != strconv.Itoa(port) && !portAvailable(port) {
 			return &machine.Error{Code: machine.ErrorPortConflict, CauseCode: "host_port_in_use", Message: fmt.Sprintf("Requested workload host port %s=%d is already in use.", name, port), Resource: name, Remediation: "requires developer input", Next: "Choose another free host port and retry."}
 		}
 		if err := persistWorkloadPortOverride(files, environment, name, port); err != nil {

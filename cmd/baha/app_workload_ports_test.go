@@ -220,6 +220,36 @@ func TestPreflightRepositoryWorkloadPortsPersistsExplicitRemoteSelection(t *test
 	}
 }
 
+func TestPersistRequestedWorkloadPortAllowsExistingApplicationBinding(t *testing.T) {
+	repo := t.TempDir()
+	composePath := filepath.Join(repo, "compose.yaml")
+	compose := "services:\n  edge:\n    image: caddy:2-alpine\n    ports:\n      - \"${HTTP_PORT:-8080}:80\"\n"
+	if err := os.WriteFile(composePath, []byte(compose), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	listener, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	port := strconv.Itoa(listener.Addr().(*net.TCPAddr).Port)
+	files := application.RuntimeFiles{Dir: t.TempDir()}
+	if err := os.WriteFile(filepath.Join(files.Dir, workloadPortOverridesFile), []byte("HTTP_PORT="+port+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	environment := map[string]string{}
+	err = persistRequestedWorkloadPortSelections(
+		withRequestedWorkloadPorts(context.Background(), map[string]string{"HTTP_PORT": port}),
+		&bytes.Buffer{}, application.WorkloadFiles{RepositoryRoot: repo, Compose: composePath, Services: []string{"edge"}}, files, environment,
+	)
+	if err != nil {
+		t.Fatalf("same persisted application port should be reusable: %v", err)
+	}
+	if environment["HTTP_PORT"] != port {
+		t.Fatalf("HTTP_PORT = %q, want %q", environment["HTTP_PORT"], port)
+	}
+}
+
 type explicitWorkloadPortConflictRuntime struct{ bhruntime.RuntimeProvider }
 
 func (explicitWorkloadPortConflictRuntime) UpProjectFilesSelectedNoBuildProgress(context.Context, string, string, map[string]string, []string, func(string), ...string) error {
