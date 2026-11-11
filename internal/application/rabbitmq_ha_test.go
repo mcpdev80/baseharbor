@@ -71,6 +71,7 @@ func TestRabbitMQHARendersThreeMembersStableGatewayAndQuorumConfig(t *testing.T)
 		"RABBITMQ_NODENAME: rabbit@rabbitmq-2",
 		"RABBITMQ_NODENAME: rabbit@rabbitmq-3",
 		"RABBITMQ_ERLANG_COOKIE: ${RABBITMQ_ERLANG_COOKIE}",
+		`su-exec rabbitmq rabbitmq-diagnostics -q ping; else rabbitmq-diagnostics -q ping; fi`,
 		"rabbitmq-data:/var/lib/rabbitmq",
 		"rabbitmq-2-data:/var/lib/rabbitmq",
 		"rabbitmq-3-data:/var/lib/rabbitmq",

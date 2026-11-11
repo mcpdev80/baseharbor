@@ -27,6 +27,13 @@ func rabbitmqMemberVolumeName(instance string, ordinal int) string {
 	return rabbitmqMemberServiceName(instance, ordinal) + "-data"
 }
 
+// Docker runs health checks as root when the image does not declare USER,
+// while RabbitMQ's entrypoint drops the broker to its rabbitmq account. With
+// the container's intentionally restricted capabilities, root cannot read
+// the broker's owner-only Erlang cookie. On Docker, drop the health check to
+// the broker account; platforms that assign a non-root UID can run it as-is.
+const rabbitMQHealthcheckCommand = `if [ "$(id -u)" -eq 0 ]; then su-exec rabbitmq rabbitmq-diagnostics -q ping; else rabbitmq-diagnostics -q ping; fi`
+
 func rabbitmqGatewayUpstreams(m Manifest, instance string) []serviceaccess.TCPGatewayUpstream {
 	count := rabbitmqMemberCount(m)
 	out := make([]serviceaccess.TCPGatewayUpstream, 0, count)
@@ -102,7 +109,7 @@ func writeRabbitMQComposeService(b *strings.Builder, m Manifest, instance string
 			fmt.Fprintf(b, "      - %s\n", rabbitmqHAConfigMount(instance))
 		}
 		b.WriteString("    healthcheck:\n")
-		b.WriteString("      test: [\"CMD-SHELL\", \"rabbitmq-diagnostics -q ping\"]\n")
+		fmt.Fprintf(b, "      test: [\"CMD-SHELL\", %q]\n", rabbitMQHealthcheckCommand)
 		b.WriteString("      interval: 5s\n      timeout: 5s\n      retries: 12\n      start_period: 10s\n\n")
 	}
 }
