@@ -190,6 +190,33 @@ func TestLokiProviderRuntimeDoesNotMountContainerSocket(t *testing.T) {
 	}
 }
 
+func TestAlloyAgentStateUsesWritableArbitraryUIDTempStorage(t *testing.T) {
+	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
+	m := application.New("demo", "dev", false, false, false)
+	files, err := logs.EnsureProviderFiles(context.Background(), serviceissuer.New(t), m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(files.Compose)
+	if err != nil {
+		t.Fatal(err)
+	}
+	compose := string(data)
+	for _, required := range []string{
+		"--storage.path=/tmp/alloy-data",
+		"/tmp:rw,noexec,nosuid,nodev,mode=1777",
+	} {
+		if !strings.Contains(compose, required) {
+			t.Fatalf("Alloy runtime is missing writable temp state %q:\n%s", required, compose)
+		}
+	}
+	for _, forbidden := range []string{"alloy-data:/var/lib/alloy/data", "alloy-data:"} {
+		if strings.Contains(compose, forbidden) {
+			t.Fatalf("Alloy state must not depend on a root-owned named volume %q:\n%s", forbidden, compose)
+		}
+	}
+}
+
 func TestLokiProviderSeparatesInternalTrafficFromHostPublishing(t *testing.T) {
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
 	m := application.New("demo", "dev", false, false, false)

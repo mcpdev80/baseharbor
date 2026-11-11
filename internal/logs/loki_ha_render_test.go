@@ -16,11 +16,10 @@ func TestLokiHARenderUsesProcessTrustStoreForSeaweedFS(t *testing.T) {
 	}
 
 	placement := Placement{
-		Scope:       capability.ScopeShared,
-		Project:     "bh-test-shared",
-		Network:     "bh-test-logs",
-		LokiVolume:  "bh-test-loki",
-		AlloyVolume: "bh-test-alloy",
+		Scope:      capability.ScopeShared,
+		Project:    "bh-test-shared",
+		Network:    "bh-test-logs",
+		LokiVolume: "bh-test-loki",
 	}
 	access := serviceaccess.HTTPGatewayFiles{
 		Caddyfile: "./service-access/Caddyfile",
