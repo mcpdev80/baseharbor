@@ -15,7 +15,6 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/coreinstallation"
-	"github.com/mcpdev80/baseharbor/internal/machine"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
@@ -53,21 +52,6 @@ func runtimeUpCommand(ctx context.Context, args []string, out, errOut io.Writer)
 		}
 		if selected.AccessProvider != "" && selected.AccessProvider != "local" {
 			return usageError("remote control-plane bootstrap is not supported by baha up", "Bootstrap Core on its owning host and configure a verified remote management connection; no local Docker fallback is allowed.")
-		}
-	}
-	// Core bootstrap is deliberately independent of an application repository.
-	// Check its native OCI artifact dependency before any provider is changed.
-	coreUp := opts.ControlPlaneOnly || !repositoryApplicationDetectedForUp()
-	if coreUp {
-		target, targetErr := effectiveTarget(ctx)
-		if targetErr != nil {
-			return targetErr
-		}
-		if target.AccessProvider != "" && target.AccessProvider != "local" {
-			return machine.NewError(machine.ErrorCapabilityMissing, "Core bootstrap requires a local installation Target.", "Select the installation's local Core Target.", false)
-		}
-		if err := ensureORASForCoreUp(ctx, applicationInput(ctx, runtimeInput), out, opts.Yes); err != nil {
-			return err
 		}
 	}
 	// `up` is an apply path: the repository-owned candidate submission is bound
@@ -188,7 +172,18 @@ func runtimeUpGuided(parent context.Context, in io.Reader, out io.Writer, opts r
 	if opts.PostgresPort != 0 && opts.PostgresPort == opts.OpenBaoPort {
 		return errors.New("PostgreSQL and OpenBao cannot use the same host port")
 	}
-	_, err := installCore(parent, in, out, opts)
+	// This function is reached only after repository application routing declines
+	// the command, making it the unambiguous Core bootstrap boundary.
+	target, err := effectiveTarget(parent)
+	if err != nil {
+		return err
+	}
+	if target.AccessProvider == "" || target.AccessProvider == "local" {
+		if err := ensureORASForCoreUp(parent, in, out, opts.Yes); err != nil {
+			return err
+		}
+	}
+	_, err = installCore(parent, in, out, opts)
 	return err
 }
 
