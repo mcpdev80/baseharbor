@@ -237,6 +237,9 @@ func TestSeaweedFSManagementUIUsesHardenedWritableTmpfs(t *testing.T) {
 		if !strings.Contains(block, "/tmp:rw,noexec,nosuid,nodev") {
 			t.Fatalf("%s missing hardened writable /tmp:\n%s", service, block)
 		}
+		if !strings.Contains(block, "cap_add: [\"CHOWN\", \"SETGID\", \"SETUID\"]") {
+			t.Fatalf("%s missing the minimal capabilities needed by the image entrypoint to drop privileges:\n%s", service, block)
+		}
 	}
 }
 
