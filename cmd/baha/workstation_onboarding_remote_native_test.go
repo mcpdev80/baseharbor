@@ -135,8 +135,11 @@ func TestWorkstationOnboardingRemoteNativeInCI(t *testing.T) {
 		// separate, authoritative machine operation; local repository files
 		// must never be mistaken for an existing remote deployment receipt.
 		// Exercise the complete real lifecycle, including initial creation.
+		// The authored manifest already declares the api workload, so do not
+		// also pass --workload-component: CLI flags must not override a matching
+		// repository manifest.
 		for _, args := range [][]string{
-			{"app", "create", "onboard-native", "--environment", "dev", "--workload-component", "api"},
+			{"app", "create", "onboard-native", "--environment", "dev"},
 			{"app", "plan", "onboard-native", "--environment", "dev", "--json"},
 			{"app", "list", "--json"},
 			{"app", "apply", "onboard-native", "--environment", "dev"},
