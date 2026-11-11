@@ -536,6 +536,7 @@ func TestManagedDatabaseAndCacheComposeAreUnprivileged(t *testing.T) {
 	for _, want := range []string{
 		"read_only: true",
 		"cap_drop: [\"ALL\"]",
+		"cap_add: [\"CHOWN\"]",
 		"no-new-privileges:true",
 		"/var/run/postgresql:rw,noexec,nosuid,nodev",
 	} {

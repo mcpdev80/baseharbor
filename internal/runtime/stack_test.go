@@ -538,6 +538,33 @@ func TestEmbeddedComposeRunsControlPlaneServicesUnprivileged(t *testing.T) {
 	}
 }
 
+func TestSinglePostgresInitializesFreshVolumesWithOnlyChownCapability(t *testing.T) {
+	text := string(composeSingleYAML)
+	start := strings.Index(text, "  postgres-member-1:\n")
+	if start < 0 {
+		t.Fatal("single-instance PostgreSQL service missing")
+	}
+	var lines []string
+	for i, line := range strings.Split(text[start:], "\n") {
+		if i > 0 && strings.HasPrefix(line, "  ") && !strings.HasPrefix(line, "    ") {
+			break
+		}
+		lines = append(lines, line)
+	}
+	block := strings.Join(lines, "\n")
+	for _, want := range []string{
+		"    cap_drop:\n    - ALL\n    cap_add:\n    - CHOWN\n",
+		"    security_opt:\n    - no-new-privileges:true",
+	} {
+		if !strings.Contains(block, want) {
+			t.Fatalf("single PostgreSQL service must grant only the volume-initialization capability %q:\n%s", want, block)
+		}
+	}
+	if strings.Contains(block, "    user:") {
+		t.Fatal("single PostgreSQL service must leave effective UID to the image/runtime")
+	}
+}
+
 func TestEmbeddedComposeUsesStablePatroniMemberIdentitiesAcrossRecreate(t *testing.T) {
 	text := string(composeYAML)
 	for ordinal := 1; ordinal <= 3; ordinal++ {

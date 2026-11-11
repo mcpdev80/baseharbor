@@ -13,6 +13,7 @@ func TestKeycloakSinglePostgresStartsWithoutPrivilegedEntrypoint(t *testing.T) {
 			User        string            `yaml:"user"`
 			ReadOnly    bool              `yaml:"read_only"`
 			CapDrop     []string          `yaml:"cap_drop"`
+			CapAdd      []string          `yaml:"cap_add"`
 			SecurityOpt []string          `yaml:"security_opt"`
 			Environment map[string]string `yaml:"environment"`
 			Volumes     []string          `yaml:"volumes"`
@@ -24,7 +25,7 @@ func TestKeycloakSinglePostgresStartsWithoutPrivilegedEntrypoint(t *testing.T) {
 		t.Fatal(err)
 	}
 	db := compose.Services["keycloak-db"]
-	if db.User != "" || !db.ReadOnly || len(db.CapDrop) != 1 || db.CapDrop[0] != "ALL" || len(db.SecurityOpt) != 1 || db.SecurityOpt[0] != "no-new-privileges:true" {
+	if db.User != "" || !db.ReadOnly || len(db.CapDrop) != 1 || db.CapDrop[0] != "ALL" || len(db.CapAdd) != 1 || db.CapAdd[0] != "CHOWN" || len(db.SecurityOpt) != 1 || db.SecurityOpt[0] != "no-new-privileges:true" {
 		t.Fatalf("single Keycloak SQL must leave UID assignment to the runtime and remain confined: %+v", db)
 	}
 	if db.Environment["PGDATA"] != "/var/lib/postgresql/18/docker" || len(db.Tmpfs) != 2 {
