@@ -51,6 +51,11 @@ func TestConsumerReadableProjectionRejectsRestrictedOrWritablePaths(t *testing.T
 			if err := os.Mkdir(root, mode); err != nil {
 				t.Fatal(err)
 			}
+			// mkdir applies the process umask, so make the unsafe mode explicit
+			// before asserting that the consumer projection rejects it.
+			if err := os.Chmod(root, mode); err != nil {
+				t.Fatal(err)
+			}
 			if err := os.WriteFile(filepath.Join(root, "uri"), []byte("fixture"), 0o444); err != nil {
 				t.Fatal(err)
 			}

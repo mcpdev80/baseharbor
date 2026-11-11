@@ -482,6 +482,8 @@ jobs:
           cache: false
       - name: Prepare isolated rootless runtime
         run: bash scripts/ci-core-rootless-runtime.sh
+      - name: Install verified ORAS for native Core bootstrap
+        run: bash scripts/ci-install-oras.sh
       - name: Verify actual native destroy and retry, fail on SKIP
         shell: bash
         run: |

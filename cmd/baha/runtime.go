@@ -172,6 +172,11 @@ func runtimeUpGuided(parent context.Context, in io.Reader, out io.Writer, opts r
 	if opts.PostgresPort != 0 && opts.PostgresPort == opts.OpenBaoPort {
 		return errors.New("PostgreSQL and OpenBao cannot use the same host port")
 	}
+	// Reject an unauthorized MCP request before probing or installing host tools.
+	// installCore repeats this check at the mutation boundary.
+	if err := authorizeCurrentMCPContext(parent, "control-plane.up", "", "", ""); err != nil {
+		return err
+	}
 	// This function is reached only after repository application routing declines
 	// the command, making it the unambiguous Core bootstrap boundary.
 	target, err := effectiveTarget(parent)
