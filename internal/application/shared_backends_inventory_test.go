@@ -128,12 +128,22 @@ func TestSharedBackendInventoryAcceptsMissingPgAdminForwardedHostSetting(t *test
 	service := document["services"].(map[string]any)["shared-pgadmin"].(map[string]any)
 	environment := service["environment"].(map[string]any)
 	delete(environment, "PGADMIN_CONFIG_PROXY_X_HOST_COUNT")
+	delete(environment, "PGADMIN_CONFIG_SHARED_STORAGE")
+	delete(service, "entrypoint")
+	volumes := service["volumes"].([]any)
+	filtered := volumes[:0]
+	for _, volume := range volumes {
+		if !strings.Contains(volume.(string), "pgadmin-entrypoint.sh:/run/baseharbor/pgadmin-entrypoint.sh:ro") {
+			filtered = append(filtered, volume)
+		}
+	}
+	service["volumes"] = filtered
 	old, err := yaml.Marshal(document)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !sharedBackendComposeMatchesCanonical(old, canonical) {
-		t.Fatal("previous pgAdmin renderer without the forwarded-host setting must remain upgradeable")
+		t.Fatalf("previous pgAdmin renderer without the forwarded-host and connection-file settings must remain upgradeable\nold:\n%s\ncanonical:\n%s", old, canonical)
 	}
 	environment["PGADMIN_CONFIG_PROXY_X_HOST_COUNT"] = "0"
 	wrong, err := yaml.Marshal(document)
@@ -142,6 +152,19 @@ func TestSharedBackendInventoryAcceptsMissingPgAdminForwardedHostSetting(t *test
 	}
 	if sharedBackendComposeMatchesCanonical(wrong, canonical) {
 		t.Fatal("unexpected pgAdmin forwarded-host trust count must remain rejected")
+	}
+	var wrongSharedStorage map[string]any
+	if err := yaml.Unmarshal(canonical, &wrongSharedStorage); err != nil {
+		t.Fatal(err)
+	}
+	wrongService := wrongSharedStorage["services"].(map[string]any)["shared-pgadmin"].(map[string]any)
+	wrongService["environment"].(map[string]any)["PGADMIN_CONFIG_SHARED_STORAGE"] = "[]"
+	wrong, err = yaml.Marshal(wrongSharedStorage)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sharedBackendComposeMatchesCanonical(wrong, canonical) {
+		t.Fatal("unexpected pgAdmin shared storage must remain rejected")
 	}
 }
 
