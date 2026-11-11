@@ -31,6 +31,13 @@ func activity(ctx context.Context, term *cli.Terminal, label string, fn func(io.
 	return nil
 }
 
+func progress(ctx context.Context, term *cli.Terminal, label string, fn func(io.Writer) error) error {
+	if err := term.Progress(ctx, label, fn); err != nil {
+		return fmt.Errorf("%s: %w", label, err)
+	}
+	return nil
+}
+
 func noInput(ctx context.Context) bool {
 	return cli.OutputOptionsFromContext(ctx).NonInteractive
 }

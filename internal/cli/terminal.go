@@ -354,6 +354,64 @@ func (t *Terminal) Activity(ctx context.Context, label string, fn func(io.Writer
 	}
 }
 
+// Progress reports a long-running human-facing operation as persistent lines.
+// Unlike Activity, it always prints a start and result row and never rewrites
+// terminal output, which makes phase-by-phase setup readable in SSH sessions
+// and captured logs.
+func (t *Terminal) Progress(ctx context.Context, label string, fn func(io.Writer) error) error {
+	if t.opts.Quiet {
+		buffer := newActivityBuffer()
+		err := fn(buffer)
+		if err != nil {
+			_, _ = io.Copy(t.errOut, buffer)
+		}
+		_, _ = io.Copy(t.errOut, &buffer.notices)
+		return err
+	}
+
+	startedAt := time.Now()
+	t.activityLine("START", label)
+	progress := newActivityBuffer()
+	done := make(chan error, 1)
+	go func() { done <- fn(progress) }()
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+
+	finish := func(err error) error {
+		for {
+			select {
+			case detail := <-progress.details:
+				t.activityLine("INFO", label+" - "+detail)
+			default:
+				goto detailsFlushed
+			}
+		}
+	detailsFlushed:
+		suffix := " (" + formatActivityDuration(time.Since(startedAt)) + ")"
+		if err == nil {
+			t.activityLine("OK", label+suffix)
+		} else {
+			t.activityLine("FAIL", label+suffix)
+			_, _ = io.WriteString(t.errOut, progress.String())
+		}
+		_, _ = io.WriteString(t.errOut, progress.notices.String())
+		return err
+	}
+
+	for {
+		select {
+		case err := <-done:
+			return finish(err)
+		case <-ctx.Done():
+			return finish(ctx.Err())
+		case detail := <-progress.details:
+			t.activityLine("INFO", label+" - "+detail)
+		case <-ticker.C:
+			t.activityLine("WAIT", label+" - still working ("+formatActivityDuration(time.Since(startedAt))+")")
+		}
+	}
+}
+
 func (t *Terminal) activityLine(state, label string) {
 	fmt.Fprintf(t.errOut, "[%s] %s\n", state, label)
 }

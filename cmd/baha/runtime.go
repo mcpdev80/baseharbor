@@ -14,6 +14,7 @@ import (
 	"github.com/charmbracelet/x/term"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/mcpdev80/baseharbor/internal/coreinstallation"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
@@ -185,10 +186,15 @@ func runtimeUpGuided(parent context.Context, in io.Reader, out io.Writer, opts r
 		return err
 	}
 	if target.AccessProvider == "" || target.AccessProvider == "local" {
+		fmt.Fprintln(out, "Checking ORAS for immutable OCI image verification.")
 		if err := ensureORASForCoreUp(parent, in, out, opts.Yes); err != nil {
 			return err
 		}
-		if err := ensureCoreRuntimeImageForTarget(parent, target, out); err != nil {
+		fmt.Fprintln(out, "[OK] ORAS is available.")
+		term := cli.NewTerminal(parent, out, out)
+		if err := progress(parent, term, "Verify and prepare the BaseHarbor runtime image", func(progressOut io.Writer) error {
+			return ensureCoreRuntimeImageForTarget(parent, target, progressOut)
+		}); err != nil {
 			return err
 		}
 	}
@@ -291,7 +297,10 @@ func materializeControlPlaneProviders(parent context.Context, in io.Reader, out 
 		}
 	}
 
-	return runtimeUpWithPortsSelection(parent, out, bhruntime.Ports{Postgres: postgresPort, OpenBao: openBaoPort}, opts.HA, opts.ControlPlaneOnly)
+	term := cli.NewTerminal(parent, out, out)
+	return progress(parent, term, "Start PostgreSQL and OpenBao services", func(progressOut io.Writer) error {
+		return runtimeUpWithPortsSelection(parent, progressOut, bhruntime.Ports{Postgres: postgresPort, OpenBao: openBaoPort}, opts.HA, opts.ControlPlaneOnly)
+	})
 }
 
 // detectSharedCoreOwnerConflict runs the fail-closed second-target conflict gate

@@ -9,6 +9,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/mcpdev80/baseharbor/internal/coreinstallation"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/health"
@@ -100,6 +101,7 @@ func installCore(ctx context.Context, in io.Reader, out io.Writer, opts runtimeU
 	spec := coreinstallation.Spec{Target: target.Name, Runtime: target.RuntimeProvider, MachineRole: role, HA: opts.HA}
 	var compose bhruntime.RuntimeProvider
 	var files bhruntime.Files
+	term := cli.NewTerminal(ctx, out, out)
 	steps := coreinstallation.Steps{
 		Preflight: func(ctx context.Context, state coreinstallation.State) error {
 			// Existing owned resources are reconciled rather than budgeted a second time.
@@ -130,28 +132,37 @@ func installCore(ctx context.Context, in io.Reader, out io.Writer, opts runtimeU
 			return err
 		},
 		Secrets: func(ctx context.Context, state coreinstallation.State) error {
-			return ensureRepositoryOpenBaoReady(ctx, in, out, io.Discard, opts)
+			return progress(ctx, term, "Initialize and secure Core Secrets", func(progressOut io.Writer) error {
+				return ensureRepositoryOpenBaoReady(ctx, in, progressOut, io.Discard, opts)
+			})
 		},
 		Identity: func(ctx context.Context, state coreinstallation.State) (string, error) {
-			dataDir, err := targetDataRoot(target)
-			if err != nil {
-				return "", err
-			}
-			return identityprovider.EnsureCoreIdentity(ctx, compose, platformopenbao.NewServiceIssuer(compose, files), dataDir, target.Name, state.ID, state.Spec.HA)
+			var issuer string
+			err := progress(ctx, term, "Configure Core Identity", func(io.Writer) error {
+				dataDir, err := targetDataRoot(target)
+				if err != nil {
+					return err
+				}
+				issuer, err = identityprovider.EnsureCoreIdentity(ctx, compose, platformopenbao.NewServiceIssuer(compose, files), dataDir, target.Name, state.ID, state.Spec.HA)
+				return err
+			})
+			return issuer, err
 		},
 		Verify: func(ctx context.Context, state coreinstallation.State) error {
-			_, ready := health.Format(health.RuntimeChecksForFiles(files))
-			if !ready {
-				return machine.NewError(machine.ErrorVerificationFailed, "Core SQL/Secrets are not ready.", "Inspect the selected installation before continuing the application.", true)
-			}
-			if err := platformopenbao.CheckManager(ctx, compose, files); err != nil {
-				return err
-			}
-			dataDir, err := targetDataRoot(target)
-			if err != nil {
-				return err
-			}
-			return identityprovider.VerifyCoreIdentity(ctx, dataDir, target.Name, state.ID, state.IdentityIssuer)
+			return progress(ctx, term, "Verify SQL, Secrets and Identity", func(io.Writer) error {
+				_, ready := health.Format(health.RuntimeChecksForFiles(files))
+				if !ready {
+					return machine.NewError(machine.ErrorVerificationFailed, "Core SQL/Secrets are not ready.", "Inspect the selected installation before continuing the application.", true)
+				}
+				if err := platformopenbao.CheckManager(ctx, compose, files); err != nil {
+					return err
+				}
+				dataDir, err := targetDataRoot(target)
+				if err != nil {
+					return err
+				}
+				return identityprovider.VerifyCoreIdentity(ctx, dataDir, target.Name, state.ID, state.IdentityIssuer)
+			})
 		},
 	}
 	if err := ensureTargetDockerBinding(ctx, target); err != nil {
@@ -168,12 +179,14 @@ func installCore(ctx context.Context, in io.Reader, out io.Writer, opts runtimeU
 		state, rerr := coreinstallation.Run(ctx, root, spec, steps)
 		if rerr == nil {
 			fmt.Fprintln(out, "BaseHarbor Core READY: SQL + Secrets + Identity.")
+			fmt.Fprintln(out, "Next: run 'baha status' and 'baha doctor'.")
 		}
 		return state, rerr
 	}
 	state, err := coreinstallation.Run(ctx, root, spec, steps)
 	if err == nil {
 		fmt.Fprintln(out, "BaseHarbor Core READY: SQL + Secrets + Identity.")
+		fmt.Fprintln(out, "Next: run 'baha status' and 'baha doctor'.")
 	}
 	return state, err
 }
@@ -191,11 +204,11 @@ func pullCoreRuntimeImage(ctx context.Context, provider bhruntime.RuntimeProvide
 	if image == "" {
 		image = defaultRuntimeImage(version)
 	}
-	fmt.Fprintln(out, "Ensuring the BaseHarbor runtime image is available before Core setup.")
-	if err := pullResolvedRuntimeImage(ctx, provider, image, ""); err != nil {
+	if err := pullResolvedRuntimeImageProgress(ctx, provider, image, "", func(detail string) {
+		cli.ReportActivityDetail(out, detail)
+	}); err != nil {
 		return fmt.Errorf("ensure BaseHarbor runtime image before Core setup: %w", err)
 	}
-	fmt.Fprintln(out, "[OK] BaseHarbor runtime image is available (verified immutable registry identity).")
 	return nil
 }
 

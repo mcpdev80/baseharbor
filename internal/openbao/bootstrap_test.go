@@ -127,6 +127,42 @@ func TestBootstrapKeepsRootAndUnsealSecretsOutOfCommandArguments(t *testing.T) {
 	assertOwnerOnly(t, adminPath)
 }
 
+func TestBootstrapProgressReportsOrderedSecurityPhases(t *testing.T) {
+	dir := t.TempDir()
+	runtimeDir := filepath.Join(dir, ".baseharbor", "runtime")
+	if err := os.MkdirAll(runtimeDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	files := bhruntime.Files{Compose: filepath.Join(runtimeDir, "compose.yaml"), Env: filepath.Join(runtimeDir, "runtime.env")}
+	var phases []string
+	err := BootstrapProgress(context.Background(), &fakeExecutor{}, files, filepath.Join(dir, "recovery.json"), func(phase string) {
+		phases = append(phases, phase)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{
+		"checking OpenBao initialization state",
+		"preparing the protected recovery file",
+		"initializing OpenBao",
+		"writing the recovery file with owner-only permissions",
+		"unsealing OpenBao members",
+		"configuring the BaseHarbor KV mount and restricted manager role",
+		"verifying restricted manager access",
+		"revoking the initial root token",
+		"verifying manager access after root-token revocation",
+	}
+	if strings.Join(phases, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("bootstrap phases = %#v, want %#v", phases, want)
+	}
+	joined := strings.Join(phases, "\n")
+	for _, sensitive := range []string{"unseal-secret", "root-secret", "manager-secret", "manager-token"} {
+		if strings.Contains(joined, sensitive) {
+			t.Fatalf("progress phases exposed sensitive material %q", sensitive)
+		}
+	}
+}
+
 func TestBootstrapRejectsRecoveryFileInsideBaseHarborState(t *testing.T) {
 	dir := t.TempDir()
 	runtimeDir := filepath.Join(dir, ".baseharbor", "runtime")
