@@ -234,6 +234,11 @@ func reconcileSharedPostgresApplication(ctx context.Context, compose bhruntime.R
 }
 
 func renderSharedBackendRuntime(files SharedBackendFiles, state sharedBackendState) error {
+	if sharedBackendUsesValkey(state) {
+		if err := ensureValkeyProviderBuildContext(files.Dir); err != nil {
+			return fmt.Errorf("prepare shared Valkey provider image: %w", err)
+		}
+	}
 	var env strings.Builder
 	if state.ValkeyAdminCredential != "" {
 		password, err := readSharedBackendCredential(files.Dir, state.ValkeyAdminCredential)
@@ -302,6 +307,18 @@ func renderSharedBackendRuntime(files SharedBackendFiles, state sharedBackendSta
 		return err
 	}
 	return os.WriteFile(files.Compose, []byte(sharedBackendCompose(files, state)), 0o600)
+}
+
+func sharedBackendUsesValkey(state sharedBackendState) bool {
+	if state.ValkeyAdminCredential != "" {
+		return true
+	}
+	for _, app := range state.Applications {
+		if len(app.Cache) > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // Keep canonical shape reconstruction read-only for ownership/impact checks.
@@ -621,7 +638,8 @@ func writeSharedValkeyCompose(b *strings.Builder, app sharedBackendAppState, ins
 	for ordinal := 0; ordinal < count; ordinal++ {
 		service := sharedValkeyMemberServiceName(app, instance, ordinal)
 		fmt.Fprintf(b, "  %s:\n", service)
-		b.WriteString("    image: docker.io/valkey/valkey:9.1.2-alpine\n")
+		b.WriteString("    image: " + valkeyProviderImage + "\n")
+		writeValkeyImageBuild(b)
 		b.WriteString("    restart: unless-stopped\n")
 		b.WriteString("    read_only: true\n")
 		b.WriteString("    cap_drop: [\"ALL\"]\n")
@@ -630,6 +648,7 @@ func writeSharedValkeyCompose(b *strings.Builder, app sharedBackendAppState, ins
 		b.WriteString("    environment:\n")
 		fmt.Fprintf(b, "      VALKEY_PASSWORD: ${%s}\n", passwordEnv)
 		b.WriteString("    command:\n      - sh\n      - -ec\n      - |\n")
+		writeValkeyDataPermissionPrelude(b)
 		if ordinal > 0 {
 			writeValkeyPrimaryAddressBootstrap(b, primary)
 		}
@@ -662,7 +681,8 @@ func writeSharedValkeyCompose(b *strings.Builder, app sharedBackendAppState, ins
 		for ordinal := 0; ordinal < 3; ordinal++ {
 			service := sharedValkeySentinelServiceName(app, instance, ordinal)
 			fmt.Fprintf(b, "  %s:\n", service)
-			b.WriteString("    image: docker.io/valkey/valkey:9.1.2-alpine\n")
+			b.WriteString("    image: " + valkeyProviderImage + "\n")
+			writeValkeyImageBuild(b)
 			b.WriteString("    restart: unless-stopped\n")
 			b.WriteString("    read_only: true\n")
 			b.WriteString("    cap_drop: [\"ALL\"]\n")
@@ -671,6 +691,7 @@ func writeSharedValkeyCompose(b *strings.Builder, app sharedBackendAppState, ins
 			b.WriteString("    environment:\n")
 			fmt.Fprintf(b, "      VALKEY_PASSWORD: ${%s}\n", passwordEnv)
 			b.WriteString("    command:\n      - sh\n      - -ec\n      - |\n")
+			writeValkeyDataPermissionPrelude(b)
 			writeValkeyPrimaryAddressBootstrap(b, primary)
 			b.WriteString("        {\n")
 			b.WriteString("          printf 'port 26379\\n'\n")

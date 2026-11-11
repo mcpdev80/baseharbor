@@ -38,31 +38,9 @@ func appInitWithInputResolverCommand(store application.Store) *cli.Command {
 			ctx = machineNoninteractiveContext(ctx)
 		}
 
-		filtered, agents, err := extractAgentsOption(args)
-		if err != nil {
+		handled, err := runAgentsInitOption(args, format, destination, out)
+		if err != nil || handled {
 			return err
-		}
-		if agents {
-			if len(filtered) != 0 {
-				return usageError("--agents cannot be combined with application initialization arguments", "Use baha app init --agents for documentation only; run baha app init separately to configure a deployment.")
-			}
-			cwd, err := os.Getwd()
-			if err != nil {
-				return err
-			}
-			changed, err := ensureBaseHarborAgentsSection(cwd)
-			if err != nil {
-				return err
-			}
-			if format == outputJSON {
-				return writeJSON(destination, map[string]any{"path": filepath.Join(cwd, "AGENTS.md"), "changed": changed})
-			}
-			if changed {
-				fmt.Fprintln(out, "AGENTS.md: BaseHarbor guidance added or updated")
-			} else {
-				fmt.Fprintln(out, "AGENTS.md: BaseHarbor guidance already current")
-			}
-			return nil
 		}
 		forwarded, injected, err := extractDeclaredInputArgs(filtered)
 		if err != nil {
@@ -231,6 +209,36 @@ func appInitWithInputResolverCommand(store application.Store) *cli.Command {
 		return nil
 	}
 	return base
+}
+
+func runAgentsInitOption(args []string, format cliOutputFormat, destination, out io.Writer) (bool, error) {
+	filtered, agents, err := extractAgentsOption(args)
+	if err != nil {
+		return false, err
+	}
+	if !agents {
+		return false, nil
+	}
+	if len(filtered) != 0 {
+		return true, usageError("--agents cannot be combined with application initialization arguments", "Use baha app init --agents for documentation only; run baha app init separately to configure a deployment.")
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		return true, err
+	}
+	changed, err := ensureBaseHarborAgentsSection(cwd)
+	if err != nil {
+		return true, err
+	}
+	if format == outputJSON {
+		return true, writeJSON(destination, map[string]any{"path": filepath.Join(cwd, "AGENTS.md"), "changed": changed})
+	}
+	if changed {
+		fmt.Fprintln(out, "AGENTS.md: BaseHarbor guidance added or updated")
+	} else {
+		fmt.Fprintln(out, "AGENTS.md: BaseHarbor guidance already current")
+	}
+	return true, nil
 }
 
 func containsQuickAdoptionOption(args []string) bool {

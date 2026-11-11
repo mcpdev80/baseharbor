@@ -39,6 +39,25 @@ func TestSharedBackendInventoryAcceptsOnlyLegacyFixedUIDOverrides(t *testing.T) 
 		t.Fatal("previous renderer with only its known fixed-UID overrides must remain upgradeable")
 	}
 
+	var oldRenderer map[string]any
+	if err := yaml.Unmarshal(canonical, &oldRenderer); err != nil {
+		t.Fatal(err)
+	}
+	for _, raw := range oldRenderer["services"].(map[string]any) {
+		service := raw.(map[string]any)
+		if service["image"] == valkeyProviderImage {
+			service["image"] = "docker.io/valkey/valkey:9.1.2-alpine"
+			delete(service, "build")
+		}
+	}
+	oldBytes, err := yaml.Marshal(oldRenderer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !sharedBackendComposeMatchesCanonical(oldBytes, canonical) {
+		t.Fatal("previous pinned Valkey renderer without identity overrides must remain upgradeable")
+	}
+
 	for _, mutate := range []func(map[string]any){
 		func(services map[string]any) {
 			services["shared-valkey-core-shared-default"].(map[string]any)["user"] = "0"

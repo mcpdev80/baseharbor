@@ -133,34 +133,29 @@ func sharedBackendComposeMatchesCanonical(actual, canonical []byte) bool {
 	if !ok {
 		return false
 	}
-	allowedByService := make(map[string]string, len(services))
-	for name, rawService := range services {
+	changed := false
+	for _, rawService := range services {
 		service, ok := rawService.(map[string]any)
 		if !ok {
 			return false
 		}
-		legacyUser, exists := service["user"]
-		if !exists {
-			continue
-		}
 		image, _ := service["image"].(string)
-		want, supported := legacySharedBackendUserForImage(image)
-		if !supported || fmt.Sprint(legacyUser) != want {
-			return false
+		if image == "docker.io/valkey/valkey:9.1.2-alpine" {
+			service["image"] = valkeyProviderImage
+			service["build"] = map[string]any{"context": "./" + valkeyProviderBuildDir, "dockerfile": "Dockerfile"}
+			changed = true
 		}
-		allowedByService[name] = want
-	}
-	if len(allowedByService) == 0 {
-		return false
-	}
-	if len(allowedByService) == 0 {
-		return false
-	}
-	for name, rawService := range services {
-		service := rawService.(map[string]any)
-		if _, ok := allowedByService[name]; ok {
+		if legacyUser, exists := service["user"]; exists {
+			want, supported := legacySharedBackendUserForImage(image)
+			if !supported || fmt.Sprint(legacyUser) != want {
+				return false
+			}
 			delete(service, "user")
+			changed = true
 		}
+	}
+	if !changed {
+		return false
 	}
 	var expected map[string]any
 	if yaml.Unmarshal(canonical, &expected) != nil {
@@ -180,6 +175,8 @@ func legacySharedBackendUserForImage(image string) (string, bool) {
 	case "docker.io/library/haproxy:3.2.23-alpine":
 		return "99:99", true
 	case "docker.io/valkey/valkey:9.1.2-alpine":
+		return "999:1000", true
+	case valkeyProviderImage:
 		return "999:1000", true
 	default:
 		return "", false

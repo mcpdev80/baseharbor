@@ -100,6 +100,11 @@ func EnsureRuntime(ctx context.Context, issuer serviceaccess.Issuer, store Store
 	if err := os.MkdirAll(files.Dir, 0o700); err != nil {
 		return RuntimeFiles{}, fmt.Errorf("create application runtime directory: %w", err)
 	}
+	if len(ValkeyInstanceNames(m)) > 0 && !UsesSharedValkey(m) {
+		if err := ensureValkeyProviderBuildContext(files.Dir); err != nil {
+			return RuntimeFiles{}, fmt.Errorf("prepare Valkey provider image: %w", err)
+		}
+	}
 	if err := ensureRuntimeEnv(files.Env, m); err != nil {
 		return RuntimeFiles{}, err
 	}

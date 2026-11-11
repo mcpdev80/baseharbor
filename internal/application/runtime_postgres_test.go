@@ -95,7 +95,8 @@ func TestEnsureRuntimePostgresAndValkey(t *testing.T) {
 	text := string(compose)
 	for _, wanted := range []string{
 		"docker.io/library/postgres:18-alpine",
-		"docker.io/valkey/valkey:9.1.2-alpine",
+		valkeyProviderImage,
+		"context: ./valkey-image",
 		"./providers/postgresql/default/runtime/server-cert.pem:/run/baseharbor/tls-source/server-cert.pem:ro",
 		"./providers/postgresql/default/runtime/server-key.pem:/run/baseharbor/tls-source/server-key.pem:ro",
 		"./providers/postgresql/default/runtime/pg_hba.conf:/run/baseharbor/tls-source/pg_hba.conf:ro",
@@ -479,8 +480,15 @@ func TestEnsureRuntimeValkeyOnly(t *testing.T) {
 	if strings.Contains(string(compose), "postgres:") {
 		t.Fatal("Valkey-only runtime unexpectedly contains PostgreSQL")
 	}
-	if !strings.Contains(string(compose), "docker.io/valkey/valkey:9.1.2-alpine") {
+	if !strings.Contains(string(compose), valkeyProviderImage) || strings.Contains(string(compose), "user:") || !strings.Contains(string(compose), "data_uid=\"$(stat -c '%u' /data/appendonlydir)\"") || !strings.Contains(string(compose), "chmod -R g=u /data/appendonlydir") {
 		t.Fatal("Valkey-only runtime is missing Valkey")
+	}
+	dockerfile, err := os.ReadFile(filepath.Join(files.Dir, valkeyProviderBuildDir, "Dockerfile"))
+	if err != nil {
+		t.Fatalf("read Valkey image build context: %v", err)
+	}
+	if !strings.Contains(string(dockerfile), "USER valkey:0") || !strings.Contains(string(dockerfile), "chgrp -R 0 /data") || !strings.Contains(string(dockerfile), "chmod -R g=u /data") {
+		t.Fatalf("Valkey image does not support an arbitrary non-root UID: %s", dockerfile)
 	}
 }
 
