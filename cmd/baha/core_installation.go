@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/coreinstallation"
+	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/health"
 	"github.com/mcpdev80/baseharbor/internal/hostresource"
 	"github.com/mcpdev80/baseharbor/internal/identityprovider"
@@ -110,9 +111,6 @@ func installCore(ctx context.Context, in io.Reader, out io.Writer, opts runtimeU
 			fmt.Fprintln(out, "Placement: installation shared realization; application isolation can add provider instances and resource use.")
 			fmt.Fprintln(out, "Measured Core idle/startup memory: unavailable until this runtime is sampled.")
 			fmt.Fprintln(out, "Shared Docker reference: about 2.6 GiB idle; sampled startup peak up to 4.73 GiB. Other hosts/topologies may differ.")
-			if _, err := detectRuntimeForTarget(ctx, target); err != nil {
-				return err
-			}
 			if !state.Capabilities["sql"] {
 				path, _, err := preflightNewTargetRecoveryFile(ctx, opts.RecoveryFile)
 				if err != nil {
@@ -178,6 +176,27 @@ func installCore(ctx context.Context, in io.Reader, out io.Writer, opts runtimeU
 		fmt.Fprintln(out, "BaseHarbor Core READY: SQL + Secrets + Identity.")
 	}
 	return state, err
+}
+
+func ensureCoreRuntimeImage(ctx context.Context, target deployment.ResolvedTarget, out io.Writer) error {
+	provider, err := detectRuntimeForTarget(ctx, target)
+	if err != nil {
+		return err
+	}
+	return pullCoreRuntimeImage(ctx, provider, out)
+}
+
+func pullCoreRuntimeImage(ctx context.Context, provider bhruntime.RuntimeProvider, out io.Writer) error {
+	image := strings.TrimSpace(os.Getenv("BASEHARBOR_RUNTIME_IMAGE"))
+	if image == "" {
+		image = defaultRuntimeImage(version)
+	}
+	fmt.Fprintln(out, "Ensuring the BaseHarbor runtime image is available before Core setup.")
+	if err := pullResolvedRuntimeImage(ctx, provider, image, ""); err != nil {
+		return fmt.Errorf("ensure BaseHarbor runtime image before Core setup: %w", err)
+	}
+	fmt.Fprintln(out, "[OK] BaseHarbor runtime image is available (verified immutable registry identity).")
+	return nil
 }
 
 func coreRequired() error {

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
@@ -168,7 +169,50 @@ func remoteControlPlaneDoctor(ctx context.Context, target deployment.ResolvedTar
 	if err := json.Unmarshal(result, &report); err != nil {
 		return controlPlaneDoctorReport{}, errors.New("remote Core doctor response is invalid")
 	}
+	report.CLIVersion = version
+	report.CLICommit = commit
+	applyRemoteCoreVersionCheck(&report)
 	return report, nil
+}
+
+func applyRemoteCoreVersionCheck(report *controlPlaneDoctorReport) {
+	if cliCoreVersionMismatch(*report) {
+		report.Ready = false
+		report.UpdateCommand = suggestedCoreUpdateCommand(report.CLIVersion)
+		message := fmt.Sprintf("developer CLI %s (%s) differs from Core %s (%s); update the Core host with %s", report.CLIVersion, report.CLICommit, report.CoreVersion, report.CoreCommit, report.UpdateCommand)
+		report.Checks = append(report.Checks, publicControlPlaneCheck{Name: "BaseHarbor version", Ready: false, Message: message})
+	} else if report.CoreVersion != "" {
+		report.Checks = append(report.Checks, publicControlPlaneCheck{Name: "BaseHarbor version", Ready: true, Message: "developer CLI and Core versions match"})
+	} else {
+		report.Ready = false
+		report.UpdateCommand = suggestedCoreUpdateCommand(report.CLIVersion)
+		message := "remote Core did not report its build version; compatibility cannot be verified"
+		if report.UpdateCommand != "" {
+			message += "; update the Core host with " + report.UpdateCommand
+		}
+		report.Checks = append(report.Checks, publicControlPlaneCheck{Name: "BaseHarbor version", Ready: false, Message: message})
+	}
+}
+
+func suggestedCoreUpdateCommand(cliVersion string) string {
+	if _, ok := parseReleaseVersion(cliVersion); ok {
+		return fmt.Sprintf("baha update --version %s --yes (on the Core host)", normalizeReleaseVersion(cliVersion))
+	}
+	return "install the matching development build on the Core host (no published release command exists)"
+}
+
+func cliCoreVersionMismatch(report controlPlaneDoctorReport) bool {
+	cliVersion := normalizeReleaseVersion(report.CLIVersion)
+	coreVersion := normalizeReleaseVersion(report.CoreVersion)
+	if cliVersion == "" || coreVersion == "" || cliVersion != coreVersion {
+		return cliVersion != "" && coreVersion != "" && cliVersion != coreVersion
+	}
+	if cliVersion == "dev" {
+		cliCommit := strings.TrimSpace(report.CLICommit)
+		coreCommit := strings.TrimSpace(report.CoreCommit)
+		return cliCommit != "" && coreCommit != "" && cliCommit != "none" && coreCommit != "none" && cliCommit != coreCommit
+	}
+	return false
 }
 
 func remoteControlPlaneRepair(ctx context.Context, target deployment.ResolvedTarget) (controlPlaneReport, error) {

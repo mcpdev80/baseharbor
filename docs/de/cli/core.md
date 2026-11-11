@@ -7,6 +7,9 @@ Auf der Core-VM außerhalb eines Application-Repositories `baha up` und danach
 bevor es Provider-Zustand ändert. Fehlt ORAS, erklärt Baha die Auflösung von
 OCI-Digests und die Artefaktverifizierung und fragt vor einer
 prüfsummenverifizierten Installation unter dem aktuellen Benutzer.
+Vor dem Core-Start löst `baha up` außerdem das konfigurierte BaseHarbor-
+Runtime-Image auf und lädt es über seinen unveränderlichen Digest. Der erste
+Application-Deploy entdeckt dadurch kein fehlendes Image mehr.
 `baha onboard` wartet auf Core-Readiness, richtet den verwalteten LAN-HTTPS-Endpunkt
 ein und schreibt eine private, einmal verwendbare JSON-Einladung. Ein
 separater `baha serve`-Prozess wird nicht gestartet.
@@ -70,6 +73,12 @@ Frische Standard-Targets verwenden einen nativen PostgreSQL- und einen OpenBao-S
 `--ha` ist explizite HA-Auswahl. Bestehende Targets behalten ihre aufgezeichnete Topologie; ein inkompatibler HA-Wechsel scheitert vor Mutation. Es gibt keinen impliziten Migrationspfad. Status und Doctor zeigen effektive Mitglieder und Garantien.
 
 `--target NAME` setzt das Ziel ausdrücklich. `--no-input`/`--non-interactive` unterdrücken Prompts; `--yes` genehmigt unterstützte Entscheidungen, ersetzt aber keine fehlenden Secrets oder Policy.
+
+Bei einem Remote-Target vergleicht `doctor` die Versionen von Entwickler-CLI
+und Core. Eine Abweichung schlägt den Versionscheck fehl und nennt den exakten
+Befehl `baha update --version <CLI_VERSION> --yes` für den Core-Host.
+Entwicklungs-Builds haben kein veröffentlichtes Release-Kommando; Doctor weist
+dann auf die Installation desselben Builds auf dem Core-Host hin.
 
 ## Application prüfen und stoppen
 

@@ -411,10 +411,9 @@ func splitReference(reference string) (repository, tag string) {
 	return reference, ""
 }
 
-// pullResolvedRuntimeImage is the single pull site (cmd/baha/app_broker.go) that
-// connects the runtime lifecycle to RegistrySource. It resolves the configured
-// endpoint through resolveRegistrySource and pulls exactly the immutable
-// repository@digest identity it returns. Any resolution failure propagates
+// pullResolvedRuntimeImage connects runtime lifecycle callers to RegistrySource.
+// It resolves the configured endpoint through resolveRegistrySource and pulls
+// exactly the immutable repository@digest identity it returns. Any resolution failure propagates
 // fail-closed with zero pulls. The only mutable fallback is the explicit
 // operator opt-in BASEHARBOR_ALLOW_MUTABLE_DEVELOPMENT_IMAGE, and it runs only
 // when the endpoint was classified UNAVAILABLE — a denied endpoint or a

@@ -15,8 +15,9 @@ import (
 )
 
 type publicControlPlaneCheck struct {
-	Name  string `json:"name"`
-	Ready bool   `json:"ready"`
+	Name    string `json:"name"`
+	Ready   bool   `json:"ready"`
+	Message string `json:"message,omitempty"`
 }
 type controlPlaneReport struct {
 	DockerEngine          *bhruntime.DockerEngineObservation `json:"docker_engine,omitempty"`
@@ -112,9 +113,14 @@ func inspectControlPlane(ctx context.Context) (controlPlaneReport, error) {
 }
 
 type controlPlaneDoctorReport struct {
-	DockerEngine *bhruntime.DockerEngineObservation `json:"docker_engine,omitempty"`
-	Ready        bool                               `json:"ready"`
-	Checks       []publicControlPlaneCheck          `json:"checks"`
+	DockerEngine  *bhruntime.DockerEngineObservation `json:"docker_engine,omitempty"`
+	CoreVersion   string                             `json:"core_version,omitempty"`
+	CoreCommit    string                             `json:"core_commit,omitempty"`
+	CLIVersion    string                             `json:"cli_version,omitempty"`
+	CLICommit     string                             `json:"cli_commit,omitempty"`
+	UpdateCommand string                             `json:"update_command,omitempty"`
+	Ready         bool                               `json:"ready"`
+	Checks        []publicControlPlaneCheck          `json:"checks"`
 }
 
 func inspectControlPlaneDoctor(ctx context.Context) (controlPlaneDoctorReport, error) {
@@ -122,7 +128,7 @@ func inspectControlPlaneDoctor(ctx context.Context) (controlPlaneDoctorReport, e
 		return controlPlaneDoctorReport{}, err
 	}
 	checks := collectControlPlaneDoctorChecks(ctx)
-	result := controlPlaneDoctorReport{Ready: true, Checks: []publicControlPlaneCheck{}}
+	result := controlPlaneDoctorReport{Ready: true, CoreVersion: version, CoreCommit: commit, Checks: []publicControlPlaneCheck{}}
 	if target, err := effectiveTarget(ctx); err == nil {
 		result.DockerEngine, _ = inspectTargetDockerEngine(ctx, target)
 	}

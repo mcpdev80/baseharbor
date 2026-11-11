@@ -6,7 +6,9 @@ On the Core VM, outside an application repository, run `baha up` and then
 `baha onboard`. `baha up` starts the Core providers and checks for ORAS before
 changing provider state. If ORAS is missing, Baha explains its OCI digest and
 artifact-verification role and asks before installing a checksum-verified
-user-local copy. `baha onboard` waits for Core readiness, configures the
+user-local copy. Before starting Core, it resolves and pulls the configured
+BaseHarbor Runtime image by immutable digest, so the first application deploy
+does not discover a missing image. `baha onboard` waits for Core readiness, configures the
 managed LAN HTTPS endpoint and writes a private, one-use JSON invitation. Do
 not start a separate `baha serve` process.
 
@@ -76,6 +78,10 @@ Use `baha doctor` when a command fails or readiness is unclear.
 Inside an application repository it uses the same application doctor semantics as `baha app doctor`.
 
 `--fix` is an explicit mutating mode and cannot be treated as read-only automation.
+For a remote Target, Doctor compares the developer CLI and Core build versions.
+A mismatch fails the version check and prints the exact `baha update --version
+<CLI_VERSION> --yes` command for the Core host. Development builds have no
+published release command, so Doctor says to install the matching build there.
 
 ## `baha destroy`
 

@@ -157,6 +157,9 @@ func remoteCoreDoctorCommand(ctx context.Context, target deployment.ResolvedTarg
 	}
 	if !fix {
 		fmt.Fprintln(out, "\nNext:")
+		if result.UpdateCommand != "" {
+			fmt.Fprintf(out, "  %s\n", result.UpdateCommand)
+		}
 		fmt.Fprintln(out, "  baha doctor --fix")
 		fmt.Fprintln(out, "  baha doctor --json")
 		fmt.Fprintln(out, "\nDEGRADED · remote Core checks require attention")
@@ -191,6 +194,9 @@ func remoteCoreDoctorCommand(ctx context.Context, target deployment.ResolvedTarg
 		return nil
 	}
 	fmt.Fprintln(out, "\nDEGRADED · remote Core checks still require attention")
+	if after.UpdateCommand != "" {
+		fmt.Fprintf(out, "Next: %s\n", after.UpdateCommand)
+	}
 	return cli.Presented(errors.New("one or more remote Core checks still fail"))
 }
 
@@ -201,7 +207,7 @@ func renderRemoteDoctorReport(term *cli.Terminal, report controlPlaneDoctorRepor
 		if !check.Ready {
 			state = "FAILED"
 		}
-		term.Result(state, check.Name, "")
+		term.Result(state, check.Name, check.Message)
 	}
 }
 

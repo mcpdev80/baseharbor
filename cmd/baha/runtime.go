@@ -19,6 +19,7 @@ import (
 )
 
 var runtimeInput io.Reader = os.Stdin
+var ensureCoreRuntimeImageForTarget = ensureCoreRuntimeImage
 
 type runtimeUpOptions struct {
 	Name                string
@@ -185,6 +186,9 @@ func runtimeUpGuided(parent context.Context, in io.Reader, out io.Writer, opts r
 	}
 	if target.AccessProvider == "" || target.AccessProvider == "local" {
 		if err := ensureORASForCoreUp(parent, in, out, opts.Yes); err != nil {
+			return err
+		}
+		if err := ensureCoreRuntimeImageForTarget(parent, target, out); err != nil {
 			return err
 		}
 	}

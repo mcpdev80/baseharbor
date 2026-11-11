@@ -32,7 +32,7 @@ func (e *resolveRegistrySourceExec) fn(_ context.Context, name string, args ...s
 }
 
 // TestPullResolvedRuntimeImagePinsImmutableDigest is the e2e cell for review
-// point 4: the single pull site (cmd/baha/app_broker.go) resolves the
+// point 4: the runtime-image pull path resolves the
 // configured development image endpoint through RegistrySource.Resolve and pulls
 // the immutable repository@digest identity, not the mutable tag. It drives the
 // production caller (pullResolvedRuntimeImage -> resolveRegistrySource ->

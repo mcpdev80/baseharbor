@@ -103,11 +103,11 @@ func TestRemoteCoreHandshakePinsInstallationIssuerTenantAndCA(t *testing.T) {
 					execution.Result = json.RawMessage(`{"target":"` + node.Name + `","state":"running","ready":true,"running":["core"],"checks":[],"availability_satisfied":true}`)
 				}
 				if request.OperationID == "control-plane.doctor" {
-					ready := "false"
-					if doctorReady {
-						ready = "true"
-					}
-					execution.Result = json.RawMessage(`{"ready":` + ready + `,"checks":[{"name":"target-access","ready":` + ready + `}]}`)
+					result, _ := json.Marshal(controlPlaneDoctorReport{
+						Ready: doctorReady, CoreVersion: version, CoreCommit: commit,
+						Checks: []publicControlPlaneCheck{{Name: "target-access", Ready: doctorReady}},
+					})
+					execution.Result = result
 				}
 				if request.OperationID == "control-plane.repair" {
 					repairCalled = true
