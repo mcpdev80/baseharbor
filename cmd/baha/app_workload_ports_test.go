@@ -185,7 +185,7 @@ func TestEnsureRepositoryWorkloadPortsForUpPersistsAvailableDefault(t *testing.T
 	}
 }
 
-func TestEnsureRepositoryWorkloadPortsPersistsExplicitRemoteSelection(t *testing.T) {
+func TestPreflightRepositoryWorkloadPortsPersistsExplicitRemoteSelection(t *testing.T) {
 	repo := t.TempDir()
 	listener, err := net.Listen("tcp4", "127.0.0.1:0")
 	if err != nil {
@@ -197,29 +197,25 @@ func TestEnsureRepositoryWorkloadPortsPersistsExplicitRemoteSelection(t *testing
 	if err := os.WriteFile(filepath.Join(repo, "compose.yaml"), []byte(compose), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	manifest := application.WithWorkloadComponents(application.New("demo", "dev", false, false, false), "edge")
-	manifestPath := filepath.Join(repo, "baseharbor.yaml")
-	if err := writeInitializedAuthoredManifest(t, manifestPath, manifest, 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(repo, repositoryinspect.RepositoryMetadataName), []byte("version: 1\nworkload-source:\n  kind: compose\n  path: compose.yaml\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	stateRoot := t.TempDir()
-	resolved := resolvedApplication{
-		Manifest: manifest, ManifestPath: manifestPath, DeploymentStateRoot: stateRoot,
-		Store: application.Store{Root: filepath.Join(stateRoot, "state")}, FromRepository: true,
-	}
+	composePath := filepath.Join(repo, "compose.yaml")
+	files := application.RuntimeFiles{Dir: t.TempDir()}
+	environment := map[string]string{}
 	ctx := withRequestedWorkloadPorts(context.Background(), map[string]string{"HTTP_PORT": strconv.Itoa(port)})
-	if err := ensureRepositoryWorkloadPortsForUp(ctx, strings.NewReader(""), &bytes.Buffer{}, resolved, repo); err != nil {
-		t.Fatal(err)
+	var out bytes.Buffer
+	if err := preflightRepositoryWorkloadPublishedPorts(ctx, strings.NewReader(""), &out, application.WorkloadFiles{
+		RepositoryRoot: repo, Compose: composePath, Services: []string{"edge"},
+	}, files, environment); err != nil {
+		t.Fatalf("%v; output=%q; env=%#v", err, out.String(), environment)
 	}
-	values, err := readSimpleEnvFile(repositoryInitEnvPathFromStateRoot(stateRoot))
+	if environment["HTTP_PORT"] != strconv.Itoa(port) {
+		t.Fatalf("HTTP_PORT environment = %q, want %d", environment["HTTP_PORT"], port)
+	}
+	data, err := os.ReadFile(filepath.Join(files.Dir, workloadPortOverridesFile))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if values["HTTP_PORT"] != strconv.Itoa(port) {
-		t.Fatalf("persisted HTTP_PORT = %q, want %d", values["HTTP_PORT"], port)
+	if !strings.Contains(string(data), "HTTP_PORT="+strconv.Itoa(port)) {
+		t.Fatalf("persisted workload port missing: %s", data)
 	}
 }
 

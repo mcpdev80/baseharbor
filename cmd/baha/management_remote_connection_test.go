@@ -266,6 +266,51 @@ func TestRemoteCoreHandshakePinsInstallationIssuerTenantAndCA(t *testing.T) {
 	if remoteDoctor == nil || remoteDoctor.Run(withTargetOverride(ctx, node.Name), []string{"--fix", "--yes"}, &repairedOutput, &repairedStderr) != nil || !repairCalled || !strings.Contains(repairedOutput.String(), "READY") {
 		t.Fatalf("remote doctor --fix did not repair and recheck the Core: output=%s stderr=%s", repairedOutput.String(), repairedStderr.String())
 	}
+	var appDoctorOutput, appDoctorStderr bytes.Buffer
+	if err := appDoctorRepairCommand(application.DefaultStore()).Run(withTargetOverride(ctx, node.Name), []string{"demo"}, &appDoctorOutput, &appDoctorStderr); err != nil || !strings.Contains(appDoctorOutput.String(), "demo") {
+		t.Fatalf("remote app doctor did not route to the selected Core: output=%s stderr=%s err=%v", appDoctorOutput.String(), appDoctorStderr.String(), err)
+	}
+	if err := appDoctorRepairCommand(application.DefaultStore()).Run(withTargetOverride(ctx, node.Name), []string{"demo", "--fix", "--yes"}, &bytes.Buffer{}, &bytes.Buffer{}); err == nil || !strings.Contains(err.Error(), "remote application doctor is read-only") {
+		t.Fatalf("remote app doctor repair did not fail with its supported remote lifecycle guidance: %v", err)
+	}
+	previousDirectory, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	repository := t.TempDir()
+	manifest := application.WithWorkloadComponents(application.New("demo", "dev", false, false, false), "api")
+	if err := writeInitializedAuthoredManifest(t, filepath.Join(repository, application.RepositoryManifestName), manifest, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repository); err != nil {
+		t.Fatal(err)
+	}
+	for _, commandName := range []string{"status", "doctor"} {
+		var command *cli.Command
+		for _, child := range root.Children {
+			if child.Name == commandName {
+				command = child
+				break
+			}
+		}
+		var output, stderr bytes.Buffer
+		if command == nil || command.Run(withTargetOverride(ctx, node.Name), nil, &output, &stderr) != nil {
+			t.Fatalf("repository %s did not infer the selected remote application: output=%s stderr=%s", commandName, output.String(), stderr.String())
+		}
+		if commandName == "status" {
+			var observed struct {
+				Application string `json:"application"`
+			}
+			if err := json.Unmarshal(output.Bytes(), &observed); err != nil || observed.Application != "demo" {
+				t.Fatalf("repository status did not return the remote application: %s (%v)", output.String(), err)
+			}
+		} else if !strings.Contains(output.String(), "demo") {
+			t.Fatalf("repository doctor did not identify the remote application: %s", output.String())
+		}
+	}
+	if err := os.Chdir(previousDirectory); err != nil {
+		t.Fatal(err)
+	}
 
 	created, createErr := remoteCreateTargetManagedApplication(context.Background(), node,
 		application.Manifest{Name: "demo", Environment: "dev"})

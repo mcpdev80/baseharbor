@@ -272,6 +272,17 @@ func appDoctorCommand(store application.Store) *cli.Command {
 				if splitErr != nil {
 					return splitErr
 				}
+				if len(nameArgs) == 0 {
+					if name, repositoryEnvironment, ok := currentRepositoryApplicationSelector(); ok {
+						nameArgs = []string{name}
+						if environment == "" {
+							environment = repositoryEnvironment
+						}
+					}
+				}
+				if len(nameArgs) == 0 {
+					return usageError("remote app doctor needs an application name", "Pass NAME or run inside a repository with baseharbor.yaml.")
+				}
 				if len(nameArgs) == 1 {
 					if environment == "" {
 						environment = "dev"

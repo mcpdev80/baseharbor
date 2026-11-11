@@ -10,10 +10,23 @@ import (
 	"io"
 	"time"
 
+	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/machine"
 	"github.com/mcpdev80/baseharbor/internal/targetaccess"
 )
+
+func currentRepositoryApplicationSelector() (string, string, bool) {
+	path, err := application.FindRepositoryManifest(".")
+	if err != nil {
+		return "", "", false
+	}
+	manifest, err := application.LoadManifestFile(path)
+	if err != nil || manifest.Name == "" {
+		return "", "", false
+	}
+	return manifest.Name, manifest.Environment, true
+}
 
 // remoteMachineRead executes existing read-only Machine operations on the
 // selected Core. It keeps repository planning and diagnostics on the machine
