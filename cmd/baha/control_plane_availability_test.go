@@ -1,9 +1,12 @@
 package main
 
 import (
+	"bytes"
+	"context"
 	"strings"
 	"testing"
 
+	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/mcpdev80/baseharbor/internal/health"
 )
 
@@ -135,6 +138,30 @@ func TestControlPlaneAvailabilitySummaryIsHumanReadable(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestDoctorRendersCoreAvailabilityWithoutHAInternals(t *testing.T) {
+	var out bytes.Buffer
+	term := cli.NewTerminal(context.Background(), &out, &out)
+	checks := []health.Check{{
+		Name:    "Core availability",
+		OK:      true,
+		Message: controlPlaneAvailabilitySummary("requested=single failover=false satisfied=true", true),
+	}}
+	if !renderControlPlaneDoctor(term, checks) {
+		t.Fatal("healthy single-instance Core reported doctor failure")
+	}
+	got := out.String()
+	for _, want := range []string{"Core availability", "Single-instance setup is healthy", "failover is not configured"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("doctor output missing %q:\n%s", want, got)
+		}
+	}
+	for _, internal := range []string{"control-plane-ha", "requested=", "replication-proof=", "configured-replicas=", "SATISFIED"} {
+		if strings.Contains(got, internal) {
+			t.Fatalf("doctor output leaked %q:\n%s", internal, got)
+		}
 	}
 }
 

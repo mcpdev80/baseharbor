@@ -218,7 +218,7 @@ func appendControlPlaneAvailabilityDoctor(ctx context.Context, checks []health.C
 		return append(checks, health.Check{Name: "control-plane-ha", OK: false, Message: "real Core provider topology unavailable: " + err.Error()})
 	}
 	return append(checks, health.Check{
-		Name:    "control-plane-ha",
+		Name:    "Core availability",
 		OK:      report.Satisfied,
 		Message: controlPlaneAvailabilitySummary(report.Detail(), report.Satisfied),
 	})
@@ -234,7 +234,7 @@ func renderControlPlaneDoctor(term *cli.Terminal, checks []health.Check) bool {
 			ok = false
 		}
 		detail := ""
-		if !check.OK || term.Verbose() || check.Name == "control-plane-ha" || check.Name == "Docker engine" {
+		if !check.OK || term.Verbose() || check.Name == "Core availability" || check.Name == "Docker engine" {
 			detail = check.Message
 		}
 		term.Result(state, check.Name, detail)
