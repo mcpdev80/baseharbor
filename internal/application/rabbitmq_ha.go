@@ -34,6 +34,24 @@ func rabbitmqMemberVolumeName(instance string, ordinal int) string {
 // the broker account; platforms that assign a non-root UID can run it as-is.
 const rabbitMQHealthcheckCommand = `if [ "$(id -u)" -eq 0 ]; then su-exec rabbitmq rabbitmq-diagnostics -q ping; else rabbitmq-diagnostics -q ping; fi`
 
+func rabbitMQBrokerCommandArgs(command string, args ...string) []string {
+	wrapped := []string{
+		"sh", "-c",
+		`if [ "$(id -u)" -eq 0 ]; then exec su-exec rabbitmq "$@"; else exec "$@"; fi`,
+		"baseharbor-rabbitmq",
+		command,
+	}
+	return append(wrapped, args...)
+}
+
+func rabbitMQBrokerScriptArgs(script string) []string {
+	return []string{
+		"sh", "-c",
+		`if [ "$(id -u)" -eq 0 ]; then exec su-exec rabbitmq sh -ceu "$1"; else exec sh -ceu "$1"; fi`,
+		"baseharbor-rabbitmq", script,
+	}
+}
+
 func rabbitmqGatewayUpstreams(m Manifest, instance string) []serviceaccess.TCPGatewayUpstream {
 	count := rabbitmqMemberCount(m)
 	out := make([]serviceaccess.TCPGatewayUpstream, 0, count)
