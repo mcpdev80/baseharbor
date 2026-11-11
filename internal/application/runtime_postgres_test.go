@@ -539,6 +539,7 @@ func TestManagedDatabaseAndCacheComposeAreUnprivileged(t *testing.T) {
 		"cap_add: [\"CHOWN\", \"DAC_READ_SEARCH\", \"FOWNER\", \"SETGID\", \"SETUID\"]",
 		"no-new-privileges:true",
 		"/var/run/postgresql:rw,noexec,nosuid,nodev",
+		"if [ \"$$(id -u)\" = 0 ]; then chown postgres:postgres /tmp/server-key.pem; fi",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("managed runtime compose missing %q:\n%s", want, got)

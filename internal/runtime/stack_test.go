@@ -538,7 +538,7 @@ func TestEmbeddedComposeRunsControlPlaneServicesUnprivileged(t *testing.T) {
 	}
 }
 
-func TestSinglePostgresInitializesFreshVolumesWithOnlyChownCapability(t *testing.T) {
+func TestSinglePostgresInitializesFreshVolumesWithEntrypointCapabilities(t *testing.T) {
 	text := string(composeSingleYAML)
 	start := strings.Index(text, "  postgres-member-1:\n")
 	if start < 0 {
@@ -557,7 +557,7 @@ func TestSinglePostgresInitializesFreshVolumesWithOnlyChownCapability(t *testing
 		"    security_opt:\n    - no-new-privileges:true",
 	} {
 		if !strings.Contains(block, want) {
-			t.Fatalf("single PostgreSQL service must grant only the volume-initialization capability %q:\n%s", want, block)
+			t.Fatalf("single PostgreSQL service must grant only the entrypoint capabilities %q:\n%s", want, block)
 		}
 	}
 	if strings.Contains(block, "    user:") {

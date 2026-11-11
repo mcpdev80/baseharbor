@@ -18,6 +18,7 @@ func writeSharedPostgresSingleCompose(b *strings.Builder, state sharedBackendSta
       - |
         cp /run/baseharbor/tls-source/server-key.pem /tmp/server-key.pem
         chmod 0600 /tmp/server-key.pem
+        if [ "$$(id -u)" = 0 ]; then chown postgres:postgres /tmp/server-key.pem; fi
         exec /usr/local/bin/docker-entrypoint.sh postgres -c ssl=on -c ssl_cert_file=/run/baseharbor/tls-source/server-cert.pem -c ssl_key_file=/tmp/server-key.pem -c hba_file=/run/baseharbor/tls-source/pg_hba.conf
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev

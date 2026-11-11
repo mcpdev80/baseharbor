@@ -37,4 +37,7 @@ func TestKeycloakSinglePostgresStartsWithoutPrivilegedEntrypoint(t *testing.T) {
 	if !strings.Contains(strings.Join(db.Volumes, "\n"), "server-key.pem:/run/baseharbor/db-tls/server-key.pem:ro") || !strings.Contains(strings.Join(db.Command, "\n"), "cp /run/baseharbor/db-tls/server-key.pem /tmp/server-key.pem") {
 		t.Fatal("PostgreSQL must make a private tmpfs key copy as its runtime-assigned UID")
 	}
+	if !strings.Contains(strings.Join(db.Command, "\n"), "chown postgres:postgres /tmp/server-key.pem") {
+		t.Fatal("PostgreSQL must scope the copied TLS key to its runtime account before dropping privileges")
+	}
 }
