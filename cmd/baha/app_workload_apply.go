@@ -39,6 +39,9 @@ func prepareRepositoryWorkloadExecution(ctx context.Context, out io.Writer, comp
 	if err != nil {
 		return nil, false, err
 	}
+	if err := persistRequestedWorkloadPortSelections(ctx, out, workload, files, environment); err != nil {
+		return nil, false, err
+	}
 	composeFiles, err := repositoryWorkloadComposeFiles(ctx, compose, resolved, workload, files, environment)
 	if err != nil {
 		return nil, false, err
