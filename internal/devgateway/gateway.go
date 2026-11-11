@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -40,14 +41,16 @@ type runtimeLocalHTTPS interface {
 }
 
 type Route struct {
-	Owner      string `json:"owner"`
-	Key        string `json:"key"`
-	Host       string `json:"host"`
-	PathPrefix string `json:"path_prefix,omitempty"`
-	Upstream   string `json:"upstream"`
-	Network    string `json:"network"`
-	TrustFile  string `json:"trust_file"`
-	ServerName string `json:"server_name"`
+	Owner         string `json:"owner"`
+	Key           string `json:"key"`
+	Host          string `json:"host"`
+	PathPrefix    string `json:"path_prefix,omitempty"`
+	Upstream      string `json:"upstream"`
+	Network       string `json:"network"`
+	TrustFile     string `json:"trust_file"`
+	ServerName    string `json:"server_name"`
+	ManagementKey string `json:"management_key,omitempty"`
+	DirectIPPort  int    `json:"direct_ip_port,omitempty"`
 }
 
 type OwnerRoutes struct {
@@ -56,9 +59,10 @@ type OwnerRoutes struct {
 }
 
 type state struct {
-	Version  int     `json:"version"`
-	HostPort int     `json:"host_port,omitempty"`
-	Routes   []Route `json:"routes"`
+	Version         int     `json:"version"`
+	HostPort        int     `json:"host_port,omitempty"`
+	IPAccessAddress string  `json:"ip_access_address,omitempty"`
+	Routes          []Route `json:"routes"`
 }
 
 type Files struct {
@@ -97,6 +101,14 @@ func ReplaceOwnerRoutes(ctx context.Context, runtime Runtime, issuer serviceacce
 }
 
 func ReplaceRoutes(ctx context.Context, runtime Runtime, issuer serviceaccess.Issuer, target string, groups ...OwnerRoutes) error {
+	return replaceRoutes(ctx, runtime, issuer, target, nil, groups...)
+}
+
+func ReplaceRoutesWithIPAccessAddress(ctx context.Context, runtime Runtime, issuer serviceaccess.Issuer, target, ipAddress string, groups ...OwnerRoutes) error {
+	return replaceRoutes(ctx, runtime, issuer, target, &ipAddress, groups...)
+}
+
+func replaceRoutes(ctx context.Context, runtime Runtime, issuer serviceaccess.Issuer, target string, ipAddress *string, groups ...OwnerRoutes) error {
 	files, err := FilesFor(target)
 	if err != nil {
 		return err
@@ -142,7 +154,7 @@ func ReplaceRoutes(ctx context.Context, runtime Runtime, issuer serviceaccess.Is
 	if err := saveRouteStateForReconcile(ctx, runtime, files, previous, current); err != nil {
 		return err
 	}
-	return Reconcile(ctx, runtime, issuer, target)
+	return reconcile(ctx, runtime, issuer, target, ipAddress)
 }
 
 func UpsertOwnerRoutes(ctx context.Context, runtime Runtime, issuer serviceaccess.Issuer, target, owner string, routes []Route) error {
@@ -311,6 +323,10 @@ func DestroyTarget(ctx context.Context, runtime Runtime, target string) error {
 }
 
 func Reconcile(ctx context.Context, runtime Runtime, issuer serviceaccess.Issuer, target string) error {
+	return reconcile(ctx, runtime, issuer, target, nil)
+}
+
+func reconcile(ctx context.Context, runtime Runtime, issuer serviceaccess.Issuer, target string, requestedIPAccessAddress *string) error {
 	if runtime == nil {
 		return errors.New("development gateway runtime is required")
 	}
@@ -339,15 +355,44 @@ func Reconcile(ctx context.Context, runtime Runtime, issuer serviceaccess.Issuer
 	if len(current.Routes) == 0 {
 		return verifyEmptyGatewayInactive(ctx, runtime, files)
 	}
+	ipAddress := current.IPAccessAddress
+	if requestedIPAccessAddress != nil {
+		ipAddress = *requestedIPAccessAddress
+	} else if configured := strings.TrimSpace(os.Getenv(ipAccessAddressEnv)); configured != "" {
+		ipAddress = configured
+	}
+	ipAddress, err = gatewayIPAccessAddress(current.Routes, ipAddress)
+	if err != nil {
+		return err
+	}
 	if issuer == nil {
 		return errors.New("development gateway issuer is required")
 	}
 	if err := os.MkdirAll(filepath.Join(files.Dir, "runtime", "trust"), 0o755); err != nil {
 		return err
 	}
+	materialized := false
+	if _, statErr := os.Stat(files.Compose); statErr == nil {
+		materialized = true
+	} else if !errors.Is(statErr, os.ErrNotExist) {
+		return fmt.Errorf("inspect development gateway runtime: %w", statErr)
+	}
+	hostPort, err := resolveGatewayHostPort(files, current, runtime)
+	if err != nil {
+		return err
+	}
+	current.Routes, err = assignDirectIPPorts(current.Routes, ipAddress, current.IPAccessAddress, materialized, hostPort)
+	if err != nil {
+		return err
+	}
+	current.HostPort = hostPort
+	current.IPAccessAddress = ipAddress
 	hosts := make([]string, 0, len(current.Routes))
 	for _, route := range current.Routes {
 		hosts = append(hosts, route.Host)
+	}
+	if ipAddress != "" {
+		hosts = append(hosts, ipAddress)
 	}
 	policy, err := serviceaccess.Resolve("dev", "dev-gateway", serviceaccess.AuthenticationNative)
 	if err != nil {
@@ -383,20 +428,6 @@ func Reconcile(ctx context.Context, runtime Runtime, issuer serviceaccess.Issuer
 		}
 		trustTargets[route.Key] = targetPath
 	}
-	hostPort, err := resolveGatewayHostPort(files, current, runtime)
-	if err != nil {
-		return err
-	}
-	current.HostPort = hostPort
-	if err := os.WriteFile(files.Caddyfile, []byte(renderCaddyfile(current.Routes, hostPort)), 0o644); err != nil {
-		return err
-	}
-	if err := os.WriteFile(files.Env, nil, 0o600); err != nil {
-		return err
-	}
-	if err := saveState(files.State, current); err != nil {
-		return err
-	}
 	// Remote workstation access is opt-in. Never expose the default
 	// *.localhost development names on a LAN listener: remote hosts resolve
 	// those names to themselves. The selected bind address must be one
@@ -405,14 +436,41 @@ func Reconcile(ctx context.Context, runtime Runtime, issuer serviceaccess.Issuer
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(files.Compose, []byte(renderComposeBound(files, current.Routes, trustTargets, hostPort, bindHost)), 0o600); err != nil {
+	for attempt := 0; attempt < 5; attempt++ {
+		if err := writeGatewayRuntimeConfiguration(ctx, runtime, files, current, trustTargets, hostPort, bindHost, ipAddress); err != nil {
+			return err
+		}
+		if err := runtime.UpProject(ctx, files.Project, files.Compose, files.Env); err == nil {
+			return nil
+		} else if ipAddress == "" || !bhruntime.IsPortBindingConflict(err) || attempt == 4 {
+			return fmt.Errorf("start development gateway on HTTPS port %d: %w", hostPort, err)
+		}
+		for i := range current.Routes {
+			current.Routes[i].DirectIPPort = 0
+		}
+		current.Routes, err = assignDirectIPPorts(current.Routes, ipAddress, "", false, hostPort)
+		if err != nil {
+			return err
+		}
+	}
+	return errors.New("development gateway direct-IP listeners exhausted port allocation retries")
+}
+
+func writeGatewayRuntimeConfiguration(ctx context.Context, runtime Runtime, files Files, current state, trust map[string]string, hostPort int, bindHost, ipAddress string) error {
+	if err := os.WriteFile(files.Caddyfile, []byte(renderCaddyfile(current.Routes, hostPort, ipAddress)), 0o644); err != nil {
+		return err
+	}
+	if err := os.WriteFile(files.Env, nil, 0o600); err != nil {
+		return err
+	}
+	if err := saveState(files.State, current); err != nil {
+		return err
+	}
+	if err := os.WriteFile(files.Compose, []byte(renderComposeBound(files, current.Routes, trust, hostPort, bindHost, ipAddress)), 0o600); err != nil {
 		return err
 	}
 	if err := runtime.ConfigProject(ctx, files.Project, files.Compose, files.Env); err != nil {
 		return fmt.Errorf("validate development gateway: %w", err)
-	}
-	if err := runtime.UpProject(ctx, files.Project, files.Compose, files.Env); err != nil {
-		return fmt.Errorf("start development gateway on local HTTPS port %d: %w", hostPort, err)
 	}
 	return nil
 }
@@ -431,6 +489,68 @@ func URLForTarget(target, host string) string {
 		return URL(host)
 	}
 	return canonicalURL(host, current.HostPort)
+}
+
+func ManagementURLs(target, owner string, desired []Route) (map[string]string, map[string]string, error) {
+	files, err := FilesFor(target)
+	if err != nil {
+		return nil, nil, err
+	}
+	current, err := loadState(files.State)
+	if err != nil {
+		return nil, nil, err
+	}
+	owner = strings.TrimSpace(owner)
+	if owner == "" {
+		return nil, nil, errors.New("development management URL owner is required")
+	}
+	wanted := make(map[string]string, len(desired))
+	for _, route := range desired {
+		if route.ManagementKey == "" {
+			continue
+		}
+		if previous, duplicate := wanted[route.Key]; duplicate && previous != route.ManagementKey {
+			return nil, nil, fmt.Errorf("conflicting development management keys for route %q", route.Key)
+		}
+		wanted[route.Key] = route.ManagementKey
+	}
+	selected := map[string]Route{}
+	priority := map[string]int{}
+	for _, route := range current.Routes {
+		if route.ManagementKey == "" {
+			continue
+		}
+		managementKey, required := wanted[route.Key]
+		if !required || managementKey != route.ManagementKey {
+			continue
+		}
+		candidatePriority := 0
+		switch {
+		case route.Owner == owner:
+			candidatePriority = 2
+		case strings.HasPrefix(route.Owner, "shared/"):
+			candidatePriority = 1
+		default:
+			continue
+		}
+		if candidatePriority < priority[route.ManagementKey] {
+			continue
+		}
+		if candidatePriority == priority[route.ManagementKey] {
+			return nil, nil, fmt.Errorf("duplicate development management key %q for owner %q", route.ManagementKey, route.Owner)
+		}
+		selected[route.ManagementKey] = route
+		priority[route.ManagementKey] = candidatePriority
+	}
+	canonical := make(map[string]string, len(selected))
+	directIP := make(map[string]string, len(selected))
+	for key, route := range selected {
+		canonical[key] = canonicalURL(route.Host, current.HostPort)
+		if current.IPAccessAddress != "" && route.DirectIPPort > 0 {
+			directIP[key] = "https://" + net.JoinHostPort(current.IPAccessAddress, strconv.Itoa(route.DirectIPPort))
+		}
+	}
+	return canonical, directIP, nil
 }
 
 // URLForRuntime returns the effective canonical gateway URL before or after
@@ -565,6 +685,11 @@ func VerifyHosts(ctx context.Context, target string, hosts []string) error {
 		if err := verifyRoute(ctx, roots, route, current.HostPort, allowed...); err != nil {
 			errs = append(errs, err)
 		}
+		if current.IPAccessAddress != "" && route.DirectIPPort > 0 {
+			if err := verifyDirectIPRoute(ctx, roots, current, route); err != nil {
+				errs = append(errs, err)
+			}
+		}
 	}
 	for host := range wanted {
 		if _, ok := seen[host]; !ok {
@@ -572,6 +697,30 @@ func VerifyHosts(ctx context.Context, target string, hosts []string) error {
 		}
 	}
 	return errors.Join(errs...)
+}
+
+func verifyDirectIPRoute(ctx context.Context, roots *x509.CertPool, current state, route Route) error {
+	address := current.IPAccessAddress
+	port := route.DirectIPPort
+	directURL := "https://" + net.JoinHostPort(address, strconv.Itoa(port)) + "/"
+	allowed := make([]string, 0, len(current.Routes))
+	for _, candidate := range current.Routes {
+		if candidate.DirectIPPort > 0 {
+			allowed = append(allowed, "https://"+net.JoinHostPort(address, strconv.Itoa(candidate.DirectIPPort)))
+		}
+	}
+	dialer := &net.Dialer{}
+	transport := &http.Transport{
+		TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12, RootCAs: roots, ServerName: address},
+		DialContext: func(ctx context.Context, network, _ string) (net.Conn, error) {
+			return dialer.DialContext(ctx, network, net.JoinHostPort(address, strconv.Itoa(port)))
+		},
+	}
+	client := &http.Client{Transport: transport}
+	if err := serviceaccess.VerifyBrowserRouteWithAllowedAuthorities(ctx, client, directURL, allowed...); err != nil {
+		return routeVerificationFailure("management UI IP "+route.ManagementKey, err)
+	}
+	return nil
 }
 
 func relatedRedirectURLs(routes []Route, route Route, hostPort int) []string {
@@ -759,6 +908,17 @@ func validateRoute(route Route) error {
 	}
 	if strings.ContainsAny(route.Host, "/:@ \t\r\n") {
 		return fmt.Errorf("development gateway host %q is invalid", route.Host)
+	}
+	if route.ManagementKey != "" {
+		if !regexp.MustCompile(`^[a-z][a-z0-9_]{0,63}$`).MatchString(route.ManagementKey) {
+			return fmt.Errorf("development gateway management key %q is invalid", route.ManagementKey)
+		}
+		if route.PathPrefix != "" {
+			return fmt.Errorf("development gateway management route %s cannot use a path prefix", route.Key)
+		}
+	}
+	if route.DirectIPPort < 0 || route.DirectIPPort > 65535 {
+		return fmt.Errorf("development gateway direct-IP port for %s is invalid", route.Key)
 	}
 	return nil
 }
