@@ -191,6 +191,7 @@ func TestSeaweedFSProviderRunsUnprivileged(t *testing.T) {
 	for _, want := range []string{
 		"read_only: true",
 		"cap_drop: [\"ALL\"]",
+		"cap_add: [\"CHOWN\", \"SETGID\", \"SETUID\"]",
 		"no-new-privileges:true",
 		"/tmp:rw,noexec,nosuid,nodev",
 	} {

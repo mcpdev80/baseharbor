@@ -670,6 +670,7 @@ func providerComposeYAMLWithAccessAndNetwork(access serviceaccess.HTTPGatewayFil
 		fmt.Fprintf(&b, "    image: %s\n", ProviderImage)
 		b.WriteString("    restart: unless-stopped\n")
 		b.WriteString("    cap_drop: [\"ALL\"]\n")
+		b.WriteString("    cap_add: [\"CHOWN\", \"SETGID\", \"SETUID\"]\n")
 		b.WriteString("    security_opt: [\"no-new-privileges:true\"]\n")
 		b.WriteString("    tmpfs:\n      - /tmp:rw,noexec,nosuid,nodev\n")
 		b.WriteString("    command:\n")

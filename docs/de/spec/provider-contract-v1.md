@@ -158,7 +158,7 @@ Beobachtete Docker-UIDs sind Diagnosewerte, keine Provider-Anforderungen.
 | MongoDB-UI-Proxy | Beliebige Plattform-UID; Caddyfile, Zertifikat und Key schreibgeschützt; Key nur als geschützte Verbraucherprojektion. |
 | RabbitMQ | Beliebige Plattform-UID; Brokerdaten laufzeitgestützt beschreibbar; Konfiguration und TLS schreibgeschützt, Zugangsdaten/Keys geschützt und beschränkt eingebunden. |
 | RabbitMQ-UI-Proxy | Beliebige Plattform-UID; Caddyfile, Zertifikat und Key schreibgeschützt; Authentifizierungsprüfsumme nur für diesen Proxy. |
-| SeaweedFS-Knoten/Admin | Beliebige Plattform-UID; Knotendaten laufzeitgestützt beschreibbar; S3/Admin-Zugangsdaten und TLS geschützt und je Verbraucher getrennt. |
+| SeaweedFS-Knoten/Admin | Docker-Image-Entrypoint nutzt nur `CHOWN`, `SETGID` und `SETUID`, um `/data`-Eigentümerrechte zu korrigieren und auf das Dienstkonto zu wechseln; alle übrigen Capabilities bleiben entfernt und `no-new-privileges` bleibt aktiv. Auf Plattformen mit beliebiger UID muss diese `/data` über die Volume-Eigentümer-/Gruppenrechte beschreiben können. S3/Admin-Zugangsdaten und TLS sind an der Quelle geschützt und je Verbraucher auf schreibgeschützte Projektionen begrenzt. |
 | SeaweedFS-Proxy | Beliebige Plattform-UID; Caddy-Konfiguration und TLS schreibgeschützt; privater Key verbraucherbezogen. |
 | OpenBao-Server | Beliebige Plattform-UID; Konfiguration, CA, Server-Key/-Zertifikat und PostgreSQL-CA schreibgeschützt; OpenBao-Speicher laufzeitgestützt beschreibbar. |
 | OpenBao-HAProxy | Beliebige Plattform-UID; HAProxy-Konfiguration lesbar/schreibgeschützt; keine OpenBao-Zugangsdaten oder Speichermounts. |
