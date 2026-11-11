@@ -17,6 +17,7 @@ type managedTelemetryExecution struct {
 	execution *capability.Execution
 	driver    *telemetry.Driver
 	manifest  application.Manifest
+	files     application.RuntimeFiles
 }
 
 func prepareManagedTelemetry(ctx context.Context, compose bhruntime.RuntimeProvider, resolved resolvedApplication, traces *managedTracesExecution, issuer serviceaccess.Issuer) (*managedTelemetryExecution, error) {
@@ -49,7 +50,7 @@ func prepareManagedTelemetry(ctx context.Context, compose bhruntime.RuntimeProvi
 	if err != nil {
 		return nil, err
 	}
-	return &managedTelemetryExecution{execution: execution, driver: driver, manifest: m}, nil
+	return &managedTelemetryExecution{execution: execution, driver: driver, manifest: m, files: files}, nil
 }
 
 func convergeManagedTelemetry(ctx context.Context, out io.Writer, prepared *managedTelemetryExecution) error {
@@ -62,6 +63,23 @@ func convergeManagedTelemetry(ctx context.Context, out io.Writer, prepared *mana
 	if _, err := prepared.execution.Verify(ctx); err != nil {
 		return err
 	}
+	if err := verifyManagedTelemetryBinding(prepared.manifest, prepared.files); err != nil {
+		return err
+	}
 	fmt.Fprintf(out, "[VERIFIED] telemetry       OTLP export verified for %s\n", prepared.manifest.Name)
+	return nil
+}
+
+func verifyManagedTelemetryBinding(manifest application.Manifest, files application.RuntimeFiles) error {
+	if !application.HasOTLPTelemetry(manifest) {
+		return nil
+	}
+	_, exists, err := application.ExistingRuntimeOTLPBinding(manifest, files)
+	if err != nil {
+		return fmt.Errorf("inspect materialized OTLP provider binding: %w", err)
+	}
+	if !exists {
+		return fmt.Errorf("materialized OTLP provider binding is missing after provider verification")
+	}
 	return nil
 }
