@@ -45,6 +45,24 @@ func (e *bahaMachineExecutor) executeHTTPPlatformMutation(
 		}
 		reportHTTPProgress(report, "core", "Core readiness verified.", 100)
 		return state, nil
+	case "control-plane.repair":
+		if err := decodeHTTPInput(raw, &struct{}{}); err != nil {
+			return nil, err
+		}
+		target := withTargetOverride(ctx, operationContext.Target)
+		reportHTTPProgress(report, "core", "Reconverging existing Core configuration.", 10)
+		if err := repairExistingControlPlaneRuntime(target, io.Discard); err != nil {
+			return nil, err
+		}
+		result, err := inspectControlPlane(target)
+		if err != nil {
+			return nil, err
+		}
+		if err := requireControlPlaneReady(result); err != nil {
+			return nil, err
+		}
+		reportHTTPProgress(report, "core", "Core readiness verified.", 100)
+		return result, nil
 
 	case "workspace.update":
 		return executeHTTPWorkspaceUpdate(ctx, operationContext, raw, report)

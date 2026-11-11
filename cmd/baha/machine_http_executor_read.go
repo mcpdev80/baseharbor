@@ -24,6 +24,11 @@ func (e *bahaMachineExecutor) executeHTTPRead(
 			return nil, err
 		}
 		return inspectControlPlane(withTargetOverride(ctx, operationContext.Target))
+	case "control-plane.doctor":
+		if err := decodeHTTPInput(raw, &struct{}{}); err != nil {
+			return nil, err
+		}
+		return inspectControlPlaneDoctor(withTargetOverride(ctx, operationContext.Target))
 	case "operator.identity":
 		if err := decodeHTTPInput(raw, &struct{}{}); err != nil {
 			return nil, err

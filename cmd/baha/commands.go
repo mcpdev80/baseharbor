@@ -123,36 +123,7 @@ func rootCommand() *cli.Command {
 				return appLogsCommand(store).Run(ctx, args, out, errOut)
 			},
 		},
-		{
-			Name:    "status",
-			Summary: "Show application status in a repository, otherwise control-plane status",
-			Usage:   "baha status [-o json|--output json]",
-			Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
-				if inApplicationRepository() {
-					return appStatusCommandWithTLS(store).Run(ctx, args, out, errOut)
-				}
-				filtered, format, err := parseReadOutputArgs(args, "status")
-				if err != nil {
-					return err
-				}
-				if len(filtered) != 0 {
-					return usageError("status accepts output options only", "Use --json for structured control-plane state.")
-				}
-				if format == outputJSON {
-					result, err := inspectControlPlane(ctx)
-					if err != nil {
-						return err
-					}
-					return writeJSON(out, result)
-				}
-				target, err := effectiveTarget(ctx)
-				if err != nil {
-					return err
-				}
-				fmt.Fprintf(out, "Selection source: %s (%s)\n", target.Name, targetSelectionOrigin(ctx))
-				return runtimeStatus(ctx, out)
-			},
-		},
+		rootStatusCommand(store),
 		{
 			Name:    "doctor",
 			Summary: "Diagnose the current application repository, otherwise the control plane",

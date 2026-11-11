@@ -16,6 +16,8 @@ const (
 var httpOperationKinds = map[string]httpOperationKind{
 	"operator.identity":    httpRead,
 	"control-plane.status": httpRead,
+	"control-plane.doctor": httpRead,
+	"control-plane.repair": httpPlatformMutation,
 	"control-plane.up":     httpPlatformMutation,
 	"openbao.rotate":       httpPlatformMutation,
 	"dev.credentials":      httpPlatformMutation,

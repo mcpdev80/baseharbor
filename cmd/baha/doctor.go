@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/cli"
+	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/health"
 	"github.com/mcpdev80/baseharbor/internal/hosttrust"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
@@ -52,6 +53,16 @@ func doctorCommand(ctx context.Context, args []string, out, errOut io.Writer) er
 
 	if approved && !fix {
 		return usageError("--yes requires --fix", "Use baha doctor --fix --yes to confirm reconvergence of existing Core components.")
+	}
+	if format == outputJSON && fix {
+		return usageError("structured doctor output is read-only", "Use the explicit control-plane.repair semantic operation or human doctor --fix.")
+	}
+	target, err := effectiveTarget(ctx)
+	if err != nil {
+		return err
+	}
+	if remoteCoreTarget(target) {
+		return remoteCoreDoctorCommand(ctx, target, format, fix, approved, out, errOut)
 	}
 	if format == outputJSON {
 		if fix {
@@ -127,6 +138,71 @@ func doctorCommand(ctx context.Context, args []string, out, errOut io.Writer) er
 	fmt.Fprintln(out, "  baha doctor --json")
 	fmt.Fprintf(out, "\nDEGRADED · %d problem(s) still require attention\n", len(remaining))
 	return cli.Presented(errors.New("one or more checks still require action"))
+}
+
+func remoteCoreDoctorCommand(ctx context.Context, target deployment.ResolvedTarget, format cliOutputFormat, fix, approved bool, out, errOut io.Writer) error {
+	result, err := remoteControlPlaneDoctor(ctx, target)
+	if err != nil {
+		return err
+	}
+	if format == outputJSON {
+		return writeJSON(out, result)
+	}
+	term := cli.NewTerminal(ctx, out, errOut)
+	term.Header("Doctor", "")
+	renderRemoteDoctorReport(term, result)
+	if result.Ready {
+		fmt.Fprintln(out, "\nREADY")
+		return nil
+	}
+	if !fix {
+		fmt.Fprintln(out, "\nNext:")
+		fmt.Fprintln(out, "  baha doctor --fix")
+		fmt.Fprintln(out, "  baha doctor --json")
+		fmt.Fprintln(out, "\nDEGRADED · remote Core checks require attention")
+		return cli.Presented(errors.New("one or more remote Core checks failed"))
+	}
+	if !approved {
+		if noInput(ctx) || !readerIsTerminal(os.Stdin) {
+			return usageError("remote Core repair requires explicit consent", "Review the remote doctor checks and run baha doctor --fix --yes to reconverge existing Core components.")
+		}
+		approved, err = confirmDoctorRepair(os.Stdin, errOut)
+		if err != nil {
+			return err
+		}
+		if !approved {
+			return usageError("remote Core repair cancelled; no changes made", "Review the Doctor checks or run baha doctor --fix --yes when ready.")
+		}
+	}
+	term.Section("Repair")
+	if _, err := remoteControlPlaneRepair(ctx, target); err != nil {
+		term.Result("FAILED", "repair", err.Error())
+		return err
+	}
+	term.Result("UPDATED", "repair", "reconverged existing remote Core runtime")
+	after, err := remoteControlPlaneDoctor(ctx, target)
+	if err != nil {
+		return err
+	}
+	term.Section("After repair")
+	renderRemoteDoctorReport(term, after)
+	if after.Ready {
+		fmt.Fprintln(out, "\nREADY")
+		return nil
+	}
+	fmt.Fprintln(out, "\nDEGRADED · remote Core checks still require attention")
+	return cli.Presented(errors.New("one or more remote Core checks still fail"))
+}
+
+func renderRemoteDoctorReport(term *cli.Terminal, report controlPlaneDoctorReport) {
+	term.Section("Remote Core")
+	for _, check := range report.Checks {
+		state := "OK"
+		if !check.Ready {
+			state = "FAILED"
+		}
+		term.Result(state, check.Name, "")
+	}
 }
 
 func appendControlPlaneAvailabilityDoctor(ctx context.Context, checks []health.Check) []health.Check {
