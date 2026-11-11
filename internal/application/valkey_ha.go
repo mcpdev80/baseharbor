@@ -12,9 +12,20 @@ import (
 )
 
 const (
-	valkeySentinelMasterName = "baseharbor"
-	valkeyProviderImage      = "localhost/baseharbor-valkey:9.1.2-arbitrary-uid1"
-	valkeyProviderBuildDir   = "valkey-image"
+	valkeySentinelMasterName    = "baseharbor"
+	valkeyProviderImage         = "localhost/baseharbor-valkey:9.1.2-arbitrary-uid1"
+	valkeyProviderBuildDir      = "valkey-image"
+	valkeyDataPermissionPrelude = `umask 0007
+mkdir -p /data/appendonlydir
+data_uid="$(stat -c '%u' /data/appendonlydir)"
+data_gid="$(stat -c '%g' /data/appendonlydir)"
+if [ "$$data_uid" = "$(id -u)" ]; then
+  chgrp -R 0 /data/appendonlydir
+  chmod -R g=u /data/appendonlydir
+elif [ "$$data_gid" != 0 ] || [ ! -w /data/appendonlydir ]; then
+  echo 'Valkey AOF data is not writable by the assigned UID or GID 0' >&2
+  exit 1
+fi`
 )
 
 //go:embed assets/valkey-image/Dockerfile
@@ -37,17 +48,9 @@ func writeValkeyImageBuild(b *strings.Builder) {
 }
 
 func writeValkeyDataPermissionPrelude(b *strings.Builder) {
-	b.WriteString("        umask 0007\n")
-	b.WriteString("        mkdir -p /data/appendonlydir\n")
-	b.WriteString("        data_uid=\"$(stat -c '%u' /data/appendonlydir)\"\n")
-	b.WriteString("        data_gid=\"$(stat -c '%g' /data/appendonlydir)\"\n")
-	b.WriteString("        if [ \"$$data_uid\" = \"$(id -u)\" ]; then\n")
-	b.WriteString("          chgrp -R 0 /data/appendonlydir\n")
-	b.WriteString("          chmod -R g=u /data/appendonlydir\n")
-	b.WriteString("        elif [ \"$$data_gid\" != 0 ] || [ ! -w /data/appendonlydir ]; then\n")
-	b.WriteString("          echo 'Valkey AOF data is not writable by the assigned UID or GID 0' >&2\n")
-	b.WriteString("          exit 1\n")
-	b.WriteString("        fi\n")
+	for _, line := range strings.Split(valkeyDataPermissionPrelude, "\n") {
+		b.WriteString("        " + line + "\n")
+	}
 }
 
 func valkeyAvailabilityComponent(m Manifest, instance string) string {

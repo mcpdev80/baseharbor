@@ -134,7 +134,8 @@ func sharedBackendComposeMatchesCanonical(actual, canonical []byte) bool {
 		return false
 	}
 	changed := false
-	for _, rawService := range services {
+	legacyValkey := map[string]bool{}
+	for name, rawService := range services {
 		service, ok := rawService.(map[string]any)
 		if !ok {
 			return false
@@ -143,6 +144,7 @@ func sharedBackendComposeMatchesCanonical(actual, canonical []byte) bool {
 		if image == "docker.io/valkey/valkey:9.1.2-alpine" {
 			service["image"] = valkeyProviderImage
 			service["build"] = map[string]any{"context": "./" + valkeyProviderBuildDir, "dockerfile": "Dockerfile"}
+			legacyValkey[name] = true
 			changed = true
 		}
 		if legacyUser, exists := service["user"]; exists {
@@ -161,7 +163,51 @@ func sharedBackendComposeMatchesCanonical(actual, canonical []byte) bool {
 	if yaml.Unmarshal(canonical, &expected) != nil {
 		return false
 	}
+	// Earlier Compose renderers used the same Valkey command without the
+	// now-required arbitrary-UID data-permission prelude. Accept that exact
+	// historical command only alongside the known upstream image migration.
+	expectedServices, ok := expected["services"].(map[string]any)
+	if !ok {
+		return false
+	}
+	for name := range legacyValkey {
+		observedService, ok := services[name].(map[string]any)
+		if !ok {
+			return false
+		}
+		expectedService, ok := expectedServices[name].(map[string]any)
+		if !ok {
+			return false
+		}
+		if !reflect.DeepEqual(observedService["command"], expectedService["command"]) {
+			legacyCommand, ok := sharedValkeyCommandWithoutPermissionPrelude(expectedService["command"])
+			if !ok || !reflect.DeepEqual(observedService["command"], legacyCommand) {
+				return false
+			}
+			observedService["command"] = expectedService["command"]
+		}
+	}
 	return reflect.DeepEqual(observed, expected)
+}
+
+func sharedValkeyCommandWithoutPermissionPrelude(command any) (any, bool) {
+	parts, ok := command.([]any)
+	if !ok || len(parts) != 3 {
+		return nil, false
+	}
+	script, ok := parts[2].(string)
+	if !ok {
+		return nil, false
+	}
+	prelude := valkeyDataPermissionPrelude
+	if !strings.HasPrefix(script, prelude) {
+		return nil, false
+	}
+	legacy := append([]any(nil), parts...)
+	legacyScript := strings.TrimPrefix(script, prelude)
+	legacyScript = strings.TrimPrefix(legacyScript, "\n")
+	legacy[2] = legacyScript
+	return legacy, true
 }
 
 func legacySharedBackendUserForImage(image string) (string, bool) {

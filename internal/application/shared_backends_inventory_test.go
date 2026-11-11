@@ -58,6 +58,34 @@ func TestSharedBackendInventoryAcceptsOnlyLegacyFixedUIDOverrides(t *testing.T) 
 		t.Fatal("previous pinned Valkey renderer without identity overrides must remain upgradeable")
 	}
 
+	var legacyValkey map[string]any
+	if err := yaml.Unmarshal(oldBytes, &legacyValkey); err != nil {
+		t.Fatal(err)
+	}
+	legacyValkeyService := legacyValkey["services"].(map[string]any)["shared-valkey-core-shared-default"].(map[string]any)
+	legacyValkeyCommand := legacyValkeyService["command"].([]any)
+	legacyValkeyCommandWithoutPrelude, ok := sharedValkeyCommandWithoutPermissionPrelude(legacyValkeyCommand)
+	if !ok {
+		t.Fatal("canonical Valkey command must have a removable permission prelude")
+	}
+	legacyValkeyCommand = legacyValkeyCommandWithoutPrelude.([]any)
+	legacyValkeyService["command"] = legacyValkeyCommand
+	legacyValkeyBytes, err := yaml.Marshal(legacyValkey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !sharedBackendComposeMatchesCanonical(legacyValkeyBytes, canonical) {
+		t.Fatal("previous Valkey renderer without the arbitrary-UID data prelude must remain upgradeable")
+	}
+	legacyValkeyService["command"] = []any{"sh", "-ec", "echo unexpected"}
+	malformedLegacyValkey, err := yaml.Marshal(legacyValkey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sharedBackendComposeMatchesCanonical(malformedLegacyValkey, canonical) {
+		t.Fatal("unknown legacy Valkey command must not be accepted")
+	}
+
 	for _, mutate := range []func(map[string]any){
 		func(services map[string]any) {
 			services["shared-valkey-core-shared-default"].(map[string]any)["user"] = "0"
