@@ -86,6 +86,12 @@ func TestWorkstationOnboardingRemoteNativeInCI(t *testing.T) {
 	// Switch to a fresh workstation state root; no Docker installation or
 	// owner credentials from the Core fixture may be reused by the client.
 	workstationRoot := t.TempDir()
+	// The invitation importer rejects existing public state roots. Make the
+	// fixture's intended private mode explicit instead of relying on runner
+	// umask or temporary-directory implementation details.
+	if err := os.Chmod(workstationRoot, 0o700); err != nil {
+		t.Fatal(err)
+	}
 	workstationTarget := ""
 	workloadDir := t.TempDir()
 	applied := false
