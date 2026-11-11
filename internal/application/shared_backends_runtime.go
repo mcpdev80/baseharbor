@@ -431,6 +431,7 @@ func writeSharedPostgresUICompose(b *strings.Builder) {
     environment:
       PGADMIN_DEFAULT_EMAIL: ${SHARED_PGADMIN_EMAIL}
       PGADMIN_DEFAULT_PASSWORD_FILE: /run/baseharbor/password
+      PGADMIN_CONFIG_PROXY_X_HOST_COUNT: "1"
       PGADMIN_ENABLE_TLS: "True"
       PGADMIN_LISTEN_PORT: "8443"
       PGADMIN_SERVER_JSON_FILE: /run/baseharbor/servers.json

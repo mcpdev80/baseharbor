@@ -117,10 +117,10 @@ func ExistingSharedBackendInventoryAt(dataDir, namespace, environment string) (S
 	return inventory, nil
 }
 
-// sharedBackendComposeMatchesCanonical accepts the exact previous renderer
-// shape only when its sole differences are the fixed Compose user overrides
-// removed for arbitrary-UID platform compatibility. Any other drift remains
-// fail-closed. The next reconciliation writes the current canonical document.
+// sharedBackendComposeMatchesCanonical accepts known renderer transitions only
+// when their differences are the fixed Compose user overrides removed for
+// arbitrary-UID compatibility, or a missing pgAdmin forwarded-host setting.
+// Any other drift remains fail-closed. Reconciliation writes the current shape.
 func sharedBackendComposeMatchesCanonical(actual, canonical []byte) bool {
 	if bytes.Equal(actual, canonical) {
 		return true
@@ -141,6 +141,14 @@ func sharedBackendComposeMatchesCanonical(actual, canonical []byte) bool {
 			return false
 		}
 		image, _ := service["image"].(string)
+		if name == "shared-pgadmin" {
+			if environment, ok := service["environment"].(map[string]any); ok {
+				if _, exists := environment["PGADMIN_CONFIG_PROXY_X_HOST_COUNT"]; !exists {
+					environment["PGADMIN_CONFIG_PROXY_X_HOST_COUNT"] = "1"
+					changed = true
+				}
+			}
+		}
 		if image == "docker.io/valkey/valkey:9.1.2-alpine" {
 			service["image"] = valkeyProviderImage
 			service["build"] = map[string]any{"context": "./" + valkeyProviderBuildDir, "dockerfile": "Dockerfile"}
