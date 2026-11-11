@@ -107,3 +107,35 @@ func TestEnsurePrivateOnboardingDirectory(t *testing.T) {
 		t.Fatal("symlinked directory accepted")
 	}
 }
+
+func TestEnsurePrivateOnboardingDirectoryTreeCreatesFreshXDGPath(t *testing.T) {
+	root := t.TempDir()
+	dataRoot := filepath.Join(root, ".local", "share", "baseharbor")
+	if err := ensurePrivateOnboardingDirectoryTree(dataRoot); err != nil {
+		t.Fatalf("create fresh data-root hierarchy: %v", err)
+	}
+	info, err := os.Lstat(dataRoot)
+	if err != nil || !info.IsDir() || info.Mode().Perm() != 0o700 {
+		t.Fatalf("fresh data root is not a private real directory: info=%v err=%v", info, err)
+	}
+	for _, child := range []string{filepath.Join(dataRoot, "remote-connections"), filepath.Join(dataRoot, "remote-workstations")} {
+		if err := ensurePrivateOnboardingDirectory(child); err != nil {
+			t.Fatalf("create child below new data root: %v", err)
+		}
+	}
+}
+
+func TestEnsurePrivateOnboardingDirectoryTreeRejectsSymlinkAncestor(t *testing.T) {
+	root := t.TempDir()
+	victim := filepath.Join(root, "victim")
+	if err := os.Mkdir(victim, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(root, "link")
+	if err := os.Symlink(victim, link); err != nil {
+		t.Fatal(err)
+	}
+	if err := ensurePrivateOnboardingDirectoryTree(filepath.Join(link, "remote-connections")); err == nil {
+		t.Fatal("symlinked data-root ancestor accepted")
+	}
+}

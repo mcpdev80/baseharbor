@@ -61,6 +61,9 @@ func runOnboardImport(ctx context.Context, args []string, out io.Writer) error {
 	// Prepare owned local storage before spending the remote one-use grant.
 	// Refuse symlinked/public ancestors rather than letting MkdirAll follow
 	// a pre-existing path into an attacker-controlled location.
+	if err := ensurePrivateOnboardingDirectoryTree(dataRoot); err != nil {
+		return err
+	}
 	for _, dir := range []string{
 		filepath.Join(dataRoot, "remote-connections"),
 		profileDir,
@@ -261,4 +264,42 @@ func ensurePrivateOnboardingDirectory(path string) error {
 		return fmt.Errorf("create private onboarding directory %s: %w", path, err)
 	}
 	return checkPrivateOnboardingDirectory(path)
+}
+
+func ensurePrivateOnboardingDirectoryTree(path string) error {
+	if err := ensureOnboardingDirectoryAncestors(path); err != nil {
+		return err
+	}
+	return checkPrivateOnboardingDirectory(path)
+}
+
+func ensureOnboardingDirectoryAncestors(path string) error {
+	info, err := os.Lstat(path)
+	if err == nil {
+		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("onboarding path ancestor must be a real directory: %s", path)
+		}
+		return nil
+	}
+	if !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	parent := filepath.Dir(path)
+	if parent == path {
+		return fmt.Errorf("cannot create onboarding directory root %s", path)
+	}
+	if err := ensureOnboardingDirectoryAncestors(parent); err != nil {
+		return err
+	}
+	if err := os.Mkdir(path, 0o700); err != nil && !errors.Is(err, os.ErrExist) {
+		return fmt.Errorf("create private onboarding directory ancestor %s: %w", path, err)
+	}
+	info, err = os.Lstat(path)
+	if err != nil {
+		return err
+	}
+	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("onboarding path ancestor must be a real directory: %s", path)
+	}
+	return nil
 }
