@@ -35,11 +35,29 @@ func renderCaddyfile(routes []Route, listenPort int, ipAddresses ...string) stri
 				continue
 			}
 			fmt.Fprintf(&b, "\n:%d {\n  tls /gateway/server.pem /gateway/server-key.pem\n", route.DirectIPPort)
-			writeReverseProxy(&b, route, i, "  ")
+			writeDirectIPReverseProxy(&b, routes, route, i, ipAddresses[0], listenPort, "  ")
 			b.WriteString("}\n")
 		}
 	}
 	return b.String()
+}
+
+func writeDirectIPReverseProxy(b *strings.Builder, routes []Route, route Route, index int, address string, canonicalPort int, indent string) {
+	if strings.HasPrefix(route.Upstream, "https://") {
+		fmt.Fprintf(b, "%sreverse_proxy %s {\n", indent, route.Upstream)
+		for _, candidate := range routes {
+			if candidate.Owner != route.Owner || candidate.ManagementKey == "" || candidate.DirectIPPort == 0 {
+				continue
+			}
+			fmt.Fprintf(b, "%s  header_down Location https://%s:%d https://%s:%d\n", indent, candidate.Host, canonicalPort, address, candidate.DirectIPPort)
+		}
+		fmt.Fprintf(b, "%stransport http {\n%stls\n", indent, indent)
+		fmt.Fprintf(b, "%stls_trust_pool file /gateway/trust/route-%03d.pem\n", indent, index)
+		fmt.Fprintf(b, "%stls_server_name %s\n", indent, route.ServerName)
+		fmt.Fprintf(b, "%s}\n%s}\n", indent, indent)
+		return
+	}
+	fmt.Fprintf(b, "%sreverse_proxy %s\n", indent, route.Upstream)
 }
 
 func writeReverseProxy(b *strings.Builder, route Route, index int, indent string) {

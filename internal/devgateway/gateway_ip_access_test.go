@@ -48,18 +48,27 @@ func TestAssignDirectIPPortsRetainsAndUniquelyAllocatesDynamicPorts(t *testing.T
 
 func TestDirectIPListenersUseDynamicPortsAndOnlyManagementRoutes(t *testing.T) {
 	routes := []Route{
-		{Host: "pgadmin.dev.localhost", Upstream: "https://pgadmin:8443", Network: "backend", ManagementKey: "sql", DirectIPPort: 52341, ServerName: "localhost"},
+		{Owner: "shared/keycloak", Host: "auth-admin.dev.localhost", Upstream: "https://keycloak:8443", Network: "identity", ManagementKey: "identity_admin", DirectIPPort: 52341, ServerName: "localhost"},
+		{Owner: "shared/keycloak", Host: "auth.dev.localhost", Upstream: "https://keycloak:8443", Network: "identity", ManagementKey: "identity", DirectIPPort: 52342, ServerName: "localhost"},
+		{Host: "pgadmin.dev.localhost", Upstream: "https://pgadmin:8443", Network: "backend", ManagementKey: "sql", DirectIPPort: 52343, ServerName: "localhost"},
 		{Host: "app.dev.localhost", Upstream: "http://app:8080", Network: "backend"},
 	}
 	files := Files{Caddyfile: "/tmp/runtime/Caddyfile"}
 	caddy := renderCaddyfile(routes, 18443, "192.0.2.18")
-	for _, want := range []string{":52341 {", "reverse_proxy https://pgadmin:8443", "tls_server_name localhost"} {
+	for _, want := range []string{
+		":52341 {", "reverse_proxy https://keycloak:8443",
+		"header_down Location https://auth.dev.localhost:18443 https://192.0.2.18:52342",
+		":52343 {", "reverse_proxy https://pgadmin:8443", "tls_server_name localhost",
+	} {
 		if !strings.Contains(caddy, want) {
 			t.Errorf("direct listener config missing %q:\n%s", want, caddy)
 		}
 	}
+	if strings.Contains(strings.SplitN(caddy, ":52343 {", 2)[1], "header_down Location https://auth.dev.localhost") {
+		t.Fatal("direct IP redirect rewrite crossed management route ownership")
+	}
 	compose := renderComposeBound(files, routes, nil, 18443, "127.0.0.1", "192.0.2.18")
-	for _, want := range []string{"127.0.0.1:18443:18443", "192.0.2.18:52341:52341"} {
+	for _, want := range []string{"127.0.0.1:18443:18443", "192.0.2.18:52341:52341", "192.0.2.18:52342:52342", "192.0.2.18:52343:52343"} {
 		if !strings.Contains(compose, want) {
 			t.Errorf("compose missing port mapping %q:\n%s", want, compose)
 		}
