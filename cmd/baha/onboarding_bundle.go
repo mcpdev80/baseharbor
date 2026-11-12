@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/machine"
 	"github.com/mcpdev80/baseharbor/internal/onboardingwizard"
@@ -82,7 +81,7 @@ func bundleForImportDecision(decision onboardingwizard.Decision) *onboardingDevi
 		baseURL:        onboardingEnrollmentBaseURL(),
 		client:         http.DefaultClient,
 		scope:          ws.Scope{TenantID: tenantID, Station: station},
-		certificateTTL: time.Hour,
+		certificateTTL: ws.MaxCertificateTTL,
 	}
 }
 

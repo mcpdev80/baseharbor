@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"net/url"
 	"os"
 	"strconv"
@@ -78,7 +79,8 @@ func EnsureManagedOperatorOIDC(ctx context.Context, runtime KeycloakRuntime, iss
 		"baseharbor.environment": strings.TrimSpace(environment),
 	}
 	// Realm-local authority preserves the installation/master issuer.
-	ownership["frontendUrl"] = canonicalBase
+	realmAttributes := maps.Clone(ownership)
+	realmAttributes["frontendUrl"] = canonicalBase
 	desiredRealm := keycloakRealm{
 		Realm:                                  realm,
 		Enabled:                                true,
@@ -93,9 +95,9 @@ func EnsureManagedOperatorOIDC(ctx context.Context, runtime KeycloakRuntime, iss
 		WebAuthnPolicySignatureAlgorithms:      []string{"ES256", "RS256"},
 		WebAuthnPolicyPasswordlessRpEntityName: "BaseHarbor",
 		WebAuthnPolicyPasswordlessSignatureAlgorithms: []string{"ES256", "RS256"},
-		Attributes: ownership,
+		Attributes: realmAttributes,
 	}
-	if err := admin.reconcileRealm(ctx, desiredRealm); err != nil {
+	if err := admin.reconcileRealm(ctx, desiredRealm, ownership); err != nil {
 		return ManagedOperatorOIDC{}, err
 	}
 
@@ -151,6 +153,17 @@ func EnsureManagedOperatorOIDC(ctx context.Context, runtime KeycloakRuntime, iss
 	if err := ensureLocalKeycloakDevelopmentRoute(ctx, app, namespace, runtime, issuer, files); err != nil {
 		return ManagedOperatorOIDC{}, fmt.Errorf("publish managed operator Keycloak gateway route: %w", err)
 	}
+	effectiveBase, err := managedOperatorCanonicalBaseURL(runtime, namespace)
+	if err != nil {
+		return ManagedOperatorOIDC{}, err
+	}
+	if effectiveBase != files.CanonicalPublicURL {
+		desiredRealm.Attributes["frontendUrl"] = effectiveBase
+		if err := admin.reconcileRealm(ctx, desiredRealm, ownership); err != nil {
+			return ManagedOperatorOIDC{}, err
+		}
+		files.CanonicalPublicURL = effectiveBase
+	}
 	publicClient, err := keycloakPublicHTTPClient(files)
 	if err != nil {
 		return ManagedOperatorOIDC{}, err
@@ -191,6 +204,9 @@ func EnsureManagedDevelopmentAccess(ctx context.Context, runtime KeycloakRuntime
 		return ManagedOperatorOIDC{}, err
 	}
 	if err := admin.ensureDeveloperOwnershipAttribute(ctx, operatorRealm("dev"), target); err != nil {
+		return ManagedOperatorOIDC{}, err
+	}
+	if err := admin.ensureDeveloperProfile(ctx, target); err != nil {
 		return ManagedOperatorOIDC{}, err
 	}
 	// Apply/re-add preserves existing credentials. Credential rotation remains
@@ -324,4 +340,11 @@ func operatorClientID(environment string) string {
 
 func decodeJSON(value string, target any) error {
 	return json.Unmarshal([]byte(value), target)
+}
+
+// DevelopmentManagementPaths selects the realm containing the configured
+// developer user, rather than Keycloak's unrelated master administrator login.
+func DevelopmentManagementPaths() (account, admin string) {
+	realm := operatorRealm("dev")
+	return "/realms/" + realm + "/account/", "/admin/" + realm + "/console/"
 }

@@ -21,6 +21,11 @@ func TestRemoteMutationArgumentsFailClosed(t *testing.T) {
 	}{
 		{"apply", []string{"demo"}, true},
 		{"apply", []string{"demo", "--environment", "dev", "--skip-memory-preflight"}, true},
+		{"apply", []string{"demo", "--workload-port", "DEMO_HTTPS_PORT=8081"}, true},
+		{"apply", []string{"demo", "--workload-port=DEMO_HTTPS_PORT=8081"}, true},
+		{"apply", []string{"demo", "--workload-port", "BAD-NAME=8081"}, false},
+		{"apply", []string{"demo", "--workload-port", "DEMO_HTTPS_PORT=0"}, false},
+		{"apply", []string{"demo", "--workload-port", "DEMO_HTTPS_PORT=8081", "--workload-port", "DEMO_HTTPS_PORT=8082"}, false},
 		{"apply", []string{"demo", "--confirm-candidate", "bogus"}, false},
 		{"apply", []string{"demo", "--confirm-candidate="}, false},
 		{"apply", []string{"demo", "--confirm-candidate", ""}, false},
@@ -35,6 +40,7 @@ func TestRemoteMutationArgumentsFailClosed(t *testing.T) {
 		{"update", []string{"demo", "--no-backup"}, true},
 		{"update", []string{"demo", "--backup-password-file", "local.txt"}, false},
 		{"destroy", []string{"demo"}, false},
+		{"destroy", []string{"demo", "--yes"}, true},
 		{"destroy", []string{"demo", "--yes"}, true},
 		{"destroy", []string{"demo", "--yes", "--full-reset"}, true},
 		{"destroy", []string{"demo", "--full-reset"}, false},
@@ -52,6 +58,45 @@ func TestRemoteMutationArgumentsFailClosed(t *testing.T) {
 				t.Fatal("unsupported or unapproved remote mutation was accepted")
 			}
 		})
+	}
+}
+
+func TestRemoteDestroyDeletesDataByDefault(t *testing.T) {
+	_, _, payload, err := remoteMutationArgs("destroy", []string{"demo", "--yes"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var request struct {
+		FullReset bool `json:"full_reset"`
+	}
+	if err := json.Unmarshal(payload, &request); err != nil || !request.FullReset {
+		t.Fatalf("remote destroy must request complete owned-data deletion by default: full_reset=%t err=%v", request.FullReset, err)
+	}
+}
+
+func TestRemoteStopRequestsRetainedData(t *testing.T) {
+	_, _, payload, err := remoteMutationArgs("app.stop", []string{"demo"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(payload), `"full_reset"`) || !strings.Contains(string(payload), `"name":"demo"`) {
+		t.Fatalf("remote stop must use the dedicated data-preserving stop operation: %s", payload)
+	}
+}
+
+func TestRemoteApplyCarriesExplicitWorkloadPortSelection(t *testing.T) {
+	_, _, payload, err := remoteMutationArgs("apply", []string{"demo", "--workload-port", "DEMO_HTTPS_PORT=8081"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got struct {
+		WorkloadPorts map[string]string `json:"workload_ports"`
+	}
+	if err := json.Unmarshal(payload, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.WorkloadPorts["DEMO_HTTPS_PORT"] != "8081" || len(got.WorkloadPorts) != 1 {
+		t.Fatalf("remote apply workload ports = %#v", got.WorkloadPorts)
 	}
 }
 
@@ -93,7 +138,7 @@ func TestRemoteApplicationCLIEntrypointsNeverRunLocalRuntime(t *testing.T) {
 		{"app-up", appUpCommand(store).Run, []string{"demo"}},
 		{"app-update", appUpdateCommand(store).Run, []string{"demo", "--no-backup"}},
 		{"app-destroy", appDestroyCommand(store).Run, []string{"demo", "--yes"}},
-		{"app-down", appDownCommand(store).Run, []string{"demo"}},
+		{"app-down", appDownCommand(store).Run, []string{"demo", "--yes"}},
 		{"root-up", runtimeUpCommandWithInputResolver, []string{"demo", "--environment", "dev"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

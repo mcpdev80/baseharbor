@@ -33,26 +33,43 @@ baha whoami
 
 Development can remain trusted-local where configured; test/prod operator access follows the configured authentication boundary.
 
-## Initial operator and tenant bootstrap (v0.4.27 candidate)
+## Workstation device enrollment
 
-On the **locally owned, ready management Core**, explicitly initialize the first operator tenant:
+Connecting a developer workstation to its owning Core is a separate device
+enrollment flow, not an operator OIDC login or Node Connector enrollment. On
+the Core VM use `baha up` followed by `baha onboard`; transfer the resulting
+private JSON invitation to the workstation and import it with
+`baha onboard --import FILE`. Accept the suggested workstation alias or pass
+`--target-name NAME`, then select it with `baha use NAME`. The alias is separate
+from the Core Target in the invitation. The invitation establishes a
+least-privilege device identity. It does not grant an operator role. See the
+[Core-to-workstation onboarding contract](../spec/zero-friction-workstation-onboarding-v0427.md).
 
-```bash
-baha target show
-baha up --control-plane-only
-baha login -e dev --init-tenant
-baha whoami -e dev
-```
 
-Optional advanced setup: use `baha login -e dev --init-tenant --tenant-slug acme --tenant-name "Acme GmbH"`. The recommended default is tenant `baseharbor` and the Core generates its UUID.
+After the invitation is redeemed and Core identity is verified, interactive
+import offers to trust that public CA on the workstation. The explanation
+includes its SHA-256 fingerprint and the effect on HTTPS trust. Accepting installs
+system trust and adds the CA to supported existing Linux browser NSS stores
+(Chromium and Firefox, including detected Firefox Snap/Flatpak profiles).
+No private keys or browser security settings are imported. Restart browsers
+after installation. Browser-specific failures are reported separately.
 
-This first-owner operation is **not** performed implicitly by `baha up`. It uses interactive OIDC Authorization Code + PKCE. If no operator OIDC boundary exists for the selected Target/environment, interactive setup can configure managed/shared Keycloak or an external OIDC provider. Managed Keycloak uses a dedicated environment-specific operator realm/client, distinct from the Core Identity `baseharbor` realm.
+For scripts, use `baha onboard --import FILE --trust-host-ca` to explicitly approve
+this installation, or `--skip-host-trust` to leave trust stores unchanged.
+Without explicit approval, noninteractive imports do not modify host trust.
+System installation may require sudo; browser import requires NSS `certutil`
+(on Debian/Ubuntu, `libnss3-tools`). Missing tools or unsupported profiles are
+reported with manual guidance; BaseHarbor does not install browser tools silently.
 
-Only after a verified, unexpired login does BaseHarbor create tenant `baseharbor`, the exact (issuer, subject) external identity and its `editor` membership in one transaction with RLS. Repeating with the same owner is idempotent; different owners, existing foreign tenants, remote Targets, invalid credentials or an unready local Core fail closed. No anonymous first-admin endpoint exists. Unconfigured dev keeps the trusted-local behavior; after explicit setup, ordinary `baha login -e dev` uses the stored operator OIDC boundary.
+Enrollment remains saved if trust installation fails. Do not reuse the one-use
+invitation: retry with `baha --target NAME trust install --yes`. This command
+verifies the remote Core and installs trust on the workstation, without starting
+a local Core. `baha trust uninstall --yes` removes only recorded, unchanged
+BaseHarbor-owned system and browser certificates; operator-installed certificates
+are preserved.
 
-**Connector prerequisite:** Configure `BASEHARBOR_API_OIDC_ISSUER` and `BASEHARBOR_API_OIDC_AUDIENCES` on the protected operator API to match the actual operator realm/client. An API still using `.../realms/baseharbor` does **not** accept tokens issued by `.../realms/bh-operators-dev`; verify discovery and audience rather than bypassing OIDC or tenant checks.
-
-After first-owner setup, enroll with `baha node add`, establish the connection with `baha node connect`, deploy with `baha app up`, and verify `baha doctor`. Docker and Podman require separate real end-to-end evidence. This functionality is being developed in [Core PR #1437](https://github.com/mcpdev80/baseharbor/pull/1437), **not yet merged, released or natively accepted**.
+Human operators continue to use the configured `baha login` OIDC boundary.
+Device enrollment does not alter or bypass that authentication policy.
 
 ## Connections
 
@@ -95,3 +112,42 @@ baha logout
 ```
 
 Use the configured authentication flow; do not paste tokens into command arguments. The reported identity helps verify authorization context before a protected operation. Login does not grant permissions beyond the effective policy.
+
+## Optional workstation name resolution
+
+On Linux, invitation import separately offers to maintain concrete app and GUI
+names in `/etc/hosts`. This is **off by default**, independent of CA trust. It
+shows the verified Core's names and IP before approval; sudo may be needed.
+No DNS service is installed and wildcard hosts entries are not supported.
+Use `--configure-hosts` to opt in explicitly during import, or `--skip-hosts`
+to suppress the offer. Future successful CLI deployments refresh the selected
+Target's entries only after opt-in. No-input imports leave hosts unchanged.
+
+For an existing connection:
+
+```text
+baha --target NAME dev hosts status
+baha --target NAME dev hosts sync
+baha --target NAME dev hosts remove --yes
+baha --target NAME dev cleanup --yes
+```
+
+`sync` shows names and requests approval when first enabling management;
+`sync --yes` explicitly enables it for automation. `remove` disables hosts
+management only. `cleanup` removes this Target's unchanged owned hosts block
+and recorded system/browser CA anchors. Another active connection referencing
+the same CA keeps that CA installed. Existing external entries, conflicting
+names and manually modified blocks/certificates are preserved and reported.
+Local cleanup requires no live Core and keeps apps, data and device enrollment.
+The onboarding wizard's local connection removal also performs this cleanup
+before discarding its local connection record. Reinstalling trust explicitly
+reactivates that connection's CA reference.
+
+On Linux, Chromium and Microsoft Edge use supported NSS stores; the import also
+finds existing Chromium Snap revision stores and Chromium/Edge Flatpak stores.
+Firefox uses its own profile databases (native, Snap and Flatpak). BaseHarbor
+imports into existing supported stores only; it does not create browser profiles
+or install browser policies. If Firefox is installed or a profile is created
+later, run `baha --target NAME trust install --yes` again. Fully restart affected
+browsers after changing trust. Every newly installed browser anchor is recorded
+for the same fingerprint-checked cleanup as system trust.

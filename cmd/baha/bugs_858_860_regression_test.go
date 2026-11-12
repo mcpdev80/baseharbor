@@ -368,12 +368,15 @@ func TestContextualCLIErrorHintsAndContracts(t *testing.T) {
 	}
 	t.Chdir(t.TempDir())
 
-	for _, args := range [][]string{{"down", "--yes"}, {"app", "down", "--yes"}} {
+	for _, tc := range []struct {
+		args []string
+		want string
+	}{{[]string{"down", "--yes"}, "--yes"}, {[]string{"app", "down", "--bogus"}, "--bogus"}} {
 		out.Reset()
-		err := runWithIO(context.Background(), args, &out, &out)
+		err := runWithIO(context.Background(), tc.args, &out, &out)
 		formatCLIError(&out, err)
-		if cli.ExitCode(err) != 2 || !strings.Contains(out.String(), "--yes") || strings.Contains(out.String(), "Did you mean") || strings.Contains(out.String(), "baha doctor") {
-			t.Fatalf("%v: %v %s", args, err, out.String())
+		if cli.ExitCode(err) != 2 || !strings.Contains(out.String(), tc.want) || strings.Contains(out.String(), "Did you mean") || strings.Contains(out.String(), "baha doctor") {
+			t.Fatalf("%v: %v %s", tc.args, err, out.String())
 		}
 	}
 }

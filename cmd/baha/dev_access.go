@@ -23,8 +23,10 @@ func devCommand() *cli.Command {
 	return &cli.Command{
 		Name:    "dev",
 		Summary: "Manage local development conveniences",
-		Usage:   "baha dev <credentials|domain>",
+		Usage:   "baha dev <credentials|domain|hosts|cleanup>",
 		Children: []*cli.Command{
+			devHostsCommand(),
+			workstationCleanupCommand(),
 			{
 				Name:    "credentials",
 				Summary: "Show or rotate the target-scoped development management login",
@@ -427,7 +429,10 @@ func recoverMissingLocalDeveloperCredential(ctx context.Context, target, environ
 }
 
 func ensureAuthoritativeDeveloperCredentials(ctx context.Context, target, environment string) (devaccess.Credentials, error) {
-	if recovered, ok, err := recoverMissingLocalDeveloperCredential(ctx, target, environment); err != nil {
+	// Enabling a development management UI opts into creating its first shared
+	// login. Recovery alone must still reject absent credentials; this explicit
+	// provisioning path may generate them when neither authority has a value.
+	if recovered, ok, err := recoverMissingLocalDeveloperCredential(ctx, target, environment); err != nil && !errors.Is(err, devaccess.ErrNoRecoverableCredential) {
 		return devaccess.Credentials{}, err
 	} else if ok {
 		return recovered, nil

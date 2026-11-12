@@ -417,17 +417,9 @@ func addGuidedObservability(reader *bufio.Reader, out io.Writer, d appProjectDet
 		m = application.WithMetricsSource(m, "application", service, port, "/metrics")
 	}
 	if selection.selected[guidedCapabilityOTLP] {
-		defaultSignals := strings.Join(d.OTLPSignals, ",")
-		if defaultSignals == "" {
-			defaultSignals = "traces"
-		}
-		value, err := promptLine(reader, out, "OTLP signals (comma-separated)", defaultSignals)
+		signals, err := promptOTLPSignals(reader, out, d.OTLPSignals)
 		if err != nil {
 			return application.Manifest{}, err
-		}
-		signals := uniqueSorted(strings.Split(value, ","))
-		if len(signals) == 0 {
-			return application.Manifest{}, errors.New("OTLP telemetry requires at least one signal")
 		}
 		m = application.WithOTLPTelemetry(m, signals...)
 	}

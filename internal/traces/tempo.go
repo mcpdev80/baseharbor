@@ -239,7 +239,7 @@ func ensureProviderFilesAt(ctx context.Context, issuer serviceaccess.Issuer, dat
 		if err != nil {
 			return ProviderFiles{}, p, fmt.Errorf("read Tempo object-storage trust bundle: %w", err)
 		}
-		if err := os.WriteFile(filepath.Join(files.Dir, "object-storage-ca.pem"), trust, 0o644); err != nil {
+		if err := writeContainerReadableProjection(filepath.Join(files.Dir, "object-storage-ca.pem"), trust); err != nil {
 			return ProviderFiles{}, p, fmt.Errorf("project Tempo object-storage trust bundle: %w", err)
 		}
 		config = tempoHAConfig()
@@ -247,7 +247,7 @@ func ensureProviderFilesAt(ctx context.Context, issuer serviceaccess.Issuer, dat
 	if err := os.WriteFile(files.Env, []byte(env.String()), 0o600); err != nil {
 		return ProviderFiles{}, p, err
 	}
-	if err := os.WriteFile(files.Config, []byte(config), 0o644); err != nil {
+	if err := writeContainerReadableProjection(files.Config, []byte(config)); err != nil {
 		return ProviderFiles{}, p, err
 	}
 	accessPolicy, err := serviceaccess.Resolve(m.Environment, "tempo", serviceaccess.AuthenticationMTLS)
@@ -270,6 +270,17 @@ func ensureProviderFilesAt(ctx context.Context, issuer serviceaccess.Issuer, dat
 		return ProviderFiles{}, p, err
 	}
 	return files, p, nil
+}
+
+// writeContainerReadableProjection creates a non-secret configuration or
+// public trust-bundle projection for Tempo's fixed non-root container user.
+// The authoritative inputs remain protected; these consumer-only bind mounts
+// are read-only in Compose. Explicit chmod makes behavior independent of umask.
+func writeContainerReadableProjection(path string, data []byte) error {
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		return err
+	}
+	return os.Chmod(path, 0o644)
 }
 
 func ExistingProviderFiles(m application.Manifest) (ProviderFiles, Placement, error) {
@@ -663,7 +674,6 @@ func composeYAMLWithAccess(p Placement, access serviceaccess.HTTPGatewayFiles) s
   tempo:
     image: %s
     restart: unless-stopped
-    user: "10001:10001"
     read_only: true
     cap_drop: ["ALL"]
     security_opt: ["no-new-privileges:true"]

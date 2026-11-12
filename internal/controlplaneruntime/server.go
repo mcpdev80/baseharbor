@@ -83,12 +83,16 @@ func (c Config) Validate() error {
 			strings.TrimSpace(c.ConnectorAuthorityTarget) == "" {
 			return errors.New("Connector enrollment requires the operator API, database and an explicit local authority Target")
 		}
-	} else if strings.TrimSpace(c.ConnectorAuthorityTarget) != "" {
-		return errors.New("Connector authority Target requires enrollment to be enabled")
+	} else if strings.TrimSpace(c.ConnectorAuthorityTarget) != "" && !c.WorkstationEnrollmentEnabled {
+		return errors.New("local enrollment authority Target requires connector or workstation enrollment")
 	}
 	if c.WorkstationEnrollmentEnabled {
-		if c.boundRuntimeEnabled() || !c.operatorAPIEnabled() || strings.TrimSpace(c.DatabaseURL) == "" {
-			return errors.New("Workstation enrollment requires the operator API and a database")
+		if c.boundRuntimeEnabled() || strings.TrimSpace(c.DatabaseURL) == "" ||
+			strings.TrimSpace(c.ConnectorAuthorityTarget) == "" {
+			return errors.New("Workstation enrollment requires the Core database and a locally owned authority Target")
+		}
+		if !c.operatorAPIEnabled() && c.ConnectorEnrollmentEnabled {
+			return errors.New("Connector enrollment requires a configured operator OIDC identity")
 		}
 	}
 	if strings.TrimSpace(c.TLSCertFile) == "" || strings.TrimSpace(c.TLSKeyFile) == "" {
@@ -205,6 +209,19 @@ func Run(ctx context.Context, cfg Config, store application.Store, machineExecut
 func runtimeTLSConfig(cfg Config) (*tls.Config, error) {
 	config := &tls.Config{MinVersion: tls.VersionTLS12}
 	if !cfg.boundRuntimeEnabled() {
+		if cfg.WorkstationEnrollmentEnabled {
+			// Optional workstation certificates are requested without
+			// rejecting human browser connections that authenticate by OIDC.
+			// Their chain/tenant/registry/CRL are checked on every machine
+			// request by workstationDeviceMiddleware. A missing managed CA
+			// cannot silently enable an unauthenticated machine API.
+			pool, err := loadClientCAPool(cfg.TLSClientCAFile)
+			if err != nil {
+				return nil, fmt.Errorf("workstation client CA is required: %w", err)
+			}
+			config.ClientAuth = tls.RequestClientCert
+			config.ClientCAs = pool
+		}
 		return config, nil
 	}
 	pool, err := loadClientCAPool(cfg.TLSClientCAFile)

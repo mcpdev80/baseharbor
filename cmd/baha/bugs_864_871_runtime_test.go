@@ -121,7 +121,7 @@ func runFinalBugRuntimeRegression(t *testing.T, ctx context.Context, target depl
 			verify()
 			command("down")
 			rec, found, err := deployment.FindDeployment(target.Name, m.ApplicationID, m.Environment)
-			if err != nil || !found || rec.Observed.Ready || rec.Observed.State != "stopped" {
+			if err != nil || !found || rec.Observed.Ready || rec.Observed.State != "runtime-retired" {
 				t.Fatal("down observation stale", err)
 			}
 			command("--plain", "up", "--yes")

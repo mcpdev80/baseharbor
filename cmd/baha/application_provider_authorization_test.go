@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/delivery"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/machine"
 )
@@ -71,6 +72,15 @@ func TestSelectiveSecretsPlanHasStableConsentWithoutAuthorityChanges(t *testing.
 	first, err := buildResolvedApplicationPlan(ctx, r)
 	if err != nil || first.ProviderPlan.Impact == nil {
 		t.Fatalf("Secrets impact unavailable: %v", err)
+	}
+	challengeErr := authorizeApplicationProviderChanges(ctx, r, nil, io.Discard)
+	var challenge *machine.Error
+	if !errors.As(challengeErr, &challenge) || challenge.Code != machine.ErrorApprovalRequired {
+		t.Fatalf("missing read-only authorization challenge: %v", challengeErr)
+	}
+	submission, _ := candidateSubmissionForResolvedApp(ctx, r)
+	if digest := remoteChallengeCandidateDigest(challenge.Next); digest == "" || digest != delivery.CandidateConsentDigest(submission) {
+		t.Fatal("provider challenge does not identify the exact source to be approved")
 	}
 	consent := application.ProviderChangeConsent{PlanID: first.ProviderPlan.Impact.PlanID, First: true, Second: true}
 	for attempt := 0; attempt < 4; attempt++ {

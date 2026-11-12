@@ -133,15 +133,15 @@ plan consequence, not a credential reset.
 
 ## Target consumer union and add/remove/re-add
 
-Application `--full-reset` and remote application destruction acknowledge an
-aggregate `baseharbor.provider-impact-scope/v1` owned by the selected deployment.
+Application stop and destruction acknowledge an aggregate
+`baseharbor.provider-impact-scope/v1` owned by the selected deployment.
 The embedded provider plan alone cannot authorize deletion of the deployment's
-protected state. Both current acknowledgements are required; full reset also
+protected state. Both current acknowledgements are required; destruction also
 requires separate data-deletion consent. Changed publication/recovery ownership
 invalidates that consent. Unverified remote material/access is explicitly partial.
-Default remote destruction retains the existing publication, credentials and
-deployment owner, releases references only after verified container removal,
-and uses the protected retired intent for explicit reactivation. No unauthenticated
+Stop retains the existing publication, credentials and deployment owner for
+explicit reactivation. Destroy removes exclusively app-owned data and state,
+releasing references only after verified resource removal. No unauthenticated
 access or successful material handoff is inferred from retained files.
 
 `ResolveProviderPlan(snapshot, consumers, inventoryComplete)` delegates every
@@ -219,9 +219,16 @@ The existing plan/preflight/confirmation/apply/verify authorities execute it.
 | materials | Individual current material and location, recovery references, intended retained/transferred/deleted/revoked/expired/invalidated/nonrecoverable/unknown disposition and destination/access |
 | prerequisites | Concrete handoff, rebind or adapter-specific verification, support/evidence and consequence if unverified; no fictional fallback |
 | effects | Applicable actual before/after availability, consistency, durability, retention, protocol, policy/TLS/HA, delivery, routing, reconnection or recovery changes from the adapter |
-| complete | Knowledge completeness; false requires Achtung/two acknowledgements and does not prohibit the informed choice |
+| complete | Knowledge completeness; false requires Achtung/both acknowledgement fields and does not prohibit the informed choice |
 | plan_id / revision | Deterministic digest of consequences plus relevant binding/ownership/dependency state and existing-owner revision; materially changed facts invalidate old consent |
 | confirmations_required / destructive | One ordinary stage, or two for alternative-less/unknown/destructive effects; explicit data-deletion consent remains separate |
+
+Interactive application deployment can collect the required consequence fields
+and exact source-candidate consent in one scoped decision after a service summary.
+That decision authorizes only the displayed plan and source digest. If the plan
+deletes data, the question explicitly includes permanent deletion. Generic
+`--yes` does not populate these consent fields; maintenance operations retain
+their existing separate acknowledgements.
 
 `ProviderPlan.ConsumerActivity` includes explicitly inactive consumers from the
 same intents; past runtime use is not mistaken for current need. Incidental

@@ -43,3 +43,17 @@ func TestCoreHTTPApplyRejectsUnboundRemoteSourceBeforeMutation(t *testing.T) {
 		})
 	}
 }
+
+func TestCoreHTTPApplyStageErrorPreservesMachineCodeAndStage(t *testing.T) {
+	original := &machine.Error{
+		Code:      machine.ErrorCapabilityMissing,
+		CauseCode: "application_initialization_required",
+		Message:   "Application identity has not been initialized.",
+		Next:      "Initialize the application first.",
+	}
+	got := machine.Classify(coreHTTPApplyStageError("execute lifecycle", original))
+	if got.Code != original.Code || got.CauseCode != original.CauseCode || got.Next != original.Next ||
+		got.Message != "Core remote apply execute lifecycle: "+original.Message {
+		t.Fatalf("Core apply stage and error authority were not retained: %+v", got)
+	}
+}

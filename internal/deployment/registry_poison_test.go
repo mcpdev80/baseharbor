@@ -88,8 +88,8 @@ func TestListDeploymentsReportsRegistryConflictOnPoisonedTarget(t *testing.T) {
 	if !strings.Contains(joined, first.DeploymentID) || !strings.Contains(joined, second.DeploymentID) {
 		t.Fatalf("the conflict must name BOTH colliding deployments for the --uuid repair: %s", joined)
 	}
-	if !strings.Contains(joined, "baha app destroy --uuid") || !strings.Contains(joined, "--full-reset") {
-		t.Fatalf("the conflict must name the VERIFIED working repair (lesson 162): %s", joined)
+	if !strings.Contains(joined, "baha app destroy --uuid") || !strings.Contains(joined, "--yes") {
+		t.Fatalf("the conflict must name the verified destroy command (lesson 162): %s", joined)
 	}
 
 	// FindDeployment routes through the same seam and must refuse to pick.

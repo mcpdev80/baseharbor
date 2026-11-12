@@ -98,7 +98,7 @@ func candidateSubmissionForResolvedApp(ctx context.Context, resolved resolvedApp
 		ContractVersion:  delivery.CandidateContractVersion,
 		ApplicationID:    identity.Identity.ApplicationID,
 		TargetName:       identity.Identity.Target,
-		SourceRepository: identity.Source.Repository,
+		SourceRepository: resolved.repositoryRoot(),
 		SourceRevision:   revision,
 		ImageDigest:      "",
 	}

@@ -12,6 +12,7 @@ func TestManagedCoreLANServingTLSEndpoints(t *testing.T) {
 		ListenAddr:          "192.168.6.178:8443",
 		ConnectorListenAddr: "192.168.6.178:9443",
 	}
+	cfg.ConnectorEnrollmentEnabled = true
 	t.Setenv("BASEHARBOR_API_PUBLIC_URL", "https://192.168.6.178:8443")
 	t.Setenv("BASEHARBOR_CONNECTOR_PUBLIC_ADDRESS", "192.168.6.178:9443")
 	apiHost, connectorHost, err := managedCoreTLSEndpoints(cfg)
@@ -34,6 +35,9 @@ func TestManagedCoreLANServingTLSEndpoints(t *testing.T) {
 		{"localhost pseudo-domain", cfg, "https://auth.baha.localhost:8443", "192.168.6.178:9443"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			if strings.Contains(tc.name, "connector") {
+				tc.cfg.ConnectorEnrollmentEnabled = true
+			}
 			t.Setenv("BASEHARBOR_API_PUBLIC_URL", tc.api)
 			t.Setenv("BASEHARBOR_CONNECTOR_PUBLIC_ADDRESS", tc.node)
 			if _, _, err := managedCoreTLSEndpoints(tc.cfg); err == nil {
@@ -59,5 +63,24 @@ func TestManagedCoreTLSNeverOverridesBYOCOrCoreAuthority(t *testing.T) {
 	cfg := controlplaneruntime.Config{TLSCertFile: "/etc/external.crt", TLSKeyFile: "/etc/external.key"}
 	if err := prepareManagedCoreServingTLS(t.Context(), &cfg); err != nil || !strings.HasSuffix(cfg.TLSCertFile, ".crt") {
 		t.Fatalf("default BYOC path changed: %+v %v", cfg, err)
+	}
+}
+
+func TestManagedCoreLANEndpointDefaultsFromConcreteListener(t *testing.T) {
+	t.Setenv("BASEHARBOR_API_PUBLIC_URL", "")
+	t.Setenv("BASEHARBOR_CONNECTOR_PUBLIC_ADDRESS", "")
+	cfg := controlplaneruntime.Config{
+		ListenAddr:                   "192.168.6.178:18443",
+		WorkstationEnrollmentEnabled: true,
+	}
+	host, connector, err := managedCoreTLSEndpoints(cfg)
+	if err != nil || host != "192.168.6.178" || connector != "" {
+		t.Fatalf("automatic workstation-only LAN endpoint: host=%q connector=%q err=%v", host, connector, err)
+	}
+	for _, bad := range []string{"127.0.0.1:18443", "0.0.0.0:18443", "192.168.6.178:abc"} {
+		cfg.ListenAddr = bad
+		if _, _, err := managedCoreTLSEndpoints(cfg); err == nil {
+			t.Fatalf("unsafe automatic Core LAN listener accepted: %q", bad)
+		}
 	}
 }

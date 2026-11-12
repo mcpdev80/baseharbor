@@ -182,7 +182,7 @@ func (d *KeycloakDriver) Provision(ctx context.Context, resource capability.Reso
 		WebAuthnPolicyPasswordlessSignatureAlgorithms: []string{"ES256", "RS256"},
 		Attributes: realmAttributes,
 	}
-	if err := admin.reconcileRealm(ctx, realm); err != nil {
+	if err := admin.reconcileRealm(ctx, realm, ownership); err != nil {
 		return err
 	}
 	if _, _, err := admin.ensureManagedSigningProvider(ctx, d.realm); err != nil {

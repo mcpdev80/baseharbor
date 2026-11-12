@@ -14,12 +14,8 @@ import (
 )
 
 const (
-	LokiImage       = "docker.io/grafana/loki:3.7.8"
-	AlloyImage      = "docker.io/grafana/alloy:v1.19.2"
-	LokiRuntimeUID  = 10001
-	LokiRuntimeGID  = 10001
-	AlloyRuntimeUID = 473
-	AlloyRuntimeGID = 473
+	LokiImage  = "docker.io/grafana/loki:3.7.8"
+	AlloyImage = "docker.io/grafana/alloy:v1.19.2"
 )
 
 type Runtime interface {

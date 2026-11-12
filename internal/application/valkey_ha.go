@@ -1,14 +1,57 @@
 package application
 
 import (
+	_ "embed"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
 
-const valkeySentinelMasterName = "baseharbor"
+const (
+	valkeySentinelMasterName    = "baseharbor"
+	valkeyProviderImage         = "localhost/baseharbor-valkey:9.1.2-arbitrary-uid1"
+	valkeyProviderBuildDir      = "valkey-image"
+	valkeyDataPermissionPrelude = `umask 0007
+mkdir -p /data/appendonlydir
+data_uid="$(stat -c '%u' /data/appendonlydir)"
+data_gid="$(stat -c '%g' /data/appendonlydir)"
+if [ "$$data_uid" = "$(id -u)" ]; then
+  chgrp -R 0 /data/appendonlydir
+  chmod -R g=u /data/appendonlydir
+elif [ "$$data_gid" != 0 ] || [ ! -w /data/appendonlydir ]; then
+  echo 'Valkey AOF data is not writable by the assigned UID or GID 0' >&2
+  exit 1
+fi`
+)
+
+//go:embed assets/valkey-image/Dockerfile
+var valkeyProviderDockerfile []byte
+
+func ensureValkeyProviderBuildContext(runtimeDir string) error {
+	buildDir := filepath.Join(runtimeDir, valkeyProviderBuildDir)
+	if err := os.MkdirAll(buildDir, 0o700); err != nil {
+		return err
+	}
+	path := filepath.Join(buildDir, "Dockerfile")
+	if err := os.WriteFile(path, valkeyProviderDockerfile, 0o600); err != nil {
+		return err
+	}
+	return os.Chmod(path, 0o600)
+}
+
+func writeValkeyImageBuild(b *strings.Builder) {
+	b.WriteString("    build:\n      context: ./" + valkeyProviderBuildDir + "\n      dockerfile: Dockerfile\n")
+}
+
+func writeValkeyDataPermissionPrelude(b *strings.Builder) {
+	for _, line := range strings.Split(valkeyDataPermissionPrelude, "\n") {
+		b.WriteString("        " + line + "\n")
+	}
+}
 
 func valkeyAvailabilityComponent(m Manifest, instance string) string {
 	for _, name := range KeyValueInstanceNames(m) {
@@ -104,9 +147,9 @@ func writeValkeyHAComposeServices(b *strings.Builder, m Manifest, instance strin
 	for ordinal := 0; ordinal < count; ordinal++ {
 		service := valkeyMemberServiceName(instance, ordinal)
 		fmt.Fprintf(b, "  %s:\n", service)
-		b.WriteString("    image: docker.io/valkey/valkey:9.1.2-alpine\n")
+		b.WriteString("    image: " + valkeyProviderImage + "\n")
+		writeValkeyImageBuild(b)
 		b.WriteString("    restart: unless-stopped\n")
-		b.WriteString("    user: \"999:1000\"\n")
 		b.WriteString("    read_only: true\n")
 		b.WriteString("    cap_drop: [\"ALL\"]\n")
 		b.WriteString("    security_opt: [\"no-new-privileges:true\"]\n")
@@ -114,6 +157,7 @@ func writeValkeyHAComposeServices(b *strings.Builder, m Manifest, instance strin
 		b.WriteString("    environment:\n")
 		fmt.Fprintf(b, "      VALKEY_PASSWORD: ${%s}\n", passwordKey)
 		b.WriteString("    command:\n      - sh\n      - -ec\n      - |\n")
+		writeValkeyDataPermissionPrelude(b)
 		if ordinal > 0 {
 			writeValkeyPrimaryAddressBootstrap(b, primary)
 		}
@@ -144,9 +188,9 @@ func writeValkeyHAComposeServices(b *strings.Builder, m Manifest, instance strin
 	for ordinal := 0; ordinal < 3; ordinal++ {
 		service := valkeySentinelServiceName(instance, ordinal)
 		fmt.Fprintf(b, "  %s:\n", service)
-		b.WriteString("    image: docker.io/valkey/valkey:9.1.2-alpine\n")
+		b.WriteString("    image: " + valkeyProviderImage + "\n")
+		writeValkeyImageBuild(b)
 		b.WriteString("    restart: unless-stopped\n")
-		b.WriteString("    user: \"999:1000\"\n")
 		b.WriteString("    read_only: true\n")
 		b.WriteString("    cap_drop: [\"ALL\"]\n")
 		b.WriteString("    security_opt: [\"no-new-privileges:true\"]\n")
@@ -154,6 +198,7 @@ func writeValkeyHAComposeServices(b *strings.Builder, m Manifest, instance strin
 		b.WriteString("    environment:\n")
 		fmt.Fprintf(b, "      VALKEY_PASSWORD: ${%s}\n", passwordKey)
 		b.WriteString("    command:\n      - sh\n      - -ec\n      - |\n")
+		writeValkeyDataPermissionPrelude(b)
 		writeValkeyPrimaryAddressBootstrap(b, primary)
 		b.WriteString("        {\n")
 		b.WriteString("          printf 'port 26379\\n'\n")

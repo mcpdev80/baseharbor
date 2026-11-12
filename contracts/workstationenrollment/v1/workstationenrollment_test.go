@@ -50,6 +50,14 @@ func TestRecordPositiveValidates(t *testing.T) {
 	}
 }
 
+func TestRecordAcceptsFiveYearWorkstationLifetime(t *testing.T) {
+	record := baselineRecord(t)
+	record.Bootstrap.CertificateTTLSeconds = 157680000
+	if err := record.ValidateKindEnforcement(); err != nil {
+		t.Fatalf("five-year workstation lifetime rejected: %v", err)
+	}
+}
+
 // ROTE 1: foreign recipient (not bound to the scope) is rejected.
 func TestRecordForeignRecipientRejected(t *testing.T) {
 	record := baselineRecord(t)

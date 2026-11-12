@@ -47,14 +47,12 @@ func TestKeycloakComposeInheritsManagementHTTPS(t *testing.T) {
 		t.Fatalf("Keycloak compose missing native HTTPS listener health probe:\n%s", got)
 	}
 	for _, want := range []string{
-		"keycloak-db-tls-init:",
 		"PGROOT: /home/postgres/pgdata/pgroot",
 		"PGDATA: /home/postgres/pgdata/pgroot/data",
 		"keycloak-db-data-1:/home/postgres/pgdata/pgroot",
-		"keycloak-db-tls:/run/baseharbor/db-tls:ro",
-		"uid=$$(id -u postgres); gid=$$(id -g postgres)",
-		"chown \"$$uid:$$gid\"",
-		"chmod 0600 /target/server-key.pem",
+		"./db-ha/runtime/server-key.pem:/run/baseharbor/db-tls-source/server-key.pem:ro",
+		"cp /run/baseharbor/db-tls-source/server-key.pem /run/baseharbor/etcd-runtime/server-key.pem",
+		"chmod 0600 /run/baseharbor/etcd-runtime/client-key.pem /run/baseharbor/etcd-runtime/server-key.pem",
 		"-v app_user=\"$$BASEHARBOR_KEYCLOAK_DB_USER\"",
 		"attempts=$$((attempts+1))",
 		"if [ \"$$attempts\" -ge 90 ]",
@@ -104,8 +102,8 @@ func TestKeycloakSingleComposeHasNoHAResources(t *testing.T) {
 			t.Errorf("single mode missing %q", want)
 		}
 	}
-	for _, unwanted := range []string{"  keycloak-2:", "  keycloak-3:", "keycloak-db-member-1:", "keycloak-db-etcd-1:", "keycloak-db-tls:/run/baseharbor/db-tls:ro"} {
-		if strings.Contains(got, unwanted) && unwanted != "keycloak-db-tls:/run/baseharbor/db-tls:ro" {
+	for _, unwanted := range []string{"  keycloak-2:", "  keycloak-3:", "keycloak-db-member-1:", "keycloak-db-etcd-1:", "keycloak-db-tls-init:", "user:", "install -o"} {
+		if strings.Contains(got, unwanted) {
 			t.Errorf("non-HA contains %q", unwanted)
 		}
 	}

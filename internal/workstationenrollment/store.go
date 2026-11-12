@@ -74,7 +74,7 @@ func (m *memoryStore) Consume(_ context.Context, scope Scope, token, nonce strin
 		return Bootstrap{}, ErrDenied
 	}
 	delete(m.grants, key)
-	if ttl <= 0 || ttl > 24*time.Hour {
+	if ttl <= 0 || ttl > MaxCertificateTTL {
 		return Bootstrap{}, ErrDenied
 	}
 	return Bootstrap{

@@ -32,21 +32,48 @@ Rotation ersetzt Manager-AppRole, Control-Plane-Datenbankzugangsdaten und manage
 Weiter: [Sicherheit](../explanation/security.md), [Authentifizierung](../explanation/authentication.md), [exakte Befehle (EN)](https://mcpdev80.github.io/baseharbor/cli/security-trust/).
 
 
-## Initialen Operator und Tenant einrichten (v0.4.27, Kandidat)
+## Workstation-Gerät registrieren
 
-Auf dem **lokal gehörenden, bereiten Management-Core** initialisiert der erste Owner ausdrücklich:
+Die Verbindung eines Entwicklungsrechners mit seinem Core ist eine separate
+Geräte-Einschreibung, keine OIDC-Anmeldung eines Operators und keine
+Node-Connector-Einschreibung. Auf der Core-VM `baha up` und danach
+`baha onboard` ausführen. Die private JSON-Einladung auf die Workstation
+übertragen und dort mit `baha onboard --import FILE` importieren. Übernimm den
+Vorschlag für den lokalen Alias oder gib `--target-name NAME` an; wähle ihn danach
+mit `baha use NAME` aus. Der Alias ist vom Core-Target in der Einladung
+getrennt. Die Einladung registriert eine Geräteidentität mit minimalen Rechten,
+keine Operator-Rolle. Siehe den
+[Ablauf Core-zu-Workstation](../spec/zero-friction-workstation-onboarding-v0427.md).
+
+Menschliche Operatoren melden sich weiterhin über die konfigurierte
+OIDC-Grenze mit `baha login` an. Die Geräteeinschreibung verändert oder
+umgeht diese Authentifizierungsrichtlinie nicht.
 
 
+Nach dem Einlösen der Einladung und der Prüfung der Core-Identität bietet der
+interaktive Import an, der öffentlichen CA auf dem Entwicklungsrechner zu
+vertrauen. Er erklärt die Wirkung auf HTTPS und zeigt den SHA-256-Fingerabdruck.
+Bei Zustimmung installiert BaseHarbor Systemvertrauen und die CA in unterstützte
+vorhandene Linux-NSS-Speicher von Chromium und Firefox, einschließlich erkannter
+Firefox-Profile in Snap und Flatpak. Private Schlüssel und Browser-Einstellungen
+werden nicht importiert. Browser danach neu starten. Fehler einzelner
+Browser-Speicher werden gesondert angezeigt.
 
-Im erweiterten Pfad kannst du `baha login -e dev --init-tenant --tenant-slug acme --tenant-name "Acme GmbH"` verwenden. Der Standard-Tenant heisst `baseharbor`, seine UUID erzeugt der Core.
+Für Skripte bestätigt `baha onboard --import FILE --trust-host-ca` die Installation;
+`--skip-host-trust` lässt die Zertifikatsspeicher unverändert. Ohne ausdrückliche
+Zustimmung verändert ein nichtinteraktiver Import das Host-Vertrauen nicht.
+Die Systeminstallation kann sudo benötigen. Für Browser wird NSS `certutil`
+benötigt (Debian/Ubuntu: `libnss3-tools`). Fehlende Werkzeuge und nicht unterstützte
+Profile werden mit Hinweisen gemeldet; Browser-Werkzeuge werden nicht ungefragt
+installiert.
 
-Diese Erst-Owner-Aktion ist **kein automatischer Bestandteil von `baha up`**. Die Anmeldung verwendet interaktives OIDC Authorization Code + PKCE. Ohne gespeicherte Operator-OIDC-Grenze lässt sich im Einrichtungsdialog Managed/Shared Keycloak oder ein externer OIDC-Provider wählen. Managed Keycloak nutzt ein eigenes umgebungsgebundenes Operator-Realm samt Client, getrennt vom Core-Identity-Realm `baseharbor`.
-
-Erst nach verifizierter, nicht abgelaufener Anmeldung werden Tenant `baseharbor`, die externe Identität (Issuer + Subject) und deren `editor`-Membership atomar mit RLS gespeichert. Derselbe Owner kann wiederholen; andere Owner, fremde bestehende Tenants, Remote-Targets, ungültige Identitäten oder ein nicht bereiter Core scheitern sicher. Es gibt keinen anonymen Erst-Admin-Endpunkt. Unkonfiguriertes `dev` bleibt trusted-local; nach dem expliziten Bootstrap nutzt normales `baha login -e dev` die gespeicherte OIDC-Grenze.
-
-**Vor der Connector-Einschreibung:** `BASEHARBOR_API_OIDC_ISSUER` und `BASEHARBOR_API_OIDC_AUDIENCES` der geschützten Operator-API müssen zum tatsächlichen Operator-Realm/Client passen. Eine API mit `.../realms/baseharbor` akzeptiert keine Token aus `.../realms/bh-operators-dev`. Issuer und Audience über Discovery abgleichen, keine OIDC-/Tenant-Prüfung umgehen.
-
-Anschließend mit `baha node add` einschreiben, mit `baha node connect` verbinden, über `baha app up` bereitstellen und mit `baha doctor` prüfen. Docker und Podman brauchen jeweils echte End-to-End-Nachweise. Die Funktion entsteht in [Core-PR #1437](https://github.com/mcpdev80/baseharbor/pull/1437) und ist **noch weder gemergt noch released oder nativ abgenommen**.
+Scheitert die Vertrauensinstallation, bleibt die Verbindung gespeichert.
+Die Einmal-Einladung nicht erneut importieren: Mit
+`baha --target NAME trust install --yes` wiederholen. Der Befehl prüft den
+Remote-Core und installiert das Vertrauen auf dem Entwicklungsrechner, ohne
+einen lokalen Core zu starten. `baha trust uninstall --yes` entfernt nur erfasste,
+unveränderte BaseHarbor-Zertifikate aus System und Browsern. Vom Betreiber
+installierte Zertifikate bleiben erhalten.
 
 ## Weitere Befehlsbeispiele
 
@@ -54,13 +81,6 @@ Anschließend mit `baha node add` einschreiben, mit `baha node connect` verbinde
 baha login
 baha logout
 baha whoami
-```
-
-```bash
-baha target show
-baha up --control-plane-only
-baha login -e dev --init-tenant
-baha whoami -e dev
 ```
 
 ```text
@@ -84,3 +104,46 @@ baha login
 baha whoami
 baha logout
 ```
+
+## Optionale Namensauflösung auf dem Entwicklerrechner
+
+Unter Linux bietet der Einladungsimport separat an, konkrete App- und GUI-Namen
+in `/etc/hosts` zu verwalten. Das ist **standardmäßig ausgeschaltet** und von
+CA-Vertrauen unabhängig. Vor der Zustimmung erscheinen die Namen und die IP
+des verifizierten Cores; sudo kann erforderlich sein. Es wird kein DNS-Dienst
+installiert. Wildcards funktionieren in Hosts-Einträgen nicht.
+`--configure-hosts` aktiviert die Verwaltung beim Import ausdrücklich;
+`--skip-hosts` überspringt das Angebot. Nach der Zustimmung gleichen erfolgreiche
+CLI-Deployments die Einträge dieses Targets ab. Ohne Eingabe oder ausdrückliche
+Freigabe bleibt die Hosts-Datei unverändert.
+
+Für bestehende Verbindungen:
+
+```text
+baha --target NAME dev hosts status
+baha --target NAME dev hosts sync
+baha --target NAME dev hosts remove --yes
+baha --target NAME dev cleanup --yes
+```
+
+`sync` zeigt die Namen und fragt beim erstmaligen Aktivieren nach Zustimmung;
+`sync --yes` aktiviert die Verwaltung ausdrücklich für Skripte. `remove`
+deaktiviert nur die Hosts-Verwaltung. `cleanup` entfernt den unveränderten
+eigenen Hosts-Abschnitt dieses Targets sowie dessen registrierte System- und
+Browser-CA. Verwendet eine andere aktive Verbindung dieselbe CA, bleibt sie
+installiert. Fremde Einträge, Namenskonflikte und manuell veränderte Abschnitte
+oder Zertifikate bleiben erhalten und werden gemeldet. Die lokale Bereinigung
+benötigt keinen erreichbaren Core und erhält Apps, Daten und Geräteanmeldung.
+Auch das Entfernen der lokalen Verbindung im Onboarding-Wizard führt diese
+Bereinigung aus, bevor dessen Verbindungsdatensatz entfernt wird. Erneutes
+explizites Installieren des CA-Vertrauens aktiviert die CA-Referenz wieder.
+
+Unter Linux unterstützt der Import NSS-Speicher von Chromium und Microsoft Edge,
+einschließlich vorhandener Chromium-Snap-Revisionsspeicher und Chromium-/Edge-
+Flatpak-Speicher. Firefox verwendet eigene Profil-Datenbanken (nativ, Snap und
+Flatpak). BaseHarbor importiert nur in vorhandene unterstützte Speicher und legt
+keine Browserprofile oder Browserrichtlinien an. Wird Firefox erst später
+installiert oder ein Profil neu angelegt, erneut
+`baha --target NAME trust install --yes` ausführen. Betroffene Browser nach einer
+Vertrauensänderung vollständig neu starten. Neu installierte Browser-CA-Einträge
+werden für dieselbe fingerprintgeprüfte Bereinigung wie System-CA-Einträge erfasst.

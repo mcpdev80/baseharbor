@@ -1,9 +1,14 @@
 package workstationenrollmenthttp_test
 
 import (
+	"bytes"
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
+	"encoding/pem"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -13,6 +18,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/database"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
+	"github.com/mcpdev80/baseharbor/internal/tenancy"
 	ws "github.com/mcpdev80/baseharbor/internal/workstationenrollment"
 	wshttp "github.com/mcpdev80/baseharbor/internal/workstationenrollment/http"
 )
@@ -274,5 +280,66 @@ func TestRenewPersistsNewSerialDiscrimination(t *testing.T) {
 	}
 	if afterRestart != enrolled.Serial {
 		t.Fatalf("expected the enrolled serial to survive restart without a renewal: got %q want %q", afterRestart, enrolled.Serial)
+	}
+}
+
+func TestDeviceSelfRenewPersistsCurrentSerial(t *testing.T) {
+	rctx, pool, _ := wsRestartDatabase(t)
+	e := newProductionEnrollmentOverStore(t, pool)
+	h, err := wshttp.NewProductionHandler(e, wshttp.ScopeResolverFromContext())
+	if err != nil {
+		t.Fatal(err)
+	}
+	scope := ws.Scope{TenantID: tenantA, Station: validStation}
+	token, nonce := wsBootstrap(t, h, validStation, tenantA)
+	enroll := do(t, h, "/enroll", enrollBody(t, validStation, tenantA, token, nonce), ctx(t, tenantA))
+	if enroll.Code != http.StatusOK {
+		t.Fatalf("precondition enrollment failed: HTTP %d", enroll.Code)
+	}
+	var issued struct {
+		Serial  string `json:"serial"`
+		LeafPEM string `json:"leaf_pem"`
+	}
+	if err := json.NewDecoder(enroll.Body).Decode(&issued); err != nil {
+		t.Fatal(err)
+	}
+	block, _ := pem.Decode([]byte(issued.LeafPEM))
+	if block == nil {
+		t.Fatal("enrollment returned no signed certificate")
+	}
+	leaf, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := json.Marshal(map[string]any{
+		"station": scope.Station, "csr_pem": newCSR(t, scope.Identity()),
+		"certificate_ttl_seconds": 3600,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/workstations/renew", bytes.NewReader(body))
+	req.TLS = &tls.ConnectionState{PeerCertificates: []*x509.Certificate{leaf}}
+	req = req.WithContext(tenancy.WithContext(req.Context(), &tenancy.Context{
+		TenantID: tenantA, ExternalIdentityID: "workstation/" + validStation,
+		Roles: []string{"editor"},
+	}))
+	rec := httptest.NewRecorder()
+	h.ServeDeviceRenew(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("mTLS self-renewal rejected: HTTP %d body=%s", rec.Code, rec.Body.String())
+	}
+	var renewed struct {
+		Serial string `json:"serial"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&renewed); err != nil {
+		t.Fatal(err)
+	}
+	if renewed.Serial == "" || renewed.Serial == issued.Serial {
+		t.Fatal("self-renewal did not issue a new current serial")
+	}
+	current, ok, err := e.store.CurrentSerial(rctx, scope)
+	if err != nil || !ok || current != renewed.Serial {
+		t.Fatalf("device renewal not persisted as current registry identity: current=%q ok=%v err=%v", current, ok, err)
 	}
 }

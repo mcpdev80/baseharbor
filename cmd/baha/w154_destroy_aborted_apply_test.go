@@ -94,9 +94,10 @@ func TestW154DestroyAfterProviderChangeAbortReturnsZero(t *testing.T) {
 		t.Fatalf("runtime dir unexpectedly present at %s; the abort scenario requires it absent", rtDir)
 	}
 
-	// (3) `app destroy --yes` on the stuck state must retire with rc=0.
-	var out, errOut bytes.Buffer
-	derr := executeApplicationDestroyLifecycle(context.Background(), application.DefaultStore(), []string{"--yes"}, &out, &errOut)
+	// (3) `app stop --yes` on the stuck state must retire with rc=0 while
+	// preserving its deployment owner and any persistent data.
+	var out bytes.Buffer
+	derr := stopSelectiveApplicationWithConsent(context.Background(), &out)
 	if derr != nil {
 		t.Fatalf("destroy of stuck-apply state must return rc=0 on head, got: %v\noutput:\n%s", derr, out.String())
 	}

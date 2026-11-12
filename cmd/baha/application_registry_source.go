@@ -221,7 +221,15 @@ func (s RegistrySource) run(ctx context.Context, action, ref string) (string, er
 	if run == nil {
 		run = execArtifact
 	}
-	return run(ctx, "oras", action, ref)
+	args := []string{action}
+	if action == "resolve" {
+		// ORAS normally prints only the digest. The registry verifier needs the
+		// complete repository@digest identity so it can prove that the response
+		// belongs to the requested image repository.
+		args = append(args, "--full-reference")
+	}
+	args = append(args, ref)
+	return run(ctx, "oras", args...)
 }
 
 // execArtifact is the production runner backed by os/exec.
@@ -403,10 +411,9 @@ func splitReference(reference string) (repository, tag string) {
 	return reference, ""
 }
 
-// pullResolvedRuntimeImage is the single pull site (cmd/baha/app_broker.go) that
-// connects the runtime lifecycle to RegistrySource. It resolves the configured
-// endpoint through resolveRegistrySource and pulls exactly the immutable
-// repository@digest identity it returns. Any resolution failure propagates
+// pullResolvedRuntimeImage connects runtime lifecycle callers to RegistrySource.
+// It resolves the configured endpoint through resolveRegistrySource and pulls
+// exactly the immutable repository@digest identity it returns. Any resolution failure propagates
 // fail-closed with zero pulls. The only mutable fallback is the explicit
 // operator opt-in BASEHARBOR_ALLOW_MUTABLE_DEVELOPMENT_IMAGE, and it runs only
 // when the endpoint was classified UNAVAILABLE — a denied endpoint or a
@@ -415,6 +422,16 @@ func splitReference(reference string) (repository, tag string) {
 // rejection rules. A caller that pulls a mutable reference on a rejected
 // resolve is the RED mutant this path proves.
 func pullResolvedRuntimeImage(ctx context.Context, compose bhruntime.RuntimeProvider, location, requested string) error {
+	return pullResolvedRuntimeImageProgress(ctx, compose, location, requested, nil)
+}
+
+func pullResolvedRuntimeImageProgress(ctx context.Context, compose bhruntime.RuntimeProvider, location, requested string, onProgress func(string)) error {
+	report := func(detail string) {
+		if onProgress != nil {
+			onProgress(detail)
+		}
+	}
+	report("resolving and verifying the immutable OCI registry identity")
 	resolvedImage, err := resolveRegistrySource(ctx, location, requested)
 	if err != nil {
 		if errors.Is(err, ErrRegistryNativeToolMissing) {
@@ -435,6 +452,7 @@ func pullResolvedRuntimeImage(ctx context.Context, compose bhruntime.RuntimeProv
 			return fmt.Errorf("resolve development runtime image: %w", err)
 		}
 	}
+	report("pulling the verified immutable runtime image")
 	if err := compose.PullImage(ctx, resolvedImage); err != nil {
 		// Apply the same native-tool classifier as OCI Resolve, but never
 		// expose untrusted runtime/registry stderr through error wrapping.
@@ -444,6 +462,7 @@ func pullResolvedRuntimeImage(ctx context.Context, compose bhruntime.RuntimeProv
 		}
 		return fmt.Errorf("pull resolved development runtime image: %w", ErrRegistrySourceUnavailable)
 	}
+	report("runtime image download complete")
 	return nil
 }
 

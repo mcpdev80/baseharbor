@@ -68,7 +68,7 @@ func TestPinnedRemoteMachineExecutionKeepsAuthorityAndIdempotency(t *testing.T) 
 			}
 			if err := json.NewDecoder(r.Body).Decode(&request); err != nil ||
 				r.Header.Get("Idempotency-Key") != "stable-req-one" ||
-				request.OperationID != "status" || request.Context.Target != "remote" ||
+				request.OperationID != "status" || request.Context.Target != "local" ||
 				request.Context.Environment != "dev" || request.Context.Application != "demo" {
 				http.Error(w, "bad machine request", http.StatusBadRequest)
 				return
@@ -94,11 +94,15 @@ func TestPinnedRemoteMachineExecutionKeepsAuthorityAndIdempotency(t *testing.T) 
 	defer server.Close()
 	connection := &verifiedRemoteCore{
 		client: server.Client(), origin: server.URL, token: "operator-token",
-		target: "remote", tenant: "tenant-a",
+		target: "dev-docker-1", coreTarget: "local", tenant: "tenant-a",
 	}
-	selectors := machine.OperationContext{Application: "demo", Environment: "dev", Target: "remote"}
-	if _, err := connection.requestMachineExecution(context.Background(), "status", selectors, nil, "stable-req-one"); err != nil {
+	selectors := machine.OperationContext{Application: "demo", Environment: "dev", Target: "dev-docker-1"}
+	accepted, err := connection.requestMachineExecution(context.Background(), "status", selectors, nil, "stable-req-one")
+	if err != nil {
 		t.Fatalf("pinned machine operation rejected: %v", err)
+	}
+	if accepted.Context.Target != "dev-docker-1" {
+		t.Fatalf("Core selector leaked into workstation response: %+v", accepted.Context)
 	}
 	if postCount != 1 {
 		t.Fatalf("expected one admitted operation, got %d", postCount)
@@ -110,7 +114,7 @@ func TestPinnedRemoteMachineExecutionKeepsAuthorityAndIdempotency(t *testing.T) 
 	if postCount != 1 {
 		t.Fatal("foreign Target reached remote execution endpoint")
 	}
-	selectors.Target = "remote"
+	selectors.Target = "dev-docker-1"
 	forgedLocation = true
 	if _, err := connection.requestMachineExecution(context.Background(), "status", selectors, nil, "stable-req-one"); err == nil {
 		t.Fatal("foreign execution Location was trusted")

@@ -482,22 +482,46 @@ jobs:
           cache: false
       - name: Prepare isolated rootless runtime
         run: bash scripts/ci-core-rootless-runtime.sh
+      - name: Install verified ORAS for native Core bootstrap
+        run: bash scripts/ci-install-oras.sh
       - name: Verify actual native destroy and retry, fail on SKIP
         shell: bash
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           bash scripts/ci-native-installation-destroy.sh
-      - name: Prove isolated Greenfield Core lifecycle on actual engine
+      - name: Prove Greenfield Core and relevant remote onboarding on actual engine
         env:
           BASEHARBOR_GREENFIELD_NATIVE_ACCEPTANCE: "1"
           BASEHARBOR_CI_RUNTIME_INTEGRATION: "1"
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         shell: bash
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          go test -p 1 ./cmd/baha -run '^TestGreenfieldIsolatedCoreNativeInCI$' -count=1 -timeout 16m -json | tee greenfield.jsonl
+          git fetch --no-tags origin "$BASE_SHA" "$HEAD_SHA"
+          test_regex='^TestGreenfieldIsolatedCoreNativeInCI$'
+          onboarding_required=false
+          if git diff --name-only --diff-filter=ACMRT "$BASE_SHA" "$HEAD_SHA" | grep -Eq '^(cmd/baha/(onboarding|serve_managed_tls|workstation_|management_remote_)|internal/(onboardingbundle/|workstationenrollment/|controlplaneruntime/workstation_auth))'; then
+            onboarding_required=true
+            export BASEHARBOR_ONBOARDING_NATIVE_ACCEPTANCE=1
+            test_regex='^(TestGreenfieldIsolatedCoreNativeInCI|TestWorkstationOnboardingRemoteNativeInCI)$'
+          fi
+          if [ "$onboarding_required" = true ]; then
+            go build -o "$RUNNER_TEMP/baha-onboarding-native" ./cmd/baha
+            export BASEHARBOR_CI_BAHA_BINARY="$RUNNER_TEMP/baha-onboarding-native"
+          fi
+          if ! go test -p 1 ./cmd/baha -run "$test_regex" -count=1 -timeout 20m -json | tee greenfield.jsonl; then
+            if [ "$onboarding_required" = true ]; then
+              journalctl --user --no-pager -o cat -n 800 2>/dev/null | grep 'baseharbor-workstation-enroll:' | tail -n 12 || true
+            fi
+            exit 1
+          fi
           git rev-parse HEAD > greenfield.jsonl.sha
+          if [ "$onboarding_required" = true ]; then
+            python3 scripts/ci-onboarding-native-proof.py --input greenfield.jsonl --test TestWorkstationOnboardingRemoteNativeInCI
+          fi
       - name: Publish exact Greenfield report
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -975,7 +999,7 @@ jobs:
           python3 scripts/test_ci_keycloak_single_route.py
           python3 scripts/test_pr_ci_fallback.py
           python3 scripts/test_pr_unit_database_route.py
-           python3 scripts/test_pr_go_unit_shard.py
+          python3 scripts/test_pr_go_unit_shard.py
           python3 scripts/test_pr_runtime_source.py
           python3 scripts/test_pr_gate_dependencies.py
           python3 scripts/test_pr_incremental_reuse.py
@@ -1313,10 +1337,70 @@ jobs:
           PYTHON
 
   pr_draft_focused:
-    name: PR · Draft focused checks
+    name: PR · Draft source and routing
     if: github.event_name == 'pull_request' && github.base_ref == 'develop' && github.event.pull_request.draft == true
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 12
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Validate changed Go formatting and CI routes
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "$BASE_SHA" "$HEAD_SHA"
+          mapfile -d '' -t changed < <(git diff --name-only -z --diff-filter=ACDMRT "$BASE_SHA" "$HEAD_SHA")
+          go_files=()
+          module_changed=false
+          ci_changed=false
+          for file in "${changed[@]}"; do
+            case "$file" in
+              go.mod|go.sum) module_changed=true ;;
+              .github/workflows/*|scripts/pr-*.py|scripts/test_pr_*.py|scripts/ci-*.sh|scripts/test_ci_*.py)
+                ci_changed=true ;;
+            esac
+            case "$file" in
+              *.go) if [ -f "$file" ]; then go_files+=("$file"); fi ;;
+            esac
+          done
+          if [ "${#go_files[@]}" -gt 0 ]; then
+            unformatted="$(gofmt -l "${go_files[@]}")"
+            test -z "$unformatted" || { printf 'Unformatted Go source: %s\n' "$unformatted" >&2; exit 1; }
+          fi
+          if [ "$module_changed" = true ]; then
+            go build ./...
+          fi
+          if [ "$ci_changed" = true ]; then
+            go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -shellcheck=
+            python3 scripts/test_pr_incremental_reuse.py
+            python3 scripts/test_pr_required_final.py
+            python3 scripts/test_ci_check_routes.py
+            python3 scripts/test_pr_gate_plan.py
+            python3 scripts/test_pr_draft_go_packages.py
+          fi
+
+  pr_draft_go_shards:
+    name: PR · Draft Go · ${{ matrix.shard }}
+    if: github.event_name == 'pull_request' && github.base_ref == 'develop' && github.event.pull_request.draft == true
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [cli-0, cli-1, cli-2, packages]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
     env:
       BASEHARBOR_TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/baseharbor_test?sslmode=disable
     services:
@@ -1333,8 +1417,6 @@ jobs:
           --health-interval 2s
           --health-timeout 5s
           --health-retries 10
-    permissions:
-      contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -1344,53 +1426,59 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
-      - name: Test only changed Go packages and CI routing
+      - name: Reuse canonical CLI shards and test selected non-CLI packages
         shell: bash
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          SHARD: ${{ matrix.shard }}
         run: |
           set -euo pipefail
           git fetch --no-tags origin "$BASE_SHA" "$HEAD_SHA"
           mapfile -d '' -t changed < <(git diff --name-only -z --diff-filter=ACDMRT "$BASE_SHA" "$HEAD_SHA")
-          go_files=()
-          packages=()
+          files=()
           module_changed=false
-          ci_changed=false
           for file in "${changed[@]}"; do
             case "$file" in
               go.mod|go.sum) module_changed=true ;;
-              .github/workflows/*|scripts/pr-*.py|scripts/test_pr_*.py|scripts/ci-*.sh|scripts/test_ci_*.py)
-                ci_changed=true ;;
-            esac
-            case "$file" in
-              *.go)
-                if [ -f "$file" ]; then go_files+=("$file"); fi
-                directory="${file%/*}"
-                if [ "$directory" = "$file" ]; then
-                  directory="."
-                fi
-                packages+=("$file")
-                ;;
+              *.go) files+=("$file") ;;
             esac
           done
-          if [ "${#go_files[@]}" -gt 0 ]; then
-            unformatted="$(gofmt -l "${go_files[@]}")"
-            test -z "$unformatted" || { printf 'Unformatted Go source: %s\n' "$unformatted" >&2; exit 1; }
-          fi
           if [ "$module_changed" = true ]; then
-            go build ./...
-          elif [ "${#packages[@]}" -gt 0 ]; then
-            mapfile -t selected < <(python3 scripts/pr-draft-go-packages.py "${packages[@]}")
-            test "${#selected[@]}" -gt 0
-            go test "${selected[@]}" -count=1
+            case "$SHARD" in
+              cli-0|cli-1|cli-2) python3 scripts/pr-go-unit-shard.py --mode "$SHARD" ;;
+              packages) python3 scripts/pr-go-unit-shard.py --mode packages ;;
+            esac
+            exit 0
           fi
-          if [ "$ci_changed" = true ]; then
-            go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -shellcheck=
-            python3 scripts/test_pr_incremental_reuse.py
-            python3 scripts/test_pr_required_final.py
-            python3 scripts/test_ci_check_routes.py
-            python3 scripts/test_pr_gate_plan.py
-            python3 scripts/test_pr_draft_go_packages.py
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "No changed Go packages."
+            exit 0
           fi
-          echo "Draft checks completed for changed sources." >> "$GITHUB_STEP_SUMMARY"
+          mapfile -t selected < <(python3 scripts/pr-draft-go-packages.py "${files[@]}")
+          test "${#selected[@]}" -gt 0
+          case "$SHARD" in
+            cli-0|cli-1|cli-2)
+              for package in "${selected[@]}"; do
+                if [ "$package" = ./cmd/baha ]; then
+                  python3 scripts/pr-go-unit-shard.py --mode "$SHARD"
+                  exit 0
+                fi
+              done
+              echo "CLI not impacted; skipping $SHARD."
+              ;;
+            packages)
+              owned=()
+              for package in "${selected[@]}"; do
+                if [ "$package" != ./cmd/baha ]; then owned+=("$package"); fi
+              done
+              if [ "${#owned[@]}" -eq 0 ]; then
+                echo "No impacted non-CLI Go packages."
+                exit 0
+              fi
+              printf 'Selected non-CLI packages:\n'
+              printf '%s\n' "${owned[@]}"
+              go test -p 1 "${owned[@]}" -count=1
+              ;;
+            *) echo "Unsupported draft shard $SHARD" >&2; exit 2 ;;
+          esac

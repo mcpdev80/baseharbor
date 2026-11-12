@@ -52,6 +52,15 @@ func persistRepositoryApplication(ctx context.Context, root string, m applicatio
 	if err != nil {
 		return applicationAdoptionResult{}, err
 	}
+	// A remote Core is the sole authority that may allocate an application ID.
+	// Guided init still writes the authored source locally, but must not create a
+	// competing workstation identity before `baha app create` receives the Core
+	// receipt. Existing repository identities remain subject to the normal
+	// continuity checks below.
+	if target.AccessProvider != "" && target.AccessProvider != "local" &&
+		m.ApplicationID == "" && !snapshot.PreviouslyRegistered && len(snapshot.ApplicationIDs) == 0 {
+		return persistRemoteRepositorySource(absolute, path, m, selected)
+	}
 	// Never attest a fresh application when an existing identity is being adopted.
 	freshIdentity := !snapshot.PreviouslyRegistered && len(snapshot.ApplicationIDs) == 0 && m.ApplicationID == ""
 	m, err = application.ResolveIdentity(m, snapshot)
@@ -103,6 +112,34 @@ func persistRepositoryApplication(ctx context.Context, root string, m applicatio
 	if freshIdentity {
 		if err := deployment.CreateNeverDeliveredProof(target.Name, m.ApplicationID, m.Name, m.Environment); err != nil {
 			return applicationAdoptionResult{}, fmt.Errorf("record never-delivered provenance: %w", err)
+		}
+	}
+	return result, nil
+}
+
+func persistRemoteRepositorySource(root, path string, m application.Manifest, selected *repositoryinspect.WorkloadSourceCandidate) (applicationAdoptionResult, error) {
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	if err != nil {
+		if errors.Is(err, os.ErrExist) {
+			return applicationAdoptionResult{}, fmt.Errorf("%s already exists; edit the existing application contract instead", path)
+		}
+		return applicationAdoptionResult{}, err
+	}
+	if _, err := file.WriteString(m.AuthoredYAML()); err != nil {
+		_ = file.Close()
+		_ = os.Remove(path)
+		return applicationAdoptionResult{}, err
+	}
+	if err := file.Close(); err != nil {
+		_ = os.Remove(path)
+		return applicationAdoptionResult{}, err
+	}
+	result := applicationAdoptionResult{Application: m.Name, Environment: m.Environment, Manifest: path}
+	if selected != nil {
+		result.SourceSelection, err = repositoryinspect.WriteRepositoryMetadata(root, *selected)
+		if err != nil {
+			_ = os.Remove(path)
+			return applicationAdoptionResult{}, err
 		}
 	}
 	return result, nil

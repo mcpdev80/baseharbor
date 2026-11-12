@@ -91,6 +91,10 @@ func promptCapabilityList(reader *bufio.Reader, out io.Writer, defaults []bool, 
 }
 
 func promptCapabilityTTY(reader *bufio.Reader, out io.Writer, fd uintptr, labels []string, defaults []bool, allowNone bool) ([]bool, error) {
+	return promptCheckboxTTY(reader, out, fd, "Select application capabilities", labels, defaults, allowNone)
+}
+
+func promptCheckboxTTY(reader *bufio.Reader, out io.Writer, fd uintptr, title string, labels []string, defaults []bool, allowNone bool) ([]bool, error) {
 	selected := append([]bool(nil), defaults...)
 	cursor := 0
 
@@ -100,7 +104,7 @@ func promptCapabilityTTY(reader *bufio.Reader, out io.Writer, fd uintptr, labels
 	}
 	defer term.Restore(fd, oldState)
 
-	fmt.Fprintln(out, "\nSelect application capabilities")
+	fmt.Fprintln(out, "\n"+title)
 	fmt.Fprintln(out, "Use ↑/↓ to move, Space to toggle, Enter to confirm.")
 	fmt.Fprint(out, "\x1b[?25l")
 	defer fmt.Fprint(out, "\x1b[?25h")

@@ -1,6 +1,6 @@
 # Unterstützte Operationen automatisieren
 
-`baha app down` und `baseharbor.app.stop` verwenden denselben aktuellen
+`baha app stop` (auch `baha app down`) und `baseharbor.app.stop` verwenden denselben aktuellen
 Folgenplan. Prüfe betroffene Funktionen, Verbraucher und die Orte erhaltener
 Owner-Dateien vor der Bestätigung. Unbekannte Folgen oder ein Ergebnis ohne
 Alternative benötigen **Achtung** und zwei ausdrückliche Bestätigungen. MCP
@@ -11,6 +11,11 @@ Bestätigungen und erlaubt keine Datenlöschung. Stop erhält Intent, Bindings u
 gemeinsame Provider für ein späteres `app up`. Das strukturierte
 `provider_change_result` unterscheidet nachgewiesenen Runtime-/Recovery-Zustand
 von weiterhin ungeprüften und teilweise ausgewiesenen Verbraucherfolgen.
+
+`baha app destroy NAME --yes` und `baseharbor.destroy` löschen exklusiv
+app-eigene Daten und Zustand dauerhaft. Beide verlangen die aktuellen
+Providerplan-Bestätigungen und eine separate Zustimmung zur Datenlöschung.
+Gemeinsame oder unklar zugeordnete Daten bleiben erhalten und werden angezeigt.
 
 `baha agent describe -o json` und MCP `tools/list` zeigen tatsächliche IDs, Inputs, Sicherheit und Genehmigung. Dateireferenzen gelten auf dem Host, auf dem `baha mcp serve` läuft. Bei unterstützten lokalen Workloads können CLI/stdio verifizierten lokalen Runtime-Zugriff ohne gesonderten OIDC-Login verwenden, auch in `test`/`prod`, wenn keine Operator-Policy oder Management-Nutzung OIDC verlangt. Remote-Zugriff, geschütztes HTTP, Tenant-Scope und ausdrücklich verwaltete Operationen behalten ihre Operator-Authentifizierung.
 

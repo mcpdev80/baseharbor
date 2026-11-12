@@ -40,7 +40,7 @@ func (s *WorkstationEnrollmentStore) Create(ctx context.Context, b workstationen
 	if s == nil || s.pool == nil || b.RequestScope.Validate() != nil {
 		return workstationenrollment.ErrDenied
 	}
-	if b.ExpiresAt.IsZero() || b.CertificateTTL <= 0 || b.CertificateTTL > 24*time.Hour {
+	if b.ExpiresAt.IsZero() || b.CertificateTTL <= 0 || b.CertificateTTL > workstationenrollment.MaxCertificateTTL {
 		return workstationenrollment.ErrDenied
 	}
 	return WithTenantTx(ctx, s.pool, b.RequestScope.TenantID, func(tx pgx.Tx) error {
@@ -93,10 +93,10 @@ RETURNING expires_at, certificate_ttl_seconds`,
 	if err != nil {
 		return workstationenrollment.Bootstrap{}, workstationenrollment.ErrDenied
 	}
-	if bootstrap.CertificateTTL <= 0 || bootstrap.CertificateTTL > 24*time.Hour {
+	if bootstrap.CertificateTTL <= 0 || bootstrap.CertificateTTL > workstationenrollment.MaxCertificateTTL {
 		return workstationenrollment.Bootstrap{}, workstationenrollment.ErrDenied
 	}
-	if ttl <= 0 || ttl > 24*time.Hour {
+	if ttl <= 0 || ttl > workstationenrollment.MaxCertificateTTL {
 		return workstationenrollment.Bootstrap{}, workstationenrollment.ErrDenied
 	}
 	return bootstrap, nil

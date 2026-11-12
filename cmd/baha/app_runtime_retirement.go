@@ -72,21 +72,18 @@ func (e *applicationDestroyExecution) retireRuntimePreservingData(ctx context.Co
 		return err
 	} else if neverDelivered {
 		if !e.confirmed {
-			fmt.Fprintln(out, "No changes were made. Confirm with --yes to retire a never-delivered application.")
+			fmt.Fprintln(out, "No changes were made. Confirm with --yes to stop a never-deployed application.")
 			return nil
 		}
 		if err := application.ReleaseApplicationProviderRegistryAt(e.resolved.TargetStateRoot, e.manifest); err != nil {
 			return fmt.Errorf("application was never delivered but provider registry cleanup failed: %w", err)
 		}
-		if err := recordApplicationAudit(ctx, e.resolved, "destroy", "success", "ownership verified; nothing was ever delivered", "refused or never-applied application retired; no runtime or provider state existed to remove"); err != nil {
+		if err := recordApplicationAudit(ctx, e.resolved, applicationRuntimeRetirementOperation(ctx), "success", "ownership verified; nothing was ever delivered", "refused or never-applied application stopped; no runtime or provider state existed to remove"); err != nil {
 			return err
 		}
 		e.term.Section("Application")
 		e.term.Result("RETIRED", "application", e.manifest.Name+" never delivered; no runtime state to remove")
 		return nil
-	}
-	if err := e.runPreflight(ctx); err != nil {
-		return err
 	}
 	if err := revalidateApplicationProviderIntent(ctx, e.resolved); err != nil {
 		return err
@@ -100,7 +97,7 @@ func (e *applicationDestroyExecution) retireRuntimePreservingData(ctx context.Co
 	}
 	fmt.Fprintln(out, "Runtime retirement removes selected owned workload/provider containers and application routes; persistent data, logical scopes, credentials, recovery files and canonical deployment owner are retained.")
 	if !e.confirmed {
-		fmt.Fprintln(out, "No changes were made. Review the retirement plan and required acknowledgements before --yes.")
+		fmt.Fprintln(out, "No changes were made. Review the runtime stop plan and required acknowledgements before --yes.")
 		return nil
 	}
 	consent, err := invocationProviderChangeConsent(ctx)
@@ -121,6 +118,12 @@ func (e *applicationDestroyExecution) retireRuntimePreservingData(ctx context.Co
 	}
 	if current.Impact == nil || current.Impact.PlanID != plan.Impact.PlanID {
 		return providerImpactConsentError(*plan.Impact, &application.ProviderChangeError{Code: "stale-impact-consent"})
+	}
+	if err := e.runPreflight(ctx); err != nil {
+		return err
+	}
+	if err := revalidateApplicationProviderIntent(ctx, e.resolved); err != nil {
+		return err
 	}
 	// Unknown future consequences do not prohibit consent. Physical ownership
 	// and complete consumer inventory remain necessary to execute exact retirement.
@@ -162,5 +165,12 @@ func (e *applicationDestroyExecution) retireRuntimePreservingData(ctx context.Co
 		fmt.Fprintf(out, "Retained %s: %s; runtime removal does not authorize data deletion or prove recovery usability.\n", material.Location.Reference, material.Evidence)
 	}
 	fmt.Fprintln(out, "Owned runtime retired; data and canonical recovery owner retained. Apply developer-authored intent to reactivate. Unverified function/recovery receipts remain partial.")
-	return recordApplicationAudit(ctx, e.resolved, "destroy", "success", "runtime ownership verified; data retained", "owned runtime retired; consequence knowledge remains partial")
+	return recordApplicationAudit(ctx, e.resolved, applicationRuntimeRetirementOperation(ctx), "success", "runtime ownership verified; data retained", "owned runtime stopped; consequence knowledge remains partial")
+}
+
+func applicationRuntimeRetirementOperation(ctx context.Context) string {
+	if isApplicationStopMode(ctx) {
+		return "stop"
+	}
+	return "destroy"
 }

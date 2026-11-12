@@ -54,6 +54,18 @@ func TestConfigureServicePKIReusesExistingRoot(t *testing.T) {
 	if !foundGuardedRoot {
 		t.Fatal("managed service PKI root reconciliation was not executed")
 	}
+	foundWorkstationRole := false
+	for _, command := range fake.args {
+		if strings.Contains(command, "baseharbor-pki/roles/baseharbor-workstations") {
+			foundWorkstationRole = true
+			if !strings.Contains(command, "generate_lease=false") || strings.Contains(command, "generate_lease=true") {
+				t.Fatalf("long-lived workstation certificates must not be tied to the short-lived signing token lease: %q", command)
+			}
+		}
+	}
+	if !foundWorkstationRole {
+		t.Fatal("workstation PKI role was not reconciled")
+	}
 }
 
 func containsAll(value string, parts ...string) bool {

@@ -26,7 +26,7 @@ Shell initialization emits Target activation/prompt integration helpers.
 
 ## TUI
 
-`baha tui` exposes the interactive terminal interface where available.
+`baha tui` exposes the interactive terminal interface where available. With a remote Core Target, all views read the selected Core through its verified connection, just like `status` and `doctor`; local deployment caches are not used. Inside an application repository it shows that application, otherwise the Core overview. `baha tui --json` follows the same Target selection.
 
 Shell helpers must not silently contact or mutate a runtime merely to render a prompt.
 

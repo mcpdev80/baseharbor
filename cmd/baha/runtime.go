@@ -14,11 +14,13 @@ import (
 	"github.com/charmbracelet/x/term"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/mcpdev80/baseharbor/internal/coreinstallation"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
 var runtimeInput io.Reader = os.Stdin
+var ensureCoreRuntimeImageForTarget = ensureCoreRuntimeImage
 
 type runtimeUpOptions struct {
 	Name                string
@@ -172,7 +174,31 @@ func runtimeUpGuided(parent context.Context, in io.Reader, out io.Writer, opts r
 	if opts.PostgresPort != 0 && opts.PostgresPort == opts.OpenBaoPort {
 		return errors.New("PostgreSQL and OpenBao cannot use the same host port")
 	}
-	_, err := installCore(parent, in, out, opts)
+	// Reject an unauthorized MCP request before probing or installing host tools.
+	// installCore repeats this check at the mutation boundary.
+	if err := authorizeCurrentMCPContext(parent, "control-plane.up", "", "", ""); err != nil {
+		return err
+	}
+	// This function is reached only after repository application routing declines
+	// the command, making it the unambiguous Core bootstrap boundary.
+	target, err := effectiveTarget(parent)
+	if err != nil {
+		return err
+	}
+	if target.AccessProvider == "" || target.AccessProvider == "local" {
+		fmt.Fprintln(out, "Checking ORAS for immutable OCI image verification.")
+		if err := ensureORASForCoreUp(parent, in, out, opts.Yes); err != nil {
+			return err
+		}
+		fmt.Fprintln(out, "[OK] ORAS is available.")
+		term := cli.NewTerminal(parent, out, out)
+		if err := progress(parent, term, "Verify and prepare the BaseHarbor runtime image", func(progressOut io.Writer) error {
+			return ensureCoreRuntimeImageForTarget(parent, target, progressOut)
+		}); err != nil {
+			return err
+		}
+	}
+	_, err = installCore(parent, in, out, opts)
 	return err
 }
 
@@ -271,7 +297,10 @@ func materializeControlPlaneProviders(parent context.Context, in io.Reader, out 
 		}
 	}
 
-	return runtimeUpWithPortsSelection(parent, out, bhruntime.Ports{Postgres: postgresPort, OpenBao: openBaoPort}, opts.HA, opts.ControlPlaneOnly)
+	term := cli.NewTerminal(parent, out, out)
+	return progress(parent, term, "Start PostgreSQL and OpenBao services", func(progressOut io.Writer) error {
+		return runtimeUpWithPortsSelection(parent, progressOut, bhruntime.Ports{Postgres: postgresPort, OpenBao: openBaoPort}, opts.HA, opts.ControlPlaneOnly)
+	})
 }
 
 // detectSharedCoreOwnerConflict runs the fail-closed second-target conflict gate

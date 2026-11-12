@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -265,6 +266,67 @@ func (h *ProductionHandler) ServeRenew(w http.ResponseWriter, r *http.Request) {
 		LeafPEM:        string(result.Certificate),
 		TrustPEM:       string(result.Trust.PEM),
 		At:             time.Now().UTC(),
+	})
+}
+
+// ServeDeviceRenew is reachable only behind the Core's verified mTLS device
+// middleware. A device cannot renew another station's certificate or become an
+// operator: its tenant and station must exactly match the registered identity.
+func (h *ProductionHandler) ServeDeviceRenew(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, ErrBadRequest)
+		return
+	}
+	tenant, ok := tenancy.FromContext(r.Context())
+	if !ok || tenant.TenantID == "" || !strings.HasPrefix(tenant.ExternalIdentityID, "workstation/") ||
+		r.TLS == nil || len(r.TLS.PeerCertificates) == 0 || h == nil || h.Enrollment == nil {
+		writeError(w, http.StatusForbidden, ws.ErrDenied)
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	var req RenewRequest
+	if err := decoder.Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, ErrBadRequest)
+		return
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		writeError(w, http.StatusBadRequest, ErrBadRequest)
+		return
+	}
+	station := strings.TrimPrefix(tenant.ExternalIdentityID, "workstation/")
+	scope := ws.Scope{TenantID: tenant.TenantID, Station: station}
+	if req.Station != station || scope.Validate() != nil ||
+		len(r.TLS.PeerCertificates[0].URIs) != 1 ||
+		r.TLS.PeerCertificates[0].URIs[0] == nil ||
+		r.TLS.PeerCertificates[0].URIs[0].String() != scope.Identity() {
+		writeError(w, http.StatusForbidden, ws.ErrDenied)
+		return
+	}
+	request, err := ws.NewRenewRequest(scope, []byte(req.CSRPEM),
+		time.Duration(req.CertificateTTLSeconds)*time.Second)
+	if err != nil {
+		writeError(w, http.StatusForbidden, ws.ErrDenied)
+		return
+	}
+	result, err := h.Enrollment.Renew(r.Context(), request)
+	if err != nil {
+		writeError(w, http.StatusForbidden, ws.ErrDenied)
+		return
+	}
+	if err := h.Enrollment.RecordRegistryFact(r.Context(), scope, time.Now().UTC(),
+		scope.Identity(), scope.Station, result.Serial, result.ExpiresAt); err != nil {
+		writeError(w, http.StatusInternalServerError, errors.New("workstation renewal registry persistence failed"))
+		return
+	}
+	writeJSON(w, http.StatusOK, EnrollResponse{
+		InstallationID: scope.TenantID, Station: scope.Station,
+		Serial: result.Serial, ExpiresAt: result.ExpiresAt,
+		LeafPEM: string(result.Certificate), TrustPEM: string(result.Trust.PEM),
+		At: time.Now().UTC(),
 	})
 }
 

@@ -53,10 +53,10 @@ func TestW154GegenProbeAbortedApplyRecoversOnSecondRun(t *testing.T) {
 		t.Fatalf("save stuck record: %v", err)
 	}
 
-	// (1) destroy retires with rc=0 (already proven in the regression test;
+	// (1) stop retires with rc=0 (already proven in the regression test;
 	// assert here that the record ends decidable, not stuck "applying").
-	var out, errOut bytes.Buffer
-	if derr := executeApplicationDestroyLifecycle(context.Background(), application.DefaultStore(), []string{"--yes"}, &out, &errOut); derr != nil {
+	var out bytes.Buffer
+	if derr := stopSelectiveApplicationWithConsent(context.Background(), &out); derr != nil {
 		t.Fatalf("stuck retire must return rc=0, got: %v\n%s", derr, out.String())
 	}
 

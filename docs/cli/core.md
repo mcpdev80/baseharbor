@@ -1,8 +1,27 @@
 # Core workflow commands
 
-First operator/Tenant initialization after `baha up --control-plane-only` is **explicit**: `baha login -e dev --init-tenant` on the locally owned Core. See [Security and trust commands](security-trust.md). Candidate PR #1437 is pending acceptance; ordinary `baha up` never assigns the first tenant owner automatically.
+## Connect a developer workstation
 
-# Core workflow commands
+On the Core VM, outside an application repository, run `baha up` and then
+`baha onboard`. `baha up` starts the Core providers and checks for ORAS before
+changing provider state. If ORAS is missing, Baha explains its OCI digest and
+artifact-verification role and asks before installing a checksum-verified
+user-local copy. Before starting Core, it resolves and pulls the configured
+BaseHarbor Runtime image by immutable digest, so the first application deploy
+does not discover a missing image. `baha onboard` waits for Core readiness, configures the
+managed LAN HTTPS endpoint and writes a private, one-use JSON invitation. Do
+not start a separate `baha serve` process.
+
+Transfer the invitation securely. On the developer workstation, run
+`baha onboard --import FILE`, accept the suggested workstation alias such as
+`dev-docker-1` or pass `--target-name NAME`, then explicitly select it with
+`baha use NAME`. The alias does not rename the Core Target. The workstation's
+own local Core Target remains available. Subsequent application lifecycle
+commands run on the workstation through the selected Core Target. See the normative
+[Core-to-workstation onboarding flow](../spec/zero-friction-workstation-onboarding-v0427.md).
+
+This device enrollment is separate from interactive human-operator OIDC login.
+See [Security and trust commands](security-trust.md) for operator authentication.
 
 These commands form the shortest normal BaseHarbor workflow.
 
@@ -59,6 +78,10 @@ Use `baha doctor` when a command fails or readiness is unclear.
 Inside an application repository it uses the same application doctor semantics as `baha app doctor`.
 
 `--fix` is an explicit mutating mode and cannot be treated as read-only automation.
+For a remote Target, Doctor compares the developer CLI and Core build versions.
+A mismatch fails the version check and prints the exact `baha update --version
+<CLI_VERSION> --yes` command for the Core host. Development builds have no
+published release command, so Doctor says to install the matching build there.
 
 ## `baha destroy`
 

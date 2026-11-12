@@ -12,6 +12,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/mcpdev80/baseharbor/internal/health"
 	platformopenbao "github.com/mcpdev80/baseharbor/internal/openbao"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
@@ -95,8 +96,7 @@ func runtimeUpWithPortsSelection(parent context.Context, out io.Writer, ports bh
 	if err := persistControlPlaneOpenBaoReference(ctx); err != nil {
 		return fmt.Errorf("persist control-plane OpenBao provider reference: %w", err)
 	}
-	fmt.Fprintln(out, "BaseHarbor control-plane runtime started")
-	fmt.Fprintln(out, "next: run 'baha status' and 'baha doctor'")
+	cli.ReportActivityNotice(out, "PostgreSQL and OpenBao service containers started")
 	return nil
 }
 
@@ -428,19 +428,29 @@ func startControlPlaneRuntime(ctx context.Context, out io.Writer, ports bhruntim
 		return nil, bhruntime.Files{}, err
 	}
 	startCtx, startCancel := context.WithTimeout(ctx, controlPlaneComposeStartTimeout)
-	err = compose.UpProject(startCtx, files.Project, files.Compose, files.Env)
+	var startErr error
+	if progressCompose, ok := compose.(interface {
+		UpProjectProgress(context.Context, string, string, string, func(string)) error
+	}); ok {
+		startErr = progressCompose.UpProjectProgress(startCtx, files.Project, files.Compose, files.Env, func(detail string) {
+			cli.ReportActivityDetail(out, detail)
+		})
+	} else {
+		cli.ReportActivityDetail(out, "creating and starting PostgreSQL and OpenBao containers")
+		startErr = compose.UpProject(startCtx, files.Project, files.Compose, files.Env)
+	}
 	startCancel()
-	if err != nil {
+	if startErr != nil {
 		diagnosticCtx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 		defer cancel()
 		if diagnostics, ok := compose.(interface {
 			DiagnosticsProject(context.Context, string, string, string) string
 		}); ok {
 			if details := strings.TrimSpace(diagnostics.DiagnosticsProject(diagnosticCtx, files.Project, files.Compose, files.Env)); details != "" {
-				return nil, bhruntime.Files{}, fmt.Errorf("start control plane within %s: %w\n%s", controlPlaneComposeStartTimeout, err, details)
+				return nil, bhruntime.Files{}, fmt.Errorf("start control plane within %s: %w\n%s", controlPlaneComposeStartTimeout, startErr, details)
 			}
 		}
-		return nil, bhruntime.Files{}, fmt.Errorf("start control plane within %s: %w", controlPlaneComposeStartTimeout, err)
+		return nil, bhruntime.Files{}, fmt.Errorf("start control plane within %s: %w", controlPlaneComposeStartTimeout, startErr)
 	}
 	return compose, files, nil
 }

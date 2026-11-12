@@ -225,13 +225,32 @@ func (h *Handler) handleExecute(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Location", "/api/v1/machine/executions/"+execution.ExecutionID)
-	writeJSON(w, http.StatusAccepted, execution)
+	// Admission is already durable. Frame and flush its complete JSON body so
+	// clients can observe progress while this handler awaits the terminal commit.
+	body, err := json.Marshal(execution)
+	if err != nil {
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	// HTTP/1 must not reuse this connection for a progress read while its
+	// handler is still awaiting execution. HTTP/2 can multiplex those reads.
+	if r.ProtoMajor == 1 {
+		w.Header().Set("Connection", "close")
+	}
+	w.Header().Set("Content-Length", strconv.Itoa(len(body)))
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.WriteHeader(http.StatusAccepted)
+	_, _ = w.Write(body)
+	if flusher, ok := w.(http.Flusher); ok {
+		flusher.Flush()
+	}
 	if !created {
 		return
 	}
-	// Await the terminal journal commit before responding. The final
-	// succeed/fail line is the accepted execution's durable commitment, so it
-	// must be written before this 202 returns — never fire-and-forget. Event
+	// Await the terminal journal commit before this handler returns. The
+	// flushed 202 is only durable admission, never success. Final state and event
+	// commitment remain on this execution path — never fire-and-forget. Event
 	// emission stays on the synchronous commit path (emitLocked mutates
 	// record.events under s.mu and must not run from a background goroutine).
 	// A terminal persist error propagates to the caller (the 202 is already

@@ -26,7 +26,7 @@ type RegistryConflictError struct {
 func (e *RegistryConflictError) Error() string {
 	parts := make([]string, 0, len(e.DeploymentIDs))
 	for _, id := range e.DeploymentIDs {
-		parts = append(parts, "'baha app destroy --uuid "+id+" --full-reset'")
+		parts = append(parts, "'baha app destroy --uuid "+id+" --yes'")
 	}
 	return ErrRegistryConflict.Error() +
 		": multiple deployments claim application_id " + e.Key.ApplicationID +

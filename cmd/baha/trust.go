@@ -117,9 +117,9 @@ func trustExportCommand() *cli.Command {
 func trustInstallCommand() *cli.Command {
 	return &cli.Command{
 		Name:    "install",
-		Summary: "Explicitly install the managed-local CA into the host trust store",
+		Summary: "Explicitly install the public CA into system and supported browser trust stores",
 		Usage:   "baha trust install --yes",
-		Long:    "Installs only the public managed-local CA and records BaseHarbor ownership. This is an explicit host mutation and therefore requires --yes even when invoked directly.",
+		Long:    "Installs only the public CA from the selected local or verified remote Core into system trust and detected supported browser stores, and records BaseHarbor ownership. Requires --yes; browser certificate tools must already be installed.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 			filtered, format, err := parseReadOutputArgs(args, "trust install")
 			if err != nil {
@@ -151,6 +151,7 @@ func trustInstallCommand() *cli.Command {
 			} else {
 				fmt.Fprintln(out, "[OK] host trust         CA was already trusted; ownership remains external")
 			}
+			renderBrowserTrust(out, result.Browsers)
 			return nil
 		},
 	}
@@ -256,6 +257,19 @@ func parseTrustOutputArg(args []string) (string, error) {
 }
 
 func currentManagedTrustBundle(ctx context.Context) (serviceaccess.TrustBundle, bool, error) {
+	target, err := effectiveTarget(ctx)
+	if err != nil {
+		return serviceaccess.TrustBundle{}, false, err
+	}
+	if target.AccessProvider != "" && target.AccessProvider != "local" {
+		core, err := dialVerifiedRemoteCore(ctx, target.Name, target.RuntimeProvider, target.TenantID)
+		if err != nil {
+			return serviceaccess.TrustBundle{}, true, err
+		}
+		defer core.client.CloseIdleConnections()
+		return serviceaccess.TrustBundle{PEM: core.trustPEM, IssuerReference: "core/" + core.installation}, true, nil
+	}
+
 	policy, err := serviceaccess.Resolve("prod", "openbao", serviceaccess.AuthenticationNative)
 	if err != nil {
 		return serviceaccess.TrustBundle{}, false, err

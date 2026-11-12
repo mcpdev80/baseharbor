@@ -50,7 +50,7 @@ baseharbor/apps/<app>/<environment>/
 
 Each application receives its own OpenBao policy and AppRole. That identity can access only the exact application/environment namespace. Cross-application and cross-environment access fails closed.
 
-`baha app down` preserves the secret scope. `baha app destroy --yes` removes the managed application secrets, policy, AppRole and BaseHarbor-owned application state while preserving the repository manifest and application-owned data.
+`baha app stop` (and `baha down`) preserves the secret scope and persistent data. `baha app destroy --yes` removes the managed application secrets, policy, AppRole, BaseHarbor-owned application state and exclusively app-owned persistent data. Repository source files and shared Target resources remain.
 
 ## Generated application secrets
 

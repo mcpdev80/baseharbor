@@ -109,7 +109,7 @@ var cliMachineOperations = map[string]string{
 	"baha app create": "app.create", "baha app init": "app.adopt", "baha init": "app.adopt",
 	"baha app runtime-identity rotate": "runtime-identity.rotate", "baha app runtime-identity revoke": "runtime-identity.revoke", "baha app tls update": "tls.update",
 	"baha trust status": "trust.status", "baha trust export": "trust.export", "baha trust install": "trust.install", "baha trust uninstall": "trust.uninstall",
-	"baha app down": "app.stop", "baha app prune": "app.prune", "baha app preflight": "app.preflight",
+	"baha app down": "app.stop", "baha app stop": "app.stop", "baha app prune": "app.prune", "baha app preflight": "app.preflight",
 	"baha app secret list": "secret.list", "baha app secret set": "secret.set", "baha app secret delete": "secret.delete", "baha app secret tls-set": "secret.tls-set",
 	"baha node add": "node.add", "baha node connect": "node.connect", "baha node list": "node.list", "baha node status": "node.status", "baha node disconnect": "node.disconnect",
 	"baha target create": "target.create", "baha target delete": "target.delete",
@@ -155,6 +155,8 @@ var cliPresentationCommands = map[string]string{
 // These modes are outside the semantic tool boundary by design. Business
 // metadata and lifecycle remain available through the named typed alternatives.
 var cliExcludedCommands = map[string]string{
+	"baha dev hosts":       "Workstation-local hosts-file opt-in and ownership cleanup; cannot mutate the MCP server host on behalf of a remote client. Names come from authenticated control-plane.status metadata.",
+	"baha dev cleanup":     "Workstation-local removal of owned hosts and CA trust, preserving other connections; explicit host operator approval required. No Core or application mutation.",
 	"baha app exec":        "Arbitrary process execution is intentionally excluded: #787 forbids generic exec passthrough; use typed lifecycle and observation tools.",
 	"baha app shell":       "Interactive container terminal is host/TTY dependent and would grant arbitrary exec; use typed lifecycle and app.environment instead.",
 	"baha app sql":         "Interactive database terminal and raw SQL passthrough are excluded; app.connection supplies secret-safe connection metadata for an operator-owned client.",

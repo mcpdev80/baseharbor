@@ -98,7 +98,7 @@ func waitRabbitMQCredentialAuthority(ctx context.Context, runtime rabbitMQCreden
 	consecutive := 0
 	var lastErr error
 	for {
-		status, err := runtime.Run(ctx, service, "rabbitmqctl", "cluster_status")
+		status, err := runtime.Run(ctx, service, rabbitMQBrokerCommandArgs("rabbitmqctl", "cluster_status")...)
 		if err == nil {
 			missing := ""
 			if rabbitmqMemberCount(m) > 1 {
@@ -142,8 +142,8 @@ func reconcileRabbitMQCredentialSet(ctx context.Context, runtime rabbitMQCredent
 	defer ticker.Stop()
 	var lastErr error
 	for {
-		if _, err := runtime.Run(ctx, service, "rabbitmq-diagnostics", "-q", "ping"); err == nil {
-			if _, err := runtime.RunSensitive(ctx, service, input, "sh", "-ceu", script); err == nil {
+		if _, err := runtime.Run(ctx, service, rabbitMQBrokerCommandArgs("rabbitmq-diagnostics", "-q", "ping")...); err == nil {
+			if _, err := runtime.RunSensitive(ctx, service, input, rabbitMQBrokerScriptArgs(script)...); err == nil {
 				return nil
 			} else {
 				lastErr = err

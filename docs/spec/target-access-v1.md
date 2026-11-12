@@ -255,7 +255,7 @@ The scoped enrollment boundary and PostgreSQL one-use store are implemented;
 see [ADR 0020](../decisions/0020-scoped-connector-enrollment.md). Signatures use
 the existing protected OpenBao authority and client-owned CSR keys. Bootstrap
 authorization binds tenant, Target, node, runtime and nonce and expires within
-ten minutes. Certificate TTL is bounded to 24 hours. Consumption commits before
+ten minutes. Connector certificate TTL is bounded to 24 hours. Consumption commits before
 signing, so a failed or interrupted issuance requires a fresh authorization.
 
 The operator and bootstrap HTTPS handlers use the canonical wire records and
