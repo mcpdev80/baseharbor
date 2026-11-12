@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"net/url"
 	"os"
 	"strconv"
@@ -78,7 +79,8 @@ func EnsureManagedOperatorOIDC(ctx context.Context, runtime KeycloakRuntime, iss
 		"baseharbor.environment": strings.TrimSpace(environment),
 	}
 	// Realm-local authority preserves the installation/master issuer.
-	ownership["frontendUrl"] = canonicalBase
+	realmAttributes := maps.Clone(ownership)
+	realmAttributes["frontendUrl"] = canonicalBase
 	desiredRealm := keycloakRealm{
 		Realm:                                  realm,
 		Enabled:                                true,
@@ -93,9 +95,9 @@ func EnsureManagedOperatorOIDC(ctx context.Context, runtime KeycloakRuntime, iss
 		WebAuthnPolicySignatureAlgorithms:      []string{"ES256", "RS256"},
 		WebAuthnPolicyPasswordlessRpEntityName: "BaseHarbor",
 		WebAuthnPolicyPasswordlessSignatureAlgorithms: []string{"ES256", "RS256"},
-		Attributes: ownership,
+		Attributes: realmAttributes,
 	}
-	if err := admin.reconcileRealm(ctx, desiredRealm); err != nil {
+	if err := admin.reconcileRealm(ctx, desiredRealm, ownership); err != nil {
 		return ManagedOperatorOIDC{}, err
 	}
 
