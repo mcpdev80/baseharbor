@@ -38,9 +38,11 @@ Die Verbindung eines Entwicklungsrechners mit seinem Core ist eine separate
 Geräte-Einschreibung, keine OIDC-Anmeldung eines Operators und keine
 Node-Connector-Einschreibung. Auf der Core-VM `baha up` und danach
 `baha onboard --invite` ausführen. Der Dialog fragt nach vollständigem Namen,
-Login, E-Mail, Gerätenamen und Zertifikatslaufzeit. Keycloak sendet einen
-Aktivierungslink, über den die Person ihr eigenes Passwort setzt; BaseHarbor
-speichert kein Passwort. Die private JSON-Einladung auf die Workstation
+Login, E-Mail, Gerätenamen und Zertifikatslaufzeit und fragt anschließend
+verdeckt nach einem initialen Passwort. Keycloak verlangt beim ersten Login,
+dieses temporäre Passwort zu ändern. Die E-Mail-Adresse dient nur als
+Kontaktinformation; SMTP ist nicht erforderlich. BaseHarbor speichert das
+Passwort nicht. Die private JSON-Einladung auf die Workstation
 übertragen und dort mit `baha onboard --import FILE` importieren. Übernimm den
 Vorschlag für den lokalen Alias oder gib `--target-name NAME` an; wähle ihn danach
 mit `baha use NAME` aus. Der Alias ist vom Core-Target in der Einladung

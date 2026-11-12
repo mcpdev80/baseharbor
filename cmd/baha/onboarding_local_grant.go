@@ -23,7 +23,7 @@ import (
 // There is no remote tenant or operator-login fallback. Only the local Core
 // owner with access to the protected runtime files/database can reach this
 // helper; it never returns bearer tokens in stdout or logs.
-func issueLocalWorkstationInvitation(ctx context.Context, target deployment.ResolvedTarget, station, coreOrigin, outputFile string, certificateTTL time.Duration, ownerLogin string, user *identityprovider.ManagedOperatorUser) error {
+func issueLocalWorkstationInvitation(ctx context.Context, target deployment.ResolvedTarget, station, coreOrigin, outputFile string, certificateTTL time.Duration, ownerLogin string, user *identityprovider.ManagedOperatorUser, initialPassword []byte) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -120,9 +120,9 @@ func issueLocalWorkstationInvitation(ctx context.Context, target deployment.Reso
 		if err != nil {
 			return err
 		}
-		created, err := identityprovider.InviteManagedOperatorUser(check, identityRuntime, issuer, dataDir, target.Name, target.Name, onboardingEnvironment, user.Login, user.DisplayName, user.Email)
+		created, err := identityprovider.InviteManagedOperatorUser(check, identityRuntime, issuer, dataDir, target.Name, target.Name, onboardingEnvironment, user.Login, user.DisplayName, user.Email, string(initialPassword))
 		if err != nil {
-			return fmt.Errorf("create Keycloak user and send activation email: %w", err)
+			return fmt.Errorf("create Keycloak user and set initial password: %w", err)
 		}
 		*user = created
 		if err := store.RegisterWorkstationUser(check, target.TenantID, database.WorkstationUser{Login: user.Login, DisplayName: user.DisplayName, Email: user.Email, KeycloakID: user.ID}); err != nil {

@@ -39,9 +39,10 @@ Connecting a developer workstation to its owning Core is a separate device
 enrollment flow, not an operator OIDC login or Node Connector enrollment. On
 the Core VM use `baha up` followed by `baha onboard --invite`. The wizard asks
 for the person's name, login, email, workstation name and certificate
-lifetime. Keycloak emails an activation link so the person chooses their own
-password; BaseHarbor does not set or store it. Transfer the resulting private
-JSON invitation to the workstation and import it with
+lifetime, then securely prompts for an initial password. Keycloak requires
+that temporary password to be changed on first login. The email address is
+contact information only; SMTP is not required. BaseHarbor does not store the
+password. Transfer the resulting private JSON invitation to the workstation and import it with
 `baha onboard --import FILE`. Accept the suggested workstation alias or pass
 `--target-name NAME`, then select it with `baha use NAME`. The alias is separate
 from the Core Target in the invitation. The invitation establishes a

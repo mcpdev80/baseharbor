@@ -21,7 +21,7 @@ func onboardCommand() *cli.Command {
 		Name:    "onboard",
 		Summary: "Guided onboarding: attach a workstation to a BaseHarbor installation",
 		Usage:   "baha onboard [--target NAME] [--json] | baha onboard --import PRIVATE_FILE [--target-name NAME] [--trust-host-ca|--skip-host-trust] [--configure-hosts|--skip-hosts] | baha onboard --invite [--name PERSON] [--login LOGIN] [--email EMAIL] [--station DEVICE] [--certificate-ttl 5y] [--output PRIVATE_FILE] | baha onboard --init-tenant [-e ENV] [--tenant-slug SLUG --tenant-name NAME]",
-		Long:    "On the Core host, --invite creates a new Keycloak user and first workstation. It asks for the person's full name, login, email, device name and certificate lifetime; email activation lets the person set their own password. Use baha workstation new to add another device for an existing person. On a developer workstation, --import redeems the private one-use device invitation.",
+		Long:    "On the Core host, --invite creates a new Keycloak user and first workstation. It asks for the person's full name, login, email, device name and certificate lifetime, then securely prompts for an initial password. The password is temporary and must be changed at first login. Email is contact information only; SMTP is not required. Use baha workstation new to add another device for an existing person. On a developer workstation, --import redeems the private one-use device invitation.",
 		Run:     runOnboardCommand,
 	}
 }

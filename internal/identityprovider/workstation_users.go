@@ -25,10 +25,13 @@ type ManagedOperatorUser struct {
 	Enabled     bool
 }
 
-// InviteManagedOperatorUser creates a new BaseHarbor operator account and
-// triggers Keycloak's single-use email activation flow. BaseHarbor never sets
-// or stores a user password.
-func InviteManagedOperatorUser(ctx context.Context, runtime KeycloakRuntime, issuer serviceaccess.Issuer, dataDir, namespace, target, environment, login, displayName, email string) (ManagedOperatorUser, error) {
+// InviteManagedOperatorUser creates a BaseHarbor operator account and sets a
+// temporary password supplied by the Core owner. Email is contact metadata;
+// account creation does not depend on SMTP or email verification.
+func InviteManagedOperatorUser(ctx context.Context, runtime KeycloakRuntime, issuer serviceaccess.Issuer, dataDir, namespace, target, environment, login, displayName, email, initialPassword string) (ManagedOperatorUser, error) {
+	if strings.TrimSpace(initialPassword) == "" {
+		return ManagedOperatorUser{}, errors.New("an initial password is required")
+	}
 	if err := ValidateManagedOperatorUser(login, displayName, email); err != nil {
 		return ManagedOperatorUser{}, err
 	}
@@ -39,7 +42,7 @@ func InviteManagedOperatorUser(ctx context.Context, runtime KeycloakRuntime, iss
 	if err != nil {
 		return ManagedOperatorUser{}, err
 	}
-	user, err := admin.inviteManagedOperatorUser(ctx, realm, login, displayName, email, ownership)
+	user, err := admin.inviteManagedOperatorUser(ctx, realm, login, displayName, email, initialPassword, ownership)
 	if err != nil {
 		return ManagedOperatorUser{}, err
 	}
@@ -111,7 +114,7 @@ func operatorUserAdmin(ctx context.Context, dataDir, namespace, target, environm
 	return files, admin, operatorRealm(environment), userOwnership, nil
 }
 
-func (a *keycloakAdmin) inviteManagedOperatorUser(ctx context.Context, realm, login, displayName, email string, ownership map[string]string) (ManagedOperatorUser, error) {
+func (a *keycloakAdmin) inviteManagedOperatorUser(ctx context.Context, realm, login, displayName, email, initialPassword string, ownership map[string]string) (ManagedOperatorUser, error) {
 	realmOwnership := map[string]string{"baseharbor.owner": "baseharbor", "baseharbor.scope": "operator", "baseharbor.target": ownership["baseharbor.target"], "baseharbor.environment": ownership["baseharbor.environment"]}
 	if err := a.verifyOwnedRealm(ctx, realm, realmOwnership); err != nil {
 		return ManagedOperatorUser{}, err
@@ -166,10 +169,13 @@ func (a *keycloakAdmin) inviteManagedOperatorUser(ctx context.Context, realm, lo
 		}
 		user = found[0]
 	}
-	if !user.EmailVerified {
-		if err := a.sendManagedActivation(ctx, realm, user.ID); err != nil {
-			return ManagedOperatorUser{}, err
-		}
+	credential := keycloakUserCredential{Type: "password", Value: initialPassword, Temporary: true}
+	status, body, err = a.do(ctx, http.MethodPut, "/admin/realms/"+url.PathEscape(realm)+"/users/"+url.PathEscape(user.ID)+"/reset-password", credential)
+	if err != nil {
+		return ManagedOperatorUser{}, err
+	}
+	if status != http.StatusNoContent {
+		return ManagedOperatorUser{}, fmt.Errorf("set initial managed operator password: HTTP %d: %s", status, body)
 	}
 	return managedOperatorUserProjection(user), nil
 }

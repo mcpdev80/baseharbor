@@ -252,7 +252,7 @@ func workstationNewCommand(ctx context.Context, args []string, out, _ io.Writer)
 	if err != nil {
 		return fmt.Errorf("managed Core HTTPS endpoint unavailable: %w", err)
 	}
-	if err := issueLocalWorkstationInvitation(withTargetOverride(ctx, owner.target.Name), owner.target, station, coreOrigin, outputFile, ttl, login, nil); err != nil {
+	if err := issueLocalWorkstationInvitation(withTargetOverride(ctx, owner.target.Name), owner.target, station, coreOrigin, outputFile, ttl, login, nil, nil); err != nil {
 		return err
 	}
 	fmt.Fprintf(out, "Invitation created for %s (%s): %s\nTransfer this private file to the new workstation.\n", user.DisplayName, login, outputFile)

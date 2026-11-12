@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -102,6 +103,11 @@ func runOnboardInvite(ctx context.Context, args []string, out io.Writer) error {
 	if err := (ws.Scope{TenantID: "11111111-1111-4111-8111-111111111111", Station: station}).Validate(); err != nil {
 		return errors.New("invalid workstation name; use letters, numbers, hyphens or underscores")
 	}
+	password, err := readOnboardInitialPassword(out, reader)
+	if err != nil {
+		return err
+	}
+	defer zeroBytes(password)
 	if coreURL == "" {
 		coreURL = strings.TrimSpace(os.Getenv("BASEHARBOR_API_PUBLIC_URL"))
 	}
@@ -151,9 +157,40 @@ func runOnboardInvite(ctx context.Context, args []string, out io.Writer) error {
 		return errors.New("invalid workstation name; use letters, numbers, hyphens or underscores")
 	}
 	person := identityprovider.ManagedOperatorUser{Login: login, DisplayName: displayName, Email: email}
-	if err := issueLocalWorkstationInvitation(withTargetOverride(ctx, target.Name), target, station, coreURL, outputFile, certificateTTL, login, &person); err != nil {
+	if err := issueLocalWorkstationInvitation(withTargetOverride(ctx, target.Name), target, station, coreURL, outputFile, certificateTTL, login, &person, password); err != nil {
 		return err
 	}
-	_, err = fmt.Fprintf(out, "User %s (%s) created in Keycloak; activation instructions sent to %s.\nOne-use workstation invitation: %s\nTransfer this private file to the developer workstation. Do not print its contents.\n", displayName, login, email, outputFile)
+	_, err = fmt.Fprintf(out, "User %s (%s) created in Keycloak; email is recorded as contact information and no email server is required. The user must change the temporary password at first login.\nOne-use workstation invitation: %s\nTransfer this private file to the developer workstation. Share the initial password separately. Do not print the invitation contents.\n", displayName, login, outputFile)
 	return err
+}
+
+func readOnboardInitialPassword(out io.Writer, reader *bufio.Reader) ([]byte, error) {
+	file, ok := onboardingInput.(*os.File)
+	if !ok || !readerIsTerminal(file) {
+		return nil, errors.New("setting the initial user password requires an interactive terminal; rerun baha onboard --invite from a terminal")
+	}
+	for {
+		first, err := readHiddenTerminalLineBuffered(file, reader, out, "Initial password (hidden): ")
+		if err != nil {
+			return nil, errors.New("could not read initial password securely")
+		}
+		if len(first) == 0 {
+			zeroBytes(first)
+			fmt.Fprintln(out, "Password must not be empty.")
+			continue
+		}
+		second, err := readHiddenTerminalLineBuffered(file, reader, out, "Confirm initial password: ")
+		if err != nil {
+			zeroBytes(first)
+			return nil, errors.New("could not read password confirmation securely")
+		}
+		if !bytes.Equal(first, second) {
+			zeroBytes(first)
+			zeroBytes(second)
+			fmt.Fprintln(out, "Passwords do not match; try again.")
+			continue
+		}
+		zeroBytes(second)
+		return first, nil
+	}
 }
