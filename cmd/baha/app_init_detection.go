@@ -42,6 +42,7 @@ func detectAppProject(root string) (appProjectDetection, error) {
 		Ports:                    append([]repositoryinspect.PortEvidence(nil), result.Ports...),
 		SecretCandidates:         append([]string(nil), result.SecretCandidates...),
 		SecretSources:            map[string]string{},
+		SecretSourcePolicies:     map[string]string{},
 		RuntimePermissions:       map[string][]string{},
 	}
 	if result.WorkloadEvidence != nil {
@@ -72,6 +73,16 @@ func detectAppProject(root string) (appProjectDetection, error) {
 			return appProjectDetection{}, err
 		}
 		d.WorkloadProtocols = analysis.WorkloadProtocols
+		policies, err := repositoryinspect.ReadComposeSecretSourcePolicies(root, d.Compose)
+		if err != nil {
+			return appProjectDetection{}, err
+		}
+		for name, source := range policies {
+			d.SecretSourcePolicies[name] = source
+			d.SecretCandidates = append(d.SecretCandidates, name)
+			d.SecretSources[name] = d.Compose + " (BaseHarbor-managed source)"
+		}
+		d.SecretCandidates = uniqueSorted(d.SecretCandidates)
 	}
 	for name, source := range result.SecretSources {
 		d.SecretSources[name] = source

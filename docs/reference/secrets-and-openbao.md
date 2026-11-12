@@ -167,7 +167,18 @@ Missing required secrets block workload startup. Missing optional secrets do not
 
 Generated values are supported in either group. The guided init flow may ask whether a non-generated secret should be entered on first apply or configured later; that is onboarding UX, not a separate portable secret type.
 
-Development applications may explicitly source a required secret from the current Target's managed development login using `source: target-development-username` or `source: target-development-password`. On `baha app apply` or `baha app up`, BaseHarbor reads the authoritative value from the Target's OpenBao-backed development credential authority and synchronizes it into the application's own OpenBao secret scope. A changed Target credential is synchronized on the next lifecycle run. This source is rejected outside `dev`/`development`, for optional secrets, and when combined with generation. It deliberately gives that application workload access to the selected Target's development management login; use it only when the app is intended to display or use that login, such as the local BaseHarbor demo.
+Development applications may explicitly source a required secret from the current Target's managed development login using `source: target-development-username` or `source: target-development-password`. Compose repositories can declare these sources in the standard `x-baseharbor` extension; `baha app init` carries them into `baseharbor.yaml` automatically:
+
+```yaml
+x-baseharbor:
+  secrets:
+    - name: DEMO_MANAGEMENT_USERNAME
+      source: target-development-username
+    - name: DEMO_MANAGEMENT_PASSWORD
+      source: target-development-password
+```
+
+On `baha app apply` or `baha app up`, BaseHarbor reads the authoritative value from the Target's OpenBao-backed development credential authority, synchronizes it into the application's own OpenBao secret scope, verifies the stored value and projects it into the declared workload binding. A changed Target credential is synchronized on the next lifecycle run. This source is rejected outside `dev`/`development`, for optional secrets, and when combined with generation. It deliberately gives that application workload access to the selected Target's development management login; use it only when the app is intended to display or use that login, such as the local BaseHarbor demo.
 
 ## Static runtime delivery
 
