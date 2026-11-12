@@ -36,6 +36,14 @@ func TestSharedPostgresIdentityIsDeterministicAndCollisionSafe(t *testing.T) {
 	}
 }
 
+func TestSharedPgAdminTrustsSingleGatewayForwardedHost(t *testing.T) {
+	var compose strings.Builder
+	writeSharedPostgresUICompose(&compose)
+	if !strings.Contains(compose.String(), "PGADMIN_CONFIG_PROXY_X_HOST_COUNT: \"1\"") {
+		t.Fatalf("pgAdmin must trust the host forwarded by its single BaseHarbor gateway proxy:\n%s", compose.String())
+	}
+}
+
 func TestVerifySharedPostgresStateOwnershipFailsClosedOnAmbiguity(t *testing.T) {
 	state := sharedBackendState{
 		Version:                 sharedBackendStateVersion,
@@ -187,15 +195,12 @@ func TestSharedPostgresStateContainsCredentialReferencesNotSecrets(t *testing.T)
 	}
 }
 
-func TestSharedValkeyComposeUsesNumericNonRootIdentity(t *testing.T) {
+func TestSharedValkeyComposeLeavesUIDToTheRuntime(t *testing.T) {
 	var b strings.Builder
 	writeSharedValkeyCompose(&b, sharedBackendAppState{Application: "demo", Environment: "dev"}, "default")
 	got := b.String()
-	if !strings.Contains(got, `user: "999:1000"`) {
-		t.Fatalf("shared Valkey compose missing numeric non-root identity:\n%s", got)
-	}
-	if strings.Contains(got, `user: "valkey"`) {
-		t.Fatalf("shared Valkey compose must not use symbolic runtime identity:\n%s", got)
+	if strings.Contains(got, "user:") {
+		t.Fatalf("shared Valkey compose must leave UID assignment to the runtime:\n%s", got)
 	}
 }
 
@@ -218,13 +223,11 @@ func TestSharedPostgresComposeUsesPreparedTLSRuntime(t *testing.T) {
 	got := b.String()
 
 	for _, want := range []string{
-		"uid=$$(id -u postgres); gid=$$(id -g postgres)",
 		"PGROOT: /home/postgres/pgroot",
 		"PGDATA: /home/postgres/pgroot/data",
 		"shared-postgres-data-1:/home/postgres/pgroot",
-		"chmod 0755 /run/baseharbor",
-		"chown \"0:$$gid\" /run/baseharbor/tls/server-cert.pem /run/baseharbor/tls/server-key.pem",
-		"chmod 0640 /run/baseharbor/tls/server-key.pem",
+		"chmod 0600 /run/baseharbor/tls/server-key.pem",
+		"if [ \"$$(id -u)\" = 0 ]; then chown postgres:postgres /run/baseharbor/tls/server-key.pem; fi",
 		"./postgresql/runtime:/run/baseharbor/tls-source:ro",
 		"exec /bin/sh /launch.sh init",
 	} {
@@ -252,8 +255,8 @@ func TestSharedPostgresComposeUsesPreparedTLSRuntime(t *testing.T) {
 		if strings.Contains(block, `cap_drop: ["ALL"]`) {
 			t.Fatalf("Spilo member %s must retain bootstrap capabilities:\n%s", member, block)
 		}
-		if !strings.Contains(block, "/run/baseharbor/tls:rw,noexec,nosuid,nodev,mode=0750") {
-			t.Fatalf("Spilo member %s must use private TLS tmpfs:\n%s", member, block)
+		if !strings.Contains(block, "/run/baseharbor/tls:rw,noexec,nosuid,nodev,mode=1777") {
+			t.Fatalf("Spilo member %s TLS tmpfs must permit a platform-assigned UID to create private owner-only key copies:\n%s", member, block)
 		}
 	}
 }

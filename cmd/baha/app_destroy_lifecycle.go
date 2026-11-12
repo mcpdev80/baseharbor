@@ -78,6 +78,9 @@ func newApplicationDestroyExecution(ctx context.Context, store application.Store
 	if err != nil {
 		return nil, err
 	}
+	if isApplicationStopMode(ctx) {
+		fullReset = false
+	}
 	// NAME and --uuid select through different seams and are mutually exclusive:
 	// combining them could name two deployments (0427-149/0427-175).
 	if name != "" && selectorUUID != "" {
@@ -278,7 +281,10 @@ func (e *applicationDestroyExecution) runPreflight(ctx context.Context) error {
 func (e *applicationDestroyExecution) renderDeletePlan() error {
 	m := e.manifest
 	e.term.Section("Delete plan")
-	renderRepositoryVolumePreservation(e.out, e.repositoryVolumes, e.resolved.Target.RuntimeProvider)
+	if e.resolved.FromRepository {
+		project := application.WorkloadProjectNameForRuntime(m, e.files)
+		renderRepositoryDestroyVolumes(e.out, e.repositoryVolumes, project)
+	}
 
 	if e.partialRuntime {
 		fmt.Fprintln(e.out, "  recovery:   generated runtime definition is incomplete; using ownership-verified cleanup")
@@ -338,13 +344,8 @@ func (e *applicationDestroyExecution) renderDeletePlan() error {
 	fmt.Fprintf(e.out, "  state:      %s\n", appDir)
 	if e.resolved.FromRepository {
 		fmt.Fprintf(e.out, "  manifest:   %s (preserved)\n", e.resolved.ManifestPath)
-		if e.fullReset {
-			fmt.Fprintf(e.out, "  deployment: %s (removed by --full-reset)\n", repositoryInitEnvPathFromStateRoot(e.resolved.stateRoot()))
-			fmt.Fprintf(e.out, "  local TLS:  %s (removed by --full-reset; external certificate source is never touched)\n", filepath.Join(e.resolved.stateRoot(), repositoryTLSDirName))
-		} else {
-			fmt.Fprintf(e.out, "  deployment: %s (preserved)\n", repositoryInitEnvPathFromStateRoot(e.resolved.stateRoot()))
-			fmt.Fprintf(e.out, "  local TLS:  %s (preserved)\n", filepath.Join(e.resolved.stateRoot(), repositoryTLSDirName))
-		}
+		fmt.Fprintf(e.out, "  deployment: %s (removed)\n", repositoryInitEnvPathFromStateRoot(e.resolved.stateRoot()))
+		fmt.Fprintf(e.out, "  local TLS:  %s (removed; external certificate source is never touched)\n", filepath.Join(e.resolved.stateRoot(), repositoryTLSDirName))
 	}
 	return nil
 }
@@ -354,11 +355,6 @@ func (e *applicationDestroyExecution) destroyRuntimeResources(ctx context.Contex
 		return errors.New("application destroy requires explicit --yes consent; nothing was deleted")
 	}
 	m := e.manifest
-	if e.resolved.FromRepository {
-		if err := e.saveRepositoryVolumeObservation(); err != nil {
-			return err
-		}
-	}
 	if e.runtimeErr == nil {
 		if err := destroyManagedExposure(ctx, e.compose, m, e.files); err != nil {
 			return err
@@ -369,6 +365,9 @@ func (e *applicationDestroyExecution) destroyRuntimeResources(ctx context.Contex
 			return err
 		}
 		if _, err := destroyRepositoryWorkloadRuntime(ctx, e.compose, e.resolved, e.files); err != nil {
+			return err
+		}
+		if err := e.destroyRepositoryDataVolumes(ctx); err != nil {
 			return err
 		}
 
@@ -632,6 +631,11 @@ func (e *applicationDestroyExecution) removeApplicationState() error {
 	if err := application.ReleaseApplicationProviderRegistryAt(e.resolved.TargetStateRoot, e.manifest); err != nil {
 		return fmt.Errorf("application resources were destroyed but provider registry cleanup failed: %w", err)
 	}
+	if e.resolved.FromRepository {
+		if err := os.Remove(e.repositoryVolumeObservationPath()); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("remove obsolete preserved-volume observation: %w", err)
+		}
+	}
 	if _, err := os.Stat(appDir); !errors.Is(err, os.ErrNotExist) {
 		if err == nil {
 			return errors.New("verify application destruction: application state still exists")
@@ -645,9 +649,8 @@ func (e *applicationDestroyExecution) removeApplicationState() error {
 
 	e.term.Section("Application")
 	e.term.Result("DELETED", "application", e.manifest.Name+" permanently deleted")
-	renderRepositoryVolumePreservation(e.out, e.repositoryVolumes, e.resolved.Target.RuntimeProvider)
 	if e.resolved.FromRepository {
-		e.term.Info("repository", "baseharbor.yaml and application-owned Compose data preserved; use 'baha app apply' to recreate")
+		e.term.Info("repository", "authored source files are preserved; application runtime data and BaseHarbor state were deleted")
 	}
 	return nil
 }

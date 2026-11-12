@@ -59,7 +59,7 @@ func TestApplicationStopRequiresBothCurrentAcknowledgementsWithoutReleasingBindi
 func TestApplicationStopCLIJSONMCPExposeSameRequiredAcknowledgement(t *testing.T) {
 	retainedNativeBackendFixture(t)
 	var out bytes.Buffer
-	err := runWithIO(withProviderChangeConsent(t.Context(), nil), []string{"app", "down", "--json"}, &out, io.Discard)
+	err := runWithIO(withProviderChangeConsent(t.Context(), nil), []string{"app", "down", "--yes", "--json"}, &out, io.Discard)
 	var cliFailure *machine.Error
 	if !errors.As(err, &cliFailure) || cliFailure.Code != machine.ErrorApprovalRequired || out.Len() != 0 {
 		t.Fatalf("CLI stop consent semantics or JSON contamination: %v %s", err, out.String())
@@ -79,8 +79,8 @@ func TestApplicationStopCLIJSONMCPExposeSameRequiredAcknowledgement(t *testing.T
 	}
 	cliPlan, _ := json.Marshal(cliFailure.Details)
 	mcpPlan, _ := json.Marshal(actual.Error.Details)
-	var cliScope, mcpScope applicationStopPlan
-	if json.Unmarshal(cliPlan, &cliScope) != nil || json.Unmarshal(mcpPlan, &mcpScope) != nil || cliScope.Scope.PlanID == "" || cliScope.Scope.PlanID != mcpScope.Scope.PlanID {
+	var cliImpact, mcpImpact application.ProviderImpactPlan
+	if json.Unmarshal(cliPlan, &cliImpact) != nil || json.Unmarshal(mcpPlan, &mcpImpact) != nil || cliImpact.PlanID == "" || cliImpact.PlanID != mcpImpact.PlanID {
 		t.Fatal("CLI/MCP do not expose the same concrete current stop plan")
 	}
 }
@@ -95,12 +95,12 @@ func TestApplicationStopHTTPUsesCurrentScopeAndCannotEscapeAuthorizedContext(t *
 		t.Fatalf("HTTP stop did not require current impact acknowledgement: %v", httpErr)
 	}
 	httpPlan, _ := json.Marshal(httpFailure.Details)
-	local, err := buildApplicationStopPlan(t.Context(), r)
+	_, local, err := buildApplicationRuntimeRetirementPlan(t.Context(), r)
 	if err != nil {
 		t.Fatal(err)
 	}
-	var decoded applicationStopPlan
-	if json.Unmarshal(httpPlan, &decoded) != nil || decoded.Scope.PlanID != local.Scope.PlanID {
+	var decoded application.ProviderImpactPlan
+	if json.Unmarshal(httpPlan, &decoded) != nil || local.Impact == nil || decoded.PlanID != local.Impact.PlanID {
 		t.Fatal("HTTP stop uses a different consequence authority")
 	}
 	for _, raw := range []json.RawMessage{json.RawMessage(`{"target":"foreign"}`), json.RawMessage(`{"environment":"foreign"}`), json.RawMessage(`{"name":"foreign"}`)} {

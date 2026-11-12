@@ -12,7 +12,7 @@ func TestParseDestroyArgsRequiresExplicitConfirmationOnlyForMutation(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	if name != "demo" || confirmed || fullReset {
+	if name != "demo" || confirmed || !fullReset {
 		t.Fatalf("unexpected preview parse result: name=%q confirmed=%t", name, confirmed)
 	}
 
@@ -32,7 +32,7 @@ func TestParseDestroyArgsRejectsUnknownOption(t *testing.T) {
 }
 
 // TestParseDestroyArgsAcceptsUUIDSelector (0427-175): the registry-conflict
-// repair advertises 'baha app destroy --uuid <id> --full-reset'. The option pair
+// repair advertises 'baha app destroy --uuid <id> --yes'. The option pair
 // is consumed by extractApplicationUUID/extractApplicationEnvironment, so the
 // positional parser must neither mistake it for a NAME nor reject it as an
 // unknown option.
@@ -58,7 +58,7 @@ func TestParseDestroyArgsAcceptsUUIDSelector(t *testing.T) {
 	if name, _, _, err := parseDestroyArgs([]string{"--uuid", "d-3"}); err != nil || name != "" {
 		t.Fatalf("the selector value must not land in the NAME slot: name=%q err=%v", name, err)
 	}
-	if name, _, _, err := parseDestroyArgs([]string{"demo"}); err != nil || name != "demo" {
+	if name, _, fullReset, err := parseDestroyArgs([]string{"demo"}); err != nil || name != "demo" || !fullReset {
 		t.Fatalf("NAME must parse unchanged: name=%q err=%v", name, err)
 	}
 }

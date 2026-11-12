@@ -150,6 +150,24 @@ func AuthorizeMachineOperation(ctx context.Context, request AuthorizationRequest
 	}
 
 	principal, ok := PrincipalFromContext(ctx)
+	// An imported workstation grants the minimum development-only device
+	// workflow, never production or staging by virtue of carrying a valid
+	// client certificate. Elevated environments require an operator OIDC
+	// session and explicit policy instead of an enrollment invite.
+	if ok && principal != nil {
+		for _, method := range principal.Methods {
+			if method == "workstation-mtls" && decision.Context.Environment != "dev" {
+				decision.ReasonCode = "workstation_environment_denied"
+				decision.Reason = "Workstation pairing alone permits only development environment operations."
+				setAuthorizationDecision(ctx, decision)
+				return decision, &machine.Error{
+					Code: machine.ErrorPolicyDenied, CauseCode: decision.ReasonCode,
+					Message: decision.Reason, Resource: operation.ID,
+					Next: "Authenticate an operator and request elevated environment access explicitly.",
+				}
+			}
+		}
+	}
 	tenantScoped := false
 	if tenant, scoped := tenancy.FromContext(ctx); scoped {
 		if !ok {

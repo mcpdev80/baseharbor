@@ -320,7 +320,7 @@ func resolveWorkloadOverrideTopology(m Manifest, services []string, values map[s
 	}
 	topology.env = env
 	topology.managedRuntime = HasManagedRuntimeServices(m)
-	topology.serviceBindings = topology.managedRuntime || HasIdentity(m)
+	topology.serviceBindings = topology.managedRuntime || HasIdentity(m) || hasManagementUI(m)
 	runtimeBroker := RequiresRuntimeBroker(m)
 	topology.applicationBackendNetwork = HasApplicationScopedRuntimeServices(m) || runtimeBroker
 	topology.sharedBackendNetwork = HasSharedBackends(m)
@@ -397,7 +397,7 @@ func writeWorkloadOverrideServices(b *strings.Builder, m Manifest, services []st
 		_, metricsSource := topology.metricsServices[service]
 		_, runtimeObjectStorage := topology.runtimeObjectStorageServices[service]
 		serviceObjectStorage := topology.objectStorage || runtimeObjectStorage
-		hasEnvironment := len(topology.env) > 0 || HasOTLPTelemetry(m) || HasIdentity(m)
+		hasEnvironment := len(topology.env) > 0 || HasOTLPTelemetry(m) || HasIdentity(m) || topology.serviceBindings
 		hasNetworks := topology.backendNetwork || serviceObjectStorage || topology.telemetryManaged || topology.identityManaged || metricsSource || exposed || topology.canonicalDevWorkload
 		hasTelemetryTLS := HasOTLPTelemetry(m) && (strings.TrimSpace(values[OTLPTLSHostCAEnv]) != "" || strings.TrimSpace(values[OTLPTLSHostClientCertEnv]) != "")
 		hasObjectStorageTLS := serviceObjectStorage && strings.TrimSpace(values[S3TLSHostCAEnv]) != ""

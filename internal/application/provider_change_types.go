@@ -177,8 +177,8 @@ type ProviderImpactPlan struct {
 	Impacts               []ProviderImpact `json:"impacts"`
 }
 
-// Each stage is an independently explicit acknowledgement of the SAME plan.
-// Existing interfaces collect these; this adds no flags, prompts or state owner.
+// Fields acknowledge consequences of the same concrete plan. Interactive CLI
+// review can collect them together in one explicit, fully scoped decision.
 type ProviderChangeConsent struct {
 	PlanID     string `json:"plan_id"`
 	First      bool   `json:"first"`

@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/cli"
+	"github.com/mcpdev80/baseharbor/internal/coreinstallation"
 	"github.com/mcpdev80/baseharbor/internal/machine"
 	"github.com/mcpdev80/baseharbor/internal/onboardingwizard"
 )
@@ -19,17 +20,43 @@ func onboardCommand() *cli.Command {
 	return &cli.Command{
 		Name:    "onboard",
 		Summary: "Guided onboarding: attach a workstation to a BaseHarbor installation",
-		Usage:   "baha onboard [--target NAME] [--json] | baha onboard --init-tenant [-e ENV] [--tenant-slug SLUG --tenant-name NAME]",
-		Long:    "Guided path from a fresh workstation to a functioning installation with minimal questions. Bootstrap and attach are distinct intents; joining an existing installation never re-installs services and never repeats credential entry while a valid reusable connection exists. Cancel and EOF change nothing.",
+		Usage:   "baha onboard [--target NAME] [--json] | baha onboard --import PRIVATE_FILE [--target-name NAME] [--trust-host-ca|--skip-host-trust] [--configure-hosts|--skip-hosts] | baha onboard --invite [--name PERSON] [--login LOGIN] [--email EMAIL] [--station DEVICE] [--certificate-ttl 5y] [--output PRIVATE_FILE] | baha onboard --init-tenant [-e ENV] [--tenant-slug SLUG --tenant-name NAME]",
+		Long:    "On the Core host, --invite creates a new Keycloak user and first workstation. It asks for the person's full name, login, email, device name and certificate lifetime, then securely prompts for an initial password. The password is temporary and must be changed at first login. Email is contact information only; SMTP is not required. Use baha workstation new to add another device for an existing person. On a developer workstation, --import redeems the private one-use device invitation.",
 		Run:     runOnboardCommand,
 	}
 }
 
 func runOnboardCommand(ctx context.Context, args []string, out, errOut io.Writer) error {
+	if len(args) > 0 && args[0] == "--invite" {
+		return runOnboardInvite(ctx, args[1:], out)
+	}
+	if len(args) > 0 && args[0] == "--import" {
+		return runOnboardImport(ctx, args[1:], out)
+	}
 	// First-owner setup reuses the exact same owner-bound OIDC + PKCE + tenant
 	// transaction as baha login; the wizard never creates an independent admin.
 	if len(args) > 0 && args[0] == "--init-tenant" {
 		return runOnboardInitialTenant(ctx, args[1:], out, errOut)
+	}
+	// On the owning VM a bare "baha onboard" exports the one-use
+	// workstation invitation. Do not send a READY Core owner back through
+	// the client-side attach wizard or demand a browser login.
+	if len(args) == 0 {
+		if target, err := effectiveTarget(ctx); err == nil &&
+			(target.AccessProvider == "" || target.AccessProvider == "local") {
+			// Existing local onboarding sessions must retain their guided
+			// manage/remove path. Only a fresh owning Core defaults to an
+			// invitation instead of the attach wizard.
+			if _, found, err := loadOnboardingConnection(target.Name); err != nil {
+				return err
+			} else if !found {
+				if root, err := targetRuntimeStateRoot(target); err == nil {
+					if state, err := coreinstallation.Load(root); err == nil && state.Ready {
+						return runOnboardInvite(ctx, nil, out)
+					}
+				}
+			}
+		}
 	}
 	filtered, format, err := parseReadOutputArgs(args, "onboard")
 	if err != nil {

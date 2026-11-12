@@ -12,7 +12,10 @@ import (
 // TLS remains mandatory and is issued by the existing managed service PKI;
 // the workstation must trust its actual CA and resolve the canonical hosts.
 func gatewayBindAddress(routes []Route) (string, error) {
-	host := strings.TrimSpace(os.Getenv("BASEHARBOR_DEV_GATEWAY_BIND_ADDRESS"))
+	return validatedGatewayBindAddress(routes, strings.TrimSpace(os.Getenv("BASEHARBOR_DEV_GATEWAY_BIND_ADDRESS")))
+}
+
+func validatedGatewayBindAddress(routes []Route, host string) (string, error) {
 	if host == "" || host == "127.0.0.1" {
 		return "127.0.0.1", nil
 	}
@@ -27,4 +30,19 @@ func gatewayBindAddress(routes []Route) (string, error) {
 		}
 	}
 	return ip.String(), nil
+}
+
+// A selected Core's concrete IP plus explicitly configured non-localhost names
+// permits canonical URLs from its workstation. Explicit bind overrides win.
+func gatewayBindAddressForIPAccess(routes []Route, coreIP string) (string, error) {
+	if strings.TrimSpace(os.Getenv("BASEHARBOR_DEV_GATEWAY_BIND_ADDRESS")) != "" || coreIP == "" || len(routes) == 0 {
+		return gatewayBindAddress(routes)
+	}
+	for _, route := range routes {
+		name := strings.ToLower(strings.TrimSuffix(strings.TrimSpace(route.Host), "."))
+		if name == "localhost" || strings.HasSuffix(name, ".localhost") {
+			return "127.0.0.1", nil
+		}
+	}
+	return validatedGatewayBindAddress(routes, coreIP)
 }

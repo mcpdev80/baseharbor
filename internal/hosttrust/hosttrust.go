@@ -100,7 +100,7 @@ func Inspect(stateDir string, pemData []byte) (Status, error) {
 	}
 	status := Status{Fingerprint: fingerprint, Trusted: trusted}
 	for _, record := range state.Anchors {
-		if record.Fingerprint == fingerprint {
+		if record.Fingerprint == fingerprint && record.Backend != nssBackendName {
 			status.Owned = true
 			status.Backend = record.Backend
 			status.Path = record.Path
@@ -126,7 +126,7 @@ func Install(ctx context.Context, stateDir string, pemData []byte, issuerReferen
 
 	var owned *AnchorRecord
 	for index := range state.Anchors {
-		if state.Anchors[index].Fingerprint != fingerprint {
+		if state.Anchors[index].Fingerprint != fingerprint || state.Anchors[index].Backend == nssBackendName {
 			continue
 		}
 		owned = &state.Anchors[index]
@@ -215,6 +215,18 @@ type RemovalResult struct {
 }
 
 func RemoveOwnedDetailed(ctx context.Context, stateDir string) (RemovalResult, error) {
+	return removeOwnedMatching(ctx, stateDir, "")
+}
+
+// RemoveOwnedFingerprint removes only recorded system/browser anchors for this CA.
+func RemoveOwnedFingerprint(ctx context.Context, stateDir, fingerprint string) (RemovalResult, error) {
+	if len(fingerprint) != 64 {
+		return RemovalResult{}, errors.New("invalid CA fingerprint")
+	}
+	return removeOwnedMatching(ctx, stateDir, fingerprint)
+}
+
+func removeOwnedMatching(ctx context.Context, stateDir, fingerprint string) (RemovalResult, error) {
 	state, err := loadState(stateDir)
 	if err != nil {
 		return RemovalResult{}, err
@@ -223,13 +235,26 @@ func RemoveOwnedDetailed(ctx context.Context, stateDir string) (RemovalResult, e
 	var failures error
 	retained := make([]AnchorRecord, 0, len(state.Anchors))
 	for _, record := range state.Anchors {
-		backend, resolveErr := resolveBackend(record.Backend)
+		if fingerprint != "" && record.Fingerprint != fingerprint {
+			retained = append(retained, record)
+			continue
+		}
+		var backend Backend
+		var resolveErr error
+		if record.Backend == nssBackendName {
+			backend = &nssBackend{database: record.Path}
+		} else {
+			backend, resolveErr = resolveBackend(record.Backend)
+		}
 		if resolveErr == nil {
 			var expected string
 			expected, resolveErr = backend.AnchorPath(record.Fingerprint)
 			if resolveErr == nil && filepath.Clean(expected) != filepath.Clean(record.Path) {
 				resolveErr = fmt.Errorf("recorded anchor path does not match fingerprint %s", record.Fingerprint)
 			}
+		}
+		if record.Backend == nssBackendName && errors.Is(resolveErr, os.ErrNotExist) {
+			resolveErr = nil
 		}
 		if resolveErr == nil {
 			resolveErr = verifyRecordedAnchor(record)
@@ -265,6 +290,9 @@ func RemoveOwned(ctx context.Context, stateDir string) (int, error) {
 }
 
 func verifyRecordedAnchor(record AnchorRecord) error {
+	if record.Backend == nssBackendName {
+		return verifyNSSRecord(record)
+	}
 	info, statErr := os.Lstat(record.Path)
 	if errors.Is(statErr, os.ErrNotExist) {
 		return nil
@@ -557,6 +585,16 @@ func InspectRecorded(stateDir string) ([]RecordedStatus, error) {
 	result := make([]RecordedStatus, 0, len(records))
 	for _, record := range records {
 		status := RecordedStatus{Fingerprint: record.Fingerprint, Backend: record.Backend, State: "missing"}
+		if record.Backend == nssBackendName {
+			if _, err := readRecordedNSSCA(record); err == nil {
+				status.State = "verified"
+				status.Trusted = (&nssBackend{database: record.Path, fingerprint: record.Fingerprint}).trusted(context.Background()) == nil
+			} else if !errors.Is(err, os.ErrNotExist) {
+				status.State = "unverified"
+			}
+			result = append(result, status)
+			continue
+		}
 		info, err := os.Lstat(record.Path)
 		if errors.Is(err, os.ErrNotExist) {
 			result = append(result, status)

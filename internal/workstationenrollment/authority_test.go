@@ -102,6 +102,26 @@ func TestEnrollPositiveIssuesLeafWithScopeAndTime(t *testing.T) {
 	}
 }
 
+func TestEnrollmentCarriesServerBoundOwner(t *testing.T) {
+	authority, _ := newAuthority(t)
+	scope := validScope(t)
+	bootstrap, err := authority.CreateForOwner(context.Background(), scope, time.Minute, time.Hour, "marcel")
+	if err != nil {
+		t.Fatalf("CreateForOwner: %v", err)
+	}
+	request, err := ws.NewRequest(scope, bootstrap.Token, bootstrap.Nonce, newCSRPEM(t, scope.Identity()), time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := authority.Enroll(context.Background(), request)
+	if err != nil {
+		t.Fatalf("Enroll: %v", err)
+	}
+	if result.OwnerLogin != "marcel" {
+		t.Fatalf("owner login = %q, want server-bound owner marcel", result.OwnerLogin)
+	}
+}
+
 // ROTE 1: second use of a one-use bootstrap is rejected.
 func TestSecondUseRejected(t *testing.T) {
 	authority, store := newAuthority(t)

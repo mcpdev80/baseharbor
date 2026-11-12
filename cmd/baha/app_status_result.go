@@ -31,6 +31,7 @@ type applicationStatusResult struct {
 	ServiceTLS      []application.BackendTLSLifecycleObservation `json:"service_tls,omitempty"`
 	RuntimeArtifact *runtimeArtifactObservation                  `json:"runtime_artifact,omitempty"`
 	RuntimeDocsURL  string                                       `json:"runtime_docs_url,omitempty"`
+	ApplicationURLs []string                                     `json:"application_urls,omitempty"`
 	ManagementUI    []application.ManagementUISurface            `json:"management_ui,omitempty"`
 	OperatorAuth    operatorAuthObservation                      `json:"operator_auth"`
 	Availability    []availability.NegotiationResult             `json:"availability,omitempty"`
@@ -234,6 +235,7 @@ func collectApplicationStatusResult(ctx context.Context, store application.Store
 		ServiceTLS:      serviceTLS,
 		RuntimeArtifact: runtimeArtifact,
 		RuntimeDocsURL:  runtimeDocsURL,
+		ApplicationURLs: applicationAccessURLs(resolved, result.Ready),
 		ManagementUI:    managementUI,
 		tlsStatus:       tlsStatus,
 		tlsErr:          tlsErr,

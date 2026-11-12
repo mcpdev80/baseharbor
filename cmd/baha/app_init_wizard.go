@@ -50,6 +50,7 @@ type appProjectDetection struct {
 	Ports                    []repositoryinspect.PortEvidence
 	SecretCandidates         []string
 	SecretSources            map[string]string
+	SecretSourcePolicies     map[string]string
 	EnvFiles                 []string
 }
 
@@ -166,8 +167,8 @@ func runAppInitWizard(ctx context.Context, d appProjectDetection, out io.Writer)
 		zeroBytes(devSetup.password)
 		return err
 	}
-	if err := applyGuidedDevAccess(devSetup); err != nil {
-		return fmt.Errorf("configure local development access: %w", err)
+	if err := applyGuidedDevAccess(ctx, devSetup); err != nil {
+		return fmt.Errorf("configure development access: %w", err)
 	}
 	var repositoryMetadataPath string
 	if selection.persistWorkloadSource && selection.workloadSource != nil {
@@ -227,11 +228,17 @@ func manifestFromDetectedProject(d appProjectDetection, quick bool) (application
 	// Secret names discovered from env/example files are heuristic evidence only.
 	// Quick mode must never promote them into required portable contract entries
 	// without an explicit developer confirmation.
-	secrets := false
+	secrets := len(d.SecretSourcePolicies) > 0
 	hasWorkload := len(d.WorkloadServices) > 0
+	unconfirmedSecretCandidates := 0
+	for _, candidate := range d.SecretCandidates {
+		if _, declared := d.SecretSourcePolicies[candidate]; !declared {
+			unconfirmedSecretCandidates++
+		}
+	}
 	if quick && !sql && !cache && !objectStorage && !secrets && !hasWorkload && !d.Metrics && !d.OTLP {
 		return application.Manifest{}, usageError(
-			fmt.Sprintf("no unambiguous application requirements were detected (SQL=%t, cache=%t, object-storage=%t, workload-services=%d, metrics=%t, telemetry=%t, secret-candidates=%d unconfirmed)", sql, cache, objectStorage, len(d.WorkloadServices), d.Metrics, d.OTLP, len(d.SecretCandidates)),
+			fmt.Sprintf("no unambiguous application requirements were detected (SQL=%t, cache=%t, object-storage=%t, workload-services=%d, metrics=%t, telemetry=%t, secret-candidates=%d unconfirmed)", sql, cache, objectStorage, len(d.WorkloadServices), d.Metrics, d.OTLP, unconfirmedSecretCandidates),
 			"Run 'baha app init' interactively or pass explicit capability flags. After init, use 'baha app plan' to preview changes; 'baha up' does not have a dry-run mode.",
 		)
 	}
@@ -245,6 +252,7 @@ func manifestFromDetectedProject(d appProjectDetection, quick bool) (application
 	if !quick {
 		m = application.WithRequiredSecrets(m, d.SecretCandidates...)
 	}
+	m = applyDetectedSecretSourcePolicies(m, d.SecretSourcePolicies)
 	if len(d.WorkloadServices) > 0 {
 		m = application.WithWorkloadComponents(m, d.WorkloadServices...)
 		var err error
@@ -280,6 +288,19 @@ func manifestFromDetectedProject(d appProjectDetection, quick bool) (application
 	return m, nil
 }
 
+func applyDetectedSecretSourcePolicies(manifest application.Manifest, policies map[string]string) application.Manifest {
+	for name, source := range policies {
+		manifest = application.WithRequiredSecrets(manifest, name)
+		for index := range manifest.Secrets.Required {
+			if manifest.Secrets.Required[index].Name == name {
+				manifest.Secrets.Required[index].Source = application.SecretSource(source)
+				break
+			}
+		}
+	}
+	return manifest
+}
+
 func applyGuidedSecretPolicies(m application.Manifest, policies []guidedSecretPolicy) application.Manifest {
 	for _, policy := range policies {
 		switch {
@@ -309,7 +330,13 @@ func writeRepositoryManifest(ctx context.Context, m application.Manifest, out io
 	if len(application.RequiredSecretNames(m)) > 0 {
 		fmt.Fprintf(out, "required application secrets: %s\n", strings.Join(application.RequiredSecretNames(m), ", "))
 	}
-	fmt.Fprintln(out, "next: run 'baha up'")
+	target, err := effectiveTarget(ctx)
+	if err != nil {
+		return err
+	}
+	if target.AccessProvider == "" || target.AccessProvider == "local" {
+		fmt.Fprintln(out, "next: run 'baha up'")
+	}
 	return nil
 }
 

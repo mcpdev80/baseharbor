@@ -50,6 +50,7 @@ func (m *memoryStore) Create(_ context.Context, b Bootstrap) error {
 	key := scopeKey{b.RequestScope.TenantID, b.RequestScope.Station}
 	m.grants[key] = grant{
 		scope:          b.RequestScope,
+		ownerLogin:     b.OwnerLogin,
 		tokenDigest:    digest(b.Token),
 		nonceDigest:    digest(b.Nonce),
 		expiresAt:      b.ExpiresAt,
@@ -74,7 +75,7 @@ func (m *memoryStore) Consume(_ context.Context, scope Scope, token, nonce strin
 		return Bootstrap{}, ErrDenied
 	}
 	delete(m.grants, key)
-	if ttl <= 0 || ttl > 24*time.Hour {
+	if ttl <= 0 || ttl > MaxCertificateTTL {
 		return Bootstrap{}, ErrDenied
 	}
 	return Bootstrap{
@@ -82,5 +83,6 @@ func (m *memoryStore) Consume(_ context.Context, scope Scope, token, nonce strin
 		Nonce:          nonce,
 		ExpiresAt:      g.expiresAt,
 		CertificateTTL: g.certificateTTL,
+		OwnerLogin:     g.ownerLogin,
 	}, nil
 }

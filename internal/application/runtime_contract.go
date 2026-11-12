@@ -469,6 +469,9 @@ func ensureWorkloadServiceBindingProjection(m Manifest, files RuntimeFiles, valu
 }
 
 func VerifyWorkloadServiceBindings(m Manifest, files RuntimeFiles) error {
+	if err := verifyConsumerReadableProjection(workloadServiceBindingProjectionDir(files)); err != nil {
+		return err
+	}
 	values, err := readRuntimeEnv(files.Env)
 	if err != nil {
 		return err
@@ -621,6 +624,12 @@ func workloadServiceBindingName(kind, instance string, count int) string {
 
 func writeWorkloadServiceBinding(dir string, entries map[string]string) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	// The directory is mounted read-only into the application workload. Apply
+	// its consumer-readable mode explicitly because a restrictive umask can
+	// otherwise leave it owner-only even though the leaf files are readable.
+	if err := os.Chmod(dir, 0o755); err != nil {
 		return err
 	}
 	for name, value := range entries {

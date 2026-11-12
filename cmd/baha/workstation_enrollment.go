@@ -34,7 +34,7 @@ func (e *bahaMachineExecutor) WorkstationEnrollmentHTTP(ctx context.Context, sto
 	}
 	startup := withTargetOverride(ctx, authorityTarget)
 	target, err := effectiveTarget(startup)
-	if err != nil || target.Name != authorityTarget || target.AccessProvider != string(targetaccess.ProviderLocal) ||
+	if err != nil || target.Name != authorityTarget || (target.AccessProvider != "" && target.AccessProvider != string(targetaccess.ProviderLocal)) ||
 		(target.RuntimeProvider != "docker" && target.RuntimeProvider != "podman") {
 		return nil, errors.New("Workstation authority Target must resolve to a local Docker or Podman Core")
 	}
@@ -48,7 +48,7 @@ func (e *bahaMachineExecutor) WorkstationEnrollmentHTTP(ctx context.Context, sto
 	if err != nil || !state.Initialized || state.Sealed || platformopenbao.CheckManager(check, provider, files) != nil {
 		return nil, errors.New("Workstation authority requires initialized, unsealed OpenBao and protected manager authentication")
 	}
-	issuer := platformopenbao.NewServiceIssuer(provider, files)
+	issuer := workstationScopedCSRIssuer{platformopenbao.NewServiceIssuer(provider, files)}
 	if _, err := issuer.TrustBundle(check); err != nil {
 		return nil, errors.New("Workstation authority trust is unavailable")
 	}
@@ -68,6 +68,16 @@ func (e *bahaMachineExecutor) WorkstationEnrollmentHTTP(ctx context.Context, sto
 	return wshttp.NewProductionHandler(wsProductionEnrollmentBridge{authority, store}, wshttp.ScopeResolverFromPolicy(authorize))
 }
 
+// workstationScopedCSRIssuer can sign only workstation URI identities.
+// The standard Connector signer remains unchanged and cannot be widened.
+type workstationScopedCSRIssuer struct {
+	*platformopenbao.ServiceIssuer
+}
+
+func (i workstationScopedCSRIssuer) SignCSR(ctx context.Context, request serviceaccess.CSRSigningRequest) (serviceaccess.IssuedCertificate, error) {
+	return i.SignWorkstationCSR(ctx, request)
+}
+
 // wsProductionEnrollmentBridge adapts the one-use authority and the durable
 // store to the production HTTP boundary. Create/Enroll delegate to the authority;
 // RecordRegistryFact persists the approved registry owner via the durable store.
@@ -84,6 +94,16 @@ func (e wsProductionEnrollmentBridge) RecordRegistryFact(ctx context.Context, sc
 		return errors.New("workstation production store does not support registry-fakt persistence")
 	}
 	return store.RecordRegistryFact(ctx, scope, issuedAt, recipient, scopeID, serial, expiresAt)
+}
+
+func (e wsProductionEnrollmentBridge) RecordOwnedRegistryFact(ctx context.Context, scope ws.Scope, issuedAt time.Time, recipient, scopeID, serial string, expiresAt time.Time, ownerLogin string) error {
+	store, ok := e.store.(interface {
+		RecordOwnedRegistryFact(ctx context.Context, scope ws.Scope, issuedAt time.Time, recipient, scopeID, serial string, expiresAt time.Time, ownerLogin string) error
+	})
+	if !ok {
+		return errors.New("workstation production store does not support owner registry persistence")
+	}
+	return store.RecordOwnedRegistryFact(ctx, scope, issuedAt, recipient, scopeID, serial, expiresAt, ownerLogin)
 }
 
 // CurrentSerial anchors the currently issued workstation leaf for a scope for

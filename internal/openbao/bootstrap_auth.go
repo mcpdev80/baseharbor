@@ -90,6 +90,10 @@ const managerPolicy = `path "sys/capabilities-self" {
   capabilities = ["update"]
 }
 
+path "auth/token/revoke-self" {
+  capabilities = ["update"]
+}
+
 path "baseharbor/data/managed/*" {
   capabilities = ["create", "update", "read", "delete"]
 }
@@ -166,6 +170,10 @@ path "baseharbor-pki/sign/baseharbor-core" {
   capabilities = ["create", "update"]
 }
 path "baseharbor-pki/sign/baseharbor-nodes" {
+  capabilities = ["create", "update"]
+}
+
+path "baseharbor-pki/sign/baseharbor-workstations" {
   capabilities = ["create", "update"]
 }
 

@@ -123,6 +123,33 @@ func TestRepositoryAdoptionReusesRetainedCanonicalIdentity(t *testing.T) {
 	}
 }
 
+func TestRepositoryAdoptionDefersFreshIdentityToRemoteCore(t *testing.T) {
+	ctx, _, node := remoteApplicationCoreFixtureEmpty(t)
+	t.Setenv("BASEHARBOR_TARGET", node.Name)
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "compose.yaml"), []byte("services:\n  api:\n    image: example.invalid/workload:fixed\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	intent := application.New("remote-demo", "dev", true, false, false)
+	intent.ApplicationID = ""
+	result, err := persistRepositoryApplication(ctx, root, intent, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.ApplicationID != "" {
+		t.Fatalf("workstation assigned remote app identity %q", result.ApplicationID)
+	}
+	authored, err := application.LoadManifestFile(result.Manifest)
+	if err != nil || authored.ApplicationID != "" {
+		t.Fatalf("authored remote manifest contains a client identity: %+v %v", authored, err)
+	}
+	owner := application.Store{Root: filepath.Join(root, ".baseharbor", "apps")}
+	items, err := owner.List()
+	if err != nil || len(items) != 0 {
+		t.Fatalf("remote guided init persisted a competing local owner: %+v %v", items, err)
+	}
+}
+
 func TestMCPAuthoringAuthorizationDenialPrecedesIdentityPersistence(t *testing.T) {
 	target := configureTestTarget(t)
 	t.Setenv(operatorauth.EnvIssuer, "")

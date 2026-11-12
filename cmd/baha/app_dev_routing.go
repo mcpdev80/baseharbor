@@ -187,7 +187,11 @@ func (e *applicationApplyExecution) reconcileDevelopmentCanonicalRoutes(ctx cont
 		return err
 	}
 	plan.groups = append(plan.groups, retiredMetrics...)
-	if err := devgateway.ReplaceRoutes(ctx, e.compose, e.issuer, target, plan.groups...); err != nil {
+	ipAddress, err := remoteCoreIPAccessAddress(e.resolved.Target)
+	if err != nil {
+		return err
+	}
+	if err := devgateway.ReplaceRoutesWithIPAccessAddress(ctx, e.compose, e.issuer, target, ipAddress, plan.groups...); err != nil {
 		return fmt.Errorf("reconcile canonical development routes: %w", err)
 	}
 	if err := devgateway.Verify(ctx, target); err != nil {
@@ -202,6 +206,22 @@ func (e *applicationApplyExecution) reconcileDevelopmentCanonicalRoutes(ctx cont
 		if route.Owner == plan.appOwner || strings.HasPrefix(route.Owner, "shared/") {
 			e.term.Result("READY", route.Key, devgateway.URLForTarget(target, route.Host))
 		}
+	}
+	managementRoutes := append([]devgateway.Route(nil), plan.appRoutes...)
+	for _, group := range plan.groups {
+		managementRoutes = append(managementRoutes, group.Routes...)
+	}
+	canonical, directIP, err := devgateway.ManagementURLs(target, plan.appOwner, managementRoutes)
+	if err != nil {
+		return err
+	}
+	if requiresManagedDevelopmentOperatorRealm(e.manifest) {
+		if err := identityprovider.EnsureDevelopmentConsoleOrigins(ctx, e.resolved.TargetStateRoot, target, canonical, directIP); err != nil {
+			return err
+		}
+	}
+	if err := application.MaterializeManagementUIEndpointBinding(e.manifest, e.files, canonical, directIP); err != nil {
+		return err
 	}
 	return nil
 }
@@ -221,7 +241,7 @@ func (e *applicationApplyExecution) addDevelopmentBackendRoutes(_ context.Contex
 			plan.groups = append(plan.groups, devgateway.OwnerRoutes{
 				Owner: "shared/postgresql",
 				Routes: []devgateway.Route{{
-					Key: "shared/postgresql", Host: host,
+					Key: "shared/postgresql", Host: host, ManagementKey: "sql",
 					Upstream:   "https://shared-pgadmin:8443",
 					Network:    shared.Network,
 					TrustFile:  filepath.Join(shared.Dir, "management-ui", "postgres", "pki", "ca.pem"),
@@ -234,7 +254,7 @@ func (e *applicationApplyExecution) addDevelopmentBackendRoutes(_ context.Contex
 				return err
 			}
 			plan.appRoutes = append(plan.appRoutes, devgateway.Route{
-				Key: plan.appOwner + "/pgadmin", Host: host,
+				Key: plan.appOwner + "/pgadmin", Host: host, ManagementKey: "sql",
 				Upstream:   "https://" + devaccess.ApplicationAlias(e.manifest.Name, "pgadmin") + ":8443",
 				Network:    application.ApplicationBackendNetworkNameForProject(e.files.ResourceProject),
 				TrustFile:  filepath.Join(e.files.Dir, "providers", "management-ui", "postgres", "pki", "ca.pem"),
@@ -257,7 +277,7 @@ func (e *applicationApplyExecution) addDevelopmentBackendRoutes(_ context.Contex
 			plan.groups = append(plan.groups, devgateway.OwnerRoutes{
 				Owner: "shared/valkey",
 				Routes: []devgateway.Route{{
-					Key: "shared/valkey", Host: host,
+					Key: "shared/valkey", Host: host, ManagementKey: "cache",
 					Upstream:   "https://shared-cache-ui-access:8443",
 					Network:    shared.Network,
 					TrustFile:  filepath.Join(shared.Dir, "management-ui", "cache", "pki", "ca.pem"),
@@ -270,7 +290,7 @@ func (e *applicationApplyExecution) addDevelopmentBackendRoutes(_ context.Contex
 				return err
 			}
 			plan.appRoutes = append(plan.appRoutes, devgateway.Route{
-				Key: plan.appOwner + "/cache", Host: host,
+				Key: plan.appOwner + "/cache", Host: host, ManagementKey: "cache",
 				Upstream:   "https://" + devaccess.ApplicationAlias(e.manifest.Name, "cache") + ":8443",
 				Network:    application.ApplicationBackendNetworkNameForProject(e.files.ResourceProject),
 				TrustFile:  filepath.Join(e.files.Dir, "providers", "management-ui", "cache", "pki", "ca.pem"),
@@ -282,12 +302,16 @@ func (e *applicationApplyExecution) addDevelopmentBackendRoutes(_ context.Contex
 	if e.manifest.Services.MessagingManagementUI {
 		for _, instance := range application.RabbitMQInstanceNames(e.manifest) {
 			routeName := application.RabbitMQManagementUIRouteName(instance)
+			managementKey := "rabbitmq"
+			if instance != "default" {
+				managementKey += "_" + instance
+			}
 			host, err := devaccess.ApplicationHost(plan.target, e.manifest.Name, routeName)
 			if err != nil {
 				return err
 			}
 			plan.appRoutes = append(plan.appRoutes, devgateway.Route{
-				Key: plan.appOwner + "/" + routeName, Host: host,
+				Key: plan.appOwner + "/" + routeName, Host: host, ManagementKey: managementKey,
 				Upstream:   "https://" + devaccess.ApplicationAlias(e.manifest.Name, routeName) + ":8443",
 				Network:    application.ApplicationBackendNetworkNameForProject(e.files.ResourceProject),
 				TrustFile:  filepath.Join(e.files.Dir, "providers", "management-ui", "rabbitmq", instance, "pki", "ca.pem"),
@@ -298,12 +322,16 @@ func (e *applicationApplyExecution) addDevelopmentBackendRoutes(_ context.Contex
 	if e.manifest.Services.DocumentDatabaseManagementUI {
 		for _, instance := range application.DocumentDatabaseInstanceNames(e.manifest) {
 			routeName := application.MongoDBManagementUIRouteName(instance)
+			managementKey := "mongodb"
+			if instance != "default" {
+				managementKey += "_" + instance
+			}
 			host, err := devaccess.ApplicationHost(plan.target, e.manifest.Name, routeName)
 			if err != nil {
 				return err
 			}
 			plan.appRoutes = append(plan.appRoutes, devgateway.Route{
-				Key: plan.appOwner + "/" + routeName, Host: host,
+				Key: plan.appOwner + "/" + routeName, Host: host, ManagementKey: managementKey,
 				Upstream:   "https://" + devaccess.ApplicationAlias(e.manifest.Name, routeName) + ":8443",
 				Network:    application.ApplicationBackendNetworkNameForProject(e.files.ResourceProject),
 				TrustFile:  filepath.Join(e.files.Dir, "providers", "management-ui", "mongodb", instance, "pki", "ca.pem"),
@@ -343,7 +371,7 @@ func (e *applicationApplyExecution) addDevelopmentIdentityRoutes(_ context.Conte
 		return err
 	}
 	identityRoutes := []devgateway.Route{{
-		Key: loginKey, Host: host,
+		Key: loginKey, Host: host, ManagementKey: "identity",
 		Upstream:   fmt.Sprintf("https://%s:%d", devaccess.ProviderAlias(files.Project, "identity"), 8443),
 		Network:    files.ConsumerNetwork,
 		TrustFile:  files.PublicAccess.Material.CA,
@@ -360,7 +388,7 @@ func (e *applicationApplyExecution) addDevelopmentIdentityRoutes(_ context.Conte
 			return err
 		}
 		identityRoutes = append(identityRoutes, devgateway.Route{
-			Key: adminKey, Host: adminHost,
+			Key: adminKey, Host: adminHost, ManagementKey: "identity_admin",
 			Upstream: "https://" + devaccess.ProviderAlias(files.Project, "identity-admin") + ":8443",
 			// Both browser aliases are published on the verified frontend's
 			// consumer network. The internal network belongs to its backends.
@@ -368,6 +396,17 @@ func (e *applicationApplyExecution) addDevelopmentIdentityRoutes(_ context.Conte
 			TrustFile:  files.AdminAccess.Material.CA,
 			ServerName: files.AdminAccess.Material.ServerName,
 		})
+	}
+	if placement.Scope == capability.ScopeShared {
+		accountPath, adminPath := identityprovider.DevelopmentManagementPaths()
+		for i := range identityRoutes {
+			switch identityRoutes[i].ManagementKey {
+			case "identity":
+				identityRoutes[i].LandingPath = accountPath
+			case "identity_admin":
+				identityRoutes[i].LandingPath = adminPath
+			}
+		}
 	}
 	if placement.Scope == capability.ScopeShared {
 		plan.groups = append(plan.groups, devgateway.OwnerRoutes{Owner: owner, Routes: identityRoutes})
@@ -531,7 +570,7 @@ func (e *applicationApplyExecution) addDevelopmentManagementRoutes(_ context.Con
 			plan.groups = append(plan.groups, devgateway.OwnerRoutes{
 				Owner: owner,
 				Routes: []devgateway.Route{{
-					Key: key, Host: host,
+					Key: key, Host: host, ManagementKey: "object_storage",
 					Upstream:   "https://seaweedfs-admin-access:9443",
 					Network:    files.Network,
 					TrustFile:  filepath.Join(files.Dir, "management-ui", "service-access", "pki", "ca.pem"),
@@ -552,7 +591,7 @@ func (e *applicationApplyExecution) addDevelopmentManagementRoutes(_ context.Con
 		plan.groups = append(plan.groups, devgateway.OwnerRoutes{
 			Owner: "shared/openbao",
 			Routes: []devgateway.Route{{
-				Key: "shared/openbao", Host: host,
+				Key: "shared/openbao", Host: host, ManagementKey: "secrets",
 				Upstream:   "https://openbao:8200",
 				Network:    bhruntime.ControlPlaneNetworkName(resourceProject),
 				TrustFile:  filepath.Join(filepath.Dir(e.platformFiles.Compose), "providers", "openbao", "service-access", "pki", "ca.pem"),
@@ -590,7 +629,7 @@ func (e *applicationApplyExecution) addDevelopmentManagementRoutes(_ context.Con
 	plan.groups = append(plan.groups, devgateway.OwnerRoutes{
 		Owner: owner,
 		Routes: []devgateway.Route{{
-			Key: key, Host: host,
+			Key: key, Host: host, ManagementKey: "metrics",
 			Upstream:   "https://" + service + ":9090",
 			Network:    metrics.PublishNetworkName(placement.Project),
 			TrustFile:  filepath.Join(files.Dir, "service-access", "pki", "ca.pem"),

@@ -46,6 +46,26 @@ func TestCSRScopeSignatureAndSingleObjectValidation(t *testing.T) {
 	}
 }
 
+func TestWorkstationCSRHasSeparateFiveYearBound(t *testing.T) {
+	identity := "spiffe://baseharbor/workstations/11111111-1111-4111-8111-111111111111/dev"
+	uri, _ := url.Parse(identity)
+	_, key, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	der, err := x509.CreateCertificateRequest(rand.Reader, &x509.CertificateRequest{URIs: []*url.URL{uri}}, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := CSRSigningRequest{CSRPEM: pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE REQUEST", Bytes: der}), Identity: identity, TTL: 5 * 365 * 24 * time.Hour}
+	if _, err := request.Validate(); err == nil {
+		t.Fatal("standard client CSR validation must retain its 24-hour bound")
+	}
+	if _, err := request.ValidateWorkstation(); err != nil {
+		t.Fatalf("workstation CSR should accept five years: %v", err)
+	}
+}
+
 func TestCoreCSRServerNamesRequireExplicitBoundedAuthority(t *testing.T) {
 	identity := "spiffe://baseharbor/platform/core/primary"
 	uri, _ := url.Parse(identity)

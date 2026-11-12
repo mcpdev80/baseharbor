@@ -41,6 +41,32 @@ func appSecretCommand(store application.Store) *cli.Command {
 				if err != nil {
 					return err
 				}
+				if target, targetErr := effectiveTarget(ctx); targetErr == nil && target.AccessProvider != "" && target.AccessProvider != "local" {
+					selection, selectErr := application.ResolveRepositoryEnvironment(".", applicationEnvironmentOverride)
+					if selectErr != nil {
+						return selectErr
+					}
+					if name != "" && name != selection.Manifest.Name {
+						return usageError("remote secret application does not match the current repository", "Run the command from the registered application's repository or omit NAME.")
+					}
+					value, readErr := readSecretSetValueInteractive(ctx, args, appSecretInput, out, key)
+					if readErr != nil {
+						return readErr
+					}
+					defer zeroBytes(value)
+					result, setErr := remoteSetApplicationSecret(ctx, target, selection.Manifest.Name, selection.Environment, key, value)
+					if setErr != nil {
+						return setErr
+					}
+					if format == outputJSON {
+						return writeJSON(out, result)
+					}
+					term := cli.NewTerminal(ctx, out, errOut)
+					term.Header(selection.Manifest.Name, selection.Environment)
+					term.Section("Secrets")
+					term.Result("UPDATED", "secret", key)
+					return nil
+				}
 				resolved, err := resolveSecretApplication(ctx, store, name, "secret set")
 				if err != nil {
 					return err

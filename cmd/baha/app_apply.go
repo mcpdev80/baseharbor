@@ -13,6 +13,8 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
+	"github.com/mcpdev80/baseharbor/internal/devaccess"
+	"github.com/mcpdev80/baseharbor/internal/devgateway"
 	logsprovider "github.com/mcpdev80/baseharbor/internal/logs"
 	"github.com/mcpdev80/baseharbor/internal/machine"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
@@ -37,21 +39,25 @@ func appApplyCommand(store application.Store) *cli.Command {
 	return &cli.Command{
 		Name:    "apply",
 		Summary: "Converge and verify an application's backend runtime",
-		Usage:   "baha app apply [NAME] [--skip-memory-preflight] [--confirm-candidate <digest>]",
-		Long:    "Runs plan, preflight, apply and verification. Without NAME it resolves the nearest baseharbor.yaml in the current repository, synchronizes a protected internal copy for runtime services, and treats the repository manifest as the source of truth. When an unambiguous application Compose workload exists, BaseHarbor generates a protected override, attaches it to the application backend network when managed backend services exist and injects container-routable native service URLs. Workload-only applications remain valid without inventing a managed database or cache. Declared secrets.required entries are readiness gates. Explicit secrets.required[].generate entries are created only when missing and are stored directly in OpenBao without printing their values. Managed-secret workloads start only after the per-application mTLS broker has proven app-scoped OpenBao readiness. A repository-owned candidate submission is bound only on explicit operator/automation confirmation: the apply prints the candidate's canonical content hash and requires --confirm-candidate with that exact hash before writing any deployment state; without the flag the apply fails closed.",
+		Usage:   "baha app apply [NAME] [--skip-memory-preflight] [--confirm-candidate <digest>] [--workload-port NAME=PORT]",
+		Long:    "Runs plan, preflight, apply and verification. Without NAME it resolves the nearest baseharbor.yaml in the current repository, synchronizes a protected internal copy for runtime services, and treats the repository manifest as the source of truth. When an unambiguous application Compose workload exists, BaseHarbor generates a protected override, attaches it to the application backend network when managed backend services exist and injects container-routable native service URLs. Workload-only applications remain valid without inventing a managed database or cache. Declared secrets.required entries are readiness gates. Explicit secrets.required[].generate entries are created only when missing and are stored directly in OpenBao without printing their values. Managed-secret workloads start only after the per-application mTLS broker has proven app-scoped OpenBao readiness. For remote targets, --workload-port NAME=PORT selects and persists an explicit free host port for this deployment. A repository-owned candidate submission is bound only on explicit operator/automation confirmation: the apply prints the candidate's canonical content hash and requires --confirm-candidate with that exact hash before writing any deployment state; without the flag the apply fails closed.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 			target, err := effectiveTarget(ctx)
 			if err != nil {
 				return err
 			}
 			if target.AccessProvider != "" && target.AccessProvider != "local" {
-				return remoteApplicationMutation(ctx, target, "apply", args, out)
+				return remoteApplicationApplyCLI(ctx, target, args, out, errOut)
 			}
 			filtered, skip := stripMemoryPreflightOverride(args)
 			ctx = withMemoryPreflightOverride(ctx, skip)
 			confirm, rest := stripConfirmCandidateOverride(filtered)
 			ctx = withCandidateConsentDigest(ctx, confirm)
-			return executeApplicationApplyLifecycle(ctx, store, rest, out, errOut)
+			if err := executeApplicationApplyLifecycle(ctx, store, rest, out, errOut); err != nil {
+				return err
+			}
+			refreshWorkstationHosts(ctx, target, errOut)
+			return nil
 		},
 	}
 }
@@ -183,6 +189,15 @@ func runApplicationApplyLifecycle(ctx context.Context, store application.Store, 
 	execution.resolved.DeploymentRecord = &pending
 	if err := application.RetainPendingProviderOwnersAt(execution.resolved.TargetStateRoot, execution.manifest); err != nil {
 		return evidence, execution.recordFailedDeployment(err)
+	}
+	if devaccess.Enabled(execution.manifest.Environment) {
+		address, err := remoteCoreIPAccessAddress(execution.resolved.Target)
+		if err != nil {
+			return evidence, execution.recordFailedDeployment(err)
+		}
+		if address != "" {
+			ctx = devgateway.WithCoreAccessAddress(ctx, execution.resolved.Target.Name, address)
+		}
 	}
 	if err := materializeResolvedApplicationBroker(ctx, execution.resolved, applicationInput(ctx, runtimeInput), out); err != nil {
 		return evidence, execution.recordFailedDeployment(err)

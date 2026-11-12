@@ -23,6 +23,40 @@ Application-Befehle arbeiten mit dem portablen Contract und seinem Deployment-Zu
 | `baha app update` | Unterstützte Application-Source aktualisieren |
 | `baha destroy` | Application-eigene Ressourcen entfernen |
 
+Auch bei einem ausgewählten Remote-Core-Target lautet der Repository-Ablauf
+`baha app init`, danach `baha up`. Die Initialisierung registriert den Vertrag
+und speichert die Deployment-Einstellungen beim Core. App-Name und Umgebung
+kommen aus `baseharbor.yaml`; der Target-Alias legt keine Umgebung fest.
+Interaktive Aufrufe zeigen die verbleibenden Änderungen aus dem Core-Plan:
+Neuinstallation, Start vorhandener Dienste, Updates und offene Prüfungen.
+Vorhandene Dienste stehen kompakt unter Weiterverwenden. Eine Bestätigung gibt diese Änderungen und den exakten aktuellen
+App-Quellstand frei. Ohne Eingabemöglichkeit erhält der Aufrufer die
+strukturierte Bestätigungsanforderung. Remote-Arbeit zeigt ihre aktuelle Phase
+und Wartezeit; JSON-Ausgaben bleiben maschinenlesbar.
+Beim Aktivieren von Entwicklungs-WebGUIs legt Core deren gemeinsamen Login an,
+wenn noch keiner existiert. Vorhandene Zugangsdaten werden wiederverwendet.
+Ein im Initialisierungsassistenten ausdrücklich gewählter Login wird einschließlich
+Benutzername und eigenem oder erzeugtem Passwort auf dem ausgewählten Core
+konfiguriert.
+Die im Assistenten oder mit `baha dev domain DOMAIN` gewählte Entwicklungsdomain
+wird auf dem ausgewählten Core konfiguriert und lokal projiziert. Neue
+Entwicklungsrechner erhalten die bestehende Core-Domain als Vorschlag.
+DNS-Namen müssen auf den Core zeigen; IP-Links sind davon unabhängig.
+Bei gespeicherter Core-LAN-Adresse und Namen außerhalb von `.localhost`
+verwendet das kanonische Gateway diese Adresse, sofern keine explizite
+Bind-Einstellung vorliegt. `.localhost` bleibt auf Loopback beschränkt.
+Die vorbereitete pgAdmin-Verbindung öffnet die App-Datenbank und
+zeigt im Baum nur diese Datenbank. Interne Core-Datenbanken sind getrennte Ressourcen.
+Ablehnung oder Abbruch der interaktiven Bestätigung stoppt den Rollout. Starte
+`baha up` erneut zum Prüfen und Bestätigen; ein manueller Quellhash ist nicht nötig.
+Nach erfolgreichem Remote-Deployment erscheinen eine kurze READY-Zusammenfassung
+und die App-Links. IP-Links verwenden die Core-Adresse und die tatsächlich
+veröffentlichten dynamischen Ports; kanonische URLs erscheinen ebenfalls.
+`--json` gibt den vollständigen verifizierten Beleg aus, `--verbose` weitere
+menschenlesbare Prüfergebnisse.
+
+Für ein Remote-Target wählst du mit `baha app apply NAME --workload-port VARIABLE=PORT` einen freien veröffentlichten Workload-Port. BaseHarbor prüft, ob die Variable im Compose-Workload des Repositorys vorkommt und der Port auf dem Core-Host frei ist, und speichert die Wahl für dieses Deployment. Beispiel: `--workload-port DEMO_HTTPS_PORT=8081` weicht einem Konflikt auf Port 8080 aus, ohne die Repository-Quelle zu ändern.
+
 ## Erzeugen oder übernehmen
 
 In einem übergeordneten Verzeichnis ohne vorhandenen Ordner `shop-api`:
@@ -87,17 +121,26 @@ Ownership-Prüfungen. `baha serve` erhält dadurch keine Freigabe: Seine
 Management-Sicherheitsvoraussetzungen und die explizite Core-Installation
 bleiben erforderlich.
 
-Ein lokales `baha app destroy` baut standardmäßig die eigene Runtime und die
-App-Routen ab. Persistente Daten, Zugangsdaten, Recovery-Material und die
-kanonische Deployment-Identität bleiben erhalten. `baha app apply` aktiviert
-das Deployment anhand des aktuellen App-Bedarfs erneut. Runtime-Abbau und
-vollständige Datenlöschung sind getrennte Entscheidungen. Provider-Folgen
-werden mit `Achtung` angezeigt und erfordern zwei ausdrückliche Bestätigungen
-desselben aktuellen Plans; `--yes` ersetzt keine dieser Bestätigungen. Das
-strukturierte Destroy-Ergebnis enthält erhaltenes Material und das gemeinsame
-Provider-Änderungsergebnis. Verifizierter Runtime-Abbau beweist weder weitere
-Secret-Auslieferung noch Login, Zertifikatserneuerung oder nutzbare Recovery.
-Ungeprüfte Folgen bleiben im Ergebnis ausdrücklich unvollständig.
+Für ein bereits ausgewähltes Remote-Target genügt `baha app destroy NAME --yes`;
+Target und Repository-Umgebung werden übernommen. Die CLI zeigt den aktuellen
+Provider-Plan und fragt vor der Änderung nach Zustimmung. Aktivierte, verwaltete
+Hosts-Einträge werden danach abgeglichen. Die Target-Gateway-CA bleibt vertraut,
+solange die Core-Verbindung bestehen bleibt.
+
+`baha app stop NAME --yes` (auch als `baha down` verfügbar) entfernt die laufende
+Anwendung und ihre freigegebenen app-eigenen Provider-Runtimes. Persistente Daten,
+Zugangsdaten, Recovery-Zustand und Deployment-Eigentümer bleiben zur späteren
+Reaktivierung erhalten. Der aktuelle Provider-Folgenplan muss weiterhin separat
+bestätigt werden. `baha app destroy NAME --yes` löscht dauerhaft den
+BaseHarbor-eigenen Anwendungszustand, Zugangsdaten, Runtime-Ressourcen,
+Deployment-Eintrag und Compose-Datenvolumes, deren exklusive Anwendungszuordnung
+verifiziert ist. Gemeinsame, fremde, eingebundene oder nicht eindeutig
+zugeordnete Daten bleiben erhalten und werden angezeigt. Gemeinsame
+Target-Infrastruktur, Repository-Quelldateien und das Vertrauen des weiterhin
+verbundenen Rechners in die Core-CA gehören nicht zu den Anwendungsdaten.
+Provider-Folgen und Datenlöschung werden im aktuellen Plan gezeigt und müssen
+ausdrücklich bestätigt werden. Ein zusätzliches `--full-reset` ist nicht nötig:
+Destroy löscht die eindeutig app-eigenen Daten immer.
 
 Plan-JSON sowie MCP/HTTP-Plan verwenden denselben `footprint`
 (`baseharbor.footprint/v1`). Ein neu geplanter Binding ist `requested/unbound`
@@ -150,7 +193,7 @@ dem Target sichtbar und nennen beide kollidierenden Deployment-UUIDs.
 `baha app list` zeigt die Zwillinge weiterhin; jedes wird per UUID stillgelegt:
 
 ```bash
-baha app destroy --uuid <deployment-uuid> --full-reset
+baha app destroy --uuid <deployment-uuid> --yes
 ```
 
 Anschließend das Target mit `baha app list` nachprüfen. Kommandos mit `--uuid`

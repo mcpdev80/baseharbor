@@ -544,7 +544,6 @@ func providerComposeYAMLWithTraceNetworkAndAccessForNetwork(traceNetwork string,
 		return fmt.Sprintf(`  %s:
     image: %s
     restart: unless-stopped
-    user: "10001:10001"
     read_only: true
     cap_drop: ["ALL"]
     security_opt: ["no-new-privileges:true"]

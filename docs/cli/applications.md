@@ -50,7 +50,7 @@ Helm and Kustomize are not v0.4.20 source adapters.
 | --- | --- |
 | `baha up` | Converge an application |
 | `baha app apply` | Apply/reconcile through the application lifecycle |
-| `baha down` | Stop application runtime state |
+| `baha app stop` / `baha down` | Stop application runtime while preserving persistent data |
 | `baha status` | Observe application state |
 | `baha doctor` | Diagnose and optionally repair |
 | `baha app update` | Update supported application source/state |
@@ -71,6 +71,38 @@ Application operations also include:
 - PostgreSQL and Valkey access helpers.
 
 Use the top-level `baha status`, `baha plan`, `baha doctor`, `baha up` forms for the normal repository-local workflow. Use `baha app ...` when the explicit application namespace is useful for administration or automation.
+
+The same repository workflow applies to a selected remote Core Target:
+`baha app init`, then `baha up`. Initialization registers the full repository
+contract and configures deployment settings on the Core. The application name
+and environment come from `baseharbor.yaml`; the Target alias does not encode
+an environment. Interactive deployment displays the Core's provider-impact
+summary of remaining changes from the Core plan. It distinguishes installation,
+starting existing services, updates and unresolved checks; existing services
+are listed compactly for reuse. One confirmation
+approves these changes and the exact current application source. Noninteractive
+clients receive the structured approval challenge. Remote work reports its
+current phase and elapsed waiting time; JSON output stays machine-readable.
+Enabling development management UIs creates their shared login on the Core
+when none exists. Existing credentials are recovered and reused. A login explicitly
+chosen in the initialization wizard is configured on the selected Core, including
+its username and custom or generated password; it is not just saved locally.
+The development domain selected in the wizard or with `baha dev domain DOMAIN`
+is applied on the selected Core and projected locally. A new workstation offers
+the Core's existing domain as its default. Canonical names require DNS pointing
+to that Core; IP links remain independent of DNS. With an owned Core LAN address
+and configured names outside `.localhost`, the canonical gateway uses that
+address unless an explicit bind override is set. `.localhost` stays loopback-only.
+The prepared pgAdmin connection opens its application database and limits the
+browser tree to that database. Internal Core databases are separate resources.
+Declining or cancelling the interactive confirmation stops the rollout. Run
+`baha up` again to review and confirm; no manual source-hash flag is needed.
+A successful remote deployment prints a short READY summary and application
+links. IP links use the Core address and observed dynamic public exposure ports;
+canonical URL links are also shown. Use `--json` for the complete verified receipt
+or `--verbose` for additional human-readable checks.
+
+For a remote Target, select a free published workload port explicitly with `baha app apply NAME --workload-port VARIABLE=PORT`. BaseHarbor verifies that the variable exists in the repository Compose workload and that the port is free on the Core host, then saves it for that deployment. For example, `--workload-port DEMO_HTTPS_PORT=8081` avoids a Core-host conflict on port 8080 without changing the repository source.
 
 ## Machine parity
 
@@ -118,16 +150,25 @@ workload observations; stop/up and repeated destroy retain their existing
 ownership checks. This does not authorize `baha serve`: its management security
 requirements and explicit management Core installation remain unchanged.
 
-Default local `baha app destroy` retires the owned runtime and application routes,
-while keeping persistent data, credentials, recovery material and the canonical
-deployment identity. `baha app apply` reactivates that deployment from the current
-application intent. Runtime removal and complete data deletion are separate
-choices. Provider consequences are displayed with `Achtung` and require two
-explicit acknowledgements of the same current plan; `--yes` alone supplies
-neither acknowledgement. The structured destroy result reports retained material
-and the common provider-change receipt. A verified runtime removal does not
-establish continued secret delivery, login, certificate renewal or recovery
-usability; unverified consequences remain partial in the receipt.
+For a remote Target that is already active, run `baha app destroy NAME --yes`; the
+selected Target and repository environment are inferred. The CLI displays the
+current provider plan and asks for approval before making changes. If managed
+workstation host entries are enabled, it reconciles them after removal. The
+Target gateway CA remains trusted while that Core connection is retained.
+
+`baha app stop NAME --yes` (also available as `baha down`) removes the active
+application workload and its released, app-scoped provider runtimes while
+retaining persistent data, credentials, recovery state and the deployment owner
+for later reactivation. The current provider consequence plan still requires
+its own acknowledgement. `baha app destroy NAME --yes` permanently removes
+BaseHarbor-owned application state, credentials, runtime resources, deployment
+registration and Compose data volumes whose exclusive application ownership is
+verified. Shared, foreign, bind-mounted or otherwise ambiguous data is preserved
+and reported; shared Target infrastructure, the repository source and workstation
+trust for the still-connected Core are not application-owned data. Provider
+consequences and data deletion are shown in the current plan and require explicit
+approval. There is no routine `--full-reset` switch: destroying the application
+means deleting its owned data.
 
 Plan JSON and MCP/HTTP plan share `footprint` (`baseharbor.footprint/v1`). A
 projected new binding is `requested/unbound`, never live evidence. Requested
@@ -175,7 +216,7 @@ closed and names both colliding deployment UUIDs. The tolerant
 `baha app list` still shows the twins; retire each one by UUID:
 
 ```bash
-baha app destroy --uuid <deployment-uuid> --full-reset
+baha app destroy --uuid <deployment-uuid> --yes
 ```
 
 Then verify the Target again with `baha app list`. Commands addressed by

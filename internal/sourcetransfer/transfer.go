@@ -159,6 +159,16 @@ func Capture(ctx context.Context, root, target, app, environment, base string) (
 			}
 			return validatePath(p)
 		}
+		// A conventional environment template is local setup documentation,
+		// never runtime source. Exclude it without reading its contents; the
+		// generic manifest validator continues to reject every .env.* path if
+		// a caller attempts to upload one directly.
+		if d.Name() == ".env.example" {
+			if !d.Type().IsRegular() {
+				return fmt.Errorf("source contains symlink or special file %q", p)
+			}
+			return nil
+		}
 		if err := validatePath(p); err != nil {
 			return err
 		}

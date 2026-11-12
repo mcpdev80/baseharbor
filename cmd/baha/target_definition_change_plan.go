@@ -131,7 +131,7 @@ func buildTargetDefinitionChangePlan(ctx context.Context, name, recoveryFile str
 	}
 	// A detached Target strands its deployment records: the one-installation-owner
 	// seam fails closed on the now ownerless Target, so the records cannot be
-	// resolved by `app destroy --uuid --full-reset` or `destroy --all` (which
+	// resolved by `app destroy --uuid --yes` or `destroy --all` (which
 	// lists them as SKIPPED) and no later operation reaches them. Refuse the detach
 	// while collectable orphans are attached, naming them and the collect path. This
 	// runs before the deployment-inventory loop (which fails closed on the same
@@ -163,7 +163,7 @@ func buildTargetDefinitionChangePlan(ctx context.Context, name, recoveryFile str
 			CauseCode:   "target_definition_collectable_orphans",
 			Message:     message,
 			Resource:    name,
-			Next:        "Keep the Target definition attached: no supported command collects these individual ownerless records in this state. The authoritative Core installation owner of the Target must be restored (the one-installation-owner seam fails closed on an ownerless Target, so neither 'app destroy --uuid --full-reset' nor 'destroy --all' reaches the records) and, for the normal heal, the original source repository/manifest that owns each record must be available; once the Target owner and sources are restored, run 'baha app destroy' normally against the attached records. If the Core owner or source repository cannot be restored, there is no supported cleanup command and the records must stay attached for manual operator recovery.",
+			Next:        "Keep the Target definition attached: no supported command collects these individual ownerless records in this state. The authoritative Core installation owner of the Target must be restored (the one-installation-owner seam fails closed on an ownerless Target, so neither 'app destroy --uuid --yes' nor 'destroy --all' reaches the records) and, for the normal heal, the original source repository/manifest that owns each record must be available; once the Target owner and sources are restored, run 'baha app destroy' normally against the attached records. If the Core owner or source repository cannot be restored, there is no supported cleanup command and the records must stay attached for manual operator recovery.",
 			Remediation: "operator_review",
 			Cause:       deployment.ErrTargetDetachedWithOrphans,
 		}

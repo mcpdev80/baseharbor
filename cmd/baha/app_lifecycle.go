@@ -19,55 +19,42 @@ import (
 )
 
 func appDownCommand(store application.Store) *cli.Command {
-	return &cli.Command{
-		Name:    "down",
-		Summary: "Stop an application runtime while preserving persistent data",
-		Usage:   "baha app down [NAME]",
-		Long:    "Stops a repository application workload and its per-application Application Runtime Broker first, then removes BaseHarbor-managed backend containers and transient network while preserving persistent data volumes, runtime credentials, application-owned Compose volumes and managed OpenBao scope. Without NAME it resolves the nearest repository baseharbor.yaml.",
-		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
-			target, err := effectiveTarget(ctx)
-			if err != nil {
-				return err
-			}
-			if target.AccessProvider != "" && target.AccessProvider != "local" {
-				return remoteApplicationMutation(ctx, target, "app.stop", args, out)
-			}
-			filtered, format, err := parseReadOutputArgs(args, "app down")
-			if err != nil {
-				return err
-			}
-			for _, arg := range filtered {
-				if strings.HasPrefix(arg, "-") {
-					return &cli.UsageError{Message: "unknown option " + arg, Hint: "Use baha app down [NAME]; down preserves persistent data and requires acknowledgement of its current consequence plan. --yes does not provide either acknowledgement.", NoSuggestions: arg == "--yes" || arg == "-y"}
-				}
-			}
-			args = filtered
-			resolved, err := resolveApplication(ctx, store, args, "down")
-			if err != nil {
-				return err
-			}
-			humanOut, humanErr := out, errOut
-			if format == outputJSON {
-				humanOut, humanErr = io.Discard, io.Discard
-			}
-			result, err := stopApplicationRuntimeWithResult(ctx, resolved, humanOut, humanErr)
-			if err != nil {
-				return err
-			}
-			if format == outputJSON {
-				return writeJSON(out, result)
-			}
-			return writeJSON(out, result)
-		},
+	command := appStopCommand(store)
+	command.Name = "down"
+	command.Usage = "baha app down [NAME] [--yes]"
+	return command
+}
+
+type applicationStopModeKey struct{}
+
+func isApplicationStopMode(ctx context.Context) bool {
+	stop, _ := ctx.Value(applicationStopModeKey{}).(bool)
+	return stop
+}
+
+func appStopCommand(store application.Store) *cli.Command {
+	command := appDestroyCommand(store)
+	run := command.Run
+	command.Name = "stop"
+	command.Summary = "Stop application runtimes while preserving data for reactivation"
+	command.Usage = "baha app stop [NAME] [--yes]"
+	command.Long = "Stops the owned workload and provider runtime, releases its active provider references, and retains persistent data, credentials, recovery material and the deployment owner so 'baha app apply' can reactivate it. Pass --yes to execute; the current provider consequence plan still requires its own acknowledgement. Use 'baha app destroy' to permanently delete app-owned data."
+	command.Run = func(ctx context.Context, args []string, out, errOut io.Writer) error {
+		ctx = context.WithValue(ctx, applicationStopModeKey{}, true)
+		return run(ctx, args, out, errOut)
 	}
+	return command
 }
 
 type applicationStopResult struct {
-	Application          string                                 `json:"application"`
-	Environment          string                                 `json:"environment"`
-	State                string                                 `json:"state"`
-	DataPreserved        bool                                   `json:"data_preserved"`
-	ProviderChangeResult *application.ProviderImpactScopeResult `json:"provider_change_result,omitempty"`
+	Application           string                                 `json:"application"`
+	Environment           string                                 `json:"environment"`
+	Target                string                                 `json:"target"`
+	State                 string                                 `json:"state"`
+	Verified              bool                                   `json:"verified"`
+	DataPreserved         bool                                   `json:"data_preserved"`
+	ProviderChangeResult  *application.ProviderImpactScopeResult `json:"provider_change_result,omitempty"`
+	ProviderChangeReceipt *application.ProviderChangeResult      `json:"provider_change_receipt,omitempty"`
 }
 
 func executeApplicationStop(ctx context.Context, resolved resolvedApplication, out, errOut io.Writer) error {
@@ -210,34 +197,47 @@ func removeApplicationDevelopmentRoutesBeforeDown(ctx context.Context, compose b
 func appDestroyCommand(store application.Store) *cli.Command {
 	return &cli.Command{
 		Name:    "destroy",
-		Summary: "Retire owned application runtime while retaining data and recovery state",
+		Summary: "Permanently remove an application and its exclusively owned data",
 		// --uuid DEPLOYMENT-ID is accepted (0427-175): it is the only
 		// unambiguous identity on a registry poisoned by two records claiming
 		// one application_id, and the conflict message advertises exactly this
 		// shape as the repair.
-		Usage: "baha app destroy [NAME] [--uuid DEPLOYMENT-ID] [--yes] [--full-reset]",
-		Long:  "Shows the current provider consequence plan before retiring owned workload/provider runtime and application routes. Default destruction retains persistent data, credentials, recovery material and the canonical deployment owner for reactivation with apply. Provider changes require two explicit acknowledgements of the current impact plan; --yes alone does not supply those acknowledgements. --full-reset selects the separate destructive cleanup path, including owned application state, while preserving authored source and repository Compose data.",
+		Usage: "baha app destroy [NAME] [--uuid DEPLOYMENT-ID] [--yes]",
+		Long:  "Permanently removes the application, its BaseHarbor-owned runtime resources, application data, credentials, recovery state and deployment registration. Exclusively app-owned Compose data volumes are removed too. Shared, foreign or ambiguously owned resources are preserved and reported. Use 'baha app stop' to stop runtime services while preserving data. Provider changes and permanent data deletion require explicit approval of the current plan.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 			target, err := effectiveTarget(ctx)
 			if err != nil {
 				return err
 			}
 			if target.AccessProvider != "" && target.AccessProvider != "local" {
-				return remoteApplicationMutation(ctx, target, "destroy", args, out)
+				return remoteApplicationDestroyCLI(ctx, target, args, out, errOut)
 			}
 			filtered, format, err := parseReadOutputArgs(args, "app destroy")
 			if err != nil {
 				return err
 			}
 			if format != outputJSON {
-				return executeApplicationDestroyLifecycle(ctx, store, filtered, out, errOut)
+				if err := executeApplicationDestroyLifecycle(ctx, store, filtered, out, errOut); err != nil {
+					return err
+				}
+				if containsExactArgument(filtered, "--yes") {
+					refreshWorkstationHosts(ctx, target, out)
+				}
+				return nil
 			}
 			execution, err := newApplicationDestroyExecution(ctx, store, filtered, io.Discard, io.Discard)
 			if err != nil {
 				return err
 			}
-			if !execution.confirmed && !execution.fullReset && !isRemoteApplication(execution.resolved) {
-				_, plan, err := buildApplicationRuntimeRetirementPlan(ctx, execution.resolved)
+			if !execution.confirmed && !isRemoteApplication(execution.resolved) {
+				if !execution.fullReset {
+					_, plan, err := buildApplicationRuntimeRetirementPlan(ctx, execution.resolved)
+					if err != nil {
+						return err
+					}
+					return writeJSON(out, plan)
+				}
+				plan, err := buildApplicationDestructionPlan(ctx, execution.resolved, true)
 				if err != nil {
 					return err
 				}
@@ -249,9 +249,15 @@ func appDestroyCommand(store application.Store) *cli.Command {
 			if !execution.confirmed {
 				return nil
 			}
+			refreshWorkstationHosts(ctx, target, errOut)
 			result, err := applicationDestroyResult(execution.resolved, execution.fullReset)
 			if err != nil {
 				return err
+			}
+			if isApplicationStopMode(ctx) {
+				result.Operation = "stop"
+				result.State = "stopped"
+				result.Detail = "Owned runtime retired; persistent data and recovery owner retained for reactivation."
 			}
 			return writeJSON(out, result)
 		},
@@ -274,7 +280,11 @@ func executeApplicationDestroyLifecycle(ctx context.Context, store application.S
 			return err
 		}
 		if !execution.confirmed {
-			fmt.Fprintln(out, "No changes were made. Re-run with --yes to delete the owned remote Application runtime.")
+			if isApplicationStopMode(ctx) {
+				fmt.Fprintln(out, "No changes were made. Re-run with --yes to stop the owned remote Application runtime while retaining its data.")
+			} else {
+				fmt.Fprintln(out, "No changes were made. Re-run with --yes to delete the owned remote Application runtime and data.")
+			}
 			return nil
 		}
 		plan, err := authorizeApplicationDestruction(ctx, execution.resolved, execution.fullReset, out)
@@ -315,6 +325,24 @@ func executeApplicationDestroyLifecycle(ctx context.Context, store application.S
 	defer unlock()
 	if !execution.fullReset {
 		return execution.retireRuntimePreservingData(ctx, out)
+	}
+	if neverDelivered, err := execution.verifyOwnershipWhenNoDeploymentRecord(ctx); err != nil {
+		return err
+	} else if neverDelivered {
+		if !execution.confirmed {
+			fmt.Fprintln(out, "No changes were made. Re-run with --yes to remove this never-deployed application and its local BaseHarbor state.")
+			return nil
+		}
+		if err := authorizeApplicationOperation(ctx, "destroy", execution.resolved); err != nil {
+			return err
+		}
+		if err := execution.assertSelectionResolvedIdentity(); err != nil {
+			return err
+		}
+		if err := execution.removeApplicationState(); err != nil {
+			return err
+		}
+		return recordApplicationAudit(ctx, execution.resolved, "destroy", "success", "never delivered; local state removed", "never-deployed application and its BaseHarbor registration were permanently removed")
 	}
 	if err := execution.runPreflight(ctx); err != nil {
 		return err
@@ -358,7 +386,7 @@ func executeApplicationDestroyLifecycle(ctx context.Context, store application.S
 func parseDestroyArgs(args []string) (string, bool, bool, error) {
 	var name string
 	confirmed := false
-	fullReset := false
+	fullReset := true
 	// The --uuid FLAG is consumed by extractApplicationEnvironment, but its bare
 	// VALUE stays in the list it returns. Neither token may enter the positional
 	// scan: the value would be taken for the application NAME (the wrong target

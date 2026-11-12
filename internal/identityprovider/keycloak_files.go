@@ -459,7 +459,6 @@ func keycloakCompose(app application.Manifest, files KeycloakFiles) string {
 		result := fmt.Sprintf(`  %s:
     image: %s
     restart: unless-stopped
-    user: "1000:0"
     cap_drop: ["ALL"]
     security_opt: ["no-new-privileges:true"]
     depends_on:

@@ -282,7 +282,7 @@ HTTPS-Endpunkt Autorisierung und Ergebnis
 | `POST /api/v1/connectors/renewal-authorizations` Geschützte Operator-Identität, Mieter-Mitgliedschaft und Update-Zulassung; erstellt eine One-Use-Zulassung, die an das aktuelle aktive Zertifikat des Knotens gebunden ist.
 
 Zuschuß-Eingabe ist `target_id`, ` node_id `, ` environment `, ` lifetime_seconds`
-(1–600) und `certificate_ttl_seconds`(1–86400). Das vertrauenswürdige Kernziel
+(1–600) und `certificate_ttl_seconds` (1–86400). Das vertrauenswürdige Kernziel
 Konfigurationsbedarf `tenant-id` und Laufzeit; die Anfrage liefert weder.
 Seine Zugriffsdefinition verwendet `baseharbor-node-connector` und eine stabile Node-id
 `reference` passend zum gewünschten Knoten. Ungebundene Ziele, ausländische Mieter,

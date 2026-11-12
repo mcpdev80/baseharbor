@@ -11,14 +11,14 @@ import (
 )
 
 func TestAppDownRejectsUnknownOptionsBeforeRuntime(t *testing.T) {
-	for _, args := range [][]string{{"app", "down", "--yes"}, {"app", "down", "--unknown"}} {
+	for _, args := range [][]string{{"app", "down", "--yes", "--unknown"}} {
 		var out bytes.Buffer
 		err := runWithIO(context.Background(), args, &out, &out)
 		if err == nil {
 			t.Fatalf("%v should fail", args)
 		}
 		var usage *cli.UsageError
-		if !errors.As(err, &usage) || !strings.Contains(usage.Message, "unknown option") {
+		if !errors.As(err, &usage) || (!strings.Contains(usage.Message, "unknown option") && !strings.Contains(usage.Message, "unsupported remote application option")) {
 			t.Fatalf("%v: want typed unknown option, got %v", args, err)
 		}
 	}

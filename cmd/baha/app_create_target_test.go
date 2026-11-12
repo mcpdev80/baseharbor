@@ -51,6 +51,17 @@ func TestCreateTargetManagedApplicationRegistersResolvableDeployment(t *testing.
 	if record.Applied.RuntimeProvider != target.RuntimeProvider {
 		t.Fatalf("runtime provider = %q, want %q", record.Applied.RuntimeProvider, target.RuntimeProvider)
 	}
+	// AuthoredYAML omits system-owned IDs. The Core must retain its identity
+	// in the canonical source Store before a later read/apply can use it.
+	owner := application.Store{Root: filepath.Join(record.Source.Repository, ".baseharbor", "apps")}
+	stored, err := owner.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(stored) != 1 || stored[0].ApplicationID != manifest.ApplicationID ||
+		stored[0].Name != manifest.Name || stored[0].Environment != manifest.Environment {
+		t.Fatalf("Core-assigned application identity not retained in source Store: %+v", stored)
+	}
 
 	resolved, err := resolveApplication(context.Background(), application.Store{}, []string{manifest.Name}, "show")
 	if err != nil {

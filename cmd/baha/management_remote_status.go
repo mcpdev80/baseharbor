@@ -22,6 +22,14 @@ func remoteApplicationStatus(ctx context.Context, target deployment.ResolvedTarg
 	if err != nil {
 		return err
 	}
+	if len(filtered) == 0 {
+		if name, repositoryEnvironment, ok := currentRepositoryApplicationSelector(); ok {
+			filtered = []string{name}
+			if environment == "" {
+				environment = repositoryEnvironment
+			}
+		}
+	}
 	if len(filtered) != 1 || filtered[0] == "" {
 		return usageError("remote app status needs an explicit application NAME",
 			"Use baha app status NAME --environment dev while connected to the remote Core.")

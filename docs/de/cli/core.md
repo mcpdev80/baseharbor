@@ -1,6 +1,29 @@
-Den ersten Operator/Tenant initialisiert man nach `baha up --control-plane-only` **explizit** mit `baha login -e dev --init-tenant` auf dem eigenen lokalen Core. Siehe [Security-/Trust-Befehle](security-trust.md). Normales `baha up` vergibt keinen Erst-Owner automatisch.
-
 # Core-Workflow
+
+Den ersten Tenant richtest du auf dem eigenen Core ausdrücklich mit
+`baha login -e dev --init-tenant` ein. `baha up` weist den ersten Tenant-Owner
+nicht automatisch zu. Siehe [Befehle für Sicherheit und Vertrauen](security-trust.md).
+
+## Entwicklungsrechner verbinden
+
+Führe auf dem Core-Rechner außerhalb eines Anwendungsordners `baha up` und danach
+`baha onboard` aus. `baha up` prüft ORAS und lädt das BaseHarbor-Runtime-Image
+anhand seines unveränderlichen Digests, bevor es den Core startet. Fehlt ORAS,
+erklärt Baha den Zweck und fragt vor der Installation.
+`baha onboard` wartet auf den startbereiten Core, richtet den verwalteten
+LAN-HTTPS-Endpunkt ein und schreibt eine private Einmal-Einladung als JSON-Datei.
+Ein separater `baha serve`-Prozess ist nicht nötig.
+
+Übertrage die Datei sicher. Führe auf dem Entwicklungsrechner
+`baha onboard --import FILE` aus. Übernimm den vorgeschlagenen Target-Namen, etwa
+`dev-docker-1`, oder gib `--target-name NAME` an. Wähle das Target anschließend
+mit `baha use NAME` aus. Der Name ändert nicht das Core-Target; ein lokales
+Target bleibt verfügbar. Anwendungsbefehle laufen danach auf dem
+Entwicklungsrechner über das ausgewählte Core-Target. Der verbindliche Ablauf steht in
+[Core-zu-Workstation-Onboarding](../spec/zero-friction-workstation-onboarding-v0427.md).
+
+Die Geräteeinschreibung ist von der interaktiven OIDC-Anmeldung eines Operators
+getrennt. Siehe [Befehle für Sicherheit und Vertrauen](security-trust.md).
 
 ## Core gezielt abbauen
 
@@ -49,6 +72,12 @@ Frische Standard-Targets verwenden einen nativen PostgreSQL- und einen OpenBao-S
 `--ha` ist explizite HA-Auswahl. Bestehende Targets behalten ihre aufgezeichnete Topologie; ein inkompatibler HA-Wechsel scheitert vor Mutation. Es gibt keinen impliziten Migrationspfad. Status und Doctor zeigen effektive Mitglieder und Garantien.
 
 `--target NAME` setzt das Ziel ausdrücklich. `--no-input`/`--non-interactive` unterdrücken Prompts; `--yes` genehmigt unterstützte Entscheidungen, ersetzt aber keine fehlenden Secrets oder Policy.
+
+Bei einem Remote-Target vergleicht `doctor` die Versionen von Entwickler-CLI
+und Core. Eine Abweichung schlägt den Versionscheck fehl und nennt den exakten
+Befehl `baha update --version <CLI_VERSION> --yes` für den Core-Host.
+Entwicklungs-Builds haben kein veröffentlichtes Release-Kommando; Doctor weist
+dann auf die Installation desselben Builds auf dem Core-Host hin.
 
 ## Application prüfen und stoppen
 

@@ -27,6 +27,7 @@ type machineApplicationConfigureInput struct {
 	Hostname             string `json:"hostname,omitempty"`
 	TLSMode              string `json:"tls_mode,omitempty" jsonschema:"acme, existing or local"`
 	CertificateDirectory string `json:"certificate_directory,omitempty"`
+	SourceSnapshotDigest string `json:"source_snapshot_digest,omitempty"`
 }
 
 func registerMCPAdoptionTools(server *mcp.Server, store application.Store) {

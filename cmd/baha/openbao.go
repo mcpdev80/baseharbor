@@ -96,8 +96,25 @@ func openBaoBootstrapCommand() *cli.Command {
 			}
 			bootstrapCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 			defer cancel()
-			if err := bootstrapManagedOpenBao(bootstrapCtx, recoveryPath); err != nil {
-				return err
+			if format == outputJSON {
+				if err := bootstrapManagedOpenBao(bootstrapCtx, recoveryPath); err != nil {
+					return err
+				}
+			} else if _, isProgressWriter := out.(interface{ ActivityDetail(string) }); isProgressWriter {
+				if err := bootstrapManagedOpenBaoProgress(bootstrapCtx, recoveryPath, func(detail string) {
+					cli.ReportActivityDetail(out, detail)
+				}); err != nil {
+					return err
+				}
+			} else {
+				term := cli.NewTerminal(ctx, out, errOut)
+				if err := progress(ctx, term, "Initialize and secure OpenBao", func(progressOut io.Writer) error {
+					return bootstrapManagedOpenBaoProgress(bootstrapCtx, recoveryPath, func(detail string) {
+						cli.ReportActivityDetail(progressOut, detail)
+					})
+				}); err != nil {
+					return err
+				}
 			}
 			if format == outputJSON {
 				report, err := inspectManagedOpenBao(bootstrapCtx)
@@ -106,12 +123,12 @@ func openBaoBootstrapCommand() *cli.Command {
 				}
 				return writeJSON(out, report)
 			}
-			fmt.Fprintln(out, "[OK] OpenBao initialized and unsealed")
-			fmt.Fprintln(out, "[OK] baseharbor KV v2 mount configured")
-			fmt.Fprintln(out, "[OK] restricted manager AppRole configured and verified")
-			fmt.Fprintln(out, "[OK] initial root token revoked")
-			fmt.Fprintf(out, "Recovery file: %s\n", recoveryPath)
-			fmt.Fprintln(out, "Store the recovery file securely and separately from BaseHarbor application state.")
+			cli.ReportActivityNotice(out, "[OK] OpenBao initialized and unsealed")
+			cli.ReportActivityNotice(out, "[OK] baseharbor KV v2 mount configured")
+			cli.ReportActivityNotice(out, "[OK] restricted manager AppRole configured and verified")
+			cli.ReportActivityNotice(out, "[OK] initial root token revoked")
+			cli.ReportActivityNotice(out, fmt.Sprintf("Recovery file: %s", recoveryPath))
+			cli.ReportActivityNotice(out, "Store the recovery file securely and separately from BaseHarbor application state.")
 			return nil
 		},
 	}

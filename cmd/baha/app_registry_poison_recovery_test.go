@@ -90,8 +90,8 @@ func assertRegistryConflictError(t *testing.T, err error, twinIDs [2]string) {
 	if !strings.Contains(joined, twinIDs[0]) || !strings.Contains(joined, twinIDs[1]) {
 		t.Fatalf("the conflict must name BOTH colliding deployment uuids for the --uuid repair: %v", failure)
 	}
-	if !strings.Contains(joined, "baha app destroy --uuid") || !strings.Contains(joined, "--full-reset") {
-		t.Fatalf("the conflict must name the verified repair command (destroy --uuid ... --full-reset): %v", failure)
+	if !strings.Contains(joined, "baha app destroy --uuid") || !strings.Contains(joined, "--yes") {
+		t.Fatalf("the conflict must name the verified repair command (destroy --uuid ... --yes): %v", failure)
 	}
 	if !errors.Is(err, deployment.ErrRegistryConflict) && !errors.Is(failure.Cause, deployment.ErrRegistryConflict) {
 		t.Fatalf("the machine error must carry the registry-conflict sentinel: %v", err)

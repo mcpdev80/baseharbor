@@ -3,11 +3,13 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/applicationlifecycle"
+	"github.com/mcpdev80/baseharbor/internal/delivery"
 	"github.com/mcpdev80/baseharbor/internal/development"
 	"github.com/mcpdev80/baseharbor/internal/machine"
 	"github.com/mcpdev80/baseharbor/internal/machinehttp"
@@ -40,6 +42,46 @@ func (e *bahaMachineExecutor) executeHTTPLifecycle(
 	}
 }
 
+// Normalize the verified uploaded source under the already authorized Core
+// identity before provider consent checks. Revalidation must compare the same
+// canonical workload and provider projection that apply actually consumes.
+func prepareVerifiedHTTPSource(ctx context.Context, resolved resolvedApplication, selection application.RepositoryEnvironmentSelection) (resolvedApplication, error) {
+	if selection.Manifest.Name != resolved.Manifest.Name ||
+		selection.Manifest.Environment != resolved.Manifest.Environment ||
+		(selection.Manifest.ApplicationID != "" && selection.Manifest.ApplicationID != resolved.DeploymentIdentity.ApplicationID) {
+		return resolvedApplication{}, machine.NewError(machine.ErrorPolicyDenied, "Source snapshot does not belong to the authorized Core application.", "Use the matching application identity.", false)
+	}
+	selection.Manifest.ApplicationID = resolved.DeploymentIdentity.ApplicationID
+	selection, err := resolveRepositoryLifecycleIntent(ctx, resolved.Target, selection, "plan")
+	if err != nil {
+		return resolvedApplication{}, err
+	}
+	resolved.Manifest = selection.Manifest
+	resolved.ManifestPath = selection.ManifestPath
+	resolved.RepositoryRoot = selection.RepositoryRoot
+	resolved.SourceAvailable = true
+	resolved.FromRepository = true
+	resolved.Manifest, err = resolveAppliedBackendSelection(resolved, "apply")
+	if err != nil {
+		return resolvedApplication{}, err
+	}
+	return resolved, nil
+}
+
+// Preserve the typed machine error code while making the failing Core stage
+// observable through the verified Machine HTTP response. A plain fmt.Errorf
+// wrapper is lost when machine.Classify unwraps an existing typed error.
+func coreHTTPApplyStageError(stage string, err error) error {
+	classified := machine.Classify(err)
+	if classified == nil {
+		return nil
+	}
+	staged := *classified
+	staged.Message = "Core remote apply " + stage + ": " + classified.Message
+	staged.Cause = err
+	return &staged
+}
+
 func (e *bahaMachineExecutor) executeHTTPApply(
 	ctx context.Context,
 	operationContext machine.OperationContext,
@@ -65,12 +107,24 @@ func (e *bahaMachineExecutor) executeHTTPApply(
 	ctx = withMemoryPreflightOverride(ctx, input.SkipMemoryPreflight)
 	ctx = withCandidateConsentDigest(ctx, input.ConfirmCandidate)
 	ctx = withProviderChangeConsent(ctx, input.ProviderChangeConsent)
+	if len(input.WorkloadPorts) > 32 {
+		return nil, machine.NewError(machine.ErrorValidationFailed, "Too many workload port selections were supplied.", "Choose ports only for variables used by the selected Compose workload.", false)
+	}
+	for name, value := range input.WorkloadPorts {
+		if !validWorkloadEnvironmentName(name) {
+			return nil, machine.NewError(machine.ErrorValidationFailed, "A workload port selection has an invalid variable name.", "Use the exact variable name from the selected Compose workload.", false)
+		}
+		if _, err := parsePort(value); err != nil {
+			return nil, machine.NewError(machine.ErrorValidationFailed, "A workload port selection is invalid.", "Choose a TCP port from 1 through 65535.", false)
+		}
+	}
+	ctx = withRequestedWorkloadPorts(ctx, input.WorkloadPorts)
 	args := machineApplicationArgs(input.Name, input.Environment)
 
 	reportHTTPProgress(report, "resolve", "Resolving application and target.", 10)
 	resolved, err := resolveApplication(ctx, e.store, args, "apply")
 	if err != nil {
-		return nil, err
+		return nil, coreHTTPApplyStageError("resolve registered application", err)
 	}
 	if err := ensureResolvedHTTPContext(operationContext, resolved); err != nil {
 		return nil, err
@@ -91,12 +145,10 @@ func (e *bahaMachineExecutor) executeHTTPApply(
 			(selection.Manifest.ApplicationID != "" && selection.Manifest.ApplicationID != resolved.DeploymentIdentity.ApplicationID) {
 			return nil, machine.NewError(machine.ErrorPolicyDenied, "Source snapshot does not belong to the authorized Core application.", "Use the matching application identity.", false)
 		}
-		selection.Manifest.ApplicationID = resolved.DeploymentIdentity.ApplicationID
-		resolved.Manifest = selection.Manifest
-		resolved.ManifestPath = selection.ManifestPath
-		resolved.RepositoryRoot = selection.RepositoryRoot
-		resolved.SourceAvailable = true
-		resolved.FromRepository = true
+		resolved, err = prepareVerifiedHTTPSource(ctx, resolved, selection)
+		if err != nil {
+			return nil, err
+		}
 		ctx = withVerifiedHTTPSource(ctx, resolved)
 	} else {
 		// Registered immutable sources retain their existing Core-side checks.
@@ -134,13 +186,35 @@ func (e *bahaMachineExecutor) executeHTTPApply(
 	}
 
 	reportHTTPProgress(report, "apply", "Converging desired application state.", 35)
+	ctx = context.WithValue(ctx, applicationPhaseReporterKey{}, func(label string) {
+		reportHTTPProgress(report, "apply", strings.Replace(label, "Reconciling ", "Deploying ", 1), 0)
+	})
 	if err := executeApplicationApplyLifecycle(ctx, e.store, args, io.Discard, io.Discard); err != nil {
-		return nil, err
+		if errors.Is(err, errConsentRequiredForCandidateSubmission) {
+			// The first attempt is a read-only consent discovery: no pending
+			// deployment was written. Return the exact Core-side candidate hash
+			// so a human or automation can explicitly authorize a second attempt.
+			submission, _ := candidateSubmissionForResolvedApp(ctx, resolved)
+			if hash := delivery.CandidateConsentDigest(submission); hash != "" {
+				preview, previewErr := buildResolvedApplicationPlan(ctx, resolved)
+				if previewErr != nil {
+					return nil, coreHTTPApplyStageError("deployment preview", previewErr)
+				}
+				return nil, &machine.Error{
+					Code:      machine.ErrorApprovalRequired,
+					CauseCode: "candidate_confirmation_required",
+					Message:   "Core requires explicit confirmation of this exact application source candidate.",
+					Details:   preview,
+					Next:      "Re-run baha app apply " + input.Name + " --environment " + input.Environment + " --confirm-candidate " + hash,
+				}
+			}
+		}
+		return nil, coreHTTPApplyStageError("execute lifecycle", err)
 	}
 	reportHTTPProgress(report, "verify", "Verifying application readiness.", 85)
 	status, err := collectApplicationStatusResult(ctx, e.store, args)
 	if err != nil {
-		return nil, err
+		return nil, coreHTTPApplyStageError("verify status", err)
 	}
 	if !status.Ready {
 		return nil, &machine.Error{
@@ -195,7 +269,16 @@ func (e *bahaMachineExecutor) executeHTTPUpdate(
 			Next:        "Provide backup_password_file or explicitly set no_backup=true.",
 		}
 	}
-	args := machineApplicationArgs(name, input.Environment)
+	// Local Git update works on a checked-out repository, never on an
+	// uploaded workstation snapshot. Refuse unsupported remote sources before
+	// running the local update parser or attempting a Git fetch.
+	if _, err := inspectGitApplicationUpdate(ctx, resolved.repositoryRoot(), false); err != nil {
+		return nil, machine.Wrap(machine.ErrorUnsupported, err,
+			"Remote app update requires a Core-owned Git worktree. For uploaded Compose sources, submit a new verified source candidate with app apply.", false)
+	}
+	// Name is an authenticated selector, not a positional option of the
+	// repository-local Git update command.
+	args := machineApplicationArgs("", input.Environment)
 	if passwordFile := strings.TrimSpace(input.BackupPasswordFile); passwordFile != "" {
 		args = append(args, "--backup-password-file", passwordFile)
 	}
@@ -383,15 +466,13 @@ func (e *bahaMachineExecutor) executeHTTPDestroy(
 	}
 	args := machineApplicationArgs(input.Name, input.Environment)
 	args = append(args, "--yes")
-	if input.FullReset {
-		args = append(args, "--full-reset")
-	}
+	args = append(args, "--full-reset")
 	reportHTTPProgress(report, "destroy", "Removing BaseHarbor-owned application resources.", 40)
 	if err := executeApplicationDestroyLifecycle(ctx, e.store, args, io.Discard, io.Discard); err != nil {
 		return nil, err
 	}
 	reportHTTPProgress(report, "destroy", "Owned application resources removed.", 100)
-	return applicationDestroyResult(resolved, input.FullReset)
+	return applicationDestroyResult(resolved, true)
 }
 
 func ensureResolvedHTTPContext(operationContext machine.OperationContext, resolved resolvedApplication) error {

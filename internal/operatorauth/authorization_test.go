@@ -189,3 +189,32 @@ func TestWithMembershipProviderIfAbsentPreservesExplicitProvider(t *testing.T) {
 		t.Fatalf("default production provider replaced the caller's explicit provider: %#v %v", decision, err)
 	}
 }
+
+func TestPairedWorkstationCannotEscalateToTestOrProduction(t *testing.T) {
+	operation, ok := machine.OperationByID("apply")
+	if !ok {
+		t.Fatal("apply operation unavailable")
+	}
+	device := &identity.Principal{
+		Issuer:  "spiffe://baseharbor/workstations/11111111-1111-4111-8111-111111111111",
+		Subject: "ws-one",
+		Methods: []string{"workstation-mtls"},
+	}
+	for _, environment := range []string{"test", "staging", "prod"} {
+		t.Run(environment, func(t *testing.T) {
+			ctx := WithVerifiedPrincipal(context.Background(), device)
+			ctx = tenancy.WithContext(ctx, &tenancy.Context{
+				TenantID:           "11111111-1111-4111-8111-111111111111",
+				ExternalIdentityID: "workstation/ws-one",
+				Roles:              []string{"editor"},
+			})
+			decision, err := AuthorizeMachineOperation(ctx, AuthorizationRequest{
+				Operation: operation,
+				Context:   OperationContext{Application: "demo", Environment: environment, Target: "remote-core"},
+			})
+			if err == nil || decision.Allowed || decision.ReasonCode != "workstation_environment_denied" {
+				t.Fatalf("paired device escalated to %s: %+v %v", environment, decision, err)
+			}
+		})
+	}
+}

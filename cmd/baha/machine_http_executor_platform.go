@@ -23,6 +23,12 @@ func (e *bahaMachineExecutor) executeHTTPPlatformMutation(
 	report machinehttp.ProgressReporter,
 ) (any, error) {
 	switch operationID {
+	case "dev.domain":
+		return executeHTTPDevelopmentDomain(ctx, operationContext, raw)
+	case "dev.credentials":
+		return executeHTTPDevelopmentCredentials(ctx, operationContext, raw)
+	case "secret.set":
+		return e.executeHTTPApplicationSecretSet(ctx, operationContext, raw)
 	case "openbao.rotate":
 		return executeHTTPManagedRotation(ctx, operationContext, raw, report)
 	case "control-plane.up":
@@ -41,11 +47,31 @@ func (e *bahaMachineExecutor) executeHTTPPlatformMutation(
 		}
 		reportHTTPProgress(report, "core", "Core readiness verified.", 100)
 		return state, nil
+	case "control-plane.repair":
+		if err := decodeHTTPInput(raw, &struct{}{}); err != nil {
+			return nil, err
+		}
+		target := withTargetOverride(ctx, operationContext.Target)
+		reportHTTPProgress(report, "core", "Reconverging existing Core configuration.", 10)
+		if err := repairExistingControlPlaneRuntime(target, io.Discard); err != nil {
+			return nil, err
+		}
+		result, err := inspectControlPlane(target)
+		if err != nil {
+			return nil, err
+		}
+		if err := requireControlPlaneReady(result); err != nil {
+			return nil, err
+		}
+		reportHTTPProgress(report, "core", "Core readiness verified.", 100)
+		return result, nil
 
 	case "workspace.update":
 		return executeHTTPWorkspaceUpdate(ctx, operationContext, raw, report)
 	case "app.create":
 		return executeHTTPAppCreate(ctx, operationContext, raw)
+	case "app.configure":
+		return e.executeHTTPAppConfigure(ctx, operationContext, raw)
 	case "app.new":
 		return executeHTTPAppNew(ctx, operationContext, raw, report)
 	case "provider.add", "provider.remove":

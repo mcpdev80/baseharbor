@@ -185,7 +185,6 @@ func tempoHACompose(p Placement, access serviceaccess.HTTPGatewayFiles, storage 
 		fmt.Fprintf(&b, "  %s:\n", name)
 		fmt.Fprintf(&b, "    image: %s\n", ProviderImage)
 		b.WriteString("    restart: unless-stopped\n")
-		b.WriteString("    user: \"10001:10001\"\n")
 		b.WriteString("    read_only: true\n")
 		b.WriteString("    cap_drop: [\"ALL\"]\n")
 		b.WriteString("    security_opt: [\"no-new-privileges:true\"]\n")

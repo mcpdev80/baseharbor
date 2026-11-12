@@ -278,8 +278,8 @@ func (f *fakeBao) ExecProjectInput(_ context.Context, _, _, _ string, input []by
 		gateGet := f.gateGet
 		present := f.present
 		object := f.object
-		f.mu.Unlock()
 		f.gets++
+		f.mu.Unlock()
 		// In the mutation race, let the rival install the winner while the
 		// production Get is "in flight" so the winner is present when the
 		// unconditional mutant put runs — the NOT_FOUND the adapter observed is

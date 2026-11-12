@@ -285,6 +285,9 @@ func operatorOIDCVerifier(ctx context.Context, cfg Config) (*auth.OIDCVerifier, 
 
 func registerOperatorAPI(ctx context.Context, mux *http.ServeMux, cfg Config, deps serverDependencies, machineExecutor machinehttp.Executor) error {
 	if !cfg.operatorAPIEnabled() {
+		if cfg.WorkstationEnrollmentEnabled && !cfg.ConnectorEnrollmentEnabled {
+			return registerWorkstationOnlyAPI(ctx, mux, cfg, deps, machineExecutor)
+		}
 		return nil
 	}
 	if deps.pool == nil {
@@ -335,8 +338,24 @@ func registerOperatorAPI(ctx context.Context, mux *http.ServeMux, cfg Config, de
 		if err != nil {
 			return err
 		}
-		// The scoped one-use bootstrap exchange stays behind the existing
-		// identity/tenant middleware on the protected operator API.
+		// Only an already minted, short-lived workstation grant may cross
+		// the OIDC boundary. The public endpoint cannot create grants or
+		// access machine/operator APIs, and consumes the exact grant once.
+		delegated, ok := handler.(interface {
+			ServeDelegatedEnroll(http.ResponseWriter, *http.Request)
+		})
+		if !ok {
+			return errors.New("workstation enrollment is missing the one-use grant boundary")
+		}
+		mux.HandleFunc("/api/v1/workstations/enroll", delegated.ServeDelegatedEnroll)
+		deviceRenew, ok := handler.(interface {
+			ServeDeviceRenew(http.ResponseWriter, *http.Request)
+		})
+		if !ok {
+			return errors.New("workstation enrollment is missing the mTLS device renewal boundary")
+		}
+		operatorMux.HandleFunc("POST /api/v1/workstations/renew", deviceRenew.ServeDeviceRenew)
+		// Grant creation stays behind the existing operator/tenant policy.
 		operatorMux.Handle("/api/v1/workstations/bootstrap", handler)
 		operatorMux.Handle("/api/v1/workstations/enroll", handler)
 	}
@@ -387,7 +406,29 @@ func registerOperatorAPI(ctx context.Context, mux *http.ServeMux, cfg Config, de
 	if err != nil {
 		return err
 	}
-	mux.Handle("/api/", protected)
+	if cfg.WorkstationEnrollmentEnabled {
+		revoker, ok := machineExecutor.(workstationRevocationReader)
+		if !ok {
+			return errors.New("Core requires workstation OpenBao CRL authority for device access")
+		}
+		device, err := workstationDeviceMiddleware(deps.pool, cfg.TLSClientCAFile, revoker, operatorMux)
+		if err != nil {
+			return err
+		}
+		mux.Handle("/api/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Only a client that deliberately presented an enrolled leaf and
+			// did not supply a human OIDC Bearer token selects device auth.
+			// All browser/OIDC calls retain exactly the existing middleware.
+			if r.TLS != nil && len(r.TLS.PeerCertificates) != 0 &&
+				r.Header.Get("Authorization") == "" {
+				device.ServeHTTP(w, r)
+				return
+			}
+			protected.ServeHTTP(w, r)
+		}))
+	} else {
+		mux.Handle("/api/", protected)
+	}
 	return nil
 }
 

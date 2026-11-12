@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/applicationsecret"
 	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/mcpdev80/baseharbor/internal/hostresource"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
@@ -129,7 +130,7 @@ func (e *applicationUpExecution) runPreflight(ctx context.Context) error {
 					if e.coreRuntime == nil {
 						return unavailableApplicationCoreRuntime()
 					}
-					return checkRequiredApplicationSecrets(ctx, e.coreRuntime, e.platformFiles, e.manifest, e.files)
+					return checkRequiredApplicationSecrets(ctx, e.coreRuntime, e.platformFiles, manifestWithoutManagedSecretSources(e.manifest), e.files)
 				}},
 			)
 		}
@@ -251,6 +252,14 @@ func (e *applicationUpExecution) preflightChecks() []preflight.Check {
 }
 
 func (e *applicationUpExecution) startManagedRuntime(ctx context.Context) error {
+	if e.manifest.Services.Secrets && hasManagedDevelopmentSecretSources(e.manifest) {
+		secretService := applicationsecret.NewForApplicationRuntime(e.resolved.Store, e.coreRuntime, e.platformFiles, e.manifest, e.files)
+		count, err := reconcileTargetDevelopmentCredentialSecrets(ctx, secretService, e.resolved.Target.Name, e.manifest)
+		if err != nil {
+			return fmt.Errorf("synchronize Target development credentials into application secrets: %w", err)
+		}
+		fmt.Fprintf(e.out, "[OK] target-development-secrets  %d value(s) synchronized and verified from OpenBao\n", count)
+	}
 	if err := materializeApplicationServiceIssuer(e.issuer); err != nil {
 		return fmt.Errorf("prepare managed service PKI: %w", err)
 	}

@@ -8,7 +8,8 @@ func (e *ProviderChangeError) Error() string { return "provider change: " + e.Co
 
 // ValidateProviderChangeConsent is shared by CLI, JSON and MCP authorities.
 // Complete=false never vetoes an informed developer's choice. Lack of an
-// alternative requires two stages; ordinary consent cannot imply data deletion.
+// alternative requires both acknowledgement fields; ordinary consent cannot
+// imply data deletion.
 func ValidateProviderChangeConsent(current ProviderImpactPlan, consent ProviderChangeConsent) error {
 	if err := validateProviderConsentRequirements(current.Version, current.PlanID, current.ConfirmationsRequired); err != nil {
 		return err

@@ -239,7 +239,7 @@ func writeMongoDBComposeService(b *strings.Builder, m Manifest, instance string)
 			b.WriteString("    command:\n      - |\n")
 			b.WriteString("        printf '%s\\n' \"- \\\"$$BASEHARBOR_MONGODB_REPLICA_KEY\\\"\" > /tmp/mongodb-keyfile\n")
 			b.WriteString("        chmod 0400 /tmp/mongodb-keyfile\n")
-			b.WriteString("        chown mongodb:mongodb /tmp/mongodb-keyfile\n")
+			b.WriteString("        if [ \"$$(id -u)\" = 0 ]; then chown mongodb:mongodb /tmp/mongodb-keyfile; fi\n")
 			b.WriteString("        exec /usr/local/bin/docker-entrypoint.sh mongod --bind_ip_all --replSet \"$$BASEHARBOR_MONGODB_REPLICA_SET\" --keyFile /tmp/mongodb-keyfile --tlsMode requireTLS --tlsCertificateKeyFile /run/baseharbor/tls/server.pem --tlsCAFile /run/baseharbor/tls/ca.pem --tlsAllowConnectionsWithoutCertificates --setParameter tlsWithholdClientCertificate=true\n")
 		} else {
 			b.WriteString("    command: [\"mongod\", \"--bind_ip_all\", \"--tlsMode\", \"requireTLS\", \"--tlsCertificateKeyFile\", \"/run/baseharbor/tls/server.pem\", \"--tlsCAFile\", \"/run/baseharbor/tls/ca.pem\", \"--tlsAllowConnectionsWithoutCertificates\"]\n")
@@ -273,7 +273,6 @@ func writeMongoDBUIComposeServices(b *strings.Builder, m Manifest, instance stri
 	fmt.Fprintf(b, `  %s:
     image: %s
     restart: unless-stopped
-    user: "node"
     read_only: true
     cap_drop: ["ALL"]
     security_opt: ["no-new-privileges:true"]
@@ -290,13 +289,12 @@ func writeMongoDBUIComposeServices(b *strings.Builder, m Manifest, instance stri
   %s:
     image: %s
     restart: unless-stopped
-    user: "65532:65532"
     read_only: true
     cap_drop: ["ALL"]
     security_opt: ["no-new-privileges:true"]
     entrypoint: ["/bin/sh", "-ec"]
     command:
-      - cat /usr/bin/caddy > /run/baseharbor/caddy && chmod 0755 /run/baseharbor/caddy && exec /run/baseharbor/caddy run --config /etc/caddy/Caddyfile --adapter caddyfile
+      - cat /usr/bin/caddy > /run/baseharbor/caddy && chmod 0755 /run/baseharbor/caddy && exec /run/baseharbor/caddy run --config /etc/caddy/Caddyfile --adapter caddyfile --watch
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev
       - /run/baseharbor:rw,exec,nosuid,nodev,mode=1777

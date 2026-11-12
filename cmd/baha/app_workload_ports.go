@@ -28,6 +28,21 @@ const (
 	workloadStartDiagnosticTimeout = 5 * time.Second
 )
 
+type requestedWorkloadPortsContextKey struct{}
+
+func withRequestedWorkloadPorts(ctx context.Context, ports map[string]string) context.Context {
+	copy := make(map[string]string, len(ports))
+	for name, port := range ports {
+		copy[name] = port
+	}
+	return context.WithValue(ctx, requestedWorkloadPortsContextKey{}, copy)
+}
+
+func requestedWorkloadPorts(ctx context.Context) map[string]string {
+	ports, _ := ctx.Value(requestedWorkloadPortsContextKey{}).(map[string]string)
+	return ports
+}
+
 var (
 	composePublishedPortVariableRE = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*):-([0-9]{1,5})\}\s*:`)
 	conflictingHostPortRE          = regexp.MustCompile(`(?i)(?:127\.0\.0\.1:|0\.0\.0\.0:|\[::\]:|\[::1\]:|::1:|host port\s+)([0-9]{1,5})`)
@@ -42,17 +57,14 @@ func ensureRepositoryWorkloadPortsForUp(ctx context.Context, in io.Reader, out i
 	if !resolved.FromRepository {
 		return nil
 	}
-	if _, err := application.ExistingRuntimeFiles(resolved.Store, resolved.Manifest); err == nil {
-		return nil
-	} else if !errors.Is(err, application.ErrRuntimeNotApplied) {
-		return err
-	}
-
 	composeSource, err := selectedRepositoryComposeSource(repoRoot, resolved.Manifest)
 	if err != nil {
 		return err
 	}
 	if composeSource == "" {
+		if len(requestedWorkloadPorts(ctx)) > 0 {
+			return machine.NewError(machine.ErrorValidationFailed, "Workload ports were supplied for an application without a Compose workload.", "Use --workload-port only with a repository Compose workload.", false)
+		}
 		return nil
 	}
 	composePath, err := application.ResolveWorkloadComposeSource(repoRoot, composeSource)
@@ -62,6 +74,11 @@ func ensureRepositoryWorkloadPortsForUp(ctx context.Context, in io.Reader, out i
 	variables, err := workloadPublishedPortVariables(application.WorkloadFiles{Compose: composePath})
 	if err != nil {
 		return fmt.Errorf("inspect configurable workload host ports: %w", err)
+	}
+	if _, err := application.ExistingRuntimeFiles(resolved.Store, resolved.Manifest); err == nil {
+		return nil
+	} else if !errors.Is(err, application.ErrRuntimeNotApplied) {
+		return err
 	}
 	if len(variables) == 0 {
 		return nil
@@ -284,12 +301,15 @@ func preflightRepositoryWorkloadPublishedPorts(
 	if err != nil {
 		return fmt.Errorf("inspect configurable workload host ports: %w", err)
 	}
+	requested := requestedWorkloadPorts(ctx)
 	for _, variable := range variables {
 		port := currentWorkloadPort(variable, environment)
 		if portAvailable(port) {
 			continue
 		}
-		if _, explicit := os.LookupEnv(variable.Name); explicit {
+		_, requestedExplicit := requested[variable.Name]
+		_, environmentExplicit := os.LookupEnv(variable.Name)
+		if requestedExplicit || environmentExplicit {
 			return &machine.Error{Code: machine.ErrorPortConflict, CauseCode: "host_port_in_use", Message: fmt.Sprintf("Port %d is already in use.", port), Resource: variable.Name, Remediation: "requires developer input", Next: fmt.Sprintf("Choose a free value for %s and retry; BaseHarbor will not replace an explicit operator value.", variable.Name)}
 		}
 		fallback := proposedWorkloadPort(port)
@@ -321,6 +341,10 @@ func preflightRepositoryWorkloadPublishedPorts(
 	for _, service := range workload.Services {
 		selected[service] = struct{}{}
 	}
+	configurableDefaults := map[int]struct{}{}
+	for _, variable := range variables {
+		configurableDefaults[variable.DefaultPort] = struct{}{}
+	}
 	servicePorts := map[string][]string{}
 	for _, evidence := range analysis.Ports {
 		if _, ok := selected[evidence.Service]; !ok {
@@ -337,6 +361,12 @@ func preflightRepositoryWorkloadPublishedPorts(
 		for i, value := range values {
 			port, fixed := fixedComposeHostPort(value)
 			if !fixed || portAvailable(port) {
+				continue
+			}
+			if _, configurable := configurableDefaults[port]; configurable {
+				// Compose analysis resolves ${PORT:-default} to its default. The
+				// configurable-variable preflight above already handles that
+				// binding, so do not misclassify it as a fixed mapping.
 				continue
 			}
 			fallback := proposedWorkloadPort(port)
@@ -512,6 +542,49 @@ func currentWorkloadPort(variable workloadPublishedPortVariable, environment map
 	return variable.DefaultPort
 }
 
+func persistRequestedWorkloadPortSelections(ctx context.Context, out io.Writer, workload application.WorkloadFiles, files application.RuntimeFiles, environment map[string]string) error {
+	requested := requestedWorkloadPorts(ctx)
+	if len(requested) == 0 {
+		return nil
+	}
+	persisted := map[string]string{}
+	persisted, err := readSimpleEnvFile(filepath.Join(files.Dir, workloadPortOverridesFile))
+	if errors.Is(err, os.ErrNotExist) {
+		persisted = map[string]string{}
+	} else if err != nil {
+		return fmt.Errorf("read persisted workload port selections: %w", err)
+	}
+	variables, err := workloadPublishedPortVariables(workload)
+	if err != nil {
+		return fmt.Errorf("inspect configurable workload host ports: %w", err)
+	}
+	known := make(map[string]struct{}, len(variables))
+	for _, variable := range variables {
+		known[variable.Name] = struct{}{}
+	}
+	for name, value := range requested {
+		if _, ok := known[name]; !ok {
+			return machine.NewError(machine.ErrorValidationFailed, "A requested workload port does not match a published port variable in the selected Compose file.", "Use the exact variable name from the Compose host-port binding.", false)
+		}
+		port, parseErr := parsePort(value)
+		if parseErr != nil {
+			return machine.NewError(machine.ErrorValidationFailed, "A requested workload port is invalid.", "Choose a TCP port from 1 through 65535.", false)
+		}
+		// Reapplying an already materialized application commonly finds its own
+		// published port bound by that application's running container. Preserve
+		// an identical persisted selection; Compose still detects a conflicting
+		// owner if a start or recreation is needed later in the lifecycle.
+		if persisted[name] != strconv.Itoa(port) && !portAvailable(port) {
+			return &machine.Error{Code: machine.ErrorPortConflict, CauseCode: "host_port_in_use", Message: fmt.Sprintf("Requested workload host port %s=%d is already in use.", name, port), Resource: name, Remediation: "requires developer input", Next: "Choose another free host port and retry."}
+		}
+		if err := persistWorkloadPortOverride(files, environment, name, port); err != nil {
+			return fmt.Errorf("persist selected workload host port: %w", err)
+		}
+		fmt.Fprintf(out, "[UPDATED] workload-port %s=%d saved for this deployment\n", name, port)
+	}
+	return nil
+}
+
 func proposedWorkloadPort(conflict int) int {
 	start := conflict + 1
 	switch conflict {
@@ -597,7 +670,9 @@ func startRepositoryWorkloadWithPortFallback(ctx context.Context, in io.Reader, 
 				Cause:       err,
 			}
 		}
-		if _, explicit := os.LookupEnv(candidate.Name); explicit {
+		_, requestedExplicit := requestedWorkloadPorts(ctx)[candidate.Name]
+		_, environmentExplicit := os.LookupEnv(candidate.Name)
+		if requestedExplicit || environmentExplicit {
 			return fmt.Errorf("%w; %s=%d was set explicitly by the operator, choose another free value and retry", err, candidate.Name, conflict)
 		}
 		fallback := proposedWorkloadPort(conflict)

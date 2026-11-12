@@ -3,8 +3,68 @@ package application
 import (
 	"os"
 	"path/filepath"
+	"syscall"
 	"testing"
 )
+
+func TestBindingProjectionConsumerDirectoriesIgnoreRestrictiveUmask(t *testing.T) {
+	old := syscall.Umask(0o077)
+	defer syscall.Umask(old)
+
+	root := filepath.Join(t.TempDir(), "projection")
+	if err := resetWorkloadBindingProjection(Manifest{}, root); err != nil {
+		t.Fatal(err)
+	}
+	assertMode := func(path string, want os.FileMode) {
+		t.Helper()
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := info.Mode().Perm(); got != want {
+			t.Fatalf("%s mode = %04o, want %04o", path, got, want)
+		}
+	}
+	assertMode(root, 0o755)
+
+	binding := filepath.Join(root, "postgresql")
+	if err := writeWorkloadServiceBinding(binding, map[string]string{"uri": "postgresql://example"}); err != nil {
+		t.Fatal(err)
+	}
+	assertMode(binding, 0o755)
+	assertMode(filepath.Join(binding, "uri"), 0o444)
+	identityDir := filepath.Join(root, IdentityBindingName)
+	if err := writeReadOnlyProjectionFile(filepath.Join(identityDir, "client-secret"), []byte("fixture-only")); err != nil {
+		t.Fatal(err)
+	}
+	assertMode(identityDir, 0o755)
+	assertMode(filepath.Join(identityDir, "client-secret"), 0o444)
+	if err := verifyConsumerReadableProjection(root); err != nil {
+		t.Fatalf("arbitrary non-root UID cannot read generated projection: %v", err)
+	}
+}
+
+func TestConsumerReadableProjectionRejectsRestrictedOrWritablePaths(t *testing.T) {
+	for _, mode := range []os.FileMode{0o700, 0o775} {
+		t.Run(mode.String(), func(t *testing.T) {
+			root := filepath.Join(t.TempDir(), "projection")
+			if err := os.Mkdir(root, mode); err != nil {
+				t.Fatal(err)
+			}
+			// mkdir applies the process umask, so make the unsafe mode explicit
+			// before asserting that the consumer projection rejects it.
+			if err := os.Chmod(root, mode); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(root, "uri"), []byte("fixture"), 0o444); err != nil {
+				t.Fatal(err)
+			}
+			if err := verifyConsumerReadableProjection(root); err == nil {
+				t.Fatalf("unsafe projection mode %04o was accepted", mode.Perm())
+			}
+		})
+	}
+}
 
 func TestBindingProjectionResetKeepsMountedRootAndOnlySelectedIdentity(t *testing.T) {
 	for _, selected := range []bool{true, false} {

@@ -307,7 +307,7 @@ class GitFixture(unittest.TestCase):
         self.git('checkout', '-q', '--detach', event_base)
         workflow = (Path(__file__).resolve().parent.parent /
                     '.github/workflows/ci.yml').read_text()
-        begin = workflow.index('          git fetch --no-tags origin "$BASE_SHA"')
+        begin = workflow.index('          git fetch --no-tags origin "$BASE_SHA" "$HEAD_SHA" "$INTEGRATION_SHA" refs/heads/develop:refs/remotes/origin/pr-target-tip')
         end = workflow.index('          # One immutable, locally checked controller', begin)
         shell = '\n'.join(line.removeprefix('          ') for line in
                           workflow[begin:end].splitlines())

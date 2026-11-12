@@ -50,7 +50,7 @@ baseharbor/apps/<app>/<environment>/
 
 Jede Anwendung erhält ihre eigene OpenBao-Richtlinie und AppRolle. Diese Identität kann nur auf den exakten Anwendungs-/Umweltnamensraum zugreifen. Cross-Application- und Cross-Environment-Zugriff fehlgeschlagen.
 
-`baha app down ` bewahrt die geheime Reichweite.`baha app destroy --yes` entfernt die verwalteten Anwendungsgeheimnisse, Richtlinien, AppRolle und BaseHarbor-eigenen Anwendungszustand und bewahrt dabei das Projektarchiv manifestierte und anwendungseigene Daten.
+`baha app stop` (und `baha down`) bewahrt den Secret-Namensraum und persistente Daten. `baha app destroy --yes` entfernt verwaltete Anwendungsgeheimnisse, Richtlinie, AppRole, BaseHarbor-eigenen Zustand und exklusiv app-eigene persistente Daten. Repository-Quelldateien und gemeinsam genutzte Target-Ressourcen bleiben erhalten.
 
 ## Erzeugte Anwendungsgeheimnisse
 
@@ -166,6 +166,19 @@ secrets:
 Fehlende erforderliche Geheimnisse blockieren das Starten von Workloads. Fehlende optionale Geheimnisse nicht. Wenn ein optionales Geheimnis im verwalteten Speicher konfiguriert wird, projiziert BaseHarbor es über die gleichen Regeln für die Umgebung/Dateibindung wie ein erforderliches Geheimnis.
 
 Generierte Werte werden in beiden Gruppen unterstützt. Der geführte Init-Fluss kann fragen, ob ein nicht erzeugtes Geheimnis bei der ersten Anwendung eingegeben oder später konfiguriert werden soll; das ist an Bord von UX, nicht ein separater portabler Geheimtyp.
+
+Entwicklungsanwendungen können ein erforderliches Geheimnis ausdrücklich aus dem verwalteten Entwicklungs-Login des aktuellen Targets beziehen: mit `source: target-development-username` oder `source: target-development-password`. Compose-Repositories können diese Quellen in der standardisierten `x-baseharbor`-Erweiterung deklarieren; `baha app init` übernimmt sie automatisch in `baseharbor.yaml`:
+
+```yaml
+x-baseharbor:
+  secrets:
+    - name: DEMO_MANAGEMENT_USERNAME
+      source: target-development-username
+    - name: DEMO_MANAGEMENT_PASSWORD
+      source: target-development-password
+```
+
+Bei `baha app apply` oder `baha app up` liest BaseHarbor den maßgeblichen Wert aus der OpenBao-gestützten Entwicklungs-Credential-Autorität des Targets, synchronisiert ihn in den eigenen OpenBao-Secret-Scope der Anwendung, prüft den gespeicherten Wert und projiziert ihn in die deklarierte Workload-Bindung. Ein geändertes Target-Credential wird beim nächsten Lifecycle-Aufruf synchronisiert. Diese Quelle ist außerhalb von `dev`/`development`, für optionale Secrets und in Kombination mit Generierung unzulässig. Sie gibt dem Workload der Anwendung ausdrücklich Zugriff auf den Entwicklungs-Login des gewählten Targets; verwende sie nur, wenn die Anwendung diesen Login anzeigen oder verwenden soll, wie die lokale BaseHarbor-Demo.
 
 ## Statische Laufzeitbereitstellung
 

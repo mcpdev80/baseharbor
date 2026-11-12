@@ -50,7 +50,7 @@ baseharbor/apps/<app>/<environment>/
 
 Each application receives its own OpenBao policy and AppRole. That identity can access only the exact application/environment namespace. Cross-application and cross-environment access fails closed.
 
-`baha app down` preserves the secret scope. `baha app destroy --yes` removes the managed application secrets, policy, AppRole and BaseHarbor-owned application state while preserving the repository manifest and application-owned data.
+`baha app stop` (and `baha down`) preserves the secret scope and persistent data. `baha app destroy --yes` removes the managed application secrets, policy, AppRole, BaseHarbor-owned application state and exclusively app-owned persistent data. Repository source files and shared Target resources remain.
 
 ## Generated application secrets
 
@@ -166,6 +166,19 @@ secrets:
 Missing required secrets block workload startup. Missing optional secrets do not. When an optional secret is configured in managed storage, BaseHarbor projects it through the same environment/file binding rules as a required secret.
 
 Generated values are supported in either group. The guided init flow may ask whether a non-generated secret should be entered on first apply or configured later; that is onboarding UX, not a separate portable secret type.
+
+Development applications may explicitly source a required secret from the current Target's managed development login using `source: target-development-username` or `source: target-development-password`. Compose repositories can declare these sources in the standard `x-baseharbor` extension; `baha app init` carries them into `baseharbor.yaml` automatically:
+
+```yaml
+x-baseharbor:
+  secrets:
+    - name: DEMO_MANAGEMENT_USERNAME
+      source: target-development-username
+    - name: DEMO_MANAGEMENT_PASSWORD
+      source: target-development-password
+```
+
+On `baha app apply` or `baha app up`, BaseHarbor reads the authoritative value from the Target's OpenBao-backed development credential authority, synchronizes it into the application's own OpenBao secret scope, verifies the stored value and projects it into the declared workload binding. A changed Target credential is synchronized on the next lifecycle run. This source is rejected outside `dev`/`development`, for optional secrets, and when combined with generation. It deliberately gives that application workload access to the selected Target's development management login; use it only when the app is intended to display or use that login, such as the local BaseHarbor demo.
 
 ## Static runtime delivery
 

@@ -81,10 +81,10 @@ func TestW154RetireWhenRuntimeDirPresentButRuntimeEnvMissing(t *testing.T) {
 		t.Fatalf("precondition failed: runtime.env must not be an owned file")
 	}
 
-	// (3) `app destroy --yes` on the runtime-dir-present/env-missing state must
+	// (3) `app stop --yes` on the runtime-dir-present/env-missing state must
 	// retire with rc=0 and leave no owned workload runtime behind.
-	var out, errOut bytes.Buffer
-	if derr := executeApplicationDestroyLifecycle(context.Background(), application.DefaultStore(), []string{"--yes"}, &out, &errOut); derr != nil {
+	var out bytes.Buffer
+	if derr := stopSelectiveApplicationWithConsent(context.Background(), &out); derr != nil {
 		t.Fatalf("retire of runtime-dir-present/env-missing state must return rc=0, got: %v\noutput:\n%s", derr, out.String())
 	}
 	t.Logf("retired rc=0 with runtime dir present but no owned runtime.env; shared reader stayed strict")

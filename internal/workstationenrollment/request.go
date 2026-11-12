@@ -46,7 +46,7 @@ func NewRenewRequest(scope Scope, csrPEM []byte, certificateTTL time.Duration) (
 	if len(csrPEM) == 0 {
 		return Request{}, ErrDenied
 	}
-	if certificateTTL <= 0 || certificateTTL > 24*time.Hour {
+	if certificateTTL <= 0 || certificateTTL > MaxCertificateTTL {
 		return Request{}, ErrDenied
 	}
 	return Request{
@@ -79,4 +79,5 @@ type Result struct {
 	Trust       serviceaccess.TrustBundle
 	Serial      string
 	ExpiresAt   time.Time
+	OwnerLogin  string
 }

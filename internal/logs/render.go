@@ -361,7 +361,6 @@ func providerComposeYAMLForModeAndAccess(placement Placement, registrations []Re
 	if storageNetwork == "" {
 		fmt.Fprintf(&b, "  %s:\n", lokiService)
 		fmt.Fprintf(&b, "    image: %s\n", LokiImage)
-		fmt.Fprintf(&b, "    user: %s\n", strconv.Quote(fmt.Sprintf("%d:%d", LokiRuntimeUID, LokiRuntimeGID)))
 		b.WriteString("    command: [\"-config.file=/etc/loki/loki.yaml\"]\n")
 		b.WriteString("    read_only: true\n")
 		b.WriteString("    cap_drop: [\"ALL\"]\n")
@@ -381,7 +380,6 @@ func providerComposeYAMLForModeAndAccess(placement Placement, registrations []Re
 			fmt.Fprintf(&b, "  %s:\n", name)
 			fmt.Fprintf(&b, "    hostname: %s\n", name)
 			fmt.Fprintf(&b, "    image: %s\n", LokiImage)
-			fmt.Fprintf(&b, "    user: %s\n", strconv.Quote(fmt.Sprintf("%d:%d", LokiRuntimeUID, LokiRuntimeGID)))
 			mode := "worker"
 			if ordinal == 1 {
 				mode = "main"
@@ -410,17 +408,11 @@ func providerComposeYAMLForModeAndAccess(placement Placement, registrations []Re
 	b.WriteString(serviceaccess.HTTPGatewayComposeService(access, accessSpec))
 	fmt.Fprintf(&b, "  %s:\n", alloyService)
 	fmt.Fprintf(&b, "    image: %s\n", AlloyImage)
-	if mode == bhruntime.LogCollectionJournald {
-		b.WriteString("    user: \"0:0\"\n")
-		b.WriteString("    command: [\"run\", \"--server.http.listen-addr=127.0.0.1:12345\", \"--storage.path=/tmp/alloy-data\", \"/etc/alloy/config.alloy\"]\n")
-	} else {
-		fmt.Fprintf(&b, "    user: %s\n", strconv.Quote(fmt.Sprintf("%d:%d", AlloyRuntimeUID, AlloyRuntimeGID)))
-		b.WriteString("    command: [\"run\", \"--server.http.listen-addr=127.0.0.1:12345\", \"--storage.path=/var/lib/alloy/data\", \"/etc/alloy/config.alloy\"]\n")
-	}
+	b.WriteString("    command: [\"run\", \"--server.http.listen-addr=127.0.0.1:12345\", \"--storage.path=/tmp/alloy-data\", \"/etc/alloy/config.alloy\"]\n")
 	b.WriteString("    read_only: true\n")
 	b.WriteString("    cap_drop: [\"ALL\"]\n")
 	b.WriteString("    security_opt: [\"no-new-privileges:true\"]\n")
-	b.WriteString("    tmpfs: [\"/tmp:rw,noexec,nosuid,nodev\"]\n")
+	b.WriteString("    tmpfs: [\"/tmp:rw,noexec,nosuid,nodev,mode=1777\"]\n")
 	b.WriteString("    volumes:\n")
 	b.WriteString("      - ./config.alloy:/etc/alloy/config.alloy:ro\n")
 	if storageNetwork != "" {
@@ -429,8 +421,6 @@ func providerComposeYAMLForModeAndAccess(placement Placement, registrations []Re
 	if mode == bhruntime.LogCollectionJournald {
 		b.WriteString("      - /var/log/journal:/var/log/journal:ro\n")
 		b.WriteString("      - /etc/machine-id:/etc/machine-id:ro\n")
-	} else {
-		b.WriteString("      - alloy-data:/var/lib/alloy/data\n")
 	}
 	if mode == bhruntime.LogCollectionJournald {
 		// Journal collection does not need a host-published syslog listener.
@@ -472,6 +462,5 @@ func providerComposeYAMLForModeAndAccess(placement Placement, registrations []Re
 			fmt.Fprintf(&b, "  loki-data-%d:\n    name: %s\n", ordinal, strconv.Quote(name))
 		}
 	}
-	fmt.Fprintf(&b, "  alloy-data:\n    name: %s\n", strconv.Quote(placement.AlloyVolume))
 	return b.String()
 }

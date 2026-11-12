@@ -2,9 +2,12 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
@@ -38,13 +41,41 @@ func appCreateCommand() *cli.Command {
 				return err
 			}
 			if target.AccessProvider != "" && target.AccessProvider != "local" {
+				// manifestFromCreateArgs allocates an ID for local creation.
+				// Remote creation must instead let the authoritative Core
+				// allocate that identity; never send a workstation-owned ID.
+				m.ApplicationID = ""
+				m, repositoryIntent, err := remoteCreateIntentFromRepository(args, m)
+				if err != nil {
+					return err
+				}
 				source, err := selectedRemoteSourceModel(m.Name, m.Environment)
 				if err != nil {
 					return err
 				}
-				result, err := remoteCreateTargetManagedApplication(ctx, target, m, source)
+				createCtx := ctx
+				if format == outputJSON {
+					createCtx = machineNoninteractiveContext(ctx)
+				}
+				var result applicationAdoptionResult
+				err = remoteCLIPhase(createCtx, out, "Register application on Core Target "+target.Name, func(ctx context.Context) error {
+					var err error
+					result, err = remoteCreateTargetManagedApplication(ctx, target, m, source)
+					return err
+				})
 				if err != nil {
 					return err
+				}
+				if repositoryIntent {
+					manifestPath, pathErr := application.FindRepositoryManifest(".")
+					if pathErr != nil {
+						return fmt.Errorf("Core created the application, but the local repository manifest could not be re-read; inspect Target %s before retrying: %w", target.Name, pathErr)
+					}
+					path, syncErr := persistRemoteRepositoryIdentity(filepath.Dir(manifestPath), m, result.ApplicationID)
+					if syncErr != nil {
+						return fmt.Errorf("Core created the application, but its assigned identity could not be stored in the protected local repository state; inspect Target %s before retrying: %w", target.Name, syncErr)
+					}
+					result.Manifest = path
 				}
 				if format == outputJSON {
 					return writeJSON(out, result)
@@ -94,6 +125,42 @@ func appListCommand() *cli.Command {
 			}
 			if err := authorizeCurrentMCPContext(ctx, "app.list", "", "", ""); err != nil {
 				return err
+			}
+			if target, targetErr := effectiveTarget(ctx); targetErr != nil {
+				return targetErr
+			} else if target.AccessProvider != "" && target.AccessProvider != "local" {
+				result, readErr := remoteMachineRead(ctx, target, "app.list", "", "dev", machineApplicationListInput{AllTargets: allTargets, Target: target.Name})
+				if readErr != nil {
+					return readErr
+				}
+				var listed machineApplicationListResult
+				if err := json.Unmarshal(result, &listed); err != nil || listed.ContractVersion != machine.ContractVersion {
+					return errors.New("remote Core application list has an invalid contract")
+				}
+				for _, item := range listed.Deployments {
+					if !allTargets && item.Target != target.Name {
+						return errors.New("remote Core application list contains a deployment outside the selected Target")
+					}
+				}
+				if format == outputJSON {
+					return writeJSON(out, listed)
+				}
+				for _, warning := range listed.Warnings {
+					fmt.Fprintf(errOut, "[WARN] incomplete deployment state: %s\n", warning)
+				}
+				if len(listed.Deployments) == 0 {
+					fmt.Fprintln(out, "No deployments registered.")
+					return nil
+				}
+				fmt.Fprintf(out, "%-20s %-12s %-10s %s\n", "APPLICATION", "ENVIRONMENT", "STATE", "SOURCE")
+				for _, item := range listed.Deployments {
+					source := "MISSING"
+					if item.SourceAvailable {
+						source = "OK"
+					}
+					fmt.Fprintf(out, "%-20s %-12s %-10s %s\n", item.Application, item.Environment, item.State, source)
+				}
+				return nil
 			}
 			if format == outputJSON {
 				result, err := collectMachineApplicationList(ctx, machineApplicationListInput{AllTargets: allTargets})
@@ -179,9 +246,67 @@ func appPlanCommand(store application.Store) *cli.Command {
 			if err != nil {
 				return err
 			}
+			if target, targetErr := effectiveTarget(ctx); targetErr != nil {
+				return targetErr
+			} else if target.AccessProvider != "" && target.AccessProvider != "local" {
+				nameArgs, environment, splitErr := extractApplicationEnvironment(filtered, "plan")
+				if splitErr != nil {
+					return splitErr
+				}
+				if uuid, uuidErr := extractApplicationUUID(filtered); uuidErr != nil {
+					return uuidErr
+				} else if uuid != "" {
+					return usageError("remote app plan does not accept --uuid", "Run the plan from the selected application's repository or pass its registered NAME.")
+				}
+				if len(nameArgs) == 1 {
+					if environment == "" {
+						environment = "dev"
+					}
+					result, readErr := remoteMachineRead(ctx, target, "plan", nameArgs[0], environment, nil)
+					if readErr != nil {
+						return readErr
+					}
+					var plan applicationLifecyclePlan
+					if err := json.Unmarshal(result, &plan); err != nil || plan.ContractVersion != machine.ContractVersion ||
+						plan.Application != nameArgs[0] || plan.Environment != environment {
+						return errors.New("remote Core application plan does not match the selected application")
+					}
+					if format == outputJSON {
+						return writeJSON(out, plan)
+					}
+					fmt.Fprintf(out, "Plan for %s (%s) on Target %s\n", plan.Application, plan.Environment, target.Name)
+					for i, action := range plan.Actions {
+						fmt.Fprintf(out, "%d. %s %s - %s\n", i+1, action.Kind, action.Resource, action.Description)
+					}
+					fmt.Fprintf(out, "Core: %s; additional providers: %d; unused providers retained: %d\n", plan.Footprint.Core, len(plan.Footprint.Additional), len(plan.Footprint.Unused))
+					fmt.Fprintln(out, "No changes were made.")
+					return nil
+				}
+			}
 			resolved, err := resolveApplication(ctx, store, filtered, "plan")
 			if err != nil {
 				return err
+			}
+			if isRemoteApplication(resolved) {
+				result, readErr := remoteMachineRead(ctx, resolved.Target, "plan", resolved.Manifest.Name, resolved.Manifest.Environment, nil)
+				if readErr != nil {
+					return readErr
+				}
+				var plan applicationLifecyclePlan
+				if err := json.Unmarshal(result, &plan); err != nil || plan.ContractVersion != machine.ContractVersion ||
+					plan.Application != resolved.Manifest.Name || plan.Environment != resolved.Manifest.Environment {
+					return errors.New("remote Core application plan does not match the selected application")
+				}
+				if format == outputJSON {
+					return writeJSON(out, plan)
+				}
+				fmt.Fprintf(out, "Plan for %s (%s) on Target %s\n", plan.Application, plan.Environment, resolved.Target.Name)
+				for i, action := range plan.Actions {
+					fmt.Fprintf(out, "%d. %s %s - %s\n", i+1, action.Kind, action.Resource, action.Description)
+				}
+				fmt.Fprintf(out, "Core: %s; additional providers: %d; unused providers retained: %d\n", plan.Footprint.Core, len(plan.Footprint.Additional), len(plan.Footprint.Unused))
+				fmt.Fprintln(out, "No changes were made.")
+				return nil
 			}
 			plan, err := buildResolvedApplicationPlan(ctx, resolved)
 			if err != nil {
@@ -224,9 +349,63 @@ func appPreflightCommand(store application.Store) *cli.Command {
 				return err
 			}
 			args = filtered
+			if target, targetErr := effectiveTarget(ctx); targetErr != nil {
+				return targetErr
+			} else if target.AccessProvider != "" && target.AccessProvider != "local" {
+				nameArgs, environment, splitErr := extractApplicationEnvironment(args, "preflight")
+				if splitErr != nil {
+					return splitErr
+				}
+				if len(nameArgs) != 1 || strings.TrimSpace(nameArgs[0]) == "" {
+					return usageError("remote app preflight needs an explicit application NAME", "Pass baha app preflight NAME --environment dev while connected to the remote Core.")
+				}
+				if environment == "" {
+					environment = "dev"
+				}
+				result, readErr := remoteMachineRead(ctx, target, "app.preflight", nameArgs[0], environment, nil)
+				if readErr != nil {
+					return readErr
+				}
+				var remote applicationPreflightResult
+				if err := json.Unmarshal(result, &remote); err != nil || remote.Application != nameArgs[0] || remote.Environment != environment {
+					return errors.New("remote Core preflight response does not match the selected application")
+				}
+				if format == outputJSON {
+					if err := writeJSON(out, remote); err != nil {
+						return err
+					}
+				} else {
+					preflight.Format(out, remote.Checks)
+				}
+				if !remote.Passed {
+					return cli.Presented(errors.New("application preflight failed"))
+				}
+				return nil
+			}
 			resolved, err := resolveApplication(ctx, store, args, "preflight")
 			if err != nil {
 				return err
+			}
+			if isRemoteApplication(resolved) {
+				result, readErr := remoteMachineRead(ctx, resolved.Target, "app.preflight", resolved.Manifest.Name, resolved.Manifest.Environment, nil)
+				if readErr != nil {
+					return readErr
+				}
+				var remote applicationPreflightResult
+				if err := json.Unmarshal(result, &remote); err != nil || remote.Application != resolved.Manifest.Name || remote.Environment != resolved.Manifest.Environment {
+					return errors.New("remote Core preflight response does not match the selected application")
+				}
+				if format == outputJSON {
+					if err := writeJSON(out, remote); err != nil {
+						return err
+					}
+				} else {
+					preflight.Format(out, remote.Checks)
+				}
+				if !remote.Passed {
+					return cli.Presented(errors.New("application preflight failed"))
+				}
+				return nil
 			}
 			humanOut, humanErr := out, errOut
 			if format == outputJSON {

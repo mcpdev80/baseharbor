@@ -65,6 +65,7 @@ func New(store Store, issuer serviceaccess.CSRIssuer, owner Owner) (*Authority, 
 // window.
 type Bootstrap struct {
 	RequestScope   Scope         `json:"-"`
+	OwnerLogin     string        `json:"owner_login,omitempty"`
 	Token          string        `json:"token"`
 	Nonce          string        `json:"nonce"`
 	ExpiresAt      time.Time     `json:"expires_at"`
@@ -73,10 +74,16 @@ type Bootstrap struct {
 
 // Create persists a one-use bootstrap authorization for the given scope and
 // returns the digested credentials plus the short-lived validity window.
-// Lifetime is bounded to five minutes; the certificate TTL is bounded to at
-// most 24 hours.
+// Lifetime is bounded to five minutes; workstation certificates may last up to
+// MaxCertificateTTL.
 func (a *Authority) Create(ctx context.Context, scope Scope, lifetime, certificateTTL time.Duration) (Bootstrap, error) {
-	if ctx.Err() != nil || scope.Validate() != nil || lifetime <= 0 || lifetime > 5*time.Minute || certificateTTL <= 0 || certificateTTL > 24*time.Hour {
+	return a.CreateForOwner(ctx, scope, lifetime, certificateTTL, "")
+}
+
+// CreateForOwner binds an enrolled workstation to an already registered
+// human account without exposing that association to the workstation client.
+func (a *Authority) CreateForOwner(ctx context.Context, scope Scope, lifetime, certificateTTL time.Duration, ownerLogin string) (Bootstrap, error) {
+	if ctx.Err() != nil || scope.Validate() != nil || lifetime <= 0 || lifetime > 5*time.Minute || certificateTTL <= 0 || certificateTTL > MaxCertificateTTL {
 		return Bootstrap{}, ErrDenied
 	}
 	token, err := randomCredential()
@@ -95,6 +102,7 @@ func (a *Authority) Create(ctx context.Context, scope Scope, lifetime, certifica
 		ExpiresAt:      expiry,
 		CertificateTTL: certificateTTL,
 	}
+	bootstrap.OwnerLogin = ownerLogin
 	if err := a.store.Create(ctx, bootstrap); err != nil {
 		return Bootstrap{}, errors.New("cannot persist workstation enrollment authorization")
 	}
@@ -112,11 +120,11 @@ func (a *Authority) Enroll(ctx context.Context, request Request) (Result, error)
 		return Result{}, ErrDenied
 	}
 	signing := serviceaccess.CSRSigningRequest{CSRPEM: request.csrPEMValue(), Identity: request.scopeID().Identity(), TTL: request.ttl()}
-	if _, err := signing.Validate(); err != nil {
+	if _, err := signing.ValidateWorkstation(); err != nil {
 		return Result{}, ErrDenied
 	}
 	bootstrap, err := a.store.Consume(ctx, request.scopeID(), request.token, request.nonce, request.ttl())
-	if err != nil || bootstrap.CertificateTTL <= 0 || bootstrap.CertificateTTL > 24*time.Hour {
+	if err != nil || bootstrap.CertificateTTL <= 0 || bootstrap.CertificateTTL > MaxCertificateTTL {
 		return Result{}, ErrDenied
 	}
 	if ctx.Err() != nil {
@@ -131,7 +139,7 @@ func (a *Authority) Enroll(ctx context.Context, request Request) (Result, error)
 	if err != nil {
 		return Result{}, errors.New("workstation enrollment authority trust is unavailable")
 	}
-	if err := serviceaccess.ValidateSignedCSR(signing, issued, trust, time.Now().UTC()); err != nil {
+	if err := serviceaccess.ValidateSignedWorkstationCSR(signing, issued, trust, time.Now().UTC()); err != nil {
 		return Result{}, errors.New("workstation enrollment authority returned invalid certificate material")
 	}
 	if revoked, revErr := a.issuer.RevokedStatus(ctx, issued.Serial); revErr != nil || revoked {
@@ -142,6 +150,7 @@ func (a *Authority) Enroll(ctx context.Context, request Request) (Result, error)
 		Trust:       trust,
 		Serial:      issued.Serial,
 		ExpiresAt:   issued.ExpiresAt,
+		OwnerLogin:  bootstrap.OwnerLogin,
 	}, nil
 }
 
@@ -175,7 +184,7 @@ func (a *Authority) Renew(ctx context.Context, request Request) (Result, error) 
 		return Result{}, errors.New("workstation renewal is refused because the current identity is revoked or its revocation status is unreadable")
 	}
 	signing := serviceaccess.CSRSigningRequest{CSRPEM: request.csrPEMValue(), Identity: scope.Identity(), TTL: request.ttl()}
-	if _, err := signing.Validate(); err != nil {
+	if _, err := signing.ValidateWorkstation(); err != nil {
 		return Result{}, ErrDenied
 	}
 	issued, err := a.issuer.SignCSR(ctx, signing)
@@ -186,7 +195,7 @@ func (a *Authority) Renew(ctx context.Context, request Request) (Result, error) 
 	if err != nil {
 		return Result{}, errors.New("workstation renewal authority trust is unavailable")
 	}
-	if err := serviceaccess.ValidateSignedCSR(signing, issued, trust, time.Now().UTC()); err != nil {
+	if err := serviceaccess.ValidateSignedWorkstationCSR(signing, issued, trust, time.Now().UTC()); err != nil {
 		return Result{}, errors.New("workstation renewal authority returned invalid certificate material")
 	}
 	if revoked, revErr := a.issuer.RevokedStatus(ctx, issued.Serial); revErr != nil || revoked {

@@ -1,0 +1,6 @@
+DROP INDEX IF EXISTS workstation_enrollment_registry_owner_idx;
+ALTER TABLE workstation_enrollment_registry DROP CONSTRAINT IF EXISTS workstation_enrollment_registry_owner_fk;
+ALTER TABLE workstation_enrollment_registry DROP COLUMN IF EXISTS owner_login;
+ALTER TABLE workstation_enrollment_grants DROP CONSTRAINT IF EXISTS workstation_enrollment_grants_owner_fk;
+ALTER TABLE workstation_enrollment_grants DROP COLUMN IF EXISTS owner_login;
+DROP TABLE IF EXISTS workstation_users;

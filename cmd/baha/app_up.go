@@ -48,7 +48,7 @@ func appUpCommand(store application.Store) *cli.Command {
 				return err
 			}
 			if target.AccessProvider != "" && target.AccessProvider != "local" {
-				return remoteApplicationMutation(ctx, target, "apply", args, out)
+				return remoteApplicationApplyCLI(ctx, target, args, out, errOut)
 			}
 			opts, err := parseAppUpOptions(args)
 			if err != nil {

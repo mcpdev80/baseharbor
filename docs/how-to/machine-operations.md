@@ -1,6 +1,6 @@
 # Automate supported operations
 
-`baha app down` and `baseharbor.app.stop` share the current consequence plan.
+`baha app stop` (also `baha app down`) and `baseharbor.app.stop` share the current consequence plan.
 Review affected functions, consumers and retained owner locations before
 confirming. Unknown or alternative-less consequences require **Achtung** and
 two explicit acknowledgements. MCP supplies `provider_change_consent` with the
@@ -10,6 +10,11 @@ neither stage nor data deletion. Stop retains desired intent, provider bindings
 and shared providers for a later `app up`. The structured
 `provider_change_result` distinguishes verified runtime/recovery ownership from
 consumer effects that remain unverified and partial.
+
+`baha app destroy NAME --yes` and `baseharbor.destroy` permanently remove
+exclusively app-owned data and state. They require the current provider-plan
+acknowledgements and separate data-deletion consent. Shared or uncertain data is
+preserved and reported.
 
 Use `baha agent describe -o json` and the MCP client's `tools/list` to inspect current operation IDs, required inputs, safety and approval. On supported local workloads, CLI/stdio can use verified local runtime access without a separate OIDC login, including `test`/`prod` when no operator policy or management consumer requires OIDC. Remote, protected HTTP, tenant-scoped and explicitly managed operation paths retain authenticated operator requirements. File references refer to the execution host where `baha mcp serve` runs.
 

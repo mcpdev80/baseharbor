@@ -20,14 +20,16 @@ import (
 // The Core origin and bearer were verified together at dial time. No endpoint
 // URL from discovery is ever trusted as an independent remote authority.
 func (c *verifiedRemoteCore) discoverMachineOperations(ctx context.Context) (machine.Discovery, error) {
-	if c == nil || c.client == nil || c.origin == "" || c.token == "" || c.target == "" || c.tenant == "" {
+	if c == nil || c.client == nil || c.origin == "" || c.target == "" || c.tenant == "" {
 		return machine.Discovery{}, errors.New("remote Core connection is not verified")
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.origin+"/api/v1/machine/discovery", nil)
 	if err != nil {
 		return machine.Discovery{}, err
 	}
-	req.Header.Set("Authorization", "Bearer "+c.token)
+	if c.token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.token)
+	}
 	resp, err := c.client.Do(req)
 	if err != nil {
 		return machine.Discovery{}, fmt.Errorf("query pinned Core machine discovery: %w", err)
@@ -59,6 +61,16 @@ func (c *verifiedRemoteCore) discoverMachineOperations(ctx context.Context) (mac
 	return discovery, nil
 }
 
+func (c *verifiedRemoteCore) serverTargetName() string {
+	if c == nil || strings.TrimSpace(c.coreTarget) == "" {
+		if c == nil {
+			return ""
+		}
+		return c.target
+	}
+	return c.coreTarget
+}
+
 // requestMachineExecution dispatches only a discovered operation to the
 // startup-pinned Core. Its idempotency key belongs to the caller, so a
 // transport timeout never silently generates a new mutation on retry.
@@ -67,9 +79,14 @@ func (c *verifiedRemoteCore) requestMachineExecution(
 	ctx context.Context, operationID string, selectors machine.OperationContext,
 	input json.RawMessage, idempotencyKey string,
 ) (machine.Execution, error) {
-	if c == nil || c.client == nil || c.origin == "" || c.token == "" || strings.TrimSpace(operationID) == "" || strings.TrimSpace(idempotencyKey) == "" ||
-		selectors.Target != c.target || selectors.Environment == "" {
+	if c == nil || c.client == nil || c.origin == "" || strings.TrimSpace(operationID) == "" || strings.TrimSpace(idempotencyKey) == "" ||
+		selectors.Target != c.target || c.serverTargetName() == "" || selectors.Environment == "" {
 		return machine.Execution{}, errors.New("remote machine operation requires pinned Target, environment and idempotency key")
+	}
+	selectors.Target = c.serverTargetName()
+	input, err := c.inputWithCoreTarget(input)
+	if err != nil {
+		return machine.Execution{}, err
 	}
 	discovery, err := c.discoverMachineOperations(ctx)
 	if err != nil {
@@ -98,7 +115,9 @@ func (c *verifiedRemoteCore) requestMachineExecution(
 	if err != nil {
 		return machine.Execution{}, err
 	}
-	req.Header.Set("Authorization", "Bearer "+c.token)
+	if c.token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.token)
+	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Idempotency-Key", idempotencyKey)
 	// Machine HTTP may synchronously commit a long-running lifecycle before
@@ -122,14 +141,35 @@ func (c *verifiedRemoteCore) requestMachineExecution(
 	}
 	if execution.ContractVersion != machine.ExecutionContractVersion ||
 		execution.OperationID != operationID ||
-		execution.Context.Target != selectors.Target ||
+		execution.Context.Target != c.serverTargetName() ||
 		execution.Context.Environment != selectors.Environment ||
 		execution.Context.Application != selectors.Application ||
 		execution.ExecutionID == "" ||
 		resp.Header.Get("Location") != "/api/v1/machine/executions/"+execution.ExecutionID {
 		return machine.Execution{}, errors.New("remote Core machine execution acknowledgement does not match the requested authority")
 	}
+	execution.Context.Target = c.target
 	return execution, nil
+}
+
+func (c *verifiedRemoteCore) inputWithCoreTarget(input json.RawMessage) (json.RawMessage, error) {
+	if len(input) == 0 {
+		return input, nil
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(input, &fields); err != nil || fields == nil {
+		return nil, errors.New("remote machine operation input is invalid")
+	}
+	if raw, ok := fields["target"]; ok {
+		var supplied string
+		if err := json.Unmarshal(raw, &supplied); err != nil || supplied != c.target && supplied != c.coreTarget {
+			return nil, errors.New("remote machine operation input Target differs from the selected workstation Target")
+		}
+		value, _ := json.Marshal(c.serverTargetName())
+		fields["target"] = value
+		return json.Marshal(fields)
+	}
+	return input, nil
 }
 
 var remoteExecutionIDPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$`)
@@ -139,7 +179,7 @@ var errRemoteExecutionPending = errors.New("remote Core machine operation is not
 // readMachineExecution observes a previously admitted operation over the same
 // pinned Core origin and bearer. Never follow a server-provided URL.
 func (c *verifiedRemoteCore) readMachineExecution(ctx context.Context, admitted machine.Execution) (machine.Execution, error) {
-	if c == nil || c.client == nil || c.origin == "" || c.token == "" || c.target == "" || c.tenant == "" ||
+	if c == nil || c.client == nil || c.origin == "" || c.target == "" || c.serverTargetName() == "" || c.tenant == "" ||
 		!remoteExecutionIDPattern.MatchString(admitted.ExecutionID) || admitted.Context.Target != c.target ||
 		admitted.Context.Environment == "" || admitted.OperationID == "" {
 		return machine.Execution{}, errors.New("remote execution is not bound to the verified Core and Target")
@@ -149,7 +189,9 @@ func (c *verifiedRemoteCore) readMachineExecution(ctx context.Context, admitted 
 	if err != nil {
 		return machine.Execution{}, err
 	}
-	req.Header.Set("Authorization", "Bearer "+c.token)
+	if c.token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.token)
+	}
 	resp, err := c.client.Do(req)
 	if err != nil {
 		return machine.Execution{}, fmt.Errorf("read pinned Core machine execution: %w", err)
@@ -163,6 +205,9 @@ func (c *verifiedRemoteCore) readMachineExecution(ctx context.Context, admitted 
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&execution); err != nil || decoder.Decode(new(any)) != io.EOF {
 		return machine.Execution{}, errors.New("remote Core machine execution response is invalid")
+	}
+	if execution.Context.Target == c.serverTargetName() {
+		execution.Context.Target = c.target
 	}
 	if err := execution.Validate(); err != nil ||
 		execution.ExecutionID != admitted.ExecutionID ||
@@ -181,9 +226,12 @@ func (c *verifiedRemoteCore) confirmRemoteExecutionSuccess(ctx context.Context, 
 	if err != nil {
 		return nil, err
 	}
+	if execution.Progress != nil {
+		reportRemoteProgress(ctx, execution.Progress.Message)
+	}
 	switch execution.State {
 	case machine.ExecutionSucceeded:
-		return execution.Result, nil
+		return rewriteRemoteResultTarget(execution.Result, c.serverTargetName(), c.target)
 	case machine.ExecutionFailed:
 		return nil, execution.Error
 	case machine.ExecutionCancelled:
@@ -191,4 +239,39 @@ func (c *verifiedRemoteCore) confirmRemoteExecutionSuccess(ctx context.Context, 
 	default:
 		return nil, errRemoteExecutionPending
 	}
+}
+
+func rewriteRemoteResultTarget(result json.RawMessage, coreTarget, workstationTarget string) (json.RawMessage, error) {
+	if len(result) == 0 || coreTarget == workstationTarget {
+		return result, nil
+	}
+	var value any
+	if err := json.Unmarshal(result, &value); err != nil {
+		return nil, errors.New("remote Core result is invalid JSON")
+	}
+	var rewrite func(any)
+	rewrite = func(current any) {
+		switch item := current.(type) {
+		case map[string]any:
+			for key, child := range item {
+				if key == "target" {
+					if name, ok := child.(string); ok && name == coreTarget {
+						item[key] = workstationTarget
+						continue
+					}
+				}
+				rewrite(child)
+			}
+		case []any:
+			for _, child := range item {
+				rewrite(child)
+			}
+		}
+	}
+	rewrite(value)
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		return nil, errors.New("encode remote Core result for workstation Target")
+	}
+	return encoded, nil
 }

@@ -37,6 +37,9 @@ func serveCommand(store application.Store) *cli.Command {
 			if err != nil {
 				return err
 			}
+			if err := configureAutomaticOwnedCoreLAN(ctx, &cfg); err != nil {
+				return err
+			}
 			if err := bindServeToOwnedOperatorOIDC(&cfg); err != nil {
 				return err
 			}

@@ -212,8 +212,19 @@ type SecretRequirements struct {
 
 type SecretRequirement struct {
 	Name     string
+	Source   SecretSource
 	Generate *SecretGeneration
 }
+
+// SecretSource identifies an explicit BaseHarbor-managed source from which a
+// required development secret is synchronized into the application's own
+// protected secret scope. These values are intentionally limited to dev.
+type SecretSource string
+
+const (
+	SecretSourceTargetDevelopmentUsername SecretSource = "target-development-username"
+	SecretSourceTargetDevelopmentPassword SecretSource = "target-development-password"
+)
 
 type SecretGeneration struct {
 	Type   string

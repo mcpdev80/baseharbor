@@ -373,8 +373,9 @@ func TestEmbeddedComposeUsesNativeTLSFromFirstStart(t *testing.T) {
 		`"basebackup":{"checkpoint":"fast"}`,
 		"SSL_CERTIFICATE_FILE: /run/baseharbor/tls/server-cert.pem",
 		"SSL_PRIVATE_KEY_FILE: /run/baseharbor/tls-runtime/server-key.pem",
-		"install -d -o postgres -g postgres -m 0700 /run/baseharbor/tls-runtime",
-		"install -o postgres -g postgres -m 0600 /run/baseharbor/tls-source/server-key.pem /run/baseharbor/tls-runtime/server-key.pem",
+		"mkdir -p /run/baseharbor/tls-runtime",
+		"chmod 0600 /run/baseharbor/tls-runtime/server-key.pem /run/baseharbor/tls-runtime/etcd-client-key.pem",
+		"if [ \"$$(id -u)\" = 0 ]; then chown postgres:postgres /run/baseharbor/tls-runtime/server-key.pem /run/baseharbor/tls-runtime/etcd-client-key.pem; fi",
 		`until /bin/sh /run/baseharbor/openbao-init.sh; do`,
 		`attempts=$$((attempts+1))`,
 		`if [ "$${attempts}" -ge 90 ]; then`,
@@ -524,8 +525,6 @@ func TestDataDirKeepsExplicitOverrideSelfContained(t *testing.T) {
 func TestEmbeddedComposeRunsControlPlaneServicesUnprivileged(t *testing.T) {
 	text := string(composeYAML)
 	for _, want := range []string{
-		"user: \"99:99\"",
-		"user: \"100\"",
 		"SKIP_CHOWN: \"1\"",
 		"/openbao/config:rw,noexec,nosuid,nodev,mode=1777",
 		"read_only: true",
@@ -536,6 +535,33 @@ func TestEmbeddedComposeRunsControlPlaneServicesUnprivileged(t *testing.T) {
 		if !strings.Contains(text, want) {
 			t.Fatalf("embedded runtime compose missing %q:\n%s", want, text)
 		}
+	}
+}
+
+func TestSinglePostgresInitializesFreshVolumesWithEntrypointCapabilities(t *testing.T) {
+	text := string(composeSingleYAML)
+	start := strings.Index(text, "  postgres-member-1:\n")
+	if start < 0 {
+		t.Fatal("single-instance PostgreSQL service missing")
+	}
+	var lines []string
+	for i, line := range strings.Split(text[start:], "\n") {
+		if i > 0 && strings.HasPrefix(line, "  ") && !strings.HasPrefix(line, "    ") {
+			break
+		}
+		lines = append(lines, line)
+	}
+	block := strings.Join(lines, "\n")
+	for _, want := range []string{
+		"    cap_drop:\n    - ALL\n    cap_add:\n    - CHOWN\n    - DAC_READ_SEARCH\n    - FOWNER\n    - SETGID\n    - SETUID\n",
+		"    security_opt:\n    - no-new-privileges:true",
+	} {
+		if !strings.Contains(block, want) {
+			t.Fatalf("single PostgreSQL service must grant only the entrypoint capabilities %q:\n%s", want, block)
+		}
+	}
+	if strings.Contains(block, "    user:") {
+		t.Fatal("single PostgreSQL service must leave effective UID to the image/runtime")
 	}
 }
 
