@@ -27,9 +27,22 @@ type WorkstationEnrollmentStore struct{ pool *pgxpool.Pool }
 // WorkstationRegistryFact is the non-secret inventory of one enrolled
 // workstation. Serial numbers are intentionally excluded from CLI output.
 type WorkstationRegistryFact struct {
-	Station   string
-	IssuedAt  time.Time
-	ExpiresAt time.Time
+	Station    string
+	OwnerLogin string
+	IssuedAt   time.Time
+	ExpiresAt  time.Time
+}
+
+// WorkstationUser is the non-secret directory projection linked to the owning
+// Keycloak account. Authentication remains owned by Keycloak.
+type WorkstationUser struct {
+	Login        string
+	DisplayName  string
+	Email        string
+	KeycloakID   string
+	Status       string
+	CreatedAt    time.Time
+	OffboardedAt *time.Time
 }
 
 // NewWorkstationEnrollmentStore returns a durable workstation-enrollment store
@@ -52,16 +65,43 @@ func (s *WorkstationEnrollmentStore) Create(ctx context.Context, b workstationen
 		return workstationenrollment.ErrDenied
 	}
 	return WithTenantTx(ctx, s.pool, b.RequestScope.TenantID, func(tx pgx.Tx) error {
-		var pending bool
-		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM workstation_enrollment_grants
-WHERE tenant_id=$1 AND station=$2 AND consumed_at IS NULL AND expires_at > clock_timestamp())`,
-			b.RequestScope.TenantID, b.RequestScope.Station).Scan(&pending); err != nil {
+		var occupied bool
+		if err := tx.QueryRow(ctx, `SELECT
+EXISTS(SELECT 1 FROM workstation_enrollment_grants WHERE tenant_id=$1 AND station=$2 AND consumed_at IS NULL AND expires_at > clock_timestamp())
+OR EXISTS(SELECT 1 FROM workstation_enrollment_registry WHERE tenant_id=$1 AND station=$2)`,
+			b.RequestScope.TenantID, b.RequestScope.Station).Scan(&occupied); err != nil {
 			return err
 		}
-		if pending {
+		if occupied {
 			return workstationenrollment.ErrDenied
 		}
+		if b.OwnerLogin != "" {
+			var status string
+			if err := tx.QueryRow(ctx, `SELECT status FROM workstation_users WHERE tenant_id=$1 AND login=$2 FOR UPDATE`, b.RequestScope.TenantID, b.OwnerLogin).Scan(&status); err != nil || status != "active" {
+				return workstationenrollment.ErrDenied
+			}
+		}
 		return insertWorkstationGrant(ctx, tx, b)
+	})
+}
+
+// EnsureWorkstationNameAvailable preflights a device label before Keycloak
+// account creation. Create repeats this check transactionally before grant minting.
+func (s *WorkstationEnrollmentStore) EnsureWorkstationNameAvailable(ctx context.Context, scope workstationenrollment.Scope) error {
+	if s == nil || s.pool == nil || scope.Validate() != nil {
+		return workstationenrollment.ErrDenied
+	}
+	return WithTenantTx(ctx, s.pool, scope.TenantID, func(tx pgx.Tx) error {
+		var occupied bool
+		if err := tx.QueryRow(ctx, `SELECT
+EXISTS(SELECT 1 FROM workstation_enrollment_grants WHERE tenant_id=$1 AND station=$2 AND consumed_at IS NULL AND expires_at > clock_timestamp())
+OR EXISTS(SELECT 1 FROM workstation_enrollment_registry WHERE tenant_id=$1 AND station=$2)`, scope.TenantID, scope.Station).Scan(&occupied); err != nil {
+			return err
+		}
+		if occupied {
+			return workstationenrollment.ErrDenied
+		}
+		return nil
 	})
 }
 
@@ -78,14 +118,15 @@ func (s *WorkstationEnrollmentStore) Consume(ctx context.Context, scope workstat
 	}
 	var expiresAt time.Time
 	var seconds int64
+	var ownerLogin *string
 	err := WithTenantTx(ctx, s.pool, scope.TenantID, func(tx pgx.Tx) error {
 		var err error
 		err = tx.QueryRow(ctx, `UPDATE workstation_enrollment_grants SET consumed_at=clock_timestamp()
 WHERE tenant_id=$1 AND station=$2 AND token_digest=$3 AND nonce_digest=$4
 AND consumed_at IS NULL AND expires_at > GREATEST($5, clock_timestamp())
-RETURNING expires_at, certificate_ttl_seconds`,
+RETURNING expires_at, certificate_ttl_seconds, owner_login`,
 			scope.TenantID, scope.Station, workstationenrollment.DigestForConsume(token),
-			workstationenrollment.DigestForConsume(nonce), expiresAt).Scan(&expiresAt, &seconds)
+			workstationenrollment.DigestForConsume(nonce), expiresAt).Scan(&expiresAt, &seconds, &ownerLogin)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return workstationenrollment.ErrDenied
 		}
@@ -96,6 +137,9 @@ RETURNING expires_at, certificate_ttl_seconds`,
 		bootstrap.Nonce = nonce
 		bootstrap.ExpiresAt = expiresAt
 		bootstrap.CertificateTTL = time.Duration(seconds) * time.Second
+		if ownerLogin != nil {
+			bootstrap.OwnerLogin = *ownerLogin
+		}
 		return nil
 	})
 	if err != nil {
@@ -116,20 +160,39 @@ RETURNING expires_at, certificate_ttl_seconds`,
 // issuer reported). It overwrites the prior registry row for the same
 // installation/station, so the latest issued identity is authoritative.
 func (s *WorkstationEnrollmentStore) RecordRegistryFact(ctx context.Context, scope workstationenrollment.Scope, issuedAt time.Time, recipient, scopeID, serial string, expiresAt time.Time) error {
+	return s.RecordOwnedRegistryFact(ctx, scope, issuedAt, recipient, scopeID, serial, expiresAt, "")
+}
+
+// RecordOwnedRegistryFact persists an issued leaf and its person association.
+// Empty owner information during renewal preserves the stored association.
+func (s *WorkstationEnrollmentStore) RecordOwnedRegistryFact(ctx context.Context, scope workstationenrollment.Scope, issuedAt time.Time, recipient, scopeID, serial string, expiresAt time.Time, ownerLogin string) error {
 	if s == nil || s.pool == nil || scope.Validate() != nil || issuedAt.IsZero() || expiresAt.IsZero() {
 		return workstationenrollment.ErrDenied
 	}
 	return WithTenantTx(ctx, s.pool, scope.TenantID, func(tx pgx.Tx) error {
+		boundLogin := ownerLogin
+		if boundLogin == "" {
+			// A renewal must retain the previously bound owner and must not
+			// revive a certificate after that person is offboarded.
+			_ = tx.QueryRow(ctx, `SELECT COALESCE(owner_login,'') FROM workstation_enrollment_registry WHERE tenant_id=$1 AND station=$2 FOR UPDATE`, scope.TenantID, scope.Station).Scan(&boundLogin)
+		}
+		if boundLogin != "" {
+			var status string
+			if err := tx.QueryRow(ctx, `SELECT status FROM workstation_users WHERE tenant_id=$1 AND login=$2 FOR UPDATE`, scope.TenantID, boundLogin).Scan(&status); err != nil || status != "active" {
+				return workstationenrollment.ErrDenied
+			}
+		}
 		command, err := tx.Exec(ctx, `INSERT INTO workstation_enrollment_registry
-(tenant_id, station, issued_at, recipient, scope, serial, expires_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
+(tenant_id, station, issued_at, recipient, scope, serial, expires_at, owner_login)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 ON CONFLICT (tenant_id, station) DO UPDATE SET
 	issued_at = EXCLUDED.issued_at,
 	recipient = EXCLUDED.recipient,
 	scope = EXCLUDED.scope,
 	serial = EXCLUDED.serial,
-	expires_at = EXCLUDED.expires_at`,
-			scope.TenantID, scope.Station, issuedAt, recipient, scopeID, serial, expiresAt)
+	expires_at = EXCLUDED.expires_at,
+	owner_login = COALESCE(EXCLUDED.owner_login, workstation_enrollment_registry.owner_login)`,
+			scope.TenantID, scope.Station, issuedAt, recipient, scopeID, serial, expiresAt, nullableString(ownerLogin))
 		if err != nil {
 			return err
 		}
@@ -175,7 +238,7 @@ func (s *WorkstationEnrollmentStore) ListRegistryFacts(ctx context.Context, tena
 	}
 	var facts []WorkstationRegistryFact
 	err := WithTenantTx(ctx, s.pool, tenantID, func(tx pgx.Tx) error {
-		rows, err := tx.Query(ctx, `SELECT station, issued_at, expires_at
+		rows, err := tx.Query(ctx, `SELECT station, COALESCE(owner_login,''), issued_at, expires_at
 FROM workstation_enrollment_registry WHERE tenant_id=$1 ORDER BY station`, tenantID)
 		if err != nil {
 			return err
@@ -183,7 +246,7 @@ FROM workstation_enrollment_registry WHERE tenant_id=$1 ORDER BY station`, tenan
 		defer rows.Close()
 		for rows.Next() {
 			var fact WorkstationRegistryFact
-			if err := rows.Scan(&fact.Station, &fact.IssuedAt, &fact.ExpiresAt); err != nil {
+			if err := rows.Scan(&fact.Station, &fact.OwnerLogin, &fact.IssuedAt, &fact.ExpiresAt); err != nil {
 				return err
 			}
 			facts = append(facts, fact)
@@ -210,11 +273,18 @@ func (s *WorkstationEnrollmentStore) CurrentSerial(ctx context.Context, scope wo
 
 func insertWorkstationGrant(ctx context.Context, tx pgx.Tx, b workstationenrollment.Bootstrap) error {
 	_, err := tx.Exec(ctx, `INSERT INTO workstation_enrollment_grants
-(tenant_id, station, token_digest, nonce_digest, expires_at, certificate_ttl_seconds)
-VALUES ($1, $2, $3, $4, $5, $6)`,
+(tenant_id, station, token_digest, nonce_digest, expires_at, certificate_ttl_seconds, owner_login)
+VALUES ($1, $2, $3, $4, $5, $6, $7)`,
 		b.RequestScope.TenantID, b.RequestScope.Station,
 		workstationenrollment.DigestForConsume(b.Token),
 		workstationenrollment.DigestForConsume(b.Nonce),
-		b.ExpiresAt, int64(b.CertificateTTL/time.Second))
+		b.ExpiresAt, int64(b.CertificateTTL/time.Second), nullableString(b.OwnerLogin))
 	return err
+}
+
+func nullableString(value string) *string {
+	if value == "" {
+		return nil
+	}
+	return &value
 }

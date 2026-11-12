@@ -145,6 +145,9 @@ Inspect current data with `baha agent describe -o json` (`cli_coverage`). Update
 | `baha up` | semantic | CLI -o json / typed MCP result | baseharbor.control-plane.up | Control-plane-only mode maps here. Repository application mode additionally uses app.configure and apply; host trust installation uses trust.install with approval. |
 | `baha update` | semantic | CLI -o json / typed MCP result | baseharbor.release.check | --check maps to release.check. Installing replaces the execution-host binary and is explicitly excluded from MCP; use the host operator CLI with --yes. |
 | `baha use` | presentation |  |  | Persists local user selection; machine clients supply explicit target arguments on each semantic operation. |
+| `baha user` | presentation |  |  | Command group; invoke its supported subcommands. |
+| `baha user list` | presentation |  |  | Core-local human directory view; authentication state remains authoritative in the owned Keycloak realm. |
+| `baha user offboard` | excluded |  |  | Human-confirmed operator directory action disables the owned Keycloak user and revokes its workstation leaves; no typed MCP operation, so excluded from the machine tool boundary by design. |
 | `baha version` | presentation |  |  | Executable build identity is provided by agent describe and MCP initialization. |
 | `baha whoami` | semantic | CLI -o json / typed MCP result | baseharbor.operator.identity |  |
 | `baha workspace` | presentation |  |  | Canonical interactive presentation of the same workspace.init/map operations. |
@@ -154,3 +157,7 @@ Inspect current data with `baha agent describe -o json` (`cli_coverage`). Update
 | `baha workspace show` | semantic | CLI -o json / typed MCP result | baseharbor.workspace.show |  |
 | `baha workspace status` | semantic | CLI -o json / typed MCP result | baseharbor.workspace.status |  |
 | `baha workspace update` | semantic | CLI -o json / typed MCP result | baseharbor.workspace.update |  |
+| `baha workstation` | presentation |  |  | Command group; invoke its supported subcommands. |
+| `baha workstation list` | presentation |  |  | Core-local inventory of workstation certificate ownership, expiry and revocation state. |
+| `baha workstation new` | excluded |  |  | Human invitation workflow for a new device; private one-use invitation transfer is an operator action and has no machine equivalent. |
+| `baha workstation revoke` | excluded |  |  | Human-confirmed device revocation; no typed MCP operation, so excluded from the machine tool boundary by design. |

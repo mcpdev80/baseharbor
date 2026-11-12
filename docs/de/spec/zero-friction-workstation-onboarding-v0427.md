@@ -13,7 +13,7 @@ Führe die aktuelle `baha`-CLI außerhalb eines Anwendungs-Repositories aus:
 
 ```text
 baha up
-baha onboard
+baha onboard --invite
 ```
 
 `baha up` richtet die Core-Provider PostgreSQL, OpenBao und Keycloak ein oder
@@ -27,10 +27,15 @@ systemweite Paketinstallation. Bei Ablehnung beginnt die Core-Einrichtung
 nicht. `--yes` ist keine Zustimmung zur Installation; installiere ORAS in
 nicht-interaktiven Abläufen separat und starte den Befehl erneut.
 
-`baha onboard` wartet, bis der lokale Core `READY` ist. Danach erstellt es eine
-einmal verwendbare Einladung und gibt den Pfad zur geschützten JSON-Datei aus.
-Es richtet außerdem den verwalteten LAN-HTTPS-Endpunkt ein. Ein separater
-Befehl `baha serve` und eine Browser-Anmeldung gehören nicht zu diesem Ablauf.
+`baha onboard --invite` wartet, bis der lokale Core `READY` ist. Der Dialog
+fragt vollständigen Namen, Login, E-Mail, Gerätenamen und Zertifikatslaufzeit
+(Standard: fünf Jahre) ab. Danach legt Keycloak das Benutzerkonto an und sendet
+einen Aktivierungslink, über den die Person selbst ein Passwort festlegt. Baha
+erstellt eine einmal verwendbare, dem Benutzer zugeordnete Einladung und gibt
+den Pfad zur geschützten JSON-Datei aus. Es richtet außerdem den verwalteten
+LAN-HTTPS-Endpunkt ein. Ein separater Befehl `baha serve` und eine
+Browser-Anmeldung gehören nicht zu diesem Ablauf. Für weitere Geräte derselben
+Person dient `baha workstation new`.
 
 Entwicklungs-Builds mit eingebettetem Commit erstellen aus dem installierten
 Linux-Core-Binary ein gecachtes Runtime-Image mit dem kanonischen Binary-Rezept.

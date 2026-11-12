@@ -79,4 +79,5 @@ type Result struct {
 	Trust       serviceaccess.TrustBundle
 	Serial      string
 	ExpiresAt   time.Time
+	OwnerLogin  string
 }

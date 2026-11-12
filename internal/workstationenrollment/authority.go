@@ -65,6 +65,7 @@ func New(store Store, issuer serviceaccess.CSRIssuer, owner Owner) (*Authority, 
 // window.
 type Bootstrap struct {
 	RequestScope   Scope         `json:"-"`
+	OwnerLogin     string        `json:"owner_login,omitempty"`
 	Token          string        `json:"token"`
 	Nonce          string        `json:"nonce"`
 	ExpiresAt      time.Time     `json:"expires_at"`
@@ -76,6 +77,12 @@ type Bootstrap struct {
 // Lifetime is bounded to five minutes; workstation certificates may last up to
 // MaxCertificateTTL.
 func (a *Authority) Create(ctx context.Context, scope Scope, lifetime, certificateTTL time.Duration) (Bootstrap, error) {
+	return a.CreateForOwner(ctx, scope, lifetime, certificateTTL, "")
+}
+
+// CreateForOwner binds an enrolled workstation to an already registered
+// human account without exposing that association to the workstation client.
+func (a *Authority) CreateForOwner(ctx context.Context, scope Scope, lifetime, certificateTTL time.Duration, ownerLogin string) (Bootstrap, error) {
 	if ctx.Err() != nil || scope.Validate() != nil || lifetime <= 0 || lifetime > 5*time.Minute || certificateTTL <= 0 || certificateTTL > MaxCertificateTTL {
 		return Bootstrap{}, ErrDenied
 	}
@@ -95,6 +102,7 @@ func (a *Authority) Create(ctx context.Context, scope Scope, lifetime, certifica
 		ExpiresAt:      expiry,
 		CertificateTTL: certificateTTL,
 	}
+	bootstrap.OwnerLogin = ownerLogin
 	if err := a.store.Create(ctx, bootstrap); err != nil {
 		return Bootstrap{}, errors.New("cannot persist workstation enrollment authorization")
 	}
@@ -142,6 +150,7 @@ func (a *Authority) Enroll(ctx context.Context, request Request) (Result, error)
 		Trust:       trust,
 		Serial:      issued.Serial,
 		ExpiresAt:   issued.ExpiresAt,
+		OwnerLogin:  bootstrap.OwnerLogin,
 	}, nil
 }
 

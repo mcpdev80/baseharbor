@@ -19,7 +19,7 @@ func TestWorkstationCommandsAreRegistered(t *testing.T) {
 	if workstation == nil {
 		t.Fatal("workstation command is not registered")
 	}
-	for _, want := range []string{"list", "revoke"} {
+	for _, want := range []string{"new", "list", "revoke"} {
 		found := false
 		for _, command := range workstation.Children {
 			if command.Name == want {
@@ -29,6 +29,27 @@ func TestWorkstationCommandsAreRegistered(t *testing.T) {
 		}
 		if !found {
 			t.Errorf("baha workstation %s is not registered", want)
+		}
+	}
+	var user *cli.Command
+	for _, command := range root.Children {
+		if command.Name == "user" {
+			user = command
+			break
+		}
+	}
+	if user == nil {
+		t.Fatal("user command is not registered")
+	}
+	for _, want := range []string{"list", "offboard"} {
+		found := false
+		for _, command := range user.Children {
+			if command.Name == want {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("baha user %s is not registered", want)
 		}
 	}
 }

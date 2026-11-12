@@ -4,12 +4,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/coreinstallation"
 	"github.com/mcpdev80/baseharbor/internal/database"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
+	"github.com/mcpdev80/baseharbor/internal/identityprovider"
 	"github.com/mcpdev80/baseharbor/internal/onboardingbundle"
 	platformopenbao "github.com/mcpdev80/baseharbor/internal/openbao"
 	ws "github.com/mcpdev80/baseharbor/internal/workstationenrollment"
@@ -20,7 +23,7 @@ import (
 // There is no remote tenant or operator-login fallback. Only the local Core
 // owner with access to the protected runtime files/database can reach this
 // helper; it never returns bearer tokens in stdout or logs.
-func issueLocalWorkstationInvitation(ctx context.Context, target deployment.ResolvedTarget, station, coreOrigin, outputFile string, certificateTTL time.Duration) error {
+func issueLocalWorkstationInvitation(ctx context.Context, target deployment.ResolvedTarget, station, coreOrigin, outputFile string, certificateTTL time.Duration, ownerLogin string, user *identityprovider.ManagedOperatorUser) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -35,6 +38,15 @@ func issueLocalWorkstationInvitation(ctx context.Context, target deployment.Reso
 	// to be discarded during local validation.
 	if strings.TrimSpace(coreOrigin) == "" || strings.TrimSpace(outputFile) == "" {
 		return errors.New("managed Core HTTPS origin and private invitation file are required")
+	}
+	if _, err := os.Lstat(outputFile); err == nil {
+		return errors.New("invitation output already exists; choose a new private file path")
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("inspect invitation output path: %w", err)
+	}
+	parent, err := os.Stat(filepath.Dir(outputFile))
+	if err != nil || !parent.IsDir() || parent.Mode().Perm()&0o077 != 0 {
+		return errors.New("invitation output directory must exist and be private (mode 0700 or stricter)")
 	}
 	check, cancel := context.WithTimeout(ctx, 45*time.Second)
 	defer cancel()
@@ -93,11 +105,35 @@ func issueLocalWorkstationInvitation(ctx context.Context, target deployment.Reso
 		return fmt.Errorf("prepare Core schema for workstation invitation: %w", err)
 	}
 	store := database.NewWorkstationEnrollmentStore(pool)
+	if err := store.EnsureWorkstationNameAvailable(check, scope); err != nil {
+		return errors.New("workstation name is already registered or has a pending invitation; choose a unique device name")
+	}
+	if user != nil {
+		if ownerLogin == "" || user.Login != ownerLogin || user.ID != "" {
+			return errors.New("new workstation owner identity is incomplete")
+		}
+		identityRuntime, ok := provider.(identityprovider.KeycloakRuntime)
+		if !ok {
+			return errors.New("selected runtime cannot manage the Core identity provider")
+		}
+		dataDir, err := deployment.TargetStateRoot(target.Name)
+		if err != nil {
+			return err
+		}
+		created, err := identityprovider.InviteManagedOperatorUser(check, identityRuntime, issuer, dataDir, target.Name, target.Name, onboardingEnvironment, user.Login, user.DisplayName, user.Email)
+		if err != nil {
+			return fmt.Errorf("create Keycloak user and send activation email: %w", err)
+		}
+		*user = created
+		if err := store.RegisterWorkstationUser(check, target.TenantID, database.WorkstationUser{Login: user.Login, DisplayName: user.DisplayName, Email: user.Email, KeycloakID: user.ID}); err != nil {
+			return fmt.Errorf("persist new user directory entry: %w", err)
+		}
+	}
 	authority, err := ws.New(store, issuer, store)
 	if err != nil {
 		return err
 	}
-	grant, err := authority.Create(check, scope, 5*time.Minute, certificateTTL)
+	grant, err := authority.CreateForOwner(check, scope, 5*time.Minute, certificateTTL, ownerLogin)
 	if err != nil {
 		return fmt.Errorf("issue single-use workstation authorization: %w", err)
 	}

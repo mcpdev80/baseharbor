@@ -98,6 +98,7 @@ func DigestForConsume(value string) string { return digest(value) }
 // credential or nonce).
 type grant struct {
 	scope          Scope
+	ownerLogin     string
 	tokenDigest    string
 	nonceDigest    string
 	expiresAt      time.Time

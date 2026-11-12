@@ -12,7 +12,7 @@ Run the current `baha` CLI outside an application repository:
 
 ```text
 baha up
-baha onboard
+baha onboard --invite
 ```
 
 `baha up` initializes or starts the Core providers (PostgreSQL, OpenBao and
@@ -24,10 +24,15 @@ current user's `~/.local/bin`. It does not use `sudo` or install packages
 system-wide. Declining leaves Core setup unstarted. Non-interactive `--yes`
 does not imply permission to install; install ORAS separately and rerun.
 
-`baha onboard` waits for the local Core to be READY, then creates a one-use
-invitation and prints the path to its private JSON file. It also configures the
-managed LAN HTTPS endpoint used by the invitation. No separate `baha serve`
-command or browser login is part of this flow.
+`baha onboard --invite` waits for the local Core to be READY, then asks for the
+person's full name, login, email, workstation name and certificate lifetime
+(default five years). It creates the Keycloak account, sends a one-use
+activation email so the person sets their own password, and creates a
+user-bound workstation invitation. It prints the path to the private JSON file.
+It also configures the managed LAN HTTPS endpoint used by the invitation. No
+separate `baha serve` command or browser login is part of this flow. Use
+`baha workstation new` for a second or later device belonging to an existing
+person.
 
 Development builds with an embedded commit prepare a cached runtime image from
 the installed Linux Core binary using the canonical binary-only recipe. This

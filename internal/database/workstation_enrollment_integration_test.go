@@ -17,6 +17,7 @@ import (
 const (
 	tenantA = "11111111-1111-4111-8111-111111111111"
 	tenantB = "22222222-2222-4222-8222-222222222222"
+	tenantC = "33333333-3333-4333-8333-333333333333"
 )
 
 // TestWorkstationEnrollmentDurableStore covers the durable one-use store:
@@ -42,8 +43,8 @@ func TestWorkstationEnrollmentDurableStore(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := pool.Exec(ctx, `INSERT INTO tenants (id,slug,name) VALUES
-($1,'ws','Workstation'), ($2,'foreign','Foreign')`,
-		tenantA, tenantB); err != nil {
+($1,'ws','Workstation'), ($2,'foreign','Foreign'), ($3,'managed','Managed users')`,
+		tenantA, tenantB, tenantC); err != nil {
 		t.Fatal(err)
 	}
 	scope := workstationenrollment.Scope{TenantID: tenantA, Station: "station-a"}
@@ -51,6 +52,46 @@ func TestWorkstationEnrollmentDurableStore(t *testing.T) {
 		t.Fatal(err)
 	}
 	store := NewWorkstationEnrollmentStore(pool)
+
+	// Person/device association is carried only by the Core-owned grant and
+	// persisted when the one-use invitation is redeemed.
+	if err := store.RegisterWorkstationUser(ctx, tenantC, WorkstationUser{Login: "marcel", DisplayName: "Marcel Pfingstgraef", Email: "dev@pfingstgraef.eu", KeycloakID: "keycloak-user-1"}); err != nil {
+		t.Fatalf("register workstation user: %v", err)
+	}
+	ownedScope := workstationenrollment.Scope{TenantID: tenantC, Station: "marcel-laptop"}
+	ownedGrant := bootstrapWith(ownedScope, "owned-token", "owned-nonce")
+	ownedGrant.OwnerLogin = "marcel"
+	if err := store.Create(ctx, ownedGrant); err != nil {
+		t.Fatalf("create user-bound grant: %v", err)
+	}
+	ownedBootstrap, err := store.Consume(ctx, ownedScope, "owned-token", "owned-nonce", time.Hour)
+	if err != nil || ownedBootstrap.OwnerLogin != "marcel" {
+		t.Fatalf("consume owner-bound grant: owner=%q err=%v", ownedBootstrap.OwnerLogin, err)
+	}
+	ownedExpires := time.Now().UTC().Add(time.Hour)
+	if err := store.RecordOwnedRegistryFact(ctx, ownedScope, time.Now().UTC(), ownedScope.Identity(), ownedScope.Station, "owned-serial", ownedExpires, ownedBootstrap.OwnerLogin); err != nil {
+		t.Fatalf("record owned device: %v", err)
+	}
+	users, deviceCounts, err := store.WorkstationUsers(ctx, tenantC)
+	if err != nil || len(users) != 1 || deviceCounts["marcel"] != 1 {
+		t.Fatalf("user/device inventory: users=%+v counts=%v err=%v", users, deviceCounts, err)
+	}
+	pendingScope := workstationenrollment.Scope{TenantID: tenantC, Station: "marcel-pending"}
+	pendingGrant := bootstrapWith(pendingScope, "pending-token", "pending-nonce")
+	pendingGrant.OwnerLogin = "marcel"
+	if err := store.Create(ctx, pendingGrant); err != nil {
+		t.Fatalf("create pending user grant: %v", err)
+	}
+	if err := store.OffboardWorkstationUser(ctx, tenantC, "marcel"); err != nil {
+		t.Fatalf("offboard directory user: %v", err)
+	}
+	if _, err := store.Consume(ctx, pendingScope, "pending-token", "pending-nonce", time.Hour); !errors.Is(err, workstationenrollment.ErrDenied) {
+		t.Fatal("offboarding must invalidate the user's pending device grants")
+	}
+	offboarded, found, err := store.WorkstationUserByLogin(ctx, tenantC, "marcel")
+	if err != nil || !found || offboarded.Status != "offboarded" || offboarded.OffboardedAt == nil {
+		t.Fatalf("offboarded user audit record: user=%+v found=%v err=%v", offboarded, found, err)
+	}
 
 	// Create + duplicate rejected (exactly one live bootstrap per scope).
 	if err := store.Create(ctx, bootstrapWith(scope, "token", "nonce")); err != nil {

@@ -101,8 +101,12 @@ Find exact options with `baha COMMAND --help`. [Global options](global-options.m
 | `baha node disconnect` | Revoke node access after impact acknowledgement and retain recovery owners | `baha node disconnect TARGET --yes [--json]` | [↗](applications.md) |
 | `baha node list` | List configured remote connector nodes | `baha node list [--json]` | [↗](applications.md) |
 | `baha node status` | Inspect Core enrollment state for a remote node | `baha node status TARGET [--json]` | [↗](applications.md) |
-| `baha onboard` | Guided onboarding: attach a workstation to a BaseHarbor installation | `baha onboard [--target NAME] [--json] \| baha onboard --import PRIVATE_FILE [--target-name NAME] [--trust-host-ca\|--skip-host-trust] [--configure-hosts\|--skip-hosts] \| baha onboard --invite [--target NAME] [--core-url HTTPS_URL] [--station LABEL] [--output PRIVATE_FILE] \| baha onboard --init-tenant [-e ENV] [--tenant-slug SLUG --tenant-name NAME]` | [↗](applications.md) |
-| `baha workstation` | Manage developer workstation certificates on the local Core | `baha workstation <list\|revoke> [NAME] [--yes]` | [↗](security-trust.md) |
+| `baha onboard` | Create a person and first workstation, or attach/import a workstation | `baha onboard [--target NAME] [--json] \| baha onboard --import PRIVATE_FILE [--target-name NAME] [--trust-host-ca\|--skip-host-trust] [--configure-hosts\|--skip-hosts] \| baha onboard --invite [--name PERSON] [--login LOGIN] [--email EMAIL] [--station DEVICE] [--certificate-ttl 5y] [--output PRIVATE_FILE]` | [↗](security-trust.md) |
+| `baha user` | Manage people and their workstations on the local Core | `baha user <list\|offboard>` | [↗](security-trust.md) |
+| `baha user list` | List people, account status and registered device counts | `baha user list` | [↗](security-trust.md) |
+| `baha user offboard` | Disable a person and revoke all their workstation certificates | `baha user offboard LOGIN [--yes]` | [↗](security-trust.md) |
+| `baha workstation` | Manage developer workstation invitations and certificates on the local Core | `baha workstation <new\|list\|revoke>` | [↗](security-trust.md) |
+| `baha workstation new` | Issue an invitation for another device owned by an existing user | `baha workstation new [--user LOGIN] [--name DEVICE] [--certificate-ttl 5y] [--output PRIVATE_FILE]` | [↗](security-trust.md) |
 | `baha workstation list` | List enrolled workstations and certificate expiry | `baha workstation list` | [↗](security-trust.md) |
 | `baha workstation revoke` | Revoke a workstation's current certificate | `baha workstation revoke NAME [--yes]` | [↗](security-trust.md) |
 | `baha open` | Open a verified HTTPS application endpoint | `baha open [--print] [--json]` | [↗](applications.md) |
