@@ -249,7 +249,7 @@ func refreshWorkstationHosts(ctx context.Context, target deployment.ResolvedTarg
 		err = runDevHosts(withTargetOverride(ctx, target.Name), []string{"sync", "--yes"}, out, out)
 	}
 	if err != nil {
-		fmt.Fprintf(out, "[WARN] Application deployed; workstation hosts could not be updated: %v\nRetry: baha --target %s dev hosts sync\n", err, target.Name)
+		fmt.Fprintf(out, "[WARN] Workstation hosts could not be reconciled after the Target change: %v\nRetry: baha --target %s dev hosts sync\n", err, target.Name)
 	}
 }
 

@@ -121,6 +121,12 @@ Ownership-Prüfungen. `baha serve` erhält dadurch keine Freigabe: Seine
 Management-Sicherheitsvoraussetzungen und die explizite Core-Installation
 bleiben erforderlich.
 
+Für ein bereits ausgewähltes Remote-Target genügt `baha app destroy NAME --yes`;
+Target und Repository-Umgebung werden übernommen. Die CLI zeigt den aktuellen
+Provider-Plan und fragt vor der Änderung nach Zustimmung. Aktivierte, verwaltete
+Hosts-Einträge werden danach abgeglichen. Die Target-Gateway-CA bleibt vertraut,
+solange die Core-Verbindung bestehen bleibt.
+
 Ein lokales `baha app destroy` baut standardmäßig die eigene Runtime und die
 App-Routen ab. Persistente Daten, Zugangsdaten, Recovery-Material und die
 kanonische Deployment-Identität bleiben erhalten. `baha app apply` aktiviert

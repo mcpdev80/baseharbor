@@ -223,7 +223,7 @@ func appDestroyCommand(store application.Store) *cli.Command {
 				return err
 			}
 			if target.AccessProvider != "" && target.AccessProvider != "local" {
-				return remoteApplicationMutation(ctx, target, "destroy", args, out)
+				return remoteApplicationDestroyCLI(ctx, target, args, out, errOut)
 			}
 			filtered, format, err := parseReadOutputArgs(args, "app destroy")
 			if err != nil {

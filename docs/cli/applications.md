@@ -150,6 +150,12 @@ workload observations; stop/up and repeated destroy retain their existing
 ownership checks. This does not authorize `baha serve`: its management security
 requirements and explicit management Core installation remain unchanged.
 
+For a remote Target that is already active, run `baha app destroy NAME --yes`; the
+selected Target and repository environment are inferred. The CLI displays the
+current provider plan and asks for approval before making changes. If managed
+workstation host entries are enabled, it reconciles them after removal. The
+Target gateway CA remains trusted while that Core connection is retained.
+
 Default local `baha app destroy` retires the owned runtime and application routes,
 while keeping persistent data, credentials, recovery material and the canonical
 deployment identity. `baha app apply` reactivates that deployment from the current

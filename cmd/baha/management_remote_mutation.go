@@ -175,7 +175,7 @@ func remoteMutationArgs(operation string, args []string) (string, string, json.R
 	case "destroy":
 		if !approval || noBackup || skipMemory || candidate != "" || len(workloadPorts) > 0 {
 			return "", "", nil, usageError("remote destroy requires explicit --yes approval",
-				"Use baha app destroy NAME --environment dev --yes [--full-reset]; --yes never replaces provider impact or data-deletion consent.")
+				"Run baha app destroy NAME --yes; the current provider plan will be shown before removal.")
 		}
 		payload, err := json.Marshal(struct {
 			Name                  string                             `json:"name"`
@@ -243,7 +243,7 @@ func remoteApplicationMutation(ctx context.Context, target deployment.ResolvedTa
 	if err != nil {
 		return err
 	}
-	if operation == "apply" {
+	if operation == "apply" || operation == "destroy" {
 		payload, err = bindRemoteApplyConsent(ctx, payload)
 		if err != nil {
 			return err
