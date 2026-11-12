@@ -213,8 +213,9 @@ func TestWorkstationOnboardingRemoteNativeInCI(t *testing.T) {
 		t.Setenv("BASEHARBOR_TARGET", workstationTarget)
 		t.Chdir(workloadDir)
 		var stdout, stderr bytes.Buffer
-		if err := runWithIO(ctx, []string{"app", "destroy", "onboard-native", "--yes"}, &stdout, &stderr); err != nil {
-			t.Fatalf("remote application destroy failed: %v", err)
+		destroyCtx := withApplicationInput(ctx, strings.NewReader("y\ny\n"))
+		if err := runWithIO(destroyCtx, []string{"app", "destroy", "onboard-native", "--yes"}, &stdout, &stderr); err != nil {
+			t.Fatalf("remote application destroy failed: %v\nstdout:\n%s\nstderr:\n%s", err, stdout.String(), stderr.String())
 		}
 		if _, err := deployment.LoadConfig(); err != nil {
 			t.Fatalf("remote destroy damaged the workstation's target configuration: %v", err)

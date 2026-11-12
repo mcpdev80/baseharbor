@@ -85,9 +85,6 @@ func (e *applicationDestroyExecution) retireRuntimePreservingData(ctx context.Co
 		e.term.Result("RETIRED", "application", e.manifest.Name+" never delivered; no runtime state to remove")
 		return nil
 	}
-	if err := e.runPreflight(ctx); err != nil {
-		return err
-	}
 	if err := revalidateApplicationProviderIntent(ctx, e.resolved); err != nil {
 		return err
 	}
@@ -121,6 +118,12 @@ func (e *applicationDestroyExecution) retireRuntimePreservingData(ctx context.Co
 	}
 	if current.Impact == nil || current.Impact.PlanID != plan.Impact.PlanID {
 		return providerImpactConsentError(*plan.Impact, &application.ProviderChangeError{Code: "stale-impact-consent"})
+	}
+	if err := e.runPreflight(ctx); err != nil {
+		return err
+	}
+	if err := revalidateApplicationProviderIntent(ctx, e.resolved); err != nil {
+		return err
 	}
 	// Unknown future consequences do not prohibit consent. Physical ownership
 	// and complete consumer inventory remain necessary to execute exact retirement.

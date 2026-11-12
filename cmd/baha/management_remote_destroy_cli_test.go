@@ -19,7 +19,7 @@ func TestRemoteDestroyPlanRequiresSeparateDataDeletionApproval(t *testing.T) {
 	}
 	cause := &machine.Error{Code: machine.ErrorApprovalRequired, CauseCode: "impact-confirmation-required", Details: plan}
 	var output bytes.Buffer
-	next, retry, err := acknowledgeRemoteDestroyChallenge(ctx, target, cause, bufio.NewReader(strings.NewReader("y\ny\n")), &output, map[string]bool{}, true)
+	next, retry, err := acknowledgeRemoteDestroyChallenge(ctx, target, cause, bufio.NewReader(strings.NewReader("y\ny\n")), true, &output, map[string]bool{}, true)
 	if err != nil || !retry || !strings.Contains(output.String(), "Remove this application") || !strings.Contains(output.String(), "Permanently delete") {
 		t.Fatalf("destroy confirmation failed: retry=%v err=%v output=%s", retry, err, output.String())
 	}
@@ -49,7 +49,7 @@ func TestRemoteDestroyAcknowledgesApplicationScopePlanID(t *testing.T) {
 	}
 	cause := &machine.Error{Code: machine.ErrorApprovalRequired, CauseCode: "impact-confirmation-required", Details: plan}
 	var output bytes.Buffer
-	next, retry, err := acknowledgeRemoteDestroyChallenge(ctx, target, cause, bufio.NewReader(strings.NewReader("y\ny\n")), &output, map[string]bool{}, true)
+	next, retry, err := acknowledgeRemoteDestroyChallenge(ctx, target, cause, bufio.NewReader(strings.NewReader("y\ny\n")), true, &output, map[string]bool{}, true)
 	if err != nil || !retry {
 		t.Fatalf("application-scope destroy plan was not acknowledged: retry=%v err=%v output=%s", retry, err, output.String())
 	}
@@ -68,7 +68,7 @@ func TestRemoteFullResetRequiresSeparateDataConsent(t *testing.T) {
 	}
 	cause := &machine.Error{Code: machine.ErrorApprovalRequired, CauseCode: "data-deletion-consent-required", Details: plan}
 	var output bytes.Buffer
-	_, retry, err := acknowledgeRemoteDestroyChallenge(ctx, target, cause, bufio.NewReader(strings.NewReader("y\nn\n")), &output, map[string]bool{}, true)
+	_, retry, err := acknowledgeRemoteDestroyChallenge(ctx, target, cause, bufio.NewReader(strings.NewReader("y\nn\n")), true, &output, map[string]bool{}, true)
 	if err == nil || retry || !strings.Contains(output.String(), "Removal cancelled") || !strings.Contains(output.String(), "Permanently delete") {
 		t.Fatalf("data deletion was not separately declined: retry=%v err=%v output=%s", retry, err, output.String())
 	}
@@ -83,7 +83,7 @@ func TestRemoteStopReviewsProviderChangesButRetainsData(t *testing.T) {
 	}
 	cause := &machine.Error{Code: machine.ErrorApprovalRequired, CauseCode: "impact-confirmation-required", Details: plan}
 	var output bytes.Buffer
-	next, retry, err := acknowledgeRemoteDestroyChallenge(ctx, target, cause, bufio.NewReader(strings.NewReader("y\n")), &output, map[string]bool{}, false)
+	next, retry, err := acknowledgeRemoteDestroyChallenge(ctx, target, cause, bufio.NewReader(strings.NewReader("y\n")), true, &output, map[string]bool{}, false)
 	if err != nil || !retry || !strings.Contains(output.String(), "retaining its data") || strings.Contains(output.String(), "Permanently delete") {
 		t.Fatalf("stop consent did not preserve data: retry=%v err=%v output=%s", retry, err, output.String())
 	}
@@ -95,6 +95,21 @@ func TestRemoteStopReviewsProviderChangesButRetainsData(t *testing.T) {
 	receipt := []byte(`{"application":"demo","environment":"dev","target":"dev-docker-1","verified":true,"state":"runtime-retired","data_deleted":false}`)
 	if err := renderRemoteDestroyCompletion(&result, receipt, true); err != nil || !strings.Contains(result.String(), "persistent data and recovery owner retained") {
 		t.Fatalf("stop receipt did not report retained data: %v %q", err, result.String())
+	}
+}
+
+func TestRemoteDestroyNonTTYReportsPlanApprovalInsteadOfReadingEOF(t *testing.T) {
+	ctx, target, _ := remoteJourneyFixture(t)
+	plan := application.ProviderImpactPlan{
+		Version: application.ProviderImpactVersion, PlanID: "non-tty-destroy-plan", Target: "local",
+		ConfirmationsRequired: 1, Complete: true, Destructive: true,
+		Impacts: []application.ProviderImpact{{InstanceID: "demo-sql", Operation: "remove-runtime"}},
+	}
+	cause := &machine.Error{Code: machine.ErrorApprovalRequired, CauseCode: "impact-confirmation-required", Details: plan}
+	var output bytes.Buffer
+	_, retry, err := acknowledgeRemoteDestroyChallenge(ctx, target, cause, bufio.NewReader(strings.NewReader("")), false, &output, map[string]bool{}, true)
+	if err == nil || retry || strings.Contains(err.Error(), "EOF") || !strings.Contains(err.Error(), "impact-confirmation-required") {
+		t.Fatalf("non-TTY removal must return the plan-bound approval requirement without prompting: retry=%v err=%v", retry, err)
 	}
 }
 

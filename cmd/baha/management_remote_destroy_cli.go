@@ -45,7 +45,9 @@ func remoteApplicationDestroyCLI(ctx context.Context, target deployment.Resolved
 			ctx = withAssumeYes(ctx, true)
 		}
 	}
-	reader := bufio.NewReader(applicationInput(ctx, runtimeInput))
+	input := applicationInput(ctx, runtimeInput)
+	interactive := !noInput(ctx) && readerIsTerminal(input)
+	reader := bufio.NewReader(input)
 	seen := map[string]bool{}
 	requestArgs := filtered
 	if preserveData {
@@ -67,7 +69,7 @@ func remoteApplicationDestroyCLI(ctx context.Context, target deployment.Resolved
 			}
 			return renderRemoteDestroyCompletion(out, result.Bytes(), preserveData)
 		}
-		next, retry, approvalErr := acknowledgeRemoteDestroyChallenge(ctx, target, requestErr, reader, out, seen, !preserveData)
+		next, retry, approvalErr := acknowledgeRemoteDestroyChallenge(ctx, target, requestErr, reader, interactive, out, seen, !preserveData)
 		if approvalErr != nil {
 			return approvalErr
 		}
@@ -79,7 +81,7 @@ func remoteApplicationDestroyCLI(ctx context.Context, target deployment.Resolved
 	return errors.New("Core requires further authorization; inspect the current provider plan before retrying")
 }
 
-func acknowledgeRemoteDestroyChallenge(ctx context.Context, target deployment.ResolvedTarget, cause error, reader *bufio.Reader, out io.Writer, seen map[string]bool, deleteData bool) (context.Context, bool, error) {
+func acknowledgeRemoteDestroyChallenge(ctx context.Context, target deployment.ResolvedTarget, cause error, reader *bufio.Reader, interactive bool, out io.Writer, seen map[string]bool, deleteData bool) (context.Context, bool, error) {
 	var challenge *machine.Error
 	if !errors.As(cause, &challenge) || challenge.Code != machine.ErrorApprovalRequired ||
 		(challenge.CauseCode != "impact-confirmation-required" && challenge.CauseCode != "data-deletion-consent-required") {
@@ -101,13 +103,7 @@ func acknowledgeRemoteDestroyChallenge(ctx context.Context, target deployment.Re
 			return ctx, false, errors.New("provider removal plan belongs to another Core Target")
 		}
 	}
-	if noInput(ctx) {
-		return ctx, false, errors.New("Core requires explicit acknowledgement of the current application removal plan; run interactively or provide a plan-bound consent file")
-	}
-	if err := renderRemoteApplicationRemovalPlan(ctx, out, target.Name, plan); err != nil {
-		return ctx, false, err
-	}
-	if !readerIsTerminal(reader) {
+	if noInput(ctx) || !interactive {
 		consent := application.ProviderChangeConsent{PlanID: plan.planID}
 		if plan.scope != nil {
 			return ctx, false, applicationDestructionPlanError(applicationDestructionPlan{Scope: *plan.scope}, application.ValidateProviderImpactScopeConsent(*plan.scope, consent))
@@ -116,6 +112,9 @@ func acknowledgeRemoteDestroyChallenge(ctx context.Context, target deployment.Re
 			return ctx, false, providerImpactConsentError(*plan.impact, application.ValidateProviderChangeConsent(*plan.impact, consent))
 		}
 		return ctx, false, errors.New("Core requires interactive acknowledgement of the current application removal plan")
+	}
+	if err := renderRemoteApplicationRemovalPlan(ctx, out, target.Name, plan); err != nil {
+		return ctx, false, err
 	}
 	question := "Remove this application and apply the listed provider changes?"
 	if !deleteData {

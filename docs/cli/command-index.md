@@ -20,10 +20,9 @@ Find exact options with `baha COMMAND --help`. [Global options](global-options.m
 | `baha app cache` | Open the managed cache console for the current application | `baha app cache [INSTANCE] [--app NAME]` | [↗](applications.md) |
 | `baha app create` | Create an application manifest in BaseHarbor state | `baha app create NAME [--environment ENV] [--sql\|--sql-instance NAME] [--cache\|--cache-instance NAME] [--key-value\|--key-value-instance NAME] [--document-db\|--document-db-instance NAME] [--messaging-queue\|--messaging-queue-instance NAME] [--messaging-pubsub\|--messaging-pubsub-instance NAME] [--messaging-stream\|--messaging-stream-instance NAME] [--s3\|--s3-bucket NAME] [--secrets\|--require-secret NAME]...` | [↗](applications.md) |
 | `baha app creds` | Show connection metadata without revealing credentials by default | `baha app creds postgres\|valkey [INSTANCE] [--app NAME] [--reveal]` | [↗](applications.md) |
-| `baha app destroy` | Permanently delete an application and its exclusively owned data | `baha app destroy [NAME] [--uuid DEPLOYMENT-ID] [--yes]` | [↗](applications.md) |
+| `baha app destroy` | Permanently remove an application and its exclusively owned data | `baha app destroy [NAME] [--uuid DEPLOYMENT-ID] [--yes]` | [↗](applications.md) |
 | `baha app doctor` | Diagnose and safely repair an application's runtime | `baha app doctor [NAME] [--fix --yes]` | [↗](applications.md) |
-| `baha app down` | Stop an application runtime while preserving persistent data | `baha app down [NAME]` | [↗](applications.md) |
-| `baha app stop` | Stop an application runtime while preserving persistent data | `baha app stop [NAME]` | [↗](applications.md) |
+| `baha app down` | Stop application runtimes while preserving data for reactivation | `baha app down [NAME] [--yes]` | [↗](applications.md) |
 | `baha app edit` | Edit current application needs with preview and impact consent | `baha app edit [NAME] [-e ENV\|--environment ENV]` | [↗](applications.md) |
 | `baha app env` | Show the standard environment contract for an application | `baha app env [NAME] [--format dotenv\|shell\|json\|yaml] [--reveal] [--path]` | [↗](applications.md) |
 | `baha app evidence` | Export secret-safe application lifecycle and verification evidence | `baha app evidence [NAME] [-e ENV\|--environment ENV] [-o json\|--output json]` | [↗](applications.md) |
@@ -53,6 +52,7 @@ Find exact options with `baha COMMAND --help`. [Global options](global-options.m
 | `baha app show` | Show a coherent application overview | `baha app show [NAME]` | [↗](applications.md) |
 | `baha app sql` | Open the managed SQL console for the current application | `baha app sql [INSTANCE] [--app NAME]` | [↗](applications.md) |
 | `baha app status` | Show application runtime and readiness status | `baha app status [NAME] [-o json\|--output json]` | [↗](applications.md) |
+| `baha app stop` | Stop application runtimes while preserving data for reactivation | `baha app stop [NAME] [--yes]` | [↗](applications.md) |
 | `baha app tls` | Inspect and maintain application TLS certificates | `baha app tls <command>` | [↗](applications.md) |
 | `baha app tls update` | Check for or install a newer existing TLS certificate | `baha app tls update [--check]` | [↗](applications.md) |
 | `baha app up` | Start an existing application runtime and verify readiness | `baha app up [NAME] [--yes\|-y] [--skip-memory-preflight]` | [↗](applications.md) |

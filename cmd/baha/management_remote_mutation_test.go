@@ -138,7 +138,7 @@ func TestRemoteApplicationCLIEntrypointsNeverRunLocalRuntime(t *testing.T) {
 		{"app-up", appUpCommand(store).Run, []string{"demo"}},
 		{"app-update", appUpdateCommand(store).Run, []string{"demo", "--no-backup"}},
 		{"app-destroy", appDestroyCommand(store).Run, []string{"demo", "--yes"}},
-		{"app-down", appDownCommand(store).Run, []string{"demo"}},
+		{"app-down", appDownCommand(store).Run, []string{"demo", "--yes"}},
 		{"root-up", runtimeUpCommandWithInputResolver, []string{"demo", "--environment", "dev"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

@@ -217,7 +217,13 @@ func appDestroyCommand(store application.Store) *cli.Command {
 				return err
 			}
 			if format != outputJSON {
-				return executeApplicationDestroyLifecycle(ctx, store, filtered, out, errOut)
+				if err := executeApplicationDestroyLifecycle(ctx, store, filtered, out, errOut); err != nil {
+					return err
+				}
+				if containsExactArgument(filtered, "--yes") {
+					refreshWorkstationHosts(ctx, target, out)
+				}
+				return nil
 			}
 			execution, err := newApplicationDestroyExecution(ctx, store, filtered, io.Discard, io.Discard)
 			if err != nil {
@@ -243,6 +249,7 @@ func appDestroyCommand(store application.Store) *cli.Command {
 			if !execution.confirmed {
 				return nil
 			}
+			refreshWorkstationHosts(ctx, target, errOut)
 			result, err := applicationDestroyResult(execution.resolved, execution.fullReset)
 			if err != nil {
 				return err
