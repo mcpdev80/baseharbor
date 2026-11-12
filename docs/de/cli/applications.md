@@ -127,12 +127,15 @@ Provider-Plan und fragt vor der Änderung nach Zustimmung. Aktivierte, verwaltet
 Hosts-Einträge werden danach abgeglichen. Die Target-Gateway-CA bleibt vertraut,
 solange die Core-Verbindung bestehen bleibt.
 
-`baha app stop` (auch als `baha down` verfügbar) hält die Runtime an und behält
-persistenten Zustand und Recovery-Daten. `baha app destroy NAME --yes` löscht
-dagegen dauerhaft den BaseHarbor-eigenen Anwendungszustand, Zugangsdaten,
-Runtime-Ressourcen, Deployment-Eintrag und Compose-Datenvolumes, deren exklusive
-Anwendungszuordnung verifiziert ist. Gemeinsame, fremde, eingebundene oder nicht
-eindeutig zugeordnete Daten bleiben erhalten und werden angezeigt. Gemeinsame
+`baha app stop NAME --yes` (auch als `baha down` verfügbar) entfernt die laufende
+Anwendung und ihre freigegebenen app-eigenen Provider-Runtimes. Persistente Daten,
+Zugangsdaten, Recovery-Zustand und Deployment-Eigentümer bleiben zur späteren
+Reaktivierung erhalten. Der aktuelle Provider-Folgenplan muss weiterhin separat
+bestätigt werden. `baha app destroy NAME --yes` löscht dauerhaft den
+BaseHarbor-eigenen Anwendungszustand, Zugangsdaten, Runtime-Ressourcen,
+Deployment-Eintrag und Compose-Datenvolumes, deren exklusive Anwendungszuordnung
+verifiziert ist. Gemeinsame, fremde, eingebundene oder nicht eindeutig
+zugeordnete Daten bleiben erhalten und werden angezeigt. Gemeinsame
 Target-Infrastruktur, Repository-Quelldateien und das Vertrauen des weiterhin
 verbundenen Rechners in die Core-CA gehören nicht zu den Anwendungsdaten.
 Provider-Folgen und Datenlöschung werden im aktuellen Plan gezeigt und müssen

@@ -156,16 +156,19 @@ current provider plan and asks for approval before making changes. If managed
 workstation host entries are enabled, it reconciles them after removal. The
 Target gateway CA remains trusted while that Core connection is retained.
 
-`baha app stop` (also available as `baha down`) stops runtime services while
-retaining application data and recovery state. `baha app destroy NAME --yes`
-permanently removes BaseHarbor-owned application state, credentials, runtime
-resources, deployment registration and Compose data volumes whose exclusive
-application ownership is verified. Shared, foreign, bind-mounted or otherwise
-ambiguous data is preserved and reported; shared Target infrastructure, the
-repository source and workstation trust for the still-connected Core are not
-application-owned data. Provider consequences and data deletion are shown in the
-current plan and require explicit approval. There is no routine `--full-reset`
-switch: destroying the application means deleting its owned data.
+`baha app stop NAME --yes` (also available as `baha down`) removes the active
+application workload and its released, app-scoped provider runtimes while
+retaining persistent data, credentials, recovery state and the deployment owner
+for later reactivation. The current provider consequence plan still requires
+its own acknowledgement. `baha app destroy NAME --yes` permanently removes
+BaseHarbor-owned application state, credentials, runtime resources, deployment
+registration and Compose data volumes whose exclusive application ownership is
+verified. Shared, foreign, bind-mounted or otherwise ambiguous data is preserved
+and reported; shared Target infrastructure, the repository source and workstation
+trust for the still-connected Core are not application-owned data. Provider
+consequences and data deletion are shown in the current plan and require explicit
+approval. There is no routine `--full-reset` switch: destroying the application
+means deleting its owned data.
 
 Plan JSON and MCP/HTTP plan share `footprint` (`baseharbor.footprint/v1`). A
 projected new binding is `requested/unbound`, never live evidence. Requested

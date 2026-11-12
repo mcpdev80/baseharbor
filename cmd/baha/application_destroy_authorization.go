@@ -24,7 +24,9 @@ type applicationDestructionPlan struct {
 // retirement. Unknown remote material stays unknown; consent grants no ownership.
 func buildApplicationDestructionPlan(ctx context.Context, resolved resolvedApplication, reset bool) (applicationDestructionPlan, error) {
 	operation := "destroy"
-	if proof, ok := ctx.Value(installationApplicationScopeKey{}).(installationApplicationScope); ok && proof.Children[resolved.DeploymentIdentity.DeploymentID] != "" {
+	if isApplicationStopMode(ctx) {
+		operation = "app.stop"
+	} else if proof, ok := ctx.Value(installationApplicationScopeKey{}).(installationApplicationScope); ok && proof.Children[resolved.DeploymentIdentity.DeploymentID] != "" {
 		if err := application.ValidateProviderImpactScopeConsent(proof.Scope, proof.Consent); err != nil {
 			return applicationDestructionPlan{}, classifyProviderChangeConsent(err)
 		}
@@ -70,7 +72,11 @@ func buildApplicationDestructionPlanForOperation(ctx context.Context, resolved r
 	if reset {
 		after = "Permanently delete exclusively app-owned runtime data and protected deployment state. Authored source, shared infrastructure, foreign resources and data with ambiguous ownership remain. No data handoff or continued application access is claimed; partial cleanup retains the existing owner for retry."
 	}
-	p.Effects = []application.OperationalConsequence{{Aspect: "application-destruction", Before: "Selected deployment, actual provider bindings and protected recovery references.", After: after, Evidence: "canonical deployment owner and existing consumer union; complete material/access consequences remain unverified"}}
+	aspect := "application-destruction"
+	if isApplicationStopMode(ctx) {
+		aspect = "application-runtime-stop"
+	}
+	p.Effects = []application.OperationalConsequence{{Aspect: aspect, Before: "Selected deployment, actual provider bindings and protected recovery references.", After: after, Evidence: "canonical deployment owner and existing consumer union; complete material/access consequences remain unverified"}}
 	leaves := []application.ProviderImpactPlan{}
 	if p.Providers.Impact != nil {
 		leaves = append(leaves, *p.Providers.Impact)
@@ -107,7 +113,11 @@ func authorizeApplicationDestruction(ctx context.Context, resolved resolvedAppli
 	if out == nil {
 		out = io.Discard
 	}
-	fmt.Fprintln(out, "Achtung: review selected application destruction, affected consumers and material locations; ordinary --yes grants neither acknowledgement nor data deletion.")
+	if reset {
+		fmt.Fprintln(out, "Review the selected application removal, affected consumers and material locations; --yes grants neither consequence acknowledgement nor data deletion.")
+	} else {
+		fmt.Fprintln(out, "Review the selected application runtime stop, affected consumers and retained material; --yes grants no consequence acknowledgement.")
+	}
 	if err := writeJSON(out, p); err != nil {
 		return p, err
 	}

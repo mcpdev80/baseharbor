@@ -115,7 +115,7 @@ func stopApplicationRuntime(ctx context.Context, resolved resolvedApplication, o
 }
 
 func stopApplicationRuntimeWithResult(ctx context.Context, resolved resolvedApplication, out, errOut io.Writer) (applicationStopResult, error) {
-	result := applicationStopResult{Application: resolved.Manifest.Name, Environment: resolved.Manifest.Environment, State: "unknown"}
+	result := applicationStopResult{Application: resolved.Manifest.Name, Environment: resolved.Manifest.Environment, Target: resolved.Target.Name, State: "unknown"}
 	if err := authorizeApplicationOperation(ctx, "app.stop", resolved); err != nil {
 		return result, err
 	}
@@ -154,7 +154,7 @@ func stopApplicationRuntimeWithResult(ctx context.Context, resolved resolvedAppl
 	receipt, receiptErr := application.RecordProviderImpactScopeResult(plan.Scope, owner, nil)
 	result.ProviderChangeResult = &receipt
 	if operationErr == nil && verified && record.Observed.State == "stopped" && !record.Observed.Ready {
-		result.State, result.DataPreserved = "stopped", true
+		result.State, result.Verified, result.DataPreserved = "stopped", true, true
 	}
 	if operationErr != nil || !verified || receiptErr != nil || result.State != "stopped" {
 		return result, &machine.Error{Code: machine.ErrorConflict, CauseCode: "application_stop_partial", Message: "Application stop is incomplete; inspect actual runtime and retained recovery ownership before retrying.", Details: result, Cause: errors.Join(operationErr, receiptErr, recordErr, readErr)}

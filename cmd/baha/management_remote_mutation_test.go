@@ -74,6 +74,16 @@ func TestRemoteDestroyDeletesDataByDefault(t *testing.T) {
 	}
 }
 
+func TestRemoteStopRequestsRetainedData(t *testing.T) {
+	_, _, payload, err := remoteMutationArgs("app.stop", []string{"demo"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(payload), `"full_reset"`) || !strings.Contains(string(payload), `"name":"demo"`) {
+		t.Fatalf("remote stop must use the dedicated data-preserving stop operation: %s", payload)
+	}
+}
+
 func TestRemoteApplyCarriesExplicitWorkloadPortSelection(t *testing.T) {
 	_, _, payload, err := remoteMutationArgs("apply", []string{"demo", "--workload-port", "DEMO_HTTPS_PORT=8081"})
 	if err != nil {

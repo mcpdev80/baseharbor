@@ -16,20 +16,22 @@ import (
 )
 
 func stopSelectiveApplicationWithConsent(ctx context.Context, out io.Writer) error {
-	resolved, err := resolveApplication(ctx, application.Store{}, nil, "down")
+	resolved, err := resolveApplication(ctx, application.Store{}, nil, "destroy")
 	if err != nil {
 		return err
 	}
-	plan, err := buildApplicationStopPlan(ctx, resolved)
+	_, plan, err := buildApplicationRuntimeRetirementPlan(ctx, resolved)
 	if err != nil {
 		return err
 	}
-	consent := application.ProviderChangeConsent{PlanID: plan.Scope.PlanID, First: true, Second: true}
-	return runWithIO(withProviderChangeConsent(ctx, &consent), []string{"app", "down"}, out, out)
+	consent := application.ProviderChangeConsent{PlanID: plan.Impact.PlanID, First: true, Second: true}
+	ctx = withProviderChangeConsent(ctx, &consent)
+	ctx = context.WithValue(ctx, applicationStopModeKey{}, true)
+	return runWithIO(ctx, []string{"app", "down", "--yes"}, out, out)
 }
 
-// Native fixtures explicitly acknowledge the current domain plan. Ordinary
-// --yes must not silently provide either provider-change acknowledgement.
+// Native fixtures explicitly acknowledge the current retirement plan. Stop
+// preserves provider data; ordinary --yes supplies neither acknowledgement.
 func destroySelectiveApplicationWithConsent(ctx context.Context) error {
 	resolved, err := resolveApplication(ctx, application.Store{}, nil, "destroy")
 	if err != nil {
@@ -41,7 +43,8 @@ func destroySelectiveApplicationWithConsent(ctx context.Context) error {
 	}
 	consent := application.ProviderChangeConsent{PlanID: plan.Impact.PlanID, First: true, Second: true}
 	ctx = withProviderChangeConsent(ctx, &consent)
-	return runWithIO(ctx, []string{"app", "destroy", "--yes"}, &bytes.Buffer{}, &bytes.Buffer{})
+	ctx = context.WithValue(ctx, applicationStopModeKey{}, true)
+	return runWithIO(ctx, []string{"app", "stop", "--yes"}, &bytes.Buffer{}, &bytes.Buffer{})
 }
 
 func qualifySecretsDefaultRuntimeRetirement(t *testing.T, ctx context.Context, provider bhruntime.RuntimeProvider, root string, before resolvedApplication, originalSecret, originalEnv [32]byte, volumes []bhruntime.ProjectResource) {

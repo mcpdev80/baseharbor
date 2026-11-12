@@ -21,7 +21,6 @@ Inspect current data with `baha agent describe -o json` (`cli_coverage`). Update
 | `baha app destroy` | semantic | CLI -o json / typed MCP result | baseharbor.destroy |  |
 | `baha app doctor` | semantic | CLI -o json / typed MCP result | baseharbor.doctor |  |
 | `baha app down` | semantic | CLI -o json / typed MCP result | baseharbor.app.stop |  |
-| `baha app stop` | semantic | CLI -o json / typed MCP result | baseharbor.app.stop |  |
 | `baha app edit` | semantic | Interactive CLI / typed two-phase MCP consent | baseharbor.app.edit |  |
 | `baha app env` | semantic | CLI --format json (masked) / typed MCP result | baseharbor.app.environment | MCP exposes masked values only. --reveal and loading the protected local dotenv file are execution-host credential access and are explicitly excluded modes. |
 | `baha app evidence` | semantic | CLI -o json / typed MCP result | baseharbor.evidence |  |
@@ -51,6 +50,7 @@ Inspect current data with `baha agent describe -o json` (`cli_coverage`). Update
 | `baha app show` | semantic | CLI -o json / typed MCP result | baseharbor.app.show |  |
 | `baha app sql` | excluded |  |  | Interactive database terminal and raw SQL passthrough are excluded; app.connection supplies secret-safe connection metadata for an operator-owned client. |
 | `baha app status` | semantic | CLI -o json / typed MCP result | baseharbor.status |  |
+| `baha app stop` | semantic | CLI -o json / typed MCP result | baseharbor.app.stop |  |
 | `baha app tls` | presentation |  |  | Command group; invoke its supported subcommands. |
 | `baha app tls update` | semantic | CLI -o json / typed MCP result | baseharbor.tls.update |  |
 | `baha app up` | semantic | CLI -o json / typed MCP result | baseharbor.apply |  |

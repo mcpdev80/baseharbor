@@ -145,7 +145,7 @@ func TestCorelessFreshWorkloadRuntimeLifecycle(t *testing.T) {
 				t.Fatal(err)
 			}
 			status, _, err := collectResolvedApplicationStatus(ctx, stopped)
-			if err != nil || status.State != "stopped" || status.Ready {
+			if err != nil || status.State != "runtime-retired" || status.Ready {
 				t.Fatalf("stopped mistaken for absent/live: %+v %v", status, err)
 			}
 			files, err := application.ExistingRuntimeFiles(stopped.Store, stopped.Manifest)

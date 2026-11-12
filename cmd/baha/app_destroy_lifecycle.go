@@ -78,6 +78,9 @@ func newApplicationDestroyExecution(ctx context.Context, store application.Store
 	if err != nil {
 		return nil, err
 	}
+	if isApplicationStopMode(ctx) {
+		fullReset = false
+	}
 	// NAME and --uuid select through different seams and are mutually exclusive:
 	// combining them could name two deployments (0427-149/0427-175).
 	if name != "" && selectorUUID != "" {
