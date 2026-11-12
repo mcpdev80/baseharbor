@@ -47,6 +47,7 @@ func (s *WorkstationEnrollmentStore) WorkstationUsers(ctx context.Context, tenan
 COUNT(r.station)
 FROM workstation_users u LEFT JOIN workstation_enrollment_registry r
 ON r.tenant_id=u.tenant_id AND r.owner_login=u.login
+WHERE u.tenant_id=$1
 GROUP BY u.login,u.display_name,u.email,u.keycloak_user_id,u.status,u.created_at,u.offboarded_at
 ORDER BY u.login`, tenantID)
 		if err != nil {
