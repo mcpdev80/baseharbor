@@ -33,12 +33,13 @@ func TestWorkstationHostsOwnershipAndRollback(t *testing.T) {
 		}
 		return err
 	}
-	block, _ := localhosts.Block(workstationHostsID(state.Target), "192.0.2.1", []string{"demo.example.test"})
-	if err := changeWorkstationHosts(context.Background(), state, block, path, true); err != nil {
+	marker := "target=dev-docker-1 installation=fc204331-0c16-44ad-9a10-a7c71df4919b"
+	block, _ := localhosts.BlockWithLabel(workstationHostsID(state.Target), marker, "192.0.2.1", []string{"demo.example.test"})
+	if err := changeWorkstationHosts(context.Background(), state, block, path, true, marker); err != nil {
 		t.Fatal(err)
 	}
 	state, _, err = loadWorkstationHosts(state.Target)
-	if err != nil || !state.Enabled || state.Block != block {
+	if err != nil || !state.Enabled || state.Block != block || state.Marker != marker || !strings.Contains(current, "target=dev-docker-1 installation=fc204331") {
 		t.Fatalf("ownership not persisted: %v", err)
 	}
 	if err := removeWorkstationHosts(context.Background(), state.Target, os.Stderr); err != nil {
@@ -146,7 +147,7 @@ func TestImportedHostsDefaultOffAndExplicitOptIn(t *testing.T) {
 			reads, writes := 0, 0
 			readWorkstationHostsMetadata = func(context.Context, deployment.ResolvedTarget) (*developmentHosts, error) {
 				reads++
-				return &developmentHosts{Address: "192.0.2.3", Names: []string{"demo.example.test"}}, nil
+				return &developmentHosts{Address: "192.0.2.3", Names: []string{"demo.example.test"}, InstallationID: "fc204331-0c16-44ad-9a10-a7c71df4919b"}, nil
 			}
 			writeSystemHosts = func(context.Context, localhosts.Change) error { writes++; return nil }
 			onboardingInput = strings.NewReader(tc.input)

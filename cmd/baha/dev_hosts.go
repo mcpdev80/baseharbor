@@ -16,18 +16,21 @@ import (
 	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/cli"
+	"github.com/mcpdev80/baseharbor/internal/coreinstallation"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/devgateway"
 	"github.com/mcpdev80/baseharbor/internal/localhosts"
 )
 
 type developmentHosts struct {
-	Address string   `json:"address"`
-	Names   []string `json:"names"`
+	Address        string   `json:"address"`
+	Names          []string `json:"names"`
+	InstallationID string   `json:"installation_id,omitempty"`
 }
 type workstationHostsState struct {
 	Target  string `json:"target"`
 	Enabled bool   `json:"enabled"`
+	Marker  string `json:"marker,omitempty"`
 	Block   string `json:"block"`
 }
 
@@ -42,12 +45,18 @@ func observedDevelopmentHosts(target deployment.ResolvedTarget) *developmentHost
 	if address == "" {
 		return nil
 	}
+	installationID := ""
+	if root, rootErr := targetRuntimeStateRoot(target); rootErr == nil {
+		if installation, loadErr := coreinstallation.Load(root); loadErr == nil {
+			installationID = installation.ID
+		}
+	}
 	routes, err := devgateway.Routes(target.Name)
 	if err != nil {
 		return nil
 	}
 	names := map[string]bool{}
-	result := &developmentHosts{Address: address}
+	result := &developmentHosts{Address: address, InstallationID: installationID}
 	for _, route := range routes {
 		if route.Host != "" && !strings.HasSuffix(route.Host, ".localhost") {
 			names[route.Host] = true
@@ -120,7 +129,11 @@ func runDevHostsWithReader(ctx context.Context, args []string, out, errOut io.Wr
 	if observed == nil {
 		return errors.New("Core has no verified development hosts information; update the Core or check its serving address")
 	}
-	block, err := localhosts.Block(workstationHostsID(target.Name), observed.Address, observed.Names)
+	if strings.TrimSpace(observed.InstallationID) == "" {
+		return errors.New("Core has no verified installation ID for the managed hosts marker; update the Core and retry")
+	}
+	marker := fmt.Sprintf("target=%s installation=%s", target.Name, observed.InstallationID)
+	block, err := localhosts.BlockWithLabel(workstationHostsID(target.Name), marker, observed.Address, observed.Names)
 	if err != nil {
 		return err
 	}
@@ -142,7 +155,7 @@ func runDevHostsWithReader(ctx context.Context, args []string, out, errOut io.Wr
 			return nil
 		}
 	}
-	if err := changeWorkstationHosts(ctx, state, block, path, true); err != nil {
+	if err := changeWorkstationHosts(ctx, state, block, path, true, marker); err != nil {
 		return err
 	}
 	fmt.Fprintln(out, "[OK] Target hosts entries synchronized; future successful deployments refresh them.")
@@ -198,11 +211,21 @@ var writeSystemHosts = func(ctx context.Context, change localhosts.Change) error
 	return command.Run()
 }
 
-func changeWorkstationHosts(ctx context.Context, state workstationHostsState, next, path string, enabled bool) error {
+func changeWorkstationHosts(ctx context.Context, state workstationHostsState, next, path string, enabled bool, requestedMarker ...string) error {
+	nextMarker := state.Marker
+	if len(requestedMarker) > 0 {
+		nextMarker = requestedMarker[0]
+	}
+	if next == "" {
+		nextMarker = ""
+	}
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		return err
 	}
-	change := localhosts.Change{ID: workstationHostsID(state.Target), Previous: state.Block, Next: next}
+	change := localhosts.Change{
+		ID: workstationHostsID(state.Target), PreviousLabel: state.Marker, NextLabel: nextMarker,
+		Previous: state.Block, Next: next,
+	}
 	if change.Previous != "" || change.Next != "" {
 		if err := writeSystemHosts(ctx, change); err != nil {
 			return err
@@ -210,6 +233,7 @@ func changeWorkstationHosts(ctx context.Context, state workstationHostsState, ne
 	}
 	state.Block = next
 	state.Enabled = enabled
+	state.Marker = nextMarker
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		return err
 	}
@@ -219,7 +243,10 @@ func changeWorkstationHosts(ctx context.Context, state workstationHostsState, ne
 		err = writePrivateJSON(path, json.RawMessage(data))
 	}
 	if err != nil && change.Previous != change.Next {
-		rollback := localhosts.Change{ID: change.ID, Previous: change.Next, Next: change.Previous}
+		rollback := localhosts.Change{
+			ID: change.ID, PreviousLabel: change.NextLabel, NextLabel: change.PreviousLabel,
+			Previous: change.Next, Next: change.Previous,
+		}
 		err = errors.Join(err, writeSystemHosts(ctx, rollback))
 	}
 	return err

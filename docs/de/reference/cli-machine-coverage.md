@@ -100,6 +100,13 @@ Aktuelle Daten liefert `baha agent describe -o json` (`cli_coverage`). Nach Code
 | `baha node list` | semantisch | CLI -o json / typed MCP result | baseharbor.node.list |  |
 | `baha node status` | semantisch | CLI -o json / typed MCP result | baseharbor.node.status |  |
 | `baha onboard` | Darstellung |  |  | Guided workstation onboarding presentation; the underlying installation, target and enrollment operations retain their own authenticated semantic contracts. |
+| `baha user` | Darstellung |  |  | Human directory and lifecycle commands for Core-managed people. |
+| `baha user list` | Darstellung |  |  | Core-local human directory view; authentication state remains authoritative in the owned Keycloak realm. |
+| `baha user offboard` | ausgeschlossen |  |  | Human-confirmed operator directory action disables the owned Keycloak user and revokes its workstation leaves; no typed MCP operation, so excluded from the machine tool boundary by design. |
+| `baha workstation` | Darstellung |  |  | Human inventory and lifecycle commands for Core-managed workstation certificates. |
+| `baha workstation list` | Darstellung |  |  | Core-local inventory of workstation certificate ownership, expiry and revocation state. |
+| `baha workstation new` | ausgeschlossen |  |  | Human invitation workflow for a new device; private one-use invitation transfer is an operator action and has no machine equivalent. |
+| `baha workstation revoke` | ausgeschlossen |  |  | Human-confirmed device revocation; no typed MCP operation, so excluded from the machine tool boundary by design. |
 | `baha open` | Darstellung |  |  | Host browser presentation over validated application/TLS state; typed clients inspect app status and TLS instead. |
 | `baha openbao` | Darstellung |  |  | Command group; invoke its supported subcommands. |
 | `baha openbao bootstrap` | semantisch | CLI -o json / typed MCP result | baseharbor.openbao.bootstrap |  |

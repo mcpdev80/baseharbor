@@ -101,7 +101,7 @@ Exakte Optionen stehen in `baha COMMAND --help`. [Globale Optionen](global-optio
 | `baha node disconnect` | Revoke node access after impact acknowledgement and retain recovery owners | `baha node disconnect TARGET --yes [--json]` | [↗](applications.md) |
 | `baha node list` | List configured remote connector nodes | `baha node list [--json]` | [↗](applications.md) |
 | `baha node status` | Inspect Core enrollment state for a remote node | `baha node status TARGET [--json]` | [↗](applications.md) |
-| `baha onboard` | Guided onboarding: attach a workstation to a BaseHarbor installation | `baha onboard [--target NAME] [--json] \| baha onboard --import PRIVATE_FILE [--target-name NAME] [--trust-host-ca\|--skip-host-trust] [--configure-hosts\|--skip-hosts] \| baha onboard --invite [--target NAME] [--core-url HTTPS_URL] [--station LABEL] [--output PRIVATE_FILE] \| baha onboard --init-tenant [-e ENV] [--tenant-slug SLUG --tenant-name NAME]` | [↗](applications.md) |
+| `baha onboard` | Guided onboarding: attach a workstation to a BaseHarbor installation | `baha onboard [--target NAME] [--json] \| baha onboard --import PRIVATE_FILE [--target-name NAME] [--trust-host-ca\|--skip-host-trust] [--configure-hosts\|--skip-hosts] \| baha onboard --invite [--name PERSON] [--login LOGIN] [--email EMAIL] [--station DEVICE] [--certificate-ttl 5y] [--output PRIVATE_FILE] \| baha onboard --init-tenant [-e ENV] [--tenant-slug SLUG --tenant-name NAME]` | [↗](applications.md) |
 | `baha open` | Open a verified HTTPS application endpoint | `baha open [--print] [--json]` | [↗](applications.md) |
 | `baha openbao` | Bootstrap and operate the BaseHarbor OpenBao trust plane | `baha openbao <command> [options]` | [↗](security-trust.md) |
 | `baha openbao bootstrap` | Initialize OpenBao and establish the BaseHarbor manager identity | `baha openbao bootstrap --recovery-file PATH` | [↗](security-trust.md) |
@@ -147,6 +147,9 @@ Exakte Optionen stehen in `baha COMMAND --help`. [Globale Optionen](global-optio
 | `baha up` | Converge selected application intent, or explicitly start the management Core | `baha up [NAME] [-e ENV\|--environment ENV] [--yes] [--skip-memory-preflight] [--control-plane-only] [--ha] [--trust-host-ca] [--postgres-port PORT] [--openbao-port PORT] [--recovery-file PATH]` | [↗](core.md) |
 | `baha update` | Safely inspect or update BaseHarbor itself | `baha update [--check] [--yes] [--channel stable\|rc \| --version VERSION] [--recover]` | [↗](core.md) |
 | `baha use` | Select and persist the active Core or deployment target | `baha use [TARGET]` | [↗](applications.md) |
+| `baha user` | Manage people and their enrolled workstations | `baha user list \| baha user offboard LOGIN [--yes]` | [↗](applications.md) |
+| `baha user list` | List people and their enrolled workstation counts | `baha user list` | [↗](applications.md) |
+| `baha user offboard` | Disable a person and revoke all their workstations | `baha user offboard LOGIN [--yes]` | [↗](applications.md) |
 | `baha version` | Print build version | `baha version [-o json\|--output json\|--json]` | [↗](core.md) |
 | `baha whoami` | Show the authenticated BaseHarbor operator identity | `baha whoami -e ENV\|--environment ENV` | [↗](security-trust.md) |
 | `baha workspace` | Configure local workspace sources and repository mappings | `baha workspace [<init\|map\|show\|resolve\|status\|update> [options]]` | [↗](development.md) |
@@ -156,3 +159,7 @@ Exakte Optionen stehen in `baha COMMAND --help`. [Globale Optionen](global-optio
 | `baha workspace show` | Show canonical source identities and local workspace mappings | `baha workspace show [--manifest PATH] [-o json\|--output json]` | [↗](development.md) |
 | `baha workspace status` | Inspect Git state for all mapped repository sources | `baha workspace status [--manifest PATH] [--fetch] [-o json\|--output json]` | [↗](development.md) |
 | `baha workspace update` | Safely fast-forward mapped Git repositories | `baha workspace update [--manifest PATH] [--check] [-o json\|--output json]` | [↗](development.md) |
+| `baha workstation` | Invite, list and revoke developer workstations connected to this Core | `baha workstation new \| baha workstation list \| baha workstation revoke NAME [--yes]` | [↗](applications.md) |
+| `baha workstation list` | List enrolled workstations and certificate expiry | `baha workstation list` | [↗](applications.md) |
+| `baha workstation new` | Issue a one-use invitation for another workstation owned by an existing user | `baha workstation new [--user LOGIN] [--name DEVICE] [--certificate-ttl 5y] [--output PRIVATE_FILE]` | [↗](applications.md) |
+| `baha workstation revoke` | Revoke a workstation's current certificate | `baha workstation revoke NAME [--yes]` | [↗](applications.md) |

@@ -144,6 +144,8 @@ func rootCommand() *cli.Command {
 		useTargetCommand(),
 		nodeCommand(),
 		onboardCommand(),
+		workstationCommand(),
+		userCommand(),
 		devCommand(),
 		configCommand(),
 		shellInitCommand(),

@@ -1,10 +1,12 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -60,6 +62,11 @@ func TestWorkstationOnboardingRemoteNativeInCI(t *testing.T) {
 	var invitation string
 	invitationRoot := t.TempDir()
 	t.Run("Invitation", func(t *testing.T) {
+		previousPasswordReader := readOnboardInitialPasswordForInvite
+		readOnboardInitialPasswordForInvite = func(io.Writer, *bufio.Reader) ([]byte, error) {
+			return []byte("native-ci-temporary-password"), nil
+		}
+		t.Cleanup(func() { readOnboardInitialPasswordForInvite = previousPasswordReader })
 		owned := filepath.Join(invitationRoot, "private")
 		if err := os.Mkdir(owned, 0o700); err != nil {
 			t.Fatal(err)
@@ -68,7 +75,11 @@ func TestWorkstationOnboardingRemoteNativeInCI(t *testing.T) {
 		var out bytes.Buffer
 		err := runOnboardInvite(ctx, []string{
 			"--target", name,
+			"--name", "CI Workstation User",
+			"--login", "ci-workstation-user",
+			"--email", "ci-workstation@example.invalid",
 			"--station", "ci-workstation-native",
+			"--certificate-ttl", "5y",
 			"--output", invitation,
 		}, &out)
 		if err != nil {

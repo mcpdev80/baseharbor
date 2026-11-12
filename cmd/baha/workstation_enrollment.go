@@ -96,6 +96,16 @@ func (e wsProductionEnrollmentBridge) RecordRegistryFact(ctx context.Context, sc
 	return store.RecordRegistryFact(ctx, scope, issuedAt, recipient, scopeID, serial, expiresAt)
 }
 
+func (e wsProductionEnrollmentBridge) RecordOwnedRegistryFact(ctx context.Context, scope ws.Scope, issuedAt time.Time, recipient, scopeID, serial string, expiresAt time.Time, ownerLogin string) error {
+	store, ok := e.store.(interface {
+		RecordOwnedRegistryFact(ctx context.Context, scope ws.Scope, issuedAt time.Time, recipient, scopeID, serial string, expiresAt time.Time, ownerLogin string) error
+	})
+	if !ok {
+		return errors.New("workstation production store does not support owner registry persistence")
+	}
+	return store.RecordOwnedRegistryFact(ctx, scope, issuedAt, recipient, scopeID, serial, expiresAt, ownerLogin)
+}
+
 // CurrentSerial anchors the currently issued workstation leaf for a scope for
 // the device-lifecycle Renew/Revoke methods. It reads the durable registry
 // fact (the latest issued serial per installation/station). A missing row, a

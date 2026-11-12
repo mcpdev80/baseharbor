@@ -13,9 +13,11 @@ import (
 )
 
 type Change struct {
-	ID       string `json:"id"`
-	Previous string `json:"previous"`
-	Next     string `json:"next"`
+	ID            string `json:"id"`
+	PreviousLabel string `json:"previous_label,omitempty"`
+	NextLabel     string `json:"next_label,omitempty"`
+	Previous      string `json:"previous"`
+	Next          string `json:"next"`
 }
 
 var identifier = regexp.MustCompile(`^[a-f0-9]{32}$`)
@@ -27,8 +29,17 @@ func ID(workstation, target string) string {
 }
 
 func Block(id, address string, names []string) (string, error) {
+	return BlockWithLabel(id, id, address, names)
+}
+
+// BlockWithLabel renders an owned block with a human-readable marker while
+// retaining the opaque owner ID in the privileged change record.
+func BlockWithLabel(id, label, address string, names []string) (string, error) {
 	if !identifier.MatchString(id) {
 		return "", errors.New("invalid hosts ownership ID")
+	}
+	if !validLabel(label) {
+		return "", errors.New("invalid hosts ownership label")
 	}
 	ip := net.ParseIP(address)
 	if ip == nil || ip.IsUnspecified() || ip.IsMulticast() {
@@ -54,11 +65,11 @@ func Block(id, address string, names []string) (string, error) {
 	if len(sorted) == 0 {
 		return "", nil
 	}
-	body := "# BEGIN BaseHarbor " + id + "\n"
+	body := "# BEGIN BaseHarbor " + label + "\n"
 	for _, name := range sorted {
 		body += ip.String() + "\t" + name + "\n"
 	}
-	return body + "# END BaseHarbor " + id + "\n", nil
+	return body + "# END BaseHarbor " + label + "\n", nil
 }
 
 // Rewrite preserves every byte outside the exact previously owned block.
@@ -66,14 +77,22 @@ func Rewrite(current string, change Change) (string, error) {
 	if !identifier.MatchString(change.ID) {
 		return "", errors.New("invalid hosts ownership ID")
 	}
-	if err := validateBlock(change.ID, change.Previous); err != nil {
+	previousLabel := change.PreviousLabel
+	if previousLabel == "" {
+		previousLabel = change.ID
+	}
+	nextLabel := change.NextLabel
+	if nextLabel == "" {
+		nextLabel = change.ID
+	}
+	if err := validateBlock(previousLabel, change.Previous); err != nil {
 		return "", err
 	}
-	if err := validateBlock(change.ID, change.Next); err != nil {
+	if err := validateBlock(nextLabel, change.Next); err != nil {
 		return "", err
 	}
-	begin := "# BEGIN BaseHarbor " + change.ID
-	end := "# END BaseHarbor " + change.ID
+	begin := "# BEGIN BaseHarbor " + previousLabel
+	end := "# END BaseHarbor " + previousLabel
 	if change.Previous != "" {
 		if strings.Count(current, begin) != 1 || strings.Count(current, end) != 1 || strings.Count(current, change.Previous) != 1 {
 			return "", errors.New("PRESERVED: owned hosts block was removed or modified; inspect /etc/hosts")
@@ -101,6 +120,9 @@ func Rewrite(current string, change Change) (string, error) {
 		}
 	}
 	if change.Previous != "" {
+		if change.Next == "" {
+			return strings.Replace(current, change.Previous, "", 1), nil
+		}
 		return strings.Replace(current, change.Previous, change.Next, 1), nil
 	}
 	if change.Next == "" {
@@ -112,12 +134,15 @@ func Rewrite(current string, change Change) (string, error) {
 	return current + change.Next, nil
 }
 
-func validateBlock(id, block string) error {
+func validateBlock(label, block string) error {
 	if block == "" {
 		return nil
 	}
+	if !validLabel(label) {
+		return errors.New("invalid hosts ownership label")
+	}
 	lines := strings.Split(block, "\n")
-	if len(lines) < 4 || lines[0] != "# BEGIN BaseHarbor "+id || lines[len(lines)-2] != "# END BaseHarbor "+id || lines[len(lines)-1] != "" {
+	if len(lines) < 4 || lines[0] != "# BEGIN BaseHarbor "+label || lines[len(lines)-2] != "# END BaseHarbor "+label || lines[len(lines)-1] != "" {
 		return errors.New("invalid hosts block")
 	}
 	var names []string
@@ -133,7 +158,7 @@ func validateBlock(id, block string) error {
 		address = fields[0]
 		names = append(names, fields[1])
 	}
-	normalized, err := Block(id, address, names)
+	normalized, err := BlockWithLabel("00000000000000000000000000000000", label, address, names)
 	if err != nil {
 		return err
 	}
@@ -141,4 +166,16 @@ func validateBlock(id, block string) error {
 		return errors.New("noncanonical hosts block")
 	}
 	return nil
+}
+
+func validLabel(value string) bool {
+	if len(value) == 0 || len(value) > 256 || strings.TrimSpace(value) != value {
+		return false
+	}
+	for _, r := range value {
+		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || strings.ContainsRune(" ._:= -", r)) {
+			return false
+		}
+	}
+	return true
 }

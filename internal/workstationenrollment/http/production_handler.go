@@ -163,6 +163,13 @@ func (h *ProductionHandler) ServeEnroll(w http.ResponseWriter, r *http.Request) 
 	// enrollment is rolled back with an error rather than returning a success
 	// response for a fact that was never recorded.
 	if rec, ok := h.Enrollment.(interface {
+		RecordOwnedRegistryFact(ctx context.Context, scope ws.Scope, issuedAt time.Time, recipient, scopeID, serial string, expiresAt time.Time, ownerLogin string) error
+	}); ok {
+		if err := rec.RecordOwnedRegistryFact(r.Context(), scope, time.Now().UTC(), scope.Identity(), scope.Station, result.Serial, result.ExpiresAt, result.OwnerLogin); err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+	} else if rec, ok := h.Enrollment.(interface {
 		RecordRegistryFact(ctx context.Context, scope ws.Scope, issuedAt time.Time, recipient, scopeID, serial string, expiresAt time.Time) error
 	}); ok {
 		if err := rec.RecordRegistryFact(r.Context(), scope, time.Now().UTC(), scope.Identity(), scope.Station, result.Serial, result.ExpiresAt); err != nil {

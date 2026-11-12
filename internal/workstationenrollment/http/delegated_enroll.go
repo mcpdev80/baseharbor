@@ -78,11 +78,16 @@ func (h *ProductionHandler) ServeDelegatedEnroll(w http.ResponseWriter, r *http.
 		writeError(w, http.StatusForbidden, ws.ErrDenied)
 		return
 	}
-	recorder, ok := h.Enrollment.(interface {
+	if recorder, ok := h.Enrollment.(interface {
+		RecordOwnedRegistryFact(context.Context, ws.Scope, time.Time, string, string, string, time.Time, string) error
+	}); ok {
+		if err := recorder.RecordOwnedRegistryFact(r.Context(), scope, time.Now().UTC(), scope.Identity(), scope.Station, result.Serial, result.ExpiresAt, result.OwnerLogin); err != nil {
+			writeError(w, http.StatusInternalServerError, errors.New("workstation registry persistence failed"))
+			return
+		}
+	} else if recorder, ok := h.Enrollment.(interface {
 		RecordRegistryFact(context.Context, ws.Scope, time.Time, string, string, string, time.Time) error
-	})
-	if !ok || recorder.RecordRegistryFact(r.Context(), scope, time.Now().UTC(),
-		scope.Identity(), scope.Station, result.Serial, result.ExpiresAt) != nil {
+	}); !ok || recorder.RecordRegistryFact(r.Context(), scope, time.Now().UTC(), scope.Identity(), scope.Station, result.Serial, result.ExpiresAt) != nil {
 		writeError(w, http.StatusInternalServerError, errors.New("workstation registry persistence failed"))
 		return
 	}
