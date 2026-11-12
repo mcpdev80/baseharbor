@@ -115,6 +115,7 @@ func remoteApplicationApplyCLI(ctx context.Context, target deployment.ResolvedTa
 			err = requestErr
 		}
 		if err == nil {
+			refreshWorkstationHosts(ctx, target, errOut)
 			if format == outputJSON {
 				_, err = io.Copy(out, &result)
 				return err

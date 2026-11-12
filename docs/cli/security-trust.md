@@ -112,3 +112,33 @@ baha logout
 ```
 
 Use the configured authentication flow; do not paste tokens into command arguments. The reported identity helps verify authorization context before a protected operation. Login does not grant permissions beyond the effective policy.
+
+## Optional workstation name resolution
+
+On Linux, invitation import separately offers to maintain concrete app and GUI
+names in `/etc/hosts`. This is **off by default**, independent of CA trust. It
+shows the verified Core's names and IP before approval; sudo may be needed.
+No DNS service is installed and wildcard hosts entries are not supported.
+Use `--configure-hosts` to opt in explicitly during import, or `--skip-hosts`
+to suppress the offer. Future successful CLI deployments refresh the selected
+Target's entries only after opt-in. No-input imports leave hosts unchanged.
+
+For an existing connection:
+
+```text
+baha --target NAME dev hosts status
+baha --target NAME dev hosts sync
+baha --target NAME dev hosts remove --yes
+baha --target NAME dev cleanup --yes
+```
+
+`sync` shows names and requests approval when first enabling management;
+`sync --yes` explicitly enables it for automation. `remove` disables hosts
+management only. `cleanup` removes this Target's unchanged owned hosts block
+and recorded system/browser CA anchors. Another active connection referencing
+the same CA keeps that CA installed. Existing external entries, conflicting
+names and manually modified blocks/certificates are preserved and reported.
+Local cleanup requires no live Core and keeps apps, data and device enrollment.
+The onboarding wizard's local connection removal also performs this cleanup
+before discarding its local connection record. Reinstalling trust explicitly
+reactivates that connection's CA reference.

@@ -62,9 +62,9 @@ func ManagementURLs(target, owner string, desired []Route) (map[string]string, m
 	canonical := make(map[string]string, len(selected))
 	directIP := make(map[string]string, len(selected))
 	for key, route := range selected {
-		canonical[key] = canonicalURL(route.Host, current.HostPort)
+		canonical[key] = canonicalURL(route.Host, current.HostPort) + route.LandingPath
 		if current.IPAccessAddress != "" && route.DirectIPPort > 0 {
-			directIP[key] = "https://" + net.JoinHostPort(current.IPAccessAddress, strconv.Itoa(route.DirectIPPort))
+			directIP[key] = "https://" + net.JoinHostPort(current.IPAccessAddress, strconv.Itoa(route.DirectIPPort)) + route.LandingPath
 		}
 	}
 	return canonical, directIP, nil

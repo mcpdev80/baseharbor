@@ -407,6 +407,9 @@ func commitOnboardingDecision(ctx context.Context, decision onboardingwizard.Dec
 	case onboardingwizard.ModeRemove:
 		// Local-only cleanup: removal of the local connection cache only. It
 		// cannot revoke or delete anything remote by construction.
+		if err := cleanupWorkstationConveniences(ctx, decision.Target, out); err != nil {
+			return err
+		}
 		if err := removeOnboardingConnection(decision.Target); err != nil {
 			return err
 		}

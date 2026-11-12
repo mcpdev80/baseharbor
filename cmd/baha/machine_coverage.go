@@ -155,6 +155,8 @@ var cliPresentationCommands = map[string]string{
 // These modes are outside the semantic tool boundary by design. Business
 // metadata and lifecycle remain available through the named typed alternatives.
 var cliExcludedCommands = map[string]string{
+	"baha dev hosts":       "Workstation-local hosts-file opt-in and ownership cleanup; cannot mutate the MCP server host on behalf of a remote client. Names come from authenticated control-plane.status metadata.",
+	"baha dev cleanup":     "Workstation-local removal of owned hosts and CA trust, preserving other connections; explicit host operator approval required. No Core or application mutation.",
 	"baha app exec":        "Arbitrary process execution is intentionally excluded: #787 forbids generic exec passthrough; use typed lifecycle and observation tools.",
 	"baha app shell":       "Interactive container terminal is host/TTY dependent and would grant arbitrary exec; use typed lifecycle and app.environment instead.",
 	"baha app sql":         "Interactive database terminal and raw SQL passthrough are excluded; app.connection supplies secret-safe connection metadata for an operator-owned client.",

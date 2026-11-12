@@ -193,3 +193,33 @@ func TestBrowserNSSActualCertutilRoundTrip(t *testing.T) {
 		t.Fatalf("browser trust removal: %d %v", n, err)
 	}
 }
+
+func TestRemoveOwnedFingerprintPreservesOtherCAAndManualChanges(t *testing.T) {
+	certificates := fakeNSS(t)
+	state := t.TempDir()
+	db := browserTestDB(t)
+	first, second := testCA(t, "first target"), testCA(t, "second target")
+	for _, ca := range [][]byte{first, second} {
+		if err := installBrowserCA(context.Background(), state, ca, db); err != nil {
+			t.Fatal(err)
+		}
+	}
+	_, fp, _ := ParseCA(first)
+	removed, err := RemoveOwnedFingerprint(context.Background(), state, fp)
+	if err != nil || len(removed.Removed) != 1 || len(*certificates) != 1 {
+		t.Fatalf("scoped CA removal: %v %v", removed, err)
+	}
+	records, err := StateRecords(state)
+	if err != nil || len(records) != 1 || records[0].Fingerprint == fp {
+		t.Fatalf("other CA not retained: %v", err)
+	}
+	_, secondFP, _ := ParseCA(second)
+	(*certificates)["BaseHarbor "+secondFP] = testCA(t, "operator replacement")
+	if _, err := RemoveOwnedFingerprint(context.Background(), state, secondFP); err == nil {
+		t.Fatal("manually changed CA was not preserved")
+	}
+	records, _ = StateRecords(state)
+	if len(records) != 1 {
+		t.Fatal("ownership evidence lost after preservation")
+	}
+}

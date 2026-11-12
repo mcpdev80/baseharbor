@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -11,7 +12,7 @@ import (
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
-type onboardTrustOptions struct{ install, skip bool }
+type onboardTrustOptions struct{ install, skip, hosts, skipHosts bool }
 
 func stripOnboardTrustOptions(args []string) ([]string, onboardTrustOptions, error) {
 	var options onboardTrustOptions
@@ -20,11 +21,18 @@ func stripOnboardTrustOptions(args []string) ([]string, onboardTrustOptions, err
 		switch arg {
 		case "--trust-host-ca":
 			options.install = true
+		case "--configure-hosts":
+			options.hosts = true
+		case "--skip-hosts":
+			options.skipHosts = true
 		case "--skip-host-trust":
 			options.skip = true
 		default:
 			rest = append(rest, arg)
 		}
+	}
+	if options.hosts && options.skipHosts {
+		return nil, options, errors.New("use either --configure-hosts or --skip-hosts")
 	}
 	if options.install && options.skip {
 		return nil, options, usageError("conflicting CA trust options", "Use either --trust-host-ca or --skip-host-trust.")
@@ -66,6 +74,9 @@ func offerImportedHostTrust(ctx context.Context, reader *bufio.Reader, out io.Wr
 	}
 	if !status.Trusted {
 		return fmt.Errorf("connection saved, but system CA trust could not be verified; retry %s", retry)
+	}
+	if err := setWorkstationTrustActive(target, true); err != nil {
+		return err
 	}
 	fmt.Fprintln(out, "[OK] System CA trust installed.")
 	renderBrowserTrust(out, browsers)

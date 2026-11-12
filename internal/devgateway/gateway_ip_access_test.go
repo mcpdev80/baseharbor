@@ -123,3 +123,30 @@ func TestManagementURLsSelectsOwnedRouteBeforeSharedAndHidesOtherApps(t *testing
 		t.Fatal("shared management URL not selected by this application was exposed")
 	}
 }
+
+func TestManagementURLsRetainsProviderRealmLandingPaths(t *testing.T) {
+	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
+	files, err := FilesFor("local")
+	if err != nil {
+		t.Fatal(err)
+	}
+	route := Route{Owner: "shared/keycloak", Key: "shared/keycloak/admin", Host: "auth-admin.example.test", ManagementKey: "identity_admin", DirectIPPort: 52421, LandingPath: "/admin/bh-operators-dev/console/"}
+	if err := saveState(files.State, state{Version: stateVersion, HostPort: 18443, IPAccessAddress: "192.0.2.12", Routes: []Route{route}}); err != nil {
+		t.Fatal(err)
+	}
+	canonical, direct, err := ManagementURLs("local", "app/demo/dev", []Route{route})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if canonical["identity_admin"] != "https://auth-admin.example.test:18443/admin/bh-operators-dev/console/" || direct["identity_admin"] != "https://192.0.2.12:52421/admin/bh-operators-dev/console/" {
+		t.Fatalf("realm path not retained: %v %v", canonical, direct)
+	}
+}
+
+func TestManagementLandingPathRejectsForeignOriginAndQuery(t *testing.T) {
+	for _, path := range []string{"//evil.test/", "https://evil.test/", "/account/?redirect=evil", "/account/#fragment", "/../admin/", "/bad\nheader"} {
+		if err := validateRoute(Route{LandingPath: path}); err == nil {
+			t.Fatalf("accepted landing path %q", path)
+		}
+	}
+}

@@ -215,6 +215,18 @@ type RemovalResult struct {
 }
 
 func RemoveOwnedDetailed(ctx context.Context, stateDir string) (RemovalResult, error) {
+	return removeOwnedMatching(ctx, stateDir, "")
+}
+
+// RemoveOwnedFingerprint removes only recorded system/browser anchors for this CA.
+func RemoveOwnedFingerprint(ctx context.Context, stateDir, fingerprint string) (RemovalResult, error) {
+	if len(fingerprint) != 64 {
+		return RemovalResult{}, errors.New("invalid CA fingerprint")
+	}
+	return removeOwnedMatching(ctx, stateDir, fingerprint)
+}
+
+func removeOwnedMatching(ctx context.Context, stateDir, fingerprint string) (RemovalResult, error) {
 	state, err := loadState(stateDir)
 	if err != nil {
 		return RemovalResult{}, err
@@ -223,6 +235,10 @@ func RemoveOwnedDetailed(ctx context.Context, stateDir string) (RemovalResult, e
 	var failures error
 	retained := make([]AnchorRecord, 0, len(state.Anchors))
 	for _, record := range state.Anchors {
+		if fingerprint != "" && record.Fingerprint != fingerprint {
+			retained = append(retained, record)
+			continue
+		}
 		var backend Backend
 		var resolveErr error
 		if record.Backend == nssBackendName {

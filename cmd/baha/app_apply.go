@@ -51,7 +51,11 @@ func appApplyCommand(store application.Store) *cli.Command {
 			ctx = withMemoryPreflightOverride(ctx, skip)
 			confirm, rest := stripConfirmCandidateOverride(filtered)
 			ctx = withCandidateConsentDigest(ctx, confirm)
-			return executeApplicationApplyLifecycle(ctx, store, rest, out, errOut)
+			if err := executeApplicationApplyLifecycle(ctx, store, rest, out, errOut); err != nil {
+				return err
+			}
+			refreshWorkstationHosts(ctx, target, errOut)
+			return nil
 		},
 	}
 }

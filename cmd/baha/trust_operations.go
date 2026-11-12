@@ -91,6 +91,15 @@ func installManagedTrust(ctx context.Context, approved bool) (managedTrustResult
 		return managedTrustResult{}, err
 	}
 	status, browsers, err := installWorkstationPublicTrust(ctx, dataDir, bundle.PEM, bundle.IssuerReference)
+	if err == nil {
+		target, targetErr := effectiveTarget(ctx)
+		if targetErr != nil {
+			return managedTrustResult{}, targetErr
+		}
+		if remoteCoreTarget(target) {
+			err = setWorkstationTrustActive(target.Name, true)
+		}
+	}
 	return managedTrustResult{Managed: true, Status: &status, Browsers: browsers}, err
 }
 

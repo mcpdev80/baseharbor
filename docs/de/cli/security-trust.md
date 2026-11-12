@@ -104,3 +104,36 @@ baha login
 baha whoami
 baha logout
 ```
+
+## Optionale Namensauflösung auf dem Entwicklerrechner
+
+Unter Linux bietet der Einladungsimport separat an, konkrete App- und GUI-Namen
+in `/etc/hosts` zu verwalten. Das ist **standardmäßig ausgeschaltet** und von
+CA-Vertrauen unabhängig. Vor der Zustimmung erscheinen die Namen und die IP
+des verifizierten Cores; sudo kann erforderlich sein. Es wird kein DNS-Dienst
+installiert. Wildcards funktionieren in Hosts-Einträgen nicht.
+`--configure-hosts` aktiviert die Verwaltung beim Import ausdrücklich;
+`--skip-hosts` überspringt das Angebot. Nach der Zustimmung gleichen erfolgreiche
+CLI-Deployments die Einträge dieses Targets ab. Ohne Eingabe oder ausdrückliche
+Freigabe bleibt die Hosts-Datei unverändert.
+
+Für bestehende Verbindungen:
+
+```text
+baha --target NAME dev hosts status
+baha --target NAME dev hosts sync
+baha --target NAME dev hosts remove --yes
+baha --target NAME dev cleanup --yes
+```
+
+`sync` zeigt die Namen und fragt beim erstmaligen Aktivieren nach Zustimmung;
+`sync --yes` aktiviert die Verwaltung ausdrücklich für Skripte. `remove`
+deaktiviert nur die Hosts-Verwaltung. `cleanup` entfernt den unveränderten
+eigenen Hosts-Abschnitt dieses Targets sowie dessen registrierte System- und
+Browser-CA. Verwendet eine andere aktive Verbindung dieselbe CA, bleibt sie
+installiert. Fremde Einträge, Namenskonflikte und manuell veränderte Abschnitte
+oder Zertifikate bleiben erhalten und werden gemeldet. Die lokale Bereinigung
+benötigt keinen erreichbaren Core und erhält Apps, Daten und Geräteanmeldung.
+Auch das Entfernen der lokalen Verbindung im Onboarding-Wizard führt diese
+Bereinigung aus, bevor dessen Verbindungsdatensatz entfernt wird. Erneutes
+explizites Installieren des CA-Vertrauens aktiviert die CA-Referenz wieder.

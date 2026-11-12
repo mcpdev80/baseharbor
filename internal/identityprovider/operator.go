@@ -327,3 +327,10 @@ func operatorClientID(environment string) string {
 func decodeJSON(value string, target any) error {
 	return json.Unmarshal([]byte(value), target)
 }
+
+// DevelopmentManagementPaths selects the realm containing the configured
+// developer user, rather than Keycloak's unrelated master administrator login.
+func DevelopmentManagementPaths() (account, admin string) {
+	realm := operatorRealm("dev")
+	return "/realms/" + realm + "/account/", "/admin/" + realm + "/console/"
+}

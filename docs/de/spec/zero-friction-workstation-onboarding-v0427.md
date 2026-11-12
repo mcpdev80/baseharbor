@@ -150,3 +150,18 @@ die Einmalberechtigung und speichert nur Token- und Nonce-Digests. Die
 produktiven Machine-APIs bleiben authentifiziert; nur der eng begrenzte
 Einladungsendpunkt nimmt die Einmalberechtigung an. Browser-OIDC bleibt eine
 separate Oberfläche für menschliche Betreiber.
+
+### Optionale lokale Namensauflösung und Bereinigung
+
+Die Hosts-Verwaltung auf Linux-Entwicklerrechnern MUSS standardmäßig deaktiviert
+sein und getrennt vom CA-Vertrauen ausdrücklich bestätigt werden. Sie MUSS
+konkrete Namen aus eigenen Entwicklungsrouten des ausgewählten authentifizierten
+Cores und dessen konkrete Bereitstellungsadresse verwenden. DNS-Dienst und
+Wildcard-Auflösung sind nicht Teil dieses Ablaufs. Ohne gespeicherte Zustimmung
+DÜRFEN Import und Deployment die Hosts-Datei NICHT ändern. Erfolgreiche
+CLI-Deployments gleichen nur den Abschnitt des ausgewählten Targets ab.
+Eigentum MUSS pro Rechner und Target erfasst und vor Änderung/Entfernung anhand
+des exakten Inhalts geprüft werden. Fremde Namen und geänderte Abschnitte MÜSSEN
+erhalten bleiben. Lokale Bereinigung MUSS sich auf eigene Hosts- und CA-Einträge
+dieses Targets beschränken und weiterhin referenzierte CAs erhalten. Core,
+Apps, Daten und Geräteanmeldungen DÜRFEN dadurch NICHT gelöscht werden.

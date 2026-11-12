@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -15,6 +16,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/mcpdev80/baseharbor/internal/development"
+	"github.com/mcpdev80/baseharbor/internal/localhosts"
 	"github.com/mcpdev80/baseharbor/internal/machine"
 	"github.com/mcpdev80/baseharbor/internal/operatorauth"
 	"github.com/mcpdev80/baseharbor/internal/orgconfig"
@@ -27,6 +29,23 @@ var (
 )
 
 func main() {
+	if len(os.Args) == 2 && os.Args[1] == "--baseharbor-hosts-write" {
+		var change localhosts.Change
+		decoder := json.NewDecoder(io.LimitReader(os.Stdin, 1024*1024))
+		decoder.DisallowUnknownFields()
+		err := decoder.Decode(&change)
+		if err == nil && decoder.Decode(new(any)) != io.EOF {
+			err = errors.New("invalid hosts writer request")
+		}
+		if err == nil {
+			err = localhosts.ApplySystem(change)
+		}
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
 	signal.Ignore(syscall.SIGPIPE)
 	ctx, stop := interruptibleProcessContext()
 	defer stop()

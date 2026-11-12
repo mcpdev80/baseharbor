@@ -41,6 +41,7 @@ type Route struct {
 	Key           string `json:"key"`
 	Host          string `json:"host"`
 	PathPrefix    string `json:"path_prefix,omitempty"`
+	LandingPath   string `json:"landing_path,omitempty"`
 	Upstream      string `json:"upstream"`
 	Network       string `json:"network"`
 	TrustFile     string `json:"trust_file"`
@@ -673,6 +674,9 @@ func pruneUnavailableTrustRoutes(routes []Route) ([]Route, bool, error) {
 }
 
 func validateRoute(route Route) error {
+	if route.LandingPath != "" && (strings.HasPrefix(route.LandingPath, "//") || !regexp.MustCompile(`^/[A-Za-z0-9/_-]*$`).MatchString(route.LandingPath)) {
+		return errors.New("invalid management landing path")
+	}
 	for label, value := range map[string]string{
 		"key": route.Key, "host": route.Host, "upstream": route.Upstream,
 		"network": route.Network,

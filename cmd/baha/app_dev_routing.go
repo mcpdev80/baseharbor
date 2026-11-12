@@ -393,6 +393,17 @@ func (e *applicationApplyExecution) addDevelopmentIdentityRoutes(_ context.Conte
 		})
 	}
 	if placement.Scope == capability.ScopeShared {
+		accountPath, adminPath := identityprovider.DevelopmentManagementPaths()
+		for i := range identityRoutes {
+			switch identityRoutes[i].ManagementKey {
+			case "identity":
+				identityRoutes[i].LandingPath = accountPath
+			case "identity_admin":
+				identityRoutes[i].LandingPath = adminPath
+			}
+		}
+	}
+	if placement.Scope == capability.ScopeShared {
 		plan.groups = append(plan.groups, devgateway.OwnerRoutes{Owner: owner, Routes: identityRoutes})
 	} else {
 		plan.appRoutes = append(plan.appRoutes, identityRoutes...)

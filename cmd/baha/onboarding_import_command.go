@@ -177,7 +177,10 @@ func runOnboardImport(ctx context.Context, args []string, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	return offerImportedHostTrust(ctx, reader, out, targetName, []byte(bundle.CAPEM), trustOptions)
+	if err := offerImportedHostTrust(ctx, reader, out, targetName, []byte(bundle.CAPEM), trustOptions); err != nil {
+		return err
+	}
+	return offerImportedHosts(withTargetOverride(ctx, targetName), reader, out, trustOptions)
 }
 
 func parseOnboardImportArgs(args []string) (invitationPath, targetName string, err error) {

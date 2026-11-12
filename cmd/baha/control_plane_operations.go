@@ -20,6 +20,7 @@ type publicControlPlaneCheck struct {
 	Message string `json:"message,omitempty"`
 }
 type controlPlaneReport struct {
+	DevelopmentHosts      *developmentHosts                  `json:"development_hosts,omitempty"`
 	DockerEngine          *bhruntime.DockerEngineObservation `json:"docker_engine,omitempty"`
 	Installation          *coreinstallation.State            `json:"installation,omitempty"`
 	Target                string                             `json:"target"`
@@ -39,7 +40,7 @@ func inspectControlPlane(ctx context.Context) (controlPlaneReport, error) {
 	if err != nil {
 		return controlPlaneReport{}, err
 	}
-	result := controlPlaneReport{Target: target.Name, State: "not_deployed"}
+	result := controlPlaneReport{Target: target.Name, State: "not_deployed", DevelopmentHosts: observedDevelopmentHosts(target)}
 	result.DockerEngine, _ = inspectTargetDockerEngine(ctx, target)
 	root, err := targetRuntimeStateRoot(target)
 	if err != nil {

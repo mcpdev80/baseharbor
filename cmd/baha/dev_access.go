@@ -23,8 +23,10 @@ func devCommand() *cli.Command {
 	return &cli.Command{
 		Name:    "dev",
 		Summary: "Manage local development conveniences",
-		Usage:   "baha dev <credentials|domain>",
+		Usage:   "baha dev <credentials|domain|hosts|cleanup>",
 		Children: []*cli.Command{
+			devHostsCommand(),
+			workstationCleanupCommand(),
 			{
 				Name:    "credentials",
 				Summary: "Show or rotate the target-scoped development management login",

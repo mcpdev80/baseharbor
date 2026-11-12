@@ -77,9 +77,11 @@ Exakte Optionen stehen in `baha COMMAND --help`. [Globale Optionen](global-optio
 | `baha connect` | Allow one explicit application service to reach another | `baha connect SOURCE TARGET` | [↗](security-trust.md) |
 | `baha connections` | List explicit cross-application connectivity policy | `baha connections` | [↗](security-trust.md) |
 | `baha destroy` | Remove owned runtime resources with explicit consequence consent | `baha destroy [--yes] [--delete-data] \| baha destroy --all [--yes]` | [↗](core.md) |
-| `baha dev` | Manage local development conveniences | `baha dev <credentials\|domain>` | [↗](development.md) |
+| `baha dev` | Manage local development conveniences | `baha dev <credentials\|domain\|hosts\|cleanup>` | [↗](development.md) |
+| `baha dev cleanup` | Remove this Target's owned workstation hosts and CA trust | `baha dev cleanup --yes` | [↗](development.md) |
 | `baha dev credentials` | Show or rotate the target-scoped development management login | `baha dev credentials [--reset] [--username USER] [--password-file FILE]` | [↗](development.md) |
 | `baha dev domain` | Show or configure the target-scoped development domain | `baha dev domain [DOMAIN]` | [↗](development.md) |
+| `baha dev hosts` | Opt in to target-scoped workstation name resolution | `baha dev hosts <status\|sync\|remove> [--yes]` | [↗](development.md) |
 | `baha disconnect` | Remove one explicit cross-application connectivity exception | `baha disconnect SOURCE TARGET` | [↗](security-trust.md) |
 | `baha doctor` | Diagnose the current application repository, otherwise the control plane | `baha doctor [--fix --yes] [-o json\|--output json]` | [↗](core.md) |
 | `baha down` | Stop the current application, or the local control plane outside a repository | `baha down [options]` | [↗](core.md) |
@@ -98,7 +100,7 @@ Exakte Optionen stehen in `baha COMMAND --help`. [Globale Optionen](global-optio
 | `baha node disconnect` | Revoke node access after impact acknowledgement and retain recovery owners | `baha node disconnect TARGET --yes [--json]` | [↗](applications.md) |
 | `baha node list` | List configured remote connector nodes | `baha node list [--json]` | [↗](applications.md) |
 | `baha node status` | Inspect Core enrollment state for a remote node | `baha node status TARGET [--json]` | [↗](applications.md) |
-| `baha onboard` | Guided onboarding: attach a workstation to a BaseHarbor installation | `baha onboard [--target NAME] [--json] \| baha onboard --import PRIVATE_FILE [--target-name NAME] [--trust-host-ca\|--skip-host-trust] \| baha onboard --invite [--target NAME] [--core-url HTTPS_URL] [--station LABEL] [--output PRIVATE_FILE] \| baha onboard --init-tenant [-e ENV] [--tenant-slug SLUG --tenant-name NAME]` | [↗](applications.md) |
+| `baha onboard` | Guided onboarding: attach a workstation to a BaseHarbor installation | `baha onboard [--target NAME] [--json] \| baha onboard --import PRIVATE_FILE [--target-name NAME] [--trust-host-ca\|--skip-host-trust] [--configure-hosts\|--skip-hosts] \| baha onboard --invite [--target NAME] [--core-url HTTPS_URL] [--station LABEL] [--output PRIVATE_FILE] \| baha onboard --init-tenant [-e ENV] [--tenant-slug SLUG --tenant-name NAME]` | [↗](applications.md) |
 | `baha open` | Open a verified HTTPS application endpoint | `baha open [--print] [--json]` | [↗](applications.md) |
 | `baha openbao` | Bootstrap and operate the BaseHarbor OpenBao trust plane | `baha openbao <command> [options]` | [↗](security-trust.md) |
 | `baha openbao bootstrap` | Initialize OpenBao and establish the BaseHarbor manager identity | `baha openbao bootstrap --recovery-file PATH` | [↗](security-trust.md) |

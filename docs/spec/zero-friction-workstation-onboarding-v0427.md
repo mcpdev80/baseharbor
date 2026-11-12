@@ -135,3 +135,16 @@ The versioned invitation contract lives in `internal/onboardingbundle`.
 one-use token and nonce. Production machine APIs remain authenticated; only
 the narrowly scoped enrollment-grant endpoint accepts the one-use grant.
 Browser-based OIDC remains a separate human-owner interface.
+
+### Optional workstation name resolution and retirement
+
+Linux workstation hosts management MUST default to disabled and require separate
+explicit opt-in from CA trust. It MUST use concrete names from the selected,
+authenticated Core's owned development routes and its concrete serving address;
+no DNS service or wildcard resolution is implied. Imports and deployments MUST
+NOT modify hosts without the recorded opt-in. Successful CLI deployments refresh
+only the selected Target's block. Ownership MUST be recorded per workstation and
+Target, with exact-content checks before update/removal. Conflicting external
+names and modified blocks MUST be preserved. Local convenience retirement MUST
+remove only the selected Target's owned hosts and CA material, retaining a CA
+referenced by another active connection and never deleting Core/app/device state.
