@@ -45,6 +45,29 @@ from the Core Target in the invitation. The invitation establishes a
 least-privilege device identity. It does not grant an operator role. See the
 [Core-to-workstation onboarding contract](../spec/zero-friction-workstation-onboarding-v0427.md).
 
+
+After the invitation is redeemed and Core identity is verified, interactive
+import offers to trust that public CA on the workstation. The explanation
+includes its SHA-256 fingerprint and the effect on HTTPS trust. Accepting installs
+system trust and adds the CA to supported existing Linux browser NSS stores
+(Chromium and Firefox, including detected Firefox Snap/Flatpak profiles).
+No private keys or browser security settings are imported. Restart browsers
+after installation. Browser-specific failures are reported separately.
+
+For scripts, use `baha onboard --import FILE --trust-host-ca` to explicitly approve
+this installation, or `--skip-host-trust` to leave trust stores unchanged.
+Without explicit approval, noninteractive imports do not modify host trust.
+System installation may require sudo; browser import requires NSS `certutil`
+(on Debian/Ubuntu, `libnss3-tools`). Missing tools or unsupported profiles are
+reported with manual guidance; BaseHarbor does not install browser tools silently.
+
+Enrollment remains saved if trust installation fails. Do not reuse the one-use
+invitation: retry with `baha --target NAME trust install --yes`. This command
+verifies the remote Core and installs trust on the workstation, without starting
+a local Core. `baha trust uninstall --yes` removes only recorded, unchanged
+BaseHarbor-owned system and browser certificates; operator-installed certificates
+are preserved.
+
 Human operators continue to use the configured `baha login` OIDC boundary.
 Device enrollment does not alter or bypass that authentication policy.
 

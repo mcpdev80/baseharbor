@@ -58,12 +58,14 @@ type remoteConnectionProfile struct {
 // Explicit opt-in only; no remote connection is inferred from a name, a
 // missing local installation or a cached last-known connection status.
 type verifiedRemoteCore struct {
-	client     *http.Client
-	origin     string
-	token      string
-	target     string
-	coreTarget string
-	tenant     string
+	trustPEM     []byte
+	installation string
+	client       *http.Client
+	origin       string
+	token        string
+	target       string
+	coreTarget   string
+	tenant       string
 }
 
 func verifyRemoteManagementConnection(ctx context.Context, target, runtime, expectedTenant string) error {
@@ -221,5 +223,5 @@ func dialVerifiedRemoteCore(ctx context.Context, target, runtime, expectedTenant
 		identity.TenantID != tenant {
 		return nil, errors.New("remote Core installation, OIDC issuer or tenant does not match pinned connection")
 	}
-	return &verifiedRemoteCore{client: client, origin: strings.TrimRight(profile.Core.URL, "/"), token: bearerToken, target: target, coreTarget: coreTarget, tenant: tenant}, nil
+	return &verifiedRemoteCore{trustPEM: []byte(profile.Trust.CAPEM), installation: profile.Core.InstallationID, client: client, origin: strings.TrimRight(profile.Core.URL, "/"), token: bearerToken, target: target, coreTarget: coreTarget, tenant: tenant}, nil
 }

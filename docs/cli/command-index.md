@@ -98,7 +98,7 @@ Find exact options with `baha COMMAND --help`. [Global options](global-options.m
 | `baha node disconnect` | Revoke node access after impact acknowledgement and retain recovery owners | `baha node disconnect TARGET --yes [--json]` | [↗](applications.md) |
 | `baha node list` | List configured remote connector nodes | `baha node list [--json]` | [↗](applications.md) |
 | `baha node status` | Inspect Core enrollment state for a remote node | `baha node status TARGET [--json]` | [↗](applications.md) |
-| `baha onboard` | Guided onboarding: attach a workstation to a BaseHarbor installation | `baha onboard [--target NAME] [--json] \| baha onboard --import PRIVATE_FILE [--target-name NAME] \| baha onboard --invite [--target NAME] [--core-url HTTPS_URL] [--station LABEL] [--output PRIVATE_FILE] \| baha onboard --init-tenant [-e ENV] [--tenant-slug SLUG --tenant-name NAME]` | [↗](applications.md) |
+| `baha onboard` | Guided onboarding: attach a workstation to a BaseHarbor installation | `baha onboard [--target NAME] [--json] \| baha onboard --import PRIVATE_FILE [--target-name NAME] [--trust-host-ca\|--skip-host-trust] \| baha onboard --invite [--target NAME] [--core-url HTTPS_URL] [--station LABEL] [--output PRIVATE_FILE] \| baha onboard --init-tenant [-e ENV] [--tenant-slug SLUG --tenant-name NAME]` | [↗](applications.md) |
 | `baha open` | Open a verified HTTPS application endpoint | `baha open [--print] [--json]` | [↗](applications.md) |
 | `baha openbao` | Bootstrap and operate the BaseHarbor OpenBao trust plane | `baha openbao <command> [options]` | [↗](security-trust.md) |
 | `baha openbao bootstrap` | Initialize OpenBao and establish the BaseHarbor manager identity | `baha openbao bootstrap --recovery-file PATH` | [↗](security-trust.md) |
@@ -137,7 +137,7 @@ Find exact options with `baha COMMAND --help`. [Global options](global-options.m
 | `baha target show` | Show one target | `baha target show [NAME] [-o json\|--output json\|--json]` | [↗](targets.md) |
 | `baha trust` | Inspect, export or explicitly install the managed local BaseHarbor CA | `baha trust <status\|export\|install\|uninstall> [options]` | [↗](security-trust.md) |
 | `baha trust export` | Export only the public managed-local CA certificate | `baha trust export --output PATH` | [↗](security-trust.md) |
-| `baha trust install` | Explicitly install the managed-local CA into the host trust store | `baha trust install --yes` | [↗](security-trust.md) |
+| `baha trust install` | Explicitly install the public CA into system and supported browser trust stores | `baha trust install --yes` | [↗](security-trust.md) |
 | `baha trust status` | Show whether the managed-local CA is trusted by this host | `baha trust status` | [↗](security-trust.md) |
 | `baha trust uninstall` | Remove only BaseHarbor-owned host trust anchors | `baha trust uninstall [--yes] [--json]` | [↗](security-trust.md) |
 | `baha tui` | Open the interactive BaseHarbor status dashboard | `baha tui [--json]` | [↗](shell-ux.md) |

@@ -15,6 +15,7 @@ type managedTrustResult struct {
 	Next      string                     `json:"next,omitempty"`
 	Anchors   []hosttrust.RecordedStatus `json:"anchors,omitempty"`
 	Managed   bool                       `json:"managed"`
+	Browsers  []hosttrust.BrowserStatus  `json:"browsers,omitempty"`
 	Status    *hosttrust.Status          `json:"status,omitempty"`
 	Path      string                     `json:"path,omitempty"`
 }
@@ -89,8 +90,8 @@ func installManagedTrust(ctx context.Context, approved bool) (managedTrustResult
 	if err != nil {
 		return managedTrustResult{}, err
 	}
-	status, err := hosttrust.Install(ctx, dataDir, bundle.PEM, bundle.IssuerReference, nil)
-	return managedTrustResult{Managed: true, Status: &status}, err
+	status, browsers, err := installWorkstationPublicTrust(ctx, dataDir, bundle.PEM, bundle.IssuerReference)
+	return managedTrustResult{Managed: true, Status: &status, Browsers: browsers}, err
 }
 
 type trustUninstallResult struct {
@@ -133,6 +134,9 @@ func managedTrustCoreState(ctx context.Context) (string, error) {
 	target, err := effectiveTarget(ctx)
 	if err != nil {
 		return "", err
+	}
+	if target.AccessProvider != "" && target.AccessProvider != "local" {
+		return "installed", nil
 	}
 	root, err := targetRuntimeStateRoot(target)
 	if err != nil {

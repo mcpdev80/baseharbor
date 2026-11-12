@@ -27,6 +27,11 @@ import (
 // presents the pinned Core CA, consumes the pre-issued grant and proves its
 // installation/tenant identity may create a Target on this workstation.
 func runOnboardImport(ctx context.Context, args []string, out io.Writer) error {
+	args, trustOptions, err := stripOnboardTrustOptions(args)
+	if err != nil {
+		return err
+	}
+	reader := bufio.NewReader(onboardingInput)
 	invitationPath, requestedTarget, err := parseOnboardImportArgs(args)
 	if err != nil {
 		return err
@@ -49,7 +54,6 @@ func runOnboardImport(ctx context.Context, args []string, out io.Writer) error {
 	if targetName == "" {
 		targetName = nextOnboardingTargetName(cfg, organizationEnvironment(ctx), bundle.RuntimeProvider)
 		if !noInput(ctx) && readerIsTerminal(onboardingInput) {
-			reader := bufio.NewReader(onboardingInput)
 			targetName, err = promptLine(reader, out, "Workstation Target name", targetName)
 			if err != nil {
 				return fmt.Errorf("read workstation Target name: %w", err)
@@ -170,7 +174,10 @@ func runOnboardImport(ctx context.Context, args []string, out io.Writer) error {
 		}
 	}
 	_, err = fmt.Fprintf(out, "Remote Core %s connected. Workstation Target: %s (Core Target: %s)\nUse it with: baha use %s\n", bundle.CoreInstallationID, targetName, bundle.CoreTarget, targetName)
-	return err
+	if err != nil {
+		return err
+	}
+	return offerImportedHostTrust(ctx, reader, out, targetName, []byte(bundle.CAPEM), trustOptions)
 }
 
 func parseOnboardImportArgs(args []string) (invitationPath, targetName string, err error) {

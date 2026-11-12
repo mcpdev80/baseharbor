@@ -49,6 +49,32 @@ Menschliche Operatoren melden sich weiterhin über die konfigurierte
 OIDC-Grenze mit `baha login` an. Die Geräteeinschreibung verändert oder
 umgeht diese Authentifizierungsrichtlinie nicht.
 
+
+Nach dem Einlösen der Einladung und der Prüfung der Core-Identität bietet der
+interaktive Import an, der öffentlichen CA auf dem Entwicklungsrechner zu
+vertrauen. Er erklärt die Wirkung auf HTTPS und zeigt den SHA-256-Fingerabdruck.
+Bei Zustimmung installiert BaseHarbor Systemvertrauen und die CA in unterstützte
+vorhandene Linux-NSS-Speicher von Chromium und Firefox, einschließlich erkannter
+Firefox-Profile in Snap und Flatpak. Private Schlüssel und Browser-Einstellungen
+werden nicht importiert. Browser danach neu starten. Fehler einzelner
+Browser-Speicher werden gesondert angezeigt.
+
+Für Skripte bestätigt `baha onboard --import FILE --trust-host-ca` die Installation;
+`--skip-host-trust` lässt die Zertifikatsspeicher unverändert. Ohne ausdrückliche
+Zustimmung verändert ein nichtinteraktiver Import das Host-Vertrauen nicht.
+Die Systeminstallation kann sudo benötigen. Für Browser wird NSS `certutil`
+benötigt (Debian/Ubuntu: `libnss3-tools`). Fehlende Werkzeuge und nicht unterstützte
+Profile werden mit Hinweisen gemeldet; Browser-Werkzeuge werden nicht ungefragt
+installiert.
+
+Scheitert die Vertrauensinstallation, bleibt die Verbindung gespeichert.
+Die Einmal-Einladung nicht erneut importieren: Mit
+`baha --target NAME trust install --yes` wiederholen. Der Befehl prüft den
+Remote-Core und installiert das Vertrauen auf dem Entwicklungsrechner, ohne
+einen lokalen Core zu starten. `baha trust uninstall --yes` entfernt nur erfasste,
+unveränderte BaseHarbor-Zertifikate aus System und Browsern. Vom Betreiber
+installierte Zertifikate bleiben erhalten.
+
 ## Weitere Befehlsbeispiele
 
 ```text
