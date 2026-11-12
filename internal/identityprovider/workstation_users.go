@@ -116,6 +116,9 @@ func (a *keycloakAdmin) inviteManagedOperatorUser(ctx context.Context, realm, lo
 	if err := a.verifyOwnedRealm(ctx, realm, realmOwnership); err != nil {
 		return ManagedOperatorUser{}, err
 	}
+	if err := a.ensureWorkstationUserAttributes(ctx, realm, ownership); err != nil {
+		return ManagedOperatorUser{}, err
+	}
 	path := "/admin/realms/" + url.PathEscape(realm) + "/users"
 	query := url.Values{"username": {login}, "exact": {"true"}}
 	status, body, err := a.do(ctx, http.MethodGet, path+"?"+query.Encode(), nil)
