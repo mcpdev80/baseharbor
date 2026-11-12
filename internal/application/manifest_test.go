@@ -25,6 +25,49 @@ func TestManifestRoundTrip(t *testing.T) {
 	}
 }
 
+func TestTargetDevelopmentSecretSourcesRoundTripAndValidate(t *testing.T) {
+	m := WithRequiredSecrets(New("demo", "dev", false, false, true), "MANAGEMENT_PASSWORD", "MANAGEMENT_USERNAME")
+	m.Secrets.Required[0].Source = SecretSourceTargetDevelopmentPassword
+	m.Secrets.Required[1].Source = SecretSourceTargetDevelopmentUsername
+	got, err := ParseCanonicalYAML(m.YAML())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got.Secrets.Required, m.Secrets.Required) {
+		t.Fatalf("secret source round trip mismatch: got %#v want %#v", got.Secrets.Required, m.Secrets.Required)
+	}
+	if err := got.Validate(); err != nil {
+		t.Fatalf("valid dev secret source rejected: %v", err)
+	}
+	if !strings.Contains(m.YAML(), "source: target-development-username") || !strings.Contains(m.YAML(), "source: target-development-password") {
+		t.Fatalf("secret source missing from canonical YAML:\n%s", m.YAML())
+	}
+}
+
+func TestTargetDevelopmentSecretSourcesAreDevOnlyAndRequired(t *testing.T) {
+	for _, manifest := range []Manifest{
+		func() Manifest {
+			m := WithRequiredSecrets(New("demo", "prod", false, false, true), "PASSWORD")
+			m.Secrets.Required[0].Source = SecretSourceTargetDevelopmentPassword
+			return m
+		}(),
+		func() Manifest {
+			m := New("demo", "dev", false, false, true)
+			m.Secrets.Optional = []SecretRequirement{{Name: "PASSWORD", Source: SecretSourceTargetDevelopmentPassword}}
+			return m
+		}(),
+		func() Manifest {
+			m := WithRequiredSecrets(New("demo", "dev", false, false, true), "PASSWORD")
+			m.Secrets.Required[0].Source = "unknown"
+			return m
+		}(),
+	} {
+		if err := manifest.Validate(); err == nil {
+			t.Fatalf("invalid secret source accepted: %#v", manifest.Secrets)
+		}
+	}
+}
+
 func TestManifestNamedServiceInstancesRoundTrip(t *testing.T) {
 	want := New("mailflow", "prod", false, false, false)
 	want.Services.SQL = false

@@ -167,6 +167,19 @@ Fehlende erforderliche Geheimnisse blockieren das Starten von Workloads. Fehlend
 
 Generierte Werte werden in beiden Gruppen unterstützt. Der geführte Init-Fluss kann fragen, ob ein nicht erzeugtes Geheimnis bei der ersten Anwendung eingegeben oder später konfiguriert werden soll; das ist an Bord von UX, nicht ein separater portabler Geheimtyp.
 
+Entwicklungsanwendungen können ein erforderliches Geheimnis ausdrücklich aus dem verwalteten Entwicklungs-Login des aktuellen Targets beziehen: mit `source: target-development-username` oder `source: target-development-password`. Compose-Repositories können diese Quellen in der standardisierten `x-baseharbor`-Erweiterung deklarieren; `baha app init` übernimmt sie automatisch in `baseharbor.yaml`:
+
+```yaml
+x-baseharbor:
+  secrets:
+    - name: DEMO_MANAGEMENT_USERNAME
+      source: target-development-username
+    - name: DEMO_MANAGEMENT_PASSWORD
+      source: target-development-password
+```
+
+Bei `baha app apply` oder `baha app up` liest BaseHarbor den maßgeblichen Wert aus der OpenBao-gestützten Entwicklungs-Credential-Autorität des Targets, synchronisiert ihn in den eigenen OpenBao-Secret-Scope der Anwendung, prüft den gespeicherten Wert und projiziert ihn in die deklarierte Workload-Bindung. Ein geändertes Target-Credential wird beim nächsten Lifecycle-Aufruf synchronisiert. Diese Quelle ist außerhalb von `dev`/`development`, für optionale Secrets und in Kombination mit Generierung unzulässig. Sie gibt dem Workload der Anwendung ausdrücklich Zugriff auf den Entwicklungs-Login des gewählten Targets; verwende sie nur, wenn die Anwendung diesen Login anzeigen oder verwenden soll, wie die lokale BaseHarbor-Demo.
+
 ## Statische Laufzeitbereitstellung
 
 Anwendungsgeheimnisse verwenden zwei normale Antrags-Verbrauchsformulare.

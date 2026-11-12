@@ -34,7 +34,7 @@ Runtime/provider implementation details, generated credentials, private keys, ma
 | `app.name` | human-readable application name |
 | `app.environment` | declared/default environment context where supported |
 | `services` | declared application capability needs |
-| `secrets.required` | required logical secret names |
+| `secrets.required` | required logical secret names, optionally sourced from supported BaseHarbor-managed development credentials |
 | `workload.components` | stable logical workload-component identities; source kind/path lives outside portable intent |
 | `identity` | portable OIDC/application identity requirements |
 | `telemetry` / `metrics` / `logs` | portable observability requirements |

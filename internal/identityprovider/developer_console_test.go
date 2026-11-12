@@ -17,7 +17,13 @@ func TestDeveloperConsoleOriginsAndFramesPreserveNativeClientSettings(t *testing
 			headers := map[string]string{"contentSecurityPolicy": "frame-src 'self'; frame-ancestors 'self'; object-src 'none'; script-src 'nonce-keep';", "xFrameOptions": "SAMEORIGIN"}
 			clients := map[string]map[string]any{}
 			for _, id := range []string{"account-console", "security-admin-console"} {
-				clients[id] = map[string]any{"id": id, "clientId": id, "rootUrl": "${authBaseUrl}", "webOrigins": []string{}, "redirectUris": []string{"/native/*"}, "unknownNativeSetting": "preserve"}
+				client := map[string]any{"id": id, "clientId": id, "rootUrl": "${authBaseUrl}", "webOrigins": []string{}, "redirectUris": []string{"/native/*"}, "unknownNativeSetting": "preserve"}
+				if id == "security-admin-console" {
+					client["rootUrl"] = "${authAdminUrl}"
+					client["webOrigins"] = []string{"+"}
+					client["redirectUris"] = []string{"/admin/" + operatorRealm("dev") + "/console/*"}
+				}
+				clients[id] = client
 			}
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				root := "/admin/realms/" + operatorRealm("dev")
@@ -48,6 +54,16 @@ func TestDeveloperConsoleOriginsAndFramesPreserveNativeClientSettings(t *testing
 				if r.Method == http.MethodPut {
 					var updated map[string]any
 					json.NewDecoder(r.Body).Decode(&updated)
+					if clients[id]["clientId"] == "account-console" {
+						// Keycloak can serialize set-like origins and redirects in
+						// the reverse of the order sent by the caller.
+						for _, field := range []string{"webOrigins", "redirectUris"} {
+							values := updated[field].([]any)
+							for left, right := 0, len(values)-1; left < right; left, right = left+1, right-1 {
+								values[left], values[right] = values[right], values[left]
+							}
+						}
+					}
 					clients[id] = updated
 					writes++
 					w.WriteHeader(204)
@@ -68,15 +84,21 @@ func TestDeveloperConsoleOriginsAndFramesPreserveNativeClientSettings(t *testing
 			if err != nil {
 				t.Fatal(err)
 			}
-			if writes != 3 {
-				t.Fatalf("expected frame policy and two client changes, got %d", writes)
+			if writes != 2 {
+				t.Fatalf("expected frame policy and account client change, got %d", writes)
 			}
-			for _, c := range clients {
+			for id, c := range clients {
 				var got []string
 				raw, _ := json.Marshal(c["webOrigins"])
 				json.Unmarshal(raw, &got)
-				if !reflect.DeepEqual(got, origins) || c["unknownNativeSetting"] != "preserve" || c["rootUrl"] != "${authBaseUrl}" {
+				if c["unknownNativeSetting"] != "preserve" {
 					t.Fatal("native client settings lost")
+				}
+				if id == "account-console" && (!equalStringSets(got, origins) || c["rootUrl"] != "${authBaseUrl}") {
+					t.Fatal("account console origins not reconciled")
+				}
+				if id == "security-admin-console" && (!reflect.DeepEqual(got, []string{"+"}) || c["rootUrl"] != "${authAdminUrl}") {
+					t.Fatal("native admin console origin configuration changed")
 				}
 			}
 			for _, keep := range []string{"frame-ancestors 'self'", "object-src 'none'", "script-src 'nonce-keep'"} {
@@ -87,7 +109,7 @@ func TestDeveloperConsoleOriginsAndFramesPreserveNativeClientSettings(t *testing
 			if headers["xFrameOptions"] != "SAMEORIGIN" {
 				t.Fatal("unrelated security header modified")
 			}
-			if err := admin.ensureDeveloperConsoleOrigins(context.Background(), "local", origins); err != nil || writes != 3 {
+			if err := admin.ensureDeveloperConsoleOrigins(context.Background(), "local", origins); err != nil || writes != 2 {
 				t.Fatalf("not idempotent: %v %d", err, writes)
 			}
 		})

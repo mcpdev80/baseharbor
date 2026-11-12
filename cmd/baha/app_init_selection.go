@@ -134,7 +134,13 @@ func collectGuidedInitSelection(reader *bufio.Reader, out io.Writer, d appProjec
 	}
 	if selection.selected[guidedCapabilitySecrets] {
 		printManagedCredentialSummary(out, selection.selected, len(d.RuntimePermissions) > 0)
-		selection.secretPolicies, err = promptSecretPolicies(reader, out, d.SecretCandidates, d.SecretSources)
+		var userSuppliedCandidates []string
+		for _, candidate := range d.SecretCandidates {
+			if _, hasManagedSource := d.SecretSourcePolicies[candidate]; !hasManagedSource {
+				userSuppliedCandidates = append(userSuppliedCandidates, candidate)
+			}
+		}
+		selection.secretPolicies, err = promptSecretPolicies(reader, out, userSuppliedCandidates, d.SecretSources)
 		if err != nil {
 			return selection, err
 		}
@@ -341,6 +347,7 @@ func buildGuidedInitManifest(reader *bufio.Reader, out io.Writer, d appProjectDe
 	m.Services.IdentityManagementUI = selection.identityManagementUI
 	m.Services.ObservabilityManagementUI = selection.observabilityManagementUI
 	m = applyGuidedSecretPolicies(m, selection.secretPolicies)
+	m = applyDetectedSecretSourcePolicies(m, d.SecretSourcePolicies)
 	if len(selection.workloadServices) > 0 {
 		m = application.WithWorkloadComponents(m, selection.workloadServices...)
 		var exposureErr error
