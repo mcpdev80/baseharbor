@@ -94,7 +94,23 @@ func (a *keycloakAdmin) ensureDeveloperConsoleOrigins(ctx context.Context, targe
 		if err := json.Unmarshal(client["redirectUris"], &currentRedirects); err != nil {
 			return err
 		}
-		if slices.Equal(current, origins) && slices.Equal(currentRedirects, redirects) {
+		// Keycloak may return client origins in a different order from the
+		// request. These are sets for redirect/CORS matching, so compare them
+		// without depending on the provider's serialization order.
+		if equalStringSets(current, origins) && equalStringSets(currentRedirects, redirects) {
+			continue
+		}
+		// Keycloak's built-in admin console deliberately uses the dynamic
+		// ${authAdminUrl} root and relative redirect URI. That configuration
+		// follows the incoming HTTPS host through the development gateway; the
+		// native "+" web-origin setting derives origins from those redirects.
+		// Replacing it with absolute URLs is ignored by Keycloak and makes every
+		// subsequent reconciliation fail its read-back check.
+		var rootURL string
+		_ = json.Unmarshal(client["rootUrl"], &rootURL)
+		if id == "security-admin-console" && rootURL == "${authAdminUrl}" &&
+			len(current) == 1 && current[0] == "+" &&
+			slices.Equal(currentRedirects, []string{path}) {
 			continue
 		}
 		client["redirectUris"], err = json.Marshal(redirects)
@@ -120,9 +136,19 @@ func (a *keycloakAdmin) ensureDeveloperConsoleOrigins(ctx context.Context, targe
 			WebOrigins   []string `json:"webOrigins"`
 			RedirectURIs []string `json:"redirectUris"`
 		}
-		if status != http.StatusOK || json.Unmarshal([]byte(body), &observed) != nil || !slices.Equal(observed.WebOrigins, origins) || !slices.Equal(observed.RedirectURIs, redirects) {
+		if status != http.StatusOK || json.Unmarshal([]byte(body), &observed) != nil || !equalStringSets(observed.WebOrigins, origins) || !equalStringSets(observed.RedirectURIs, redirects) {
 			return errors.New("developer console origins did not converge")
 		}
 	}
 	return nil
+}
+
+func equalStringSets(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	left, right := slices.Clone(a), slices.Clone(b)
+	slices.Sort(left)
+	slices.Sort(right)
+	return slices.Equal(left, right)
 }
