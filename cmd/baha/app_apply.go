@@ -13,6 +13,8 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
+	"github.com/mcpdev80/baseharbor/internal/devaccess"
+	"github.com/mcpdev80/baseharbor/internal/devgateway"
 	logsprovider "github.com/mcpdev80/baseharbor/internal/logs"
 	"github.com/mcpdev80/baseharbor/internal/machine"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
@@ -187,6 +189,15 @@ func runApplicationApplyLifecycle(ctx context.Context, store application.Store, 
 	execution.resolved.DeploymentRecord = &pending
 	if err := application.RetainPendingProviderOwnersAt(execution.resolved.TargetStateRoot, execution.manifest); err != nil {
 		return evidence, execution.recordFailedDeployment(err)
+	}
+	if devaccess.Enabled(execution.manifest.Environment) {
+		address, err := remoteCoreIPAccessAddress(execution.resolved.Target)
+		if err != nil {
+			return evidence, execution.recordFailedDeployment(err)
+		}
+		if address != "" {
+			ctx = devgateway.WithCoreAccessAddress(ctx, execution.resolved.Target.Name, address)
+		}
 	}
 	if err := materializeResolvedApplicationBroker(ctx, execution.resolved, applicationInput(ctx, runtimeInput), out); err != nil {
 		return evidence, execution.recordFailedDeployment(err)

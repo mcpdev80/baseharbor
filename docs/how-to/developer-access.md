@@ -161,3 +161,9 @@ links select the development operator realm containing this login. They do not
 send that user to the unrelated master-realm login. Both canonical and direct-IP
 links retain the provider's realm-specific landing path. This grants no new
 master-administrator or application-database privileges.
+
+When moving canonical development routes from loopback to the owning Core's LAN
+address, BaseHarbor selects a port on that actual address before committing
+identity/application URLs. A retained loopback gateway does not own the Core API's
+LAN port. A stopped/failed gateway also does not prove listener ownership.
+Existing device connections keep their enrolled Core API endpoint unchanged.

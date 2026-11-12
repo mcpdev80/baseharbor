@@ -153,6 +153,17 @@ func EnsureManagedOperatorOIDC(ctx context.Context, runtime KeycloakRuntime, iss
 	if err := ensureLocalKeycloakDevelopmentRoute(ctx, app, namespace, runtime, issuer, files); err != nil {
 		return ManagedOperatorOIDC{}, fmt.Errorf("publish managed operator Keycloak gateway route: %w", err)
 	}
+	effectiveBase, err := managedOperatorCanonicalBaseURL(runtime, namespace)
+	if err != nil {
+		return ManagedOperatorOIDC{}, err
+	}
+	if effectiveBase != files.CanonicalPublicURL {
+		desiredRealm.Attributes["frontendUrl"] = effectiveBase
+		if err := admin.reconcileRealm(ctx, desiredRealm, ownership); err != nil {
+			return ManagedOperatorOIDC{}, err
+		}
+		files.CanonicalPublicURL = effectiveBase
+	}
 	publicClient, err := keycloakPublicHTTPClient(files)
 	if err != nil {
 		return ManagedOperatorOIDC{}, err

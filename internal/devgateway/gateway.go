@@ -59,6 +59,7 @@ type state struct {
 	Version         int     `json:"version"`
 	HostPort        int     `json:"host_port,omitempty"`
 	IPAccessAddress string  `json:"ip_access_address,omitempty"`
+	BindAddress     string  `json:"bind_address,omitempty"`
 	Routes          []Route `json:"routes"`
 }
 
@@ -324,6 +325,7 @@ func Reconcile(ctx context.Context, runtime Runtime, issuer serviceaccess.Issuer
 }
 
 func reconcile(ctx context.Context, runtime Runtime, issuer serviceaccess.Issuer, target string, requestedIPAccessAddress *string) error {
+	requestedIPAccessAddress = requestedCoreAccessAddress(ctx, target, requestedIPAccessAddress)
 	if runtime == nil {
 		return errors.New("development gateway runtime is required")
 	}
@@ -374,7 +376,19 @@ func reconcile(ctx context.Context, runtime Runtime, issuer serviceaccess.Issuer
 	} else if !errors.Is(statErr, os.ErrNotExist) {
 		return fmt.Errorf("inspect development gateway runtime: %w", statErr)
 	}
-	hostPort, err := resolveGatewayHostPort(files, current, runtime)
+	// Remote workstation access is opt-in. Never expose the default
+	// *.localhost development names on a LAN listener: remote hosts resolve
+	// those names to themselves. The selected bind address must be one
+	// concrete non-loopback IP on the Core host, not a wildcard.
+	bindIP := ipAddress
+	if bindIP == "" && requestedIPAccessAddress != nil {
+		bindIP = *requestedIPAccessAddress
+	}
+	bindHost, err := gatewayBindAddressForIPAccess(current.Routes, bindIP)
+	if err != nil {
+		return err
+	}
+	hostPort, err := resolveGatewayHostPortBound(ctx, files, current, runtime, bindHost)
 	if err != nil {
 		return err
 	}
@@ -382,6 +396,7 @@ func reconcile(ctx context.Context, runtime Runtime, issuer serviceaccess.Issuer
 	if err != nil {
 		return err
 	}
+	current.BindAddress = bindHost
 	current.HostPort = hostPort
 	current.IPAccessAddress = ipAddress
 	hosts := make([]string, 0, len(current.Routes))
@@ -424,18 +439,6 @@ func reconcile(ctx context.Context, runtime Runtime, issuer serviceaccess.Issuer
 			return fmt.Errorf("project trust for %s: %w", route.Key, err)
 		}
 		trustTargets[route.Key] = targetPath
-	}
-	// Remote workstation access is opt-in. Never expose the default
-	// *.localhost development names on a LAN listener: remote hosts resolve
-	// those names to themselves. The selected bind address must be one
-	// concrete non-loopback IP on the Core host, not a wildcard.
-	bindIP := ipAddress
-	if bindIP == "" && requestedIPAccessAddress != nil {
-		bindIP = *requestedIPAccessAddress
-	}
-	bindHost, err := gatewayBindAddressForIPAccess(current.Routes, bindIP)
-	if err != nil {
-		return err
 	}
 	for attempt := 0; attempt < 5; attempt++ {
 		if err := writeGatewayRuntimeConfiguration(ctx, runtime, files, current, trustTargets, hostPort, bindHost, ipAddress); err != nil {

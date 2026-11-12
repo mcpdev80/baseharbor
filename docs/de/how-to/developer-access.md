@@ -122,3 +122,10 @@ Admin-GUI-Links in den Entwicklungs-Operator-Realm mit diesem Login. Der Benutze
 wird nicht zur Anmeldung im unabhängigen Master-Realm geschickt. Domain- und
 IP-Links behalten den vom Provider angegebenen Realm-Pfad. Dadurch entstehen
 keine zusätzlichen Master-Administrator- oder Datenbankrechte.
+
+Beim Wechsel kanonischer Entwicklungsrouten von Loopback zur LAN-Adresse des
+Cores wählt BaseHarbor den Port auf dieser konkreten Adresse, bevor Identity-
+und App-URLs festgelegt werden. Ein bisheriger Loopback-Gateway besitzt nicht
+den LAN-Port der Core-API. Ein gestoppter oder fehlgeschlagener Gateway belegt
+ebenfalls kein Eigentum an einem Listener. Bestehende Geräteverbindungen behalten
+ihren registrierten Core-API-Endpunkt.
