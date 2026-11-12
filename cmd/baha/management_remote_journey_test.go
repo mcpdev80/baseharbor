@@ -448,3 +448,19 @@ func TestRemoteRepositoryRejectsDeploymentPreviewForDifferentScope(t *testing.T)
 		})
 	}
 }
+
+func TestRemoteRepositoryJSONCompletionPreservesMachineReceipt(t *testing.T) {
+	ctx, _, f := remoteJourneyFixture(t)
+	f.noProviderChanges = true
+	var output, errorsOut bytes.Buffer
+	if err := runtimeUpCommandWithInputResolver(ctx, []string{"--json", "--confirm-candidate", strings.Repeat("a", 64)}, &output, &errorsOut); err != nil {
+		t.Fatal(err)
+	}
+	var receipt map[string]json.RawMessage
+	if json.Unmarshal(output.Bytes(), &receipt) != nil || string(receipt["verified"]) != "true" || string(receipt["operation"]) != `"apply"` {
+		t.Fatalf("JSON success receipt changed: %s", output.String())
+	}
+	if errorsOut.Len() != 0 || strings.Contains(output.String(), "READY ·") {
+		t.Fatal("human completion leaked into JSON")
+	}
+}

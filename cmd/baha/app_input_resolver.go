@@ -559,6 +559,9 @@ func runtimeUpCommandWithInputResolver(ctx context.Context, args []string, out, 
 				return usageError("management Core options cannot configure a remote application", "Set up Core on its owning host; use ordinary 'baha up' for this repository.")
 			}
 			remoteArgs := upNameArgs(opts.Name)
+			if format == outputJSON {
+				remoteArgs = append(remoteArgs, "--json")
+			}
 			if opts.Environment != "" {
 				remoteArgs = append(remoteArgs, "--environment", opts.Environment)
 			}

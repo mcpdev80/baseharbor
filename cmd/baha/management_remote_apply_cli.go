@@ -115,8 +115,11 @@ func remoteApplicationApplyCLI(ctx context.Context, target deployment.ResolvedTa
 			err = requestErr
 		}
 		if err == nil {
-			_, err = io.Copy(out, &result)
-			return err
+			if format == outputJSON {
+				_, err = io.Copy(out, &result)
+				return err
+			}
+			return renderRemoteApplyCompletion(ctx, out, result.Bytes())
 		}
 		if !interactive {
 			return err

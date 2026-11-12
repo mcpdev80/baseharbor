@@ -37,6 +37,11 @@ Beim Aktivieren von Entwicklungs-WebGUIs legt Core deren gemeinsamen Login an,
 wenn noch keiner existiert. Vorhandene Zugangsdaten werden wiederverwendet.
 Ablehnung oder Abbruch der interaktiven Bestätigung stoppt den Rollout. Starte
 `baha up` erneut zum Prüfen und Bestätigen; ein manueller Quellhash ist nicht nötig.
+Nach erfolgreichem Remote-Deployment erscheinen eine kurze READY-Zusammenfassung
+und die App-Links. IP-Links verwenden die Core-Adresse und die tatsächlich
+veröffentlichten dynamischen Ports; kanonische URLs erscheinen ebenfalls.
+`--json` gibt den vollständigen verifizierten Beleg aus, `--verbose` weitere
+menschenlesbare Prüfergebnisse.
 
 Für ein Remote-Target wählst du mit `baha app apply NAME --workload-port VARIABLE=PORT` einen freien veröffentlichten Workload-Port. BaseHarbor prüft, ob die Variable im Compose-Workload des Repositorys vorkommt und der Port auf dem Core-Host frei ist, und speichert die Wahl für dieses Deployment. Beispiel: `--workload-port DEMO_HTTPS_PORT=8081` weicht einem Konflikt auf Port 8080 aus, ohne die Repository-Quelle zu ändern.
 

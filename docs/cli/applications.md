@@ -87,6 +87,10 @@ Enabling development management UIs creates their shared login on the Core
 when none exists. Existing credentials are recovered and reused.
 Declining or cancelling the interactive confirmation stops the rollout. Run
 `baha up` again to review and confirm; no manual source-hash flag is needed.
+A successful remote deployment prints a short READY summary and application
+links. IP links use the Core address and observed dynamic public exposure ports;
+canonical URL links are also shown. Use `--json` for the complete verified receipt
+or `--verbose` for additional human-readable checks.
 
 For a remote Target, select a free published workload port explicitly with `baha app apply NAME --workload-port VARIABLE=PORT`. BaseHarbor verifies that the variable exists in the repository Compose workload and that the port is free on the Core host, then saves it for that deployment. For example, `--workload-port DEMO_HTTPS_PORT=8081` avoids a Core-host conflict on port 8080 without changing the repository source.
 
