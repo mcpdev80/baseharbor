@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
@@ -49,7 +50,11 @@ func TestCoreUpPreflightPullsResolvedRuntimeImage(t *testing.T) {
 	t.Cleanup(func() { registrySourceExec = previous })
 
 	var output bytes.Buffer
-	if err := pullCoreRuntimeImage(context.Background(), compose, &output); err != nil {
+	ctx := context.Background()
+	term := cli.NewTerminal(ctx, &output, &output)
+	if err := term.Progress(ctx, "Verify and prepare the BaseHarbor runtime image", func(out io.Writer) error {
+		return pullCoreRuntimeImage(ctx, compose, out)
+	}); err != nil {
 		t.Fatalf("preflight pull failed: %v", err)
 	}
 	want := "ghcr.io/mcpdev80/baseharbor-runtime@sha256:" + strings.Repeat("a", 64)
@@ -59,7 +64,7 @@ func TestCoreUpPreflightPullsResolvedRuntimeImage(t *testing.T) {
 	if len(exec.calls) != 1 || !strings.Contains(exec.calls[0], image) {
 		t.Fatalf("preflight did not resolve configured version %q: %v", image, exec.calls)
 	}
-	if !strings.Contains(output.String(), "available") {
+	if !strings.Contains(output.String(), "[OK] Verify and prepare the BaseHarbor runtime image") {
 		t.Fatalf("preflight did not report image readiness: %s", output.String())
 	}
 }
