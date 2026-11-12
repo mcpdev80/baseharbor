@@ -241,3 +241,20 @@ func TestActivityReturnsPromptlyWhenContextIsCanceled(t *testing.T) {
 		t.Fatal("Activity did not return promptly after context cancellation")
 	}
 }
+
+func TestRemotePhaseProgressSuppressesHeartbeatWithoutHidingServiceDetails(t *testing.T) {
+	ctx := WithOutputOptions(context.Background(), OutputOptions{ProgressHeartbeat: -1})
+	var out bytes.Buffer
+	term := NewTerminal(ctx, &out, &out)
+	if err := term.Progress(ctx, "Deploy application", func(w io.Writer) error {
+		ReportActivityDetail(w, "Deploying object storage")
+		<-time.After(10050 * time.Millisecond)
+		ReportActivityDetail(w, "Deploying messaging")
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out.String(), "[WAIT]") || !strings.Contains(out.String(), "Deploying object storage") || !strings.Contains(out.String(), "Deploying messaging") {
+		t.Fatal(out.String())
+	}
+}

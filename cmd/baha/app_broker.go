@@ -74,6 +74,9 @@ func ensureAndStartRuntimeBrokerWithCore(ctx context.Context, progress io.Writer
 	if compose == nil {
 		return errors.New("application workload runtime is unavailable")
 	}
+	if _, err := ensureMatchingDevelopmentRuntimeImage(ctx, compose, progress); err != nil {
+		return err
+	}
 	runtimeImage := strings.TrimSpace(os.Getenv("BASEHARBOR_RUNTIME_IMAGE"))
 	// The refresh pull runs only through pullResolvedRuntimeImage, which is
 	// fail-closed: the mutable tag is pulled only when the explicit

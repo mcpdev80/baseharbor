@@ -24,7 +24,16 @@ func renderPreflightUX(term *cli.Terminal, results []preflight.Result) {
 	}
 }
 
+type applicationPhaseReporterKey struct{}
+
+func reportApplicationPhase(ctx context.Context, label string) {
+	if report, ok := ctx.Value(applicationPhaseReporterKey{}).(func(string)); ok {
+		report(label)
+	}
+}
+
 func activity(ctx context.Context, term *cli.Terminal, label string, fn func(io.Writer) error) error {
+	reportApplicationPhase(ctx, label)
 	if err := term.Activity(ctx, label, fn); err != nil {
 		return fmt.Errorf("%s: %w", label, err)
 	}

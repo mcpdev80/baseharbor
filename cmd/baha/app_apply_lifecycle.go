@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
@@ -84,6 +85,7 @@ func newApplicationApplyExecutionFromResolved(ctx context.Context, resolved reso
 }
 
 func (e *applicationApplyExecution) runPreflight(ctx context.Context) error {
+	reportApplicationPhase(ctx, "Checking service prerequisites")
 	checks := e.preflightChecks()
 	needsServiceIssuer := requiresManagedServiceIssuer(e.manifest)
 
@@ -222,7 +224,7 @@ func (e *applicationApplyExecution) prepareManagedRuntime(ctx context.Context) e
 		}
 	}
 	if application.HasSharedBackends(e.manifest) {
-		if err := activity(ctx, e.term, "Reconciling shared data providers", func(progress io.Writer) error {
+		if err := activity(ctx, e.term, "Deploying SQL and cache providers", func(progress io.Writer) error {
 			cli.ReportActivityDetail(progress, "reconciling Target-owned PostgreSQL/Valkey provider runtime")
 			_, err := application.ReconcileSharedBackends(
 				ctx,
@@ -273,7 +275,18 @@ func (e *applicationApplyExecution) prepareManagedRuntime(ctx context.Context) e
 	if err := e.prepareApplicationSecrets(ctx); err != nil {
 		return err
 	}
-	if err := activity(ctx, e.term, "Starting managed application services", func(progress io.Writer) error {
+	services := []string{}
+	if e.manifest.Services.DocumentDatabase {
+		services = append(services, "document database")
+	}
+	if e.manifest.Services.MessagingQueue || e.manifest.Services.MessagingPubSub || e.manifest.Services.MessagingStream {
+		services = append(services, "messaging")
+	}
+	label := "Starting managed application services"
+	if len(services) > 0 {
+		label = "Deploying " + strings.Join(services, " and ")
+	}
+	if err := activity(ctx, e.term, label, func(progress io.Writer) error {
 		return startManagedRuntime(ctx, progress, e.compose, e.manifest, e.files)
 	}); err != nil {
 		return classifyOperationalFailure(err, "managed application services")

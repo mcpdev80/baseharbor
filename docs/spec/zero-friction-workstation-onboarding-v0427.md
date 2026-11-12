@@ -29,6 +29,11 @@ invitation and prints the path to its private JSON file. It also configures the
 managed LAN HTTPS endpoint used by the invitation. No separate `baha serve`
 command or browser login is part of this flow.
 
+Development builds with an embedded commit prepare a cached runtime image from
+the installed Linux Core binary using the canonical binary-only recipe. This
+keeps the broker and executor on that build without a source checkout or Go
+compiler on the Core host. Explicit image overrides retain their selection.
+
 Transfer that JSON file securely to the developer workstation. The file is a
 short-lived, single-use enrollment grant: do not print it, commit it, or place
 it in a shared directory.

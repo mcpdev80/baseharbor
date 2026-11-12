@@ -186,6 +186,9 @@ func (e *bahaMachineExecutor) executeHTTPApply(
 	}
 
 	reportHTTPProgress(report, "apply", "Converging desired application state.", 35)
+	ctx = context.WithValue(ctx, applicationPhaseReporterKey{}, func(label string) {
+		reportHTTPProgress(report, "apply", strings.Replace(label, "Reconciling ", "Deploying ", 1), 0)
+	})
 	if err := executeApplicationApplyLifecycle(ctx, e.store, args, io.Discard, io.Discard); err != nil {
 		if errors.Is(err, errConsentRequiredForCandidateSubmission) {
 			// The first attempt is a read-only consent discovery: no pending

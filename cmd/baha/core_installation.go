@@ -200,6 +200,9 @@ func ensureCoreRuntimeImage(ctx context.Context, target deployment.ResolvedTarge
 }
 
 func pullCoreRuntimeImage(ctx context.Context, provider bhruntime.RuntimeProvider, out io.Writer) error {
+	if handled, err := ensureMatchingDevelopmentRuntimeImage(ctx, provider, out); handled {
+		return err
+	}
 	image := strings.TrimSpace(os.Getenv("BASEHARBOR_RUNTIME_IMAGE"))
 	if image == "" {
 		image = defaultRuntimeImage(version)

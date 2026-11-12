@@ -22,6 +22,9 @@ type OutputOptions struct {
 	ReducedMotion  bool
 	Plain          bool
 	NonInteractive bool
+	// ProgressHeartbeat overrides the persistent progress heartbeat. A negative
+	// duration suppresses it when a remote operation supplies real phase events.
+	ProgressHeartbeat time.Duration
 }
 
 // WithOutputOptions attaches process-wide human-output preferences to a command
@@ -374,8 +377,16 @@ func (t *Terminal) Progress(ctx context.Context, label string, fn func(io.Writer
 	progress := newActivityBuffer()
 	done := make(chan error, 1)
 	go func() { done <- fn(progress) }()
-	ticker := time.NewTicker(10 * time.Second)
-	defer ticker.Stop()
+	interval := t.opts.ProgressHeartbeat
+	if interval == 0 {
+		interval = 10 * time.Second
+	}
+	var ticks <-chan time.Time
+	if interval > 0 {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		ticks = ticker.C
+	}
 
 	finish := func(err error) error {
 		for {
@@ -406,7 +417,7 @@ func (t *Terminal) Progress(ctx context.Context, label string, fn func(io.Writer
 			return finish(ctx.Err())
 		case detail := <-progress.details:
 			t.activityLine("INFO", label+" - "+detail)
-		case <-ticker.C:
+		case <-ticks:
 			t.activityLine("WAIT", label+" - still working ("+formatActivityDuration(time.Since(startedAt))+")")
 		}
 	}

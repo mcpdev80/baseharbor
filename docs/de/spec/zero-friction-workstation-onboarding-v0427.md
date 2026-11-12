@@ -32,6 +32,12 @@ einmal verwendbare Einladung und gibt den Pfad zur geschützten JSON-Datei aus.
 Es richtet außerdem den verwalteten LAN-HTTPS-Endpunkt ein. Ein separater
 Befehl `baha serve` und eine Browser-Anmeldung gehören nicht zu diesem Ablauf.
 
+Entwicklungs-Builds mit eingebettetem Commit erstellen aus dem installierten
+Linux-Core-Binary ein gecachtes Runtime-Image mit dem kanonischen Binary-Rezept.
+Broker und Executor verwenden dadurch denselben Build; ein Quellcode-Checkout
+oder Go-Compiler auf dem Core-Rechner ist nicht nötig. Explizite Image-Overrides
+behalten ihre Auswahl.
+
 Übertrage die JSON-Datei sicher auf den Entwicklungsrechner. Sie enthält einen
 kurzlebigen, einmal verwendbaren Registrierungsschlüssel. Gib ihren Inhalt
 nicht aus, committe sie nicht und lege sie nicht in einem gemeinsam genutzten

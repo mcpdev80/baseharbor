@@ -31,7 +31,10 @@ func remoteCLIPhase(ctx context.Context, out io.Writer, label string, run func(c
 	if !remoteCLIInteractive(ctx) {
 		return run(ctx)
 	}
-	return cli.NewTerminal(ctx, out, out).Progress(ctx, label, func(progressOut io.Writer) error {
+	opts := cli.OutputOptionsFromContext(ctx)
+	opts.ProgressHeartbeat = -1
+	renderCtx := cli.WithOutputOptions(ctx, opts)
+	return cli.NewTerminal(renderCtx, out, out).Progress(renderCtx, label, func(progressOut io.Writer) error {
 		return run(context.WithValue(ctx, remoteProgressKey{}, &remoteCLIProgress{out: progressOut}))
 	})
 }
