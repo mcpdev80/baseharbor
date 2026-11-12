@@ -10,7 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- Direct mTLS onboarding for developer workstations, plus user access profiles and independent workstation renewal and revocation.
+- Direct mTLS onboarding for developer workstations; identity-provider user invitations, Target-scoped access profiles and offboarding; independent workstation renewal and revocation.
 - Separate desired, applied and observed application versions for each deployment stage.
 - Editable Target deployment-policy presets for development, test, staging and production.
 - Demo coverage for exact-candidate confirmation and cross-application connectivity.
