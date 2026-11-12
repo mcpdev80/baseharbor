@@ -313,6 +313,13 @@ func (e *applicationApplyExecution) prepareApplicationSecrets(ctx context.Contex
 		fmt.Fprintf(e.out, "[OK] generated-secret  %s materialized in managed secret storage\n", name)
 	}
 	e.secretService = applicationsecret.NewForApplicationRuntime(e.resolved.Store, e.coreRuntime, e.platformFiles, e.manifest, e.files)
+	sourcedSecrets, err := reconcileTargetDevelopmentCredentialSecrets(ctx, e.secretService, e.resolved.Target.Name, e.manifest)
+	if err != nil {
+		return fmt.Errorf("synchronize Target development credentials into application secrets: %w", err)
+	}
+	if sourcedSecrets > 0 {
+		fmt.Fprintf(e.out, "[OK] target-development-secrets  %d value(s) synchronized and verified from OpenBao\n", sourcedSecrets)
+	}
 	if err := resolveMissingRequiredSecretsInteractive(ctx, e.secretService, e.coreRuntime, e.platformFiles, e.manifest, e.files, e.out); err != nil {
 		return err
 	}

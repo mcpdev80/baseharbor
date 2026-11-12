@@ -613,6 +613,18 @@ func (p *manifestYAMLParser) parseIndent6(lineNo int, trim string) error {
 		p.secretGenerate = true
 		return nil
 	}
+	if p.section == "secrets" && (p.secretField == "required" || p.secretField == "optional") && p.secretIndex >= 0 {
+		requirement := secretRequirementPointer(&p.manifest, p.secretField, p.secretIndex)
+		if requirement == nil {
+			return fmt.Errorf("line %d: invalid secret requirement", lineNo)
+		}
+		key, value, ok := strings.Cut(trim, ":")
+		if !ok || key != "source" || strings.TrimSpace(value) == "" {
+			return fmt.Errorf("line %d: expected secret source: SOURCE", lineNo)
+		}
+		requirement.Source = SecretSource(strings.TrimSpace(value))
+		return nil
+	}
 	return p.parseServiceInstance(lineNo, trim)
 }
 
