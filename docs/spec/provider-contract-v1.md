@@ -299,3 +299,11 @@ developer username/password MUST open those consoles without collecting real-nam
 claims. Only first/last-name requirements in that verified owned dev operator realm
 are optional; username/email and unrelated profile settings MUST be preserved.
 Other realms and runtime device identity authorities MUST remain unchanged.
+
+The managed development Identity provider MUST reconcile its browser clients
+against the actual published canonical and IP GUI endpoints, including dynamic
+ports: explicit CORS origins, console-subtree redirect URIs, and session-check
+iframe sources. It MUST preserve other client fields and browser security
+headers, including frame-ancestors, reject foreign realm ownership, and remove
+stale managed origins when endpoints change. Readiness MUST probe the declared
+account/admin landing paths rather than the server root.

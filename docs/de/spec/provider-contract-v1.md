@@ -291,3 +291,12 @@ Der gewählte Entwickler-Login MUSS die Konsolen ohne Erfassung von Vor-/Nachnam
 verifiziert eigenen Dev-Operator-Realm sind optional. Benutzername/E-Mail und
 andere Profilregeln MÜSSEN erhalten bleiben. Andere Realms und die Autorität der
 Geräteidentitäten DÜRFEN dadurch NICHT geändert werden.
+
+Der verwaltete Entwicklungs-Identity-Provider MUSS seine Browser-Clients mit den
+tatsächlich veröffentlichten URL- und IP-GUI-Endpunkten samt dynamischen Ports
+abgleichen: explizite CORS-Origins, Rücksprungadressen innerhalb des jeweiligen
+Konsolenpfads und Quellen für das Session-Prüffenster. Andere Client-Felder und
+Browser-Sicherheitsheader einschließlich frame-ancestors MÜSSEN erhalten bleiben.
+Fremde Realm-Eigentümerschaft MUSS abgelehnt werden; veraltete verwaltete Origins
+MÜSSEN bei geänderten Endpunkten entfernt werden. Die Bereitschaftsprüfung MUSS
+die deklarierten Account-/Admin-Pfade statt der Serverwurzel prüfen.

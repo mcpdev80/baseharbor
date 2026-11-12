@@ -72,17 +72,22 @@ func verifyIdentityManagementBrowserSurfaces(ctx context.Context, m application.
 
 	loginURL := devgateway.URLForTarget(target, loginHost)
 	adminURL := devgateway.URLForTarget(target, adminHost)
+	if placement.Scope == capability.ScopeShared {
+		accountPath, adminPath := identityprovider.DevelopmentManagementPaths()
+		loginURL += accountPath
+		adminURL += adminPath
+	}
 	clientForGateway := func(host string) (*http.Client, error) { return devgateway.BrowserClient(target, host) }
 
 	loginClient, loginErr := clientForGateway(loginHost)
 	if loginErr == nil {
 		defer loginClient.CloseIdleConnections()
-		loginErr = serviceaccess.VerifyBrowserSurface(ctx, loginClient, loginURL+"/")
+		loginErr = serviceaccess.VerifyBrowserSurface(ctx, loginClient, loginURL)
 	}
 	adminClient, adminErr := clientForGateway(adminHost)
 	if adminErr == nil {
 		defer adminClient.CloseIdleConnections()
-		adminErr = serviceaccess.VerifyBrowserSurfaceWithAllowedAuthorities(ctx, adminClient, adminURL+"/", loginURL)
+		adminErr = serviceaccess.VerifyBrowserSurfaceWithAllowedAuthorities(ctx, adminClient, adminURL, loginURL)
 	}
 
 	return []managementUIBrowserResult{

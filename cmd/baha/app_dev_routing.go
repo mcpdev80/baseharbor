@@ -215,6 +215,11 @@ func (e *applicationApplyExecution) reconcileDevelopmentCanonicalRoutes(ctx cont
 	if err != nil {
 		return err
 	}
+	if requiresManagedDevelopmentOperatorRealm(e.manifest) {
+		if err := identityprovider.EnsureDevelopmentConsoleOrigins(ctx, e.resolved.TargetStateRoot, target, canonical, directIP); err != nil {
+			return err
+		}
+	}
 	if err := application.MaterializeManagementUIEndpointBinding(e.manifest, e.files, canonical, directIP); err != nil {
 		return err
 	}

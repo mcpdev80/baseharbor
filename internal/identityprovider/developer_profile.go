@@ -13,22 +13,11 @@ import (
 // real-name profile. Make only the two optional OIDC profile claims optional in
 // the owned dev operator realm; preserve username/email and every other policy.
 func (a *keycloakAdmin) ensureDeveloperProfile(ctx context.Context, target string) error {
-	realm := operatorRealm("dev")
-	path := "/admin/realms/" + url.PathEscape(realm)
-	status, body, err := a.do(ctx, http.MethodGet, path, nil)
-	if err != nil {
+	if err := a.requireDeveloperRealmOwnership(ctx, target); err != nil {
 		return err
 	}
-	if status != http.StatusOK {
-		return fmt.Errorf("inspect developer realm profile ownership: HTTP %d", status)
-	}
-	var owned keycloakRealm
-	expected := map[string]string{"baseharbor.owner": "baseharbor", "baseharbor.scope": "operator", "baseharbor.target": target, "baseharbor.environment": "dev"}
-	if json.Unmarshal([]byte(body), &owned) != nil || !keycloakRealmOwnedBy(owned, expected) {
-		return errors.New("developer user profile realm is not owned by this Target")
-	}
-	path += "/users/profile"
-	status, body, err = a.do(ctx, http.MethodGet, path, nil)
+	path := "/admin/realms/" + url.PathEscape(operatorRealm("dev")) + "/users/profile"
+	status, body, err := a.do(ctx, http.MethodGet, path, nil)
 	if err != nil {
 		return err
 	}
@@ -93,4 +82,22 @@ func optionalDeveloperNames(body []byte) (map[string]json.RawMessage, bool, erro
 		profile["attributes"] = data
 	}
 	return profile, changed, nil
+}
+
+func (a *keycloakAdmin) requireDeveloperRealmOwnership(ctx context.Context, target string) error {
+	realm := operatorRealm("dev")
+	path := "/admin/realms/" + url.PathEscape(realm)
+	status, body, err := a.do(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return err
+	}
+	if status != http.StatusOK {
+		return fmt.Errorf("inspect developer realm profile ownership: HTTP %d", status)
+	}
+	var owned keycloakRealm
+	expected := map[string]string{"baseharbor.owner": "baseharbor", "baseharbor.scope": "operator", "baseharbor.target": target, "baseharbor.environment": "dev"}
+	if json.Unmarshal([]byte(body), &owned) != nil || !keycloakRealmOwnedBy(owned, expected) {
+		return errors.New("developer user profile realm is not owned by this Target")
+	}
+	return nil
 }
