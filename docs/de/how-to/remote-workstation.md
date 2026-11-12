@@ -18,7 +18,7 @@ baha onboard
 Installiere die `baha`-CLI und importiere die Einladung:
 
 ```bash
-baha onboard --import /pfad/zur/einladung.json
+baha onboard --import /path/to/invitation.json
 ```
 
 BaseHarbor prüft die Identität des Core, erstellt den privaten Geräteschlüssel auf dem Entwickler-PC und richtet das Remote-Target ein.
