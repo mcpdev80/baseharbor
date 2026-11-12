@@ -45,10 +45,11 @@ type remoteJourneyCore struct {
 	previewOverride     func(*applicationLifecyclePlan)
 	developmentDomain   string
 	noProviderChanges   bool
+	readResults         map[string]json.RawMessage
 }
 
 func (f *remoteJourneyCore) SupportedOperationIDs() []string {
-	return []string{"app.list", "app.create", "app.configure", "apply", "dev.domain"}
+	return []string{"app.list", "app.create", "app.configure", "apply", "dev.domain", "status", "doctor", "control-plane.status", "control-plane.doctor"}
 }
 func (f *remoteJourneyCore) BindSourceTransfers(store *sourcetransfer.Store) { f.transfers = store }
 func (f *remoteJourneyCore) Execute(_ context.Context, op machine.Operation, scope machine.OperationContext, raw json.RawMessage, report machinehttp.ProgressReporter) (json.RawMessage, error) {
@@ -59,6 +60,9 @@ func (f *remoteJourneyCore) Execute(_ context.Context, op machine.Operation, sco
 		return nil, errors.New("wrong Core selector")
 	}
 	encode := func(value any) (json.RawMessage, error) { return json.Marshal(value) }
+	if result, ok := f.readResults[op.ID]; ok {
+		return result, nil
+	}
 	switch op.ID {
 	case "dev.domain":
 		var input machineHTTPDevelopmentDomainInput

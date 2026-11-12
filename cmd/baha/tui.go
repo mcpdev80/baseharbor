@@ -65,7 +65,7 @@ func tuiCommand(store application.Store) *cli.Command {
 				if inApplicationRepository() {
 					return appStatusCommandWithTLS(store).Run(ctx, []string{"--json"}, out, errOut)
 				}
-				result, err := inspectControlPlane(ctx)
+				result, err := inspectTUIControlPlane(ctx)
 				if err != nil {
 					return err
 				}
@@ -108,6 +108,9 @@ func (m tuiModel) Init() tea.Cmd {
 
 func (m tuiModel) loadStatus() tea.Cmd {
 	return func() tea.Msg {
+		if target, err := effectiveTarget(m.ctx); err == nil && remoteCoreTarget(target) {
+			return m.loadRemoteStatus(target)
+		}
 		if m.coreMode {
 			if err := authorizeCurrentMCPContext(m.ctx, "control-plane.doctor", "", "", ""); err != nil {
 				return tuiStatusMsg{err: err}
