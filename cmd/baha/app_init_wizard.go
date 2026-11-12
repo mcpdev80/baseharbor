@@ -309,7 +309,13 @@ func writeRepositoryManifest(ctx context.Context, m application.Manifest, out io
 	if len(application.RequiredSecretNames(m)) > 0 {
 		fmt.Fprintf(out, "required application secrets: %s\n", strings.Join(application.RequiredSecretNames(m), ", "))
 	}
-	fmt.Fprintln(out, "next: run 'baha up'")
+	target, err := effectiveTarget(ctx)
+	if err != nil {
+		return err
+	}
+	if target.AccessProvider == "" || target.AccessProvider == "local" {
+		fmt.Fprintln(out, "next: run 'baha up'")
+	}
 	return nil
 }
 

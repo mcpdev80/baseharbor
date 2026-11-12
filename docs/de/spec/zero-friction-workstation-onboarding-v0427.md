@@ -60,25 +60,31 @@ und weiter verwendet werden. Anwendungsbefehle laufen auf dem
 Entwicklungsrechner über das ausgewählte Target, niemals direkt auf der VM.
 
 Prüfe im Anwendungs-Repository zuerst den Quellstand und erstelle oder
-aktualisiere den dort verwalteten BaseHarbor-Vertrag. Registriere ihn danach
-beim ausgewählten Core und starte die Anwendung:
+aktualisiere den dort verwalteten BaseHarbor-Vertrag. Starte die Anwendung
+anschließend beim ausgewählten Core:
 
 ```text
 baha app inspect .
 baha app init
-baha app create APP_NAME
-baha up APP_NAME --environment ENVIRONMENT
+baha up
 baha status
 baha doctor
 ```
 
-`baha app init` schreibt `baseharbor.yaml` in das Repository; es startet keine
-Container. `baha app create APP_NAME` registriert diesen Repository-Vertrag
-beim aktiven Target, ohne die Anwendung zu starten. `baha up APP_NAME`
-konvergiert anschließend die registrierte Anwendung über den Core. Dabei
+`baha app init` schreibt `baseharbor.yaml`, registriert den vollständigen Vertrag
+beim ausgewählten Core und speichert die Deployment-Einstellungen. Es startet
+keine Container. `baha up` übernimmt App-Namen und Umgebung aus dem Manifest;
+ein separates `app create` und ein wiederholtes `--environment dev` entfallen.
+Der Target-Name ist ein frei wählbarer Alias und legt keine Umgebung fest.
+Die Registrierung verwendet nur die bereits von diesem Repository bestätigte
+Core-Identität erneut; eine fremde App mit gleichem Namen wird nicht übernommen. Dabei
 gelten dieselben Plan-, Kandidatenbestätigungs-, Provider-Freigabe- und
 Prüfschranken wie bei `baha app apply`; `--yes` darf diese Zustimmungen nicht
-ersetzen. Führe `status` und `doctor` nach dem Start im selben Repository und
+ersetzen. Interaktive Remote-Aufrufe zeigen den konkreten Provider-Plan,
+fragen jede erforderliche Bestätigung ab und bestätigen den exakten
+Quellkandidaten separat. Ohne Eingabemöglichkeit wird die strukturierte
+Bestätigungsanforderung zurückgegeben, ohne automatisch erneut auszuführen.
+Führe `status` und `doctor` nach dem Start im selben Repository und
 mit demselben ausgewählten Target aus. Ein manueller Schritt `baha serve` ist
 nicht erforderlich.
 

@@ -72,6 +72,15 @@ Application operations also include:
 
 Use the top-level `baha status`, `baha plan`, `baha doctor`, `baha up` forms for the normal repository-local workflow. Use `baha app ...` when the explicit application namespace is useful for administration or automation.
 
+The same repository workflow applies to a selected remote Core Target:
+`baha app init`, then `baha up`. Initialization registers the full repository
+contract and configures deployment settings on the Core. The application name
+and environment come from `baseharbor.yaml`; the Target alias does not encode
+an environment. Interactive deployment displays the Core's provider-impact
+plan and exact source candidate for explicit confirmation. Noninteractive
+clients receive the structured approval challenge. Remote work reports its
+current phase and elapsed waiting time; JSON output stays machine-readable.
+
 For a remote Target, select a free published workload port explicitly with `baha app apply NAME --workload-port VARIABLE=PORT`. BaseHarbor verifies that the variable exists in the repository Compose workload and that the port is free on the Core host, then saves it for that deployment. For example, `--workload-port DEMO_HTTPS_PORT=8081` avoids a Core-host conflict on port 8080 without changing the repository source.
 
 ## Machine parity

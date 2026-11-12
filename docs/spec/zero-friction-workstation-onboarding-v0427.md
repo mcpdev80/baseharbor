@@ -54,24 +54,28 @@ selects the intended Core. The workstation may also keep and use its own local
 Core Target independently.
 
 From an application repository, first inspect and create or update its
-repository-owned BaseHarbor contract, then register that contract on the
-selected Core and start it:
+repository-owned BaseHarbor contract, then start it on the selected Core:
 
 ```text
 baha app inspect .
 baha app init
-baha app create APP_NAME
-baha up APP_NAME --environment ENVIRONMENT
+baha up
 baha status
 baha doctor
 ```
 
-`baha app init` writes `baseharbor.yaml` in the repository; it does not deploy
-the application. `baha app create APP_NAME` registers that repository contract
-on the active Target without starting containers. `baha up APP_NAME` then
-converges the registered application through the Core. It uses the same plan,
+`baha app init` writes `baseharbor.yaml`, registers its full intent with the
+selected Core and saves deployment settings without starting containers.
+`baha up` reads the application name and environment from that manifest; a
+separate `app create` or repeated `--environment dev` is unnecessary. The Target
+name is a free alias, not an environment declaration. Registration reuses only
+the Core identity already acknowledged by this repository; an unrelated
+application with the same name is not silently adopted. `baha up` uses the same plan,
 candidate confirmation, provider-impact consent, and verification gates as
-`baha app apply`; do not bypass those gates with `--yes`. Run `status` and
+`baha app apply`. Interactive remote runs display the Core's exact provider
+impact plan, collect each required acknowledgement and separately confirm the
+exact source candidate. Generic `--yes` grants none of these approvals.
+Noninteractive runs return the structured challenge without retrying. Run `status` and
 `doctor` from the same repository and selected Target after startup. No manual
 `baha serve` step is required.
 

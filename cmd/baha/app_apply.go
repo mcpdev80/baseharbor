@@ -45,7 +45,7 @@ func appApplyCommand(store application.Store) *cli.Command {
 				return err
 			}
 			if target.AccessProvider != "" && target.AccessProvider != "local" {
-				return remoteApplicationMutation(ctx, target, "apply", args, out)
+				return remoteApplicationApplyCLI(ctx, target, args, out, errOut)
 			}
 			filtered, skip := stripMemoryPreflightOverride(args)
 			ctx = withMemoryPreflightOverride(ctx, skip)

@@ -53,7 +53,16 @@ func appCreateCommand() *cli.Command {
 				if err != nil {
 					return err
 				}
-				result, err := remoteCreateTargetManagedApplication(ctx, target, m, source)
+				createCtx := ctx
+				if format == outputJSON {
+					createCtx = machineNoninteractiveContext(ctx)
+				}
+				var result applicationAdoptionResult
+				err = remoteCLIPhase(createCtx, out, "Register application on Core Target "+target.Name, func(ctx context.Context) error {
+					var err error
+					result, err = remoteCreateTargetManagedApplication(ctx, target, m, source)
+					return err
+				})
 				if err != nil {
 					return err
 				}

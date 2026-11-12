@@ -226,6 +226,9 @@ func (c *verifiedRemoteCore) confirmRemoteExecutionSuccess(ctx context.Context, 
 	if err != nil {
 		return nil, err
 	}
+	if execution.Progress != nil {
+		reportRemoteProgress(ctx, execution.Progress.Message)
+	}
 	switch execution.State {
 	case machine.ExecutionSucceeded:
 		return rewriteRemoteResultTarget(execution.Result, c.serverTargetName(), c.target)

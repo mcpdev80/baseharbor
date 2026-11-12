@@ -1,0 +1,34 @@
+package main
+
+import (
+	"context"
+	"io"
+
+	"github.com/mcpdev80/baseharbor/internal/cli"
+)
+
+type remoteProgressKey struct{}
+type remoteCLIProgress struct {
+	out  io.Writer
+	last string
+}
+
+func reportRemoteProgress(ctx context.Context, message string) {
+	if state, ok := ctx.Value(remoteProgressKey{}).(*remoteCLIProgress); ok && message != "" && state.last != message {
+		state.last = message
+		cli.ReportActivityDetail(state.out, message)
+	}
+}
+
+func remoteCLIInteractive(ctx context.Context) bool {
+	return !noInput(ctx) && readerIsTerminal(applicationInput(ctx, runtimeInput))
+}
+
+func remoteCLIPhase(ctx context.Context, out io.Writer, label string, run func(context.Context) error) error {
+	if !remoteCLIInteractive(ctx) {
+		return run(ctx)
+	}
+	return cli.NewTerminal(ctx, out, out).Progress(ctx, label, func(progressOut io.Writer) error {
+		return run(context.WithValue(ctx, remoteProgressKey{}, &remoteCLIProgress{out: progressOut}))
+	})
+}

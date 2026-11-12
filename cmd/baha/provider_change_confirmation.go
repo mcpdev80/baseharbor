@@ -19,7 +19,7 @@ func acknowledgeProviderImpact(ctx context.Context, in io.Reader, out io.Writer,
 	if out == nil {
 		out = io.Discard
 	}
-	if err := printProviderImpact(out, plan); err != nil {
+	if err := printProviderImpactForCLI(ctx, out, plan); err != nil {
 		return err
 	}
 	if supplied != nil {

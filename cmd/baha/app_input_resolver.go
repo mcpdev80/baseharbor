@@ -2,7 +2,9 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -112,6 +114,9 @@ func appInitWithInputResolverCommand(store application.Store) *cli.Command {
 				return usageError("--quick cannot be combined with explicit app-init arguments", "Use quick adoption or explicit deployment configuration separately.")
 			}
 			if hasLocalManifest {
+				if handled, err := existingRemoteQuickInit(ctx, format, out, destination); handled || err != nil {
+					return err
+				}
 				resolved, err := resolveApplication(ctx, store, nil, "init")
 				if err != nil {
 					return err
@@ -140,7 +145,7 @@ func appInitWithInputResolverCommand(store application.Store) *cli.Command {
 				if err != nil {
 					return err
 				}
-				return writeJSON(destination, result)
+				return completeRepositoryInitJSON(ctx, result, destination)
 			}
 		}
 		if !hasLocalManifest {
@@ -148,13 +153,20 @@ func appInitWithInputResolverCommand(store application.Store) *cli.Command {
 				return usageError("--input is available after an application contract exists", "Create baseharbor.yaml first with guided/quick init or deterministic manifest flags, then inject deployment inputs.")
 			}
 			if format == outputJSON {
-
-				return appInitCommand().Run(ctx, append(forwarded, "--json"), destination, errOut)
+				var result bytes.Buffer
+				if err := appInitCommand().Run(ctx, append(forwarded, "--json"), &result, errOut); err != nil {
+					return err
+				}
+				var adopted applicationAdoptionResult
+				if err := json.Unmarshal(result.Bytes(), &adopted); err != nil {
+					return err
+				}
+				return completeRepositoryInitJSON(ctx, adopted, destination)
 			}
 			if err := baseRun(ctx, forwarded, out, errOut); err != nil {
 				return err
 			}
-			return nil
+			return finishRemoteRepositoryInit(ctx, out)
 		}
 
 		opts, err := parseRepositoryInitOptions(forwarded)
@@ -173,20 +185,7 @@ func appInitWithInputResolverCommand(store application.Store) *cli.Command {
 			if err != nil {
 				return err
 			}
-			remoteArgs := make([]string, 0, 5)
-			if opts.Hostname != "" {
-				remoteArgs = append(remoteArgs, "--hostname", opts.Hostname)
-			}
-			if opts.TLSMode != "" {
-				remoteArgs = append(remoteArgs, "--tls", opts.TLSMode)
-			}
-			if opts.CertDir != "" {
-				remoteArgs = append(remoteArgs, "--cert-dir", opts.CertDir)
-			}
-			if opts.Yes {
-				remoteArgs = append(remoteArgs, "--yes")
-			}
-			if err := remoteApplicationMutation(ctx, target, "app.configure", remoteArgs, io.Discard); err != nil {
+			if err := initializeRemoteRepository(ctx, target, filepath.Dir(manifestPath), manifest, opts, out); err != nil {
 				return err
 			}
 			if format == outputJSON {
@@ -556,22 +555,20 @@ func runtimeUpCommandWithInputResolver(ctx context.Context, args []string, out, 
 			return err
 		}
 		if target.AccessProvider != "" && target.AccessProvider != "local" {
-			if opts.Name == "" {
-				return usageError("remote up needs an explicit application NAME",
-					"Run baha up NAME --environment dev for an application already registered on the remote Core.")
+			if opts.HA || opts.PostgresPort != 0 || opts.OpenBaoPort != 0 || opts.RecoveryFile != "" || opts.TrustHostCA {
+				return usageError("management Core options cannot configure a remote application", "Set up Core on its owning host; use ordinary 'baha up' for this repository.")
 			}
-			if opts.Yes {
-				return usageError("remote up does not accept --yes",
-					"Use baha up NAME --environment dev; --yes never approves provider consequences.")
-			}
-			remoteArgs := []string{opts.Name}
+			remoteArgs := upNameArgs(opts.Name)
 			if opts.Environment != "" {
 				remoteArgs = append(remoteArgs, "--environment", opts.Environment)
 			}
 			if opts.SkipMemoryPreflight {
 				remoteArgs = append(remoteArgs, "--skip-memory-preflight")
 			}
-			return remoteApplicationMutation(ctx, target, "apply", remoteArgs, destination)
+			if opts.CandidateConsent != "" {
+				remoteArgs = append(remoteArgs, "--confirm-candidate", opts.CandidateConsent)
+			}
+			return remoteApplicationApplyCLI(ctx, target, remoteArgs, destination, errOut)
 		}
 	}
 	if handled, err := routeRepositoryRuntimeUp(ctx, applicationInput(ctx, runtimeInput), out, errOut, opts); handled {

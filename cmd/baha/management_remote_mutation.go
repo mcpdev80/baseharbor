@@ -29,13 +29,6 @@ func remoteMutationArgs(operation string, args []string) (string, string, json.R
 	if err != nil {
 		return "", "", nil, err
 	}
-	if environment == "" {
-		environment = "dev"
-	}
-	if environment != "dev" {
-		return "", "", nil, usageError("remote application mutations currently require the dev operator session",
-			"Use --environment dev; other environments require their own verified operator login.")
-	}
 	name, candidate, consentPath := "", "", ""
 	hostname, tlsMode, certificateDirectory := "", "", ""
 	candidateSeen, consentSeen := false, false
@@ -124,21 +117,9 @@ func remoteMutationArgs(operation string, args []string) (string, string, json.R
 	if candidateSeen && strings.TrimSpace(candidate) == "" {
 		return "", "", nil, usageError("empty candidate confirmation digest", "Pass the exact candidate SHA-256 digest or omit --confirm-candidate.")
 	}
-	if strings.TrimSpace(name) == "" {
-		// Use only the application selector from the existing local contract.
-		// Source paths and workstation-owned identity are never sent to Core;
-		// Core remains the sole authority for the registered application.
-		path, findErr := application.FindRepositoryManifest(".")
-		if findErr != nil {
-			return "", "", nil, usageError("remote application name is unavailable",
-				"Pass a registered application NAME or run from a repository containing baseharbor.yaml.")
-		}
-		local, loadErr := application.LoadManifestFile(path)
-		if loadErr != nil || strings.TrimSpace(local.Name) == "" || local.Environment != environment {
-			return "", "", nil, usageError("remote repository application selector is invalid or differs from the selected environment",
-				"Review the local baseharbor.yaml application/environment or pass an explicit registered application NAME.")
-		}
-		name = local.Name
+	name, environment, err = remoteMutationSelector(name, environment)
+	if err != nil {
+		return "", "", nil, err
 	}
 	var consent *application.ProviderChangeConsent
 	if consentPath != "" {
@@ -262,12 +243,19 @@ func remoteApplicationMutation(ctx context.Context, target deployment.ResolvedTa
 	if err != nil {
 		return err
 	}
+	if operation == "apply" {
+		payload, err = bindRemoteApplyConsent(ctx, payload)
+		if err != nil {
+			return err
+		}
+	}
 	core, err := dialVerifiedRemoteCore(ctx, target.Name, target.RuntimeProvider, target.TenantID)
 	if err != nil {
 		return machine.Wrap(machine.ErrorAuthenticationFailed, err,
 			"Configure and authenticate the pinned remote Core connection for this Target.", false)
 	}
 	if operation == "apply" || operation == "app.configure" {
+		reportRemoteProgress(ctx, "Transferring the selected application source to the Core.")
 		root, rootErr := remoteLocalSourceRoot(name, environment)
 		if rootErr != nil {
 			return rootErr

@@ -10,8 +10,35 @@ import (
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/mcpdev80/baseharbor/internal/machine"
 )
+
+func TestProviderImpactHumanOutputRetainsConcreteConsequences(t *testing.T) {
+	plan := application.ProviderImpactPlan{Version: application.ProviderImpactVersion, Target: "core", PlanID: "plan-current", ConfirmationsRequired: 2, Destructive: true,
+		Impacts: []application.ProviderImpact{{InstanceID: "postgres-owned", Operation: "remove-runtime",
+			Functions: []application.FunctionConsequence{{Consumer: "demo/dev", Function: "database.sql", Required: true, Outcome: "unavailable"}},
+			Materials: []application.MaterialConsequence{{Before: application.ProviderMaterial{ID: "database-volume", Location: &application.ResourceLocation{Reference: "volume-owned", Target: "core"}}, After: application.MaterialDisposition{Disposition: "delete"}, Meaning: "Application records will be permanently removed."}},
+			Effects:   []application.OperationalConsequence{{Aspect: "sessions", Before: "active", After: "invalidated"}},
+		}}}
+	var out bytes.Buffer
+	if err := printProviderImpactForCLI(context.Background(), &out, plan); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"plan-current", "2 confirmation", "Permanent data deletion: requested", "inventory is incomplete", "REMOVE-RUNTIME", "postgres-owned", "database.sql -> unavailable", "required; consumer: demo/dev", "database-volume -> delete", "volume-owned", "permanently removed", "sessions: active -> invalidated"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("missing consequence %q:\n%s", want, out.String())
+		}
+	}
+	if strings.Contains(out.String(), `"prerequisites":`) {
+		t.Fatal("normal CLI printed raw plan JSON")
+	}
+	out.Reset()
+	ctx := cli.WithOutputOptions(context.Background(), cli.OutputOptions{Verbose: true})
+	if err := printProviderImpactForCLI(ctx, &out, plan); err != nil || !strings.Contains(out.String(), `"plan_id": "plan-current"`) {
+		t.Fatal("verbose output lost the structured plan", err)
+	}
+}
 
 func TestProviderImpactAllowsExplicitAlternativeLessDeletion(t *testing.T) {
 	plan := application.ProviderImpactPlan{Version: application.ProviderImpactVersion, PlanID: "concrete-effects", Complete: false, Attention: "no destination; deletion", ConfirmationsRequired: 2, Destructive: true}

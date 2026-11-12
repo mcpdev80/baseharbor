@@ -135,27 +135,23 @@ func TestWorkstationOnboardingRemoteNativeInCI(t *testing.T) {
 		if err := os.WriteFile("baseharbor.yaml", []byte(manifest.AuthoredYAML()), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		// A fresh Core has no registered application. Registration is a
-		// separate, authoritative machine operation; local repository files
-		// must never be mistaken for an existing remote deployment receipt.
-		// Exercise the complete real lifecycle, including initial creation.
-		// The authored manifest already declares the api workload, so do not
-		// also pass --workload-component: CLI flags must not override a matching
-		// repository manifest.
+		// The ordinary repository journey must register through the owning Core,
+		// configure the app and infer its name/environment from the manifest.
+		// Noninteractive clients still need the exact candidate approval.
 		for _, args := range [][]string{
-			{"app", "create", "onboard-native", "--environment", "dev"},
+			{"app", "init"},
 			{"app", "plan", "onboard-native", "--environment", "dev", "--json"},
 			{"app", "list", "--json"},
-			{"app", "apply", "onboard-native", "--environment", "dev"},
+			{"up"},
 			{"app", "status", "onboard-native", "--environment", "dev", "--json"},
 			{"app", "doctor", "onboard-native", "--environment", "dev", "--json"},
 		} {
-			if args[1] == "apply" {
+			if args[0] == "up" {
 				// The first request must fail closed before recording the candidate.
 				// The server supplies the hash of its exact verified source, which
 				// is then explicitly confirmed by this CI automation.
 				var output, errorsOut bytes.Buffer
-				attempt := runWithIO(ctx, args, &output, &errorsOut)
+				attempt := runWithIO(ctx, append([]string{"--no-input"}, args...), &output, &errorsOut)
 				var denied *machine.Error
 				if !errors.As(attempt, &denied) || denied.CauseCode != "candidate_confirmation_required" {
 					t.Fatalf("unconfirmed remote candidate was not refused with a typed consent challenge: %v", attempt)
@@ -167,10 +163,10 @@ func TestWorkstationOnboardingRemoteNativeInCI(t *testing.T) {
 				args = append(args, "--confirm-candidate", match[1])
 			}
 			var stdout, stderr bytes.Buffer
-			if err := runWithIO(ctx, args, &stdout, &stderr); err != nil {
+			if err := runWithIO(ctx, append([]string{"--no-input"}, args...), &stdout, &stderr); err != nil {
 				t.Fatalf("remote CLI operation %v failed over the enrolled device: %v", args, err)
 			}
-			if args[1] == "status" {
+			if len(args) > 1 && args[1] == "status" {
 				var observed application.StatusResult
 				if err := json.Unmarshal(stdout.Bytes(), &observed); err != nil {
 					t.Fatalf("remote Core status is not valid JSON: %v\n%s", err, stdout.String())
@@ -179,13 +175,13 @@ func TestWorkstationOnboardingRemoteNativeInCI(t *testing.T) {
 					t.Fatalf("remote Core did not observe the deployed workload as ready: state=%q ready=%t application=%q checks=%+v", observed.State, observed.Ready, observed.Application, observed.Checks)
 				}
 			}
-			if args[1] == "plan" {
+			if len(args) > 1 && args[1] == "plan" {
 				var observed applicationLifecyclePlan
 				if err := json.Unmarshal(stdout.Bytes(), &observed); err != nil || observed.Application != "onboard-native" || observed.Environment != "dev" {
 					t.Fatalf("remote Core plan does not describe the selected application: %v\n%s", err, stdout.String())
 				}
 			}
-			if args[1] == "list" {
+			if len(args) > 1 && args[1] == "list" {
 				var observed machineApplicationListResult
 				if err := json.Unmarshal(stdout.Bytes(), &observed); err != nil || observed.ContractVersion != machine.ContractVersion {
 					t.Fatalf("remote Core application list has no valid contract: %v\n%s", err, stdout.String())
@@ -200,7 +196,7 @@ func TestWorkstationOnboardingRemoteNativeInCI(t *testing.T) {
 					t.Fatalf("remote Core application list omitted the selected Target deployment: %s", stdout.String())
 				}
 			}
-			if args[1] == "doctor" {
+			if len(args) > 1 && args[1] == "doctor" {
 				var observed applicationDoctorResult
 				if err := json.Unmarshal(stdout.Bytes(), &observed); err != nil || !observed.Healthy || observed.Target != workstationTarget || observed.Application != "onboard-native" {
 					t.Fatalf("remote Core doctor did not report a healthy selected Target application: %v\n%s", err, stdout.String())
