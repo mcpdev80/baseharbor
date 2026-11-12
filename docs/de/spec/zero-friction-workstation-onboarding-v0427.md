@@ -87,7 +87,8 @@ Core-Identität erneut; eine fremde App mit gleichem Namen wird nicht übernomme
 gelten dieselben Plan-, Kandidatenbestätigungs-, Provider-Freigabe- und
 Prüfschranken wie bei `baha app apply`; `--yes` darf diese Zustimmungen nicht
 ersetzen. Interaktive Remote-Aufrufe zeigen den konkreten Provider-Plan,
-fassen die Änderungen nach Diensten zusammen und fragen einmal nach der
+unterscheiden verbleibende Installation, Start, Updates und Prüfungen von
+vorhandenen Ressourcen und fragen einmal nach der
 Zustimmung zu diesen Folgen und dem exakten Quellkandidaten. Bei destruktiven
 Plänen benennt diese Frage ausdrücklich die dauerhafte Datenlöschung. Ohne Eingabemöglichkeit wird die strukturierte
 Bestätigungsanforderung zurückgegeben, ohne automatisch erneut auszuführen.

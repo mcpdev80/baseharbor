@@ -196,10 +196,15 @@ func (e *bahaMachineExecutor) executeHTTPApply(
 			// so a human or automation can explicitly authorize a second attempt.
 			submission, _ := candidateSubmissionForResolvedApp(ctx, resolved)
 			if hash := delivery.CandidateConsentDigest(submission); hash != "" {
+				preview, previewErr := buildResolvedApplicationPlan(ctx, resolved)
+				if previewErr != nil {
+					return nil, coreHTTPApplyStageError("deployment preview", previewErr)
+				}
 				return nil, &machine.Error{
 					Code:      machine.ErrorApprovalRequired,
 					CauseCode: "candidate_confirmation_required",
 					Message:   "Core requires explicit confirmation of this exact application source candidate.",
+					Details:   preview,
 					Next:      "Re-run baha app apply " + input.Name + " --environment " + input.Environment + " --confirm-candidate " + hash,
 				}
 			}

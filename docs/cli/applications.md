@@ -77,12 +77,16 @@ The same repository workflow applies to a selected remote Core Target:
 contract and configures deployment settings on the Core. The application name
 and environment come from `baseharbor.yaml`; the Target alias does not encode
 an environment. Interactive deployment displays the Core's provider-impact
-summary grouped by service (SQL, cache, storage and others). One confirmation
+summary of remaining changes from the Core plan. It distinguishes installation,
+starting existing services, updates and unresolved checks; existing services
+are listed compactly for reuse. One confirmation
 approves these changes and the exact current application source. Noninteractive
 clients receive the structured approval challenge. Remote work reports its
 current phase and elapsed waiting time; JSON output stays machine-readable.
 Enabling development management UIs creates their shared login on the Core
 when none exists. Existing credentials are recovered and reused.
+Declining or cancelling the interactive confirmation stops the rollout. Run
+`baha up` again to review and confirm; no manual source-hash flag is needed.
 
 For a remote Target, select a free published workload port explicitly with `baha app apply NAME --workload-port VARIABLE=PORT`. BaseHarbor verifies that the variable exists in the repository Compose workload and that the port is free on the Core host, then saves it for that deployment. For example, `--workload-port DEMO_HTTPS_PORT=8081` avoids a Core-host conflict on port 8080 without changing the repository source.
 

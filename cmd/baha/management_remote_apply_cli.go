@@ -97,7 +97,11 @@ func remoteApplicationApplyCLI(ctx context.Context, target deployment.ResolvedTa
 	for attempt := 0; attempt < 3; attempt++ {
 		var result bytes.Buffer
 		var requestErr error
-		err := remoteCLIPhase(ctx, errOut, "Deploy application on "+target.Name, func(ctx context.Context) error {
+		phase := "Deploy application on " + target.Name
+		if candidateConsentOverride(ctx) == "" {
+			phase = "Prepare deployment on " + target.Name
+		}
+		err := remoteCLIPhase(ctx, errOut, phase, func(ctx context.Context) error {
 			requestErr = remoteApplicationMutation(ctx, target, "apply", filtered, &result)
 			var challenge *machine.Error
 			if errors.As(requestErr, &challenge) && challenge.Code == machine.ErrorApprovalRequired &&
@@ -117,7 +121,7 @@ func remoteApplicationApplyCLI(ctx context.Context, target deployment.ResolvedTa
 		if !interactive {
 			return err
 		}
-		next, retry, approvalErr := acknowledgeRemoteApplyChallenge(ctx, target, err, requested, reader, errOut, seen)
+		next, retry, approvalErr := acknowledgeRemoteApplyChallenge(ctx, target, environment, err, requested, reader, errOut, seen)
 		if approvalErr != nil || !retry {
 			if approvalErr != nil {
 				return approvalErr
@@ -132,7 +136,7 @@ func remoteApplicationApplyCLI(ctx context.Context, target deployment.ResolvedTa
 // Only explicit, read-only authorization challenges may start a new execution.
 // Transport errors, pending executions, stale consent and partial failures never
 // trigger a mutation retry. The Core revalidates every acknowledged plan/hash.
-func acknowledgeRemoteApplyChallenge(ctx context.Context, target deployment.ResolvedTarget, cause error, requested *application.PortableContract, reader *bufio.Reader, out io.Writer, seen map[string]bool) (context.Context, bool, error) {
+func acknowledgeRemoteApplyChallenge(ctx context.Context, target deployment.ResolvedTarget, environment string, cause error, requested *application.PortableContract, reader *bufio.Reader, out io.Writer, seen map[string]bool) (context.Context, bool, error) {
 	var failure *machine.Error
 	if !errors.As(cause, &failure) || failure.Code != machine.ErrorApprovalRequired {
 		return ctx, false, nil
@@ -175,6 +179,9 @@ func acknowledgeRemoteApplyChallenge(ctx context.Context, target deployment.Reso
 			}
 		}
 		consent, err := readProviderApplyAcknowledgement(reader, out, plan)
+		if errors.Is(err, io.EOF) || (err == nil && !consent.First) {
+			return ctx, false, presentRemoteDeploymentCancellation(out, failure)
+		}
 		if err != nil {
 			return ctx, false, err
 		}
@@ -192,15 +199,17 @@ func acknowledgeRemoteApplyChallenge(ctx context.Context, target deployment.Reso
 		if len(match) != 2 || seen["candidate"] || candidateConsentOverride(ctx) != "" {
 			return ctx, false, nil
 		}
-		if requested != nil {
-			printApplicationServiceSummary(out, target.Name, *requested)
+		if err := printRemoteDeploymentChanges(ctx, target, environment, requested, failure.Details, out); err != nil {
+			return ctx, false, err
 		}
-		fmt.Fprintf(out, "Deploy application from the current source on %s\n", target.Name)
 		if cli.OutputOptionsFromContext(ctx).Verbose {
 			fmt.Fprintf(out, "  Source SHA-256: %s\n", match[1])
 		}
-		accepted, err := promptYesNo(reader, out, "Deploy this application?", false)
-		if err != nil || !accepted {
+		accepted, err := promptYesNo(reader, out, "Apply these changes?", false)
+		if errors.Is(err, io.EOF) || (err == nil && !accepted) {
+			return ctx, false, presentRemoteDeploymentCancellation(out, failure)
+		}
+		if err != nil {
 			return ctx, false, err
 		}
 		seen["candidate"] = true
@@ -215,4 +224,36 @@ func remoteChallengeCandidateDigest(next string) string {
 		return ""
 	}
 	return match[1]
+}
+
+func presentRemoteDeploymentCancellation(out io.Writer, cause error) error {
+	fmt.Fprintln(out, "Deployment cancelled; no rollout was started.")
+	fmt.Fprintln(out, "To try again, run baha up from this application's repository.")
+	return cli.Presented(cause)
+}
+
+func printRemoteDeploymentChanges(ctx context.Context, target deployment.ResolvedTarget, environment string, requested *application.PortableContract, details any, out io.Writer) error {
+	if details == nil {
+		fmt.Fprintln(out, "Service changes were not reported by this Core; existing services will be checked before deployment.")
+		return nil
+	}
+	payload, err := json.Marshal(details)
+	if err != nil {
+		return err
+	}
+	var plan applicationLifecyclePlan
+	decoder := json.NewDecoder(bytes.NewReader(payload))
+	decoder.DisallowUnknownFields()
+	if decoder.Decode(&plan) != nil || plan.ContractVersion != "v1" || plan.Environment != environment || plan.Footprint.Version != application.FootprintVersion || plan.ProviderPlan.Version != application.ProviderPlanVersion || plan.Footprint.Target != plan.ProviderPlan.Target || (requested != nil && plan.Application != requested.Application) {
+		return errors.New("Core returned an invalid deployment preview; inspect the current plan before retrying")
+	}
+	core, err := dialVerifiedRemoteCore(ctx, target.Name, target.RuntimeProvider, target.TenantID)
+	if err != nil {
+		return err
+	}
+	if plan.Footprint.Target != core.serverTargetName() {
+		return errors.New("deployment preview belongs to another Core Target")
+	}
+	printApplicationDeploymentChanges(out, target.Name, plan)
+	return nil
 }

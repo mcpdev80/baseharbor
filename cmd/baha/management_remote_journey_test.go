@@ -19,6 +19,8 @@ import (
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/identity"
 	"github.com/mcpdev80/baseharbor/internal/machine"
@@ -40,6 +42,7 @@ type remoteJourneyCore struct {
 	applyCalls, applied int
 	applyFailure        error
 	candidateChanged    bool
+	previewOverride     func(*applicationLifecyclePlan)
 	noProviderChanges   bool
 }
 
@@ -98,7 +101,19 @@ func (f *remoteJourneyCore) Execute(_ context.Context, op machine.Operation, sco
 				digest = strings.Repeat("b", 64)
 			}
 			if input.ConfirmCandidate != digest {
-				return nil, &machine.Error{Code: machine.ErrorApprovalRequired, CauseCode: "candidate_confirmation_required", Message: "Candidate approval required", Next: "Re-run baha app apply demo --confirm-candidate " + digest}
+				preview := applicationLifecyclePlan{Plan: application.Plan{ContractVersion: "v1", Application: "demo", Environment: "dev"}, Footprint: application.Footprint{Version: application.FootprintVersion, Target: "local"}, ProviderPlan: application.ProviderPlan{Version: application.ProviderPlanVersion, Target: "local"}}
+				contract, _ := application.PortableContractFromManifest(f.intent)
+				for _, requirement := range contract.Capabilities {
+					state := application.ProviderRunning
+					if requirement.Kind == capability.KeyValue {
+						state = application.ProviderNewRequired
+					}
+					preview.Footprint.Requirements = append(preview.Footprint.Requirements, application.RequirementResolution{Requirement: requirement, State: state})
+				}
+				if f.previewOverride != nil {
+					f.previewOverride(&preview)
+				}
+				return nil, &machine.Error{Code: machine.ErrorApprovalRequired, CauseCode: "candidate_confirmation_required", Message: "Candidate approval required", Details: preview, Next: "Re-run baha app apply demo --confirm-candidate " + digest}
 			}
 			f.applied++
 		}
@@ -373,10 +388,63 @@ func TestRemoteRepositoryResumeShowsServicesBeforeSingleSourceConfirmation(t *te
 		t.Fatal(err)
 	}
 	text := output.String()
-	if !strings.Contains(text, "Services requested by demo:") || !strings.Contains(text, "  SQL\n") || !strings.Contains(text, "  Cache\n") || strings.Count(text, "[y/N]") != 1 {
+	if !strings.Contains(text, "Deployment changes on") || !strings.Contains(text, "Reuse (already present): SQL") || !strings.Contains(text, "Install: Cache") || strings.Count(text, "[y/N]") != 1 {
 		t.Fatalf("resumed application lacks one readable decision: %s", text)
 	}
 	if f.applied != 1 || f.applyCalls != 2 {
 		t.Fatal("resumed application did not deploy exactly once")
+	}
+}
+
+func TestRemoteRepositoryDeclineExplainsCancellationWithoutManualHashInstructions(t *testing.T) {
+	for _, answer := range []string{"n\n", "\n", ""} {
+		t.Run(fmt.Sprintf("answer-%q", answer), func(t *testing.T) {
+			ctx, _, f := remoteJourneyFixture(t)
+			f.noProviderChanges = true
+			old := runtimeInput
+			runtimeInput = strings.NewReader(answer)
+			t.Cleanup(func() { runtimeInput = old })
+			var output bytes.Buffer
+			err := runtimeUpCommandWithInputResolver(ctx, nil, &output, &output)
+			if !cli.IsPresented(err) {
+				t.Fatalf("cancellation left a raw error for main to print: %v", err)
+			}
+			if !strings.Contains(output.String(), "Deployment cancelled") || !strings.Contains(output.String(), "run baha up") || strings.Contains(output.String(), "--confirm-candidate") {
+				t.Fatalf("obsolete cancellation guidance: %s", output.String())
+			}
+			if f.applyCalls != 1 || f.applied != 0 {
+				t.Fatal("declined source confirmation retried rollout")
+			}
+		})
+	}
+}
+
+func TestRemoteRepositoryRejectsDeploymentPreviewForDifferentScope(t *testing.T) {
+	for _, scenario := range []string{"target", "environment", "application"} {
+		t.Run(scenario, func(t *testing.T) {
+			ctx, _, f := remoteJourneyFixture(t)
+			f.noProviderChanges = true
+			f.previewOverride = func(p *applicationLifecyclePlan) {
+				switch scenario {
+				case "target":
+					p.Footprint.Target = "other"
+					p.ProviderPlan.Target = "other"
+				case "environment":
+					p.Environment = "prod"
+				case "application":
+					p.Application = "other"
+				}
+			}
+			old := runtimeInput
+			runtimeInput = strings.NewReader("y\n")
+			t.Cleanup(func() { runtimeInput = old })
+			var output bytes.Buffer
+			if err := runtimeUpCommandWithInputResolver(ctx, nil, &output, &output); err == nil {
+				t.Fatal("foreign preview accepted")
+			}
+			if strings.Contains(output.String(), "[y/N]") || f.applyCalls != 1 || f.applied != 0 {
+				t.Fatal("foreign scope obtained confirmation or execution")
+			}
+		})
 	}
 }

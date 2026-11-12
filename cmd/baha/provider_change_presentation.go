@@ -123,19 +123,45 @@ func providerFunctionLabel(function string) string {
 	}
 }
 
-// A resumed deployment can need source consent without another provider-change
-// challenge. Show requested services without claiming they are already running.
-func printApplicationServiceSummary(out io.Writer, target string, contract application.PortableContract) {
-	fmt.Fprintf(out, "\nApplication deployment on %s\nServices requested by %s:\n", target, contract.Application)
+// Running observations establish presence, not semantic readiness. Keep
+// retained-but-unverifiable resources out of both "reuse" and "install" claims.
+func printApplicationDeploymentChanges(out io.Writer, target string, plan applicationLifecyclePlan) {
+	fmt.Fprintf(out, "\nDeployment changes on %s\n", target)
+	groups := map[string][]string{}
 	seen := map[string]bool{}
-	for _, requirement := range contract.Capabilities {
-		label := providerFunctionLabel(string(requirement.Kind))
-		if !seen[label] {
-			fmt.Fprintln(out, "  "+label)
-			seen[label] = true
+	actions := map[string]string{}
+	if plan.ProviderPlan.Impact != nil {
+		for _, impact := range plan.ProviderPlan.Impact.Impacts {
+			actions[impact.InstanceID] = impact.Operation
 		}
 	}
-	if contract.Secrets.Managed {
-		fmt.Fprintln(out, "  Secrets")
+	for _, requirement := range plan.Footprint.Requirements {
+		name := providerFunctionLabel(string(requirement.Requirement.Kind))
+		if requirement.Requirement.Name != "" && requirement.Requirement.Name != "default" {
+			name += " (" + requirement.Requirement.Name + ")"
+		}
+		group := "Check and finish setup"
+		switch requirement.State {
+		case application.ProviderRunning:
+			group = "Reuse (already present)"
+		case application.ProviderNewRequired:
+			group = "Install"
+		case application.ProviderStoppedOwned:
+			group = "Start existing services"
+		}
+		if action := actions[requirement.InstanceID]; action != "" && action != "add" {
+			group = providerActionLabel(action)
+		}
+		key := group + "/" + name
+		if !seen[key] {
+			groups[group] = append(groups[group], name)
+			seen[key] = true
+		}
 	}
+	for _, group := range []string{"Install", "Start existing services", "Update", "Restart", "Replace", "Remove", "Disconnect", "Stop", "Start", "Check and finish setup", "Reuse (already present)"} {
+		if len(groups[group]) > 0 {
+			fmt.Fprintf(out, "  %s: %s\n", group, strings.Join(groups[group], ", "))
+		}
+	}
+	fmt.Fprintln(out, "  Deploy / update the application")
 }

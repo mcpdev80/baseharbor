@@ -143,3 +143,25 @@ func TestProviderInstallationSummaryGroupsServicesWithoutInternalPaths(t *testin
 		t.Fatalf("normal installation summary leaked implementation detail: %s", text)
 	}
 }
+
+func TestDeploymentChangesDistinguishExistingMissingStoppedAndUnknown(t *testing.T) {
+	plan := applicationLifecyclePlan{Footprint: application.Footprint{Requirements: []application.RequirementResolution{
+		{Requirement: application.CapabilityRequirement{Kind: application.CapabilitySQL}, State: application.ProviderRunning},
+		{Requirement: application.CapabilityRequirement{Kind: application.CapabilityKeyValue}, State: application.ProviderNewRequired},
+		{Requirement: application.CapabilityRequirement{Kind: application.CapabilityObjectStorageS3}, State: application.ProviderStoppedOwned},
+		{Requirement: application.CapabilityRequirement{Kind: application.CapabilityMessagingQueue}, State: application.ProviderUnverifiable},
+	}}}
+	var output bytes.Buffer
+	printApplicationDeploymentChanges(&output, "dev-docker-1", plan)
+	text := output.String()
+	for _, want := range []string{"Reuse (already present): SQL", "Install: Cache", "Start existing services: Object storage", "Check and finish setup: Messaging", "Deploy / update the application"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("missing delta %q: %s", want, text)
+		}
+	}
+	for _, bad := range []string{"Install: SQL", "Install: Messaging", "Services requested"} {
+		if strings.Contains(text, bad) {
+			t.Errorf("invented installation work: %s", text)
+		}
+	}
+}
