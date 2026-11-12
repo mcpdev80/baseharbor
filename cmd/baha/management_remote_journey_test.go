@@ -40,6 +40,7 @@ type remoteJourneyCore struct {
 	applyCalls, applied int
 	applyFailure        error
 	candidateChanged    bool
+	noProviderChanges   bool
 }
 
 func (f *remoteJourneyCore) SupportedOperationIDs() []string {
@@ -87,7 +88,7 @@ func (f *remoteJourneyCore) Execute(_ context.Context, op machine.Operation, sco
 				consent = *input.ProviderChangeConsent
 			}
 			consent.PlanID = firstNonEmpty(consent.PlanID, f.plan.PlanID)
-			if err := application.ValidateProviderChangeConsent(f.plan, consent); err != nil {
+			if err := application.ValidateProviderChangeConsent(f.plan, consent); err != nil && !f.noProviderChanges {
 				failure := providerImpactConsentError(f.plan, err)
 				failure.(*machine.Error).Next += " Candidate: --confirm-candidate " + strings.Repeat("a", 64)
 				return nil, failure
@@ -354,5 +355,28 @@ func TestRemoteRepositorySourceChangeCannotReuseCombinedConfirmation(t *testing.
 	}
 	if strings.Count(output.String(), "[y/N]") != 1 || f.applyCalls != 2 || f.applied != 0 {
 		t.Fatal("source change reused consent or prompted again")
+	}
+}
+
+func TestRemoteRepositoryResumeShowsServicesBeforeSingleSourceConfirmation(t *testing.T) {
+	ctx, _, f := remoteJourneyFixture(t)
+	f.noProviderChanges = true
+	m := application.WithWorkloadComponents(application.New("demo", "dev", true, true, false), "api")
+	if err := os.WriteFile("baseharbor.yaml", []byte(m.AuthoredYAML()), 0600); err != nil {
+		t.Fatal(err)
+	}
+	old := runtimeInput
+	runtimeInput = strings.NewReader("y\n")
+	t.Cleanup(func() { runtimeInput = old })
+	var output bytes.Buffer
+	if err := runtimeUpCommandWithInputResolver(ctx, nil, &output, &output); err != nil {
+		t.Fatal(err)
+	}
+	text := output.String()
+	if !strings.Contains(text, "Services requested by demo:") || !strings.Contains(text, "  SQL\n") || !strings.Contains(text, "  Cache\n") || strings.Count(text, "[y/N]") != 1 {
+		t.Fatalf("resumed application lacks one readable decision: %s", text)
+	}
+	if f.applied != 1 || f.applyCalls != 2 {
+		t.Fatal("resumed application did not deploy exactly once")
 	}
 }

@@ -98,7 +98,7 @@ func providerFunctionLabel(function string) string {
 		return "SQL"
 	case "cache.key-value":
 		return "Cache"
-	case "store.key-value":
+	case "store.key-value", "database.key-value":
 		return "Persistent key-value storage"
 	case "object-storage.s3":
 		return "Object storage"
@@ -120,5 +120,22 @@ func providerFunctionLabel(function string) string {
 		return "Logs"
 	default:
 		return function
+	}
+}
+
+// A resumed deployment can need source consent without another provider-change
+// challenge. Show requested services without claiming they are already running.
+func printApplicationServiceSummary(out io.Writer, target string, contract application.PortableContract) {
+	fmt.Fprintf(out, "\nApplication deployment on %s\nServices requested by %s:\n", target, contract.Application)
+	seen := map[string]bool{}
+	for _, requirement := range contract.Capabilities {
+		label := providerFunctionLabel(string(requirement.Kind))
+		if !seen[label] {
+			fmt.Fprintln(out, "  "+label)
+			seen[label] = true
+		}
+	}
+	if contract.Secrets.Managed {
+		fmt.Fprintln(out, "  Secrets")
 	}
 }

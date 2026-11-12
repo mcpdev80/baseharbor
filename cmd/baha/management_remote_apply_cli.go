@@ -77,7 +77,13 @@ func remoteApplicationApplyCLI(ctx context.Context, target deployment.ResolvedTa
 	if err != nil {
 		return err
 	}
+	var requested *application.PortableContract
 	if matched {
+		contract, err := application.PortableContractFromManifest(m)
+		if err != nil {
+			return err
+		}
+		requested = &contract
 		if err := initializeRemoteRepository(ctx, target, root, m, repositoryInitOptions{}, errOut); err != nil {
 			return err
 		}
@@ -111,7 +117,7 @@ func remoteApplicationApplyCLI(ctx context.Context, target deployment.ResolvedTa
 		if !interactive {
 			return err
 		}
-		next, retry, approvalErr := acknowledgeRemoteApplyChallenge(ctx, target, err, reader, errOut, seen)
+		next, retry, approvalErr := acknowledgeRemoteApplyChallenge(ctx, target, err, requested, reader, errOut, seen)
 		if approvalErr != nil || !retry {
 			if approvalErr != nil {
 				return approvalErr
@@ -126,7 +132,7 @@ func remoteApplicationApplyCLI(ctx context.Context, target deployment.ResolvedTa
 // Only explicit, read-only authorization challenges may start a new execution.
 // Transport errors, pending executions, stale consent and partial failures never
 // trigger a mutation retry. The Core revalidates every acknowledged plan/hash.
-func acknowledgeRemoteApplyChallenge(ctx context.Context, target deployment.ResolvedTarget, cause error, reader *bufio.Reader, out io.Writer, seen map[string]bool) (context.Context, bool, error) {
+func acknowledgeRemoteApplyChallenge(ctx context.Context, target deployment.ResolvedTarget, cause error, requested *application.PortableContract, reader *bufio.Reader, out io.Writer, seen map[string]bool) (context.Context, bool, error) {
 	var failure *machine.Error
 	if !errors.As(cause, &failure) || failure.Code != machine.ErrorApprovalRequired {
 		return ctx, false, nil
@@ -185,6 +191,9 @@ func acknowledgeRemoteApplyChallenge(ctx context.Context, target deployment.Reso
 		match := regexp.MustCompile(` --confirm-candidate ([0-9a-f]{64})$`).FindStringSubmatch(failure.Next)
 		if len(match) != 2 || seen["candidate"] || candidateConsentOverride(ctx) != "" {
 			return ctx, false, nil
+		}
+		if requested != nil {
+			printApplicationServiceSummary(out, target.Name, *requested)
 		}
 		fmt.Fprintf(out, "Deploy application from the current source on %s\n", target.Name)
 		if cli.OutputOptionsFromContext(ctx).Verbose {
