@@ -10,27 +10,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- Guided Target-scoped access profile assignment and offboarding, managed user invitations through configured identity providers, and scoped team permissions.
-- Workstation onboarding and versioned connection-profile import/export; optional encrypted export of selected local credentials.
-- Independent desired, applied and observed release/component state per deployment stage, with readable version inspection.
-- Immutable deployment candidate resolution using existing OCI artifacts, registry credentials, native image-transfer paths and optional existing registry implementations.
-- Editable Target deployment-policy presets for development, test, staging and production (initial local-Target foundation).
+- Direct mTLS onboarding for developer workstations, plus user access profiles and independent workstation renewal and revocation.
+- Separate desired, applied and observed application versions for each deployment stage.
+- Editable Target deployment-policy presets for development, test, staging and production.
+- Demo coverage for exact-candidate confirmation and cross-application connectivity.
 
 ### Changed
 
-- Local and remote operations use one installation-owned application/deployment state authority and preserve external GitOps ownership.
-- Fresh repositories can attach to registered applications using server-allocated identity; interruptions can be reconciled using persisted execution and recovery records.
-- Remote Node Connector transport, enrollment service and session handling are hardened without making Connector a workstation-to-Core prerequisite.
-
-### Fixed
-
-- Lifecycle locking and registration concurrency, interrupted-operation recovery and permission/foreign-resource error classification are more robust.
-- A range of native Docker/Podman lifecycle, onboarding, CLI wizard cancellation and maintenance regressions have been corrected.
-
-### Compatibility
-
-- Docker/Compose and rootless Podman/Quadlet remain the principal local runtime paths; separate Demo, Console and Connector releases require compatible source revisions.
-- Not-yet-qualified end-to-end onboarding, promotion and remote deployment claims must be verified before publication. No automatic migration or Kubernetes/OpenShift expansion is claimed here.
+- Core-local Docker and Podman can be managed directly from a developer workstation without a Node Connector.
 
 ## [0.4.26]
 
