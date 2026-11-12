@@ -103,7 +103,7 @@ func runOnboardInvite(ctx context.Context, args []string, out io.Writer) error {
 	if err := (ws.Scope{TenantID: "11111111-1111-4111-8111-111111111111", Station: station}).Validate(); err != nil {
 		return errors.New("invalid workstation name; use letters, numbers, hyphens or underscores")
 	}
-	password, err := readOnboardInitialPassword(out, reader)
+	password, err := readOnboardInitialPasswordForInvite(out, reader)
 	if err != nil {
 		return err
 	}
@@ -163,6 +163,11 @@ func runOnboardInvite(ctx context.Context, args []string, out io.Writer) error {
 	_, err = fmt.Fprintf(out, "User %s (%s) created in Keycloak; email is recorded as contact information and no email server is required. The user must change the temporary password at first login.\nOne-use workstation invitation: %s\nTransfer this private file to the developer workstation. Share the initial password separately. Do not print the invitation contents.\n", displayName, login, outputFile)
 	return err
 }
+
+// readOnboardInitialPasswordForInvite is replaceable by native integration
+// tests so they can exercise the complete invitation flow without exposing a
+// password flag or weakening the interactive production prompt.
+var readOnboardInitialPasswordForInvite = readOnboardInitialPassword
 
 func readOnboardInitialPassword(out io.Writer, reader *bufio.Reader) ([]byte, error) {
 	file, ok := onboardingInput.(*os.File)
