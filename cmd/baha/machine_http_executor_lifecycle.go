@@ -466,15 +466,13 @@ func (e *bahaMachineExecutor) executeHTTPDestroy(
 	}
 	args := machineApplicationArgs(input.Name, input.Environment)
 	args = append(args, "--yes")
-	if input.FullReset {
-		args = append(args, "--full-reset")
-	}
+	args = append(args, "--full-reset")
 	reportHTTPProgress(report, "destroy", "Removing BaseHarbor-owned application resources.", 40)
 	if err := executeApplicationDestroyLifecycle(ctx, e.store, args, io.Discard, io.Discard); err != nil {
 		return nil, err
 	}
 	reportHTTPProgress(report, "destroy", "Owned application resources removed.", 100)
-	return applicationDestroyResult(resolved, input.FullReset)
+	return applicationDestroyResult(resolved, true)
 }
 
 func ensureResolvedHTTPContext(operationContext machine.OperationContext, resolved resolvedApplication) error {

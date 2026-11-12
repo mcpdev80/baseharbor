@@ -693,13 +693,11 @@ func registerMCPRecoveryTools(server *mcp.Server, store application.Store) {
 		defer cancelLifecycle()
 		args := machineApplicationArgs(input.Name, input.Environment)
 		args = append(args, "--yes")
-		if input.FullReset {
-			args = append(args, "--full-reset")
-		}
+		args = append(args, "--full-reset")
 		if err := executeApplicationDestroyLifecycle(ctx, store, args, io.Discard, io.Discard); err != nil {
 			return machineMCPFailure(err)
 		}
-		result, err := applicationDestroyResult(resolved, input.FullReset)
+		result, err := applicationDestroyResult(resolved, true)
 		if err != nil {
 			return machineMCPFailure(err)
 		}

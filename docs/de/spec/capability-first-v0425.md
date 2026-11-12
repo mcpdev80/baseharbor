@@ -144,16 +144,16 @@ Zugangsdaten.
 
 ## Target-Verbraucherunion und Hinzufügen/Entfernen/Reaktivieren
 
-App-`--full-reset` und Remote-App-Zerstörung bestätigen einen aggregierten
+App-Stopp und -Zerstörung bestätigen einen aggregierten
 `baseharbor.provider-impact-scope/v1` des ausgewählten Deployments. Der enthaltene
 Providerplan allein erlaubt kein Löschen seines geschützten Zustands. Beide
-aktuellen Bestätigungen sind erforderlich; Full Reset verlangt zusätzlich die
+aktuellen Bestätigungen sind erforderlich; Destroy verlangt außerdem die
 separate Datenlöschungszustimmung. Geänderte Veröffentlichungs-/Recovery-Owner
 machen diese Zustimmung ungültig. Ungeprüftes Remote-Material und dessen Zugriff
-bleiben explizit teilweise. Standard-Remote-Zerstörung behält Veröffentlichung,
-Zugangsdaten und Deployment-Owner, gibt Referenzen erst nach geprüfter
-Containerentfernung frei und nutzt die geschützte stillgelegte Absicht zur
-expliziten Reaktivierung. Erhaltene Dateien beweisen weder unauthentifizierten
+bleiben explizit teilweise. Stop behält Veröffentlichung, Zugangsdaten und
+Deployment-Owner zur ausdrücklichen Reaktivierung. Destroy entfernt exklusiv
+app-eigene Daten und Zustand und gibt Referenzen erst nach geprüfter
+Ressourcenentfernung frei. Erhaltene Dateien beweisen weder unauthentifizierten
 Zugriff noch eine funktionierende Materialübergabe.
 
 `ResolveProviderPlan(snapshot, consumers, inventoryComplete)` delegiert jeden

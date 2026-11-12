@@ -50,7 +50,7 @@ Helm and Kustomize are not v0.4.20 source adapters.
 | --- | --- |
 | `baha up` | Converge an application |
 | `baha app apply` | Apply/reconcile through the application lifecycle |
-| `baha down` | Stop application runtime state |
+| `baha app stop` / `baha down` | Stop application runtime while preserving persistent data |
 | `baha status` | Observe application state |
 | `baha doctor` | Diagnose and optionally repair |
 | `baha app update` | Update supported application source/state |
@@ -156,16 +156,16 @@ current provider plan and asks for approval before making changes. If managed
 workstation host entries are enabled, it reconciles them after removal. The
 Target gateway CA remains trusted while that Core connection is retained.
 
-Default local `baha app destroy` retires the owned runtime and application routes,
-while keeping persistent data, credentials, recovery material and the canonical
-deployment identity. `baha app apply` reactivates that deployment from the current
-application intent. Runtime removal and complete data deletion are separate
-choices. Provider consequences are displayed with `Achtung` and require two
-explicit acknowledgements of the same current plan; `--yes` alone supplies
-neither acknowledgement. The structured destroy result reports retained material
-and the common provider-change receipt. A verified runtime removal does not
-establish continued secret delivery, login, certificate renewal or recovery
-usability; unverified consequences remain partial in the receipt.
+`baha app stop` (also available as `baha down`) stops runtime services while
+retaining application data and recovery state. `baha app destroy NAME --yes`
+permanently removes BaseHarbor-owned application state, credentials, runtime
+resources, deployment registration and Compose data volumes whose exclusive
+application ownership is verified. Shared, foreign, bind-mounted or otherwise
+ambiguous data is preserved and reported; shared Target infrastructure, the
+repository source and workstation trust for the still-connected Core are not
+application-owned data. Provider consequences and data deletion are shown in the
+current plan and require explicit approval. There is no routine `--full-reset`
+switch: destroying the application means deleting its owned data.
 
 Plan JSON and MCP/HTTP plan share `footprint` (`baseharbor.footprint/v1`). A
 projected new binding is `requested/unbound`, never live evidence. Requested
@@ -213,7 +213,7 @@ closed and names both colliding deployment UUIDs. The tolerant
 `baha app list` still shows the twins; retire each one by UUID:
 
 ```bash
-baha app destroy --uuid <deployment-uuid> --full-reset
+baha app destroy --uuid <deployment-uuid> --yes
 ```
 
 Then verify the Target again with `baha app list`. Commands addressed by

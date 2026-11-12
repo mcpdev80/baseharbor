@@ -7,7 +7,7 @@ import "errors"
 // deployments namespace. Detach is config-only by contract, but the orphaned
 // records are otherwise uncollectable: the one-installation-owner seam
 // (VerifyDeploymentOwner) fails closed on an ownerless Target, so neither
-// `app destroy --uuid --full-reset` nor `destroy --all` can resolve them and no
+// `app destroy --uuid --yes` nor `destroy --all` can resolve them and no
 // later operation reaches them. The detach is refused instead, naming the
 // records, so the operator can restore the authoritative Core installation owner
 // of the Target (and the source repository/manifest that owns each record) and

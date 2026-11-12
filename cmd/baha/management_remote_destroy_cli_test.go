@@ -10,22 +10,22 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/machine"
 )
 
-func TestRemoteDestroyPlanUsesOneExplicitReviewAndRetainsData(t *testing.T) {
+func TestRemoteDestroyPlanRequiresSeparateDataDeletionApproval(t *testing.T) {
 	ctx, target, _ := remoteJourneyFixture(t)
 	plan := application.ProviderImpactPlan{
 		Version: application.ProviderImpactVersion, PlanID: "destroy-plan", Target: "local",
-		ConfirmationsRequired: 2, Complete: true,
+		ConfirmationsRequired: 2, Complete: true, Destructive: true,
 		Impacts: []application.ProviderImpact{{InstanceID: "demo-sql", Operation: "remove-runtime"}},
 	}
 	cause := &machine.Error{Code: machine.ErrorApprovalRequired, CauseCode: "impact-confirmation-required", Details: plan}
 	var output bytes.Buffer
-	next, retry, err := acknowledgeRemoteDestroyChallenge(ctx, target, cause, bufio.NewReader(strings.NewReader("y\n")), &output, map[string]bool{})
-	if err != nil || !retry || !strings.Contains(output.String(), "Remove this application") {
+	next, retry, err := acknowledgeRemoteDestroyChallenge(ctx, target, cause, bufio.NewReader(strings.NewReader("y\ny\n")), &output, map[string]bool{})
+	if err != nil || !retry || !strings.Contains(output.String(), "Remove this application") || !strings.Contains(output.String(), "Permanently delete") {
 		t.Fatalf("destroy confirmation failed: retry=%v err=%v output=%s", retry, err, output.String())
 	}
 	consent, err := invocationProviderChangeConsent(next)
-	if err != nil || consent == nil || consent.PlanID != plan.PlanID || !consent.First || !consent.Second || consent.DeleteData {
-		t.Fatalf("wrong retained-data consent: %+v %v", consent, err)
+	if err != nil || consent == nil || consent.PlanID != plan.PlanID || !consent.First || !consent.Second || !consent.DeleteData {
+		t.Fatalf("wrong destroy consent: %+v %v", consent, err)
 	}
 }
 
@@ -48,8 +48,7 @@ func TestRemoteDestroyCompletionReportsDataDisposition(t *testing.T) {
 	for _, tc := range []struct {
 		name, receipt, expected string
 	}{
-		{"retained", "{\"application\":\"demo\",\"environment\":\"dev\",\"target\":\"dev-docker-1\",\"verified\":true}", "Persistent data and recovery material were retained."},
-		{"deleted", "{\"application\":\"demo\",\"environment\":\"dev\",\"target\":\"dev-docker-1\",\"verified\":true,\"data_deleted\":true}", "Application data was permanently deleted as requested."},
+		{"deleted", "{\"application\":\"demo\",\"environment\":\"dev\",\"target\":\"dev-docker-1\",\"verified\":true,\"data_deleted\":true}", "Application-owned data was permanently deleted."},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var out bytes.Buffer

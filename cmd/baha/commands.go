@@ -240,6 +240,7 @@ func configuredApplicationCommand(store application.Store) *cli.Command {
 		appStatusCommandWithTLS(store),
 		appDoctorRepairCommandWithTLS(store),
 		appDownCommand(store),
+		appStopCommand(store),
 		appUpCommand(store),
 		appDestroyCommand(store),
 		appSecretCommand(store),

@@ -68,8 +68,8 @@ func applyRemainingApplicationRuntimeProviderGuards(store application.Store, app
 				bhruntime.CapabilityPublishedPorts,
 				bhruntime.CapabilityResourceOwnership,
 			})
-		case "down":
-			guardApplicationRuntimeCommand(store, command, "app down", optionalNameGuard("down"), []bhruntime.RuntimeCapability{
+		case "down", "stop":
+			guardApplicationRuntimeCommand(store, command, "app "+command.Name, optionalNameGuard("down"), []bhruntime.RuntimeCapability{
 				bhruntime.CapabilityWorkloadLifecycle,
 				bhruntime.CapabilityResourceOwnership,
 			})
@@ -94,7 +94,7 @@ func guardApplicationRuntimeCommand(store application.Store, command *cli.Comman
 			// cannot confidently identify an application target.
 			return baseRun(ctx, args, out, errOut)
 		}
-		if hasRemoteApplicationTarget(resolved) && (label == "app status" || label == "app doctor" || label == "app destroy") {
+		if hasRemoteApplicationTarget(resolved) && (label == "app status" || label == "app doctor" || label == "app destroy" || label == "app stop") {
 			if _, err := remoteApplicationProjectRuntime(ctx, resolved); err != nil {
 				return err
 			}

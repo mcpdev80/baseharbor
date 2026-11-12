@@ -21,6 +21,7 @@ Aktuelle Daten liefert `baha agent describe -o json` (`cli_coverage`). Nach Code
 | `baha app destroy` | semantisch | CLI -o json / typed MCP result | baseharbor.destroy |  |
 | `baha app doctor` | semantisch | CLI -o json / typed MCP result | baseharbor.doctor |  |
 | `baha app down` | semantisch | CLI -o json / typed MCP result | baseharbor.app.stop |  |
+| `baha app stop` | semantisch | CLI -o json / typed MCP result | baseharbor.app.stop |  |
 | `baha app edit` | semantisch | Interactive CLI / typed two-phase MCP consent | baseharbor.app.edit |  |
 | `baha app env` | semantisch | CLI --format json (masked) / typed MCP result | baseharbor.app.environment | MCP exposes masked values only. --reveal and loading the protected local dotenv file are execution-host credential access and are explicitly excluded modes. |
 | `baha app evidence` | semantisch | CLI -o json / typed MCP result | baseharbor.evidence |  |

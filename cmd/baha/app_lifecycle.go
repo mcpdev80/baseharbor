@@ -19,10 +19,18 @@ import (
 )
 
 func appDownCommand(store application.Store) *cli.Command {
+	return appStopLikeCommand(store, "down")
+}
+
+func appStopCommand(store application.Store) *cli.Command {
+	return appStopLikeCommand(store, "stop")
+}
+
+func appStopLikeCommand(store application.Store, name string) *cli.Command {
 	return &cli.Command{
-		Name:    "down",
+		Name:    name,
 		Summary: "Stop an application runtime while preserving persistent data",
-		Usage:   "baha app down [NAME]",
+		Usage:   "baha app " + name + " [NAME]",
 		Long:    "Stops a repository application workload and its per-application Application Runtime Broker first, then removes BaseHarbor-managed backend containers and transient network while preserving persistent data volumes, runtime credentials, application-owned Compose volumes and managed OpenBao scope. Without NAME it resolves the nearest repository baseharbor.yaml.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 			target, err := effectiveTarget(ctx)
@@ -32,13 +40,13 @@ func appDownCommand(store application.Store) *cli.Command {
 			if target.AccessProvider != "" && target.AccessProvider != "local" {
 				return remoteApplicationMutation(ctx, target, "app.stop", args, out)
 			}
-			filtered, format, err := parseReadOutputArgs(args, "app down")
+			filtered, format, err := parseReadOutputArgs(args, "app "+name)
 			if err != nil {
 				return err
 			}
 			for _, arg := range filtered {
 				if strings.HasPrefix(arg, "-") {
-					return &cli.UsageError{Message: "unknown option " + arg, Hint: "Use baha app down [NAME]; down preserves persistent data and requires acknowledgement of its current consequence plan. --yes does not provide either acknowledgement.", NoSuggestions: arg == "--yes" || arg == "-y"}
+					return &cli.UsageError{Message: "unknown option " + arg, Hint: "Use baha app " + name + " [NAME]; it preserves persistent data and requires acknowledgement of its current consequence plan. --yes does not provide either acknowledgement.", NoSuggestions: arg == "--yes" || arg == "-y"}
 				}
 			}
 			args = filtered
@@ -210,13 +218,13 @@ func removeApplicationDevelopmentRoutesBeforeDown(ctx context.Context, compose b
 func appDestroyCommand(store application.Store) *cli.Command {
 	return &cli.Command{
 		Name:    "destroy",
-		Summary: "Retire owned application runtime while retaining data and recovery state",
+		Summary: "Permanently remove an application and its exclusively owned data",
 		// --uuid DEPLOYMENT-ID is accepted (0427-175): it is the only
 		// unambiguous identity on a registry poisoned by two records claiming
 		// one application_id, and the conflict message advertises exactly this
 		// shape as the repair.
-		Usage: "baha app destroy [NAME] [--uuid DEPLOYMENT-ID] [--yes] [--full-reset]",
-		Long:  "Shows the current provider consequence plan before retiring owned workload/provider runtime and application routes. Default destruction retains persistent data, credentials, recovery material and the canonical deployment owner for reactivation with apply. Provider changes require two explicit acknowledgements of the current impact plan; --yes alone does not supply those acknowledgements. --full-reset selects the separate destructive cleanup path, including owned application state, while preserving authored source and repository Compose data.",
+		Usage: "baha app destroy [NAME] [--uuid DEPLOYMENT-ID] [--yes]",
+		Long:  "Permanently removes the application, its BaseHarbor-owned runtime resources, application data, credentials, recovery state and deployment registration. Exclusively app-owned Compose data volumes are removed too. Shared, foreign or ambiguously owned resources are preserved and reported. Use 'baha app stop' to stop runtime services while preserving data. Provider changes and permanent data deletion require explicit approval of the current plan.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 			target, err := effectiveTarget(ctx)
 			if err != nil {
@@ -236,8 +244,8 @@ func appDestroyCommand(store application.Store) *cli.Command {
 			if err != nil {
 				return err
 			}
-			if !execution.confirmed && !execution.fullReset && !isRemoteApplication(execution.resolved) {
-				_, plan, err := buildApplicationRuntimeRetirementPlan(ctx, execution.resolved)
+			if !execution.confirmed && !isRemoteApplication(execution.resolved) {
+				plan, err := buildApplicationDestructionPlan(ctx, execution.resolved, true)
 				if err != nil {
 					return err
 				}
@@ -249,7 +257,7 @@ func appDestroyCommand(store application.Store) *cli.Command {
 			if !execution.confirmed {
 				return nil
 			}
-			result, err := applicationDestroyResult(execution.resolved, execution.fullReset)
+			result, err := applicationDestroyResult(execution.resolved, true)
 			if err != nil {
 				return err
 			}
@@ -358,7 +366,7 @@ func executeApplicationDestroyLifecycle(ctx context.Context, store application.S
 func parseDestroyArgs(args []string) (string, bool, bool, error) {
 	var name string
 	confirmed := false
-	fullReset := false
+	fullReset := true
 	// The --uuid FLAG is consumed by extractApplicationEnvironment, but its bare
 	// VALUE stays in the list it returns. Neither token may enter the positional
 	// scan: the value would be taken for the application NAME (the wrong target

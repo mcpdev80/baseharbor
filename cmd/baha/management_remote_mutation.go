@@ -32,7 +32,7 @@ func remoteMutationArgs(operation string, args []string) (string, string, json.R
 	name, candidate, consentPath := "", "", ""
 	hostname, tlsMode, certificateDirectory := "", "", ""
 	candidateSeen, consentSeen := false, false
-	approval, noBackup, fullReset, skipMemory := false, false, false, false
+	approval, noBackup, fullReset, skipMemory := false, false, operation == "destroy", false
 	for i := 0; i < len(filtered); i++ {
 		arg := filtered[i]
 		switch {

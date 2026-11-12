@@ -68,7 +68,7 @@ func buildApplicationDestructionPlanForOperation(ctx context.Context, resolved r
 	defer zeroBytes(configuration)
 	after := "Remove selected owned remote runtime containers; retain persistent data, protected publication, credentials and the deployment owner for retry/reactivation. Node data/access and recovery usability remain unverified."
 	if reset {
-		after = "Permanently delete the selected application-owned runtime data and protected deployment state where the existing executor supports it. Authored source, repository Compose data, foreign resources and other consumers remain outside this reset. No data handoff or continued application access is claimed; partial cleanup retains the existing owner for retry."
+		after = "Permanently delete exclusively app-owned runtime data and protected deployment state. Authored source, shared infrastructure, foreign resources and data with ambiguous ownership remain. No data handoff or continued application access is claimed; partial cleanup retains the existing owner for retry."
 	}
 	p.Effects = []application.OperationalConsequence{{Aspect: "application-destruction", Before: "Selected deployment, actual provider bindings and protected recovery references.", After: after, Evidence: "canonical deployment owner and existing consumer union; complete material/access consequences remain unverified"}}
 	leaves := []application.ProviderImpactPlan{}

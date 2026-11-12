@@ -41,6 +41,7 @@ func TestRemoteMutationArgumentsFailClosed(t *testing.T) {
 		{"update", []string{"demo", "--backup-password-file", "local.txt"}, false},
 		{"destroy", []string{"demo"}, false},
 		{"destroy", []string{"demo", "--yes"}, true},
+		{"destroy", []string{"demo", "--yes"}, true},
 		{"destroy", []string{"demo", "--yes", "--full-reset"}, true},
 		{"destroy", []string{"demo", "--full-reset"}, false},
 		{"destroy", []string{"demo", "--yes", "--delete-data"}, false},
@@ -57,6 +58,19 @@ func TestRemoteMutationArgumentsFailClosed(t *testing.T) {
 				t.Fatal("unsupported or unapproved remote mutation was accepted")
 			}
 		})
+	}
+}
+
+func TestRemoteDestroyDeletesDataByDefault(t *testing.T) {
+	_, _, payload, err := remoteMutationArgs("destroy", []string{"demo", "--yes"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var request struct {
+		FullReset bool `json:"full_reset"`
+	}
+	if err := json.Unmarshal(payload, &request); err != nil || !request.FullReset {
+		t.Fatalf("remote destroy must request complete owned-data deletion by default: full_reset=%t err=%v", request.FullReset, err)
 	}
 }
 

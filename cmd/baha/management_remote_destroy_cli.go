@@ -99,16 +99,14 @@ func acknowledgeRemoteDestroyChallenge(ctx context.Context, target deployment.Re
 		return ctx, false, cli.Presented(errors.New("application removal cancelled"))
 	}
 	consent := application.ProviderChangeConsent{PlanID: plan.PlanID, First: true, Second: plan.ConfirmationsRequired == 2}
-	if plan.Destructive {
-		deleteData, err := promptYesNo(reader, out, "Permanently delete the listed application data?", false)
-		if err != nil {
-			return ctx, false, err
-		}
-		consent.DeleteData = deleteData
-		if !deleteData {
-			fmt.Fprintln(out, "Removal cancelled; no resources were changed.")
-			return ctx, false, cli.Presented(errors.New("application data deletion was not authorized"))
-		}
+	deleteData, err := promptYesNo(reader, out, "Permanently delete this application's owned data?", false)
+	if err != nil {
+		return ctx, false, err
+	}
+	consent.DeleteData = deleteData
+	if !deleteData {
+		fmt.Fprintln(out, "Removal cancelled; no resources were changed.")
+		return ctx, false, cli.Presented(errors.New("application data deletion was not authorized"))
 	}
 	if err := application.ValidateProviderChangeConsent(plan, consent); err != nil {
 		return ctx, false, providerImpactConsentError(plan, err)
@@ -126,15 +124,11 @@ func renderRemoteDestroyCompletion(out io.Writer, raw []byte) error {
 		State       string `json:"state"`
 		DataDeleted *bool  `json:"data_deleted"`
 	}
-	if json.Unmarshal(raw, &receipt) != nil || !receipt.Verified || receipt.Application == "" || receipt.Target == "" {
+	if json.Unmarshal(raw, &receipt) != nil || !receipt.Verified || receipt.Application == "" || receipt.Target == "" || receipt.DataDeleted == nil || !*receipt.DataDeleted {
 		return errors.New("remote Core destroy receipt is invalid")
 	}
 	fmt.Fprintf(out, "Application %s on %s (%s) removed.\n", receipt.Application, receipt.Target, receipt.Environment)
-	if receipt.DataDeleted != nil && *receipt.DataDeleted {
-		fmt.Fprintln(out, "Application data was permanently deleted as requested.")
-	} else {
-		fmt.Fprintln(out, "Persistent data and recovery material were retained.")
-	}
+	fmt.Fprintln(out, "Application-owned data was permanently deleted.")
 	fmt.Fprintln(out, "Next: baha app status")
 	return nil
 }

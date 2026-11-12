@@ -109,7 +109,7 @@ var cliMachineOperations = map[string]string{
 	"baha app create": "app.create", "baha app init": "app.adopt", "baha init": "app.adopt",
 	"baha app runtime-identity rotate": "runtime-identity.rotate", "baha app runtime-identity revoke": "runtime-identity.revoke", "baha app tls update": "tls.update",
 	"baha trust status": "trust.status", "baha trust export": "trust.export", "baha trust install": "trust.install", "baha trust uninstall": "trust.uninstall",
-	"baha app down": "app.stop", "baha app prune": "app.prune", "baha app preflight": "app.preflight",
+	"baha app down": "app.stop", "baha app stop": "app.stop", "baha app prune": "app.prune", "baha app preflight": "app.preflight",
 	"baha app secret list": "secret.list", "baha app secret set": "secret.set", "baha app secret delete": "secret.delete", "baha app secret tls-set": "secret.tls-set",
 	"baha node add": "node.add", "baha node connect": "node.connect", "baha node list": "node.list", "baha node status": "node.status", "baha node disconnect": "node.disconnect",
 	"baha target create": "target.create", "baha target delete": "target.delete",

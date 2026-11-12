@@ -127,17 +127,17 @@ Provider-Plan und fragt vor der Änderung nach Zustimmung. Aktivierte, verwaltet
 Hosts-Einträge werden danach abgeglichen. Die Target-Gateway-CA bleibt vertraut,
 solange die Core-Verbindung bestehen bleibt.
 
-Ein lokales `baha app destroy` baut standardmäßig die eigene Runtime und die
-App-Routen ab. Persistente Daten, Zugangsdaten, Recovery-Material und die
-kanonische Deployment-Identität bleiben erhalten. `baha app apply` aktiviert
-das Deployment anhand des aktuellen App-Bedarfs erneut. Runtime-Abbau und
-vollständige Datenlöschung sind getrennte Entscheidungen. Provider-Folgen
-werden mit `Achtung` angezeigt und erfordern zwei ausdrückliche Bestätigungen
-desselben aktuellen Plans; `--yes` ersetzt keine dieser Bestätigungen. Das
-strukturierte Destroy-Ergebnis enthält erhaltenes Material und das gemeinsame
-Provider-Änderungsergebnis. Verifizierter Runtime-Abbau beweist weder weitere
-Secret-Auslieferung noch Login, Zertifikatserneuerung oder nutzbare Recovery.
-Ungeprüfte Folgen bleiben im Ergebnis ausdrücklich unvollständig.
+`baha app stop` (auch als `baha down` verfügbar) hält die Runtime an und behält
+persistenten Zustand und Recovery-Daten. `baha app destroy NAME --yes` löscht
+dagegen dauerhaft den BaseHarbor-eigenen Anwendungszustand, Zugangsdaten,
+Runtime-Ressourcen, Deployment-Eintrag und Compose-Datenvolumes, deren exklusive
+Anwendungszuordnung verifiziert ist. Gemeinsame, fremde, eingebundene oder nicht
+eindeutig zugeordnete Daten bleiben erhalten und werden angezeigt. Gemeinsame
+Target-Infrastruktur, Repository-Quelldateien und das Vertrauen des weiterhin
+verbundenen Rechners in die Core-CA gehören nicht zu den Anwendungsdaten.
+Provider-Folgen und Datenlöschung werden im aktuellen Plan gezeigt und müssen
+ausdrücklich bestätigt werden. Ein zusätzliches `--full-reset` ist nicht nötig:
+Destroy löscht die eindeutig app-eigenen Daten immer.
 
 Plan-JSON sowie MCP/HTTP-Plan verwenden denselben `footprint`
 (`baseharbor.footprint/v1`). Ein neu geplanter Binding ist `requested/unbound`
@@ -190,7 +190,7 @@ dem Target sichtbar und nennen beide kollidierenden Deployment-UUIDs.
 `baha app list` zeigt die Zwillinge weiterhin; jedes wird per UUID stillgelegt:
 
 ```bash
-baha app destroy --uuid <deployment-uuid> --full-reset
+baha app destroy --uuid <deployment-uuid> --yes
 ```
 
 Anschließend das Target mit `baha app list` nachprüfen. Kommandos mit `--uuid`

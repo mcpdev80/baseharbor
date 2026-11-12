@@ -50,7 +50,7 @@ baseharbor/apps/<app>/<environment>/
 
 Jede Anwendung erhält ihre eigene OpenBao-Richtlinie und AppRolle. Diese Identität kann nur auf den exakten Anwendungs-/Umweltnamensraum zugreifen. Cross-Application- und Cross-Environment-Zugriff fehlgeschlagen.
 
-`baha app down ` bewahrt die geheime Reichweite.`baha app destroy --yes` entfernt die verwalteten Anwendungsgeheimnisse, Richtlinien, AppRolle und BaseHarbor-eigenen Anwendungszustand und bewahrt dabei das Projektarchiv manifestierte und anwendungseigene Daten.
+`baha app stop` (und `baha down`) bewahrt den Secret-Namensraum und persistente Daten. `baha app destroy --yes` entfernt verwaltete Anwendungsgeheimnisse, Richtlinie, AppRole, BaseHarbor-eigenen Zustand und exklusiv app-eigene persistente Daten. Repository-Quelldateien und gemeinsam genutzte Target-Ressourcen bleiben erhalten.
 
 ## Erzeugte Anwendungsgeheimnisse
 
