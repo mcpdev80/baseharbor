@@ -45,6 +45,20 @@ from the Core Target in the invitation. The invitation establishes a
 least-privilege device identity. It does not grant an operator role. See the
 [Core-to-workstation onboarding contract](../spec/zero-friction-workstation-onboarding-v0427.md).
 
+Manage enrolled devices from the owning Core host:
+
+```text
+baha workstation list
+baha workstation revoke marcel-dev-pc
+```
+
+`list` displays each station name, issue time, certificate expiry, remaining
+lifetime, and verified revocation state. `revoke NAME` asks once before
+revoking that station's current certificate, then verifies the revocation.
+Use `--yes` only when the operator has already reviewed the station name. The
+command is local-Core-owner-only; it does not revoke a person's operator access
+or remove that workstation's local Target configuration.
+
 
 After the invitation is redeemed and Core identity is verified, interactive
 import offers to trust that public CA on the workstation. The explanation

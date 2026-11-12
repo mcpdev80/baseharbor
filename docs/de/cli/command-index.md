@@ -102,6 +102,9 @@ Exakte Optionen stehen in `baha COMMAND --help`. [Globale Optionen](global-optio
 | `baha node list` | List configured remote connector nodes | `baha node list [--json]` | [↗](applications.md) |
 | `baha node status` | Inspect Core enrollment state for a remote node | `baha node status TARGET [--json]` | [↗](applications.md) |
 | `baha onboard` | Guided onboarding: attach a workstation to a BaseHarbor installation | `baha onboard [--target NAME] [--json] \| baha onboard --import PRIVATE_FILE [--target-name NAME] [--trust-host-ca\|--skip-host-trust] [--configure-hosts\|--skip-hosts] \| baha onboard --invite [--target NAME] [--core-url HTTPS_URL] [--station LABEL] [--output PRIVATE_FILE] \| baha onboard --init-tenant [-e ENV] [--tenant-slug SLUG --tenant-name NAME]` | [↗](applications.md) |
+| `baha workstation` | Entwicklergeräte und Zertifikate auf dem lokalen Core verwalten | `baha workstation <list\|revoke> [NAME] [--yes]` | [↗](security-trust.md) |
+| `baha workstation list` | Eingeschriebene Entwicklergeräte und Zertifikatsablauf anzeigen | `baha workstation list` | [↗](security-trust.md) |
+| `baha workstation revoke` | Aktuelles Zertifikat eines Entwicklergeräts sperren | `baha workstation revoke NAME [--yes]` | [↗](security-trust.md) |
 | `baha open` | Open a verified HTTPS application endpoint | `baha open [--print] [--json]` | [↗](applications.md) |
 | `baha openbao` | Bootstrap and operate the BaseHarbor OpenBao trust plane | `baha openbao <command> [options]` | [↗](security-trust.md) |
 | `baha openbao bootstrap` | Initialize OpenBao and establish the BaseHarbor manager identity | `baha openbao bootstrap --recovery-file PATH` | [↗](security-trust.md) |

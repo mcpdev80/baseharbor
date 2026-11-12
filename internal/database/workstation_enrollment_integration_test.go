@@ -146,6 +146,16 @@ func TestWorkstationEnrollmentDurableStore(t *testing.T) {
 	if gotIssued.IsZero() || gotExpires.Before(time.Now()) || gotScopeID == "" {
 		t.Fatal("registry fact fields empty")
 	}
+	facts, err := reopenedStore.ListRegistryFacts(ctx, tenantA)
+	if err != nil || len(facts) != 1 {
+		t.Fatalf("tenant workstation list failed: facts=%+v err=%v", facts, err)
+	}
+	if facts[0].Station != factScope.Station || !facts[0].ExpiresAt.Equal(gotExpires) {
+		t.Fatalf("listed workstation differs from registry: %+v", facts[0])
+	}
+	if _, err := reopenedStore.ListRegistryFacts(ctx, tenantB); err != nil {
+		t.Fatalf("empty foreign tenant list should succeed without exposing tenant A: %v", err)
+	}
 	if _, _, _, _, _, ok, err := reopenedStore.ReadRegistryFact(ctx, workstationenrollment.Scope{TenantID: tenantB, Station: "registry"}); ok || err == nil {
 		t.Fatal("foreign tenant registry read admitted")
 	}

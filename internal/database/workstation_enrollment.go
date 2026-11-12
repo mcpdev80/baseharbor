@@ -24,6 +24,14 @@ import (
 // owned here and never share a row, index, or policy with the connector tables.
 type WorkstationEnrollmentStore struct{ pool *pgxpool.Pool }
 
+// WorkstationRegistryFact is the non-secret inventory of one enrolled
+// workstation. Serial numbers are intentionally excluded from CLI output.
+type WorkstationRegistryFact struct {
+	Station   string
+	IssuedAt  time.Time
+	ExpiresAt time.Time
+}
+
 // NewWorkstationEnrollmentStore returns a durable workstation-enrollment store
 // over the given tenant-scoped connection pool.
 func NewWorkstationEnrollmentStore(pool *pgxpool.Pool) *WorkstationEnrollmentStore {
@@ -157,6 +165,35 @@ FROM workstation_enrollment_registry WHERE tenant_id=$1 AND station=$2`,
 		return time.Time{}, "", "", "", time.Time{}, false, workstationenrollment.ErrDenied
 	}
 	return issuedAt, recipient, scopeID, serial, expiresAt, true, nil
+}
+
+// ListRegistryFacts returns every workstation registered to one installation.
+// The tenant transaction preserves the table's row-level isolation boundary.
+func (s *WorkstationEnrollmentStore) ListRegistryFacts(ctx context.Context, tenantID string) ([]WorkstationRegistryFact, error) {
+	if s == nil || s.pool == nil || (workstationenrollment.Scope{TenantID: tenantID, Station: "validation"}).Validate() != nil {
+		return nil, workstationenrollment.ErrDenied
+	}
+	var facts []WorkstationRegistryFact
+	err := WithTenantTx(ctx, s.pool, tenantID, func(tx pgx.Tx) error {
+		rows, err := tx.Query(ctx, `SELECT station, issued_at, expires_at
+FROM workstation_enrollment_registry WHERE tenant_id=$1 ORDER BY station`, tenantID)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var fact WorkstationRegistryFact
+			if err := rows.Scan(&fact.Station, &fact.IssuedAt, &fact.ExpiresAt); err != nil {
+				return err
+			}
+			facts = append(facts, fact)
+		}
+		return rows.Err()
+	})
+	if err != nil {
+		return nil, workstationenrollment.ErrDenied
+	}
+	return facts, nil
 }
 
 // CurrentSerial implements the workstation-enrollment Owner seam for the device

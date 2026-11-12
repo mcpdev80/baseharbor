@@ -33,6 +33,30 @@ func TestHostsOwnershipLifecycle(t *testing.T) {
 	}
 }
 
+func TestHostsHumanReadableMarkerAndLegacyMigration(t *testing.T) {
+	id := ID("workstation", "dev-docker-1")
+	legacy, err := Block(id, "192.0.2.17", []string{"demo.example.test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	label := "target=dev-docker-1 installation=fc204331-0c16-44ad-9a10-a7c71df4919b"
+	named, err := BlockWithLabel(id, label, "192.0.2.18", []string{"demo.example.test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(named, "# BEGIN BaseHarbor "+label+"\n") || strings.Contains(named, id) {
+		t.Fatalf("marker is not human-readable: %q", named)
+	}
+	current, err := Rewrite(legacy, Change{ID: id, Previous: legacy, NextLabel: label, Next: named})
+	if err != nil || current != named {
+		t.Fatalf("legacy block migration failed: %v", err)
+	}
+	cleaned, err := Rewrite(current, Change{ID: id, PreviousLabel: label, Previous: named})
+	if err != nil || cleaned != "" {
+		t.Fatalf("named block cleanup failed: %v", err)
+	}
+}
+
 func TestHostsPreservesConflictsAndManualChanges(t *testing.T) {
 	id := ID("workstation", "one")
 	block, _ := Block(id, "192.0.2.17", []string{"demo.example.test"})

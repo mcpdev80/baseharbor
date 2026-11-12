@@ -45,6 +45,15 @@ getrennt. Die Einladung registriert eine Geräteidentität mit minimalen Rechten
 keine Operator-Rolle. Siehe den
 [Ablauf Core-zu-Workstation](../spec/zero-friction-workstation-onboarding-v0427.md).
 
+Eingeschriebene Geräte auf dem Core-Host verwalten:
+
+`list` zeigt Gerätenamen, Ausstellungszeit, Zertifikatsablauf, Restlaufzeit und
+den geprüften Sperrstatus. `revoke NAME` fragt einmal nach und sperrt dann das
+aktuelle Zertifikat dieses Geräts; anschließend wird die Sperre verifiziert.
+`--yes` nur verwenden, wenn der Gerätename vorher geprüft wurde. Der Befehl ist
+auf den lokalen Core-Besitzer beschränkt. Er entzieht weder den Operator-Zugang
+einer Person noch löscht er die lokale Target-Konfiguration der Workstation.
+
 Menschliche Operatoren melden sich weiterhin über die konfigurierte
 OIDC-Grenze mit `baha login` an. Die Geräteeinschreibung verändert oder
 umgeht diese Authentifizierungsrichtlinie nicht.
@@ -81,6 +90,11 @@ installierte Zertifikate bleiben erhalten.
 baha login
 baha logout
 baha whoami
+```
+
+```text
+baha workstation list
+baha workstation revoke marcel-dev-pc
 ```
 
 ```text
