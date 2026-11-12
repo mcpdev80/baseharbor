@@ -431,6 +431,8 @@ func writeSharedPostgresUICompose(b *strings.Builder) {
     environment:
       PGADMIN_DEFAULT_EMAIL: ${SHARED_PGADMIN_EMAIL}
       PGADMIN_DEFAULT_PASSWORD_FILE: /run/baseharbor/password
+      PGADMIN_CONFIG_PROXY_X_HOST_COUNT: "1"
+      PGADMIN_CONFIG_SHARED_STORAGE: "[{'name': 'BaseHarbor', 'path': '/run/baseharbor', 'restricted_access': True}]"
       PGADMIN_ENABLE_TLS: "True"
       PGADMIN_LISTEN_PORT: "8443"
       PGADMIN_SERVER_JSON_FILE: /run/baseharbor/servers.json
@@ -439,6 +441,7 @@ func writeSharedPostgresUICompose(b *strings.Builder) {
       PGADMIN_CUSTOM_CONFIG_DISTRO_FILE: /var/lib/pgadmin/config_distro.py
       PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
       PGPASS_FILE: /run/baseharbor/pgpass
+    entrypoint: ["/bin/sh", "/run/baseharbor/pgadmin-entrypoint.sh"]
     ports:
       - "127.0.0.1:${SHARED_POSTGRES_UI_HOST_PORT}:8443"
     tmpfs:
@@ -448,6 +451,7 @@ func writeSharedPostgresUICompose(b *strings.Builder) {
       - ./management-ui/postgres/password:/run/baseharbor/password:ro
       - ./management-ui/postgres/servers.json:/run/baseharbor/servers.json:ro
       - ./management-ui/postgres/pgpass:/run/baseharbor/pgpass:ro
+      - ./management-ui/postgres/pgadmin-entrypoint.sh:/run/baseharbor/pgadmin-entrypoint.sh:ro
       - ./management-ui/postgres/postgres.ca.pem:/run/baseharbor/postgres.ca.pem:ro
       - ./management-ui/postgres/server.cert:/certs/server.cert:ro
       - ./management-ui/postgres/server.key:/certs/server.key:ro

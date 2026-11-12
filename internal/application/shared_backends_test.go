@@ -36,6 +36,14 @@ func TestSharedPostgresIdentityIsDeterministicAndCollisionSafe(t *testing.T) {
 	}
 }
 
+func TestSharedPgAdminTrustsSingleGatewayForwardedHost(t *testing.T) {
+	var compose strings.Builder
+	writeSharedPostgresUICompose(&compose)
+	if !strings.Contains(compose.String(), "PGADMIN_CONFIG_PROXY_X_HOST_COUNT: \"1\"") {
+		t.Fatalf("pgAdmin must trust the host forwarded by its single BaseHarbor gateway proxy:\n%s", compose.String())
+	}
+}
+
 func TestVerifySharedPostgresStateOwnershipFailsClosedOnAmbiguity(t *testing.T) {
 	state := sharedBackendState{
 		Version:                 sharedBackendStateVersion,

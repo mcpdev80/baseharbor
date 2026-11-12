@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-func renderCaddyfile(routes []Route, listenPort int) string {
+func renderCaddyfile(routes []Route, listenPort int, ipAddresses ...string) string {
 	var b strings.Builder
 	b.WriteString("{\n  auto_https off\n  log {\n    sampling {\n      interval 1m\n      first 3\n      thereafter 100\n    }\n  }\n}\n")
 	renderListener := func(port int) {
@@ -23,21 +23,53 @@ func renderCaddyfile(routes []Route, listenPort int) string {
 			if route.PathPrefix != "" {
 				fmt.Fprintf(&b, "    uri strip_prefix %s\n", route.PathPrefix)
 			}
-			if strings.HasPrefix(route.Upstream, "https://") {
-				fmt.Fprintf(&b, "    reverse_proxy %s {\n", route.Upstream)
-				b.WriteString("      transport http {\n        tls\n")
-				fmt.Fprintf(&b, "        tls_trust_pool file /gateway/trust/route-%03d.pem\n", i)
-				fmt.Fprintf(&b, "        tls_server_name %s\n", route.ServerName)
-				b.WriteString("      }\n    }\n")
-			} else {
-				fmt.Fprintf(&b, "    reverse_proxy %s\n", route.Upstream)
-			}
+			writeReverseProxy(&b, route, i, "    ")
 			b.WriteString("  }\n")
 		}
 		b.WriteString("  respond 404\n}\n")
 	}
 	renderListener(listenPort)
+	if len(ipAddresses) > 0 && strings.TrimSpace(ipAddresses[0]) != "" {
+		for i, route := range routes {
+			if route.ManagementKey == "" || route.DirectIPPort == 0 {
+				continue
+			}
+			fmt.Fprintf(&b, "\n:%d {\n  tls /gateway/server.pem /gateway/server-key.pem\n", route.DirectIPPort)
+			writeDirectIPReverseProxy(&b, routes, route, i, ipAddresses[0], listenPort, "  ")
+			b.WriteString("}\n")
+		}
+	}
 	return b.String()
+}
+
+func writeDirectIPReverseProxy(b *strings.Builder, routes []Route, route Route, index int, address string, canonicalPort int, indent string) {
+	if strings.HasPrefix(route.Upstream, "https://") {
+		fmt.Fprintf(b, "%sreverse_proxy %s {\n", indent, route.Upstream)
+		for _, candidate := range routes {
+			if candidate.Owner != route.Owner || candidate.ManagementKey == "" || candidate.DirectIPPort == 0 {
+				continue
+			}
+			fmt.Fprintf(b, "%s  header_down Location https://%s:%d https://%s:%d\n", indent, candidate.Host, canonicalPort, address, candidate.DirectIPPort)
+		}
+		fmt.Fprintf(b, "%stransport http {\n%stls\n", indent, indent)
+		fmt.Fprintf(b, "%stls_trust_pool file /gateway/trust/route-%03d.pem\n", indent, index)
+		fmt.Fprintf(b, "%stls_server_name %s\n", indent, route.ServerName)
+		fmt.Fprintf(b, "%s}\n%s}\n", indent, indent)
+		return
+	}
+	fmt.Fprintf(b, "%sreverse_proxy %s\n", indent, route.Upstream)
+}
+
+func writeReverseProxy(b *strings.Builder, route Route, index int, indent string) {
+	if strings.HasPrefix(route.Upstream, "https://") {
+		fmt.Fprintf(b, "%sreverse_proxy %s {\n", indent, route.Upstream)
+		fmt.Fprintf(b, "%stransport http {\n%stls\n", indent, indent)
+		fmt.Fprintf(b, "%stls_trust_pool file /gateway/trust/route-%03d.pem\n", indent, index)
+		fmt.Fprintf(b, "%stls_server_name %s\n", indent, route.ServerName)
+		fmt.Fprintf(b, "%s}\n%s}\n", indent, indent)
+		return
+	}
+	fmt.Fprintf(b, "%sreverse_proxy %s\n", indent, route.Upstream)
 }
 
 func renderCompose(files Files, routes []Route, trust map[string]string, hostPort int) string {
@@ -46,7 +78,7 @@ func renderCompose(files Files, routes []Route, trust map[string]string, hostPor
 
 // renderComposeBound is called only after the explicit non-loopback listener
 // has been validated. The default development gateway remains loopback-only.
-func renderComposeBound(files Files, routes []Route, _ map[string]string, hostPort int, bindHost string) string {
+func renderComposeBound(files Files, routes []Route, _ map[string]string, hostPort int, bindHost string, ipAddresses ...string) string {
 	networks := map[string]string{}
 	routeNetwork := map[string]string{}
 	for _, route := range routes {
@@ -67,6 +99,14 @@ func renderComposeBound(files Files, routes []Route, _ map[string]string, hostPo
 	b.WriteString("    entrypoint: [\"/bin/sh\", \"-ec\"]\n")
 	b.WriteString("    command:\n      - cat /usr/bin/caddy > /run/baseharbor/caddy && chmod 0755 /run/baseharbor/caddy && exec /run/baseharbor/caddy run --watch --config /gateway/Caddyfile --adapter caddyfile\n")
 	fmt.Fprintf(&b, "    ports:\n      - \"%s:%d:%d\"\n", bindHost, hostPort, hostPort)
+	if len(ipAddresses) > 0 && strings.TrimSpace(ipAddresses[0]) != "" {
+		for _, route := range routes {
+			if route.ManagementKey == "" || route.DirectIPPort == 0 {
+				continue
+			}
+			fmt.Fprintf(&b, "      - \"%s:%d:%d\"\n", ipAddresses[0], route.DirectIPPort, route.DirectIPPort)
+		}
+	}
 	b.WriteString("    volumes:\n")
 	fmt.Fprintf(&b, "      - %q\n", filepath.Dir(files.Caddyfile)+":/gateway:ro")
 	b.WriteString("    networks:\n")

@@ -117,10 +117,10 @@ func ExistingSharedBackendInventoryAt(dataDir, namespace, environment string) (S
 	return inventory, nil
 }
 
-// sharedBackendComposeMatchesCanonical accepts the exact previous renderer
-// shape only when its sole differences are the fixed Compose user overrides
-// removed for arbitrary-UID platform compatibility. Any other drift remains
-// fail-closed. The next reconciliation writes the current canonical document.
+// sharedBackendComposeMatchesCanonical accepts known renderer transitions only
+// when their differences are the fixed Compose user overrides removed for
+// arbitrary-UID compatibility, or an older pgAdmin server-mode configuration.
+// Any other drift remains fail-closed. Reconciliation writes the current shape.
 func sharedBackendComposeMatchesCanonical(actual, canonical []byte) bool {
 	if bytes.Equal(actual, canonical) {
 		return true
@@ -134,6 +134,14 @@ func sharedBackendComposeMatchesCanonical(actual, canonical []byte) bool {
 		return false
 	}
 	changed := false
+	var expected map[string]any
+	if yaml.Unmarshal(canonical, &expected) != nil {
+		return false
+	}
+	expectedServices, ok := expected["services"].(map[string]any)
+	if !ok {
+		return false
+	}
 	legacyValkey := map[string]bool{}
 	for name, rawService := range services {
 		service, ok := rawService.(map[string]any)
@@ -141,6 +149,49 @@ func sharedBackendComposeMatchesCanonical(actual, canonical []byte) bool {
 			return false
 		}
 		image, _ := service["image"].(string)
+		if name == "shared-pgadmin" {
+			expectedService, ok := expectedServices[name].(map[string]any)
+			if !ok {
+				return false
+			}
+			expectedEnvironment, ok := expectedService["environment"].(map[string]any)
+			if !ok {
+				return false
+			}
+			if environment, ok := service["environment"].(map[string]any); ok {
+				for _, key := range []string{"PGADMIN_CONFIG_PROXY_X_HOST_COUNT", "PGADMIN_CONFIG_SHARED_STORAGE"} {
+					if _, exists := environment[key]; !exists {
+						environment[key] = expectedEnvironment[key]
+						changed = true
+					}
+				}
+			}
+			if _, exists := service["entrypoint"]; !exists {
+				service["entrypoint"] = expectedService["entrypoint"]
+				changed = true
+			}
+			if volumes, ok := service["volumes"].([]any); ok {
+				for expectedIndex, volume := range expectedService["volumes"].([]any) {
+					if !strings.Contains(fmt.Sprint(volume), "pgadmin-entrypoint.sh:/run/baseharbor/pgadmin-entrypoint.sh:ro") {
+						continue
+					}
+					found := false
+					for _, existing := range volumes {
+						if reflect.DeepEqual(existing, volume) {
+							found = true
+							break
+						}
+					}
+					if !found {
+						volumes = append(volumes, nil)
+						copy(volumes[expectedIndex+1:], volumes[expectedIndex:])
+						volumes[expectedIndex] = volume
+						service["volumes"] = volumes
+						changed = true
+					}
+				}
+			}
+		}
 		if image == "docker.io/valkey/valkey:9.1.2-alpine" {
 			service["image"] = valkeyProviderImage
 			service["build"] = map[string]any{"context": "./" + valkeyProviderBuildDir, "dockerfile": "Dockerfile"}
@@ -159,17 +210,9 @@ func sharedBackendComposeMatchesCanonical(actual, canonical []byte) bool {
 	if !changed {
 		return false
 	}
-	var expected map[string]any
-	if yaml.Unmarshal(canonical, &expected) != nil {
-		return false
-	}
 	// Earlier Compose renderers used the same Valkey command without the
 	// now-required arbitrary-UID data-permission prelude. Accept that exact
 	// historical command only alongside the known upstream image migration.
-	expectedServices, ok := expected["services"].(map[string]any)
-	if !ok {
-		return false
-	}
 	for name := range legacyValkey {
 		observedService, ok := services[name].(map[string]any)
 		if !ok {

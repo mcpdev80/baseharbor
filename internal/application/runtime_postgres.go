@@ -464,6 +464,8 @@ func writePostgresUIComposeService(b *strings.Builder, m Manifest) {
       PGADMIN_CUSTOM_CONFIG_DISTRO_FILE: /var/lib/pgadmin/config_distro.py
       PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
       PGPASS_FILE: /run/baseharbor/pgpass
+      PGADMIN_CONFIG_SHARED_STORAGE: "[{'name': 'BaseHarbor', 'path': '/run/baseharbor', 'restricted_access': True}]"
+    entrypoint: ["/bin/sh", "/run/baseharbor/pgadmin-entrypoint.sh"]
     ports:
       - "127.0.0.1:${` + PostgresUIHostPortEnv + `}:8443"
     tmpfs:
@@ -473,6 +475,7 @@ func writePostgresUIComposeService(b *strings.Builder, m Manifest) {
       - ./providers/management-ui/postgres/password:/run/baseharbor/password:ro
       - ./providers/management-ui/postgres/servers.json:/run/baseharbor/servers.json:ro
       - ./providers/management-ui/postgres/pgpass:/run/baseharbor/pgpass:ro
+      - ./providers/management-ui/postgres/pgadmin-entrypoint.sh:/run/baseharbor/pgadmin-entrypoint.sh:ro
       - ./providers/management-ui/postgres/server.cert:/certs/server.cert:ro
       - ./providers/management-ui/postgres/server.key:/certs/server.key:ro
 `)
