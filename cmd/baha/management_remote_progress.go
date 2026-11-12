@@ -14,6 +14,9 @@ type remoteCLIProgress struct {
 }
 
 func reportRemoteProgress(ctx context.Context, message string) {
+	if message == "Operation accepted by BaseHarbor Core." && !cli.OutputOptionsFromContext(ctx).Verbose {
+		return
+	}
 	if state, ok := ctx.Value(remoteProgressKey{}).(*remoteCLIProgress); ok && message != "" && state.last != message {
 		state.last = message
 		cli.ReportActivityDetail(state.out, message)

@@ -39,6 +39,7 @@ type remoteJourneyCore struct {
 	operations          []string
 	applyCalls, applied int
 	applyFailure        error
+	candidateChanged    bool
 }
 
 func (f *remoteJourneyCore) SupportedOperationIDs() []string {
@@ -87,10 +88,16 @@ func (f *remoteJourneyCore) Execute(_ context.Context, op machine.Operation, sco
 			}
 			consent.PlanID = firstNonEmpty(consent.PlanID, f.plan.PlanID)
 			if err := application.ValidateProviderChangeConsent(f.plan, consent); err != nil {
-				return nil, providerImpactConsentError(f.plan, err)
+				failure := providerImpactConsentError(f.plan, err)
+				failure.(*machine.Error).Next += " Candidate: --confirm-candidate " + strings.Repeat("a", 64)
+				return nil, failure
 			}
-			if input.ConfirmCandidate != strings.Repeat("a", 64) {
-				return nil, &machine.Error{Code: machine.ErrorApprovalRequired, CauseCode: "candidate_confirmation_required", Message: "Candidate approval required", Next: "Re-run baha app apply demo --confirm-candidate " + strings.Repeat("a", 64)}
+			digest := strings.Repeat("a", 64)
+			if f.candidateChanged {
+				digest = strings.Repeat("b", 64)
+			}
+			if input.ConfirmCandidate != digest {
+				return nil, &machine.Error{Code: machine.ErrorApprovalRequired, CauseCode: "candidate_confirmation_required", Message: "Candidate approval required", Next: "Re-run baha app apply demo --confirm-candidate " + digest}
 			}
 			f.applied++
 		}
@@ -156,7 +163,7 @@ func remoteJourneyFixture(t *testing.T) (context.Context, deployment.ResolvedTar
 func TestRemoteRepositoryInitThenBareUpUsesCoreIdentityAndPrompts(t *testing.T) {
 	ctx, _, f := remoteJourneyFixture(t)
 	old := runtimeInput
-	runtimeInput = strings.NewReader("y\ny\ny\n")
+	runtimeInput = strings.NewReader("y\n")
 	t.Cleanup(func() { runtimeInput = old })
 	var output, errorsOut bytes.Buffer
 	if err := appInitWithInputResolverCommand(application.DefaultStore()).Run(ctx, nil, &output, &errorsOut); err != nil {
@@ -167,13 +174,16 @@ func TestRemoteRepositoryInitThenBareUpUsesCoreIdentityAndPrompts(t *testing.T) 
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if f.applied != 1 || f.applyCalls != 3 {
+	if f.applied != 1 || f.applyCalls != 2 {
 		t.Fatalf("wrong lifecycle attempts: applied=%d calls=%d", f.applied, f.applyCalls)
 	}
 	if strings.Count(strings.Join(f.operations, ","), "app.create") != 1 {
 		t.Fatalf("registration repeated: %v", f.operations)
 	}
-	for _, text := range []string{"Check application registration", "Transfer source", "current-plan", "SHA-256", "Verifying remote application state."} {
+	if strings.Count(errorsOut.String(), "[y/N]") != 1 {
+		t.Fatalf("expected one confirmation, got: %s", errorsOut.String())
+	}
+	for _, text := range []string{"Check application registration", "Transfer source", "Installation on", "Deploy application from the current source", "Verifying remote application state."} {
 		if !strings.Contains(output.String()+errorsOut.String(), text) {
 			t.Errorf("missing progress/consent %q", text)
 		}
@@ -232,16 +242,16 @@ func TestRemoteRepositoryApplyNeverRetriesUnrelatedOrStaleFailure(t *testing.T) 
 	}
 }
 
-func TestRemoteRepositoryDestructionRequiresSeparateConsent(t *testing.T) {
+func TestRemoteRepositoryDestructionRequiresExplicitDeletionConsent(t *testing.T) {
 	ctx, _, f := remoteJourneyFixture(t)
 	f.plan.Destructive = true
 	old := runtimeInput
-	runtimeInput = strings.NewReader("y\ny\nn\n")
+	runtimeInput = strings.NewReader("n\n")
 	t.Cleanup(func() { runtimeInput = old })
 	var output bytes.Buffer
 	err := runtimeUpCommandWithInputResolver(ctx, nil, &output, &output)
 	var denied *machine.Error
-	if !errors.As(err, &denied) || denied.CauseCode != "data-deletion-consent-required" || !strings.Contains(output.String(), "separately authorize permanent deletion") {
+	if !errors.As(err, &denied) || denied.CauseCode != "impact-confirmation-required" || !strings.Contains(output.String(), "permanently delete the listed data") {
 		t.Fatalf("missing independent deletion consent: %v\n%s", err, output.String())
 	}
 	f.mu.Lock()
@@ -327,5 +337,22 @@ func TestRemoteRepositoryRefusesForeignIdentity(t *testing.T) {
 	defer f.mu.Unlock()
 	if fmt.Sprint(f.operations) != "[app.list]" {
 		t.Fatalf("foreign application mutated: %v", f.operations)
+	}
+}
+
+func TestRemoteRepositorySourceChangeCannotReuseCombinedConfirmation(t *testing.T) {
+	ctx, _, f := remoteJourneyFixture(t)
+	f.candidateChanged = true
+	old := runtimeInput
+	runtimeInput = strings.NewReader("y\n")
+	t.Cleanup(func() { runtimeInput = old })
+	var output bytes.Buffer
+	err := runtimeUpCommandWithInputResolver(ctx, nil, &output, &output)
+	var failure *machine.Error
+	if !errors.As(err, &failure) || failure.CauseCode != "candidate_confirmation_required" {
+		t.Fatalf("changed source was not rejected: %v", err)
+	}
+	if strings.Count(output.String(), "[y/N]") != 1 || f.applyCalls != 2 || f.applied != 0 {
+		t.Fatal("source change reused consent or prompted again")
 	}
 }

@@ -73,8 +73,9 @@ the Core identity already acknowledged by this repository; an unrelated
 application with the same name is not silently adopted. `baha up` uses the same plan,
 candidate confirmation, provider-impact consent, and verification gates as
 `baha app apply`. Interactive remote runs display the Core's exact provider
-impact plan, collect each required acknowledgement and separately confirm the
-exact source candidate. Generic `--yes` grants none of these approvals.
+summary grouped by service and collect one explicit confirmation covering
+the displayed consequences and exact source candidate. Destructive plans
+explicitly name permanent data deletion in the confirmation question. Generic `--yes` grants none of these approvals.
 Noninteractive runs return the structured challenge without retrying. Run `status` and
 `doctor` from the same repository and selected Target after startup. No manual
 `baha serve` step is required.

@@ -14,58 +14,111 @@ func printProviderImpactForCLI(ctx context.Context, out io.Writer, plan applicat
 	if cli.OutputOptionsFromContext(ctx).Verbose {
 		return printProviderImpact(out, plan)
 	}
-	fmt.Fprintf(out, "\nProvider changes · Core Target %s\nPlan: %s\n", plan.Target, plan.PlanID)
-	fmt.Fprintf(out, "%d provider action(s); %d confirmation(s) required.\n", len(plan.Impacts), plan.ConfirmationsRequired)
-	if plan.Destructive {
-		fmt.Fprintln(out, "Permanent data deletion: requested; separate explicit authorization is required.")
-	} else {
-		fmt.Fprintln(out, "Permanent data deletion: not requested by this plan.")
-	}
-	if !plan.Complete {
-		fmt.Fprintln(out, "Achtung: inventory is incomplete. Unlisted material and functional continuity are not verified.")
+	fmt.Fprintf(out, "\nInstallation on %s\n", plan.Target)
+	seen := map[string]bool{}
+	line := func(text string) {
+		if !seen[text] {
+			fmt.Fprintln(out, "  "+text)
+			seen[text] = true
+		}
 	}
 	for _, impact := range plan.Impacts {
-		fmt.Fprintf(out, "\n  %s  %s\n", strings.ToUpper(impact.Operation), impact.InstanceID)
-		after := "removed"
-		if impact.After != nil {
-			after = string(impact.After.State)
+		action := providerActionLabel(impact.Operation)
+		if len(impact.Functions) == 0 {
+			line(action + " " + impact.InstanceID)
 		}
-		fmt.Fprintf(out, "    State: %s -> %s\n", impact.Before.State, after)
 		for _, function := range impact.Functions {
-			need := "optional"
-			if function.Required {
-				need = "required"
-			}
-			fmt.Fprintf(out, "    Function: %s -> %s (%s; consumer: %s)\n", function.Function, function.Outcome, need, function.Consumer)
-			if function.Behavior != "" {
-				fmt.Fprintf(out, "      %s\n", function.Behavior)
+			name := providerFunctionLabel(function.Function)
+			line(action + " " + name)
+			if function.Outcome == "unavailable" || function.Outcome == "unknown" {
+				line("Warning: " + name + " will be " + function.Outcome + " for " + function.Consumer)
 			}
 			if function.ValidUntil != "" {
-				fmt.Fprintf(out, "      Valid until: %s\n", function.ValidUntil)
+				line(name + " remains valid until " + function.ValidUntil)
 			}
 		}
 		for _, material := range impact.Materials {
-			fmt.Fprintf(out, "    Material: %s -> %s\n", material.Before.ID, material.After.Disposition)
-			if material.Before.Location != nil {
-				fmt.Fprintf(out, "      Location: %s (%s)\n", material.Before.Location.Reference, material.Before.Location.Target)
-			}
-			if material.Meaning != "" {
-				fmt.Fprintf(out, "      %s\n", material.Meaning)
-			}
-			if material.After.Destination != nil {
-				fmt.Fprintf(out, "      Destination: %s (%s)\n", material.After.Destination.Reference, material.After.Destination.Target)
+			if material.After.Disposition != "retained" {
+				line("Data: " + material.Before.ID + " -> " + material.After.Disposition)
+				if material.Meaning != "" {
+					line(material.Meaning)
+				}
+				if material.After.Destination != nil {
+					line("Destination: " + material.After.Destination.Reference)
+				}
 			}
 		}
 		for _, effect := range impact.Effects {
-			fmt.Fprintf(out, "    Effect %s: %s -> %s\n", effect.Aspect, effect.Before, effect.After)
+			line(effect.Aspect + ": " + effect.Before + " -> " + effect.After)
 		}
 		for _, prerequisite := range impact.Prerequisites {
-			fmt.Fprintf(out, "    Prerequisite %s: supported=%t verified=%t; %s\n", prerequisite.Subject, prerequisite.Supported, prerequisite.Verified, prerequisite.Consequence)
-		}
-		for _, notice := range impact.Notices {
-			fmt.Fprintf(out, "    Note: %s\n", notice)
+			if !prerequisite.Supported || !prerequisite.Verified {
+				line("Warning: " + prerequisite.Subject + ": " + prerequisite.Consequence)
+			}
 		}
 	}
-	fmt.Fprintln(out, "\nUse --verbose for the full structured provider plan.")
+	if plan.Destructive {
+		fmt.Fprintln(out, "\nWarning: the listed data will be permanently deleted.")
+	} else {
+		fmt.Fprintln(out, "\nNo data deletion is planned.")
+	}
+	if !plan.Complete {
+		fmt.Fprintln(out, "Some existing resources could not be fully checked.")
+	}
+	fmt.Fprintln(out, "Details: --verbose")
 	return nil
+}
+
+func providerActionLabel(operation string) string {
+	switch operation {
+	case "add":
+		return "Set up"
+	case "update", "rebind":
+		return "Update"
+	case "resume":
+		return "Start"
+	case "stop":
+		return "Stop"
+	case "restart":
+		return "Restart"
+	case "replace":
+		return "Replace"
+	case "destroy", "remove-runtime":
+		return "Remove"
+	case "unbind", "disable":
+		return "Disconnect"
+	default:
+		return strings.ToUpper(operation)
+	}
+}
+
+func providerFunctionLabel(function string) string {
+	switch function {
+	case "database.sql":
+		return "SQL"
+	case "cache.key-value":
+		return "Cache"
+	case "store.key-value":
+		return "Persistent key-value storage"
+	case "object-storage.s3":
+		return "Object storage"
+	case "database.document":
+		return "Document database"
+	case "messaging.queue", "messaging.pubsub", "messaging.stream":
+		return "Messaging"
+	case "identity.oidc":
+		return "Identity / login"
+	case "secrets", "secrets.kv":
+		return "Secrets"
+	case "exposure.http":
+		return "HTTP access"
+	case "telemetry.otlp":
+		return "Telemetry"
+	case "metrics":
+		return "Metrics"
+	case "logs":
+		return "Logs"
+	default:
+		return function
+	}
 }

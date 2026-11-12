@@ -377,3 +377,37 @@ func mustEncode(username, password string) []byte {
 	}
 	return data
 }
+
+func TestManagementUIOptInCreatesFirstCredentialWithoutReset(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("BASEHARBOR_STATE_DIR", root)
+	managed := &countedManaged{}
+	openBaoRuntime = nilRuntime
+	oldInspect, oldCheck := openBaoInspect, openBaoCheckManager
+	t.Cleanup(func() { openBaoInspect, openBaoCheckManager = oldInspect, oldCheck })
+	openBaoInspect = initializedInspect
+	openBaoCheckManager = func(context.Context, openbao.Executor, bhruntime.Files) error { return nil }
+	managedCredentialSeam = managedCredentialSeamFuncs{get: managed.get, set: managed.set}
+	devRecoveryFactory = func() devaccess.Recovery {
+		return devaccess.Recovery{Managed: &reconcileManagedProbe{managed: managed}, Store: &reconcileLocalStore{path: filepath.Join(root, "projection.env"), managed: managed}}
+	}
+	restoreReconcileSeams(t)
+	first, err := ensureAuthoritativeDeveloperCredentials(context.Background(), "newcore", "dev")
+	if err != nil {
+		t.Fatalf("first UI setup failed: %v", err)
+	}
+	if first.Username == "" || first.Password == "" || managed.sets != 1 {
+		t.Fatal("first UI setup did not seed exactly one credential")
+	}
+	path, err := devaccess.Path("newcore", "dev")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	recovered, err := ensureAuthoritativeDeveloperCredentials(context.Background(), "newcore", "dev")
+	if err != nil || recovered != first || managed.sets != 1 {
+		t.Fatal("missing projection rotated existing credentials", err)
+	}
+}

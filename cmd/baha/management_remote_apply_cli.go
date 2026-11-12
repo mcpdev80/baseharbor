@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/machine"
 )
@@ -90,12 +91,12 @@ func remoteApplicationApplyCLI(ctx context.Context, target deployment.ResolvedTa
 	for attempt := 0; attempt < 3; attempt++ {
 		var result bytes.Buffer
 		var requestErr error
-		err := remoteCLIPhase(ctx, errOut, "Process application request on "+target.Name, func(ctx context.Context) error {
+		err := remoteCLIPhase(ctx, errOut, "Deploy application on "+target.Name, func(ctx context.Context) error {
 			requestErr = remoteApplicationMutation(ctx, target, "apply", filtered, &result)
 			var challenge *machine.Error
 			if errors.As(requestErr, &challenge) && challenge.Code == machine.ErrorApprovalRequired &&
 				(challenge.CauseCode == "impact-confirmation-required" || challenge.CauseCode == "data-deletion-consent-required" || challenge.CauseCode == "candidate_confirmation_required") {
-				reportRemoteProgress(ctx, "Core returned a concrete authorization request; explicit confirmation is needed.")
+				reportRemoteProgress(ctx, "Installation plan ready.")
 				return nil
 			}
 			return requestErr
@@ -151,10 +152,23 @@ func acknowledgeRemoteApplyChallenge(ctx context.Context, target deployment.Reso
 		if plan.Target != core.serverTargetName() {
 			return ctx, false, errors.New("provider confirmation plan belongs to another Core Target")
 		}
-		if err := printProviderImpactForCLI(ctx, out, plan); err != nil {
+		// Display the workstation alias; the server-side selector was verified above.
+		displayPlan := plan
+		displayPlan.Target = target.Name
+		if err := printProviderImpactForCLI(ctx, out, displayPlan); err != nil {
 			return ctx, false, err
 		}
-		consent, err := readProviderImpactAcknowledgements(reader, out, plan)
+		digest := remoteChallengeCandidateDigest(failure.Next)
+		if digest != "" {
+			if seen["candidate"] || (candidateConsentOverride(ctx) != "" && candidateConsentOverride(ctx) != digest) {
+				return ctx, false, errors.New("application source changed after confirmation; review the new plan")
+			}
+			fmt.Fprintln(out, "  Deploy application from the current source")
+			if cli.OutputOptionsFromContext(ctx).Verbose {
+				fmt.Fprintf(out, "  Source SHA-256: %s\n", digest)
+			}
+		}
+		consent, err := readProviderApplyAcknowledgement(reader, out, plan)
 		if err != nil {
 			return ctx, false, err
 		}
@@ -162,14 +176,21 @@ func acknowledgeRemoteApplyChallenge(ctx context.Context, target deployment.Reso
 			return ctx, false, providerImpactConsentError(plan, err)
 		}
 		seen[plan.PlanID] = true
+		if digest != "" {
+			seen["candidate"] = true
+			ctx = withCandidateConsentDigest(ctx, digest)
+		}
 		return withProviderChangeConsent(ctx, &consent), true, nil
 	case "candidate_confirmation_required":
 		match := regexp.MustCompile(` --confirm-candidate ([0-9a-f]{64})$`).FindStringSubmatch(failure.Next)
 		if len(match) != 2 || seen["candidate"] || candidateConsentOverride(ctx) != "" {
 			return ctx, false, nil
 		}
-		fmt.Fprintf(out, "Application source candidate for %s:\n  SHA-256 %s\n", target.Name, match[1])
-		accepted, err := promptYesNo(reader, out, "Deploy this exact application source candidate?", false)
+		fmt.Fprintf(out, "Deploy application from the current source on %s\n", target.Name)
+		if cli.OutputOptionsFromContext(ctx).Verbose {
+			fmt.Fprintf(out, "  Source SHA-256: %s\n", match[1])
+		}
+		accepted, err := promptYesNo(reader, out, "Deploy this application?", false)
 		if err != nil || !accepted {
 			return ctx, false, err
 		}
@@ -177,4 +198,12 @@ func acknowledgeRemoteApplyChallenge(ctx context.Context, target deployment.Reso
 		return withCandidateConsentDigest(ctx, strings.TrimSpace(match[1])), true, nil
 	}
 	return ctx, false, nil
+}
+
+func remoteChallengeCandidateDigest(next string) string {
+	match := regexp.MustCompile(` --confirm-candidate ([0-9a-f]{64})$`).FindStringSubmatch(next)
+	if len(match) != 2 {
+		return ""
+	}
+	return match[1]
 }

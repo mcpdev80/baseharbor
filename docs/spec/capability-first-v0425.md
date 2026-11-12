@@ -219,9 +219,16 @@ The existing plan/preflight/confirmation/apply/verify authorities execute it.
 | materials | Individual current material and location, recovery references, intended retained/transferred/deleted/revoked/expired/invalidated/nonrecoverable/unknown disposition and destination/access |
 | prerequisites | Concrete handoff, rebind or adapter-specific verification, support/evidence and consequence if unverified; no fictional fallback |
 | effects | Applicable actual before/after availability, consistency, durability, retention, protocol, policy/TLS/HA, delivery, routing, reconnection or recovery changes from the adapter |
-| complete | Knowledge completeness; false requires Achtung/two acknowledgements and does not prohibit the informed choice |
+| complete | Knowledge completeness; false requires Achtung/both acknowledgement fields and does not prohibit the informed choice |
 | plan_id / revision | Deterministic digest of consequences plus relevant binding/ownership/dependency state and existing-owner revision; materially changed facts invalidate old consent |
 | confirmations_required / destructive | One ordinary stage, or two for alternative-less/unknown/destructive effects; explicit data-deletion consent remains separate |
+
+Interactive application deployment can collect the required consequence fields
+and exact source-candidate consent in one scoped decision after a service summary.
+That decision authorizes only the displayed plan and source digest. If the plan
+deletes data, the question explicitly includes permanent deletion. Generic
+`--yes` does not populate these consent fields; maintenance operations retain
+their existing separate acknowledgements.
 
 `ProviderPlan.ConsumerActivity` includes explicitly inactive consumers from the
 same intents; past runtime use is not mistaken for current need. Incidental

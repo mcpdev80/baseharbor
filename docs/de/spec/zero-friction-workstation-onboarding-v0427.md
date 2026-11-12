@@ -81,8 +81,9 @@ Core-Identität erneut; eine fremde App mit gleichem Namen wird nicht übernomme
 gelten dieselben Plan-, Kandidatenbestätigungs-, Provider-Freigabe- und
 Prüfschranken wie bei `baha app apply`; `--yes` darf diese Zustimmungen nicht
 ersetzen. Interaktive Remote-Aufrufe zeigen den konkreten Provider-Plan,
-fragen jede erforderliche Bestätigung ab und bestätigen den exakten
-Quellkandidaten separat. Ohne Eingabemöglichkeit wird die strukturierte
+fassen die Änderungen nach Diensten zusammen und fragen einmal nach der
+Zustimmung zu diesen Folgen und dem exakten Quellkandidaten. Bei destruktiven
+Plänen benennt diese Frage ausdrücklich die dauerhafte Datenlöschung. Ohne Eingabemöglichkeit wird die strukturierte
 Bestätigungsanforderung zurückgegeben, ohne automatisch erneut auszuführen.
 Führe `status` und `doctor` nach dem Start im selben Repository und
 mit demselben ausgewählten Target aus. Ein manueller Schritt `baha serve` ist

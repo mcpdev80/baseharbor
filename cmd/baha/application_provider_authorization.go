@@ -2,10 +2,13 @@ package main
 
 import (
 	"context"
+	"errors"
 	"io"
 	"reflect"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/delivery"
+	"github.com/mcpdev80/baseharbor/internal/machine"
 )
 
 // All apply/up transports reach this existing mutation authority before
@@ -27,6 +30,18 @@ func authorizeApplicationProviderChanges(ctx context.Context, resolved resolvedA
 		return err
 	}
 	if err := acknowledgeProviderImpact(ctx, in, out, *plan.ProviderPlan.Impact, consent); err != nil {
+		// Return the exact source identity with the read-only plan challenge so
+		// interactive clients can approve both in one review before any apply.
+		var challenge *machine.Error
+		if errors.As(err, &challenge) && challenge.Code == machine.ErrorApprovalRequired && resolved.FromRepository && resolved.SourceAvailable {
+			if _, fingerprintErr := repositoryDesiredStateFingerprint(ctx, resolved); fingerprintErr != nil {
+				return fingerprintErr
+			}
+			submission, _ := candidateSubmissionForResolvedApp(ctx, resolved)
+			if digest := delivery.CandidateConsentDigest(submission); digest != "" {
+				challenge.Next += " Candidate: --confirm-candidate " + digest
+			}
+		}
 		return err
 	}
 	if err := revalidateApplicationProviderIntent(ctx, resolved); err != nil {
