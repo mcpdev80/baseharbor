@@ -86,6 +86,7 @@ baha version
 ## Learn more
 
 [Getting started](https://mcpdev80.github.io/baseharbor/tutorials/getting-started/) ·
+[What's new in v0.4.27](docs/releases/v0.4.27.md) ·
 [Documentation](https://mcpdev80.github.io/baseharbor/) ·
 [Releases](https://github.com/mcpdev80/baseharbor/releases)
 

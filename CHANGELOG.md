@@ -6,9 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-### Fixed
+## [0.4.27]
 
-- Authoring intent no longer requires `workload.compose` in the generated MCP `baseharbor.author` schema. `#1265` added `Workload.Compose` without a JSON tag, so the schema generator marked it required and rejected valid authoring intent that omits it. `compose` is repository-source provenance (optional per the application-contract spec); the `WorkloadConfig.Compose` field is now tagged `omitempty` so the generated intent keeps it optional while the `compose:` YAML field stays parseable.
+### Added
+
+- Direct mTLS onboarding for developer workstations; identity-provider user invitations, Target-scoped access profiles and offboarding; independent workstation renewal and revocation.
+- Separate desired, applied and observed application versions for each deployment stage.
+- Editable Target deployment-policy presets for development, test, staging and production.
+- Demo coverage for exact-candidate confirmation and cross-application connectivity.
+
+### Changed
+
+- Core-local Docker and Podman can be managed directly from a developer workstation without a Node Connector.
 
 ## [0.4.26]
 

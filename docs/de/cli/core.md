@@ -1,30 +1,29 @@
 # Core-Workflow
 
+Den ersten Tenant richtest du auf dem eigenen Core ausdrücklich mit
+`baha login -e dev --init-tenant` ein. `baha up` weist den ersten Tenant-Owner
+nicht automatisch zu. Siehe [Befehle für Sicherheit und Vertrauen](security-trust.md).
+
 ## Entwicklungsrechner verbinden
 
-Auf der Core-VM außerhalb eines Application-Repositories `baha up` und danach
-`baha onboard` ausführen. `baha up` startet die Core-Provider und prüft ORAS,
-bevor es Provider-Zustand ändert. Fehlt ORAS, erklärt Baha die Auflösung von
-OCI-Digests und die Artefaktverifizierung und fragt vor einer
-prüfsummenverifizierten Installation unter dem aktuellen Benutzer.
-Vor dem Core-Start löst `baha up` außerdem das konfigurierte BaseHarbor-
-Runtime-Image auf und lädt es über seinen unveränderlichen Digest. Der erste
-Application-Deploy entdeckt dadurch kein fehlendes Image mehr.
-`baha onboard` wartet auf Core-Readiness, richtet den verwalteten LAN-HTTPS-Endpunkt
-ein und schreibt eine private, einmal verwendbare JSON-Einladung. Ein
-separater `baha serve`-Prozess wird nicht gestartet.
+Führe auf dem Core-Rechner außerhalb eines Anwendungsordners `baha up` und danach
+`baha onboard` aus. `baha up` prüft ORAS und lädt das BaseHarbor-Runtime-Image
+anhand seines unveränderlichen Digests, bevor es den Core startet. Fehlt ORAS,
+erklärt Baha den Zweck und fragt vor der Installation.
+`baha onboard` wartet auf den startbereiten Core, richtet den verwalteten
+LAN-HTTPS-Endpunkt ein und schreibt eine private Einmal-Einladung als JSON-Datei.
+Ein separater `baha serve`-Prozess ist nicht nötig.
 
-Die Datei sicher übertragen. Auf dem Entwicklungsrechner
-`baha onboard --import FILE` ausführen, den Vorschlag für den lokalen Alias wie
-`dev-docker-1` übernehmen oder `--target-name NAME` angeben und ihn mit
-`baha use NAME` ausdrücklich auswählen. Der Alias benennt das Core-Target nicht
-um; der eigene lokale Core-Target bleibt verfügbar. Alle folgenden
-Application-Lifecycle-Befehle laufen auf dem Entwicklungsrechner über das
-ausgewählte Core-Target. Der vollständige verbindliche Ablauf steht in
+Übertrage die Datei sicher. Führe auf dem Entwicklungsrechner
+`baha onboard --import FILE` aus. Übernimm den vorgeschlagenen Target-Namen, etwa
+`dev-docker-1`, oder gib `--target-name NAME` an. Wähle das Target anschließend
+mit `baha use NAME` aus. Der Name ändert nicht das Core-Target; ein lokales
+Target bleibt verfügbar. Anwendungsbefehle laufen danach auf dem
+Entwicklungsrechner über das ausgewählte Core-Target. Der verbindliche Ablauf steht in
 [Core-zu-Workstation-Onboarding](../spec/zero-friction-workstation-onboarding-v0427.md).
 
-Die Geräte-Einschreibung ist von der interaktiven OIDC-Anmeldung eines
-menschlichen Operators getrennt. Siehe [Security-/Trust-Befehle](security-trust.md).
+Die Geräteeinschreibung ist von der interaktiven OIDC-Anmeldung eines Operators
+getrennt. Siehe [Befehle für Sicherheit und Vertrauen](security-trust.md).
 
 ## Core gezielt abbauen
 

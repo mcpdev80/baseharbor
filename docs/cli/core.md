@@ -1,5 +1,9 @@
 # Core workflow commands
 
+Initialize the first tenant explicitly with `baha login -e dev --init-tenant` on
+the locally owned Core. `baha up` never assigns the first tenant owner. See
+[Security and trust commands](security-trust.md).
+
 ## Connect a developer workstation
 
 On the Core VM, outside an application repository, run `baha up` and then

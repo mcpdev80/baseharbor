@@ -145,14 +145,14 @@ Technische Bezeichner: `runtime_provider`.
 
 ## Remote-Zugriff auf Core-lokales Docker/Podman
 
-Wenn Docker/Podman auf demselben Host wie Core laeuft, benoetigt der Entwicklungsrechner keinen Node Connector. Er verwendet ein Target mit Access-Provider `baseharbor-core`, dem Namen und der Runtime der Core-Installation. Die `--tenant-id` muss der echten Operator-Mitgliedschaft entsprechen und wird gegen das angeheftete HTTPS/OIDC-Profil sowie den aktiven Core verifiziert. Die lokale Runtime des Entwicklungsrechners wird nicht verwendet.
+Wenn Docker oder Podman auf demselben Host wie Core läuft, benötigt der Entwicklungsrechner keinen Node Connector. Er verwendet ein Target mit dem Access-Provider `baseharbor-core` sowie dem Namen und der Runtime der Core-Installation. Die `--tenant-id` muss zur tatsächlichen Operator-Mitgliedschaft passen und wird anhand des hinterlegten HTTPS-/OIDC-Profils und des aktiven Core geprüft. Die lokale Runtime des Entwicklungsrechners bleibt ungenutzt.
 
 ```bash
 baha target create vm-core --runtime-provider docker --access vm-core-management --access-provider baseharbor-core --reference vm-core --tenant-id 11111111-1111-4111-8111-111111111111
 baha use vm-core
 ```
 
-Vor `baha use` sind `BASEHARBOR_CONNECTION_PROFILE` und eine gueltige Operator-Session erforderlich. Das Target legt nur eine Client-Route an; Quelladmission, Zustimmung und Application-Lifecycle verbleiben beim Core.
+Vor `baha use` sind `BASEHARBOR_CONNECTION_PROFILE` und eine gültige Operator-Sitzung erforderlich. Das Target legt nur eine Client-Route an. Quellprüfung, Zustimmung und Anwendungsablauf bleiben beim Core.
 
 ## Lokale Docker-Engine auswählen
 
@@ -175,8 +175,8 @@ Vorhandene Rootful-Installationen bleiben erhalten. Ihre Wartung erfordert die e
 
 ## Editierbare Deployment-Policies
 
-Neue Targets koennen mit `baha target create NAME ... --deployment-preset development|test|staging|production|custom` editierbare Best-Practice-Vorlagen verwenden. Der Wizard schlaegt `development` vor; Abweichungen muessen bewusst gewaehlt werden. Bestehende Targets bekommen durch das Upgrade keine neuen Regeln.
+Neue Targets können mit `baha target create NAME ... --deployment-preset development|test|staging|production|custom` editierbare Best-Practice-Vorlagen verwenden. Der Wizard schlägt `development` vor; Abweichungen müssen bewusst gewählt werden. Bestehende Targets bekommen durch das Upgrade keine neuen Regeln.
 
-`baha target policy show NAME` zeigt die gespeicherte Policy. Mit `baha target policy set NAME --deployment-preset test` wird ein Preset neu angewendet. Einzelne Werte lassen sich ohne Ruecksetzen der anderen Vorgaben aendern, z. B. mit `baha target policy set NAME --deployment-dirty yes`. Weitere Optionen: `--deployment-branches`, `--deployment-commit`, `--deployment-remote-commit`, `--deployment-approval`, `--deployment-image-digest`. `--deployment-preset none` entfernt eine lokale Target-Policy ausdruecklich.
+`baha target policy show NAME` zeigt die gespeicherte Policy. Mit `baha target policy set NAME --deployment-preset test` wird ein Preset neu angewendet. Einzelne Werte lassen sich ohne Zurücksetzen der anderen Vorgaben ändern, z. B. mit `baha target policy set NAME --deployment-dirty yes`. Weitere Optionen: `--deployment-branches`, `--deployment-commit`, `--deployment-remote-commit`, `--deployment-approval`, `--deployment-image-digest`. `--deployment-preset none` entfernt eine lokale Target-Policy ausdrücklich.
 
-Das Aendern verwendet den geschuetzten Config-Owner mit Compare-and-Swap; Runtime, Tenant, Access und Deployments bleiben unberuehrt. Derzeit ist diese Editierfunktion nur fuer lokal Core-eigene Targets implementiert. Remote-Target-Aenderungen werden bis zu einer authentifizierten Core-Operator-API verweigert; lokale Workstation-Dateien duerfen niemals die Core-Policy ersetzen. Ohne Core-verifizierte Herkunftsdaten werden restriktive Deployments sicher abgewiesen.
+Änderungen laufen über den geschützten Konfigurations-Owner mit Compare-and-Swap. Laufzeit, Tenant, Zugriffsrechte und Deployments bleiben unberührt. Die Funktion gilt derzeit nur für Targets, die lokal zu Core gehören. Änderungen an entfernten Targets werden bis zu einer authentifizierten Core-Operator-API abgewiesen. Lokale Workstation-Dateien dürfen die Core-Policy nicht ersetzen. Ohne vom Core bestätigte Herkunftsdaten werden restriktive Deployments abgewiesen.
