@@ -37,7 +37,15 @@ Beim Aktivieren von Entwicklungs-WebGUIs legt Core deren gemeinsamen Login an,
 wenn noch keiner existiert. Vorhandene Zugangsdaten werden wiederverwendet.
 Ein im Initialisierungsassistenten ausdrücklich gewählter Login wird einschließlich
 Benutzername und eigenem oder erzeugtem Passwort auf dem ausgewählten Core
-konfiguriert. Die vorbereitete pgAdmin-Verbindung öffnet die App-Datenbank und
+konfiguriert.
+Die im Assistenten oder mit `baha dev domain DOMAIN` gewählte Entwicklungsdomain
+wird auf dem ausgewählten Core konfiguriert und lokal projiziert. Neue
+Entwicklungsrechner erhalten die bestehende Core-Domain als Vorschlag.
+DNS-Namen müssen auf den Core zeigen; IP-Links sind davon unabhängig.
+Bei gespeicherter Core-LAN-Adresse und Namen außerhalb von `.localhost`
+verwendet das kanonische Gateway diese Adresse, sofern keine explizite
+Bind-Einstellung vorliegt. `.localhost` bleibt auf Loopback beschränkt.
+Die vorbereitete pgAdmin-Verbindung öffnet die App-Datenbank und
 zeigt im Baum nur diese Datenbank. Interne Core-Datenbanken sind getrennte Ressourcen.
 Ablehnung oder Abbruch der interaktiven Bestätigung stoppt den Rollout. Starte
 `baha up` erneut zum Prüfen und Bestätigen; ein manueller Quellhash ist nicht nötig.

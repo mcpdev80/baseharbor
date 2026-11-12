@@ -428,7 +428,11 @@ func reconcile(ctx context.Context, runtime Runtime, issuer serviceaccess.Issuer
 	// *.localhost development names on a LAN listener: remote hosts resolve
 	// those names to themselves. The selected bind address must be one
 	// concrete non-loopback IP on the Core host, not a wildcard.
-	bindHost, err := gatewayBindAddress(current.Routes)
+	bindIP := ipAddress
+	if bindIP == "" && requestedIPAccessAddress != nil {
+		bindIP = *requestedIPAccessAddress
+	}
+	bindHost, err := gatewayBindAddressForIPAccess(current.Routes, bindIP)
 	if err != nil {
 		return err
 	}

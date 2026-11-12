@@ -23,6 +23,8 @@ func (e *bahaMachineExecutor) executeHTTPPlatformMutation(
 	report machinehttp.ProgressReporter,
 ) (any, error) {
 	switch operationID {
+	case "dev.domain":
+		return executeHTTPDevelopmentDomain(ctx, operationContext, raw)
 	case "dev.credentials":
 		return executeHTTPDevelopmentCredentials(ctx, operationContext, raw)
 	case "secret.set":

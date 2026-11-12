@@ -294,7 +294,7 @@ func writeMongoDBUIComposeServices(b *strings.Builder, m Manifest, instance stri
     security_opt: ["no-new-privileges:true"]
     entrypoint: ["/bin/sh", "-ec"]
     command:
-      - cat /usr/bin/caddy > /run/baseharbor/caddy && chmod 0755 /run/baseharbor/caddy && exec /run/baseharbor/caddy run --config /etc/caddy/Caddyfile --adapter caddyfile
+      - cat /usr/bin/caddy > /run/baseharbor/caddy && chmod 0755 /run/baseharbor/caddy && exec /run/baseharbor/caddy run --config /etc/caddy/Caddyfile --adapter caddyfile --watch
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev
       - /run/baseharbor:rw,exec,nosuid,nodev,mode=1777

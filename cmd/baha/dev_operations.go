@@ -27,7 +27,13 @@ func configureDevelopmentDomain(ctx context.Context, value string) (devDomainRes
 		return devDomainResult{}, err
 	}
 	var domain string
-	if value != "" {
+	if target.AccessProvider != "" && target.AccessProvider != "local" {
+		domain, err = remoteDevelopmentDomain(ctx, target, value)
+		if err != nil {
+			return devDomainResult{}, err
+		}
+		domain, err = devaccess.ConfigureDomain(target.Name, domain)
+	} else if value != "" {
 		domain, err = devaccess.ConfigureDomain(target.Name, value)
 	} else {
 		domain, err = devaccess.EnsureDomain(target.Name)

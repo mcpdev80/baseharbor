@@ -87,6 +87,12 @@ Enabling development management UIs creates their shared login on the Core
 when none exists. Existing credentials are recovered and reused. A login explicitly
 chosen in the initialization wizard is configured on the selected Core, including
 its username and custom or generated password; it is not just saved locally.
+The development domain selected in the wizard or with `baha dev domain DOMAIN`
+is applied on the selected Core and projected locally. A new workstation offers
+the Core's existing domain as its default. Canonical names require DNS pointing
+to that Core; IP links remain independent of DNS. With an owned Core LAN address
+and configured names outside `.localhost`, the canonical gateway uses that
+address unless an explicit bind override is set. `.localhost` stays loopback-only.
 The prepared pgAdmin connection opens its application database and limits the
 browser tree to that database. Internal Core databases are separate resources.
 Declining or cancelling the interactive confirmation stops the rollout. Run

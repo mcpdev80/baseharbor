@@ -155,7 +155,7 @@ Beobachtete Docker-UIDs sind Diagnosewerte, keine Provider-Anforderungen.
 | Redis Commander | Beliebige Plattform-UID; `local.json`, `local-production.json`, HTTP-Kennwort und TLS als geschützte, schreibgeschützte UI-Projektionen. |
 | MongoDB | Beliebige Plattform-UID; Datenvolume laufzeitgestützt beschreibbar. Init-Skripte, Zertifikat und CA schreibgeschützt; Key-Quelle geschützt. |
 | MongoDB-UI | Beliebige Plattform-UID; MongoDB-CA/Trust schreibgeschützt; UI-Proxy isoliert, Datenbankzugang nur über authentisierten Upstream. |
-| MongoDB-UI-Proxy | Beliebige Plattform-UID; Caddyfile, Zertifikat und Key schreibgeschützt; Key nur als geschützte Verbraucherprojektion. |
+| MongoDB-UI-Proxy | Beliebige Plattform-UID; Caddyfile, Zertifikat und Key schreibgeschützt; Key nur als geschützte Verbraucherprojektion. Caddy überwacht die Konfigurationsprojektion, damit geänderte Management-Zugangsdaten ohne manuellen Neustart wirksam werden. |
 | RabbitMQ | Beliebige Plattform-UID; Brokerdaten laufzeitgestützt beschreibbar; Konfiguration und TLS schreibgeschützt, Zugangsdaten/Keys geschützt und beschränkt eingebunden. |
 | RabbitMQ-UI-Proxy | Beliebige Plattform-UID; Caddyfile, Zertifikat und Key schreibgeschützt; Authentifizierungsprüfsumme nur für diesen Proxy. |
 | SeaweedFS-Knoten/Admin | Docker-Image-Entrypoint nutzt nur `CHOWN`, `SETGID` und `SETUID`, um `/data`-Eigentümerrechte zu korrigieren und auf das Dienstkonto zu wechseln; alle übrigen Capabilities bleiben entfernt und `no-new-privileges` bleibt aktiv. Auf Plattformen mit beliebiger UID muss diese `/data` über die Volume-Eigentümer-/Gruppenrechte beschreiben können. S3/Admin-Zugangsdaten und TLS sind an der Quelle geschützt und je Verbraucher auf schreibgeschützte Projektionen begrenzt. |

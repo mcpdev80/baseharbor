@@ -43,11 +43,12 @@ type remoteJourneyCore struct {
 	applyFailure        error
 	candidateChanged    bool
 	previewOverride     func(*applicationLifecyclePlan)
+	developmentDomain   string
 	noProviderChanges   bool
 }
 
 func (f *remoteJourneyCore) SupportedOperationIDs() []string {
-	return []string{"app.list", "app.create", "app.configure", "apply"}
+	return []string{"app.list", "app.create", "app.configure", "apply", "dev.domain"}
 }
 func (f *remoteJourneyCore) BindSourceTransfers(store *sourcetransfer.Store) { f.transfers = store }
 func (f *remoteJourneyCore) Execute(_ context.Context, op machine.Operation, scope machine.OperationContext, raw json.RawMessage, report machinehttp.ProgressReporter) (json.RawMessage, error) {
@@ -59,6 +60,20 @@ func (f *remoteJourneyCore) Execute(_ context.Context, op machine.Operation, sco
 	}
 	encode := func(value any) (json.RawMessage, error) { return json.Marshal(value) }
 	switch op.ID {
+	case "dev.domain":
+		var input machineHTTPDevelopmentDomainInput
+		if json.Unmarshal(raw, &input) != nil || input.Target != "local" {
+			return nil, errors.New("domain request escaped selected Core")
+		}
+		domain := f.developmentDomain
+		if domain == "" {
+			domain = "core.example.test"
+		}
+		if input.Domain != "" {
+			domain = strings.ToLower(strings.TrimSuffix(strings.TrimSpace(input.Domain), "."))
+			f.developmentDomain = domain
+		}
+		return encode(machineHTTPDevelopmentDomainResult{ContractVersion: machine.ContractVersion, Target: "local", Environment: "dev", Domain: domain})
 	case "app.list":
 		list := machineApplicationListResult{ContractVersion: machine.ContractVersion, Deployments: []machineDeploymentSummary{}}
 		if f.id != "" {

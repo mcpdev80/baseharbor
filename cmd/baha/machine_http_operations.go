@@ -21,6 +21,7 @@ var httpOperationKinds = map[string]httpOperationKind{
 	"control-plane.up":     httpPlatformMutation,
 	"openbao.rotate":       httpPlatformMutation,
 	"dev.credentials":      httpPlatformMutation,
+	"dev.domain":           httpPlatformMutation,
 	"secret.set":           httpPlatformMutation,
 	"target":               httpRead,
 	"target.list":          httpRead,

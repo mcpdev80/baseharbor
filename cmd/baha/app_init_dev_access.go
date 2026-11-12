@@ -38,7 +38,14 @@ func collectGuidedDevAccess(ctx context.Context, reader *bufio.Reader, out io.Wr
 	case err == nil:
 		setup.domain = domain
 	case errors.Is(err, os.ErrNotExist):
-		value, promptErr := promptLine(reader, out, "Development domain", devaccess.DefaultDomain)
+		defaultDomain := devaccess.DefaultDomain
+		if target.AccessProvider != "" && target.AccessProvider != "local" {
+			defaultDomain, err = remoteDevelopmentDomain(ctx, target, "")
+			if err != nil {
+				return setup, err
+			}
+		}
+		value, promptErr := promptLine(reader, out, "Development domain", defaultDomain)
 		if promptErr != nil {
 			return setup, promptErr
 		}
@@ -101,6 +108,7 @@ func printGuidedDevAccessSummary(out io.Writer, setup guidedDevAccessSetup) {
 }
 
 var guidedRemoteCredentialReconcile = reconcileRemoteDevelopmentCredentials
+var guidedDevelopmentDomainConfigure = configureDevelopmentDomain
 
 func applyGuidedDevAccess(ctx context.Context, setup guidedDevAccessSetup) error {
 	defer zeroBytes(setup.password)
@@ -115,7 +123,7 @@ func applyGuidedDevAccess(ctx context.Context, setup guidedDevAccessSetup) error
 		return errors.New("development access Target changed; credentials were not applied")
 	}
 	if setup.configureDomain {
-		if _, err := devaccess.ConfigureDomain(setup.target, setup.domain); err != nil {
+		if _, err := guidedDevelopmentDomainConfigure(ctx, setup.domain); err != nil {
 			return err
 		}
 	}
