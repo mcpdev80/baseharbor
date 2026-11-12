@@ -51,7 +51,12 @@ func VerifyHosts(ctx context.Context, target string, hosts []string) error {
 		}
 		seen[route.Host] = struct{}{}
 		allowed := relatedRedirectURLs(current.Routes, route, current.HostPort)
-		if err := verifyRoute(ctx, roots, route, current.HostPort, allowed...); err != nil {
+
+		address := current.BindAddress
+		if address == "" {
+			address = "127.0.0.1"
+		}
+		if err := verifyRouteBound(ctx, roots, route, current.HostPort, address, allowed...); err != nil {
 			errs = append(errs, err)
 		}
 		if current.IPAccessAddress != "" && route.DirectIPPort > 0 {
@@ -71,20 +76,21 @@ func VerifyHosts(ctx context.Context, target string, hosts []string) error {
 func verifyDirectIPRoute(ctx context.Context, roots *x509.CertPool, current state, route Route) error {
 	address := current.IPAccessAddress
 	port := route.DirectIPPort
-	directURL := "https://" + net.JoinHostPort(address, strconv.Itoa(port)) + "/"
+	directURL := "https://" + net.JoinHostPort(address, strconv.Itoa(port)) + managementLandingPath(route)
 	allowed := make([]string, 0, len(current.Routes))
 	for _, candidate := range current.Routes {
-		if candidate.DirectIPPort > 0 {
+		if candidate.Owner == route.Owner && candidate.DirectIPPort > 0 {
 			allowed = append(allowed, "https://"+net.JoinHostPort(address, strconv.Itoa(candidate.DirectIPPort)))
 		}
 	}
 	dialer := &net.Dialer{}
 	transport := &http.Transport{
 		TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12, RootCAs: roots, ServerName: address},
-		DialContext: func(ctx context.Context, network, _ string) (net.Conn, error) {
-			return dialer.DialContext(ctx, network, net.JoinHostPort(address, strconv.Itoa(port)))
+		DialContext: func(ctx context.Context, network, destination string) (net.Conn, error) {
+			return dialer.DialContext(ctx, network, destination)
 		},
 	}
+	defer transport.CloseIdleConnections()
 	client := &http.Client{Transport: transport}
 	if err := serviceaccess.VerifyBrowserRouteWithAllowedAuthorities(ctx, client, directURL, allowed...); err != nil {
 		return routeVerificationFailure("management UI IP "+route.ManagementKey, err)
@@ -108,19 +114,27 @@ func relatedRedirectURLs(routes []Route, route Route, hostPort int) []string {
 }
 
 func verifyRoute(ctx context.Context, roots *x509.CertPool, route Route, hostPort int, allowedURLs ...string) error {
+	return verifyRouteBound(ctx, roots, route, hostPort, "127.0.0.1", allowedURLs...)
+}
+
+func verifyRouteBound(ctx context.Context, roots *x509.CertPool, route Route, hostPort int, address string, allowedURLs ...string) error {
 	dialer := &net.Dialer{}
 	transport := &http.Transport{
 		TLSClientConfig: &tls.Config{
 			MinVersion: tls.VersionTLS12,
 			RootCAs:    roots,
-			ServerName: route.Host,
 		},
-		DialContext: func(ctx context.Context, network, _ string) (net.Conn, error) {
-			return dialer.DialContext(ctx, network, net.JoinHostPort("127.0.0.1", strconv.Itoa(hostPort)))
+		DialContext: func(ctx context.Context, network, destination string) (net.Conn, error) {
+			_, port, err := net.SplitHostPort(destination)
+			if err != nil {
+				return nil, err
+			}
+			return dialer.DialContext(ctx, network, net.JoinHostPort(address, port))
 		},
 	}
+	defer transport.CloseIdleConnections()
 	client := &http.Client{Transport: transport}
-	if err := serviceaccess.VerifyBrowserRouteWithAllowedAuthorities(ctx, client, canonicalURL(route.Host, hostPort)+"/", allowedURLs...); err != nil {
+	if err := serviceaccess.VerifyBrowserRouteWithAllowedAuthorities(ctx, client, canonicalURL(route.Host, hostPort)+managementLandingPath(route), allowedURLs...); err != nil {
 		return routeVerificationFailure(route.Host, err)
 	}
 	return nil
@@ -169,4 +183,11 @@ func Verify(ctx context.Context, target string) error {
 		case <-ticker.C:
 		}
 	}
+}
+
+func managementLandingPath(route Route) string {
+	if route.LandingPath != "" {
+		return route.LandingPath
+	}
+	return "/"
 }
