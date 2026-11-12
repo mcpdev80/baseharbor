@@ -456,6 +456,7 @@ func ensurePostgresManagementUI(ctx context.Context, issuer serviceaccess.Issuer
 			"Host":          host,
 			"Port":          5432,
 			"MaintenanceDB": db,
+			"DBRestriction": db,
 			"Username":      user,
 			"SSLMode":       "verify-ca",
 			"PassFile":      ".pgpass",

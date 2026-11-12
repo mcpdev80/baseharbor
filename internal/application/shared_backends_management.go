@@ -269,7 +269,7 @@ func refreshSharedPostgresManagementUIConfig(shared SharedBackendFiles, state sh
 			}
 			serverMap[strconv.Itoa(index)] = map[string]any{
 				"Name": label, "Group": "BaseHarbor", "Host": host, "Port": 5432,
-				"MaintenanceDB": resource.Database, "Username": resource.Username, "SSLMode": "verify-ca",
+				"MaintenanceDB": resource.Database, "DBRestriction": resource.Database, "Username": resource.Username, "SSLMode": "verify-ca",
 				"PassFile": ".pgpass",
 				"ConnectionParameters": map[string]any{
 					"sslmode": "verify-ca", "sslrootcert": "BaseHarbor:/postgres.ca.pem", "passfile": ".pgpass",

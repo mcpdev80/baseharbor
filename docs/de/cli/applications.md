@@ -35,6 +35,10 @@ strukturierte Bestätigungsanforderung. Remote-Arbeit zeigt ihre aktuelle Phase
 und Wartezeit; JSON-Ausgaben bleiben maschinenlesbar.
 Beim Aktivieren von Entwicklungs-WebGUIs legt Core deren gemeinsamen Login an,
 wenn noch keiner existiert. Vorhandene Zugangsdaten werden wiederverwendet.
+Ein im Initialisierungsassistenten ausdrücklich gewählter Login wird einschließlich
+Benutzername und eigenem oder erzeugtem Passwort auf dem ausgewählten Core
+konfiguriert. Die vorbereitete pgAdmin-Verbindung öffnet die App-Datenbank und
+zeigt im Baum nur diese Datenbank. Interne Core-Datenbanken sind getrennte Ressourcen.
 Ablehnung oder Abbruch der interaktiven Bestätigung stoppt den Rollout. Starte
 `baha up` erneut zum Prüfen und Bestätigen; ein manueller Quellhash ist nicht nötig.
 Nach erfolgreichem Remote-Deployment erscheinen eine kurze READY-Zusammenfassung
