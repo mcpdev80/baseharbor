@@ -137,3 +137,13 @@ benötigt keinen erreichbaren Core und erhält Apps, Daten und Geräteanmeldung.
 Auch das Entfernen der lokalen Verbindung im Onboarding-Wizard führt diese
 Bereinigung aus, bevor dessen Verbindungsdatensatz entfernt wird. Erneutes
 explizites Installieren des CA-Vertrauens aktiviert die CA-Referenz wieder.
+
+Unter Linux unterstützt der Import NSS-Speicher von Chromium und Microsoft Edge,
+einschließlich vorhandener Chromium-Snap-Revisionsspeicher und Chromium-/Edge-
+Flatpak-Speicher. Firefox verwendet eigene Profil-Datenbanken (nativ, Snap und
+Flatpak). BaseHarbor importiert nur in vorhandene unterstützte Speicher und legt
+keine Browserprofile oder Browserrichtlinien an. Wird Firefox erst später
+installiert oder ein Profil neu angelegt, erneut
+`baha --target NAME trust install --yes` ausführen. Betroffene Browser nach einer
+Vertrauensänderung vollständig neu starten. Neu installierte Browser-CA-Einträge
+werden für dieselbe fingerprintgeprüfte Bereinigung wie System-CA-Einträge erfasst.

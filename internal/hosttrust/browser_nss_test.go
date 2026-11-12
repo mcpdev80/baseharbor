@@ -150,7 +150,7 @@ func TestBrowserCARollsBackWhenOwnershipCannotPersist(t *testing.T) {
 
 func TestBrowserDiscoveryRejectsSymlinkedProfilesAndFindsSupportedStores(t *testing.T) {
 	home := t.TempDir()
-	paths := []string{".pki/nssdb", ".local/share/pki/nssdb", ".mozilla/firefox/test.default", "snap/firefox/common/.mozilla/firefox/snap.default", ".var/app/org.mozilla.firefox/.mozilla/firefox/flatpak.default"}
+	paths := []string{".pki/nssdb", ".local/share/pki/nssdb", "snap/chromium/1234/.pki/nssdb", "snap/chromium/1234/.local/share/pki/nssdb", ".var/app/org.chromium.Chromium/.local/share/pki/nssdb", ".var/app/com.microsoft.Edge/.pki/nssdb", ".var/app/com.microsoft.Edge/data/pki/nssdb", ".mozilla/firefox/test.default", "snap/firefox/common/.mozilla/firefox/snap.default", ".var/app/org.mozilla.firefox/.mozilla/firefox/flatpak.default"}
 	for _, p := range paths {
 		db := filepath.Join(home, p)
 		if err := os.MkdirAll(db, 0700); err != nil {

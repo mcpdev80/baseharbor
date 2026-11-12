@@ -142,3 +142,12 @@ Local cleanup requires no live Core and keeps apps, data and device enrollment.
 The onboarding wizard's local connection removal also performs this cleanup
 before discarding its local connection record. Reinstalling trust explicitly
 reactivates that connection's CA reference.
+
+On Linux, Chromium and Microsoft Edge use supported NSS stores; the import also
+finds existing Chromium Snap revision stores and Chromium/Edge Flatpak stores.
+Firefox uses its own profile databases (native, Snap and Flatpak). BaseHarbor
+imports into existing supported stores only; it does not create browser profiles
+or install browser policies. If Firefox is installed or a profile is created
+later, run `baha --target NAME trust install --yes` again. Fully restart affected
+browsers after changing trust. Every newly installed browser anchor is recorded
+for the same fingerprint-checked cleanup as system trust.

@@ -53,6 +53,9 @@ func InstallBrowsers(ctx context.Context, stateDir string, publicCA []byte) ([]B
 func browserNSSDatabases(home string) []string {
 	patterns := []string{
 		".pki/nssdb/cert9.db", ".local/share/pki/nssdb/cert9.db",
+		"snap/chromium/*/.pki/nssdb/cert9.db", "snap/chromium/*/.local/share/pki/nssdb/cert9.db",
+		".var/app/org.chromium.Chromium/data/pki/nssdb/cert9.db", ".var/app/org.chromium.Chromium/.pki/nssdb/cert9.db", ".var/app/org.chromium.Chromium/.local/share/pki/nssdb/cert9.db",
+		".var/app/com.microsoft.Edge/data/pki/nssdb/cert9.db", ".var/app/com.microsoft.Edge/.pki/nssdb/cert9.db", ".var/app/com.microsoft.Edge/.local/share/pki/nssdb/cert9.db",
 		".mozilla/firefox/*/cert9.db", "snap/firefox/common/.mozilla/firefox/*/cert9.db",
 		".var/app/org.mozilla.firefox/.mozilla/firefox/*/cert9.db",
 	}
