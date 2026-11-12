@@ -167,3 +167,11 @@ address, BaseHarbor selects a port on that actual address before committing
 identity/application URLs. A retained loopback gateway does not own the Core API's
 LAN port. A stopped/failed gateway also does not prove listener ownership.
 Existing device connections keep their enrolled Core API endpoint unchanged.
+
+The managed development operator realm does not require first/last-name profile
+claims before opening its account/admin console: its configured login is the
+chosen username/password. Username/email requirements and other profile policy
+remain intact; this does not change installation, application or test/prod realms.
+Keycloak keeps one fixed realm frontend authority. IP GUI entry points may
+continue authentication on the canonical name; the optional workstation hosts
+setup supplies that name without an external DNS service.

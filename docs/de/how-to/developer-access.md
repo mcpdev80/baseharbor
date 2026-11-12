@@ -129,3 +129,12 @@ und App-URLs festgelegt werden. Ein bisheriger Loopback-Gateway besitzt nicht
 den LAN-Port der Core-API. Ein gestoppter oder fehlgeschlagener Gateway belegt
 ebenfalls kein Eigentum an einem Listener. Bestehende Geräteverbindungen behalten
 ihren registrierten Core-API-Endpunkt.
+
+Der verwaltete Entwicklungs-Operator-Realm verlangt vor dem Öffnen der Account-
+oder Admin-Konsole keine zusätzlichen Vor-/Nachnamen. Sein konfigurierter Login
+ist der gewählte Benutzername mit Passwort. Anforderungen an Benutzername/E-Mail
+und andere Profilregeln bleiben erhalten. Installations-, App- und Test/Prod-
+Realms werden dadurch nicht geändert. Keycloak behält eine feste Frontend-
+Autorität pro Realm. Ein IP-GUI-Einstieg kann die Anmeldung beim kanonischen
+Namen fortsetzen; die optionale Hosts-Einrichtung macht diesen Namen ohne
+externen DNS-Dienst auf dem Entwicklerrechner erreichbar.

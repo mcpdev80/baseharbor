@@ -283,3 +283,11 @@ Die normative Versand-Provider/Oberflächenklassifikation ist[Provider and manag
 Kapazitätsanbieter verhandeln unabhängig vom Runtime Provider die gleichen Anforderungen an die tragbare Verfügbarkeit.
 
 Anbieter erklären SUPPORTED, PARTIALLY_SUPPORTED oder UNSUPPORTED mit expliziten Grenzen. Eine erforderliche nicht unterstützte Garantie scheitert vor der Provider-Mutation. Provider-native Clustering, Quorum, Replik-Rollen und Managed-Service-Produktmodi bleiben Realisationszustand und nie in portable Application Intent eingeben.
+
+Für die gemeinsam genutzte verwaltete Entwicklungs-Identity-GUI MUSS der Provider
+Account-/Admin-Einstiegspfade seines eigenen Entwicklungs-Operator-Realms angeben.
+Der gewählte Entwickler-Login MUSS die Konsolen ohne Erfassung von Vor-/Nachnamen
+öffnen können. Nur die Anforderungen an diese beiden Namensfelder in diesem
+verifiziert eigenen Dev-Operator-Realm sind optional. Benutzername/E-Mail und
+andere Profilregeln MÜSSEN erhalten bleiben. Andere Realms und die Autorität der
+Geräteidentitäten DÜRFEN dadurch NICHT geändert werden.

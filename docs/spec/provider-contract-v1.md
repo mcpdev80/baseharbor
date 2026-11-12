@@ -292,3 +292,10 @@ The normative shipped-provider/surface classification is [Provider and managemen
 Capability providers negotiate the same portable availability requirement independently from the Runtime Provider.
 
 Providers declare SUPPORTED, PARTIALLY_SUPPORTED or UNSUPPORTED with explicit limits. A required unsupported guarantee fails before provider mutation. Provider-native clustering, quorum, replica roles and managed-service product modes remain realization state and never enter portable Application Intent.
+
+For the managed shared development Identity UI, the provider MUST declare the
+account/admin landing paths of its owned development operator realm. Its selected
+developer username/password MUST open those consoles without collecting real-name
+claims. Only first/last-name requirements in that verified owned dev operator realm
+are optional; username/email and unrelated profile settings MUST be preserved.
+Other realms and runtime device identity authorities MUST remain unchanged.
