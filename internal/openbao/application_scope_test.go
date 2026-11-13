@@ -52,6 +52,23 @@ func TestOpenBaoCommandFailureDetailOmitsShellAndSensitiveInput(t *testing.T) {
 	}
 }
 
+func TestApplicationScopeDestroyRecognizesOnlyExactMissingObjects(t *testing.T) {
+	roleErr := fmt.Errorf("compose exec ...: No value found at auth/approle/role/baseharbor-app-demo-dev")
+	if !isMissingApplicationRole(roleErr, "baseharbor-app-demo-dev") {
+		t.Fatal("exactly missing application AppRole was not recognized")
+	}
+	if isMissingApplicationRole(fmt.Errorf("compose exec ...: permission denied"), "baseharbor-app-demo-dev") {
+		t.Fatal("permission failure was treated as an absent AppRole")
+	}
+	policyErr := fmt.Errorf("compose exec ...: No policy named: baseharbor-app-demo-dev")
+	if !isMissingApplicationPolicy(policyErr, "baseharbor-app-demo-dev") {
+		t.Fatal("exactly missing application policy was not recognized")
+	}
+	if isMissingApplicationPolicy(fmt.Errorf("compose exec ...: permission denied"), "baseharbor-app-demo-dev") {
+		t.Fatal("permission failure was treated as an absent policy")
+	}
+}
+
 func TestApplicationIdentityNamesAreDeterministicAndSeparated(t *testing.T) {
 	dev := ApplicationIdentity{Name: "mailflow", Environment: "dev"}
 	prod := ApplicationIdentity{Name: "mailflow", Environment: "prod"}

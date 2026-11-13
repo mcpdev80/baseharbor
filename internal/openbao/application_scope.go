@@ -159,6 +159,10 @@ func CheckApplicationScope(ctx context.Context, executor Executor, files bhrunti
 }
 
 func DestroyApplicationScope(ctx context.Context, executor Executor, files bhruntime.Files, identity ApplicationIdentity) error {
+	return destroyApplicationScope(ctx, executor, files, identity, true, true)
+}
+
+func destroyApplicationScope(ctx context.Context, executor Executor, files bhruntime.Files, identity ApplicationIdentity, rolePresent, policyPresent bool) error {
 	if err := validateApplicationIdentity(identity); err != nil {
 		return err
 	}
@@ -197,11 +201,15 @@ func DestroyApplicationScope(ctx context.Context, executor Executor, files bhrun
 			return fmt.Errorf("delete OpenBao application secret metadata: %w", err)
 		}
 	}
-	if _, err := execWithToken(ctx, executor, files, managerToken, fmt.Sprintf(`exec bao delete auth/approle/role/%s`, applicationRoleName(identity))); err != nil {
-		return fmt.Errorf("delete OpenBao application AppRole: %w", err)
+	if rolePresent {
+		if _, err := execWithToken(ctx, executor, files, managerToken, fmt.Sprintf(`exec bao delete auth/approle/role/%s`, applicationRoleName(identity))); err != nil {
+			return fmt.Errorf("delete OpenBao application AppRole: %w", err)
+		}
 	}
-	if _, err := execWithToken(ctx, executor, files, managerToken, fmt.Sprintf(`exec bao policy delete %s`, applicationPolicyName(identity))); err != nil {
-		return fmt.Errorf("delete OpenBao application policy: %w", err)
+	if policyPresent {
+		if _, err := execWithToken(ctx, executor, files, managerToken, fmt.Sprintf(`exec bao policy delete %s`, applicationPolicyName(identity))); err != nil {
+			return fmt.Errorf("delete OpenBao application policy: %w", err)
+		}
 	}
 	return nil
 }

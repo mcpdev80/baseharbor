@@ -341,7 +341,7 @@ func (e *applicationDestroyExecution) runPreflight(ctx context.Context) error {
 				if !e.destroyOpenBaoScope {
 					return nil
 				}
-				return openbao.CheckApplicationScopeOwnership(ctx, e.coreRuntime, e.platformFiles, identity)
+				return openbao.CheckApplicationScopeOwnershipForDestroy(ctx, e.coreRuntime, e.platformFiles, identity)
 			}},
 		)
 	}
