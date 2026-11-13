@@ -349,10 +349,32 @@ func (e *applicationDestroyExecution) runPreflight(ctx context.Context) error {
 	results, ok := preflight.RunWithTimeout(ctx, checks, 30*time.Second)
 	renderPreflightUX(e.term, results)
 	if !ok {
-		return errors.New("application destroy preflight failed; nothing was deleted")
+		return applicationDestroyPreflightError(results)
 	}
 	e.excludeManagedInfrastructureVolumes()
 	return nil
+}
+
+func applicationDestroyPreflightError(results []preflight.Result) error {
+	failed := make([]string, 0)
+	for _, result := range results {
+		if result.OK {
+			continue
+		}
+		detail := strings.TrimSpace(result.Detail)
+		if len(detail) > 200 {
+			detail = detail[:197] + "..."
+		}
+		if detail == "" {
+			failed = append(failed, result.Name)
+		} else {
+			failed = append(failed, result.Name+": "+detail)
+		}
+	}
+	if len(failed) == 0 {
+		return errors.New("application destroy preflight failed; nothing was deleted")
+	}
+	return fmt.Errorf("application destroy preflight failed; nothing was deleted (%s)", strings.Join(failed, "; "))
 }
 
 func (e *applicationDestroyExecution) renderDeletePlan() error {
