@@ -1,6 +1,6 @@
 # Human CLI — v0.4.24
 
-The default human CLI is **task-first**. Most developer operations work in the current application repository; advanced operators may use the explicit `app`, `target`, `provider`, `stack`, `config` and `mcp` command groups.
+The default human CLI is **task-first**. Most developer operations work in the current application repository; advanced operators may use the explicit `app`, `target`, `provider`, `stack`, `config` and `mcp` command groups. See [Local, remote and team development](../how-to/local-remote-team-workflow.md) for the end-to-end developer path.
 
 ## Daily workflow
 

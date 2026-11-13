@@ -1,44 +1,25 @@
-# Connect a workstation to BaseHarbor Core
+# Remote workstation enrollment
 
-Run BaseHarbor Core on one machine and develop on another. The workstation connects directly to Core; Node Connector is not needed for this connection.
+For the end-to-end local, remote and team path, see [Local, remote and team development](local-remote-team-workflow.md). This page records the Core-specific invitation details. Workstation enrollment is separate from Node Connector enrollment and human operator login.
 
-## On the Core machine
+## Issue an invitation on the Core host
 
-Install BaseHarbor, then run:
+On the machine that owns the Core, run:
 
 ```bash
 baha up
-baha onboard
+baha onboard --invite
 ```
 
-`baha onboard` creates a short-lived, one-use invitation file for a workstation. Transfer the file securely to the developer's machine. Keep its contents private.
+The command creates a private, one-use device invitation. Transfer it securely and keep its contents private. For another device belonging to an existing person, use `baha workstation new` on the Core host.
 
-## On the developer workstation
-
-Install the `baha` CLI and import the invitation:
+## Redeem it on the developer workstation
 
 ```bash
 baha onboard --import /path/to/invitation.json
+baha use NAME
 ```
 
-BaseHarbor verifies the Core, enrolls this workstation using a locally generated private key, and registers the remote Target.
+BaseHarbor verifies the Core and invitation, creates the device private key locally, and registers the connection. The invitation does not grant a human operator role. The connection alias is distinct from the Core Target. Select and inspect the deployment Target with `baha target list` and `baha target show`. See [security and trust commands](../cli/security-trust.md) for CA trust, revocation and offboarding details.
 
-To check the selected Target:
-
-```bash
-baha target show
-```
-
-## Run an application
-
-From the application repository:
-
-```bash
-baha inspect .
-baha init
-baha plan
-baha up
-baha status
-```
-
-For advanced options and troubleshooting, see [Target commands](../cli/targets.md) and [Security and trust](../cli/security-trust.md).
+Continue from the application repository using [the canonical local, remote and team workflow](local-remote-team-workflow.md).

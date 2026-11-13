@@ -2,6 +2,8 @@
 
 CLI, JSON, MCP und geschütztes HTTP nutzen denselben Domänen-Lifecycle. Automation verwendet strukturierte Ergebnisse und Exit-Status, keine dekorierte menschliche Ausgabe.
 
+Der gemeinsame Einstieg für Menschen und Automation ist [Lokal, remote und gemeinsam entwickeln](../how-to/local-remote-team-workflow.md). Maschinenclients verwenden explizite Operationseingaben und dieselbe Target-, Umgebungs-, Autorisierungs- und Consent-Semantik.
+
 Maschinenlesbare Ausgabe:
 
 ```text

@@ -2,6 +2,8 @@
 
 Application-Befehle arbeiten mit dem portablen Contract und seinem Deployment-Zustand.
 
+Der vollständige lokale, Remote- und Team-Weg beginnt unter [Lokal, remote und gemeinsam entwickeln](../how-to/local-remote-team-workflow.md).
+
 [Anwendungsbedarf erstellen und ändern](../how-to/application-needs.md) erklärt die interaktive Checkliste, Target-Provider-Präferenzen und Footprint-Vorschau.
 
 | Befehl | Aufgabe |

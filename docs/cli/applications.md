@@ -6,6 +6,8 @@ Use [Create and edit application needs](../how-to/application-needs.md) for the 
 
 ## Authoring and adoption
 
+For the complete local, remote and team path, start with [Local, remote and team development](../how-to/local-remote-team-workflow.md).
+
 | Command | Purpose |
 | --- | --- |
 | `baha new application` | Create a new ecosystem-native application |

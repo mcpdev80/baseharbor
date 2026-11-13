@@ -54,6 +54,7 @@ nav:
 - Start: index.md
 - Einstieg:
   - Erste Application: tutorials/getting-started.md
+  - Lokaler, Remote- und Team-Workflow: how-to/local-remote-team-workflow.md
   - Homelab: tutorials/homelab.md
   - Core-Ressourcen: explanation/core-resources.md
   - CLI-Überblick: cli/index.md
