@@ -100,38 +100,13 @@ func destroyInstallation(parent context.Context, confirmed bool, out, errOut io.
 		return err
 	}
 
-	targets, discoveryResults := discoverFullDestroyTargets()
-	deployments, deploymentResults := discoverFullDestroyDeployments()
-	// Authorize every discovered stable deployment before any target/network or
-	// best-effort cleanup. One unauthorized boundary blocks the whole operation.
-	blockedTargets := map[string]bool{}
-	for _, record := range deployments {
-		if err := authorizeMCPOperation(parent, "installation.destroy", record.Identity.Target, record.Identity.Environment, record.Identity.ApplicationID, record.Source.Manifest); err != nil {
-			return err
-		}
-	}
-
-	plans, err := collectFullDestroyInventory(parent, targets)
+	inventory, err := prepareFullDestroyInventory(parent)
 	if err != nil {
 		return err
 	}
-	for _, plan := range plans {
-		if plan.InventoryError != "" {
-			blockedTargets[plan.Target.Name] = true
-		}
-	}
-	preserved := []fullDestroyResult{}
-	for _, target := range targets {
-		item, err := preservedTargetRecovery(parent, target)
-		if err != nil {
-			return fmt.Errorf("inventory external recovery material: %w", err)
-		}
-		if item.Status != "" {
-			preserved = append(preserved, item)
-		}
-	}
-
-	recordDestroyPlan(parent, plans, preserved)
+	targets, deployments := inventory.targets, inventory.deployments
+	discoveryResults, deploymentResults := inventory.discoveryResults, inventory.deploymentResults
+	plans, preserved, blockedTargets := inventory.plans, inventory.preserved, inventory.blockedTargets
 	fmt.Fprintln(out, "WARNING")
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "This will permanently remove all BaseHarbor-managed deployments,")
