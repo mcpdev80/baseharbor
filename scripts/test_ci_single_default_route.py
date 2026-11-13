@@ -96,6 +96,8 @@ class SingleDefaultCIRouteTests(unittest.TestCase):
                 self.assertIn("needs.select_develop.outputs.required == 'true'", text)
                 self.assertIn("TestControlPlaneSingleDefaultNativeRuntimeInCI", text)
                 self.assertIn("  single_default_native:", text)
+                self.assertIn("Install verified ORAS for native Core bootstrap", text)
+                self.assertIn("run: bash scripts/ci-install-oras.sh", text)
                 self.assertIn("github.event_name != 'push' || github.ref_name != 'develop'", text)
                 self.assertIn("workflow_dispatch:", text)
                 self.assertIn("workflow_call:", text)
