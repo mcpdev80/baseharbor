@@ -117,14 +117,16 @@ baha down
 
 The plan previews deployment; `up` converges it; status reports its result. `baha down` stops the application's runtime while preserving persistent data. Use `baha up` to resume it. Inside the repository, `baha down` stops the application; outside a repository it stops the selected control plane.
 
-## Destroy inventory and preserved recovery material
+## Destroy inventory and recovery material
 
 ```bash
 baha destroy -o json
 baha destroy --yes -o json
 ```
 
-The plan names owned containers, networks and volumes, including older resources from the same target. Creation time alone never grants ownership. Runtime cleanup verifies remaining resources before deleting installation state. External recovery files are listed as `PRESERVED` and are never read for the report or deleted automatically. Decide separately whether the recovery copy is still needed before removing it.
+The plan names owned containers, networks and volumes, including older resources from the same target. Creation time alone never grants ownership. Runtime cleanup verifies remaining resources before deleting installation state. Existing OpenBao recovery files are listed for deletion and are removed only after the acknowledged permanent installation destroy. The file contents are never read into the report. Keep a separate backup if the recovery material is still needed.
+
+If one Target runtime cannot be reached, BaseHarbor leaves that runtime untouched and reports it as `PRESERVED`, while continuing cleanup on reachable Targets. Local configuration and ownership state are removed after the acknowledged workstation destroy; remote Target services are never implied to have been removed when they could not be inspected.
 
 JSON and the MCP destroy operations return `resources`, `preserved` and `results` from the same lifecycle. A successful container cleanup removes its unshared anonymous volumes; declared external repository volumes remain preserved.
 

@@ -115,6 +115,11 @@ func destroyInstallation(parent context.Context, confirmed bool, out, errOut io.
 	if err != nil {
 		return err
 	}
+	for _, plan := range plans {
+		if plan.InventoryError != "" {
+			blockedTargets[plan.Target.Name] = true
+		}
+	}
 	preserved := []fullDestroyResult{}
 	for _, target := range targets {
 		item, err := preservedTargetRecovery(parent, target)
@@ -133,14 +138,14 @@ func destroyInstallation(parent context.Context, confirmed bool, out, errOut io.
 	fmt.Fprintln(out, "runtime resources, providers, secrets, control-plane data and local")
 	fmt.Fprintln(out, "BaseHarbor configuration/state from this installation.")
 	fmt.Fprintln(out)
-	fmt.Fprintln(out, "Application source repositories and external application-owned data are preserved.\nBaseHarbor-owned host CA anchors will be removed after confirmation; all unverified anchors remain PRESERVED.")
+	fmt.Fprintln(out, "Application source repositories and external application-owned data are preserved.\nBaseHarbor-owned host CA anchors and listed OpenBao recovery files will be removed after confirmation; all unverified anchors remain PRESERVED.")
 	fmt.Fprintf(out, "Targets: %d\n", len(targets))
 	fmt.Fprintf(out, "Registered deployments: %d\n", len(deployments))
 	for _, plan := range plans {
 		plan.render(out)
 	}
 	for _, item := range preserved {
-		fmt.Fprintf(out, "  PRESERVED %s %s\n", item.Resource, item.Detail)
+		fmt.Fprintf(out, "  %s %s %s\n", item.Status, item.Resource, item.Detail)
 	}
 	impact, err := buildRuntimeDestroyImpact(parent, plans, preserved, true)
 	if err != nil {
@@ -185,9 +190,16 @@ func destroyInstallation(parent context.Context, confirmed bool, out, errOut io.
 	results = append(results, discoveryResults...)
 	results = append(results, deploymentResults...)
 	for _, target := range targets {
+		if blockedTargets[target.Name] {
+			continue
+		}
 		releaseFullDestroyConnectivity(parent, target, &results)
 	}
 	for index, record := range deployments {
+		if blockedTargets[record.Identity.Target] {
+			results = append(results, fullDestroyResult{Status: "SKIPPED", Target: record.Identity.Target, Resource: "deployment " + record.Identity.Application + "/" + record.Identity.Environment, Detail: "Target runtime inventory is unavailable; deployment and retry state were preserved"})
+			continue
+		}
 		targetCtx := withTargetOverride(parent, record.Identity.Target)
 		args := []string{record.Identity.Application, "--environment", record.Identity.Environment, "--yes", "--full-reset"}
 		if err := executeApplicationDestroyLifecycle(targetCtx, application.Store{}, args, out, errOut); err != nil {
@@ -218,7 +230,14 @@ func destroyInstallation(parent context.Context, confirmed bool, out, errOut io.
 
 	for i, target := range targets {
 		if blockedTargets[target.Name] {
-			results = append(results, fullDestroyResult{Status: "SKIPPED", Target: target.Name, Resource: "target-runtime", Detail: "application reset incomplete; protected Target resources and retry owners preserved"})
+			detail := "application reset or runtime inventory incomplete; protected Target resources and retry owners preserved"
+			for _, plan := range plans {
+				if plan.Target.Name == target.Name && plan.InventoryError != "" {
+					detail = "runtime inventory unavailable; Target resources and retry state were preserved: " + plan.InventoryError
+					break
+				}
+			}
+			results = append(results, fullDestroyResult{Status: "SKIPPED", Target: target.Name, Resource: "target-runtime", Detail: detail})
 			continue
 		}
 		destroyTargetBestEffort(parent, target, &results, plans[i])
@@ -255,6 +274,14 @@ func destroyInstallation(parent context.Context, confirmed bool, out, errOut io.
 			recordDestroyResults(parent, results, false)
 			return fmt.Errorf("host trust cleanup incomplete; CA anchors PRESERVED and installation ownership retained: %w", hostTrustErr)
 		}
+		for _, target := range targets {
+			removeTargetRecoveryFile(target, &results)
+		}
+		if countFullDestroyBlockers(results) > 0 {
+			recordDestroyResults(parent, results, false)
+			renderFullDestroyReport(out, results)
+			return errors.New("recovery-file cleanup incomplete; BaseHarbor installation state was preserved")
+		}
 		removeFullDestroyLocalState(&results)
 	} else {
 		results = append(results,
@@ -271,6 +298,31 @@ func destroyInstallation(parent context.Context, confirmed bool, out, errOut io.
 	}
 	fmt.Fprintln(out, "BaseHarbor-managed installation state was permanently removed.")
 	return nil
+}
+
+func removeTargetRecoveryFile(target deployment.ResolvedTarget, results *[]fullDestroyResult) {
+	path, err := targetRecoveryFilePath(target)
+	if err != nil {
+		*results = append(*results, fullDestroyResult{Status: "FAILED", Target: target.Name, Resource: "recovery-file", Detail: err.Error()})
+		return
+	}
+	info, err := os.Lstat(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return
+	}
+	if err != nil {
+		*results = append(*results, fullDestroyResult{Status: "FAILED", Target: target.Name, Resource: "recovery-file", Detail: err.Error()})
+		return
+	}
+	if !info.Mode().IsRegular() {
+		*results = append(*results, fullDestroyResult{Status: "FAILED", Target: target.Name, Resource: "recovery-file", Detail: "not a regular file; preserved"})
+		return
+	}
+	if err := os.Remove(path); err != nil {
+		*results = append(*results, fullDestroyResult{Status: "FAILED", Target: target.Name, Resource: "recovery-file", Detail: err.Error()})
+		return
+	}
+	*results = append(*results, fullDestroyResult{Status: "REMOVED", Target: target.Name, Resource: "recovery-file", Detail: path})
 }
 
 func discoverFullDestroyTargets() ([]deployment.ResolvedTarget, []fullDestroyResult) {

@@ -27,6 +27,32 @@ func TestFullDestroyInventoryMissingRuntimeExplainsSafeNextStep(t *testing.T) {
 	}
 }
 
+func TestFullDestroyInventoryKeepsReachableTargetsWhenPeerRuntimeIsUnavailable(t *testing.T) {
+	targets := []deployment.ResolvedTarget{{Name: "local", RuntimeProvider: "docker"}, {Name: "podman-peer", RuntimeProvider: "podman"}}
+	runtime := &inventoryTestRuntime{resources: map[string][]bhruntime.ProjectResource{"bh-local-shared": {{Kind: "container", Name: "owned"}}}}
+	plans, err := collectFullDestroyInventoryUsing(t.Context(), targets, func(_ context.Context, target deployment.ResolvedTarget, _ bool) (targetDestroyInventory, error) {
+		if target.Name == "podman-peer" {
+			return targetDestroyInventory{Target: target}, fmt.Errorf("detect provider: %w", bhruntime.ErrRuntimeNotFound)
+		}
+		return collectTargetDestroyInventoryWithRuntime(t.Context(), target, runtime, false)
+	})
+	if err != nil {
+		t.Fatalf("one unavailable Target aborted the independent inventory: %v", err)
+	}
+	if len(plans) != 2 || plans[0].InventoryError != "" || plans[0].Runtime == nil || plans[1].InventoryError == "" || plans[1].Runtime != nil {
+		t.Fatalf("unexpected partial inventory: %+v", plans)
+	}
+	var out bytes.Buffer
+	plans[0].render(&out)
+	plans[1].render(&out)
+	if !strings.Contains(out.String(), "owned resource: target=local") || !strings.Contains(out.String(), "PRESERVED target=podman-peer") {
+		t.Fatalf("plan does not show reachable and preserved Targets: %s", out.String())
+	}
+	if len(runtime.deleted) != 0 {
+		t.Fatal("inventory preview mutated reachable runtime")
+	}
+}
+
 type inventoryTestRuntime struct {
 	bhruntime.RuntimeProvider
 	resources  map[string][]bhruntime.ProjectResource
@@ -158,7 +184,7 @@ func TestDestroyInventoryFailureAndResidualResourcesBlockCompletion(t *testing.T
 	}
 }
 
-func TestFullDestroyJSONReportsPreservedRecoveryWithoutReadingContents(t *testing.T) {
+func TestFullDestroyRemovesAcknowledgedRecoveryFileWithoutReadingContents(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("XDG_DATA_HOME", t.TempDir())
 	root, err := deployment.TargetStateRoot("orphan")
@@ -186,14 +212,14 @@ func TestFullDestroyJSONReportsPreservedRecoveryWithoutReadingContents(t *testin
 	if err := json.Unmarshal(out.Bytes(), &report); err != nil {
 		t.Fatal(err)
 	}
-	if !report.Destroyed || report.Preview || !report.All || len(report.Preserved) != 1 || report.Preserved[0].Status != "PRESERVED" {
+	if !report.Destroyed || report.Preview || !report.All || len(report.Preserved) != 0 {
 		t.Fatalf("incorrect structured cleanup report: %#v", report)
 	}
-	if strings.Contains(out.String(), "private-recovery-material") {
+	if strings.Contains(out.String(), "private-recovery-material") || !strings.Contains(out.String(), "external recovery file") {
 		t.Fatal("recovery secret leaked into cleanup inventory")
 	}
-	if raw, err := os.ReadFile(recovery); err != nil || string(raw) != "private-recovery-material" {
-		t.Fatal("external recovery file was changed")
+	if _, err := os.Lstat(recovery); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("acknowledged recovery file was not removed: %v", err)
 	}
 }
 

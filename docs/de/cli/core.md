@@ -80,14 +80,14 @@ Mit `baha up` wird sie fortgesetzt. `doctor --fix` ist ausdrücklich verändernd
 
 `baha destroy` entfernt die BaseHarbor-Installation über alle konfigurierten Targets, unabhängig vom aktuellen Verzeichnis. Dabei werden registrierte Apps, eigene Provider und Runtime-Ressourcen, Core-Dienste sowie BaseHarbor-Konfiguration und lokaler Zustand entfernt. App-Quellcode und externe Infrastruktur bleiben erhalten. `baha app destroy NAME` entfernt dagegen nur eine einzelne App und lässt die Installation bestehen. `--all` bleibt als Rückwärtskompatibilitäts-Alias gültig.
 
-Der Befehl zeigt den konkreten Auswirkungsplan und verlangt die dazugehörigen Bestätigungen; `--yes` überspringt diese nicht. Eigene Daten werden zur dauerhaften Löschung ausgewählt und benötigen eine separate Datenlöschungs-Bestätigung. Externe Recovery-Dateien und Ressourcen ohne verifizierbaren Besitz bleiben erhalten. Kann ein Target nicht vollständig inventarisiert werden, stoppt der Abbau vor Änderungen und bewahrt den Zustand für einen erneuten Versuch.
+Der Befehl zeigt den konkreten Auswirkungsplan und verlangt die dazugehörigen Bestätigungen; `--yes` überspringt diese nicht. Eigene Daten werden zur dauerhaften Löschung ausgewählt und benötigen eine separate Datenlöschungs-Bestätigung. Ist ein Target nicht erreichbar, bleiben dessen Runtime-Ressourcen erhalten. Die erreichbaren Targets werden trotzdem bereinigt; nach bestätigtem lokalem Abbau werden auch die lokale Konfiguration und die Recovery-Dateien entfernt.
 
 ```bash
 baha destroy -o json
 baha destroy --yes -o json
 ```
 
-Diese Ausgabe zeigt Ressourcen und bewahrtes Recovery-Material. Die bestätigte Ausführung löscht nur verifiziert BaseHarbor-eigene Ressourcen. Externe Recovery-Dateien werden als `PRESERVED` aufgeführt, nicht gelesen oder automatisch gelöscht. Container-Alter oder rekonstruierte Namen beweisen keinen Besitz.
+Diese Ausgabe zeigt Ressourcen und zur Löschung ausgewählte Recovery-Dateien. Deren Inhalte werden nie gelesen oder ausgegeben. Die bestätigte Ausführung löscht nur verifiziert BaseHarbor-eigene Runtime-Ressourcen. Nicht erreichbare Targets werden als `PRESERVED` gemeldet; Container-Alter oder rekonstruierte Namen beweisen keinen Besitz.
 
 Exakte Referenz: [Core-Befehle (EN)](https://mcpdev80.github.io/baseharbor/cli/core/).
 
