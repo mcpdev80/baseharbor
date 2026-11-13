@@ -1,44 +1,25 @@
-# Entwicklungsrechner mit BaseHarbor Core verbinden
+# Remote-Workstation-Enrollment
 
-Core läuft auf einem Rechner, die Entwicklung auf einem anderen. Der Entwickler-PC verbindet sich direkt mit Core. Dafür ist kein Node Connector nötig.
+Den vollständigen lokalen, Remote- und Team-Weg findest du unter [Lokal, remote und gemeinsam entwickeln](local-remote-team-workflow.md). Diese Seite hält die Core-spezifischen Einladungsdetails fest. Workstation-Enrollment ist getrennt von Node-Connector-Enrollment und menschlichem Operator-Login.
 
-## Auf der Core-VM
+## Einladung auf dem Core-Host erstellen
 
-Installiere BaseHarbor und führe aus:
+Führe auf dem Rechner aus, der den Core besitzt:
 
 ```bash
 baha up
-baha onboard
+baha onboard --invite
 ```
 
-`baha onboard` erstellt eine kurzzeitig gültige Einladungsdatei, die nur einmal verwendet werden kann. Übertrage sie sicher auf den Entwickler-PC und behandle ihren Inhalt vertraulich.
+Der Befehl erstellt eine private Geräte-Einladung zur einmaligen Nutzung. Übertrage sie geschützt und behandle ihren Inhalt vertraulich. Für ein weiteres Gerät einer bestehenden Person verwende `baha workstation new` auf dem Core-Host.
 
-## Auf dem Entwickler-PC
-
-Installiere die `baha`-CLI und importiere die Einladung:
+## Auf der Entwickler-Workstation einlösen
 
 ```bash
 baha onboard --import /path/to/invitation.json
+baha use NAME
 ```
 
-BaseHarbor prüft die Identität des Core, erstellt den privaten Geräteschlüssel auf dem Entwickler-PC und richtet das Remote-Target ein.
+BaseHarbor prüft Core und Einladung, erstellt den privaten Geräteschlüssel lokal und registriert die Verbindung. Die Einladung verleiht keine menschliche Operator-Rolle. Der Verbindungsalias ist vom Core-Target getrennt. Wähle und prüfe das Deployment-Target mit `baha target list` und `baha target show`. [Security- und Trust-Befehle](../cli/security-trust.md) erklären CA-Trust, Widerruf und Offboarding.
 
-Prüfe anschließend das ausgewählte Target:
-
-```bash
-baha target show
-```
-
-## Anwendung starten
-
-Öffne das Anwendungs-Repository und führe aus:
-
-```bash
-baha inspect .
-baha init
-baha plan
-baha up
-baha status
-```
-
-Weitere Optionen und Fehlerbehebung findest du unter [Target-Befehle](../cli/targets.md) und [Sicherheit](../cli/security-trust.md).
+Im Application-Repository setzt du den [kanonischen lokalen, Remote- und Team-Workflow](local-remote-team-workflow.md) fort.

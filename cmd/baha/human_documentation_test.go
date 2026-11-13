@@ -120,3 +120,68 @@ func TestHumanDocumentationUsesFinalInitializationPath(t *testing.T) {
 		}
 	}
 }
+
+func TestLocalRemoteTeamWorkflowDocumentsSupportedCommandsAndBoundaries(t *testing.T) {
+	rows := humanCommandDocumentationRows(rootCommand())
+	commands := make(map[string]humanCommandDocumentation, len(rows))
+	for _, row := range rows {
+		commands[row.path] = row
+	}
+	supported := []string{
+		"baha init", "baha plan", "baha up", "baha status", "baha onboard",
+		"baha use", "baha connections", "baha target list", "baha target show",
+		"baha workstation new", "baha workstation revoke", "baha access assign",
+		"baha whoami", "baha user offboard", "baha app secure-profile export",
+		"baha app backup", "baha app restore", "baha app version", "baha app versions",
+		"baha app workspace resolve", "baha app update",
+	}
+	for _, command := range supported {
+		if _, ok := commands[command]; !ok {
+			t.Fatalf("workflow documentation command is missing from the shipped CLI: %s", command)
+		}
+	}
+	if !strings.Contains(commands["baha onboard"].usage, "--invite") || !strings.Contains(commands["baha onboard"].usage, "--import") {
+		t.Fatal("onboard help no longer supports both documented invitation directions")
+	}
+
+	unsupported := []string{"baha app secure-profile import", "baha promote"}
+	for _, command := range unsupported {
+		if _, ok := commands[command]; ok {
+			t.Fatalf("workflow boundary became a shipped command; update this regression: %s", command)
+		}
+	}
+
+	for _, tc := range []struct {
+		name, path, noImport, deferredPromotion string
+		claims                                  []string
+	}{
+		{
+			name: "English", path: filepath.Join("..", "..", "docs", "how-to", "local-remote-team-workflow.md"),
+			noImport: "There is no `baha app secure-profile import` command.", deferredPromotion: "deferred to v0.4.28",
+			claims: []string{"management connection", "native image store", "OCI-compatible registry", "A missing Git revision stays unknown", "intended/applied/observed values", "migration tool", "Backup does not prove"},
+		},
+		{
+			name: "German", path: filepath.Join("..", "..", "docs", "de", "how-to", "local-remote-team-workflow.md"),
+			noImport: "Es gibt keinen Befehl `baha app secure-profile import`.", deferredPromotion: "auf v0.4.28 verschoben",
+			claims: []string{"Management-Verbindung", "nativen Image-Store", "OCI-kompatible Registry", "Eine fehlende Git-Revision bleibt unbekannt", "gewünschte, angewendete und beobachtete Werte", "Migrationstool", "Ein Backup beweist nicht"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			data, err := os.ReadFile(tc.path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			text := string(data)
+			for _, command := range supported {
+				if !strings.Contains(text, command) {
+					t.Errorf("workflow guide omits supported CLI command %q", command)
+				}
+			}
+			for _, phrase := range append(tc.claims, tc.noImport, tc.deferredPromotion, "baha app version", "baha app versions --all-targets", "baha app workspace resolve -o json", "baha access assign PERSON") {
+				if !strings.Contains(text, phrase) {
+					t.Errorf("workflow guide omits required supported/unsupported boundary %q", phrase)
+				}
+			}
+		})
+	}
+}

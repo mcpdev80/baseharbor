@@ -1,6 +1,6 @@
 # Menschliche CLI — v0.4.24
 
-Die CLI ist **auf Aufgaben ausgerichtet**. Entwickler arbeiten überwiegend im aktuellen Application-Repository. Für Operatoren bleiben die expliziten Bereiche `app`, `target`, `provider`, `stack`, `config` und `mcp` erhalten.
+Die CLI ist **auf Aufgaben ausgerichtet**. Entwickler arbeiten überwiegend im aktuellen Application-Repository. Für Operatoren bleiben die expliziten Bereiche `app`, `target`, `provider`, `stack`, `config` und `mcp` erhalten. Der vollständige Entwicklerablauf steht unter [Lokal, remote und gemeinsam entwickeln](../how-to/local-remote-team-workflow.md).
 
 ## Häufige Aufgaben
 

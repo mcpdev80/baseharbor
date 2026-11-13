@@ -44,4 +44,4 @@ For a separate workstation and Core host, see [Connect a developer workstation](
 
 ## Next steps
 
-[Application needs](../how-to/application-needs.md) · [Targets](../cli/targets.md) · [Environments](../how-to/environments.md) · [PostgreSQL](../how-to/postgres.md) · [Backup and restore](../how-to/backup-restore.md) · [CLI reference](../cli/command-index.md)
+[Application needs](../how-to/application-needs.md) · [Targets](../cli/targets.md) · [Environments](../how-to/environments.md) · [Local, remote and team workflow](../how-to/local-remote-team-workflow.md) · [PostgreSQL](../how-to/postgres.md) · [Backup and restore](../how-to/backup-restore.md) · [CLI reference](../cli/command-index.md)

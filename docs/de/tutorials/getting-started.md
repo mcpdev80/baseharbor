@@ -44,4 +44,4 @@ Für einen getrennten Entwicklungsrechner und Core-Host siehe [Entwicklungsrechn
 
 ## Mehr erfahren
 
-[Anwendungsanforderungen](../how-to/application-needs.md) · [Targets](../cli/targets.md) · [Umgebungen](../how-to/environments.md) · [PostgreSQL](../how-to/postgres.md) · [Backup und Restore](../how-to/backup-restore.md) · [CLI-Referenz](../cli/command-index.md)
+[Anwendungsanforderungen](../how-to/application-needs.md) · [Targets](../cli/targets.md) · [Umgebungen](../how-to/environments.md) · [Lokaler, Remote- und Team-Workflow](../how-to/local-remote-team-workflow.md) · [PostgreSQL](../how-to/postgres.md) · [Backup und Restore](../how-to/backup-restore.md) · [CLI-Referenz](../cli/command-index.md)
