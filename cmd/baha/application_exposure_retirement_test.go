@@ -90,14 +90,17 @@ func TestRetireOrphanedExposureProjectAcceptsVerifiedAbsence(t *testing.T) {
 	}
 }
 
-func TestRetireOrphanedExposureProjectPreservesUnexpectedResources(t *testing.T) {
+func TestRetireOrphanedExposureProjectKeepsUnrelatedResourcesAndRemovesOnlyCanonicalCaddy(t *testing.T) {
 	project := "bh-demo-dev"
-	foreign := bhruntime.ProjectResource{Kind: "volume", Name: "bh-demo-dev-data"}
-	runtime := &orphanExposureRuntime{resources: []bhruntime.ProjectResource{foreign}}
-	if _, err := retireOrphanedExposureResources(context.Background(), runtime, project, runtime.resources); err == nil {
-		t.Fatal("unexpected persistent data was accepted as a disposable Caddy container")
+	caddy := bhruntime.ProjectResource{Kind: "container", Name: project + "-baseharbor-internal-exposure-public-1"}
+	network := bhruntime.ProjectResource{Kind: "network", Name: project + "-observability"}
+	volume := bhruntime.ProjectResource{Kind: "volume", Name: project + "-data"}
+	runtime := &orphanExposureRuntime{resources: []bhruntime.ProjectResource{caddy, network, volume}}
+	removed, err := retireOrphanedExposureResources(context.Background(), runtime, project, runtime.resources)
+	if err != nil || !reflect.DeepEqual(removed, []bhruntime.ProjectResource{caddy}) {
+		t.Fatalf("orphaned Caddy retirement failed or selected unrelated resources: removed=%#v err=%v", removed, err)
 	}
-	if len(runtime.removed) != 0 || !reflect.DeepEqual(runtime.resources, []bhruntime.ProjectResource{foreign}) {
-		t.Fatal("unexpected persistent data was mutated")
+	if !reflect.DeepEqual(runtime.removed, []bhruntime.ProjectResource{caddy}) || !reflect.DeepEqual(runtime.resources, []bhruntime.ProjectResource{network, volume}) {
+		t.Fatalf("unrelated project resources were not preserved: removed=%#v remaining=%#v", runtime.removed, runtime.resources)
 	}
 }

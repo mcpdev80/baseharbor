@@ -138,7 +138,7 @@ func retireOrphanedExposureResources(ctx context.Context, provider bhruntime.Run
 	prefix := project + "-baseharbor-internal-exposure-"
 	for _, resource := range resources {
 		if resource.Kind != "container" || !strings.HasPrefix(resource.Name, prefix) || !strings.HasSuffix(resource.Name, "-1") {
-			return nil, fmt.Errorf("application exposure state is missing and resource %s %q is not a canonical Caddy container; preserve it for inspection", resource.Kind, resource.Name)
+			continue
 		}
 		remove = append(remove, resource)
 	}
