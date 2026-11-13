@@ -217,6 +217,9 @@ func appDestroyCommand(store application.Store) *cli.Command {
 			if err != nil {
 				return err
 			}
+			if handled, err := finishUninitializedRepositoryDestroy(ctx, target, filtered, format, out); handled || err != nil {
+				return err
+			}
 			if format != outputJSON {
 				if err := executeApplicationDestroyLifecycle(ctx, store, filtered, out, errOut); err != nil {
 					return err
