@@ -99,7 +99,7 @@ func (r *runtimeSeaweedFSRealization) Admin(ctx context.Context, command string)
 	input := []byte(strings.TrimSpace(command) + "\n")
 	out, err := r.runtime.ExecProjectInput(ctx, files.Project, files.Compose, files.Env, input, ProviderService, "weed", "shell")
 	if err != nil {
-		return "", fmt.Errorf("SeaweedFS administrative command failed")
+		return "", fmt.Errorf("SeaweedFS administrative command failed: %w", err)
 	}
 	return out, nil
 }

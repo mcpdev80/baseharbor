@@ -181,4 +181,14 @@ func TestDestroyRepositoryWorkloadStopRetiresDegenerateState(t *testing.T) {
 	t.Log("destroy path retires stuck-apply (dir present, env absent) with rc=0; shared path fails closed")
 }
 
+func TestDestroyRepositoryWorkloadDoesNotResolveBrokenSecretsBeforeRemoval(t *testing.T) {
+	resolved, files := resolveRunningWorkloadFixture(t, true)
+	resolved.Manifest.Secrets.Required = []application.SecretRequirement{{Name: "APP_SECRET"}}
+	r := &runningWorkloadRuntime{kind: bhruntime.ProviderDocker}
+	stopped, err := destroyRepositoryWorkloadStop(context.Background(), r, resolved, files)
+	if err != nil || stopped || len(r.stopped) != 0 {
+		t.Fatalf("destroy must proceed to ownership-checked container removal without resolving workload secrets: stopped=%v calls=%v err=%v", stopped, r.stopped, err)
+	}
+}
+
 var _ = errors.New

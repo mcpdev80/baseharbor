@@ -452,9 +452,15 @@ func writeMachineError(w http.ResponseWriter, status int, err error) {
 }
 
 func writeJSON(w http.ResponseWriter, status int, value any) {
+	body, err := json.Marshal(value)
+	if err != nil {
+		log.Printf("machine HTTP response encoding failed (%T): %v", value, err)
+		status = http.StatusInternalServerError
+		body, _ = json.Marshal(machine.ResultError(errors.New("machine response could not be encoded")))
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(value)
+	_, _ = w.Write(append(body, '\n'))
 }

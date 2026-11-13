@@ -115,6 +115,42 @@ func TestSharedValkeyTwoApplicationsAcrossEnvironmentsKeepOneProvider(t *testing
 	}
 }
 
+func TestReleaseSharedBackendApplicationKeepsDataWhenProtectedConsumerRecordIsMissing(t *testing.T) {
+	t.Setenv(ProviderScopeEnv(capability.ProviderValkey), "shared")
+	root := t.TempDir()
+	store := Store{Root: filepath.Join(root, "apps"), Namespace: "registration"}
+	issuer := newSharedCoreTestIssuer(t, root, store.Namespace, false)
+	runtime := &sharedValkeyRegistrationRuntime{ready: map[string]bool{}}
+	app := New("orphaned", "dev", false, true, false)
+	files, err := EnsureRuntime(context.Background(), issuer, store, app)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ReconcileReferenceProviderRegistryAt(root, app); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ReconcileSharedBackends(context.Background(), runtime, issuer, root, store.Namespace, app, files); err != nil {
+		t.Fatal(err)
+	}
+
+	shared := SharedBackendFilesAt(root, store.Namespace, app.Environment)
+	state, err := loadSharedBackendState(shared.State, app.Environment)
+	if err != nil {
+		t.Fatal(err)
+	}
+	delete(state.Applications, sharedBackendApplicationKey(app))
+	if err := writeSharedBackendState(shared.State, state); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := ReleaseSharedBackendApplication(context.Background(), runtime, root, store.Namespace, app); err != nil {
+		t.Fatalf("destroy should continue when exact shared ownership is unavailable: %v", err)
+	}
+	if _, err := os.Stat(shared.Compose); err != nil {
+		t.Fatalf("shared provider resources were removed despite missing ownership: %v", err)
+	}
+}
+
 func TestSharedValkeyRegistersCacheAndDurableInstances(t *testing.T) {
 	for _, tc := range []struct {
 		name           string

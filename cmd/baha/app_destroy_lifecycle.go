@@ -16,7 +16,6 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/devaccess"
-	"github.com/mcpdev80/baseharbor/internal/devgateway"
 	"github.com/mcpdev80/baseharbor/internal/identityprovider"
 	logsprovider "github.com/mcpdev80/baseharbor/internal/logs"
 	"github.com/mcpdev80/baseharbor/internal/machine"
@@ -341,7 +340,7 @@ func (e *applicationDestroyExecution) runPreflight(ctx context.Context) error {
 				if !e.destroyOpenBaoScope {
 					return nil
 				}
-				return openbao.CheckApplicationScopeOwnership(ctx, e.coreRuntime, e.platformFiles, identity)
+				return openbao.CheckApplicationScopeOwnershipForDestroy(ctx, e.coreRuntime, e.platformFiles, identity)
 			}},
 		)
 	}
@@ -349,10 +348,32 @@ func (e *applicationDestroyExecution) runPreflight(ctx context.Context) error {
 	results, ok := preflight.RunWithTimeout(ctx, checks, 30*time.Second)
 	renderPreflightUX(e.term, results)
 	if !ok {
-		return errors.New("application destroy preflight failed; nothing was deleted")
+		return applicationDestroyPreflightError(results)
 	}
 	e.excludeManagedInfrastructureVolumes()
 	return nil
+}
+
+func applicationDestroyPreflightError(results []preflight.Result) error {
+	failed := make([]string, 0)
+	for _, result := range results {
+		if result.OK {
+			continue
+		}
+		detail := strings.TrimSpace(result.Detail)
+		if len(detail) > 200 {
+			detail = detail[:197] + "..."
+		}
+		if detail == "" {
+			failed = append(failed, result.Name)
+		} else {
+			failed = append(failed, result.Name+": "+detail)
+		}
+	}
+	if len(failed) == 0 {
+		return errors.New("application destroy preflight failed; nothing was deleted")
+	}
+	return fmt.Errorf("application destroy preflight failed; nothing was deleted (%s)", strings.Join(failed, "; "))
 }
 
 func (e *applicationDestroyExecution) renderDeletePlan() error {
@@ -657,25 +678,6 @@ func (e *applicationDestroyExecution) cleanupMetrics(ctx context.Context) error 
 			return fmt.Errorf("destroy application-scoped metrics provider: %w", err)
 		}
 	case capability.ScopeExternal:
-	}
-	return nil
-}
-
-func (e *applicationDestroyExecution) cleanupDevelopmentCanonicalRoutes(ctx context.Context) error {
-	if !devaccess.Enabled(e.manifest.Environment) {
-		return nil
-	}
-	appOwner := "app/" + e.manifest.Name + "/" + e.manifest.Environment
-	present, err := devgateway.OwnerRoutesPresent(ctx, e.compose, e.resolved.Target.Name, appOwner)
-	if err != nil {
-		return fmt.Errorf("inspect development gateway before cleanup: %w", err)
-	}
-	if !present {
-		e.term.Info("development gateway", "NOT DEPLOYED for this application; no routes to remove")
-		return nil
-	}
-	if err := removeApplicationGatewayOwners(ctx, e.compose, e.resolved, appOwner); err != nil {
-		return fmt.Errorf("remove canonical development routes: %w", err)
 	}
 	return nil
 }

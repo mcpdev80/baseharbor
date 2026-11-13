@@ -207,6 +207,9 @@ bao policy write baseharbor-app-alpha-dev "$tmp" >/dev/null`
 	if _, err := execWithToken(ctx, compose, files, managerToken, `exec bao kv metadata get -mount=baseharbor apps/alpha/dev/_baseharbor`); err == nil {
 		t.Fatal("application destroy left managed namespace marker behind")
 	}
+	if err := DestroyVerifiedApplicationScope(ctx, compose, files, alpha); err != nil {
+		t.Fatalf("repeated destroy after AppRole and policy removal: %v", err)
+	}
 	if err := DestroyVerifiedApplicationScope(ctx, compose, files, beta); err != nil {
 		t.Fatalf("destroy beta: %v", err)
 	}

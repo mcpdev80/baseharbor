@@ -668,30 +668,11 @@ func stopRepositoryWorkload(ctx context.Context, compose bhruntime.RuntimeProvid
 }
 
 func destroyRepositoryWorkloadStop(ctx context.Context, compose bhruntime.RuntimeProvider, resolved resolvedApplication, files application.RuntimeFiles) (bool, error) {
-	// It deliberately does NOT fail closed on a runtime directory present without
-	// an owned runtime.env: a provider-change abort can leave the runtime
-	// directory but never materialize runtime.env, and the destroy/retirement path
-	// must retire that stuck state with rc=0 (r27, review-1382a). It derives the
-	// stop set from ownership evidence, returns (false, nil) when there is no owned
-	// materialization, and only when a runtime.env IS owned does it stop the
-	// running workload. Callers that must fail closed on the degenerate state use
-	// the shared stopRepositoryWorkload instead.
-	if _, statErr := os.Stat(files.Dir); statErr != nil {
-		if os.IsNotExist(statErr) {
-			return false, nil
-		}
-		return false, fmt.Errorf("inventory application workload runtime: %w", statErr)
-	}
-	owned, err := application.VerifyRuntimeFileOwner(files.Env)
-	if err != nil {
-		return false, fmt.Errorf("inventory application workload runtime ownership: %w", err)
-	}
-	if !owned {
-		// Stuck-apply state: runtime directory present, no owned runtime.env.
-		// There are no owned workload containers to stop, so retire rc=0.
-		return false, nil
-	}
-	return stopRepositoryWorkload(ctx, compose, resolved, files)
+	// Destruction immediately inventories and removes this workload's
+	// runtime-owned containers and networks. A graceful Compose stop would
+	// resolve workload secrets and can block cleanup when the secret identity is
+	// already damaged; it is unnecessary before the ownership-checked removal.
+	return false, nil
 }
 
 func destroyRepositoryWorkloadRuntime(ctx context.Context, compose bhruntime.RuntimeProvider, resolved resolvedApplication, files application.RuntimeFiles) (bool, error) {

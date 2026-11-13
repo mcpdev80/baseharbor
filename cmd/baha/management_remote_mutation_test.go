@@ -84,6 +84,26 @@ func TestRemoteStopRequestsRetainedData(t *testing.T) {
 	}
 }
 
+func TestRemoteStopCarriesInteractiveProviderConsent(t *testing.T) {
+	consent := application.ProviderChangeConsent{PlanID: "stop-plan", First: true, Second: true}
+	ctx := withProviderChangeConsent(context.Background(), &consent)
+	_, _, payload, err := remoteMutationArgs("app.stop", []string{"demo"})
+	if err != nil {
+		t.Fatalf("build remote stop request: %v", err)
+	}
+	payload, err = bindRemoteApplyConsent(ctx, payload)
+	if err != nil {
+		t.Fatalf("bind interactive stop consent: %v", err)
+	}
+	var got struct {
+		Consent *application.ProviderChangeConsent `json:"provider_change_consent"`
+	}
+	if err := json.Unmarshal(payload, &got); err != nil || got.Consent == nil ||
+		got.Consent.PlanID != consent.PlanID || !got.Consent.First || !got.Consent.Second || got.Consent.DeleteData {
+		t.Fatalf("remote stop did not carry the exact data-preserving consent: payload=%s consent=%+v err=%v", payload, got.Consent, err)
+	}
+}
+
 func TestRemoteApplyCarriesExplicitWorkloadPortSelection(t *testing.T) {
 	_, _, payload, err := remoteMutationArgs("apply", []string{"demo", "--workload-port", "DEMO_HTTPS_PORT=8081"})
 	if err != nil {

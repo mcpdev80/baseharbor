@@ -24,6 +24,9 @@ var lockProbeSource string
 // lockProbeRunDefault.
 var lockProbeFunc = lockProbeRunDefault
 
+var runEmbeddedBinaryProbeFunc = runEmbeddedBinaryProbe
+var runToolchainProbeFunc = runToolchainProbe
+
 // LockProbeFunc is the exported boundary seam for the cross-process probe so
 // that callers in other packages (notably the cmd/baha command-path regression
 // for the lifecycle lock) can inject a not-enforcing probe without a second
@@ -63,13 +66,12 @@ func lockProbeRun(lockPath string) (free bool, err error) {
 // fails closed instead of trusting an unverifiable lock.
 func lockProbeRunDefault(lockPath string) (free bool, err error) {
 	if runtime.GOOS == "linux" && runtime.GOARCH == "amd64" {
-		if free, err = runEmbeddedBinaryProbe(lockPath); err == nil {
-			return free, nil
-		}
-		// A runtime failure of the embedded binary (e.g. corrupted embed) falls
-		// through to the toolchain build rather than failing the acquire.
+		// The embedded Linux helper is the runtime implementation. Falling back
+		// to a Go build here creates an undeclared Go-toolchain dependency on
+		// Core hosts and hides the actual helper failure.
+		return runEmbeddedBinaryProbeFunc(lockPath)
 	}
-	return runToolchainProbe(lockPath)
+	return runToolchainProbeFunc(lockPath)
 }
 
 // runEmbeddedBinaryProbe copies the embedded amd64 binary to a private temp
