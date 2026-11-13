@@ -378,11 +378,6 @@ func (e *applicationDestroyExecution) destroyRuntimeResources(ctx context.Contex
 		}
 
 	}
-	if e.runtimeErr == nil && application.RequiresRuntimeBroker(m) {
-		if err := destroyRuntimeBroker(ctx, e.compose, m, e.files); err != nil {
-			return err
-		}
-	}
 	sharedBackendsRegistered := false
 	for _, provider := range []capability.ProviderKind{capability.ProviderPostgreSQL, capability.ProviderValkey} {
 		placement, found, err := application.RegisteredProviderPlacementAt(e.resolved.TargetStateRoot, m, provider)

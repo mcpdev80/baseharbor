@@ -123,6 +123,9 @@ func TestConnectorEnrollmentPersistentAtomicScope(t *testing.T) {
 	if err := registry.AdmitCertificate(ctx, scope, "abcd", expires); err != nil {
 		t.Fatal("persisted certificate was not admitted after store restart", err)
 	}
+	if active, err := registry.HasActiveCertificate(ctx, scope.TenantID); err != nil || !active {
+		t.Fatalf("active enrolled connector was not counted as a Core consumer: active=%t err=%v", active, err)
+	}
 	for _, field := range []string{"tenant", "target", "node", "runtime", "serial", "expiry"} {
 		other := scope
 		serial, notAfter := "abcd", expires
@@ -157,6 +160,9 @@ func TestConnectorEnrollmentPersistentAtomicScope(t *testing.T) {
 	}
 	if err := NewConnectorEnrollmentStore(reopened).AdmitCertificate(ctx, scope, "abcd", expires); !errors.Is(err, targetenrollment.ErrDenied) {
 		t.Fatal("persisted revocation admitted a still-unexpired CA-trusted certificate", err)
+	}
+	if active, err := registry.HasActiveCertificate(ctx, scope.TenantID); err != nil || active {
+		t.Fatalf("revoked connector incorrectly retained Core modules: active=%t err=%v", active, err)
 	}
 	if err := registry.Create(ctx, duplicate); !errors.Is(err, targetenrollment.ErrDenied) {
 		t.Fatal("revoked node accepted bootstrap reuse", err)

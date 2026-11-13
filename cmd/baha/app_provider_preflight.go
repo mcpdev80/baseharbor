@@ -40,6 +40,13 @@ func requiresManagedServiceIssuer(m application.Manifest) bool {
 	return application.HasOTLPTelemetry(m) && application.TelemetryProviderForDeployment().Kind == capability.ProviderOTelCollector
 }
 
+// requiresManagedOpenBao separates the application's real secret authority
+// from SQL-only and ordinary provider workloads. A Core installation record
+// alone is not a reason to start or initialize OpenBao for an app.
+func requiresManagedOpenBao(m application.Manifest) bool {
+	return application.RequiresRuntimeBroker(m)
+}
+
 func appendManagedProviderPreflights(
 	checks []preflight.Check,
 	compose *bhruntime.RuntimeProvider,

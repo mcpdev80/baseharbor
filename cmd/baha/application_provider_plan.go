@@ -68,23 +68,23 @@ func resolveApplicationProviderPlanFromSnapshot(resolved resolvedApplication, sn
 		if state.Spec.Target != resolved.Target.Name || state.Spec.Runtime != resolved.Target.RuntimeProvider {
 			return application.ProviderPlan{}, invalidProviderConsumerInventory(errors.New("installation binding differs from selected Target"))
 		}
-		// The installation remains a consumer even while partially installed.
-		// Protect its actual selected modules, including Console dependencies.
+		// Installation ownership keeps recovery state durable. Runtime modules
+		// are retained only for a verified live Core connection (or an unknown
+		// connection inventory, which fails conservatively).
 		roots, err := managementProviderDependencyRoots(resolved, snapshot)
 		if err != nil {
 			return application.ProviderPlan{}, err
 		}
-		m := application.Manifest{Version: application.CurrentVersion, ApplicationID: state.ID, Name: "management", Environment: "prod"}
-		consumers = append(consumers, application.ConsumerIntent{Key: "installation/" + state.ID, Active: true, Manifest: m, DependencyRoots: roots})
+		if snapshot.ProtectCoreForConnection {
+			m := application.Manifest{Version: application.CurrentVersion, ApplicationID: state.ID, Name: "management", Environment: "prod"}
+			consumers = append(consumers, application.ConsumerIntent{Key: "installation/" + state.ID, Active: true, Manifest: m, DependencyRoots: roots})
+		}
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return application.ProviderPlan{}, invalidProviderConsumerInventory(err)
 	} else if _, statErr := os.Lstat(filepath.Join(root, "installation.json")); statErr == nil {
 		return application.ProviderPlan{}, invalidProviderConsumerInventory(err)
 	}
 	for index := range consumers {
-		if consumers[index].Key == "installation/"+state.ID {
-			continue
-		}
 		intents := append([]application.Manifest{consumers[index].Manifest}, consumers[index].RetainedIntents...)
 		for _, intent := range intents {
 			// A pending sibling may already own both destination and original

@@ -252,7 +252,7 @@ func appNewWizardAuthorityContext(ctx context.Context, root string, manifest app
 		return resolvedApplication{}, application.ResolutionSnapshot{}, err
 	}
 	resolved := resolvedApplication{Target: target, TargetStateRoot: stateRoot, Manifest: manifest, RepositoryRoot: root, FromRepository: true, SourceAvailable: false}
-	snapshot, _, err := applicationLifecycleSnapshot(resolved, observeApplicationProviderFacts(ctx, resolved))
+	snapshot, _, err := applicationLifecycleSnapshotContext(ctx, resolved, observeApplicationProviderFacts(ctx, resolved))
 	if err != nil {
 		return resolvedApplication{}, application.ResolutionSnapshot{}, err
 	}

@@ -73,7 +73,7 @@ func readGuidedApplicationContext(ctx context.Context, resolved resolvedApplicat
 	if err != nil {
 		return GuidedReadContext{}, guidedReadAuthorityError(err, "incompatible")
 	}
-	snapshot, preferences, err := applicationLifecycleSnapshot(resolved, observeApplicationProviderFacts(ctx, resolved))
+	snapshot, preferences, err := applicationLifecycleSnapshotContext(ctx, resolved, observeApplicationProviderFacts(ctx, resolved))
 	if err != nil {
 		return GuidedReadContext{}, guidedReadAuthorityError(err, "unverifiable")
 	}

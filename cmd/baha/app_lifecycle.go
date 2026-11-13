@@ -360,8 +360,19 @@ func executeApplicationDestroyLifecycle(ctx context.Context, store application.S
 		fmt.Fprintln(out, "No changes were made. Re-run with --yes to permanently delete BaseHarbor-managed resources.")
 		return nil
 	}
-	if _, err := authorizeApplicationDestruction(ctx, execution.resolved, true, out); err != nil {
+	destructionPlan, err := authorizeApplicationDestruction(ctx, execution.resolved, true, out)
+	if err != nil {
 		return err
+	}
+	withdrawn := execution.resolved
+	withdrawn.Manifest = applicationRuntimeRetirementIntent(execution.manifest)
+	retireProviders := destructionPlan.Providers.Version == application.ProviderPlanVersion && destructionPlan.Providers.Complete
+	if retireProviders {
+		// Validate supported ownership adapters before deleting application data.
+		// The acknowledged plan remains the authority used below.
+		if _, err := prepareApplicationProviderRetirement(ctx, withdrawn); err != nil {
+			return err
+		}
 	}
 	// Selector-vs-resolved identity guard. The repair deletes a directory, so
 	// the path it took must be the path the operator selected. Fail closed on
@@ -382,6 +393,13 @@ func executeApplicationDestroyLifecycle(ctx context.Context, store application.S
 	}
 	if err := execution.cleanupProviderState(ctx); err != nil {
 		return err
+	}
+	if retireProviders {
+		if err := retireReleasedApplicationProviders(ctx, withdrawn, execution.compose, nil, destructionPlan.Providers, out); err != nil {
+			return err
+		}
+	} else {
+		fmt.Fprintln(out, "Retained shared providers: consumer inventory is incomplete; unknown or potentially shared resources were left running")
 	}
 	if err := execution.removeApplicationState(); err != nil {
 		return err

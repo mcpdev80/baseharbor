@@ -69,7 +69,7 @@ func TestIndependentManagementHasPhysicalDependenciesWithoutAppRegistryOffers(t 
 		t.Fatalf("missing native roots or invented selectable offers: %+v %+v", plan.Required, snapshot.Registry)
 	}
 	for _, change := range plan.Changes {
-		if change.Action != "reuse" || len(change.Consumers) != 1 {
+		if change.Action != "reuse" && change.Action != "stop" {
 			t.Fatalf("management runtime retired: %+v", change)
 		}
 	}
@@ -95,7 +95,7 @@ func TestManagementProtectsPhysicalSharedIdentityAliasesButNotIndependentProvide
 		{ID: "canonical-secrets", Provider: capability.OpenBao, Scope: capability.ScopeShared, Ownership: capability.OwnershipBaseHarbor},
 		{ID: "separate-secrets", Provider: capability.OpenBao, Scope: capability.ScopeShared, Ownership: capability.OwnershipBaseHarbor, SharingBoundary: "another-module"},
 	}
-	roots, err := managementProviderDependencyRoots(resolved, application.ResolutionSnapshot{Registry: registry})
+	roots, err := managementProviderDependencyRoots(resolved, application.ResolutionSnapshot{Registry: registry, ProtectCoreForConnection: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,6 +108,25 @@ func TestManagementProtectsPhysicalSharedIdentityAliasesButNotIndependentProvide
 		if slices.Contains(roots, id) {
 			t.Fatalf("unrelated provider became management root: %s", id)
 		}
+	}
+}
+
+func TestManagementWithoutConnectionsHasNoRuntimeRoots(t *testing.T) {
+	resolved, _ := managementDependencyFixture(t)
+	roots, err := managementProviderDependencyRoots(resolved, application.ResolutionSnapshot{})
+	if err != nil || len(roots) != 0 {
+		t.Fatalf("unused Core retained runtime roots: %v %v", roots, err)
+	}
+}
+
+func TestSQLOnlyApplicationDoesNotRequireOpenBao(t *testing.T) {
+	m := application.New("sql-only", "dev", true, false, false)
+	if requiresManagedOpenBao(m) {
+		t.Fatal("SQL-only application unexpectedly requires OpenBao")
+	}
+	m.Services.Secrets = true
+	if !requiresManagedOpenBao(m) {
+		t.Fatal("managed-secret application did not require OpenBao")
 	}
 }
 

@@ -30,6 +30,10 @@ func resolveApplicationLifecycleFootprintWithFacts(resolved resolvedApplication,
 }
 
 func applicationLifecycleSnapshot(resolved resolvedApplication, observations map[string]application.ProviderFact) (application.ResolutionSnapshot, []application.ProviderPreference, error) {
+	return applicationLifecycleSnapshotContext(context.Background(), resolved, observations)
+}
+
+func applicationLifecycleSnapshotContext(ctx context.Context, resolved resolvedApplication, observations map[string]application.ProviderFact) (application.ResolutionSnapshot, []application.ProviderPreference, error) {
 	// A poisoned registry (two records claiming one application_id) breaks the
 	// projection reads below with a bare sentinel wrap; classify it once here
 	// into the structured inventory error so EVERY planning surface — this
@@ -121,7 +125,7 @@ func applicationLifecycleSnapshot(resolved resolvedApplication, observations map
 	if err := appendApplicationBrokerDependencies(resolved, observations, &snapshot); err != nil {
 		return application.ResolutionSnapshot{}, nil, err
 	}
-	if _, err := appendManagementProviderDependencies(resolved, observations, &snapshot); err != nil {
+	if _, err := appendManagementProviderDependencies(ctx, resolved, observations, &snapshot); err != nil {
 		return application.ResolutionSnapshot{}, nil, err
 	}
 	// Observe backing modules in the same resolver without creating competing
@@ -248,7 +252,7 @@ func buildResolvedApplicationPlan(ctx context.Context, resolved resolvedApplicat
 	if err != nil {
 		return applicationLifecyclePlan{}, err
 	}
-	snapshot, preferences, err := applicationLifecycleSnapshot(resolved, observeApplicationProviderFacts(ctx, resolved))
+	snapshot, preferences, err := applicationLifecycleSnapshotContext(ctx, resolved, observeApplicationProviderFacts(ctx, resolved))
 	if err != nil {
 		return applicationLifecyclePlan{}, err
 	}
