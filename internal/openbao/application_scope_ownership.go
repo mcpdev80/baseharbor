@@ -36,7 +36,7 @@ func CheckApplicationScopeOwnership(ctx context.Context, executor Executor, file
 	roleName := applicationRoleName(identity)
 	out, err := execWithToken(ctx, executor, files, managerToken, fmt.Sprintf(`exec bao read -format=json auth/approle/role/%s`, roleName))
 	if err != nil {
-		return fmt.Errorf("OpenBao application AppRole is missing or unreadable: %w", err)
+		return fmt.Errorf("OpenBao application AppRole is missing or unreadable: %s", openBaoCommandFailureDetail(err))
 	}
 	var roleReply struct {
 		Data struct {
@@ -54,12 +54,29 @@ func CheckApplicationScopeOwnership(ctx context.Context, executor Executor, file
 
 	out, err = execWithToken(ctx, executor, files, managerToken, fmt.Sprintf(`exec bao policy read %s`, expectedPolicy))
 	if err != nil {
-		return fmt.Errorf("OpenBao application policy is missing or unreadable: %w", err)
+		return fmt.Errorf("OpenBao application policy is missing or unreadable: %s", openBaoCommandFailureDetail(err))
 	}
 	if normalizePolicy(out) != normalizePolicy(applicationPolicy(identity)) {
 		return errors.New("OpenBao application policy differs from the BaseHarbor-managed definition; refusing destructive mutation")
 	}
 	return nil
+}
+
+func openBaoCommandFailureDetail(err error) string {
+	message := strings.TrimSpace(err.Error())
+	if strings.HasPrefix(message, "compose ") {
+		if _, detail, ok := strings.Cut(message, ": "); ok {
+			message = strings.TrimSpace(detail)
+		}
+	}
+	message = strings.Join(strings.Fields(message), " ")
+	if message == "" || strings.Contains(message, "BAO_TOKEN") {
+		return "command failed"
+	}
+	if len(message) > 160 {
+		message = message[:157] + "..."
+	}
+	return message
 }
 
 func normalizePolicy(value string) string {

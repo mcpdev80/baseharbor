@@ -42,6 +42,16 @@ func TestApplicationPolicyIsScopedToApplicationAndEnvironment(t *testing.T) {
 	}
 }
 
+func TestOpenBaoCommandFailureDetailOmitsShellAndSensitiveInput(t *testing.T) {
+	err := fmt.Errorf("compose exec -T openbao-admin sh -ceu IFS= read -r BAO_TOKEN\\nexport BAO_TOKEN\\nexec bao read role: No value found at auth/approle/role/demo")
+	if got := openBaoCommandFailureDetail(err); got != "No value found at auth/approle/role/demo" {
+		t.Fatalf("failure detail = %q, want concise OpenBao stderr without shell input", got)
+	}
+	if got := openBaoCommandFailureDetail(fmt.Errorf("command failed with BAO_TOKEN=secret")); got != "command failed" {
+		t.Fatalf("sensitive failure detail = %q, want generic message", got)
+	}
+}
+
 func TestApplicationIdentityNamesAreDeterministicAndSeparated(t *testing.T) {
 	dev := ApplicationIdentity{Name: "mailflow", Environment: "dev"}
 	prod := ApplicationIdentity{Name: "mailflow", Environment: "prod"}
