@@ -21,6 +21,23 @@ import (
 
 type executorFunc func(context.Context, machine.Operation, machine.OperationContext, json.RawMessage, ProgressReporter) (json.RawMessage, error)
 
+func TestWriteJSONReturnsValidErrorWhenResponseCannotBeEncoded(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	writeJSON(recorder, http.StatusOK, struct {
+		Unsupported any `json:"unsupported"`
+	}{make(chan int)})
+	if recorder.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500", recorder.Code)
+	}
+	var result machine.ErrorResult
+	if err := json.Unmarshal(recorder.Body.Bytes(), &result); err != nil {
+		t.Fatalf("fallback response is invalid JSON: %v", err)
+	}
+	if result.Error == nil || result.Error.Code != machine.ErrorInternal {
+		t.Fatalf("fallback error = %#v, want internal_error", result.Error)
+	}
+}
+
 // hasTerminal reports whether history already carries a terminal event
 // (succeeded/failed). The terminal event is emitted synchronously by
 // succeed()/fail() before runExecution returns, so a synchronous candidate has

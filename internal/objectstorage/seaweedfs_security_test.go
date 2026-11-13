@@ -11,6 +11,21 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 )
 
+func TestSeaweedFSBucketNotFoundIsRecognizedForIdempotentDestroy(t *testing.T) {
+	if !isSeaweedFSBucketNotFound(errors.New("bucket not found: filer has no entry")) {
+		t.Fatal("missing bucket should be treated as an already-completed delete")
+	}
+	if isSeaweedFSBucketNotFound(errors.New("permission denied")) {
+		t.Fatal("unrelated SeaweedFS failures must remain errors")
+	}
+	if !isSeaweedFSUserNotFound(errors.New("rpc error: code = NotFound desc = user bh-demo-default not found")) {
+		t.Fatal("missing IAM user should be treated as an already-completed revocation")
+	}
+	if isSeaweedFSUserNotFound(errors.New("permission denied for user bh-demo-default")) {
+		t.Fatal("unrelated IAM failures must remain errors")
+	}
+}
+
 type stdinCaptureRuntime struct {
 	input []byte
 	args  []string

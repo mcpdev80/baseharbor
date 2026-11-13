@@ -3,8 +3,10 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/machine"
@@ -167,5 +169,60 @@ func TestRemoteMachineExecutionCompletionNeverTreatsAdmissionAsSuccess(t *testin
 	admitted.ExecutionID = "../forged"
 	if _, err := connection.readMachineExecution(context.Background(), admitted); err == nil {
 		t.Fatal("unsafe execution ID was accepted as a URL path")
+	}
+}
+
+func TestRemoteMachineExecutionReadsLargeDestroyPlanDetails(t *testing.T) {
+	const detailSize = 2 << 20
+	admitted := machine.Execution{
+		ContractVersion: machine.ExecutionContractVersion,
+		ExecutionID:     "execution-large-plan",
+		OperationID:     "destroy",
+		Context:         machine.OperationContext{Application: "demo", Environment: "dev", Target: "remote"},
+		State:           machine.ExecutionPending,
+	}
+	actual := admitted
+	actual.State = machine.ExecutionFailed
+	actual.Error = machine.NewError(machine.ErrorConflict, "provider impact confirmation required", "", false)
+	actual.Error.Details = map[string]string{"plan": strings.Repeat("x", detailSize)}
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(actual)
+	}))
+	defer server.Close()
+	connection := &verifiedRemoteCore{client: server.Client(), origin: server.URL, target: "remote", tenant: "tenant-a"}
+
+	got, err := connection.readMachineExecution(context.Background(), admitted)
+	if err != nil {
+		t.Fatalf("large but bounded destroy plan response was rejected: %v", err)
+	}
+	gotDetails, ok := got.Error.Details.(map[string]any)
+	plan, planOK := gotDetails["plan"].(string)
+	if !ok || !planOK || len(plan) != detailSize {
+		t.Fatalf("large destroy plan details were truncated: %#v", got.Error.Details)
+	}
+}
+
+func TestRemoteMachineExecutionRejectsResponseOverLimit(t *testing.T) {
+	admitted := machine.Execution{
+		ContractVersion: machine.ExecutionContractVersion,
+		ExecutionID:     "execution-too-large",
+		OperationID:     "destroy",
+		Context:         machine.OperationContext{Application: "demo", Environment: "dev", Target: "remote"},
+		State:           machine.ExecutionPending,
+	}
+	actual := admitted
+	actual.State = machine.ExecutionFailed
+	actual.Error = machine.NewError(machine.ErrorConflict, "provider impact confirmation required", "", false)
+	actual.Error.Details = strings.Repeat("x", maxRemoteMachineExecutionResponseBytes)
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprintln(w, `{"padding":"`+actual.Error.Details.(string)+`"}`)
+	}))
+	defer server.Close()
+	connection := &verifiedRemoteCore{client: server.Client(), origin: server.URL, target: "remote", tenant: "tenant-a"}
+
+	if _, err := connection.readMachineExecution(context.Background(), admitted); err == nil || !strings.Contains(err.Error(), "exceeds") {
+		t.Fatalf("oversized execution response did not fail with an explicit bounded-size error: %v", err)
 	}
 }

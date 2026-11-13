@@ -103,7 +103,9 @@ func ensureRemoteRepositoryRegistration(ctx context.Context, target deployment.R
 		return nil
 	}
 	if localID != "" {
-		return errors.New("repository application identity is not registered on the selected Core; inspect the target before registering a replacement")
+		if err := removeStaleRemoteRepositoryIdentity(owner, intent.Name, localID); err != nil {
+			return err
+		}
 	}
 	source, err := selectedRemoteSourceModel(intent.Name, intent.Environment)
 	if err != nil {
@@ -116,6 +118,20 @@ func ensureRemoteRepositoryRegistration(ctx context.Context, target deployment.R
 	}
 	if _, err := persistRemoteRepositoryIdentity(root, intent, created.ApplicationID); err != nil {
 		return fmt.Errorf("Core registered the application but its identity could not be saved locally; inspect before retrying: %w", err)
+	}
+	return nil
+}
+
+func removeStaleRemoteRepositoryIdentity(owner application.Store, name, expectedID string) error {
+	current, _, err := owner.Load(name)
+	if err != nil {
+		return fmt.Errorf("inspect stale repository application identity: %w", err)
+	}
+	if current.ApplicationID != expectedID {
+		return errors.New("repository application identity changed during remote registration; retry baha app init")
+	}
+	if err := owner.Delete(name); err != nil {
+		return fmt.Errorf("remove repository identity absent from the selected Core: %w", err)
 	}
 	return nil
 }

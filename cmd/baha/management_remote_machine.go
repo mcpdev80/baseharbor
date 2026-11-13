@@ -176,6 +176,8 @@ var remoteExecutionIDPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,1
 
 var errRemoteExecutionPending = errors.New("remote Core machine operation is not terminal; no success may be reported")
 
+const maxRemoteMachineExecutionResponseBytes = 8 << 20
+
 // readMachineExecution observes a previously admitted operation over the same
 // pinned Core origin and bearer. Never follow a server-provided URL.
 func (c *verifiedRemoteCore) readMachineExecution(ctx context.Context, admitted machine.Execution) (machine.Execution, error) {
@@ -201,10 +203,20 @@ func (c *verifiedRemoteCore) readMachineExecution(ctx context.Context, admitted 
 		return machine.Execution{}, fmt.Errorf("remote Core machine execution read rejected (HTTP %d)", resp.StatusCode)
 	}
 	var execution machine.Execution
-	decoder := json.NewDecoder(io.LimitReader(resp.Body, 1<<20))
+	response, err := io.ReadAll(io.LimitReader(resp.Body, maxRemoteMachineExecutionResponseBytes+1))
+	if err != nil {
+		return machine.Execution{}, fmt.Errorf("read remote Core machine execution response: %w", err)
+	}
+	if len(response) > maxRemoteMachineExecutionResponseBytes {
+		return machine.Execution{}, fmt.Errorf("remote Core machine execution response exceeds %d bytes", maxRemoteMachineExecutionResponseBytes)
+	}
+	decoder := json.NewDecoder(bytes.NewReader(response))
 	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&execution); err != nil || decoder.Decode(new(any)) != io.EOF {
-		return machine.Execution{}, errors.New("remote Core machine execution response is invalid")
+	if err := decoder.Decode(&execution); err != nil {
+		return machine.Execution{}, fmt.Errorf("remote Core machine execution response is invalid: %w", err)
+	}
+	if err := decoder.Decode(new(any)); err != io.EOF {
+		return machine.Execution{}, errors.New("remote Core machine execution response contains trailing data")
 	}
 	if execution.Context.Target == c.serverTargetName() {
 		execution.Context.Target = c.target
