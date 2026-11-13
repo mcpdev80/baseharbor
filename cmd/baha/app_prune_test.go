@@ -88,6 +88,11 @@ func writeDanglingRecord(t *testing.T, name, environment, deploymentID string) d
 // regressions: prune is a registered `app` subcommand, and it refuses when the
 // record's source repository is still present (the deployment is recoverable).
 func TestAppPruneIsRegisteredAndRefusesLiveSource(t *testing.T) {
+	// Keep this command-level fixture out of the operator's real workstation
+	// state: it writes a deployment record directly to the selected Target.
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
 	// Registered: prune appears in the app command tree.
 	store := application.DefaultStore()
 	appCmd := configuredApplicationCommand(store)

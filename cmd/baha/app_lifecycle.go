@@ -345,6 +345,11 @@ func executeApplicationDestroyLifecycle(ctx context.Context, store application.S
 		}
 		return recordApplicationAudit(ctx, execution.resolved, "destroy", "success", "never delivered; local state removed", "never-deployed application and its BaseHarbor registration were permanently removed")
 	}
+	initialPlan, err := buildApplicationDestructionPlan(ctx, execution.resolved, true)
+	if err != nil {
+		return err
+	}
+	execution.incompleteInventory = initialPlan.IncompleteInventory
 	if err := execution.runPreflight(ctx); err != nil {
 		return err
 	}

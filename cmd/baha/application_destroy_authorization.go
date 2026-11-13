@@ -16,10 +16,11 @@ import (
 )
 
 type applicationDestructionPlan struct {
-	Scope     application.ProviderImpactScope      `json:"scope"`
-	Providers application.ProviderPlan             `json:"providers"`
-	Materials []application.ProviderMaterial       `json:"materials"`
-	Effects   []application.OperationalConsequence `json:"effects"`
+	Scope               application.ProviderImpactScope      `json:"scope"`
+	Providers           application.ProviderPlan             `json:"providers"`
+	Materials           []application.ProviderMaterial       `json:"materials"`
+	Effects             []application.OperationalConsequence `json:"effects"`
+	IncompleteInventory bool                                 `json:"incomplete_inventory,omitempty"`
 }
 
 // Full reset and remote teardown use the same consequence authority as local
@@ -51,7 +52,10 @@ func buildApplicationDestructionPlanForOperation(ctx context.Context, resolved r
 	}
 	_, p.Providers, err = buildApplicationRuntimeRetirementPlan(ctx, resolved)
 	if err != nil {
-		return p, err
+		if !reset || !isProviderConsumerInventoryError(err) {
+			return p, err
+		}
+		return buildIncompleteInventoryDestructionPlan(resolved, record, operation)
 	}
 	root, err := deployment.DeploymentRoot(resolved.DeploymentIdentity)
 	if err != nil {
@@ -107,6 +111,39 @@ func buildApplicationDestructionPlanForOperation(ctx context.Context, resolved r
 	return p, err
 }
 
+// buildIncompleteInventoryDestructionPlan authorizes deletion of the exact
+// selected application owner even if unrelated Target consumers are damaged.
+// Its incomplete scope requires the strongest acknowledgement; shared provider
+// retirement is deliberately omitted because the consumer set cannot be proven.
+func buildIncompleteInventoryDestructionPlan(resolved resolvedApplication, record deployment.DeploymentRecord, operation string) (applicationDestructionPlan, error) {
+	root, err := deployment.DeploymentRoot(resolved.DeploymentIdentity)
+	if err != nil {
+		return applicationDestructionPlan{}, err
+	}
+	p := applicationDestructionPlan{IncompleteInventory: true}
+	p.Effects = []application.OperationalConsequence{{
+		Aspect:   "application-destruction",
+		Before:   "Selected deployment and its directly verifiable application-owned resources.",
+		After:    "Delete the selected application and directly verifiable resources. Preserve shared, foreign and unclassifiable provider resources; those may need manual cleanup.",
+		Evidence: "selected canonical deployment owner; Target-wide provider consumer inventory is incomplete",
+	}}
+	p.Scope, err = application.ComposeProviderImpactScope(application.ProviderScopeOwner{
+		Owner: "application-deployment", Subject: record.Identity.DeploymentID,
+		Reference: filepath.Join(root, "deployment.json"), Destructive: true,
+		Revision: runtimeMutationRevision(struct {
+			Record    deployment.DeploymentRecord
+			Manifest  application.Manifest
+			Operation string
+		}{record, resolved.Manifest, operation}),
+	}, nil, false)
+	return p, err
+}
+
+func isProviderConsumerInventoryError(err error) bool {
+	var classified *machine.Error
+	return errors.As(err, &classified) && classified.CauseCode == "provider_consumer_inventory_invalid"
+}
+
 func authorizeApplicationDestruction(ctx context.Context, resolved resolvedApplication, reset bool, out io.Writer) (applicationDestructionPlan, error) {
 	p, err := buildApplicationDestructionPlan(ctx, resolved, reset)
 	if err != nil {
@@ -159,6 +196,9 @@ func printApplicationDestructionSummary(out io.Writer, resolved resolvedApplicat
 		operation = "Destroy"
 	}
 	fmt.Fprintf(out, "\n%s application %s on Target %s\n", operation, resolved.Manifest.Name, resolved.Target.Name)
+	if plan.IncompleteInventory {
+		fmt.Fprintln(out, "  WARNING: Target provider inventory is damaged. Only directly verifiable application resources will be removed; shared or unclear resources will be retained.")
+	}
 	if plan.Providers.Impact != nil {
 		groups := map[string]map[string]bool{}
 		for _, impact := range plan.Providers.Impact.Impacts {

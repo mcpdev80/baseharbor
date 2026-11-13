@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"io"
 	"os"
@@ -13,6 +14,42 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/machine"
 )
+
+func TestApplicationDestroyCanProceedWithDamagedUnrelatedConsumerInventory(t *testing.T) {
+	r := retainedNativeBackendFixture(t)
+	unrelated, err := deployment.NewDeploymentIdentity(r.Target.Name, application.MustNewApplicationID(), "broken-peer", "dev")
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeDeploymentRecordDirect(t, deployment.DeploymentRecord{
+		Version:  deployment.DeploymentRecordVersion,
+		Identity: unrelated,
+		Source:   deployment.DeploymentSource{Kind: "managed"},
+		Applied:  deployment.AppliedDeployment{RuntimeProvider: "docker", Intent: json.RawMessage(`{"version":1,"name":"broken-peer","environment":"dev"}`)},
+	})
+
+	plan, err := buildApplicationDestructionPlan(t.Context(), r, true)
+	if err != nil {
+		t.Fatalf("destroy must produce a partial plan for the selected app: %v", err)
+	}
+	if !plan.IncompleteInventory || plan.Scope.Complete || !plan.Scope.Destructive || plan.Scope.ConfirmationsRequired != 2 {
+		t.Fatalf("damaged inventory did not require explicit partial/destructive confirmation: %#v", plan)
+	}
+	if plan.Providers.Impact != nil {
+		t.Fatal("partial plan must not propose shared provider retirement")
+	}
+	var review bytes.Buffer
+	ack := &application.ProviderChangeConsent{PlanID: plan.Scope.PlanID, First: true, Second: true, DeleteData: true}
+	if _, err := authorizeApplicationDestruction(withProviderChangeConsent(t.Context(), ack), r, true, &review); err != nil {
+		t.Fatalf("explicitly confirmed partial destroy was blocked: %v\n%s", err, review.String())
+	}
+	if !strings.Contains(review.String(), "Target provider inventory is damaged") {
+		t.Fatalf("partial cleanup warning omitted: %s", review.String())
+	}
+	if _, err := buildApplicationDestructionPlan(t.Context(), r, false); err == nil {
+		t.Fatal("data-preserving stop must not use the partial destroy fallback")
+	}
+}
 
 func TestApplicationDestructionRequiresCurrentOuterScopeAndSeparateDataConsent(t *testing.T) {
 	r := retainedNativeBackendFixture(t)

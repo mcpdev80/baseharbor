@@ -40,6 +40,7 @@ type applicationDestroyExecution struct {
 	files               application.RuntimeFiles
 	runtimeErr          error
 	partialRuntime      bool
+	incompleteInventory bool
 	compose             bhruntime.RuntimeProvider
 	existing            []bhruntime.ProjectResource
 	repositoryVolumes   []bhruntime.RepositoryVolume
@@ -161,9 +162,6 @@ func (e *applicationDestroyExecution) runPreflight(ctx context.Context) error {
 	composeRequired := devaccess.Enabled(m.Environment) || e.runtimeErr == nil || e.resolved.FromRepository || m.Services.Secrets || application.HasManagedRuntimeServices(m) || application.HasIdentity(m)
 	checks := []preflight.Check{
 		{Name: "manifest", Run: func(context.Context) error { return m.Validate() }},
-		{Name: "retained provider ownership", Run: func(ctx context.Context) error {
-			return checkRetainedApplicationProviderOwnership(ctx, e.resolved)
-		}},
 		{Name: "connectivity policy", Run: func(context.Context) error {
 			return application.CheckApplicationConnectivityReleasedAt(e.resolved.TargetStateRoot, m)
 		}},
@@ -171,6 +169,11 @@ func (e *applicationDestroyExecution) runPreflight(ctx context.Context) error {
 			return checkManifestPermissions(e.resolved.ManifestPath, e.resolved.FromRepository)
 		}},
 		applicationWorkloadContractCheck(e.resolved),
+	}
+	if !e.incompleteInventory {
+		checks = append(checks, preflight.Check{Name: "retained provider ownership", Run: func(ctx context.Context) error {
+			return checkRetainedApplicationProviderOwnership(ctx, e.resolved)
+		}})
 	}
 	if composeRequired {
 		checks = append(checks, preflight.Check{Name: "runtime orchestration", Run: func(ctx context.Context) error {
@@ -281,6 +284,9 @@ func (e *applicationDestroyExecution) runPreflight(ctx context.Context) error {
 func (e *applicationDestroyExecution) renderDeletePlan() error {
 	m := e.manifest
 	e.term.Section("Delete plan")
+	if e.incompleteInventory {
+		fmt.Fprintln(e.out, "  partial cleanup: Target consumer inventory is damaged; unknown and shared provider resources will be retained")
+	}
 	if e.resolved.FromRepository {
 		project := application.WorkloadProjectNameForRuntime(m, e.files)
 		renderRepositoryDestroyVolumes(e.out, e.repositoryVolumes, project)
