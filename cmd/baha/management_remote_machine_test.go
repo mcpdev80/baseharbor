@@ -123,6 +123,96 @@ func TestPinnedRemoteMachineExecutionKeepsAuthorityAndIdempotency(t *testing.T) 
 	}
 }
 
+func TestRemoteInstallationDestroyUsesSameRequestTerminalReceipt(t *testing.T) {
+	discovery := machine.MachineDiscovery()
+	discovery.HTTP = machine.MachineHTTPBindings()
+	discovery.Capabilities = append(discovery.Capabilities, "execution.terminal.installation-destroy")
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer operator-token" {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		if r.Method == http.MethodGet && r.URL.Path == "/api/v1/machine/discovery" {
+			_ = json.NewEncoder(w).Encode(discovery)
+			return
+		}
+		var request struct {
+			OperationID     string                   `json:"operation_id"`
+			Context         machine.OperationContext `json:"context"`
+			WaitForTerminal bool                     `json:"wait_for_terminal"`
+		}
+		if r.Method != http.MethodPost || r.URL.Path != "/api/v1/machine/executions" || json.NewDecoder(r.Body).Decode(&request) != nil ||
+			request.OperationID != "installation.destroy" || request.Context.Target != "local" || !request.WaitForTerminal ||
+			r.Header.Get("Idempotency-Key") != "one-shot-destroy" {
+			http.Error(w, "invalid terminal destroy request", http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Location", "/api/v1/machine/executions/destroy-terminal")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(machine.Execution{
+			ContractVersion: machine.ExecutionContractVersion,
+			ExecutionID:     "destroy-terminal",
+			OperationID:     request.OperationID,
+			Context:         request.Context,
+			State:           machine.ExecutionSucceeded,
+			Result:          json.RawMessage(`{"destroyed":true}`),
+		})
+	}))
+	defer server.Close()
+	connection := &verifiedRemoteCore{
+		client: server.Client(), origin: server.URL, token: "operator-token",
+		target: "dev-docker-1", coreTarget: "local", tenant: "tenant-a",
+	}
+	execution, err := connection.requestMachineExecutionTerminal(context.Background(), "installation.destroy",
+		machine.OperationContext{Environment: "dev", Target: "dev-docker-1"}, json.RawMessage(`{"approval":true}`), "one-shot-destroy")
+	if err != nil {
+		t.Fatalf("terminal destroy receipt rejected: %v", err)
+	}
+	if execution.State != machine.ExecutionSucceeded || execution.Context.Target != "dev-docker-1" || string(execution.Result) != `{"destroyed":true}` {
+		t.Fatalf("terminal execution receipt = %#v", execution)
+	}
+}
+
+func TestRemoteInstallationDestroyTransportLossKeepsIdempotencyIdentity(t *testing.T) {
+	discovery := machine.MachineDiscovery()
+	discovery.HTTP = machine.MachineHTTPBindings()
+	discovery.Capabilities = append(discovery.Capabilities, "execution.terminal.installation-destroy")
+	posts := 0
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer operator-token" {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		if r.Method == http.MethodGet && r.URL.Path == "/api/v1/machine/discovery" {
+			_ = json.NewEncoder(w).Encode(discovery)
+			return
+		}
+		posts++
+		if r.Header.Get("Idempotency-Key") != "drop-once" || posts > 2 {
+			t.Errorf("transport replay changed identity or retried without bound: post=%d key=%q", posts, r.Header.Get("Idempotency-Key"))
+		}
+		hijacker, ok := w.(http.Hijacker)
+		if !ok {
+			t.Fatal("TLS test server cannot simulate a dropped response")
+		}
+		connection, _, err := hijacker.Hijack()
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = connection.Close()
+	}))
+	defer server.Close()
+	connection := &verifiedRemoteCore{
+		client: server.Client(), origin: server.URL, token: "operator-token",
+		target: "dev-docker-1", coreTarget: "local", tenant: "tenant-a",
+	}
+	_, err := connection.requestMachineExecutionTerminal(context.Background(), "installation.destroy",
+		machine.OperationContext{Environment: "dev", Target: "dev-docker-1"}, json.RawMessage(`{"approval":true}`), "drop-once")
+	if err == nil || posts < 1 || posts > 2 {
+		t.Fatalf("transport-loss result err=%v POST count=%d; wanted an ambiguous bounded attempt", err, posts)
+	}
+}
+
 func TestRemoteMachineExecutionCompletionNeverTreatsAdmissionAsSuccess(t *testing.T) {
 	admitted := machine.Execution{
 		ContractVersion: machine.ExecutionContractVersion,

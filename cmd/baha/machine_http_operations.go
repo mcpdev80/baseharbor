@@ -65,6 +65,7 @@ var httpOperationKinds = map[string]httpOperationKind{
 	"backup":               httpLifecycle,
 	"restore":              httpLifecycle,
 	"destroy":              httpLifecycle,
+	"installation.destroy": httpLifecycle,
 }
 
 func (e *bahaMachineExecutor) SupportedOperationIDs() []string {

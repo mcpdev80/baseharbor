@@ -62,8 +62,8 @@ func buildRuntimeDestroyImpact(ctx context.Context, plans []targetDestroyInvento
 	owners := map[string]string{config: runtimeMutationRevision(data)}
 	zeroBytes(data)
 	if all {
-		_, targetDiscovery := discoverFullDestroyTargets()
-		_, deploymentDiscovery := discoverFullDestroyDeployments()
+		_, targetDiscovery := discoverFullDestroyTargets(ctx)
+		_, deploymentDiscovery := discoverFullDestroyDeployments(ctx)
 		p.Discovery = append(targetDiscovery, deploymentDiscovery...)
 		root, err := deployment.DataRoot()
 		if err != nil {

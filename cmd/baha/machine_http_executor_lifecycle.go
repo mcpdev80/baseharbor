@@ -23,6 +23,8 @@ func (e *bahaMachineExecutor) executeHTTPLifecycle(
 	report machinehttp.ProgressReporter,
 ) (any, error) {
 	switch operationID {
+	case "installation.destroy":
+		return e.executeHTTPInstallationDestroy(ctx, operationContext, raw)
 	case "app.stop":
 		return e.executeHTTPApplicationStop(ctx, operationContext, raw, report)
 	case "apply":
@@ -40,6 +42,36 @@ func (e *bahaMachineExecutor) executeHTTPLifecycle(
 	default:
 		return nil, machine.NewError(machine.ErrorUnsupported, "Unsupported lifecycle operation.", "Use machine discovery.", false)
 	}
+}
+
+func (e *bahaMachineExecutor) executeHTTPInstallationDestroy(ctx context.Context, operationContext machine.OperationContext, raw json.RawMessage) (any, error) {
+	var input struct {
+		Approval              bool                               `json:"approval"`
+		ProviderChangeConsent *application.ProviderChangeConsent `json:"provider_change_consent,omitempty"`
+	}
+	if err := decodeHTTPInput(raw, &input); err != nil {
+		return nil, err
+	}
+	if operationContext.Environment == "" || operationContext.Target == "" {
+		return nil, machine.NewError(machine.ErrorValidationFailed, "Installation destroy requires an explicit Target and environment scope.", "Use the selected Core Target and the dev operator session.", false)
+	}
+	ctx = withTargetOverride(ctx, operationContext.Target)
+	target, err := effectiveTarget(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if err := checkBoundCoreTarget(ctx, target); err != nil {
+		return nil, err
+	}
+	if err := authorizeCurrentMCPContext(ctx, "installation.destroy", operationContext.Target, operationContext.Environment, ""); err != nil {
+		return nil, err
+	}
+	ctx = withProviderChangeConsent(ctx, input.ProviderChangeConsent)
+	ctx, report := withDestroyReport(ctx, true)
+	if err := destroyInstallation(ctx, input.Approval, io.Discard, io.Discard); err != nil {
+		return nil, err
+	}
+	return report, nil
 }
 
 // Normalize the verified uploaded source under the already authorized Core

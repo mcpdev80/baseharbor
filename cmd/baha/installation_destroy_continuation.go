@@ -17,8 +17,8 @@ type installationDestroyContinuation struct {
 }
 
 func currentInstallationDestructionImpact(ctx context.Context) (runtimeDestroyImpact, error) {
-	targets, discovery := discoverFullDestroyTargets()
-	_, deployments := discoverFullDestroyDeployments()
+	targets, discovery := discoverFullDestroyTargets(ctx)
+	_, deployments := discoverFullDestroyDeployments(ctx)
 	if countFullDestroyBlockers(discovery)+countFullDestroyBlockers(deployments) > 0 {
 		return runtimeDestroyImpact{}, invalidProviderConsumerInventory(errors.New("remaining installation inventory is incomplete"))
 	}

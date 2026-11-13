@@ -95,6 +95,11 @@ func runtimeDestroyAll(parent context.Context, args []string, out, errOut io.Wri
 	return destroyInstallation(parent, confirmed, out, errOut)
 }
 func destroyInstallation(parent context.Context, confirmed bool, out, errOut io.Writer) error {
+	if !skipFullDestroyRemotePhase(parent) {
+		if handled, err := destroyConnectedRemoteInstallation(parent, confirmed, out, errOut); handled {
+			return err
+		}
+	}
 	parent = context.WithValue(parent, runtimeDestroyAcknowledgementKey{}, &application.ProviderChangeConsent{})
 	if err := authorizeCurrentMCPContext(parent, "installation.destroy", "", "", ""); err != nil {
 		return err
@@ -130,8 +135,8 @@ func destroyInstallation(parent context.Context, confirmed bool, out, errOut io.
 	if err != nil || !proceed {
 		return err
 	}
-	currentTargets, currentDiscovery := discoverFullDestroyTargets()
-	currentDeployments, currentDeploymentResults := discoverFullDestroyDeployments()
+	currentTargets, currentDiscovery := discoverFullDestroyTargets(parent)
+	currentDeployments, currentDeploymentResults := discoverFullDestroyDeployments(parent)
 	if countFullDestroyBlockers(currentDiscovery)+countFullDestroyBlockers(currentDeploymentResults) > 0 {
 		return invalidProviderConsumerInventory(errors.New("installation discovery changed or is incomplete"))
 	}
@@ -275,6 +280,13 @@ func destroyInstallation(parent context.Context, confirmed bool, out, errOut io.
 	return nil
 }
 
+type fullDestroyRemotePhaseKey struct{}
+
+func skipFullDestroyRemotePhase(ctx context.Context) bool {
+	skip, _ := ctx.Value(fullDestroyRemotePhaseKey{}).(bool)
+	return skip
+}
+
 func removeTargetRecoveryFile(target deployment.ResolvedTarget, results *[]fullDestroyResult) {
 	path, err := targetRecoveryFilePath(target)
 	if err != nil {
@@ -298,60 +310,6 @@ func removeTargetRecoveryFile(target deployment.ResolvedTarget, results *[]fullD
 		return
 	}
 	*results = append(*results, fullDestroyResult{Status: "REMOVED", Target: target.Name, Resource: "recovery-file", Detail: path})
-}
-
-func discoverFullDestroyTargets() ([]deployment.ResolvedTarget, []fullDestroyResult) {
-	var results []fullDestroyResult
-	cfg, cfgErr := deployment.LoadConfig()
-	if cfgErr != nil {
-		results = append(results, fullDestroyResult{Status: "FAILED", Resource: "config", Detail: cfgErr.Error()})
-		cfg = deployment.Config{Version: deployment.ConfigVersion, Access: map[string]deployment.AccessDefinition{}, Targets: map[string]deployment.TargetDefinition{}}
-	}
-
-	byName := map[string]deployment.ResolvedTarget{}
-	for _, name := range cfg.TargetNames() {
-		target, err := cfg.ResolveTarget(name, "")
-		if err != nil {
-			results = append(results, fullDestroyResult{Status: "FAILED", Target: name, Resource: "target-config", Detail: err.Error()})
-			continue
-		}
-		byName[name] = target
-	}
-
-	root, err := deployment.DataRoot()
-	if err != nil {
-		results = append(results, fullDestroyResult{Status: "FAILED", Resource: "data-root", Detail: err.Error()})
-	} else {
-		entries, readErr := os.ReadDir(filepath.Join(root, "targets"))
-		if readErr != nil && !errors.Is(readErr, os.ErrNotExist) {
-			results = append(results, fullDestroyResult{Status: "FAILED", Resource: "target-state", Detail: readErr.Error()})
-		}
-		for _, entry := range entries {
-			if !entry.IsDir() {
-				continue
-			}
-			name := entry.Name()
-			if _, ok := byName[name]; ok {
-				continue
-			}
-			if err := deployment.ValidateTargetName(name); err != nil {
-				results = append(results, fullDestroyResult{Status: "SKIPPED", Target: name, Resource: "target-state", Detail: "invalid target directory name; local BaseHarbor data root will still be removed"})
-				continue
-			}
-			populateFullDestroyTargetFromDataRoot(root, name, byName, &results)
-		}
-	}
-
-	names := make([]string, 0, len(byName))
-	for name := range byName {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	targets := make([]deployment.ResolvedTarget, 0, len(names))
-	for _, name := range names {
-		targets = append(targets, byName[name])
-	}
-	return targets, results
 }
 
 func releaseFullDestroyConnectivity(parent context.Context, target deployment.ResolvedTarget, results *[]fullDestroyResult) {
@@ -400,38 +358,6 @@ func releaseFullDestroyConnectivity(parent context.Context, target deployment.Re
 		}
 		*results = append(*results, fullDestroyResult{Status: "REMOVED", Target: target.Name, Resource: resource})
 	}
-}
-
-func discoverFullDestroyDeployments() ([]deployment.DeploymentRecord, []fullDestroyResult) {
-	records, warnings, err := deployment.ListAllDeploymentsForDisplay()
-	if err != nil {
-		return nil, []fullDestroyResult{{Status: "FAILED", Resource: "deployment-registry", Detail: err.Error()}}
-	}
-
-	var results []fullDestroyResult
-	for _, warning := range warnings {
-		stateErr, ok := deployment.DeploymentRecordState(warning)
-		if !ok {
-			results = append(results, fullDestroyResult{
-				Status:   "FAILED",
-				Resource: "deployment-registry",
-				Detail:   warning.Error(),
-			})
-			continue
-		}
-		resource := "deployment " + stateErr.Identity.DeploymentID
-		if stateErr.Identity.DeploymentID == "" {
-			resource = "deployment unknown"
-		}
-		results = append(results, fullDestroyResult{
-			Status:     "SKIPPED",
-			Target:     stateErr.Identity.Target,
-			Resource:   resource,
-			Detail:     "incomplete deployment state has no usable deployment.json; refusing to guess semantic/runtime ownership, local BaseHarbor state will still be removed",
-			Diagnostic: "unregistered-deployment-state",
-		})
-	}
-	return records, results
 }
 
 func bestEffortApplicationCleanup(parent context.Context, record deployment.DeploymentRecord, results *[]fullDestroyResult) {

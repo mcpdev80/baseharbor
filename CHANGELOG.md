@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- `baha destroy` now destroys one connected remote Core through its authenticated terminal response, then cleans the workstation while preserving native local Target behavior.
+
 ## [0.4.27]
 
 ### Added

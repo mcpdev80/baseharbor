@@ -18,8 +18,8 @@ type fullDestroyInventory struct {
 }
 
 func prepareFullDestroyInventory(parent context.Context) (fullDestroyInventory, error) {
-	targets, discoveryResults := discoverFullDestroyTargets()
-	deployments, deploymentResults := discoverFullDestroyDeployments()
+	targets, discoveryResults := discoverFullDestroyTargets(parent)
+	deployments, deploymentResults := discoverFullDestroyDeployments(parent)
 	blockedTargets := map[string]bool{}
 	for _, record := range deployments {
 		if err := authorizeMCPOperation(parent, "installation.destroy", record.Identity.Target, record.Identity.Environment, record.Identity.ApplicationID, record.Source.Manifest); err != nil {

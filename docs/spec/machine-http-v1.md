@@ -121,6 +121,17 @@ must preserve the failed state and display the consequences. Details do not gran
 approval; any retry still requires the current plan-bound acknowledgements and
 separate explicit consent for data deletion.
 
+Discovery advertises `execution.terminal.installation-destroy` when the Core
+supports a terminal receipt for `installation.destroy`. A client MAY set
+`wait_for_terminal: true` only for that operation. The Core returns HTTP `200`
+with its terminal `Execution v1` and `Location` on the same authenticated HTTPS
+request. This exception exists because successful installation destruction
+removes the Core's execution journal and identity services, so a later status
+request cannot be authenticated. The request still requires an
+`Idempotency-Key`; a replay without a terminal receipt is rejected and MUST NOT
+start a second destruction. Clients must treat a transport loss as an unknown
+result and inspect the installation before attempting recovery.
+
 Operation input is not retained in ordinary execution metadata. The semantic
 executor rejects unknown fields, duplicate keys at every depth, non-object input,
 invalid UTF-8, nesting beyond 64 levels and trailing JSON values without
