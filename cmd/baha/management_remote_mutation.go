@@ -243,7 +243,7 @@ func remoteApplicationMutation(ctx context.Context, target deployment.ResolvedTa
 	if err != nil {
 		return err
 	}
-	if operation == "apply" || operation == "destroy" {
+	if operation == "apply" || operation == "destroy" || operation == "app.stop" {
 		payload, err = bindRemoteApplyConsent(ctx, payload)
 		if err != nil {
 			return err
