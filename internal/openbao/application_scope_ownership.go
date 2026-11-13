@@ -36,7 +36,7 @@ func CheckApplicationScopeOwnership(ctx context.Context, executor Executor, file
 	roleName := applicationRoleName(identity)
 	out, err := execWithToken(ctx, executor, files, managerToken, fmt.Sprintf(`exec bao read -format=json auth/approle/role/%s`, roleName))
 	if err != nil {
-		return errors.New("OpenBao application AppRole is missing or unreadable")
+		return fmt.Errorf("OpenBao application AppRole is missing or unreadable: %w", err)
 	}
 	var roleReply struct {
 		Data struct {
@@ -54,7 +54,7 @@ func CheckApplicationScopeOwnership(ctx context.Context, executor Executor, file
 
 	out, err = execWithToken(ctx, executor, files, managerToken, fmt.Sprintf(`exec bao policy read %s`, expectedPolicy))
 	if err != nil {
-		return errors.New("OpenBao application policy is missing or unreadable")
+		return fmt.Errorf("OpenBao application policy is missing or unreadable: %w", err)
 	}
 	if normalizePolicy(out) != normalizePolicy(applicationPolicy(identity)) {
 		return errors.New("OpenBao application policy differs from the BaseHarbor-managed definition; refusing destructive mutation")
