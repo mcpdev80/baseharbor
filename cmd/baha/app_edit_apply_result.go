@@ -265,7 +265,7 @@ func defaultAppEditAuthorities(store application.Store, args []string) appEditAu
 		if err != nil {
 			return nil, err
 		}
-		snapshot, snapshotPreferences, err := applicationLifecycleSnapshot(resolved, observeApplicationProviderFactsFunc(ctx, resolved))
+		snapshot, snapshotPreferences, err := applicationLifecycleSnapshotContext(ctx, resolved, observeApplicationProviderFactsFunc(ctx, resolved))
 		if err != nil {
 			return nil, err
 		}
@@ -292,7 +292,7 @@ func defaultAppEditAuthorities(store application.Store, args []string) appEditAu
 		}
 		desiredResolved := resolved
 		desiredResolved.Manifest = desired
-		snapshot, _, err := applicationLifecycleSnapshot(resolved, observeApplicationProviderFactsFunc(ctx, resolved))
+		snapshot, _, err := applicationLifecycleSnapshotContext(ctx, resolved, observeApplicationProviderFactsFunc(ctx, resolved))
 		if err != nil {
 			return application.ProviderImpactPlan{}, err
 		}

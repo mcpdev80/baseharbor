@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/applicationlifecycle"
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
@@ -40,6 +41,7 @@ type applicationDestroyExecution struct {
 	files               application.RuntimeFiles
 	runtimeErr          error
 	partialRuntime      bool
+	incompleteInventory bool
 	compose             bhruntime.RuntimeProvider
 	existing            []bhruntime.ProjectResource
 	repositoryVolumes   []bhruntime.RepositoryVolume
@@ -50,6 +52,79 @@ type applicationDestroyExecution struct {
 	// invocation (the uuid-addressed repair) down to the mutation seam, which
 	// refuses to delete anything but the record that was selected (0427-175).
 	selection []string
+}
+
+// finishUninitializedRepositoryDestroy makes the common "already removed / not
+// initialized" case idempotent. A repository manifest by itself does not
+// establish ownership of runtime resources, so this succeeds only when the
+// selected Target has no matching deployment and neither the repository nor
+// any registered Target claims an application identity for this source. It
+// deliberately preserves authored source files and never guesses at runtime
+// resources whose owner cannot be proven.
+func finishUninitializedRepositoryDestroy(ctx context.Context, target deployment.ResolvedTarget, args []string, format cliOutputFormat, out io.Writer) (bool, error) {
+	filtered, environment, err := extractApplicationEnvironment(args, "destroy")
+	if err != nil {
+		return false, err
+	}
+	name, _, _, err := parseDestroyArgs(filtered)
+	if err != nil {
+		return false, err
+	}
+	if name != "" || strings.TrimSpace(environment) != "" || strings.TrimSpace(applicationEnvironmentOverride) != "" {
+		return false, nil
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		return false, fmt.Errorf("resolve current directory: %w", err)
+	}
+	selection, err := application.ResolveRepositoryEnvironment(cwd, "")
+	if errors.Is(err, application.ErrRepositoryManifestNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	owner := application.Store{Root: filepath.Join(selection.RepositoryRoot, ".baseharbor", "apps")}
+	snapshot, err := repositoryIdentityClaims(target, selection.RepositoryRoot, owner, selection.Manifest)
+	if err != nil {
+		return false, err
+	}
+	if snapshot.PreviouslyRegistered || len(snapshot.ApplicationIDs) != 0 {
+		return false, nil
+	}
+	records, warnings, err := deployment.ListDeploymentsForDisplay(target.Name)
+	if err != nil || len(warnings) != 0 {
+		// A damaged deployment inventory must keep using the normal recovery path;
+		// it is not evidence that the app has nothing to delete.
+		return false, err
+	}
+	for _, record := range records {
+		if record.Identity.Application == selection.Manifest.Name && record.Identity.Environment == selection.Manifest.Environment {
+			return false, nil
+		}
+	}
+	targetRoot, err := deployment.TargetStateRoot(target.Name)
+	if err != nil {
+		return false, err
+	}
+	registry, err := (capability.RegistryStore{Path: filepath.Join(targetRoot, "provider-registry.json")}).Load()
+	if err != nil {
+		return false, err
+	}
+	for _, instance := range registry.Instances {
+		if instance.OwnerApplication == selection.Manifest.Name && instance.OwnerEnvironment == selection.Manifest.Environment {
+			return false, nil
+		}
+	}
+	detail := "No application identity or deployment is registered on Target " + target.Name + "; there is no BaseHarbor-owned application state to remove. Repository source files were kept."
+	if format == outputJSON {
+		result := applicationlifecycle.NewResult("destroy", selection.Manifest.Name, selection.Manifest.Environment, "absent", true).WithTarget(target.Name)
+		result.Detail = detail
+		return true, writeJSON(out, result)
+	}
+	fmt.Fprintln(out, "Application already absent")
+	fmt.Fprintln(out, "  "+detail)
+	return true, nil
 }
 
 func newApplicationDestroyExecution(ctx context.Context, store application.Store, args []string, out, errOut io.Writer) (*applicationDestroyExecution, error) {
@@ -161,9 +236,6 @@ func (e *applicationDestroyExecution) runPreflight(ctx context.Context) error {
 	composeRequired := devaccess.Enabled(m.Environment) || e.runtimeErr == nil || e.resolved.FromRepository || m.Services.Secrets || application.HasManagedRuntimeServices(m) || application.HasIdentity(m)
 	checks := []preflight.Check{
 		{Name: "manifest", Run: func(context.Context) error { return m.Validate() }},
-		{Name: "retained provider ownership", Run: func(ctx context.Context) error {
-			return checkRetainedApplicationProviderOwnership(ctx, e.resolved)
-		}},
 		{Name: "connectivity policy", Run: func(context.Context) error {
 			return application.CheckApplicationConnectivityReleasedAt(e.resolved.TargetStateRoot, m)
 		}},
@@ -171,6 +243,11 @@ func (e *applicationDestroyExecution) runPreflight(ctx context.Context) error {
 			return checkManifestPermissions(e.resolved.ManifestPath, e.resolved.FromRepository)
 		}},
 		applicationWorkloadContractCheck(e.resolved),
+	}
+	if !e.incompleteInventory {
+		checks = append(checks, preflight.Check{Name: "retained provider ownership", Run: func(ctx context.Context) error {
+			return checkRetainedApplicationProviderOwnership(ctx, e.resolved)
+		}})
 	}
 	if composeRequired {
 		checks = append(checks, preflight.Check{Name: "runtime orchestration", Run: func(ctx context.Context) error {
@@ -281,6 +358,9 @@ func (e *applicationDestroyExecution) runPreflight(ctx context.Context) error {
 func (e *applicationDestroyExecution) renderDeletePlan() error {
 	m := e.manifest
 	e.term.Section("Delete plan")
+	if e.incompleteInventory {
+		fmt.Fprintln(e.out, "  partial cleanup: Target consumer inventory is damaged; unknown and shared provider resources will be retained")
+	}
 	if e.resolved.FromRepository {
 		project := application.WorkloadProjectNameForRuntime(m, e.files)
 		renderRepositoryDestroyVolumes(e.out, e.repositoryVolumes, project)
@@ -371,11 +451,6 @@ func (e *applicationDestroyExecution) destroyRuntimeResources(ctx context.Contex
 			return err
 		}
 
-	}
-	if e.runtimeErr == nil && application.RequiresRuntimeBroker(m) {
-		if err := destroyRuntimeBroker(ctx, e.compose, m, e.files); err != nil {
-			return err
-		}
 	}
 	sharedBackendsRegistered := false
 	for _, provider := range []capability.ProviderKind{capability.ProviderPostgreSQL, capability.ProviderValkey} {

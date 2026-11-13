@@ -205,6 +205,7 @@ func appDestroyCommand(store application.Store) *cli.Command {
 		Usage: "baha app destroy [NAME] [--uuid DEPLOYMENT-ID] [--yes]",
 		Long:  "Permanently removes the application, its BaseHarbor-owned runtime resources, application data, credentials, recovery state and deployment registration. Exclusively app-owned Compose data volumes are removed too. Shared, foreign or ambiguously owned resources are preserved and reported. Use 'baha app stop' to stop runtime services while preserving data. Provider changes and permanent data deletion require explicit approval of the current plan.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
+			ctx = withApplicationInput(ctx, runtimeInput)
 			target, err := effectiveTarget(ctx)
 			if err != nil {
 				return err
@@ -214,6 +215,9 @@ func appDestroyCommand(store application.Store) *cli.Command {
 			}
 			filtered, format, err := parseReadOutputArgs(args, "app destroy")
 			if err != nil {
+				return err
+			}
+			if handled, err := finishUninitializedRepositoryDestroy(ctx, target, filtered, format, out); handled || err != nil {
 				return err
 			}
 			if format != outputJSON {
@@ -344,6 +348,11 @@ func executeApplicationDestroyLifecycle(ctx context.Context, store application.S
 		}
 		return recordApplicationAudit(ctx, execution.resolved, "destroy", "success", "never delivered; local state removed", "never-deployed application and its BaseHarbor registration were permanently removed")
 	}
+	initialPlan, err := buildApplicationDestructionPlan(ctx, execution.resolved, true)
+	if err != nil {
+		return err
+	}
+	execution.incompleteInventory = initialPlan.IncompleteInventory
 	if err := execution.runPreflight(ctx); err != nil {
 		return err
 	}
@@ -354,8 +363,19 @@ func executeApplicationDestroyLifecycle(ctx context.Context, store application.S
 		fmt.Fprintln(out, "No changes were made. Re-run with --yes to permanently delete BaseHarbor-managed resources.")
 		return nil
 	}
-	if _, err := authorizeApplicationDestruction(ctx, execution.resolved, true, out); err != nil {
+	destructionPlan, err := authorizeApplicationDestruction(ctx, execution.resolved, true, out)
+	if err != nil {
 		return err
+	}
+	withdrawn := execution.resolved
+	withdrawn.Manifest = applicationRuntimeRetirementIntent(execution.manifest)
+	retireProviders := destructionPlan.Providers.Version == application.ProviderPlanVersion && destructionPlan.Providers.Complete
+	if retireProviders {
+		// Validate supported ownership adapters before deleting application data.
+		// The acknowledged plan remains the authority used below.
+		if _, err := prepareApplicationProviderRetirement(ctx, withdrawn); err != nil {
+			return err
+		}
 	}
 	// Selector-vs-resolved identity guard. The repair deletes a directory, so
 	// the path it took must be the path the operator selected. Fail closed on
@@ -376,6 +396,13 @@ func executeApplicationDestroyLifecycle(ctx context.Context, store application.S
 	}
 	if err := execution.cleanupProviderState(ctx); err != nil {
 		return err
+	}
+	if retireProviders {
+		if err := retireReleasedApplicationProviders(ctx, withdrawn, execution.compose, nil, destructionPlan.Providers, out); err != nil {
+			return err
+		}
+	} else {
+		fmt.Fprintln(out, "Retained shared providers: consumer inventory is incomplete; unknown or potentially shared resources were left running")
 	}
 	if err := execution.removeApplicationState(); err != nil {
 		return err

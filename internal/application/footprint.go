@@ -78,6 +78,10 @@ type ResolutionSnapshot struct {
 	Target          string                  `json:"target"`
 	Registry        capability.Registry     `json:"registry"`
 	Facts           map[string]ProviderFact `json:"facts"`
+	// ProtectCoreForConnection retains only the independently consumed Core
+	// management modules when a valid enrolled client exists or its inventory
+	// cannot be verified. It is an ephemeral projection, never persisted intent.
+	ProtectCoreForConnection bool `json:"-"`
 }
 
 type ProviderPreference struct {

@@ -354,7 +354,7 @@ func runAppEdit(ctx context.Context, store application.Store, args []string, in 
 	}
 	authorities := defaultAppEditAuthorities(store, args)
 	authorities.Execute = appEditRuntimeExecuteAuthority(store, args, resolved, source, authorities, out, errOut, nil, nil)
-	snapshot, _, err := applicationLifecycleSnapshot(resolved, observeApplicationProviderFacts(ctx, resolved))
+	snapshot, _, err := applicationLifecycleSnapshotContext(ctx, resolved, observeApplicationProviderFacts(ctx, resolved))
 	if err != nil {
 		return appEditApplyResult{}, err
 	}

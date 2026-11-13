@@ -9,7 +9,7 @@ import (
 func buildApplicationRuntimeRetirementPlan(ctx context.Context, original resolvedApplication) (resolvedApplication, application.ProviderPlan, error) {
 	withdrawn := original
 	withdrawn.Manifest = applicationRuntimeRetirementIntent(original.Manifest)
-	snapshot, preferences, err := applicationLifecycleSnapshot(withdrawn, observeApplicationProviderFacts(ctx, withdrawn))
+	snapshot, preferences, err := applicationLifecycleSnapshotContext(ctx, withdrawn, observeApplicationProviderFacts(ctx, withdrawn))
 	if err != nil {
 		return withdrawn, application.ProviderPlan{}, err
 	}

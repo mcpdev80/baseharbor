@@ -23,7 +23,7 @@ Der vollständige lokale, Remote- und Team-Weg beginnt unter [Lokal, remote und 
 | `baha status` | Zustand beobachten |
 | `baha doctor` | Diagnostizieren, optional reparieren |
 | `baha app update` | Unterstützte Application-Source aktualisieren |
-| `baha destroy` | Application-eigene Ressourcen entfernen |
+| `baha app destroy NAME` | Eine Application und ihre eigenen Ressourcen entfernen |
 
 Auch bei einem ausgewählten Remote-Core-Target lautet der Repository-Ablauf
 `baha app init`, danach `baha up`. Die Initialisierung registriert den Vertrag
@@ -148,8 +148,15 @@ Plan-JSON sowie MCP/HTTP-Plan verwenden denselben `footprint`
 (`baseharbor.footprint/v1`). Ein neu geplanter Binding ist `requested/unbound`
 und kein Live-Nachweis. Angeforderte managed Capabilities werden mit ausgewählten
 Providern und ihren echten Abhängigkeiten realisiert. Ein bedingungsloses
-SQL-/Secrets-/Identity-Paket für jede App gibt es nicht. Ein unabhängig aktivierter
-Management-Core behält seine Sicherheitsvoraussetzungen. Speicher-/Containerwerte
+SQL-/Secrets-/Identity-Paket für jede App gibt es nicht. Der Installationsdatensatz
+bewahrt den Wiederherstellungsbesitz, hält aber die
+Laufzeit nicht dauerhaft aktiv. Ein gültiges, nicht abgelaufenes Workstation-
+oder Connector-Zertifikat ist ein eigenständiger Core-Verbraucher; solange es
+existiert, bleiben Core-SQL, OpenBao und Identity verfügbar. Abgelaufene oder
+widerrufene Zertifikate halten keine Dienste fest. Ist das Inventar nicht
+prüfbar, lässt BaseHarbor unsichere Core-Dienste vorsichtshalber laufen. Eine
+SQL-only-Anwendung startet OpenBao und Keycloak nicht allein wegen eines
+Core-Installationsdatensatzes. Speicher-/Containerwerte
 bleiben unbekannt, wenn ihre Zuordnung nicht nachgewiesen ist. Provider-Beobachtungen
 bleiben bis zum geprüften nativen Inventar `unverifiable`. Nichtinteraktives
 App-`--yes` autorisiert keine Einrichtung des Management-Core.

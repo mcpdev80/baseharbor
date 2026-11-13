@@ -39,7 +39,7 @@ func buildApplicationStopPlan(ctx context.Context, resolved resolvedApplication)
 	}
 	applied := resolved
 	applied.Manifest = prior
-	snapshot, preferences, err := applicationLifecycleSnapshot(applied, observeApplicationProviderFacts(ctx, applied))
+	snapshot, preferences, err := applicationLifecycleSnapshotContext(ctx, applied, observeApplicationProviderFacts(ctx, applied))
 	if err != nil {
 		return p, err
 	}

@@ -50,7 +50,11 @@ func recordDestroyPlan(ctx context.Context, plans []targetDestroyInventory, pres
 			}
 		}
 	}
-	report.Preserved = append(report.Preserved, preserved...)
+	for _, item := range preserved {
+		if item.Status == "PRESERVED" {
+			report.Preserved = append(report.Preserved, item)
+		}
+	}
 }
 
 func recordDestroyResults(ctx context.Context, results []fullDestroyResult, complete bool) {

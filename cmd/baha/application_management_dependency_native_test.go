@@ -27,17 +27,24 @@ func verifyIndependentManagementProviderUnion(t *testing.T, ctx context.Context,
 	if err != nil || !plan.Complete {
 		t.Fatalf("actual management union incomplete: %+v %v", plan, err)
 	}
-	if len(plan.Required) != 3 || len(snapshot.Registry.Instances) != 0 || len(snapshot.Registry.Bindings) != 0 {
-		t.Fatalf("actual management dependencies or registry unexpected: %+v", plan)
+	wantRequired := 0
+	if snapshot.ProtectCoreForConnection {
+		wantRequired = 3 // SQL registry, certificate authority and Core Identity serve the connected workstation.
+	}
+	if len(plan.Required) != wantRequired || len(snapshot.Registry.Instances) != 0 || len(snapshot.Registry.Bindings) != 0 {
+		t.Fatalf("actual management dependencies or registry unexpected: protected=%t plan=%+v", snapshot.ProtectCoreForConnection, plan)
 	}
 	for _, change := range plan.Changes {
 		fact := snapshot.Facts[change.InstanceID]
-		if change.Action != "reuse" || fact.State != application.ProviderRunning || fact.Containers.Value == nil || *fact.Containers.Value == 0 || len(change.Consumers) != 1 || change.Consumers[0] != "installation/"+state.ID {
+		if snapshot.ProtectCoreForConnection && (change.Action != "reuse" || fact.State != application.ProviderRunning || fact.Containers.Value == nil || *fact.Containers.Value == 0 || len(change.Consumers) != 1 || change.Consumers[0] != "installation/"+state.ID) {
 			t.Fatalf("actual management module lacks owned running evidence: %+v %+v", change, fact)
+		}
+		if !snapshot.ProtectCoreForConnection && change.Action != "stop" && change.Action != "preserve" {
+			t.Fatalf("unconsumed management module was not released: %+v", change)
 		}
 	}
 	if plan.Consumers["application/"+m.ApplicationID+"/dev"].Core != application.CoreNotRequired {
 		t.Fatal("plain app acquired management dependencies")
 	}
-	t.Logf("Independent management union: three actual owned running physical modules retained; empty app registry; zero-capability app remains Core-free.")
+	t.Logf("Independent management union: connection-protected=%t; empty app registry; zero-capability app remains Core-free.", snapshot.ProtectCoreForConnection)
 }

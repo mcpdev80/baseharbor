@@ -77,7 +77,7 @@ Find exact options with `baha COMMAND --help`. [Global options](global-options.m
 | `baha config prompt` | Configure the optional BaseHarbor shell prompt segment | `baha config prompt [--enable\|--disable] [--preset minimal\|compact\|accessible\|detailed\|none] [--position before-path\|after-path\|right] [--environment never\|critical-only\|always] [--show-application\|--hide-application] [--text-only\|--color-output] [--prod-indicator TEXT] [--label TARGET=LABEL] [--color KEY=VALUE]` | [↗](organization-policy.md) |
 | `baha connect` | Allow one explicit application service to reach another | `baha connect SOURCE TARGET` | [↗](security-trust.md) |
 | `baha connections` | List explicit cross-application connectivity policy | `baha connections` | [↗](security-trust.md) |
-| `baha destroy` | Remove owned runtime resources with explicit consequence consent | `baha destroy [--yes] [--delete-data] \| baha destroy --all [--yes]` | [↗](core.md) |
+| `baha destroy` | Remove the complete BaseHarbor installation with explicit consequence consent | `baha destroy [--yes]` | [↗](core.md) |
 | `baha dev` | Manage local development conveniences | `baha dev <credentials\|domain\|hosts\|cleanup>` | [↗](development.md) |
 | `baha dev cleanup` | Remove this Target's owned workstation hosts and CA trust | `baha dev cleanup --yes` | [↗](development.md) |
 | `baha dev credentials` | Show or rotate the target-scoped development management login | `baha dev credentials [--reset] [--username USER] [--password-file FILE]` | [↗](development.md) |

@@ -56,7 +56,7 @@ Helm and Kustomize are not v0.4.20 source adapters.
 | `baha status` | Observe application state |
 | `baha doctor` | Diagnose and optionally repair |
 | `baha app update` | Update supported application source/state |
-| `baha destroy` | Remove application-owned resources |
+| `baha app destroy NAME` | Remove one application and its owned resources |
 
 ## Operations
 
@@ -176,7 +176,13 @@ Plan JSON and MCP/HTTP plan share `footprint` (`baseharbor.footprint/v1`). A
 projected new binding is `requested/unbound`, never live evidence. Requested
 managed capabilities resolve to selected providers and their genuine dependencies;
 there is no unconditional SQL/Secrets/Identity bundle for every application.
-An independently enabled management Core keeps its security requirements.
+An installation record retains recovery ownership, not a permanent runtime
+lease. A valid, unexpired workstation or Connector certificate is an independent
+Core consumer; while one exists, Core SQL, OpenBao and Identity stay available.
+Expired or revoked certificates do not pin runtime services. If that inventory
+cannot be verified, BaseHarbor keeps the uncertain Core services running. A
+SQL-only application does not initialize OpenBao or Keycloak just because a Core
+installation record exists.
 Memory/container quantities remain unknown when actual attribution is missing;
 provider observations remain `unverifiable` until their native inventory is
 verified. Non-interactive app `--yes` does not authorize management Core setup.

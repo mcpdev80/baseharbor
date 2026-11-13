@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -11,14 +12,19 @@ import (
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/deployment"
+	"github.com/mcpdev80/baseharbor/internal/machine"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
 type targetDestroyInventory struct {
-	Target   deployment.ResolvedTarget
-	Runtime  bhruntime.RuntimeProvider
-	Projects map[string][]bhruntime.ProjectResource
-	Volumes  map[string][]bhruntime.ContainerVolume
+	Target  deployment.ResolvedTarget
+	Runtime bhruntime.RuntimeProvider
+	// InventoryError means this Target could not be observed. Keep its retry
+	// owner and state intact while allowing independently verified Targets to
+	// proceed through the same acknowledged installation plan.
+	InventoryError string
+	Projects       map[string][]bhruntime.ProjectResource
+	Volumes        map[string][]bhruntime.ContainerVolume
 }
 
 type destroyVolumeInventory interface {
@@ -98,6 +104,10 @@ func (plan targetDestroyInventory) projectNames() []string {
 }
 
 func (plan targetDestroyInventory) render(out io.Writer) {
+	if plan.InventoryError != "" {
+		fmt.Fprintf(out, "  PRESERVED target=%s (runtime inventory unavailable: %s)\n", plan.Target.Name, plan.InventoryError)
+		return
+	}
 	for _, project := range plan.projectNames() {
 		for _, resource := range plan.Projects[project] {
 			fmt.Fprintf(out, "  owned resource: target=%s project=%s %s %s\n", plan.Target.Name, project, resource.Kind, resource.Name)
@@ -161,19 +171,9 @@ func (plan targetDestroyInventory) cleanup(ctx context.Context, results *[]fullD
 }
 
 func preservedTargetRecovery(ctx context.Context, target deployment.ResolvedTarget) (fullDestroyResult, error) {
-	path, err := defaultTargetRecoveryFile(target.Name)
+	path, err := targetRecoveryFilePath(target)
 	if err != nil {
 		return fullDestroyResult{}, err
-	}
-	cfg, err := deployment.LoadConfig()
-	if err != nil {
-		return fullDestroyResult{}, err
-	}
-	if definition, found := cfg.Targets[target.Name]; found && strings.TrimSpace(definition.OpenBao.RecoveryFile) != "" {
-		path, err = filepath.Abs(definition.OpenBao.RecoveryFile)
-		if err != nil {
-			return fullDestroyResult{}, err
-		}
 	}
 
 	if _, err := os.Lstat(path); os.IsNotExist(err) {
@@ -181,19 +181,50 @@ func preservedTargetRecovery(ctx context.Context, target deployment.ResolvedTarg
 	} else if err != nil {
 		return fullDestroyResult{}, err
 	}
-	return fullDestroyResult{Status: "PRESERVED", Target: target.Name, Resource: "external recovery file", Detail: path + "; operator recovery material is outside installation state; remove deliberately only after deciding it is no longer needed"}, nil
+	return fullDestroyResult{Status: "DELETE", Target: target.Name, Resource: "external recovery file", Detail: path + "; removed after the acknowledged installation destroy"}, nil
+}
+
+func targetRecoveryFilePath(target deployment.ResolvedTarget) (string, error) {
+	path, err := defaultTargetRecoveryFile(target.Name)
+	if err != nil {
+		return "", err
+	}
+	cfg, err := deployment.LoadConfig()
+	if err != nil {
+		return "", err
+	}
+	if definition, found := cfg.Targets[target.Name]; found && strings.TrimSpace(definition.OpenBao.RecoveryFile) != "" {
+		path, err = filepath.Abs(definition.OpenBao.RecoveryFile)
+		if err != nil {
+			return "", err
+		}
+	}
+	return path, nil
 }
 
 func collectFullDestroyInventory(ctx context.Context, targets []deployment.ResolvedTarget) ([]targetDestroyInventory, error) {
+	return collectFullDestroyInventoryUsing(ctx, targets, collectTargetDestroyInventory)
+}
+
+func collectFullDestroyInventoryUsing(ctx context.Context, targets []deployment.ResolvedTarget, collect func(context.Context, deployment.ResolvedTarget, bool) (targetDestroyInventory, error)) ([]targetDestroyInventory, error) {
 	inventoryCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	plans := make([]targetDestroyInventory, 0, len(targets))
 	for _, target := range targets {
-		plan, err := collectTargetDestroyInventory(inventoryCtx, target, false)
+		plan, err := collect(inventoryCtx, target, false)
 		if err != nil {
-			return nil, fmt.Errorf("full destroy inventory for target %s: %w", target.Name, err)
+			plan = targetDestroyInventory{Target: target, Projects: map[string][]bhruntime.ProjectResource{}, Volumes: map[string][]bhruntime.ContainerVolume{}, InventoryError: err.Error()}
 		}
 		plans = append(plans, plan)
 	}
 	return plans, nil
+}
+
+func fullDestroyInventoryError(target deployment.ResolvedTarget, err error) error {
+	if errors.Is(err, bhruntime.ErrRuntimeNotFound) {
+		return machine.NewError(machine.ErrorCapabilityMissing,
+			fmt.Sprintf("Cannot inspect Target %q because its %s runtime is unavailable on this workstation.", target.Name, target.RuntimeProvider),
+			fmt.Sprintf("Restore or install the %s runtime used by Target %q, then run 'baha destroy' again. No resources were removed.", target.RuntimeProvider, target.Name), true)
+	}
+	return fmt.Errorf("full destroy inventory for target %s: %w", target.Name, err)
 }
