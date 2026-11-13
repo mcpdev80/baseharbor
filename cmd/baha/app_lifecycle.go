@@ -205,6 +205,7 @@ func appDestroyCommand(store application.Store) *cli.Command {
 		Usage: "baha app destroy [NAME] [--uuid DEPLOYMENT-ID] [--yes]",
 		Long:  "Permanently removes the application, its BaseHarbor-owned runtime resources, application data, credentials, recovery state and deployment registration. Exclusively app-owned Compose data volumes are removed too. Shared, foreign or ambiguously owned resources are preserved and reported. Use 'baha app stop' to stop runtime services while preserving data. Provider changes and permanent data deletion require explicit approval of the current plan.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
+			ctx = withApplicationInput(ctx, runtimeInput)
 			target, err := effectiveTarget(ctx)
 			if err != nil {
 				return err

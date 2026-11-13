@@ -1,10 +1,12 @@
 package main
 
 import (
+	"bytes"
 	"errors"
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
@@ -47,6 +49,42 @@ func TestApplicationDestructionRequiresCurrentOuterScopeAndSeparateDataConsent(t
 		if err != nil || string(after) != string(before) {
 			t.Fatal("planning/consent mutated original registry")
 		}
+	}
+}
+
+func TestApplicationDestroyUsesShortPlanAndSingleInteractiveApproval(t *testing.T) {
+	r := retainedNativeBackendFixture(t)
+	var out bytes.Buffer
+	ctx := withApplicationInput(t.Context(), strings.NewReader("y\n"))
+	if _, err := authorizeApplicationDestruction(ctx, r, true, &out); err != nil {
+		t.Fatalf("interactive approval did not authorize the current plan: %v\n%s", err, out.String())
+	}
+	text := out.String()
+	for _, want := range []string{
+		"Destroy application " + r.Manifest.Name,
+		"Target " + r.Target.Name,
+		"App-owned data: permanently deleted when ownership is verified",
+		"Shared, foreign or unknown data: kept",
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("short destroy review omitted %q:\n%s", want, text)
+		}
+	}
+	if strings.Contains(text, `"materials"`) || strings.Contains(text, "/home/") || strings.Count(text, "[y/N]") != 1 {
+		t.Fatalf("destroy review leaked the raw plan or asked more than once:\n%s", text)
+	}
+}
+
+func TestApplicationDestroyWithoutInteractiveConsentGivesUsefulNextStep(t *testing.T) {
+	r := retainedNativeBackendFixture(t)
+	var out bytes.Buffer
+	_, err := authorizeApplicationDestruction(t.Context(), r, true, &out)
+	var failure *machine.Error
+	if !errors.As(err, &failure) || failure.CauseCode != "impact-confirmation-required" {
+		t.Fatalf("expected a typed consent requirement, got %v", err)
+	}
+	if !strings.Contains(failure.Next, "interactive terminal") || strings.Contains(out.String(), `"materials"`) {
+		t.Fatalf("non-interactive failure was not actionable or printed the raw plan: next=%q output=%q", failure.Next, out.String())
 	}
 }
 
