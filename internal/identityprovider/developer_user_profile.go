@@ -41,21 +41,70 @@ func (a *keycloakAdmin) ensureDeveloperOwnershipAttribute(ctx context.Context, r
 	desired := map[string]any{
 		"name": "baseharbor.scope", "multivalued": false,
 		"permissions": map[string]any{"view": []any{"admin"}, "edit": []any{"admin"}},
-		"validations": map[string]any{"options": map[string]any{"options": []any{"developer-access"}}},
 	}
 	markers := 0
+	changed := false
 	for _, attribute := range attributes {
 		if attribute["name"] != "baseharbor.scope" {
 			continue
 		}
 		markers++
-		if markers > 1 || !reflect.DeepEqual(attribute["permissions"], desired["permissions"]) || !reflect.DeepEqual(attribute["validations"], desired["validations"]) || (attribute["multivalued"] != nil && attribute["multivalued"] != false) {
+		if markers > 1 || !reflect.DeepEqual(attribute["permissions"], desired["permissions"]) || (attribute["multivalued"] != nil && attribute["multivalued"] != false) {
 			return errors.New("existing developer ownership attribute differs; preserve it pending an explicit authorized profile change")
+		}
+		validations, ok := attribute["validations"].(map[string]any)
+		if attribute["validations"] != nil && !ok {
+			return errors.New("existing developer ownership attribute differs; preserve it pending an explicit authorized profile change")
+		}
+		optionsValidation, ok := validations["options"].(map[string]any)
+		if validations["options"] != nil && !ok {
+			return errors.New("existing developer ownership attribute differs; preserve it pending an explicit authorized profile change")
+		}
+		options, ok := optionsValidation["options"].([]any)
+		if optionsValidation["options"] != nil && !ok {
+			return errors.New("existing developer ownership attribute differs; preserve it pending an explicit authorized profile change")
+		}
+		seen := map[string]bool{}
+		for _, option := range options {
+			value, ok := option.(string)
+			if !ok || (value != "developer-access" && value != "operator-workstation") || seen[value] {
+				return errors.New("existing developer ownership attribute differs; preserve it pending an explicit authorized profile change")
+			}
+			seen[value] = true
+		}
+		if !seen["developer-access"] {
+			options = append(options, "developer-access")
+			if validations == nil {
+				validations = map[string]any{}
+			}
+			if optionsValidation == nil {
+				optionsValidation = map[string]any{}
+			}
+			optionsValidation["options"] = options
+			validations["options"] = optionsValidation
+			attribute["validations"] = validations
+			changed = true
 		}
 	}
 	if markers == 1 {
+		if !changed {
+			return nil
+		}
+		profile["attributes"], err = json.Marshal(attributes)
+		if err != nil {
+			return err
+		}
+		status, _, err = a.do(ctx, http.MethodPut, path, profile)
+		if err != nil {
+			return err
+		}
+		if status != http.StatusOK && status != http.StatusNoContent {
+			return errors.New("declare developer ownership attribute failed; existing credentials preserved")
+		}
 		return nil
 	}
+	validations := map[string]any{"options": map[string]any{"options": []any{"developer-access"}}}
+	desired["validations"] = validations
 	attributes = append(attributes, desired)
 	profile["attributes"], err = json.Marshal(attributes)
 	if err != nil {
