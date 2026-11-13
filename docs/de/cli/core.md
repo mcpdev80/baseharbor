@@ -95,7 +95,7 @@ Mit `baha up` wird sie fortgesetzt. `doctor --fix` ist ausdrücklich verändernd
 
 ## Vollständiges Entfernen
 
-Im Repository betrifft `baha destroy` die eigene Application; außerhalb zeigt es den sicheren Scope des effektiven Targets. `baha destroy --all` betrifft alle eigenen Installationsressourcen, bewahrt Source-Repositories und fremde Infrastruktur. Ohne ausdrückliche Freigabe wird nicht gelöscht.
+`baha destroy` wirkt unabhängig vom aktuellen Verzeichnis auf BaseHarbor-Installationsressourcen. Standardmäßig entfernt es nur die kanonischen Core-Container und Startdienste; `baha app destroy NAME` entfernt gezielt eine Application. `baha destroy --all` entfernt alle eigenen Ressourcen und Installationsdaten über alle konfigurierten Targets. Ohne ausdrückliche Freigabe wird nicht gelöscht.
 
 ```bash
 baha destroy --all -o json

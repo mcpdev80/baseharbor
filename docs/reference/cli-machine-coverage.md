@@ -75,7 +75,7 @@ Inspect current data with `baha agent describe -o json` (`cli_coverage`). Update
 | `baha config prompt` | presentation |  |  | Client-local shell prompt display preferences; explicit target arguments and target inspection provide semantic context. |
 | `baha connect` | semantic | CLI -o json / typed MCP result | baseharbor.connectivity.connect |  |
 | `baha connections` | semantic | CLI -o json / typed MCP result | baseharbor.connectivity.list |  |
-| `baha destroy` | semantic | CLI -o json / typed MCP result | baseharbor.control-plane.destroy | Control-plane mode maps here; repository application mode uses destroy. --all maps to installation.destroy after authorization of every discovered deployment. All destruction retains ownership checks and explicit approval. |
+| `baha destroy` | semantic | CLI -o json / typed MCP result | baseharbor.control-plane.destroy | Always targets installation/Core lifecycle regardless of repository; use `baha app destroy` for one application. --all maps to installation.destroy after authorization of every discovered deployment. All destruction retains ownership checks and explicit approval. |
 | `baha dev` | presentation |  |  | Command group; invoke its supported subcommands. |
 | `baha dev cleanup` | excluded |  |  | Workstation-local removal of owned hosts and CA trust, preserving other connections; explicit host operator approval required. No Core or application mutation. |
 | `baha dev credentials` | semantic | CLI -o json / typed MCP result | baseharbor.dev.credentials | Ensure/reset/configuration use the shared authority. MCP returns username and protected file reference; CLI password display is an excluded operator-local mode. |

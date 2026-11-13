@@ -89,7 +89,7 @@ published release command, so Doctor says to install the matching build there.
 
 ## `baha destroy`
 
-Inside a repository, `baha destroy` removes the owned application after confirmation. Outside a repository, it shows the ownership-safe destruction scope for the effective Target.
+`baha destroy` always operates on BaseHarbor installation resources, regardless of the current directory. By default it removes only canonical Core containers/startup units; use `baha app destroy NAME` to remove one application. `baha destroy --all` removes all owned resources and installation state across all configured Targets.
 
 Outside a repository, confirmed Core destruction removes only the canonical
 PostgreSQL/OpenBao containers and startup units. It is permitted with active

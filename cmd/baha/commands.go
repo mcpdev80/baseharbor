@@ -92,13 +92,10 @@ func rootCommand() *cli.Command {
 		},
 		{
 			Name:    "destroy",
-			Summary: "Remove owned runtime resources with explicit consequence consent",
+			Summary: "Remove BaseHarbor installation resources with explicit consequence consent",
 			Usage:   "baha destroy [--yes] [--delete-data] | baha destroy --all [--yes]",
-			Long:    "Outside a repository, remove only canonical Core containers/startup units after two current-plan acknowledgements, including deliberately accepted outages for active consumers. Preserve data, networks, protected owners, bindings, workloads and other providers by default. --delete-data additionally selects owned Core volumes and requires separate deletion consent. --yes replaces no consequence or deletion consent. --all is the explicit installation cleanup path across all Targets; it selects owned data and installation state for deletion while preserving application source repositories and external application-owned data.",
+			Long:    "Always operates on BaseHarbor installation resources, regardless of the current directory; use 'baha app destroy NAME' for one application. By default, remove only canonical Core containers/startup units after two current-plan acknowledgements, including deliberately accepted outages for active consumers. Preserve data, networks, protected owners, bindings, workloads and other providers by default. --delete-data additionally selects owned Core volumes and requires separate deletion consent. --yes replaces no consequence or deletion consent. --all is the explicit installation cleanup path across all Targets; it selects owned data and installation state for deletion while preserving application source repositories and external application-owned data.",
 			Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
-				if inApplicationRepository() && !containsExactArgument(args, "--all") {
-					return appDestroyCommand(store).Run(ctx, args, out, errOut)
-				}
 				return runtimeDestroyCommand(ctx, args, out, errOut)
 			},
 		},

@@ -75,7 +75,7 @@ Aktuelle Daten liefert `baha agent describe -o json` (`cli_coverage`). Nach Code
 | `baha config prompt` | Darstellung |  |  | Client-local shell prompt display preferences; explicit target arguments and target inspection provide semantic context. |
 | `baha connect` | semantisch | CLI -o json / typed MCP result | baseharbor.connectivity.connect |  |
 | `baha connections` | semantisch | CLI -o json / typed MCP result | baseharbor.connectivity.list |  |
-| `baha destroy` | semantisch | CLI -o json / typed MCP result | baseharbor.control-plane.destroy | Control-plane mode maps here; repository application mode uses destroy. --all maps to installation.destroy after authorization of every discovered deployment. All destruction retains ownership checks and explicit approval. |
+| `baha destroy` | semantisch | CLI -o json / typed MCP result | baseharbor.control-plane.destroy | Wirkt unabhängig vom Repository auf Installation/Core; `baha app destroy` entfernt eine Application. --all ruft installation.destroy after authorization of every discovered deployment. All destruction retains ownership checks and explicit approval. |
 | `baha dev` | Darstellung |  |  | Command group; invoke its supported subcommands. |
 | `baha dev cleanup` | excluded |  |  | Workstation-local removal of owned hosts and CA trust, preserving other connections; explicit host operator approval required. No Core or application mutation. |
 | `baha dev hosts` | excluded |  |  | Workstation-local hosts-file opt-in and ownership cleanup; cannot mutate the MCP server host on behalf of a remote client. Names come from authenticated control-plane.status metadata. |
