@@ -12,8 +12,20 @@ import (
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/deployment"
+	"github.com/mcpdev80/baseharbor/internal/machine"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
+
+func TestFullDestroyInventoryMissingRuntimeExplainsSafeNextStep(t *testing.T) {
+	err := fullDestroyInventoryError(deployment.ResolvedTarget{Name: "podman-test", RuntimeProvider: "podman"}, fmt.Errorf("detect provider: %w", bhruntime.ErrRuntimeNotFound))
+	var detail *machine.Error
+	if !errors.As(err, &detail) || detail.Code != machine.ErrorCapabilityMissing {
+		t.Fatalf("missing runtime was not reported as a capability issue: %v", err)
+	}
+	if !strings.Contains(detail.Message, "podman-test") || !strings.Contains(detail.Next, "install the podman runtime") || !strings.Contains(detail.Next, "No resources were removed") {
+		t.Fatalf("missing runtime error lacks a safe, actionable next step: %+v", detail)
+	}
+}
 
 type inventoryTestRuntime struct {
 	bhruntime.RuntimeProvider

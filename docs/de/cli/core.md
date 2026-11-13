@@ -25,23 +25,6 @@ Entwicklungsrechner über das ausgewählte Core-Target. Der verbindliche Ablauf 
 Die Geräteeinschreibung ist von der interaktiven OIDC-Anmeldung eines Operators
 getrennt. Siehe [Befehle für Sicherheit und Vertrauen](security-trust.md).
 
-## Core gezielt abbauen
-
-Außerhalb eines App-Repositories entfernt ein bestätigtes `baha destroy` nur
-die kanonischen PostgreSQL-/OpenBao-Container und ihre Startdefinitionen. Aktive
-Verbraucher verhindern die bewusst gewählte Entscheidung nicht; die konkreten
-Ausfallfolgen benötigen zwei Bestätigungen des aktuellen Plans. Volumes,
-Netzwerke, geschützte Zugangsdaten/Konfiguration, Bindings, Workloads, andere
-Provider und Sicherheitsrichtlinien bleiben für Wiederaufnahme oder Retry.
-Erhalt beweist keine laufende Secret-Zustellung, Anmeldung oder Erneuerung.
-
-`--delete-data` wählt zusätzlich die eigenen Core-Volumes zur Löschung aus und
-erzeugt einen anderen Plan. Nach beiden Planbestätigungen ist separate
-Löschzustimmung erforderlich. Erhaltene Zugangsdaten stellen gelöschte Volume-
-Inhalte nicht wieder her. `--yes` ersetzt keine dieser Zustimmungen. MCP verwendet
-`delete_data` für die Auswahl und `provider_change_consent` für die Zustimmung
-zum konkreten Plan.
-
 | Befehl | Aufgabe | Eingriff |
 | --- | --- | --- |
 | `baha init` | Aktuelles Repository übernehmen und benötigten Core einrichten | Verändernd |
@@ -50,7 +33,7 @@ zum konkreten Plan.
 | `baha status` | Im Repository Application-, sonst Control-Plane-Status | Lesend |
 | `baha plan` | Application-Plan anzeigen | Lesend |
 | `baha doctor` | Application/Control Plane diagnostizieren | Standardmäßig lesend |
-| `baha destroy` | Eigene Ressourcen entfernen | Destruktiv |
+| `baha destroy` | Gesamte Installation über konfigurierte Targets entfernen | Destruktiv |
 | `baha update` | Unterstützten Update-Pfad ausführen | Verändernd |
 | `baha version` | Build-Version anzeigen | Lesend |
 
@@ -95,14 +78,16 @@ Mit `baha up` wird sie fortgesetzt. `doctor --fix` ist ausdrücklich verändernd
 
 ## Vollständiges Entfernen
 
-`baha destroy` wirkt unabhängig vom aktuellen Verzeichnis auf BaseHarbor-Installationsressourcen. Standardmäßig entfernt es nur die kanonischen Core-Container und Startdienste; `baha app destroy NAME` entfernt gezielt eine Application. `baha destroy --all` entfernt alle eigenen Ressourcen und Installationsdaten über alle konfigurierten Targets. Ohne ausdrückliche Freigabe wird nicht gelöscht.
+`baha destroy` entfernt die BaseHarbor-Installation über alle konfigurierten Targets, unabhängig vom aktuellen Verzeichnis. Dabei werden registrierte Apps, eigene Provider und Runtime-Ressourcen, Core-Dienste sowie BaseHarbor-Konfiguration und lokaler Zustand entfernt. App-Quellcode und externe Infrastruktur bleiben erhalten. `baha app destroy NAME` entfernt dagegen nur eine einzelne App und lässt die Installation bestehen. `--all` bleibt als Rückwärtskompatibilitäts-Alias gültig.
+
+Der Befehl zeigt den konkreten Auswirkungsplan und verlangt die dazugehörigen Bestätigungen; `--yes` überspringt diese nicht. Eigene Daten werden zur dauerhaften Löschung ausgewählt und benötigen eine separate Datenlöschungs-Bestätigung. Externe Recovery-Dateien und Ressourcen ohne verifizierbaren Besitz bleiben erhalten. Kann ein Target nicht vollständig inventarisiert werden, stoppt der Abbau vor Änderungen und bewahrt den Zustand für einen erneuten Versuch.
 
 ```bash
-baha destroy --all -o json
-baha destroy --all --yes -o json
+baha destroy -o json
+baha destroy --yes -o json
 ```
 
-Diese Ausgabe zeigt Ressourcen und bewahrtes Recovery-Material. Erst `baha destroy --all --yes -o json` führt das genehmigte Entfernen aus. Externe Recovery-Dateien werden als `PRESERVED` aufgeführt, nicht gelesen oder automatisch gelöscht. Container-Alter oder rekonstruierte Namen beweisen keinen Besitz.
+Diese Ausgabe zeigt Ressourcen und bewahrtes Recovery-Material. Die bestätigte Ausführung löscht nur verifiziert BaseHarbor-eigene Ressourcen. Externe Recovery-Dateien werden als `PRESERVED` aufgeführt, nicht gelesen oder automatisch gelöscht. Container-Alter oder rekonstruierte Namen beweisen keinen Besitz.
 
 Exakte Referenz: [Core-Befehle (EN)](https://mcpdev80.github.io/baseharbor/cli/core/).
 

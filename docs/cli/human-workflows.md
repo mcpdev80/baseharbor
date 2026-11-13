@@ -19,7 +19,7 @@ The default human CLI is **task-first**. Most developer operations work in the c
 | Back up / restore | `baha backup` / `baha restore` |
 | Remove owned application state | `baha app destroy NAME --yes` |
 
-`baha destroy` always operates on BaseHarbor installation resources, regardless of the current directory; use `baha app destroy NAME` for one application. **`baha destroy --all` is installation-wide across all Targets** and must be reviewed separately. `baha down` does not delete application persistent data.
+`baha destroy` removes the complete BaseHarbor installation across all configured Targets; use `baha app destroy NAME` for one application. It displays the concrete plan and requires consequence and data-deletion consent. `baha down` does not delete application persistent data.
 
 Use `baha --help` or `baha COMMAND --help`; developer tasks appear first, and specialist operator namespaces remain discoverable.
 

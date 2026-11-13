@@ -37,7 +37,7 @@ These commands form the shortest normal BaseHarbor workflow.
 | `baha status` | Show application status in a repository, otherwise control-plane status | Read-only |
 | `baha plan` | Show the application plan | Read-only |
 | `baha doctor` | Diagnose the current application/control plane | Read-only by default |
-| `baha destroy` | Remove BaseHarbor-managed resources/state | Destructive |
+| `baha destroy` | Remove the complete installation across configured Targets | Destructive |
 | `baha update` | Update BaseHarbor and Core providers through the supported update path | Mutating |
 | `baha version` | Show build version | Read-only |
 
@@ -89,23 +89,19 @@ published release command, so Doctor says to install the matching build there.
 
 ## `baha destroy`
 
-`baha destroy` always operates on BaseHarbor installation resources, regardless of the current directory. By default it removes only canonical Core containers/startup units; use `baha app destroy NAME` to remove one application. `baha destroy --all` removes all owned resources and installation state across all configured Targets.
+`baha destroy` always removes the BaseHarbor installation across all configured
+Targets, regardless of the current directory. It removes registered applications,
+owned providers and runtime resources, Core services, BaseHarbor configuration,
+and local state. Application source repositories and external infrastructure are
+preserved. Use `baha app destroy NAME` to remove just one application while
+keeping the installation. `--all` remains accepted as a compatibility alias.
 
-Outside a repository, confirmed Core destruction removes only the canonical
-PostgreSQL/OpenBao containers and startup units. It is permitted with active
-consumers after two acknowledgements of the current outage plan. Volumes,
-networks, protected credentials/configuration, bindings, workloads, other
-providers and security policy remain for explicit resume or retry. Retention
-does not prove continued secret delivery, authentication or renewal.
-
-`--delete-data` additionally selects the owned Core volumes. This creates a
-different plan and requires independent data-deletion consent after both plan
-stages. Deleted volume contents cannot be restored from retained credentials.
-`--yes` replaces neither acknowledgement nor deletion consent. MCP uses
-`delete_data` for the selection and `provider_change_consent` for approval of
-the concrete plan.
-
-`baha destroy --all` is the explicit installation-cleanup path and removes BaseHarbor-owned installation state while preserving application source repositories and external infrastructure.
+The command displays the concrete impact plan and requires its consequence
+acknowledgements; `--yes` does not skip them. Owned data is selected for permanent
+deletion and requires a separate data-deletion consent. External recovery files
+and resources whose ownership cannot be verified are preserved. If a Target
+cannot be inventoried, destruction stops before mutation and retains ownership
+state so the issue can be fixed and retried.
 
 ## Example: start, inspect and stop an order API
 
@@ -124,8 +120,8 @@ The plan previews deployment; `up` converges it; status reports its result. `bah
 ## Destroy inventory and preserved recovery material
 
 ```bash
-baha destroy --all -o json
-baha destroy --all --yes -o json
+baha destroy -o json
+baha destroy --yes -o json
 ```
 
 The plan names owned containers, networks and volumes, including older resources from the same target. Creation time alone never grants ownership. Runtime cleanup verifies remaining resources before deleting installation state. External recovery files are listed as `PRESERVED` and are never read for the report or deleted automatically. Decide separately whether the recovery copy is still needed before removing it.

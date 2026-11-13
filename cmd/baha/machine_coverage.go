@@ -182,7 +182,7 @@ var cliSemanticModes = map[string]string{
 	"baha update":          "--check maps to release.check. Installing replaces the execution-host binary and is explicitly excluded from MCP; use the host operator CLI with --yes.",
 	"baha up":              "Control-plane-only mode maps here. Repository application mode additionally uses app.configure and apply; host trust installation uses trust.install with approval.",
 	"baha down":            "Control-plane mode maps here; repository application mode uses app.stop.",
-	"baha destroy":         "Always targets installation/Core lifecycle regardless of repository; use baha app destroy for one application. --all maps to installation.destroy after authorization of every discovered deployment. All destruction retains ownership checks and explicit approval.",
+	"baha destroy":         "Always targets complete installation destruction regardless of repository; use baha app destroy for one application and baha down to stop Core services. Authorizes every discovered deployment. All destruction retains ownership checks and explicit approval.",
 	"baha status":          "Control-plane mode maps here; repository application mode uses status.",
 	"baha doctor":          "Control-plane mode maps here; --fix uses control-plane.repair and rechecks readiness. Repository mode uses doctor or repair.",
 	"baha app init":        "New repository intent uses app.adopt; an existing repository uses app.configure. Interactive suggestions are presentation only.",

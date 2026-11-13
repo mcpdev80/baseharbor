@@ -21,7 +21,7 @@ Application-Befehle arbeiten mit dem portablen Contract und seinem Deployment-Zu
 | `baha status` | Zustand beobachten |
 | `baha doctor` | Diagnostizieren, optional reparieren |
 | `baha app update` | Unterstützte Application-Source aktualisieren |
-| `baha destroy` | Application-eigene Ressourcen entfernen |
+| `baha app destroy NAME` | Eine Application und ihre eigenen Ressourcen entfernen |
 
 Auch bei einem ausgewählten Remote-Core-Target lautet der Repository-Ablauf
 `baha app init`, danach `baha up`. Die Initialisierung registriert den Vertrag

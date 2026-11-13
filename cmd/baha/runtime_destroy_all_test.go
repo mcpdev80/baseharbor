@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"github.com/mcpdev80/baseharbor/internal/hosttrust"
 	"os"
@@ -31,14 +32,19 @@ func TestFullDestroyDryRunDoesNotMutateState(t *testing.T) {
 
 	ctx := cli.WithOutputOptions(context.Background(), cli.OutputOptions{NonInteractive: true})
 	var out bytes.Buffer
-	if err := runtimeDestroyAll(ctx, []string{"--all"}, &out, &out); err != nil {
+	err = runtimeDestroyCommand(ctx, []string{"-o", "json"}, &out, &out)
+	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(targetRoot); err != nil {
 		t.Fatalf("dry-run mutated target state: %v", err)
 	}
-	if !bytes.Contains(out.Bytes(), []byte("No changes were made")) {
-		t.Fatalf("expected dry-run guidance, got:\n%s", out.String())
+	var report destroyReport
+	if err := json.Unmarshal(out.Bytes(), &report); err != nil {
+		t.Fatalf("root destroy did not return the installation preview: %v\n%s", err, out.String())
+	}
+	if !report.All || !report.Preview {
+		t.Fatalf("bare baha destroy did not select installation scope: %#v", report)
 	}
 }
 

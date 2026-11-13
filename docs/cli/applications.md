@@ -54,7 +54,7 @@ Helm and Kustomize are not v0.4.20 source adapters.
 | `baha status` | Observe application state |
 | `baha doctor` | Diagnose and optionally repair |
 | `baha app update` | Update supported application source/state |
-| `baha destroy` | Remove application-owned resources |
+| `baha app destroy NAME` | Remove one application and its owned resources |
 
 ## Operations
 

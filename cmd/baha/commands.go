@@ -92,9 +92,9 @@ func rootCommand() *cli.Command {
 		},
 		{
 			Name:    "destroy",
-			Summary: "Remove BaseHarbor installation resources with explicit consequence consent",
-			Usage:   "baha destroy [--yes] [--delete-data] | baha destroy --all [--yes]",
-			Long:    "Always operates on BaseHarbor installation resources, regardless of the current directory; use 'baha app destroy NAME' for one application. By default, remove only canonical Core containers/startup units after two current-plan acknowledgements, including deliberately accepted outages for active consumers. Preserve data, networks, protected owners, bindings, workloads and other providers by default. --delete-data additionally selects owned Core volumes and requires separate deletion consent. --yes replaces no consequence or deletion consent. --all is the explicit installation cleanup path across all Targets; it selects owned data and installation state for deletion while preserving application source repositories and external application-owned data.",
+			Summary: "Remove the complete BaseHarbor installation with explicit consequence consent",
+			Usage:   "baha destroy [--yes]",
+			Long:    "Removes registered applications, owned providers and runtime resources, Core services, and BaseHarbor configuration/state across all configured Targets. Application source repositories and external infrastructure are preserved. Use 'baha app destroy NAME' to remove one application while keeping the installation. The command shows the concrete impact plan and requires its acknowledgements plus separate data-deletion consent; --yes skips none of them. Targets that cannot be inventoried are left untouched and retain ownership state for retry. --all remains as a compatibility alias.",
 			Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 				return runtimeDestroyCommand(ctx, args, out, errOut)
 			},

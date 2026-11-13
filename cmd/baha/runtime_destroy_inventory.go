@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/deployment"
+	"github.com/mcpdev80/baseharbor/internal/machine"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
@@ -191,9 +193,18 @@ func collectFullDestroyInventory(ctx context.Context, targets []deployment.Resol
 	for _, target := range targets {
 		plan, err := collectTargetDestroyInventory(inventoryCtx, target, false)
 		if err != nil {
-			return nil, fmt.Errorf("full destroy inventory for target %s: %w", target.Name, err)
+			return nil, fullDestroyInventoryError(target, err)
 		}
 		plans = append(plans, plan)
 	}
 	return plans, nil
+}
+
+func fullDestroyInventoryError(target deployment.ResolvedTarget, err error) error {
+	if errors.Is(err, bhruntime.ErrRuntimeNotFound) {
+		return machine.NewError(machine.ErrorCapabilityMissing,
+			fmt.Sprintf("Cannot inspect Target %q because its %s runtime is unavailable on this workstation.", target.Name, target.RuntimeProvider),
+			fmt.Sprintf("Restore or install the %s runtime used by Target %q, then run 'baha destroy' again. No resources were removed.", target.RuntimeProvider, target.Name), true)
+	}
+	return fmt.Errorf("full destroy inventory for target %s: %w", target.Name, err)
 }

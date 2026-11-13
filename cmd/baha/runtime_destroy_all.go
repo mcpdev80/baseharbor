@@ -43,17 +43,17 @@ func runtimeDestroyCommand(parent context.Context, args []string, out, errOut io
 	}
 	args = filtered
 	if format == outputJSON {
-		confirmed, all, deleteData := false, false, false
+		confirmed, all, deleteData := false, true, false
 		for _, arg := range args {
 			switch arg {
 			case "--yes":
 				confirmed = true
-			case "--all":
+			case "--all": // Kept as a backwards-compatible alias; installation scope is now the default.
 				all = true
 			case "--delete-data":
 				deleteData = true
 			default:
-				return usageError("unknown destruction argument", "Use --yes or --all.")
+				return usageError("unknown destruction argument", "Use baha destroy [--yes].")
 			}
 		}
 		parent, report := withDestroyReport(parent, all)
@@ -77,16 +77,6 @@ func runtimeDestroyCommand(parent context.Context, args []string, out, errOut io
 		return writeJSON(out, report)
 	}
 
-	full := false
-	for _, arg := range args {
-		if arg == "--all" {
-			full = true
-			break
-		}
-	}
-	if !full {
-		return runtimeDestroy(parent, args, out)
-	}
 	return runtimeDestroyAll(parent, args, out, errOut)
 }
 
@@ -98,7 +88,7 @@ func runtimeDestroyAll(parent context.Context, args []string, out, errOut io.Wri
 		case "--yes":
 			confirmed = true
 		default:
-			return usageError("unknown argument "+arg, "Usage: baha destroy --all [--yes]")
+			return usageError("unknown argument "+arg, "Usage: baha destroy [--yes]")
 		}
 	}
 

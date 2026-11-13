@@ -19,7 +19,7 @@ Die CLI ist **auf Aufgaben ausgerichtet**. Entwickler arbeiten überwiegend im a
 | Sichern / wiederherstellen | `baha backup` / `baha restore` |
 | Application-eigene Laufzeit entfernen | `baha app destroy NAME --yes` |
 
-`baha destroy` wirkt unabhängig vom aktuellen Verzeichnis auf BaseHarbor-Installationsressourcen; `baha app destroy NAME` entfernt gezielt eine Application. **`baha destroy --all` wirkt installationsweit über alle Targets** und muss separat geprüft werden. `baha down` löscht keine persistenten Application-Daten.
+`baha destroy` entfernt die gesamte BaseHarbor-Installation über alle konfigurierten Targets; `baha app destroy NAME` entfernt nur eine einzelne App. Der konkrete Plan sowie die Folgen- und Datenlöschungs-Bestätigungen werden angezeigt. `baha down` löscht keine persistenten Application-Daten.
 
 `baha --help` und `baha BEFEHL --help` zeigen zuerst typische Entwickleraufgaben; Spezialbefehle bleiben auffindbar.
 
