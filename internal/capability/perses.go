@@ -143,6 +143,58 @@ type PersesManagementSurface struct {
 // can never assert "verified"/"healthy". No SUPPORTED HA line can be claimed.
 const PersesReachabilityUnverified = "unverified"
 
+// PersesStatus is the machine-readable public status state of the optional
+// Perses management surface. It is EXACTLY one of the three values below and
+// no other: the status contract exposes the three distinguishable states to
+// consumers, not the internal Provisioned/Reachability axes.
+//
+//   - "not_configured":    manifest without a selected Perses surface.
+//   - "configured_unverified": selected AND pinned release validated, but no
+//     real Perses health probe exists, so reachability stays unverified. This
+//     is the ONLY reachable state this Core produces for a selected surface.
+//   - "verified":          only when a real Perses health probe observes the
+//     surface. That probe does not exist in this Core, so this state can never
+//     be produced here — pin validation alone MUST NOT emit it.
+type PersesStatus string
+
+const (
+	PersesStatusNotConfigured      PersesStatus = "not_configured"
+	PersesStatusConfiguredUnverified PersesStatus = "configured_unverified"
+	PersesStatusVerified           PersesStatus = "verified"
+)
+
+// PersesStatusNotConfiguredPtr is the pointer form of
+// PersesStatusNotConfigured, used where a *PersesStatus is required (e.g. the
+// fail-closed early returns of the management-UI surface builder).
+var PersesStatusNotConfiguredPtr = persesStatusNotConfiguredInstance()
+
+func persesStatusNotConfiguredInstance() *PersesStatus {
+	status := PersesStatusNotConfigured
+	return &status
+}
+
+// PersesStatusNow maps the manifest truth to the public three-state contract:
+//   - unselected surface            -> not_configured
+//   - selected + pinned release OK  -> configured_unverified (always, because no
+//     real Perses health path exists to prove reachability)
+//   - selected but release invalid  -> not_configured (fail-closed)
+//
+// It never returns "verified": a real Perses health probe is required for that,
+// and this Core defines the optional seam only. Pin validation alone must never
+// map into "verified"/"ready".
+func PersesStatusNow(selected bool) *PersesStatus {
+	if !selected {
+		status := PersesStatusNotConfigured
+		return &status
+	}
+	if ValidatePersesRelease(PersesDefaultRelease) != nil {
+		status := PersesStatusNotConfigured
+		return &status
+	}
+	status := PersesStatusConfiguredUnverified
+	return &status
+}
+
 // PersesManagementSurfaceNow returns the declarative Perses realization for the
 // selected optional observability management surface. Fail closed: it is
 // grounded in manifest truth — selected (services.perses) and the pinned

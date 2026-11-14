@@ -47,6 +47,19 @@ Perses release actually ships and supports their plugin) already declare.
 - Never false-declare metrics/logs/traces application capabilities and never
   replace the Prometheus management UI silently.
 
+The public status (`baha status --json`, `baha app status --json`) reports the
+Perses management surface through a machine-readable `perses` field holding
+EXACTLY one of three distinguishable states:
+
+- `not_configured`: no Perses selection in the manifest (the fail-closed
+  default), never "configured".
+- `configured_unverified`: the surface is selected and the pinned release
+  validated, but this Core defines the seam only and ships no Perses health
+  probe, so reachability stays unverified. This is the only reachable state
+  for a selected surface.
+- `verified`: only when a real Perses health probe observes the surface. Pin
+  validation alone MUST NOT emit this state.
+
 ## Management roles
 
 The only provider-neutral BaseHarbor management-role profile is:

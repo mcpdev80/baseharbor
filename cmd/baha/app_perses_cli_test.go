@@ -39,6 +39,7 @@ type persesManagementSurface struct {
 type persesStatusReport struct {
 	State        string                    `json:"state"`
 	Ready        bool                      `json:"ready"`
+	Perses       *string                   `json:"perses"`
 	ManagementUI []persesManagementSurface `json:"management_ui"`
 	Checks       []struct {
 		Name   string `json:"name"`
@@ -100,6 +101,53 @@ func assertPersesSurfaceUnverified(t *testing.T, report persesStatusReport) {
 			t.Fatalf("check %s reports %q: the configuration-only seam must never verify management UI reachability", check.Name, check.State)
 		}
 	}
+}
+
+// assertPersesConfiguredUnverified pins the machine-readable three-state contract
+// on the parsed JSON: for a selected, validly pinned Perses surface WITHOUT a
+// real health proof the CLI MUST report EXACTLY "configured_unverified"
+// (is-equality — pin validation alone must never map into "verified"), and the
+// public surface still carries no ready/verified check. This is a positive
+// claim, not a "does-not-contain-verified" vacuous reject.
+func assertPersesConfiguredUnverified(t *testing.T, report persesStatusReport) {
+	t.Helper()
+	if report.Perses == nil {
+		t.Fatalf("the status JSON must expose a machine-readable perses field with exactly one of {not_configured, configured_unverified, verified}")
+	}
+	if *report.Perses != string(capability.PersesStatusConfiguredUnverified) {
+		t.Fatalf("selected+valid Perses without a health probe must report %q, got %q (pin validation alone must never become verified)",
+			capability.PersesStatusConfiguredUnverified, *report.Perses)
+	}
+	if *report.Perses == string(capability.PersesStatusVerified) {
+		t.Fatalf("a selected Perses surface with no real health probe must never report %q", capability.PersesStatusVerified)
+	}
+	assertPersesSurfaceUnverified(t, report)
+}
+
+// persesProbeAppReport authors an initialized repository and returns its parsed
+// status report through the production CLI entry (see persesProbeApp for the
+// applied-state fixture; this form keeps the not-applied face, which is the
+// fail-closed not_configured default).
+func persesProbeAppReport(t *testing.T, ctx context.Context, perses bool) persesStatusReport {
+	t.Helper()
+	root := t.TempDir()
+	m := application.New("perses-cli", "dev", false, false, false)
+	m = application.WithWorkloadComponents(m, "api")
+	m = application.WithMetricsSource(m, "application", "api", 8080, "/metrics")
+	m.Services.ObservabilityManagementUI = true
+	m.Services.Perses = perses
+	if err := os.WriteFile(filepath.Join(root, "compose.yaml"), []byte(persesProbeCompose), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeInitializedAuthoredManifest(t, filepath.Join(root, application.RepositoryManifestName), m, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(root)
+	_, err := resolveApplication(ctx, application.DefaultStore(), nil, "status")
+	if err != nil {
+		t.Fatalf("resolve probe application: %v", err)
+	}
+	return runPersesStatusCommand(t, ctx)
 }
 
 // persesProbeApp authors an initialized repository whose observability
@@ -374,6 +422,42 @@ func TestBahaStatusPersesReportsUnsupportedAuthThroughCLI(t *testing.T) {
 			surface.AuthenticationClass, application.ManagementAuthUnsupported)
 	}
 	assertPersesSurfaceUnverified(t, report)
+}
+
+// TestBahaStatusPersesConfiguredUnverifiedPositive drives the genuine
+// `baha status --json` for a selected, validly pinned Perses surface WITHOUT a
+// running health probe and asserts the machine-readable perses field is EXACTLY
+// "configured_unverified" (is-equality), while the public surface is still not
+// ready. Pin validation alone must never map into "verified"; a real health
+// path is required for that, and this Core ships none.
+func TestBahaStatusPersesConfiguredUnverifiedPositive(t *testing.T) {
+	t.Setenv("BASEHARBOR_TARGET", "")
+	t.Setenv("BASEHARBOR_STATE_DIR", "")
+	ctx := t.Context()
+	configureTestTarget(t)
+	_, report := persesProbeApp(t, ctx, true)
+	assertPersesConfiguredUnverified(t, report)
+}
+
+// TestBahaStatusPersesNotConfiguredWhenUnselected drives the same JSON entry
+// for an unselected Perses surface and asserts the machine-readable state is
+// exactly "not_configured" (the fail-closed default), never configured or
+// unverified.
+func TestBahaStatusPersesNotConfiguredWhenUnselected(t *testing.T) {
+	t.Setenv("BASEHARBOR_TARGET", "")
+	t.Setenv("BASEHARBOR_STATE_DIR", "")
+	ctx := t.Context()
+	configureTestTarget(t)
+	report := persesProbeAppReport(t, ctx, false)
+	if report.Perses == nil {
+		t.Fatalf("the status JSON must expose a machine-readable perses field even for the not-configured default")
+	}
+	if *report.Perses != string(capability.PersesStatusNotConfigured) {
+		t.Fatalf("unselected Perses must report %q, got %q", capability.PersesStatusNotConfigured, *report.Perses)
+	}
+	if *report.Perses == string(capability.PersesStatusConfiguredUnverified) || *report.Perses == string(capability.PersesStatusVerified) {
+		t.Fatalf("unselected Perses must never be reported as configured_unverified or verified, got %q", *report.Perses)
+	}
 }
 
 // TestPersesReleaseFailClosedOnUnknownAuthClass guards the contract seam the

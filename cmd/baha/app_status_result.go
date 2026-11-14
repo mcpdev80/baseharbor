@@ -35,6 +35,7 @@ type applicationStatusResult struct {
 	ManagementUI    []application.ManagementUISurface            `json:"management_ui,omitempty"`
 	OperatorAuth    operatorAuthObservation                      `json:"operator_auth"`
 	Availability    []availability.NegotiationResult             `json:"availability,omitempty"`
+	Perses          *capability.PersesStatus                     `json:"perses,omitempty"`
 
 	tlsStatus     *applicationTLSStatus
 	tlsErr        error
@@ -154,10 +155,16 @@ func collectApplicationStatusResult(ctx context.Context, store application.Store
 		}
 	}
 
+	// The Perses three-state contract is manifest-declaration truth, exposed on
+	// every status JSON regardless of the applied/stopped/not_applied runtime
+	// face: not_configured | configured_unverified | verified. Pin validation
+	// alone can never map into verified — only a real Perses health probe could.
+	persesStatus := capability.PersesStatusNow(resolved.Manifest.Services.ObservabilityManagementUI && resolved.Manifest.Services.Perses)
+
 	var managementUI []application.ManagementUISurface
 	if result.State != "not_applied" {
 		if files, filesErr := application.ExistingRuntimeFiles(resolved.Store, resolved.Manifest); filesErr == nil {
-			managementUI, _ = application.ApplicationManagementUISurfaces(resolved.Manifest, files)
+			managementUI, _, _ = application.ApplicationManagementUISurfaces(resolved.Manifest, files)
 		}
 		if identityUI, identityErr := identityprovider.KeycloakManagementSurfaces(resolved.Manifest, resolved.TargetStateRoot, resolved.Target.Name); identityErr == nil {
 			managementUI = append(managementUI, identityUI...)
@@ -237,6 +244,7 @@ func collectApplicationStatusResult(ctx context.Context, store application.Store
 		RuntimeDocsURL:  runtimeDocsURL,
 		ApplicationURLs: applicationAccessURLs(resolved, result.Ready),
 		ManagementUI:    managementUI,
+		Perses:          persesStatus,
 		tlsStatus:       tlsStatus,
 		tlsErr:          tlsErr,
 		serviceTLSErr:   serviceTLSErr,
