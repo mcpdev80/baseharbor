@@ -30,6 +30,7 @@ class LocalOCIRegistryScriptTests(unittest.TestCase):
             env.update({
                 'BASEHARBOR_TEST_RUNTIME': 'podman',
                 'GITHUB_ENV': str(root / 'github-env'),
+                'GITHUB_STEP_SUMMARY': str(root / 'github-summary'),
                 'HOME': str(home),
                 'PATH': str(fake_bin) + os.pathsep + env.get('PATH', ''),
                 'RUNNER_TEMP': str(root),
