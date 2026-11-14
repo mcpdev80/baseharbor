@@ -80,6 +80,54 @@ func TestUnreachableResolveKeepsOptInFallbackScope(t *testing.T) {
 	}
 }
 
+type localRuntimeImageCompose struct {
+	callerRecordingCompose
+	imageID   string
+	inspected []string
+}
+
+func (c *localRuntimeImageCompose) DirectOutput(_ context.Context, args ...string) (string, error) {
+	c.inspected = append([]string(nil), args...)
+	return c.imageID, nil
+}
+
+func TestUnreachableLocalCandidateUsesPreloadedRuntimeImage(t *testing.T) {
+	installNativeRunner(t, func(context.Context, string, ...string) (string, error) {
+		return "", errors.New("oras: dial tcp: connection refused")
+	})
+	t.Setenv("BASEHARBOR_ALLOW_MUTABLE_DEVELOPMENT_IMAGE", "true")
+	compose := &localRuntimeImageCompose{imageID: "sha256:local-candidate"}
+	var progress []string
+	err := pullResolvedRuntimeImageProgress(context.Background(), compose,
+		"localhost/baseharbor-runtime:pre-release", "", func(detail string) {
+			progress = append(progress, detail)
+		})
+	if err != nil {
+		t.Fatalf("preloaded local image should be usable with the explicit opt-in: %v", err)
+	}
+	if len(compose.pulled) != 0 {
+		t.Fatalf("preloaded local image must not be pulled from a nonexistent localhost registry: %v", compose.pulled)
+	}
+	wantInspect := []string{"image", "inspect", "--format", "{{.Id}}", "localhost/baseharbor-runtime:pre-release"}
+	if strings.Join(compose.inspected, "\x00") != strings.Join(wantInspect, "\x00") {
+		t.Fatalf("local-image inspection args = %q, want %q", compose.inspected, wantInspect)
+	}
+	if len(progress) != 2 || progress[1] != "using the preloaded local development runtime image" {
+		t.Fatalf("local-image progress = %q", progress)
+	}
+}
+
+func TestLocalImageShortcutRequiresLocalReferenceAndSuccessfulInspect(t *testing.T) {
+	compose := &localRuntimeImageCompose{imageID: "sha256:local-candidate"}
+	if localRuntimeImagePresent(context.Background(), compose, "registry.example.invalid/app:edge") {
+		t.Fatal("remote registry reference was treated as a preloaded local image")
+	}
+	compose.imageID = "  "
+	if localRuntimeImagePresent(context.Background(), compose, "localhost/baseharbor-runtime:pre-release") {
+		t.Fatal("empty local image identity was treated as present")
+	}
+}
+
 // TestIsHardRejectionCoversUnverifiableIdentity pins the classifier contract
 // the fallback gates rely on: every unverifiable resolution is a hard
 // rejection, and the identity survives the wrapping through Resolve.
