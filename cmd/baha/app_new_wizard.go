@@ -30,7 +30,18 @@ type guidedStackSelection struct {
 	Created    bool
 }
 
-var appNewLifecycleExecutor = executeApplicationApplyLifecycle
+func appNewLifecycleArgs(ctx context.Context, args []string) (context.Context, []string) {
+	confirm, remaining := stripConfirmCandidateOverride(args)
+	if confirm != "" {
+		ctx = withCandidateConsentDigest(ctx, confirm)
+	}
+	return ctx, remaining
+}
+
+var appNewLifecycleExecutor = func(ctx context.Context, store application.Store, args []string, out, errOut io.Writer) error {
+	ctx, remaining := appNewLifecycleArgs(ctx, args)
+	return executeApplicationApplyLifecycle(ctx, store, remaining, out, errOut)
+}
 
 func runAppNewWizard(ctx context.Context, out, errOut io.Writer) error {
 	reader := bufio.NewReader(appNewInput)
