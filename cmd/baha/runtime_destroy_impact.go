@@ -186,7 +186,7 @@ func authorizeRuntimeDestroyImpact(ctx context.Context, p runtimeDestroyImpact, 
 	if err != nil {
 		return false, err
 	}
-	in := applicationInput(ctx, nil)
+	in := applicationInput(ctx, runtimeInput)
 	if consent == nil && !noInput(ctx) && in != nil && readerIsTerminal(in) {
 		value, err := readProviderImpactAcknowledgements(bufio.NewReader(in), out, application.ProviderImpactPlan{PlanID: p.Scope.PlanID, ConfirmationsRequired: p.Scope.ConfirmationsRequired, Destructive: p.Scope.Destructive})
 		if err != nil {
