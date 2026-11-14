@@ -21,8 +21,9 @@ import (
 var developmentRuntimeExecutable = os.Executable
 
 // Development CLIs cannot consume an unrelated moving edge build. Package the
-// installed binary with the canonical runtime recipe on the owning runtime;
-// explicit image overrides and release images retain their existing behavior.
+// installed binary with the canonical glibc-compatible runtime recipe on the
+// owning runtime; local Go builds may use CGO. Explicit image overrides and
+// release images retain their existing behavior.
 func ensureMatchingDevelopmentRuntimeImage(ctx context.Context, provider bhruntime.RuntimeProvider, out io.Writer) (bool, error) {
 	requested := strings.TrimSpace(os.Getenv("BASEHARBOR_RUNTIME_IMAGE"))
 	managed := regexp.MustCompile(`^localhost/baseharbor-runtime:dev-[0-9a-f]{64}$`).MatchString(requested)

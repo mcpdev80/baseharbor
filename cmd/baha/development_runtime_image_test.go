@@ -72,3 +72,16 @@ func TestDevelopmentRuntimeImageUsesInstalledBinaryAndPreservesOverrides(t *test
 		})
 	}
 }
+
+func TestDevelopmentRuntimeImageSupportsDynamicallyLinkedDeveloperBuilds(t *testing.T) {
+	for _, required := range []string{
+		"FROM debian:trixie-slim@sha256:a72b4433de1cf7d6bae0c4cee74d0547f58601a643b3375f070c51600d63b6b2",
+		"apt-get install -y --no-install-recommends ca-certificates curl",
+		"COPY baha /usr/local/bin/baha",
+		"ENTRYPOINT [\"/usr/local/bin/baha\"]",
+	} {
+		if !strings.Contains(controlplaneassets.BinaryDockerfile, required) {
+			t.Fatalf("runtime image recipe does not support the installed developer CLI: missing %q", required)
+		}
+	}
+}
