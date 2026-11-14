@@ -23,8 +23,20 @@ func TestPersesDefaultReleaseValidates(t *testing.T) {
 	if err := ValidatePersesRelease(PersesDefaultRelease); err != nil {
 		t.Fatalf("pinned default release must validate: %v", err)
 	}
-	if !PersesManagementSurfaceNow().Provisioned {
-		t.Fatal("default release surface must report provisioned=true")
+	// Provisioned is grounded in manifest truth: a pinned release validates.
+	if !PersesManagementSurfaceNow(true).Provisioned {
+		t.Fatal("default release surface must report provisioned=true when selected")
+	}
+	// But this Core defines only the seam, so reachability is never healthy.
+	if PersesManagementSurfaceNow(true).Reachability != PersesReachabilityUnverified {
+		t.Fatalf("selected perses surface reachability = %q, want unverified", PersesManagementSurfaceNow(true).Reachability)
+	}
+	// Without selection the surface must fail closed: not configured.
+	if PersesManagementSurfaceNow(false).Provisioned {
+		t.Fatal("unselected perses surface must not report provisioned=true")
+	}
+	if PersesManagementSurfaceNow(false).Reachability != PersesReachabilityUnverified {
+		t.Fatalf("unselected perses surface reachability = %q, want unverified", PersesManagementSurfaceNow(false).Reachability)
 	}
 }
 

@@ -399,7 +399,7 @@ func ApplicationManagementUISurfaces(m Manifest, files RuntimeFiles) ([]Manageme
 		}
 	}
 	if m.Services.ObservabilityManagementUI && m.Services.Perses {
-		perses := capability.PersesManagementSurfaceNow()
+		perses := capability.PersesManagementSurfaceNow(true)
 		result = append(result, ManagementUISurface{
 			Service:             "observability",
 			Purpose:             ProviderInterfaceObservability,

@@ -123,15 +123,34 @@ type PersesManagementSurface struct {
 	Image                   string
 	PrometheusPluginVersion string
 	AuthenticationClass     string
-	Provisioned             bool
+	// Provisioned is grounded in manifest truth: the surface is selected
+	// (services.perses) and the pinned release contract validates. It reports
+	// whether the surface is configured by declaration, NOT whether a Perses
+	// container is running. Fail closed: without selection or a pinned release
+	// it is false (not-configured), never a false "configured" declaration.
+	Provisioned bool
+	// Reachability is a SEPARATE axis from Provisioned. Provisioned can be true
+	// while Reachability is only "unverified": this Core defines the optional
+	// management seam only and ships no Perses runtime health probe, so the
+	// surface can never report "verified"/"healthy". Never true without an
+	// actual reachable Perses health path (there is none in this task).
+	Reachability string
 }
 
+// PersesReachabilityUnverified is the only reachability state this Core reports
+// for the optional Perses management surface: the contract is defined and
+// fail-closed, but no Perses runtime health probe exists here, so the surface
+// can never assert "verified"/"healthy". No SUPPORTED HA line can be claimed.
+const PersesReachabilityUnverified = "unverified"
+
 // PersesManagementSurfaceNow returns the declarative Perses realization for the
-// selected optional observability management surface. Fail closed: when Perses
-// is selected but not provisioned with a pinned release it reports
-// Provisioned=false and AuthenticationClass=unsupported, never a false
-// "configured" declaration.
-func PersesManagementSurfaceNow() PersesManagementSurface {
+// selected optional observability management surface. Fail closed: it is
+// grounded in manifest truth — selected (services.perses) and the pinned
+// release contract validates — and reports Provisioned=true only then, as a
+// "configured by declaration" surface. Reachability is always unverified: this
+// Core defines the seam, it does not run a Perses health probe. Never a false
+// "configured"/"healthy" declaration.
+func PersesManagementSurfaceNow(selected bool) PersesManagementSurface {
 	release := PersesDefaultRelease
 	surface := PersesManagementSurface{
 		Release:                 release.Version,
@@ -139,10 +158,12 @@ func PersesManagementSurfaceNow() PersesManagementSurface {
 		PrometheusPluginVersion: release.PrometheusPluginVersion,
 		AuthenticationClass:     release.AuthenticationClass,
 		Provisioned:             false,
+		Reachability:            PersesReachabilityUnverified,
 	}
-	if err := ValidatePersesRelease(release); err == nil {
+	if selected && ValidatePersesRelease(release) == nil {
 		// A pinned release is a declaration contract, not a running container.
-		// Provisioning (image pulled, project reconciled) is verified at runtime.
+		// Provisioning (image pulled, project reconciled) is verified at
+		// runtime; here the surface is only "configured by declaration".
 		surface.Provisioned = true
 	}
 	return surface
@@ -156,8 +177,8 @@ func (s PersesManagementSurface) AuthClass() string {
 }
 
 // PersesManagementSurfaceUnprovisioned is the fail-closed surface returned when
-// Perses is selected but no release is pinned: Provisioned=false, auth
-// unsupported.
+// Perses is selected but no release is pinned: Provisioned=false, reachability
+// unverified, auth unsupported.
 func PersesManagementSurfaceUnprovisioned() PersesManagementSurface {
 	return PersesManagementSurface{
 		Release:                 PersesDefaultRelease.Version,
@@ -165,5 +186,6 @@ func PersesManagementSurfaceUnprovisioned() PersesManagementSurface {
 		PrometheusPluginVersion: PersesDefaultRelease.PrometheusPluginVersion,
 		AuthenticationClass:     persesAuthUnsupported,
 		Provisioned:             false,
+		Reachability:            PersesReachabilityUnverified,
 	}
 }

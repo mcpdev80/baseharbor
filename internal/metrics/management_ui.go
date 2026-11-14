@@ -87,8 +87,15 @@ func VerifyManagementUIAt(ctx context.Context, dataDir, namespace string, m appl
 }
 
 // VerifyPersesManagementUIAt enforces the fail-closed Perses seam contract: a
-// selected Perses surface must be provisioned with a pinned release. Container
-// provisioning is verified by the runtime gate that starts the Perses project.
+// selected Perses surface must be provisioned with a pinned release, otherwise
+// it is not configured (fail-closed). Reachability is always unverified — this
+// Core defines the optional seam only and ships no Perses runtime health probe,
+// so the surface can never assert "verified"/"healthy". No SUPPORTED HA claim.
 func VerifyPersesManagementUIAt(ctx context.Context) error {
-	return capability.ValidatePersesRelease(capability.PersesDefaultRelease)
+	if err := capability.ValidatePersesRelease(capability.PersesDefaultRelease); err != nil {
+		return err
+	}
+	// Declared and validated; reachability stays unverified (no Perses health
+	// probe exists here). Do NOT report a "configured"/"healthy" surface.
+	return nil
 }
