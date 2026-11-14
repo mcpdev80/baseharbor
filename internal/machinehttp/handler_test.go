@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -324,6 +325,69 @@ func TestExecutionCannotBeReadByDifferentOperator(t *testing.T) {
 	}
 	if !strings.Contains(recorder.Body.String(), `"code":"policy_denied"`) {
 		t.Fatalf("cross-actor denial is not typed: %s", recorder.Body.String())
+	}
+}
+
+func TestInstallationDestroyReturnsTerminalReceiptAfterRemovingJournal(t *testing.T) {
+	stateRoot := t.TempDir()
+	calls := 0
+	handler, err := New(executorFunc(func(_ context.Context, op machine.Operation, scope machine.OperationContext, _ json.RawMessage, _ ProgressReporter) (json.RawMessage, error) {
+		calls++
+		if op.ID != "installation.destroy" || scope.Target != "local" || scope.Environment != "dev" {
+			t.Fatalf("unexpected destroy request: op=%q scope=%#v", op.ID, scope)
+		}
+		if err := os.RemoveAll(stateRoot); err != nil {
+			return nil, err
+		}
+		return json.RawMessage(`{"verified":true}`), nil
+	}), stateRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := `{"operation_id":"installation.destroy","context":{"environment":"dev","target":"local"},"input":{"approval":true},"wait_for_terminal":true}`
+	standard := withTestPrincipal(httptest.NewRequest(http.MethodPost, "/api/v1/machine/executions", strings.NewReader(strings.Replace(body, `,"wait_for_terminal":true`, "", 1))))
+	standard.Header.Set("Idempotency-Key", "destroy-without-terminal-mode")
+	standard = standard.WithContext(tenancy.WithContext(standard.Context(), &tenancy.Context{
+		TenantID: "tenant-a", ExternalIdentityID: "identity-a", Roles: []string{"editor"},
+	}))
+	standardResponse := httptest.NewRecorder()
+	handler.ServeHTTP(standardResponse, standard)
+	if standardResponse.Code != http.StatusBadRequest || calls != 0 {
+		t.Fatalf("nonterminal installation destroy status=%d calls=%d body=%s", standardResponse.Code, calls, standardResponse.Body.String())
+	}
+	request := withTestPrincipal(httptest.NewRequest(http.MethodPost, "/api/v1/machine/executions", strings.NewReader(body)))
+	request.Header.Set("Idempotency-Key", "installation-destroy-terminal-receipt")
+	request = request.WithContext(tenancy.WithContext(request.Context(), &tenancy.Context{
+		TenantID: "tenant-a", ExternalIdentityID: "identity-a", Roles: []string{"editor"},
+	}))
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("destroy status=%d body=%s", recorder.Code, recorder.Body.String())
+	}
+	var execution machine.Execution
+	if err := json.Unmarshal(recorder.Body.Bytes(), &execution); err != nil {
+		t.Fatal(err)
+	}
+	if execution.OperationID != "installation.destroy" || execution.State != machine.ExecutionSucceeded || string(execution.Result) != `{"verified":true}` {
+		t.Fatalf("terminal receipt=%#v", execution)
+	}
+	if _, err := os.Stat(stateRoot); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("destroy journal root survived: %v", err)
+	}
+	replay := withTestPrincipal(httptest.NewRequest(http.MethodPost, "/api/v1/machine/executions", strings.NewReader(body)))
+	replay.Header.Set("Idempotency-Key", "installation-destroy-terminal-receipt")
+	replay = replay.WithContext(tenancy.WithContext(replay.Context(), &tenancy.Context{
+		TenantID: "tenant-a", ExternalIdentityID: "identity-a", Roles: []string{"editor"},
+	}))
+	replayResponse := httptest.NewRecorder()
+	handler.ServeHTTP(replayResponse, replay)
+	if replayResponse.Code != http.StatusOK || calls != 1 {
+		t.Fatalf("idempotent terminal replay status=%d calls=%d body=%s", replayResponse.Code, calls, replayResponse.Body.String())
+	}
+	var replayed machine.Execution
+	if err := json.Unmarshal(replayResponse.Body.Bytes(), &replayed); err != nil || replayed.State != machine.ExecutionSucceeded {
+		t.Fatalf("terminal replay = %#v err=%v", replayed, err)
 	}
 }
 

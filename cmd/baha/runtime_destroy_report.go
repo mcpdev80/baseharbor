@@ -15,6 +15,7 @@ type ownedDestroyResource struct {
 type destroyReport struct {
 	ProviderChangeResult              *application.ProviderImpactScopeResult `json:"provider_change_result,omitempty"`
 	Impact                            *runtimeDestroyImpact                  `json:"provider_change_plan,omitempty"`
+	AdditionalPlans                   []runtimeDestroyImpact                 `json:"additional_provider_change_plans,omitempty"`
 	Destroyed                         bool                                   `json:"destroyed"`
 	Preview                           bool                                   `json:"preview"`
 	All                               bool                                   `json:"all"`

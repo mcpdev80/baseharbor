@@ -103,6 +103,14 @@ and resources whose ownership cannot be verified are preserved. If a Target
 cannot be inventoried, destruction stops before mutation and retains ownership
 state so the issue can be fixed and retried.
 
+When one remote Core Target is configured, `baha destroy` sends the full
+installation operation through its authenticated Core connection from this
+workstation, then runs native cleanup for local Docker/Podman Targets. The
+remote Core returns its terminal receipt on the same HTTPS request because the
+operation removes its own journal and identity services. More than one remote
+Core is refused before mutation so each installation can receive a separately
+reviewed plan. With only local Targets, the existing native path is used.
+
 ## Example: start, inspect and stop an order API
 
 Inside a scaffold created with `baha new application orders-api --stack go --http --sql`, with a configured runtime Target:

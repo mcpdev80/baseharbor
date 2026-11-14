@@ -79,6 +79,23 @@ func (c *verifiedRemoteCore) requestMachineExecution(
 	ctx context.Context, operationID string, selectors machine.OperationContext,
 	input json.RawMessage, idempotencyKey string,
 ) (machine.Execution, error) {
+	return c.requestMachineExecutionMode(ctx, operationID, selectors, input, idempotencyKey, false)
+}
+
+func (c *verifiedRemoteCore) requestMachineExecutionTerminal(
+	ctx context.Context, operationID string, selectors machine.OperationContext,
+	input json.RawMessage, idempotencyKey string,
+) (machine.Execution, error) {
+	if operationID != "installation.destroy" {
+		return machine.Execution{}, errors.New("terminal execution mode is reserved for installation.destroy")
+	}
+	return c.requestMachineExecutionMode(ctx, operationID, selectors, input, idempotencyKey, true)
+}
+
+func (c *verifiedRemoteCore) requestMachineExecutionMode(
+	ctx context.Context, operationID string, selectors machine.OperationContext,
+	input json.RawMessage, idempotencyKey string, waitForTerminal bool,
+) (machine.Execution, error) {
 	if c == nil || c.client == nil || c.origin == "" || strings.TrimSpace(operationID) == "" || strings.TrimSpace(idempotencyKey) == "" ||
 		selectors.Target != c.target || c.serverTargetName() == "" || selectors.Environment == "" {
 		return machine.Execution{}, errors.New("remote machine operation requires pinned Target, environment and idempotency key")
@@ -91,6 +108,15 @@ func (c *verifiedRemoteCore) requestMachineExecution(
 	discovery, err := c.discoverMachineOperations(ctx)
 	if err != nil {
 		return machine.Execution{}, err
+	}
+	if waitForTerminal {
+		terminalCapable := false
+		for _, capability := range discovery.Capabilities {
+			terminalCapable = terminalCapable || capability == machinehttp.CapabilityTerminalInstallationDestroy
+		}
+		if !terminalCapable {
+			return machine.Execution{}, errors.New("remote Core does not support authenticated terminal receipts for installation.destroy; update the Core before retrying")
+		}
 	}
 	supported := false
 	for _, operation := range discovery.Operations {
@@ -106,7 +132,7 @@ func (c *verifiedRemoteCore) requestMachineExecution(
 		input = json.RawMessage("{}")
 	}
 	payload, err := json.Marshal(machinehttp.ExecuteRequest{
-		OperationID: operationID, Context: selectors, Input: input,
+		OperationID: operationID, Context: selectors, Input: input, WaitForTerminal: waitForTerminal,
 	})
 	if err != nil {
 		return machine.Execution{}, err
@@ -131,13 +157,22 @@ func (c *verifiedRemoteCore) requestMachineExecution(
 		return machine.Execution{}, fmt.Errorf("remote machine execution result unknown; query the pinned Core before retrying with the same idempotency key: %w", err)
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusAccepted {
+	wantStatus := http.StatusAccepted
+	if waitForTerminal {
+		wantStatus = http.StatusOK
+	}
+	if resp.StatusCode != wantStatus {
 		return machine.Execution{}, fmt.Errorf("remote Core rejected machine operation (HTTP %d)", resp.StatusCode)
 	}
 	var execution machine.Execution
 	decoder := json.NewDecoder(io.LimitReader(resp.Body, 1<<20))
 	if err := decoder.Decode(&execution); err != nil || decoder.Decode(new(any)) != io.EOF {
 		return machine.Execution{}, errors.New("remote Core machine execution acknowledgement is invalid")
+	}
+	if waitForTerminal {
+		if err := execution.Validate(); err != nil {
+			return machine.Execution{}, fmt.Errorf("remote Core terminal execution receipt is invalid: %w", err)
+		}
 	}
 	if execution.ContractVersion != machine.ExecutionContractVersion ||
 		execution.OperationID != operationID ||
@@ -147,6 +182,9 @@ func (c *verifiedRemoteCore) requestMachineExecution(
 		execution.ExecutionID == "" ||
 		resp.Header.Get("Location") != "/api/v1/machine/executions/"+execution.ExecutionID {
 		return machine.Execution{}, errors.New("remote Core machine execution acknowledgement does not match the requested authority")
+	}
+	if waitForTerminal && execution.State != machine.ExecutionSucceeded && execution.State != machine.ExecutionFailed {
+		return machine.Execution{}, errors.New("remote Core did not return a terminal installation destroy result")
 	}
 	execution.Context.Target = c.target
 	return execution, nil

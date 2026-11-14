@@ -49,7 +49,7 @@ type remoteJourneyCore struct {
 }
 
 func (f *remoteJourneyCore) SupportedOperationIDs() []string {
-	return []string{"app.list", "app.create", "app.configure", "apply", "dev.domain", "status", "doctor", "control-plane.status", "control-plane.doctor"}
+	return []string{"app.list", "app.create", "app.configure", "apply", "dev.domain", "status", "doctor", "control-plane.status", "control-plane.doctor", "installation.destroy"}
 }
 func (f *remoteJourneyCore) BindSourceTransfers(store *sourcetransfer.Store) { f.transfers = store }
 func (f *remoteJourneyCore) Execute(_ context.Context, op machine.Operation, scope machine.OperationContext, raw json.RawMessage, report machinehttp.ProgressReporter) (json.RawMessage, error) {
@@ -138,6 +138,27 @@ func (f *remoteJourneyCore) Execute(_ context.Context, op machine.Operation, sco
 		}
 		report(machine.OperationProgress{Stage: "verify", Message: "Verifying remote application state."})
 		return encode(map[string]any{"contract_version": machine.ContractVersion, "operation": op.ID, "verified": true, "target": "local", "application": "demo", "environment": "dev", "status": map[string]any{"target": "local", "application": "demo", "environment": "dev", "ready": true}})
+	case "installation.destroy":
+		var input struct {
+			Approval              bool                               `json:"approval"`
+			ProviderChangeConsent *application.ProviderChangeConsent `json:"provider_change_consent,omitempty"`
+		}
+		if json.Unmarshal(raw, &input) != nil {
+			return nil, errors.New("invalid installation destroy payload")
+		}
+		scope, err := remoteJourneyInstallationDestroyScope()
+		if err != nil {
+			return nil, err
+		}
+		impact := &runtimeDestroyImpact{All: true, Scope: scope}
+		if !input.Approval {
+			return encode(destroyReport{Preview: true, All: true, Impact: impact})
+		}
+		if input.ProviderChangeConsent == nil || input.ProviderChangeConsent.PlanID != impact.Scope.PlanID ||
+			!input.ProviderChangeConsent.First || !input.ProviderChangeConsent.Second || !input.ProviderChangeConsent.DeleteData {
+			return nil, errors.New("remote installation destroy lacked exact-plan consent")
+		}
+		return encode(destroyReport{Destroyed: true, All: true, Impact: impact, Results: []fullDestroyResult{{Status: "REMOVED", Resource: "remote-installation"}}})
 	}
 	return nil, errors.New("unsupported operation")
 }
@@ -223,6 +244,52 @@ func TestRemoteRepositoryInitThenBareUpUsesCoreIdentityAndPrompts(t *testing.T) 
 			t.Errorf("missing progress/consent %q", text)
 		}
 	}
+}
+
+func TestRemoteInstallationDestroyReviewsAndExecutesExactPlan(t *testing.T) {
+	ctx, target, core := remoteJourneyFixture(t)
+	scope, err := remoteJourneyInstallationDestroyScope()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx = withProviderChangeConsent(ctx, &application.ProviderChangeConsent{
+		PlanID: scope.PlanID, First: true, Second: true, DeleteData: true,
+	})
+	var output bytes.Buffer
+	if err := remoteInstallationDestroy(ctx, target, &output); err != nil {
+		t.Fatalf("remote installation destroy failed: %v\n%s", err, output.String())
+	}
+	core.mu.Lock()
+	defer core.mu.Unlock()
+	if got := strings.Count(strings.Join(core.operations, ","), "installation.destroy"); got != 2 {
+		t.Fatalf("expected distinct non-mutating review and acknowledged execution, got %v", core.operations)
+	}
+	if !strings.Contains(output.String(), "Remote installation impact plan") || !strings.Contains(output.String(), "permanently removed") {
+		t.Fatalf("missing human review or completion output: %s", output.String())
+	}
+}
+
+func TestRemoteInstallationDestroyRejectsStaleConsentBeforeMutation(t *testing.T) {
+	ctx, target, core := remoteJourneyFixture(t)
+	ctx = withProviderChangeConsent(ctx, &application.ProviderChangeConsent{
+		PlanID: "stale-plan", First: true, Second: true, DeleteData: true,
+	})
+	var output bytes.Buffer
+	err := remoteInstallationDestroy(ctx, target, &output)
+	if err == nil || !strings.Contains(err.Error(), "stale-impact-consent") {
+		t.Fatalf("stale remote consent result: %v\n%s", err, output.String())
+	}
+	core.mu.Lock()
+	defer core.mu.Unlock()
+	if got := strings.Count(strings.Join(core.operations, ","), "installation.destroy"); got != 1 {
+		t.Fatalf("stale consent reached destructive execution: %v", core.operations)
+	}
+}
+
+func remoteJourneyInstallationDestroyScope() (application.ProviderImpactScope, error) {
+	return application.ComposeProviderImpactScope(application.ProviderScopeOwner{
+		Owner: "installation.destroy", Reference: "/remote/test/config", Subject: "installation.destroy", Revision: "remote-test-revision", Destructive: true,
+	}, nil, true)
 }
 
 func TestRemoteRepositoryInitJSONCreatesAndReturnsOnlyCoreIdentity(t *testing.T) {

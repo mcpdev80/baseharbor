@@ -48,6 +48,89 @@ func TestFullDestroyDryRunDoesNotMutateState(t *testing.T) {
 	}
 }
 
+func TestFullDestroyRemotePhaseExcludesOnlyRemoteTargetsAndKeepsLocalTarget(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	dataHome := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", dataHome)
+	cfg := deployment.Config{
+		Version: deployment.ConfigVersion,
+		Access: map[string]deployment.AccessDefinition{
+			"workstation": {Provider: "local", Reference: "workstation"},
+			"core":        {Provider: "baseharbor-core", Reference: "core"},
+		},
+		Targets: map[string]deployment.TargetDefinition{
+			"dev-docker-1": {Runtime: deployment.RuntimeDefinition{Provider: "docker"}, Access: deployment.TargetAccess{Reference: "core"}},
+			"local":        {Runtime: deployment.RuntimeDefinition{Provider: "docker"}, Access: deployment.TargetAccess{Reference: "workstation"}},
+		},
+	}
+	if err := cfg.Save(); err != nil {
+		t.Fatal(err)
+	}
+	root, err := deployment.DataRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, target := range []string{"dev-docker-1", "local"} {
+		if err := os.MkdirAll(filepath.Join(root, "targets", target), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.MkdirAll(filepath.Join(root, "remote-connections", "dev-docker-1"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "remote-connections", "dev-docker-1", "profile.json"), []byte(`{}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	allTargets, _ := discoverFullDestroyTargets()
+	if len(allTargets) != 2 {
+		t.Fatalf("unfiltered inventory = %#v, want configured remote and local state Target", allTargets)
+	}
+	localTargets, discovery := discoverFullDestroyTargets(withFullDestroyExcludeRemoteTargets(context.Background()))
+	if countFullDestroyBlockers(discovery) != 0 || len(localTargets) != 1 || localTargets[0].Name != "local" || localTargets[0].AccessProvider != "local" {
+		t.Fatalf("local-phase inventory = %#v discovery=%#v; want only native local Target", localTargets, discovery)
+	}
+}
+
+func TestFullDestroyRefusesMultipleRemoteCoresBeforeMutation(t *testing.T) {
+	configHome := t.TempDir()
+	dataHome := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", configHome)
+	t.Setenv("XDG_DATA_HOME", dataHome)
+	cfg := deployment.Config{
+		Version: deployment.ConfigVersion,
+		Access: map[string]deployment.AccessDefinition{
+			"core-a": {Provider: "baseharbor-core", Reference: "core-a"},
+			"core-b": {Provider: "baseharbor-core", Reference: "core-b"},
+		},
+		Targets: map[string]deployment.TargetDefinition{
+			"remote-a": {Runtime: deployment.RuntimeDefinition{Provider: "docker"}, Access: deployment.TargetAccess{Reference: "core-a"}},
+			"remote-b": {Runtime: deployment.RuntimeDefinition{Provider: "docker"}, Access: deployment.TargetAccess{Reference: "core-b"}},
+		},
+	}
+	if err := cfg.Save(); err != nil {
+		t.Fatal(err)
+	}
+	dataRoot, err := deployment.DataRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(dataRoot, "targets", "remote-a"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	handled, err := destroyConnectedRemoteInstallation(context.Background(), true, &out, &out)
+	if !handled || err == nil || !strings.Contains(err.Error(), "multiple remote Core installations") {
+		t.Fatalf("multiple remote Cores result: handled=%t err=%v output=%s", handled, err, out.String())
+	}
+	if _, err := os.Stat(filepath.Join(dataRoot, "targets", "remote-a")); err != nil {
+		t.Fatalf("Target state was removed before refusal: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(configHome, "baseharbor", "config.yaml")); err != nil {
+		t.Fatalf("Target config was removed before refusal: %v", err)
+	}
+}
+
 func TestFullDestroyRemovesOwnedLocalStateButPreservesSourceRepository(t *testing.T) {
 	configHome := t.TempDir()
 	dataHome := t.TempDir()

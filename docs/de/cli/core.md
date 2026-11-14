@@ -82,6 +82,8 @@ Mit `baha up` wird sie fortgesetzt. `doctor --fix` ist ausdrücklich verändernd
 
 Der Befehl zeigt den konkreten Auswirkungsplan und verlangt die dazugehörigen Bestätigungen; `--yes` überspringt diese nicht. Eigene Daten werden zur dauerhaften Löschung ausgewählt und benötigen eine separate Datenlöschungs-Bestätigung. Ist ein Target nicht erreichbar, bleiben dessen Runtime-Ressourcen erhalten. Die erreichbaren Targets werden trotzdem bereinigt; nach bestätigtem lokalem Abbau werden auch die lokale Konfiguration und die Recovery-Dateien entfernt.
 
+Ist ein entferntes Core-Target konfiguriert, führt `baha destroy` den vollständigen Abbau über dessen authentifizierte Core-Verbindung vom Entwicklerrechner aus und bereinigt danach lokale Docker-/Podman-Targets nativ. Der Core sendet den Abschluss über dieselbe HTTPS-Anfrage zurück, da der Abbau sein Ausführungsjournal und seine Identitätsdienste entfernt. Bei mehreren entfernten Cores bricht der Befehl vor Änderungen ab, damit jede Installation einen eigenen geprüften Plan erhält. Ohne entfernte Targets bleibt der native lokale Ablauf bestehen.
+
 ```bash
 baha destroy -o json
 baha destroy --yes -o json

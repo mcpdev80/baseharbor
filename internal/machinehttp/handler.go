@@ -27,6 +27,8 @@ const (
 	eventHeartbeatInterval = 15 * time.Second
 )
 
+const CapabilityTerminalInstallationDestroy = "execution.terminal.installation-destroy"
+
 type ProgressReporter func(machine.OperationProgress)
 
 type Executor interface {
@@ -38,6 +40,10 @@ type ExecuteRequest struct {
 	OperationID string                   `json:"operation_id"`
 	Context     machine.OperationContext `json:"context"`
 	Input       json.RawMessage          `json:"input,omitempty"`
+	// WaitForTerminal is restricted to installation.destroy. That operation
+	// removes the Core's own execution journal and authentication dependencies,
+	// so its terminal receipt must return on the already-authenticated request.
+	WaitForTerminal bool `json:"wait_for_terminal,omitempty"`
 }
 
 type Handler struct {
@@ -162,6 +168,9 @@ func (h *Handler) handleDiscovery(w http.ResponseWriter, r *http.Request) {
 	discovery := machine.MachineDiscovery()
 	discovery.Operations = h.operations
 	discovery.HTTP = machine.MachineHTTPBindings()
+	if _, supported := h.operationByID["installation.destroy"]; supported {
+		discovery.Capabilities = append(discovery.Capabilities, CapabilityTerminalInstallationDestroy)
+	}
 	if _, ok := h.executor.(TerminalExecutor); ok {
 		discovery.Capabilities = append(discovery.Capabilities, "streams.terminal")
 	}
@@ -194,6 +203,16 @@ func (h *Handler) handleExecute(w http.ResponseWriter, r *http.Request) {
 		writeMachineError(w, http.StatusNotFound, machine.NewError(machine.ErrorUnsupported, "Unknown machine operation.", "Use GET /api/v1/machine/discovery to negotiate supported operations.", false))
 		return
 	}
+	if operation.ID == "installation.destroy" && !request.WaitForTerminal {
+		writeMachineError(w, http.StatusBadRequest, machine.NewError(machine.ErrorValidationFailed,
+			"installation.destroy requires a terminal receipt on the authenticated request.", "Set wait_for_terminal to true after confirming the Core advertises execution.terminal.installation-destroy.", false))
+		return
+	}
+	if request.WaitForTerminal && operation.ID != "installation.destroy" {
+		writeMachineError(w, http.StatusBadRequest, machine.NewError(machine.ErrorValidationFailed,
+			"wait_for_terminal is supported only for installation.destroy.", "Omit the field for other machine operations.", false))
+		return
+	}
 
 	ctx := operatorauth.WithVerifiedPrincipal(r.Context(), principal)
 	decision, err := operatorauth.AuthorizeMachineOperation(ctx, operatorauth.AuthorizationRequest{
@@ -218,6 +237,10 @@ func (h *Handler) handleExecute(w http.ResponseWriter, r *http.Request) {
 	input := append(json.RawMessage(nil), request.Input...)
 	if len(input) == 0 {
 		input = json.RawMessage("{}")
+	}
+	if request.WaitForTerminal {
+		h.handleTerminalInstallationDestroy(w, ctx, operation, request.Context, input, requestID, decision.Actor)
+		return
 	}
 	execution, created, err := h.executions.createRequest(requestID, operation.ID, decision.Actor, request.Context, input)
 	if err != nil {
@@ -264,6 +287,68 @@ func (h *Handler) handleExecute(w http.ResponseWriter, r *http.Request) {
 			log.Printf("machinehttp: terminal persist for execution %s failed: %v", execution.ExecutionID, runErr)
 		}
 	}
+}
+
+// handleTerminalInstallationDestroy returns the terminal receipt on the same
+// authenticated request. Full installation destruction intentionally removes
+// the Core journal and identity services, making a follow-up poll impossible.
+func (h *Handler) handleTerminalInstallationDestroy(w http.ResponseWriter, ctx context.Context, operation machine.Operation, operationContext machine.OperationContext, input json.RawMessage, requestID string, actor machine.ActorRef) {
+	execution, created, err := h.executions.createRequest(requestID, operation.ID, actor, operationContext, input)
+	if err != nil {
+		writeMachineError(w, machineErrorStatus(err), err)
+		return
+	}
+	if !created {
+		if execution.State == machine.ExecutionSucceeded || execution.State == machine.ExecutionFailed {
+			w.Header().Set("Location", "/api/v1/machine/executions/"+execution.ExecutionID)
+			writeJSON(w, http.StatusOK, execution)
+			return
+		}
+		writeMachineError(w, http.StatusConflict, machine.NewError(machine.ErrorConflict,
+			"This installation destroy request was already admitted and has no terminal receipt.", "Do not replay it with a new request identity; inspect the Core and installation state before retrying.", false))
+		return
+	}
+	started := time.Now().UTC()
+	execution.State = machine.ExecutionRunning
+	execution.StartedAt = &started
+	operationCtx, cancel := context.WithTimeout(ctx, executionMaxRuntime)
+	defer cancel()
+	result, executeErr := h.executor.Execute(operationCtx, operation, operationContext, input, nil)
+	finished := time.Now().UTC()
+	execution.FinishedAt = &finished
+	if executeErr != nil {
+		execution.State = machine.ExecutionFailed
+		execution.Error = machine.Classify(executeErr)
+		if execution.Error == nil {
+			execution.Error = machine.NewError(machine.ErrorInternal, "Installation destroy failed.", "Review the reported cleanup result before retrying.", false)
+		}
+	} else {
+		execution.State = machine.ExecutionSucceeded
+		execution.Result = result
+	}
+	if err := execution.Validate(); err != nil {
+		writeMachineError(w, http.StatusInternalServerError, machine.Wrap(machine.ErrorInternal, err, "Review the Core execution result.", false))
+		return
+	}
+	var persistErr error
+	if execution.State == machine.ExecutionSucceeded {
+		persistErr = h.executions.succeed(execution.ExecutionID, execution.Result)
+	} else {
+		persistErr = h.executions.fail(execution.ExecutionID, executeErr)
+	}
+	if persistErr == nil {
+		if stored, ok := h.executions.get(execution.ExecutionID); ok {
+			execution = stored
+		}
+	} else if err := h.executions.completeEphemeral(execution); err != nil {
+		log.Printf("machinehttp: terminal destroy receipt %s could not update in-memory execution: %v (journal: %v)", execution.ExecutionID, err, persistErr)
+	}
+	w.Header().Set("Location", "/api/v1/machine/executions/"+execution.ExecutionID)
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(execution)
 }
 
 func (h *Handler) runExecution(parent context.Context, executionID string, operation machine.Operation, operationContext machine.OperationContext, input json.RawMessage) error {

@@ -121,6 +121,18 @@ Consumer müssen den Fehlerzustand beibehalten und die Folgen anzeigen. Die Deta
 erteilen keine Freigabe; ein erneuter Versuch benötigt weiterhin die Bestätigungen
 für den aktuellen Plan und eine separate ausdrückliche Zustimmung zur Datenlöschung.
 
+Unterstützt der Core einen terminalen Abschluss für `installation.destroy`,
+weist Discovery die Fähigkeit `execution.terminal.installation-destroy` aus.
+Nur für diese Operation darf ein Client `wait_for_terminal: true` senden. Der
+Core gibt die terminale `Execution v1` samt `Location` mit HTTP `200` über
+dieselbe authentifizierte HTTPS-Anfrage zurück. Der vollständige Abbau entfernt
+das Ausführungsjournal und die Identitätsdienste des Core; eine spätere
+Statusabfrage wäre daher nicht mehr authentifizierbar. Die Anfrage benötigt
+weiterhin einen `Idempotency-Key`. Eine Wiederholung ohne terminalen Abschluss
+wird abgelehnt und darf keine zweite Löschung starten. Nach einem
+Verbindungsabbruch ist das Ergebnis unbekannt; vor einem erneuten Versuch muss
+der Installationszustand geprüft werden.
+
 Die Eingabe der Operation wird nicht in normalen Metadaten der Ausführung beibehalten.
 Executor weist unbekannte Felder zurück, dupliziert Schlüssel in jeder Tiefe, nicht Objekteingabe,
 ungültige UTF-8, Verschachtelung über 64 Levels und hintere JSON-Werte ohne
