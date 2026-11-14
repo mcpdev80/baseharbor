@@ -102,7 +102,11 @@ func resolveAppliedBackendSelection(resolved resolvedApplication, command ...str
 		return projectDesired(m)
 	}
 	encoded := ""
-	record, err := deployment.LoadOptionalDeploymentRecord(resolved.DeploymentIdentity)
+	load := deployment.LoadDeploymentRecord
+	if isReadOnlyApplicationPlanningCommand(command) {
+		load = deployment.LoadOptionalDeploymentRecord
+	}
+	record, err := load(resolved.DeploymentIdentity)
 	if err == nil {
 		encoded = record.Applied.GeneratedState["backend_placements"]
 	} else if state, ok := deployment.DeploymentRecordState(err); !errors.Is(err, os.ErrNotExist) && (!ok || state.Kind != "incomplete") &&
@@ -144,6 +148,13 @@ func resolveAppliedBackendSelection(resolved resolvedApplication, command ...str
 		return application.Manifest{}, err
 	}
 	return projectDesired(projected)
+}
+
+func isReadOnlyApplicationPlanningCommand(command []string) bool {
+	if len(command) == 0 {
+		return false
+	}
+	return command[0] == "init" || command[0] == "plan"
 }
 
 func retainedBackendPlacementProjection(resolved resolvedApplication, m application.Manifest, encoded string) (application.Manifest, error) {
