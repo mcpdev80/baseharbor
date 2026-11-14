@@ -31,6 +31,14 @@ class TargetedDevelopWorkflowTests(unittest.TestCase):
         journey = content.index("Run complete reference journey")
         self.assertLess(install, journey)
         self.assertIn("run: bash scripts/ci-install-oras.sh", content)
+        self.assertIn("BASEHARBOR_ALLOW_MUTABLE_DEVELOPMENT_IMAGE=1 \\", content)
+
+    def test_pre_release_reference_journey_supports_its_preloaded_local_runtime_image(self):
+        release = (Path(__file__).parents[1] / ".github/workflows/pre-release.yml").read_text()
+        install = release.index("Install verified ORAS for Core bootstrap")
+        journey = release.index("Run complete reference journey")
+        self.assertLess(install, journey)
+        self.assertIn("BASEHARBOR_ALLOW_MUTABLE_DEVELOPMENT_IMAGE=1 \\", release)
 
     def test_release_workflow_reuses_actual_native_jobs_and_final(self):
         release = (Path(__file__).parents[1] / ".github/workflows/pre-release.yml").read_text()

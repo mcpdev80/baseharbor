@@ -338,6 +338,7 @@ jobs:
           cd "$workdir"
           started=$(date +%s)
           set +e
+          BASEHARBOR_ALLOW_MUTABLE_DEVELOPMENT_IMAGE=1 \
           BASEHARBOR_PREBUILT_BINARY="$RUNNER_TEMP/pre-release-candidate/baha" \
           BASEHARBOR_SOURCE_REF="$CANDIDATE_SHA" \
           BASEHARBOR_RUNTIME_IMAGE="$BASEHARBOR_RUNTIME_IMAGE" \

@@ -720,6 +720,8 @@ jobs:
         git -C "$workdir" checkout --detach FETCH_HEAD
         test "$(git -C "$workdir" rev-parse HEAD)" = "$DEMO_REF"
         echo "workdir=$workdir" >> "$GITHUB_OUTPUT"
+    - name: Install verified ORAS for Core bootstrap
+      run: bash scripts/ci-install-oras.sh
     - name: Run complete reference journey
       id: journey
       shell: bash
@@ -736,6 +738,7 @@ jobs:
         cd "$workdir"
         started=$(date +%s)
         set +e
+        BASEHARBOR_ALLOW_MUTABLE_DEVELOPMENT_IMAGE=1 \
         BASEHARBOR_PREBUILT_BINARY="$RUNNER_TEMP/pre-release-candidate/baha" \
         BASEHARBOR_SOURCE_REF="$CANDIDATE_SHA" \
         BASEHARBOR_RUNTIME_IMAGE="$BASEHARBOR_RUNTIME_IMAGE" \
