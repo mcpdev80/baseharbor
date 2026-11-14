@@ -13,7 +13,7 @@ baha up -e dev
 baha status -e dev
 ```
 
-Normale vertrauenswürdige lokale Entwicklung benötigt kein `baha login`. `baha init` erfasst den Repository-eigenen Application-Vertrag; `baha up` führt den Lifecycle aus. Ein Umgebungsname ersetzt weder ein Target noch umgekehrt. Siehe [Application-Befehle](../cli/applications.md) und [Umgebung auswählen](environments.md).
+Normale vertrauenswürdige lokale Entwicklung benötigt kein `baha login`. `baha init` erfasst den Repository-eigenen Application-Vertrag; `baha up` führt den Lifecycle aus. Ein Umgebungsname ersetzt weder ein Target noch umgekehrt. Siehe [Application-Befehle](../cli/applications.md) und [Umgebung auswählen](environments.md). Der nur lesende Befehl `baha connections` zeigt explizite Verbindungsregeln zwischen Applications. Er ist von der Management-Verbindung der Workstation zum Core getrennt.
 
 ## Ein entfernter Core
 
