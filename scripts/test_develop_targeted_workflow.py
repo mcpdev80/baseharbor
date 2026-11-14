@@ -25,6 +25,13 @@ class TargetedDevelopWorkflowTests(unittest.TestCase):
         self.assertIn("only_gates: integration/docker/remote-target,integration/podman/remote-target,integration/static/live-console", content)
         self.assertIn("develop_ecosystem_result:", content)
 
+    def test_reference_journey_installs_verified_oras_before_core_bootstrap(self):
+        content = self.workflow
+        install = content.index("Install verified ORAS for Core bootstrap")
+        journey = content.index("Run complete reference journey")
+        self.assertLess(install, journey)
+        self.assertIn("run: bash scripts/ci-install-oras.sh", content)
+
     def test_release_workflow_reuses_actual_native_jobs_and_final(self):
         release = (Path(__file__).parents[1] / ".github/workflows/pre-release.yml").read_text()
         self.assertIn("develop_mode:", release)

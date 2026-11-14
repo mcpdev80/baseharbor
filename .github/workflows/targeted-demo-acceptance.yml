@@ -319,6 +319,9 @@ jobs:
           test "$(git -C "$workdir" rev-parse HEAD)" = "$DEMO_REF"
           echo "workdir=$workdir" >> "$GITHUB_OUTPUT"
 
+      - name: Install verified ORAS for Core bootstrap
+        run: bash scripts/ci-install-oras.sh
+
       - name: Run complete reference journey
         id: journey
         shell: bash
