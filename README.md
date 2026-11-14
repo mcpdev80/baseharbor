@@ -12,12 +12,6 @@
   <a href="https://github.com/mcpdev80/baseharbor-demo">
     <img src="https://img.shields.io/badge/demo-baseharbor--demo-6f42c1" alt="BaseHarbor Demo App">
   </a>
-  <a href="https://github.com/mcpdev80/baseharbor-console">
-    <img src="https://img.shields.io/badge/console-Web%20UI-00897b" alt="BaseHarbor Console">
-  </a>
-  <a href="https://github.com/mcpdev80/baseharbor-node-connector">
-    <img src="https://img.shields.io/badge/node--connector-Remote%20hosts-455a64" alt="BaseHarbor Node Connector">
-  </a>
   <a href="CONTRIBUTING.md">
     <img src="https://img.shields.io/badge/contributing-welcome-2ea44f" alt="Contributing">
   </a>
@@ -58,7 +52,7 @@ services:
 - **Connected services** — databases, cache, messaging, storage, secrets, identity and observability.
 - **Protected access** — TLS, scoped credentials and explicit trust boundaries.
 - **Verified lifecycle** — plan, apply, inspect, stop, recover and remove with ownership checks and concrete consequences.
-- **Your infrastructure** — Docker and rootless Podman (Quadlet); optional Console and Node Connector.
+- **Your infrastructure** — Docker and rootless Podman (Quadlet).
 - **Standard application interfaces** — database drivers, S3, OIDC and OTLP; no BaseHarbor SDK.
 
 ## A CLI first — agent-ready if you want it
@@ -72,9 +66,6 @@ baha up
 baha status
 ```
 
-The optional [Console](https://github.com/mcpdev80/baseharbor-console) adds a web
-interface. The [Node Connector](https://github.com/mcpdev80/baseharbor-node-connector)
-provides protected access to remote hosts.
 
 ## Install
 
