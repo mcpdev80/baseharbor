@@ -443,6 +443,16 @@ func pullResolvedRuntimeImageProgress(ctx context.Context, compose bhruntime.Run
 			return fmt.Errorf("resolve development runtime image: %w", err)
 		}
 		if resolveUnavailable(err) && allowMutableDevelopmentRuntimeImage() {
+			// A reference explicitly under localhost may already name the exact
+			// candidate image loaded into this runtime (for example, a CI
+			// acceptance image). In the opt-in development fallback, reuse that
+			// local image instead of asking the runtime to pull the same localhost
+			// tag from a registry that is not running. Hard rejections above are
+			// never eligible for this path.
+			if localRuntimeImagePresent(ctx, compose, location) {
+				report("using the preloaded local development runtime image")
+				return nil
+			}
 			// Explicit legacy development opt-in: pull the original tag
 			// reference. Class-gated: a public-default rejection and an
 			// endpoint denial both fail closed above, so this fallback
@@ -464,6 +474,23 @@ func pullResolvedRuntimeImageProgress(ctx context.Context, compose bhruntime.Run
 	}
 	report("runtime image download complete")
 	return nil
+}
+
+type localRuntimeImageInspector interface {
+	DirectOutput(context.Context, ...string) (string, error)
+}
+
+func localRuntimeImagePresent(ctx context.Context, compose bhruntime.RuntimeProvider, reference string) bool {
+	repository, _ := splitReference(reference)
+	if repository != "localhost" && !strings.HasPrefix(repository, "localhost/") {
+		return false
+	}
+	inspector, ok := compose.(localRuntimeImageInspector)
+	if !ok {
+		return false
+	}
+	imageID, err := inspector.DirectOutput(ctx, "image", "inspect", "--format", "{{.Id}}", reference)
+	return err == nil && strings.TrimSpace(imageID) != ""
 }
 
 // canonicalArtifactRepository normalizes a resolved reference to the canonical
