@@ -14,6 +14,18 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
 
+func applicationDestroyMayRetireProviders(plan applicationDestructionPlan) bool {
+	impactComplete := plan.Providers.Impact != nil && plan.Providers.Impact.Complete
+	if plan.Providers.Impact == nil && len(plan.Providers.Changes) == 0 {
+		impactComplete = true
+	}
+	return !plan.IncompleteInventory &&
+		plan.Scope.Complete &&
+		plan.Providers.Version == application.ProviderPlanVersion &&
+		plan.Providers.Complete &&
+		impactComplete
+}
+
 func prepareApplicationProviderRetirement(ctx context.Context, resolved resolvedApplication) (application.ProviderPlan, error) {
 	observed := observeApplicationProviderFacts(ctx, resolved)
 	plan, err := resolveApplicationProviderPlan(resolved, observed)

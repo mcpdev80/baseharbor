@@ -51,6 +51,45 @@ func TestApplicationDestroyCanProceedWithDamagedUnrelatedConsumerInventory(t *te
 	}
 }
 
+func TestApplicationDestroyRetiresProvidersOnlyWithCompleteImpactInventory(t *testing.T) {
+	base := applicationDestructionPlan{
+		Scope: application.ProviderImpactScope{Complete: true},
+		Providers: application.ProviderPlan{
+			Version:  application.ProviderPlanVersion,
+			Complete: true,
+			Impact:   &application.ProviderImpactPlan{Complete: true},
+		},
+	}
+	if !applicationDestroyMayRetireProviders(base) {
+		t.Fatal("complete provider and material inventory should allow unused provider retirement")
+	}
+
+	cases := map[string]func(*applicationDestructionPlan){
+		"incomplete consent scope": func(plan *applicationDestructionPlan) {
+			plan.Scope.Complete = false
+		},
+		"incomplete impact materials": func(plan *applicationDestructionPlan) {
+			plan.Providers.Impact.Complete = false
+		},
+		"incomplete consumer inventory": func(plan *applicationDestructionPlan) {
+			plan.Providers.Complete = false
+		},
+		"fallback inventory": func(plan *applicationDestructionPlan) {
+			plan.IncompleteInventory = true
+		},
+	}
+	for name, mutate := range cases {
+		t.Run(name, func(t *testing.T) {
+			plan := base
+			plan.Providers.Impact = &application.ProviderImpactPlan{Complete: true}
+			mutate(&plan)
+			if applicationDestroyMayRetireProviders(plan) {
+				t.Fatal("incomplete provider inventory must retain providers and continue app destruction")
+			}
+		})
+	}
+}
+
 func TestApplicationDestructionRequiresCurrentOuterScopeAndSeparateDataConsent(t *testing.T) {
 	r := retainedNativeBackendFixture(t)
 	registry := filepath.Join(r.TargetStateRoot, "provider-registry.json")
@@ -62,6 +101,9 @@ func TestApplicationDestructionRequiresCurrentOuterScopeAndSeparateDataConsent(t
 		p, err := buildApplicationDestructionPlan(t.Context(), r, reset)
 		if err != nil {
 			t.Fatal(err)
+		}
+		if reset && applicationDestroyMayRetireProviders(p) {
+			t.Fatal("incomplete destruction impact must retain provider resources")
 		}
 		if p.Scope.Complete || p.Scope.ConfirmationsRequired != 2 || p.Scope.Attention != "Achtung" || p.Scope.Destructive != reset || p.Scope.Owner.Subject != r.DeploymentIdentity.DeploymentID || len(p.Materials) == 0 || len(p.Scope.Targets) != 1 {
 			t.Fatal("selected owner/materials, unknown consequences or destructive scope lost")
