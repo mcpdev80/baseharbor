@@ -48,6 +48,12 @@ Helm and Kustomize are not v0.4.20 source adapters.
 
 ## Lifecycle
 
+In `baha app new`, choosing `run` creates the project and then shows the exact
+repository candidate identity and confirmation hash before deployment. Confirm
+that candidate to continue. Declining leaves the project files in place and
+prints the command needed to apply them later. Choosing `create-only` never
+starts the lifecycle.
+
 | Command | Purpose |
 | --- | --- |
 | `baha up` | Converge an application |

@@ -2,6 +2,12 @@
 
 Application-Befehle arbeiten mit dem portablen Contract und seinem Deployment-Zustand.
 
+Bei `baha app new` erstellt die Auswahl `run` zunächst das Projekt und zeigt
+dann die genaue Identität samt Bestätigungshash des Repository-Kandidaten an.
+Erst nach ausdrücklicher Bestätigung läuft das Deployment weiter. Bei Ablehnung
+bleiben die Projektdateien erhalten; der Assistent zeigt den späteren
+Apply-Befehl. `create-only` startet den Lifecycle nicht.
+
 Der vollständige lokale, Remote- und Team-Weg beginnt unter [Lokal, remote und gemeinsam entwickeln](../how-to/local-remote-team-workflow.md).
 
 [Anwendungsbedarf erstellen und ändern](../how-to/application-needs.md) erklärt die interaktive Checkliste, Target-Provider-Präferenzen und Footprint-Vorschau.

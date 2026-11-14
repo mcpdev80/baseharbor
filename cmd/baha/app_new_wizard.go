@@ -221,7 +221,7 @@ func runAppNewWizard(ctx context.Context, out, errOut io.Writer) error {
 			creationUnlock = nil
 		}
 	}
-	return finishAppNewWizard(ctx, root, result, profile, controller, mode, out, errOut, release)
+	return finishAppNewWizard(ctx, reader, root, result, profile, controller, mode, out, errOut, release)
 }
 
 // normalizeAppNewWizardName makes the chosen repository identity explicit before
