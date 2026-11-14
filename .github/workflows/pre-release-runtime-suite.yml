@@ -59,6 +59,9 @@ jobs:
     - name: Prepare verified rootless runtime
       if: inputs.reuse_from == '' && inputs.runtime != 'static'
       run: bash scripts/ci-core-rootless-runtime.sh
+    - name: Install verified ORAS for Core bootstrap
+      if: inputs.reuse_from == '' && inputs.runtime != 'static'
+      run: bash scripts/ci-install-oras.sh
     - name: Resolve candidate SHA
       if: inputs.reuse_from == ''
       id: candidate
@@ -132,6 +135,10 @@ jobs:
           docker load -i "$archive"
           docker image inspect "$BASEHARBOR_RUNTIME_IMAGE" >/dev/null
         fi
+    - name: Publish exact candidate image for ORAS verification
+      if: inputs.reuse_from == '' && inputs.candidate_artifact != '' && inputs.runtime != 'static' && inputs.gate != 'rabbitmq-runtime' && inputs.gate != 'mongodb-runtime' && inputs.gate != 'durable-key-value' && inputs.gate != 'control-plane-recovery' && inputs.gate != 'loki-runtime' && inputs.gate != 'tempo-runtime'
+      shell: bash
+      run: bash scripts/ci-local-oci-registry.sh publish "$BASEHARBOR_RUNTIME_IMAGE" localhost:5000/baseharbor-runtime:pre-release
     - name: Checkout exact demo revision
       if: inputs.reuse_from == ''
       id: demo
