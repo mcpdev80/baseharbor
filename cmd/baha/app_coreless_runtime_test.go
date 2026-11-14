@@ -29,7 +29,7 @@ func TestCorelessFreshWorkloadRuntimeLifecycle(t *testing.T) {
 	defer cancel()
 	ctx = machineNoninteractiveContext(ctx)
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
-	target := configureTestTarget(t)
+	target := configureTestTargetEmpty(t)
 	engine := "docker"
 	format := "{{json .SecurityOptions}}"
 	if os.Getenv("BASEHARBOR_TEST_RUNTIME") == "podman" {
