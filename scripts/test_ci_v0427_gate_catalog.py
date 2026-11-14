@@ -4,9 +4,9 @@ The v0.4.27 candidate line was previously absent from
 scripts/release-requirements.json and scripts/pr-gate-map-v1.json named
 v0.4.26, so pre-release-check-plan.py rejected every v0.4.27 release gate and
 release qualification could not start. This regression proves the catalog now
-selects v0.4.27 and that the PR gate planner still resolves every existing
-reviewed exact-path candidate (the dedup gate set) under the moved release.
-No product logic changes; the release boundary is not launched.
+selects v0.4.27 without archived Console and Connector acceptance and that the
+PR gate planner still resolves reviewed exact-path candidates under the release.
+The release boundary is not launched.
 """
 import importlib.util
 import json
@@ -35,18 +35,23 @@ class V0427GateCatalogTests(unittest.TestCase):
         # rollback to the tested v0.4.26 baseline (the r3 stash-dance that
         # regressed this in r3) fails this cell red. v0.4.27 is proven by that
         # production map key AND by its registration in the release gate catalog
-        # (release-requirements.json releases + every gate's required_for).
+        # (release-requirements.json releases + its required gates).
         self.assertEqual('v0.4.27', self.mapping['release'])
         self.assertIn('v0.4.27', self.inventory['releases'])
-        for gate in self.inventory['gates']:
-            with self.subTest(gate=gate['id']):
-                self.assertIn('v0.4.27', gate.get('required_for', []))
         self.assertEqual('baseharbor.pr-gate-map/v1', self.mapping['schema'])
 
-    def test_every_gate_lists_v0427_in_required_for(self):
+    def test_v0427_requires_every_active_scope_gate(self):
+        archived_consumer_gates = {
+            'integration/docker/remote-target',
+            'integration/podman/remote-target',
+            'integration/static/live-console',
+        }
         for gate in self.inventory['gates']:
             with self.subTest(gate=gate['id']):
-                self.assertIn('v0.4.27', gate.get('required_for', []))
+                if gate['id'] in archived_consumer_gates:
+                    self.assertNotIn('v0.4.27', gate.get('required_for', []))
+                else:
+                    self.assertIn('v0.4.27', gate.get('required_for', []))
 
     def test_full_v0427_catalog_selects_without_gap(self):
         selection = load('pre-release-check-plan').select(self.inventory, 'v0.4.27')
@@ -60,17 +65,24 @@ class V0427GateCatalogTests(unittest.TestCase):
         self.assertTrue(selection['heavy_docker'])
         self.assertTrue(selection['light_podman'])
         self.assertTrue(selection['heavy_podman'])
-        self.assertTrue('integration/static/live-console' in selection['integration'])
+        for gate in ('integration/docker/remote-target', 'integration/podman/remote-target',
+                     'integration/static/live-console'):
+            self.assertNotIn(gate, selection['integration'])
+        self.assertIn('integration/docker/core-bootstrap', selection['integration'])
         self.assertTrue(any('coreless-lifecycle' in g for g in selection['integration']))
 
     def test_v0427_targeted_selection_is_exact(self):
         selection = load('pre-release-check-plan').select(
             self.inventory, 'v0.4.27',
-            'atomic/docker/lifecycle,integration/static/live-console',
+            'atomic/docker/lifecycle,integration/docker/core-bootstrap',
         )
         self.assertEqual(['lifecycle'], selection['light_docker'])
-        self.assertEqual(['integration/static/live-console'], selection['integration'])
+        self.assertEqual(['integration/docker/core-bootstrap'], selection['integration'])
         self.assertEqual(2, sum(map(len, selection.values())))
+        with self.assertRaises(ValueError):
+            load('pre-release-check-plan').select(
+                self.inventory, 'v0.4.27', 'integration/docker/remote-target',
+            )
 
     def test_v0427_release_catalog_feeds_pr_gate_planner_catalog(self):
         # The PR planner rejects any release absent from the catalog; v0.4.27
