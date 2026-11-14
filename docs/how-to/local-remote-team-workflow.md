@@ -13,7 +13,7 @@ baha up -e dev
 baha status -e dev
 ```
 
-Ordinary trusted-local development does not require `baha login`. `baha init` records the repository-owned application contract; `baha up` performs the lifecycle. Neither an environment name nor a Target name is a substitute for the other. See [application commands](../cli/applications.md) and [environment selection](environments.md).
+Ordinary trusted-local development does not require `baha login`. `baha init` records the repository-owned application contract; `baha up` performs the lifecycle. Neither an environment name nor a Target name is a substitute for the other. See [application commands](../cli/applications.md) and [environment selection](environments.md). The read-only `baha connections` command lists explicit cross-application connectivity rules; it is separate from the workstation's Management connection to Core.
 
 ## One remote Core
 
