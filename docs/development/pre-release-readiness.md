@@ -2,10 +2,13 @@
 
 The binding complete checklist is the [canonical release audit](https://github.com/mcpdev80/baseharbor/blob/develop/docs/internal/pre-release-documentation-audit.md).
 
-**Pre-release-ready** means all release preparation and targeted acceptance
-are complete: Core, Demo, Console, Node Connector, CLI/JSON/MCP/HTTP compatibility,
-developer journeys, EN/DE documentation, Pages candidate build/navigation,
-changelog, release notes, immutable ecosystem SHAs and the versioned test plan. Core-only green does not qualify. Missing, failed, skipped or
+**Pre-release-ready** means all preparation and targeted acceptance for the
+release's active scope are complete. For v0.4.27 this means Core and Demo,
+workstation-to-Core journeys on supported Docker and Podman runtimes, current
+CLI/JSON/MCP/HTTP compatibility, EN/DE documentation, Pages candidate
+build/navigation, changelog, release notes, immutable Core/Demo SHAs and the
+versioned test plan. Console and Node Connector are archived and excluded from
+this release. Core-only green does not qualify. Missing, failed, skipped or
 unverified required proofs block this status.
 
 **Release-ready** additionally requires successful complete pre-release validation.

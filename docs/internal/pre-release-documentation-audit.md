@@ -13,10 +13,14 @@ After planning activation, references below to roadmap issues and release-scoped
 
 **Pre-release-ready** means the complete release preparation is finished and
 all required atomic/targeted acceptance is green on one immutable ecosystem
-matrix: Core, Demo, Console and Node Connector. It also includes CLI/JSON/MCP
-compatibility, general EN/DE documentation, developer journeys, Pages candidate
-build/navigation/workflow, changelog, human release notes, release-specific gate
-catalogue and immutable source pins. Core-only green is not this status.
+matrix for the release's active consumers. For v0.4.27 that scope is Core and
+Demo, including the developer-workstation-to-Core journey on supported Docker
+and Podman runtimes. It also includes current CLI/JSON/MCP compatibility,
+general EN/DE documentation, Pages candidate build/navigation/workflow,
+changelog, human release notes, release-specific gates and immutable source
+pins. Console and Node Connector are archived and excluded from v0.4.27; this
+release makes no compatibility claim for them. Core-only green is not this
+status.
 
 **Release-ready** adds successful complete pre-release validation. Promotion,
 tagging, publication and their post-release verification are subsequent actions
@@ -28,16 +32,14 @@ verification occur later. Candidate Pages validation must not publish the
 unreleased site. Unavailable tooling, skipped checks and unsupported required
 journeys remain blockers, not automatic waivers.
 
-### Console and Node Connector (mandatory ecosystem acceptance)
+### Active consumers and release-specific compatibility
 
-- [ ] Freeze exact Core, Demo, Console and Connector commit SHAs; reconcile their candidate bindings without circular Git pins.
-- [ ] Verify current CLI/JSON/MCP/HTTP contracts with the unchanged or updated consumers, not only their earlier release's tests.
-- [ ] Console: real issuer/login and authorization, plan/apply/status/doctor, logs, terminal, production rotation and owned cleanup pass where supported.
-- [ ] Connector: real enrollment/outbound mTLS, renewal/revocation, Docker/rootless Podman remote lifecycle and foreign/shared preservation pass.
-- [ ] Reuse a complete authenticated joint browser/Connector receipt rather than execute duplicate journeys.
-- [ ] Changed consumers need targeted tests before final approval; unchanged consumer code still needs compatibility tests with the selected Core.
-- [ ] Pin exact source inputs and execute the real consumer tests. Failed or skipped required journeys are never PASS.
-- [ ] Record intentional future scope separately; do not require future Console UI or onboarding features merely to qualify current compatibility.
+- [ ] Freeze exact Core and Demo commit SHAs; reconcile their candidate binding without circular Git pins.
+- [ ] Verify current CLI/JSON/MCP/HTTP contracts for the release changes.
+- [ ] Prove the developer-workstation-to-Core journey on each supported Docker and Podman runtime in the release scope.
+- [ ] Run the real Demo consumer tests against the exact pinned Core and Demo sources.
+- [ ] Record archived or deferred consumers separately; do not make unsupported compatibility claims or require their tests for this release.
+- [ ] Failed, skipped or unverified required journeys are never PASS.
 
 This is the canonical release-readiness checklist. A release is not ready merely because feature work is merged or normal CI is green.
 
@@ -148,7 +150,7 @@ The external demo is part of release validation and must be reviewed before pinn
 - [ ] Guided pristine-repository flow remains covered: `baha app init -> baha up -> READY`.
 - [ ] Lifecycle/capability/security/reconciliation/recovery gates remain coherent with the release.
 - [ ] Demo `main` contains the exact test implementation intended for release validation before the BaseHarbor pre-release run begins.
-- [ ] The exact merged demo commit SHA is recorded in `docs/releases/vX.Y.Z.demo-ref` (or hotfix equivalent), or the canonical immutable Connector/Console/Demo matrix for v0.4.24 and v0.4.25. Matrix resolution requires matching actual Core/Console/Demo bindings and the Demo's exact Core pin; it avoids circular Git pins.
+- [ ] The exact merged Demo commit SHA is recorded in `docs/releases/vX.Y.Z.demo-ref` (or hotfix equivalent). Older v0.4.24/v0.4.25 consumer matrices remain historical and unchanged.
 - [ ] Targeted demo validation uses that same exact demo SHA rather than moving `main`.
 
 ## 7. GitHub Pages and published documentation
@@ -165,7 +167,7 @@ The external demo is part of release validation and must be reviewed before pinn
 
 - [ ] Finish all release-preparation implementation, README, canonical docs, CHANGELOG, human-readable release notes and demo changes before selecting the candidate.
 - [ ] Confirm `docs/releases/vX.Y.Z.md` is suitable as the actual human-facing GitHub Release message.
-- [ ] Confirm the versioned `docs/releases/vX.Y.Z.demo-ref`, or the canonical matrix for v0.4.24/v0.4.25, resolves the exact final demo commit.
+- [ ] Confirm the versioned `docs/releases/vX.Y.Z.demo-ref` resolves the exact final Demo commit.
 - [ ] Identify one exact final `develop` candidate SHA.
 - [ ] Do not add feature changes after the candidate is selected.
 - [ ] Verify the candidate is contained in `develop`.
