@@ -39,7 +39,7 @@ func destroyConnectedRemoteInstallation(ctx context.Context, confirmed bool, out
 	}
 	target := remote[0]
 	if !confirmed {
-		if noInput(ctx) || !readerIsTerminal(applicationInput(ctx, nil)) {
+		if noInput(ctx) || !readerIsTerminal(applicationInput(ctx, runtimeInput)) {
 			return true, usageError("remote installation destroy requires --yes in non-interactive mode", "Run baha destroy --yes; the current remote provider plan and data-deletion consent will still be required.")
 		}
 		confirmed = true
@@ -90,7 +90,7 @@ func remoteInstallationDestroy(ctx context.Context, target deployment.ResolvedTa
 	if err != nil {
 		return fmt.Errorf("verify remote Core for Target %s: %w", target.Name, err)
 	}
-	input := applicationInput(ctx, nil)
+	input := applicationInput(ctx, runtimeInput)
 	interactive := !noInput(ctx) && readerIsTerminal(input)
 	preview, err := sendRemoteInstallationDestroy(ctx, core, target, false, nil)
 	if err != nil {
