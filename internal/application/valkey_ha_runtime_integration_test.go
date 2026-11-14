@@ -68,7 +68,6 @@ func TestValkeyHARuntimeFailoverAcceptanceInCI(t *testing.T) {
 		t.Fatal(err)
 	}
 
-
 	op := provideroperation.New(runtime, files.Project, files.Compose, files.Env)
 	waitValkeyHAReady(t, ctx, runtime, op, m, files)
 
