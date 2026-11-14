@@ -20,6 +20,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Core-local Docker and Podman can be managed directly from a developer workstation without a Node Connector.
 - `baha destroy` can remove one connected Core from the workstation, then clean up that workstation's owned connection state; native local Target behavior remains available.
 
+### Fixed
+
+- Application destruction completes removal of the selected app when provider impact inventory is incomplete, while retaining shared or unverified provider resources.
+
 ## [0.4.26]
 
 Candidate release section; promoted date recorded when v0.4.26 is published
