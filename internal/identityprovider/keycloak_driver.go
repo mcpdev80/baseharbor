@@ -458,7 +458,7 @@ func reloadKeycloakDatabaseCertificates(ctx context.Context, runtime KeycloakRun
 	for _, service := range services {
 		for {
 			_, err := executor.ExecProject(reloadCtx, files.Project, files.Compose, files.Env, service,
-				"su", "postgres", "-c", "psql -h /var/run/postgresql -U postgres -d postgres -v ON_ERROR_STOP=1 -c 'SELECT pg_reload_conf()'")
+				"psql", "-h", "/var/run/postgresql", "-U", "postgres", "-d", "postgres", "-v", "ON_ERROR_STOP=1", "-c", "SELECT pg_reload_conf()")
 			if err == nil {
 				break
 			}
