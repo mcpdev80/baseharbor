@@ -98,7 +98,7 @@ VALIDATIONS = {'go-unit-tests', 'go-vet', 'go-build',
                'inspect-consumer-tests', 'inspect-consumer-build',
                'authority-package-tests', 'delivery-package-tests', 'deployment-package-tests', 'broker-package-tests', 'cli-package-tests', 'identity-provider-package-tests', 'resolver-gofmt', 'resolver-package-tests', 'resolver-vet',
                'resolver-consumer-build',
-                'pins-data-validation'} | set(WIZARD_TEST_FAMILIES)
+                'pins-data-validation', 'demo-source-pin-validation'} | set(WIZARD_TEST_FAMILIES)
 
 RECEIPT_EXECUTION_SUITES = ('test_receipt_writer', 'test_receipt_postrun')
 CI_EXECUTION_SUITES = (
@@ -372,6 +372,25 @@ def validate_pins_data(check, repository):
     return validated
 
 
+def validate_demo_source_pin(check, repository):
+    """Require the v0.4.27 Demo pin to be one existing immutable commit."""
+    if check != 'demo-source-pin-validation':
+        raise ValueError('unsupported Demo pin validation')
+    pin = Path(repository) / 'docs/releases/v0.4.27.demo-ref'
+    if pin.is_symlink() or not pin.is_file():
+        raise RuntimeError('v0.4.27 Demo source pin is missing or unsafe')
+    raw = pin.read_text()
+    if not re.fullmatch(r'[0-9a-f]{40}\n?', raw):
+        raise RuntimeError('v0.4.27 Demo source pin must contain exactly one full lowercase commit SHA')
+    sha = raw.strip()
+    resolved = subprocess.run(
+        ['gh', 'api', 'repos/mcpdev80/baseharbor-demo/commits/' + sha, '--jq', '.sha'],
+        text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    if resolved.returncode or resolved.stdout.strip() != sha:
+        raise RuntimeError('v0.4.27 Demo source commit does not resolve in the pinned repository')
+    return [sha]
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('mode', choices=['matrix', 'execute'])
@@ -384,6 +403,10 @@ def main():
             parser.error('--check is required for execute')
         if args.check == 'pins-data-validation':
             matched = validate_pins_data(args.check, args.repository)
+            print(json.dumps({'check': args.check, 'matched_tests': matched}, sort_keys=True))
+            return
+        if args.check == 'demo-source-pin-validation':
+            matched = validate_demo_source_pin(args.check, args.repository)
             print(json.dumps({'check': args.check, 'matched_tests': matched}, sort_keys=True))
             return
         matches = execute_validation(args.check, args.repository)
