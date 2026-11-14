@@ -185,6 +185,13 @@ func TestUIDAppSliceLegacyImportReusesExistingCanonicalIdentity(t *testing.T) {
 // system-owned store serializes first create so exactly one canonical identity
 // survives. Mirrors the deployment-registry two-process guard (0427-175) through
 // the actual CLI surface.
+//
+// The CLI runs do NOT chdir the test process: os.Chdir is process-global and
+// concurrent racers would clobber each other's working directory, so a command
+// could resolve the repository from a different directory (or a deleted temp
+// path) and produce a nondeterministic outcome. The working directory is set
+// once before the racers start and restored once from t.Cleanup after every
+// racer finishes.
 func TestUIDAppSliceConcurrentFirstCreateConvergesOnOneOwner(t *testing.T) {
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
 	target := configureTestTarget(t)
@@ -192,9 +199,8 @@ func TestUIDAppSliceConcurrentFirstCreateConvergesOnOneOwner(t *testing.T) {
 
 	// Capture a stable pre-test CWD from a temp dir that lives until the test
 	// ends. A t.Cleanup that restores it GUARANTEES the process CWD is valid
-	// when the test returns, even if a racer is parked in a Chdir to a temp
-	// dir that t.TempDir() would remove. Without this the leaked CWD makes
-	// every subsequent test's getwd fail (0428-050 regression on #1579).
+	// when the test returns. Without this the leaked CWD makes every
+	// subsequent test's getwd fail (0428-050 regression on #1579).
 	home := t.TempDir()
 	prev, _ := os.Getwd()
 	t.Cleanup(func() {
@@ -210,37 +216,70 @@ func TestUIDAppSliceConcurrentFirstCreateConvergesOnOneOwner(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Point the working directory once, before any racer starts. No per-racer
+	// chdir: that would race the process-global working directory.
+	if err := os.Chdir(root); err != nil {
+		t.Fatal(err)
+	}
+
 	const racers = 6
 	var wg sync.WaitGroup
-	errs := make([]error, racers)
+	// Each racer records only whether it produced a valid create-or-reuse
+	// outcome and, when it did, the canonical ID it resolved. A racer must not
+	// fail for an unrelated reason; an arbitrary failure is never treated as
+	// convergence.
+	type outcome struct {
+		created bool
+		uid     string
+	}
+	outcomes := make([]outcome, racers)
 	for i := 0; i < racers; i++ {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			prev, _ := os.Getwd()
-			if err := os.Chdir(root); err != nil {
-				errs[i] = err
+			var out, errOut bytes.Buffer
+			runErr := runWithIO(context.Background(), []string{"app", "init", "--quick", "--no-input"}, &out, &errOut)
+			if runErr != nil {
 				return
 			}
-			var out, errOut bytes.Buffer
-			errs[i] = runWithIO(context.Background(), []string{"app", "init", "--quick", "--no-input"}, &out, &errOut)
-			// Restore the process CWD inside the goroutine (before the temp
-			// dir is cleaned up) so a racer never parks in a deleted CWD.
-			_ = os.Chdir(prev)
+			id := canonicalOwnerID(t, root, "raced")
+			outcomes[i] = outcome{created: id != "", uid: id}
 		}(i)
 	}
 	wg.Wait()
 
 	var successes int
-	for _, err := range errs {
-		if err == nil {
+	for _, oc := range outcomes {
+		if oc.created {
 			successes++
 		}
 	}
 	if successes == 0 {
-		t.Fatalf("no init succeeded; first create must converge on exactly one owner")
+		t.Fatalf("no init converged on one owner; first create must succeed")
 	}
 
+	// Every successful racer must resolve the SAME canonical ID: concurrent
+	// first create converges on one owner, and that owner is the surviving one.
+	var converged string
+	for _, oc := range outcomes {
+		if !oc.created {
+			continue
+		}
+		if converged == "" {
+			converged = oc.uid
+			continue
+		}
+		if oc.uid != converged {
+			t.Fatalf("concurrent racers resolved different canonical IDs %q and %q; must converge on one owner", oc.uid, converged)
+		}
+	}
+
+	// Exactly one canonical owner survives, and its stored UID equals the ID
+	// the successful racers resolved at the CLI surface.
+	ownerID := canonicalOwnerID(t, root, "raced")
+	if converged != "" && ownerID != converged {
+		t.Fatalf("CLI-resolved canonical ID %q != canonical store ID %q", converged, ownerID)
+	}
 	items, err := canonicalOwnerStore(root).List()
 	if err != nil {
 		t.Fatal(err)
