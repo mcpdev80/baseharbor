@@ -56,6 +56,9 @@ func VerifyManagementUIAt(ctx context.Context, dataDir, namespace string, m appl
 	if !m.Services.ObservabilityManagementUI {
 		return nil
 	}
+	if m.Services.Perses {
+		return VerifyPersesManagementUIAt(ctx)
+	}
 	files, err := ExistingProviderFilesAt(dataDir, namespace, m)
 	if err != nil {
 		return err
@@ -81,4 +84,11 @@ func VerifyManagementUIAt(ctx context.Context, dataDir, namespace string, m appl
 		return fmt.Errorf("Prometheus management UI returned HTTP %d", resp.StatusCode)
 	}
 	return nil
+}
+
+// VerifyPersesManagementUIAt enforces the fail-closed Perses seam contract: a
+// selected Perses surface must be provisioned with a pinned release. Container
+// provisioning is verified by the runtime gate that starts the Perses project.
+func VerifyPersesManagementUIAt(ctx context.Context) error {
+	return capability.ValidatePersesRelease(capability.PersesDefaultRelease)
 }

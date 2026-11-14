@@ -460,7 +460,29 @@ func (p *manifestYAMLParser) parseServiceField(lineNo int, trim string) error {
 	}
 
 	key, value, ok := strings.Cut(trim, ":")
-	if !ok || (key != "enabled" && key != "management_ui") {
+	if !ok {
+		if key == "perses" && p.service == "observability" {
+			enabled, err := strconv.ParseBool(strings.TrimSpace(value))
+			if err != nil {
+				return fmt.Errorf("line %d: invalid perses value", lineNo)
+			}
+			p.manifest.Services.Perses = enabled
+			return nil
+		}
+		return fmt.Errorf("line %d: expected enabled: true|false or management_ui: true|false or instances:", lineNo)
+	}
+	if key == "perses" {
+		if p.service != "observability" {
+			return fmt.Errorf("line %d: perses is only valid under observability", lineNo)
+		}
+		enabled, err := strconv.ParseBool(strings.TrimSpace(value))
+		if err != nil {
+			return fmt.Errorf("line %d: invalid perses value", lineNo)
+		}
+		p.manifest.Services.Perses = enabled
+		return nil
+	}
+	if key != "enabled" && key != "management_ui" {
 		return fmt.Errorf("line %d: expected enabled: true|false, management_ui: true|false or instances:", lineNo)
 	}
 	enabled, err := strconv.ParseBool(strings.TrimSpace(value))

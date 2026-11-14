@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -396,6 +397,19 @@ func ApplicationManagementUISurfaces(m Manifest, files RuntimeFiles) ([]Manageme
 				RoleMappings:        NativeCredentialRoleMappings("developer", "developer"),
 			})
 		}
+	}
+	if m.Services.ObservabilityManagementUI && m.Services.Perses {
+		perses := capability.PersesManagementSurfaceNow()
+		result = append(result, ManagementUISurface{
+			Service:             "observability",
+			Purpose:             ProviderInterfaceObservability,
+			URL:                 "",
+			Authentication:      "",
+			AuthenticationClass: ManagementAuthenticationClass(perses.AuthClass()),
+			RoleMappings:        nil,
+		})
+		_ = perses.Release
+		_ = perses.Image
 	}
 	return result, nil
 }

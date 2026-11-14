@@ -1,0 +1,169 @@
+package capability
+
+import (
+	"fmt"
+	"strings"
+)
+
+// Perses management-provider seam.
+//
+// Perses is an OPTIONAL, provider-owned management/visualization surface. It is
+// NOT an application capability and NOT a required BaseHarbor Core bundle. It is
+// a realization of the existing optional observability management-ui interface
+// that the backend data owners (Prometheus, and Loki/Tempo where the pinned
+// Perses release actually ships and supports their plugin) already declare on
+// their integration descriptor.
+//
+// This file only declares the contract: the optional Perses management tool,
+// the version axes that stay independent, the accepted interfaces/scopes/
+// ownership/lifecycle/auth, and the fail-closed "not configured" rule. It does
+// NOT implement container lifecycle: that belongs to a reviewed contract before
+// downstream changes.
+//
+// Never false-declare metrics/logs/traces capabilities. A surface that cannot
+// be safely integrated MUST be reported as unsupported, never as configured.
+
+// PersesProviderKind identifies the optional Perses management tool. It is a
+// management surface, not a capability implementation, so it has no portable
+// application service.
+const PersesProviderKind ProviderKind = "perses"
+
+// PersesManagementUIInterface is the optional realization of the observability
+// management-ui surface by Perses. It reuses the existing observability
+// management-ui interface class and protocol; it is never intrinsic because the
+// backend data owners ship their own native management-ui as well.
+var PersesManagementUIInterface = ProviderInterface{
+	Name:     "management-ui",
+	Class:    InterfaceObservability,
+	Protocol: "https",
+	Optional: true,
+}
+
+// PersesManagement is the optional Perses management-provider descriptor.
+//
+// Its product version and image digest are realization metadata (Provider
+// Contract v1: "Provider identity and versioning"); they MUST NOT replace the
+// provider implementation version or the capability specification version.
+var PersesManagement = IntegrationDescriptor{
+	ID:              "baseharbor/perses",
+	Version:         "0.1.0",
+	Protocol:        ProviderProtocolV1,
+	Provider:        Provider{Kind: PersesProviderKind, Capabilities: []Kind{}},
+	Services:        []ServiceKind{ServiceObservability},
+	SupportedScopes: []ProviderScope{ScopeShared, ScopeApplication},
+	Interfaces:      []ProviderInterface{PersesManagementUIInterface},
+}
+
+// PersesRelease is the pinned Perses release this Core references as the
+// optional management realization. It is product/version realization metadata
+// and MUST NOT be exposed as a provider implementation version or a capability
+// specification version.
+type PersesRelease struct {
+	// Version is the pinned Perses product version (e.g. "v0.55.1").
+	Version string
+	// Image is the pinned production image reference (e.g.
+	// "persesdev/perses:v0.55.1" or an OCI digest).
+	Image string
+	// PrometheusPluginVersion is the pinned Prometheus datasource plugin
+	// version shipped in the selected candidate.
+	PrometheusPluginVersion string
+	// AuthenticationClass is the effective auth class this surface reports when
+	// Perses is selected. It maps to exactly one of the management
+	// authentication class strings below; it defaults to unsupported until
+	// authentication is explicitly configured (Perses is opt-in).
+	AuthenticationClass string
+}
+
+const (
+	persesAuthUnsupported      = "unsupported"
+	persesAuthNativeCredential = "native-credential"
+	persesAuthStandardsAdapter = "standards-auth-adapter"
+	persesAuthNativeOIDC       = "native-oidc"
+)
+
+// PersesDefaultRelease is the pinned candidate for v0.4.28. It must be a
+// release whose security fixes are current: v0.55.0+ (JWT/SSRF/datasource-proxy
+// fixes) with an encryption key mandatory when authentication is enabled.
+var PersesDefaultRelease = PersesRelease{
+	Version:                 "v0.55.1",
+	Image:                   "persesdev/perses:v0.55.1",
+	PrometheusPluginVersion: "v0.6.0",
+	AuthenticationClass:     persesAuthUnsupported,
+}
+
+// ValidatePersesRelease pins the release contract for the optional management
+// surface. It is fail-closed: without a pinned product version and image the
+// surface is not configured, never "configured".
+func ValidatePersesRelease(release PersesRelease) error {
+	if strings.TrimSpace(release.Version) == "" || strings.TrimSpace(release.Image) == "" {
+		return &PersesNotConfiguredError{}
+	}
+	switch release.AuthenticationClass {
+	case persesAuthUnsupported, persesAuthNativeCredential, persesAuthStandardsAdapter, persesAuthNativeOIDC:
+	default:
+		return fmt.Errorf("Perses management surface has unsupported authentication class %q", release.AuthenticationClass)
+	}
+	return nil
+}
+
+// PersesNotConfiguredError is returned when the optional Perses management
+// surface is requested but not provisioned with a pinned release. It is the
+// fail-closed "not configured" state, not a misconfiguration.
+type PersesNotConfiguredError struct{}
+
+func (*PersesNotConfiguredError) Error() string {
+	return "Perses management surface selected but not configured: pin a Perses release (product version + image) and provision it; without it the observability management UI is unsupported, not configured"
+}
+
+// PersesManagementSurface is the declarative Perses realization of the
+// observability management-ui surface. Perses is a provider-owned management
+// tool, never an application capability.
+type PersesManagementSurface struct {
+	Release                 string
+	Image                   string
+	PrometheusPluginVersion string
+	AuthenticationClass     string
+	Provisioned             bool
+}
+
+// PersesManagementSurfaceNow returns the declarative Perses realization for the
+// selected optional observability management surface. Fail closed: when Perses
+// is selected but not provisioned with a pinned release it reports
+// Provisioned=false and AuthenticationClass=unsupported, never a false
+// "configured" declaration.
+func PersesManagementSurfaceNow() PersesManagementSurface {
+	release := PersesDefaultRelease
+	surface := PersesManagementSurface{
+		Release:                 release.Version,
+		Image:                   release.Image,
+		PrometheusPluginVersion: release.PrometheusPluginVersion,
+		AuthenticationClass:     release.AuthenticationClass,
+		Provisioned:             false,
+	}
+	if err := ValidatePersesRelease(release); err == nil {
+		// A pinned release is a declaration contract, not a running container.
+		// Provisioning (image pulled, project reconciled) is verified at runtime.
+		surface.Provisioned = true
+	}
+	return surface
+}
+
+// AuthClass returns the management authentication class this surface reports,
+// mapped to the shared management-access vocabulary (native-oidc,
+// standards-auth-adapter, native-credential, unsupported).
+func (s PersesManagementSurface) AuthClass() string {
+	return s.AuthenticationClass
+}
+
+// PersesManagementSurfaceUnprovisioned is the fail-closed surface returned when
+// Perses is selected but no release is pinned: Provisioned=false, auth
+// unsupported.
+func PersesManagementSurfaceUnprovisioned() PersesManagementSurface {
+	return PersesManagementSurface{
+		Release:                 PersesDefaultRelease.Version,
+		Image:                   PersesDefaultRelease.Image,
+		PrometheusPluginVersion: PersesDefaultRelease.PrometheusPluginVersion,
+		AuthenticationClass:     persesAuthUnsupported,
+		Provisioned:             false,
+	}
+}

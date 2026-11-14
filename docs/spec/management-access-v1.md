@@ -30,6 +30,23 @@ BaseHarbor MUST NOT introduce a proprietary authentication proxy merely to make 
 
 A surface that cannot be safely integrated MUST be reported as unsupported rather than silently creating an unrelated human-user source.
 
+## Optional Perses management surface
+
+Perses is an OPTIONAL, provider-owned management/visualization surface. It is
+never an application capability and never a required BaseHarbor Core bundle; it
+is a realization of the existing optional observability `management-ui` surface
+that the backend data owners (Prometheus, and Loki/Tempo where the pinned
+Perses release actually ships and supports their plugin) already declare.
+
+- Pin the Perses release (product version + production image/digest) as
+  realization metadata; a selected but unprovisioned Perses surface MUST be
+  reported as `unsupported` (fail-closed "not configured"), never as configured.
+- Authentication is opt-in; when enabled, honor the upstream mandatory
+  encryption-key requirement. Do not enable external notifications/routing by
+  default.
+- Never false-declare metrics/logs/traces application capabilities and never
+  replace the Prometheus management UI silently.
+
 ## Management roles
 
 The only provider-neutral BaseHarbor management-role profile is:

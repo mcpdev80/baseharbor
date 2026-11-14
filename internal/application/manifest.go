@@ -93,6 +93,10 @@ type Services struct {
 	ObjectStorageManagementUI    bool
 	IdentityManagementUI         bool
 	ObservabilityManagementUI    bool
+	// Perses selects the optional Perses realization of the observability
+	// management-ui surface instead of the backend's native management surface.
+	// It is a management-surface choice, never an application capability.
+	Perses                       bool
 	SQLInstances                 map[string]ServiceInstance
 	CacheInstances               map[string]ServiceInstance
 	KeyValueInstances            map[string]ServiceInstance
