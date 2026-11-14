@@ -369,7 +369,10 @@ func executeApplicationDestroyLifecycle(ctx context.Context, store application.S
 	}
 	withdrawn := execution.resolved
 	withdrawn.Manifest = applicationRuntimeRetirementIntent(execution.manifest)
-	retireProviders := destructionPlan.Providers.Version == application.ProviderPlanVersion && destructionPlan.Providers.Complete
+	// Provider retirement is a separate shared-resource mutation. An incomplete
+	// material/impact inventory must never retire providers merely because the
+	// consumer union itself resolved; app-owned cleanup below still proceeds.
+	retireProviders := applicationDestroyMayRetireProviders(destructionPlan)
 	if retireProviders {
 		// Validate supported ownership adapters before deleting application data.
 		// The acknowledged plan remains the authority used below.
@@ -402,7 +405,7 @@ func executeApplicationDestroyLifecycle(ctx context.Context, store application.S
 			return err
 		}
 	} else {
-		fmt.Fprintln(out, "Retained shared providers: consumer inventory is incomplete; unknown or potentially shared resources were left running")
+		fmt.Fprintln(out, "Retained provider resources: impact inventory is incomplete; unverified resources were left running")
 	}
 	if err := execution.removeApplicationState(); err != nil {
 		return err
