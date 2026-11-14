@@ -64,6 +64,43 @@ func ApplyTargetUID(def *TargetDefinition, uid string) {
 	def.TargetUID = strings.ToLower(strings.TrimSpace(uid))
 }
 
+// MigrateLegacyTargetUIDs resolves a stable UID for every configured Target that
+// still carries an empty one and returns the post-migration configuration plus
+// the list of names whose definition changed. It generates only for missing
+// UIDs, validates the full post-migration configuration for collisions (via
+// Config.Validate) and fails closed on any collision, so a poisoned legacy
+// configuration is never partially persisted.
+//
+// The migration is idempotent and pure: it never writes to disk. The caller
+// persists the returned config exactly once (SaveExpected), and a second call
+// with an already-migrated config returns an empty changed set so the caller
+// performs no write on the retry. Target names, data directories and the
+// ownership TenantID are left untouched — only the missing TargetUID fields are
+// filled.
+func MigrateLegacyTargetUIDs(cfg Config) (migrated Config, changed []string, err error) {
+	migrated = cfg
+	for name, def := range cfg.Targets {
+		if strings.TrimSpace(def.TargetUID) != "" {
+			continue
+		}
+		uid, _, merr := MigrateTargetUID(def)
+		if merr != nil {
+			return Config{}, nil, merr
+		}
+		def.TargetUID = uid
+		migrated.Targets[name] = def
+		changed = append(changed, name)
+	}
+	// Validate the full post-migration config so a collision between two newly
+	// generated UIDs (astronomically unlikely for UUIDv4, but a caller-supplied
+	// legacy UID could still clash) fails closed before any write.
+	if err := migrated.Validate(); err != nil {
+		return Config{}, nil, err
+	}
+	sort.Strings(changed)
+	return migrated, changed, nil
+}
+
 // ResolveTargetUIDs returns the stable UID for every configured Target, keyed by
 // name. It fails closed when two or more distinct names would resolve to the
 // same UID, because that poisons the name→UID resolution for both. This is the

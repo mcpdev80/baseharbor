@@ -1,32 +1,52 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 )
 
-// TestCreateTargetPersistsStableUID exercises the real CLI entry point
-// createTargetDefinition through machineTargetCreateInput and proves the stable
-// Target UID is generated and persisted on the written definition, without
-// moving any on-disk Target state and without touching the ownership TenantID.
-func TestCreateTargetPersistsStableUID(t *testing.T) {
-	configureTestTarget(t)
+// setupUIDTestRoot installs an isolated, tmp BaseHarbor state root (config +
+// data) so the CLI writes only into t.TempDir and never touches host state.
+func setupUIDTestRoot(t *testing.T) {
+	t.Helper()
+	root := t.TempDir()
+	// Only XDG_CONFIG_HOME/XDG_DATA_HOME are set (no BASEHARBOR_STATE_DIR), so
+	// ConfigPath() nests under <home>/baseharbor/ — the path the collision
+	// seed below writes to. BASEHARBOR_STATE_DIR would take precedence and
+	// redirect the config elsewhere.
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(root, "config"))
+	t.Setenv("XDG_DATA_HOME", filepath.Join(root, "data"))
+}
 
-	uid, err := deployment.NewTargetUID()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := createTargetDefinition(context.Background(), machineTargetCreateInput{
-		Name:            "podman-prod",
-		RuntimeProvider: "podman",
-		Access:          "local-docker",
-		Reference:       "local",
-		UID:             uid,
-	}); err != nil {
-		t.Fatalf("create target: %v", err)
+// configPathForCollision returns the on-disk config path under the configured
+// XDG_CONFIG_HOME (nested under baseharbor/, per ConfigPath()).
+func configPathForCollision(t *testing.T) string {
+	t.Helper()
+	return filepath.Join(os.Getenv("XDG_CONFIG_HOME"), "baseharbor", "config.yaml")
+}
+
+// TestCLITargetCreateGeneratesStableUID exercises the real `baha target create`
+// command end to end (global option parsing, dispatch, config write) and proves
+// the stable Target UID is auto-generated (no manual UUID request) and persisted
+// on the written definition through the real CLI entry point.
+func TestCLITargetCreateGeneratesStableUID(t *testing.T) {
+	setupUIDTestRoot(t)
+
+	var out bytes.Buffer
+	if err := runWithIO(context.Background(), []string{
+		"target", "create", "podman-prod",
+		"--runtime-provider", "podman",
+		"--access", "local-docker",
+		"--access-provider", "local",
+		"--reference", "local",
+	}, &out, &out); err != nil {
+		t.Fatalf("CLI target create: %v; output=%s", err, out.String())
 	}
 
 	cfg, err := deployment.LoadConfig()
@@ -38,80 +58,86 @@ func TestCreateTargetPersistsStableUID(t *testing.T) {
 		t.Fatal("created target missing from persisted config")
 	}
 	if def.TargetUID == "" {
-		t.Fatal("stable Target UID was not persisted on create")
+		t.Fatal("CLI create did not auto-generate a stable Target UID")
 	}
-	if def.TargetUID != strings.ToLower(uid) {
-		t.Fatalf("persisted UID = %q, want %q", def.TargetUID, uid)
+	if err := deployment.ValidateTargetUID(def.TargetUID); err != nil {
+		t.Fatalf("generated UID invalid: %v", err)
+	}
+	// Ownership TenantID is a distinct role and stays untouched by UID creation.
+	if def.TenantID != "" {
+		t.Fatalf("UID creation must not touch the ownership TenantID: %q", def.TenantID)
 	}
 }
 
-// TestCreateTargetUIDIdempotentOnRetry proves re-issuing the same create with the
-// same explicit UID keeps the one stable identity rather than regenerating it.
-func TestCreateTargetUIDIdempotentOnRetry(t *testing.T) {
-	configureTestTarget(t)
+// TestCLITargetUIDStableAcrossReads proves the user-facing create + two reads
+// yield ONE stable UID: the first create persists it, and a second
+// `baha target list` (which loads the config through the migration seam)
+// observes no churn — the idempotent read contract for legacy resolution.
+func TestCLITargetUIDStableAcrossReads(t *testing.T) {
+	setupUIDTestRoot(t)
+
+	var out bytes.Buffer
+	if err := runWithIO(context.Background(), []string{
+		"target", "create", "alpha",
+		"--runtime-provider", "docker",
+		"--access", "local-docker",
+		"--access-provider", "local",
+		"--reference", "local",
+	}, &out, &out); err != nil {
+		t.Fatalf("CLI create alpha: %v; output=%s", err, out.String())
+	}
+	cfg, _ := deployment.LoadConfig()
+	first := cfg.Targets["alpha"].TargetUID
+	if first == "" {
+		t.Fatal("first create did not persist a UID")
+	}
+
+	// Second read through the real CLI: list must not churn the UID.
+	var listOut bytes.Buffer
+	if err := runWithIO(context.Background(), []string{"target", "list", "-o", "json"}, &listOut, &listOut); err != nil {
+		t.Fatalf("CLI target list: %v; output=%s", err, listOut.String())
+	}
+	cfg2, _ := deployment.LoadConfig()
+	if cfg2.Targets["alpha"].TargetUID != first {
+		t.Fatal("UID churned across CLI reads")
+	}
+}
+
+// TestCLITargetUIDCollisionFailsClosedOnRead proves a corrupted config in which
+// two Targets share one UID is rejected by the real CLI read path
+// (`baha target list` -> LoadConfig -> Validate uniqueness): fail closed, no
+// crash, and no data is moved. This is the collision fail-closed guard at the
+// actual command entry point.
+func TestCLITargetUIDCollisionFailsClosedOnRead(t *testing.T) {
+	setupUIDTestRoot(t)
 
 	uid, err := deployment.NewTargetUID()
 	if err != nil {
 		t.Fatal(err)
 	}
-	input := machineTargetCreateInput{
-		Name:            "podman-prod",
-		RuntimeProvider: "podman",
-		Access:          "local-docker",
-		Reference:       "local",
-		UID:             uid,
-	}
-	if _, err := createTargetDefinition(context.Background(), input); err != nil {
-		t.Fatalf("create target: %v", err)
-	}
-
-	cfg, err := deployment.LoadConfig()
-	if err != nil {
+	cfgPath := configPathForCollision(t)
+	if err := os.MkdirAll(filepath.Dir(cfgPath), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Targets["podman-prod"].TargetUID != strings.ToLower(uid) {
-		t.Fatal("explicit UID not preserved across create")
-	}
-}
-
-// TestCreateTargetRejectsUIDCollisionByName proves the CLI fails closed when the
-// UID being assigned matches another Target's UID — the fail-closed collision
-// guard at the real entry point.
-func TestCreateTargetRejectsUIDCollisionByName(t *testing.T) {
-	configureTestTarget(t)
-
-	uid, err := deployment.NewTargetUID()
-	if err != nil {
+	colliding := "version: 1\n" +
+		"access:\n  local-docker:\n    provider: docker\n    reference: local\n" +
+		"targets:\n" +
+		"  alpha:\n    target-uid: " + uid + "\n" +
+		"    runtime:\n      provider: docker\n" +
+		"    access:\n      reference: local-docker\n" +
+		"  beta:\n    target-uid: " + uid + "\n" +
+		"    runtime:\n      provider: docker\n" +
+		"    access:\n      reference: local-docker\n"
+	if err := os.WriteFile(cfgPath, []byte(colliding), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	first := machineTargetCreateInput{
-		Name:            "alpha",
-		RuntimeProvider: "docker",
-		Access:          "local-docker",
-		Reference:       "local",
-		UID:             uid,
-	}
-	if _, err := createTargetDefinition(context.Background(), first); err != nil {
-		t.Fatalf("create first target: %v", err)
-	}
 
-	second := machineTargetCreateInput{
-		Name:            "beta",
-		RuntimeProvider: "docker",
-		Access:          "local-docker",
-		Reference:       "local",
-		UID:             uid,
+	var out bytes.Buffer
+	err = runWithIO(context.Background(), []string{"target", "list", "-o", "json"}, &out, &out)
+	if err == nil {
+		t.Fatal("corrupted config with two Targets sharing a UID must fail closed at the CLI")
 	}
-	if _, err := createTargetDefinition(context.Background(), second); err == nil {
-		t.Fatal("duplicate Target UID across two names must fail closed at the CLI")
-	}
-
-	// The second create must have left no partial definition behind.
-	cfg, err := deployment.LoadConfig()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, exists := cfg.Targets["beta"]; exists {
-		t.Fatal("failed create left a partial Target definition behind")
+	if !strings.Contains(err.Error(), uid) {
+		t.Fatalf("collision error did not name the conflicting UID: %v", err)
 	}
 }

@@ -1,6 +1,7 @@
 package deployment
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"os"
@@ -160,7 +161,109 @@ func LoadConfig() (Config, error) {
 	if err != nil {
 		return Config{}, fmt.Errorf("read BaseHarbor config: %w", err)
 	}
-	return decodeConfig(data)
+	cfg, err := decodeConfig(data)
+	if err != nil {
+		return Config{}, err
+	}
+	// Stable target identity migration: fill the missing TargetUID for any
+	// legacy Target and persist it exactly once. The write is idempotent — a
+	// second read finds no empty UID and performs no write — and it never moves
+	// Target data directories; only the missing config field is filled. A
+	// collision among the generated UIDs fails closed and persists nothing.
+	return migrateAndPersistTargetUIDs(path, cfg, data)
+}
+
+// migrateAndPersistTargetUIDs fills the missing stable Target UID for legacy
+// Targets and atomically persists the migrated configuration through the
+// protected configuration owner. expected is the exact raw owner bytes just
+// read, used for the compare-and-swap so a concurrent configuration change
+// refuses rather than overwriting. changed definitions are left otherwise
+// untouched: target names, data directories and the ownership TenantID are not
+// modified. The write is a single CAS; a subsequent call with an already
+// migrated configuration performs no write at all.
+func migrateAndPersistTargetUIDs(path string, cfg Config, expected []byte) (Config, error) {
+	_, changed, err := MigrateLegacyTargetUIDs(cfg)
+	if err != nil {
+		return Config{}, err
+	}
+	if len(changed) == 0 {
+		return cfg, nil
+	}
+	// Persist the migrated configuration exactly once. Legacy Targets have no
+	// Core installation lock, so this uses a direct CAS read-modify-write on the
+	// protected configuration owner rather than SaveExpected's mutation framing
+	// (which requires an installation lock). It re-reads the file, re-decodes,
+	// re-applies the migration and only writes if the on-disk content still
+	// matches what we read; a concurrent change fails closed and persists
+	// nothing. The write is idempotent: a second read finds no empty UID and
+	// performs no write at all.
+	return migrateConfigUIDsAt(path, expected)
+}
+
+// migrateConfigUIDsAt atomically fills the missing stable Target UID for any
+// legacy Target in the on-disk configuration and persists it. path is the
+// protected configuration owner; expected is the exact raw owner bytes already
+// read, used for the compare-and-swap so a concurrent configuration change
+// refuses rather than overwriting. It never moves Target data directories; only
+// the missing config fields are filled. An empty changed set is a no-op.
+func migrateConfigUIDsAt(path string, expected []byte) (Config, error) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return Config{}, fmt.Errorf("read BaseHarbor config for UID migration: %w", err)
+	}
+	cfg, err := decodeConfig(raw)
+	if err != nil {
+		return Config{}, err
+	}
+	migrated, changed, err := MigrateLegacyTargetUIDs(cfg)
+	if err != nil {
+		return Config{}, err
+	}
+	if len(changed) == 0 {
+		return cfg, nil
+	}
+	data, err := yaml.Marshal(migrated)
+	if err != nil {
+		return Config{}, fmt.Errorf("encode BaseHarbor config: %w", err)
+	}
+	if len(data) > 8<<20 {
+		return Config{}, errors.New("Target configuration exceeds the supported owner size")
+	}
+	// CAS guard: refuse if the file changed between our read and our write.
+	if len(expected) > 0 {
+		current, rerr := os.ReadFile(path)
+		if rerr != nil {
+			return Config{}, fmt.Errorf("read BaseHarbor config for UID migration: %w", rerr)
+		}
+		if !bytes.Equal(current, expected) {
+			return Config{}, ErrConfigurationChanged
+		}
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".config-*")
+	if err != nil {
+		return Config{}, err
+	}
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName)
+	if err := tmp.Chmod(0600); err != nil {
+		tmp.Close()
+		return Config{}, err
+	}
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		return Config{}, fmt.Errorf("write BaseHarbor config: %w", err)
+	}
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		return Config{}, err
+	}
+	if err := tmp.Close(); err != nil {
+		return Config{}, err
+	}
+	if err := os.Rename(tmpName, path); err != nil {
+		return Config{}, fmt.Errorf("replace BaseHarbor config: %w", err)
+	}
+	return migrated, nil
 }
 
 func decodeConfig(data []byte) (Config, error) {
