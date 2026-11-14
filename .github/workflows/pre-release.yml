@@ -527,6 +527,8 @@ jobs:
         ref: ${{ needs.source.outputs.candidate_sha }}
     - name: Prepare verified rootless runtime
       run: bash scripts/ci-core-rootless-runtime.sh
+    - name: Install verified ORAS for Core bootstrap
+      run: bash scripts/ci-install-oras.sh
     - name: Set up Go
       uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
       with:
@@ -578,6 +580,8 @@ jobs:
         ref: ${{ needs.source.outputs.candidate_sha }}
     - name: Prepare verified rootless runtime
       run: bash scripts/ci-core-rootless-runtime.sh
+    - name: Install verified ORAS for Core bootstrap
+      run: bash scripts/ci-install-oras.sh
     - name: Set up Go
       uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
       with:
@@ -649,6 +653,8 @@ jobs:
         ref: ${{ needs.source.outputs.candidate_sha }}
     - name: Prepare verified rootless runtime
       run: bash scripts/ci-core-rootless-runtime.sh
+    - name: Install verified ORAS for Core bootstrap
+      run: bash scripts/ci-install-oras.sh
     - name: Verify Podman Quadlet runtime
       id: quadlet
       if: matrix.runtime == 'podman'
@@ -873,6 +879,8 @@ jobs:
         fetch-depth: 0
     - name: Prepare verified rootless runtime
       run: bash scripts/ci-core-rootless-runtime.sh
+    - name: Install verified ORAS for Core bootstrap
+      run: bash scripts/ci-install-oras.sh
     - name: Set up Go
       uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
       with:
@@ -906,6 +914,8 @@ jobs:
         fetch-depth: 0
     - name: Prepare verified rootless runtime
       run: bash scripts/ci-core-rootless-runtime.sh
+    - name: Install verified ORAS for Core bootstrap
+      run: bash scripts/ci-install-oras.sh
     - name: Set up Go
       uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
       with:
@@ -939,6 +949,8 @@ jobs:
         fetch-depth: 0
     - name: Prepare verified rootless runtime
       run: bash scripts/ci-core-rootless-runtime.sh
+    - name: Install verified ORAS for Core bootstrap
+      run: bash scripts/ci-install-oras.sh
     - name: Set up Go
       uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
       with:
@@ -979,6 +991,8 @@ jobs:
         fetch-depth: 0
     - name: Prepare verified rootless runtime
       run: bash scripts/ci-core-rootless-runtime.sh
+    - name: Install verified ORAS for Core bootstrap
+      run: bash scripts/ci-install-oras.sh
     - name: Set up Go
       uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
       with:
@@ -1105,6 +1119,8 @@ jobs:
       env:
         BASEHARBOR_TEST_RUNTIME: docker
       run: bash .browser-core-source/scripts/ci-core-rootless-runtime.sh
+    - name: Install verified ORAS for Core bootstrap
+      run: bash .browser-core-source/scripts/ci-install-oras.sh
     - name: Build exact Core runtime and warm its declared provider images
       shell: bash
       run: |
@@ -1318,6 +1334,8 @@ jobs:
         npx playwright install --with-deps chromium
     - name: Prepare Podman (GitHub-hosted)
       run: bash .browser-core-source/scripts/ci-core-rootless-runtime.sh
+    - name: Install verified ORAS for Core bootstrap
+      run: bash .browser-core-source/scripts/ci-install-oras.sh
       env:
         BASEHARBOR_TEST_RUNTIME: podman
     - name: Build exact Core runtime and warm its declared provider images
@@ -1535,6 +1553,8 @@ jobs:
       env:
         BASEHARBOR_TEST_RUNTIME: docker
       run: bash .browser-core-source/scripts/ci-core-rootless-runtime.sh
+    - name: Install verified ORAS for Core bootstrap
+      run: bash .browser-core-source/scripts/ci-install-oras.sh
     - name: Build exact Core runtime and warm its declared provider images
       shell: bash
       run: |
