@@ -4,6 +4,7 @@ set -euo pipefail
 action="${1:?usage: ci-local-oci-registry.sh publish <source> <target> | cleanup}"
 runtime="${BASEHARBOR_TEST_RUNTIME:?BASEHARBOR_TEST_RUNTIME must be docker or podman}"
 name="baseharbor-pre-release-registry"
+local_registry_config="$HOME/.config/containers/registries.conf.d/99-baseharbor-pre-release-registry.conf"
 
 runtime_cmd() {
   if [ "$runtime" = podman ]; then
@@ -16,6 +17,9 @@ runtime_cmd() {
 case "$action" in
   cleanup)
     runtime_cmd rm --force "$name" >/dev/null 2>&1 || true
+    if [ "$runtime" = podman ]; then
+      rm -f "$local_registry_config"
+    fi
     ;;
   publish)
     source_image="${2:?source image is required}"
@@ -25,6 +29,14 @@ case "$action" in
       exit 2
     }
     runtime_cmd image inspect "$source_image" >/dev/null
+    if [ "$runtime" = podman ]; then
+      mkdir -p "$(dirname "$local_registry_config")"
+      cat > "$local_registry_config" <<EOF
+[[registry]]
+location = "localhost:5000"
+insecure = true
+EOF
+    fi
     runtime_cmd run --detach --name "$name" --label baseharbor.pre-release.registry=true \
       --publish 127.0.0.1:5000:5000 docker.io/library/registry:2.8.3 >/dev/null
     ready=false
