@@ -190,6 +190,18 @@ func TestUIDAppSliceConcurrentFirstCreateConvergesOnOneOwner(t *testing.T) {
 	target := configureTestTarget(t)
 	assumeVerifiedCoreForSourceTest(t)
 
+	// Capture a stable pre-test CWD from a temp dir that lives until the test
+	// ends. A t.Cleanup that restores it GUARANTEES the process CWD is valid
+	// when the test returns, even if a racer is parked in a Chdir to a temp
+	// dir that t.TempDir() would remove. Without this the leaked CWD makes
+	// every subsequent test's getwd fail (0428-050 regression on #1579).
+	home := t.TempDir()
+	prev, _ := os.Getwd()
+	t.Cleanup(func() {
+		_ = os.Chdir(home)
+		_ = os.Chdir(prev)
+	})
+
 	root := filepath.Join(t.TempDir(), "raced")
 	if err := os.MkdirAll(root, 0o700); err != nil {
 		t.Fatal(err)
@@ -205,15 +217,16 @@ func TestUIDAppSliceConcurrentFirstCreateConvergesOnOneOwner(t *testing.T) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			cwd := root
 			prev, _ := os.Getwd()
-			if err := os.Chdir(cwd); err != nil {
+			if err := os.Chdir(root); err != nil {
 				errs[i] = err
 				return
 			}
-			defer os.Chdir(prev)
 			var out, errOut bytes.Buffer
 			errs[i] = runWithIO(context.Background(), []string{"app", "init", "--quick", "--no-input"}, &out, &errOut)
+			// Restore the process CWD inside the goroutine (before the temp
+			// dir is cleaned up) so a racer never parks in a deleted CWD.
+			_ = os.Chdir(prev)
 		}(i)
 	}
 	wg.Wait()
