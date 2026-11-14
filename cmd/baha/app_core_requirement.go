@@ -269,11 +269,11 @@ func buildResolvedApplicationPlan(ctx context.Context, resolved resolvedApplicat
 		return applicationLifecyclePlan{}, err
 	}
 	requests := applicationProviderChangeRequests(union)
-	requests, err = nativeBackendChangeRequests(resolved, requests)
+	requests, err = nativeBackendChangeRequestsForPlan(resolved, requests)
 	if err != nil {
 		return applicationLifecyclePlan{}, err
 	}
-	requests, err = standaloneProviderVersionChangeRequests(ctx, resolved, requests)
+	requests, err = standaloneProviderVersionChangeRequestsForPlan(ctx, resolved, requests)
 	if err != nil {
 		return applicationLifecyclePlan{}, err
 	}
