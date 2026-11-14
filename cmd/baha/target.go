@@ -21,6 +21,7 @@ import (
 
 type targetListItem struct {
 	Name           string   `json:"name"`
+	UID            string   `json:"uid,omitempty"`
 	Runtime        string   `json:"runtime"`
 	Access         string   `json:"access"`
 	AccessProvider string   `json:"access_provider"`
@@ -212,6 +213,7 @@ func targetCommand() *cli.Command {
 							access         string
 							accessProvider string
 							scope          string
+							uid            string
 							marks          []string
 						)
 						if target, configured := cfg.Targets[name]; configured {
@@ -221,6 +223,7 @@ func targetCommand() *cli.Command {
 								accessProvider = definition.Provider
 							}
 							scope = target.Scope
+							uid = target.TargetUID
 						} else {
 							provider = "docker"
 							access = "local"
@@ -237,7 +240,7 @@ func targetCommand() *cli.Command {
 						if name == effectiveName {
 							marks = append(marks, "effective")
 						}
-						items = append(items, targetListItem{Name: name, Runtime: provider, Access: access, AccessProvider: accessProvider, Scope: scope, Selectors: marks})
+						items = append(items, targetListItem{Name: name, UID: uid, Runtime: provider, Access: access, AccessProvider: accessProvider, Scope: scope, Selectors: marks})
 					}
 					return writeTargetList(out, format, items)
 				},

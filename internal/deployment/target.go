@@ -50,6 +50,14 @@ type OperatorAuthEnvironmentConfig struct {
 }
 
 type TargetDefinition struct {
+	// TargetUID is the stable, Core-side identity for this Target. It is
+	// generated at create time and reused by another checkout/Core without any
+	// manual request; the name stays addressable while the UID is the canonical
+	// system key. It is deliberately distinct from TenantID (the Core
+	// installation ownership path), from any workstation alias, and from a
+	// deployment id. An empty value marks a Target created before stable
+	// identity existed; such a definition migrates idempotently on read.
+	TargetUID        string                                   `yaml:"target-uid,omitempty" json:"target_uid,omitempty"`
 	TenantID         string                                   `yaml:"tenant-id,omitempty" json:"tenant_id,omitempty"`
 	Runtime          RuntimeDefinition                        `yaml:"runtime" json:"runtime"`
 	Access           TargetAccess                             `yaml:"access" json:"access"`
@@ -83,6 +91,7 @@ type ResolvedTarget struct {
 	DockerEndpoint   string                  `json:"docker_endpoint,omitempty"`
 	DockerContext    string                  `json:"docker_context,omitempty"`
 	DockerMode       string                  `json:"docker_mode,omitempty"`
+	UID              string                  `json:"uid,omitempty"`
 	TenantID         string                  `json:"tenant_id,omitempty"`
 	Name             string                  `json:"name"`
 	RuntimeProvider  string                  `json:"runtime_provider"`
@@ -255,6 +264,11 @@ func (c Config) Validate() error {
 		if target.TenantID != "" && !targetTenantID.MatchString(target.TenantID) {
 			return fmt.Errorf("target %q tenant-id must be a canonical UUID", name)
 		}
+		if uid := strings.TrimSpace(target.TargetUID); uid != "" {
+			if err := ValidateTargetUID(uid); err != nil {
+				return fmt.Errorf("target %q: %w", name, err)
+			}
+		}
 		if err := ValidateTargetName(name); err != nil {
 			return err
 		}
@@ -298,6 +312,13 @@ func (c Config) Validate() error {
 		if _, ok := c.Targets[c.DefaultTarget]; !ok {
 			return fmt.Errorf("default target %q is not configured", c.DefaultTarget)
 		}
+	}
+	// Stable target identity uniqueness: two distinct Targets may never resolve
+	// to one UID, because that poisons the name->UID resolution for both. An
+	// empty UID (pre-stable-identity definition) is allowed; a present UID must
+	// be unique across every configured Target.
+	if err := validateTargetUIDUniqueness(c); err != nil {
+		return err
 	}
 	if value := strings.TrimSpace(c.Prompt.Preset); value != "" {
 		switch value {
@@ -352,6 +373,7 @@ func (c Config) ResolveTarget(explicit, activated string) (ResolvedTarget, error
 		DockerEndpoint:   target.Runtime.DockerEndpoint,
 		DockerContext:    target.Runtime.DockerContext,
 		DockerMode:       target.Runtime.DockerMode,
+		UID:              target.TargetUID,
 		Name:             name,
 		TenantID:         target.TenantID,
 		RuntimeProvider:  target.Runtime.Provider,
