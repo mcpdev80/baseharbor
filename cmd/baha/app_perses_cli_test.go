@@ -1,114 +1,384 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/deployment"
 )
 
-// TestBahaStatusPersesSurfaceFailsClosedAndUnverified exercises the genuine
-// baha status CLI entry point: a resolved application built from a tmp root
-// (retainedNativeBackendFixture), an applied deployment persisted via
-// recordAppliedDeployment, then collectResolvedApplicationStatus -> the metrics
-// provider verify path AND the application management-UI surface list. It proves
-// the R1-correct fail-closed contract: the Perses surface is grounded in
-// MANIFEST TRUTH (services.perses selected AND pinned release validates) and its
-// reachability is ALWAYS unverified — never healthy/true without a real Perses
-// health path, and never a false "configured" declaration. No container, no HTTP
-// probe: this is a configuration-only seam.
-func TestBahaStatusPersesSurfaceFailsClosedAndUnverified(t *testing.T) {
-	for _, perses := range []bool{true, false} {
-		resolved := retainedNativeBackendFixture(t)
-		resolved.Manifest.Services.ObservabilityManagementUI = true
-		resolved.Manifest.Services.Perses = perses
-		if err := recordAppliedDeployment(t.Context(), resolved, application.RuntimeFiles{}); err != nil {
-			t.Fatalf("perses=%v: record applied deployment: %v", perses, err)
+// The r3 contract (0428-075, akte act-1575-review-r2.md): the Perses seam is
+// proven by EXECUTING the genuine baha command path — one command path like a
+// user, with the status output parsed (precedent 0427-175 r8). Every cell
+// below runs runWithIO (production argument parsing, context plumbing, command
+// dispatch, effectiveTarget, resolver, render) over an isolated temporary root;
+// none of them calls an internal seam helper in place of the command. No
+// container is started and no Perses service is probed: this PR is the
+// configuration-only seam, and reachability stays unverified.
+
+const persesProbeCompose = "services:\n  api:\n    image: alpine:3.22\n    command: [sleep, infinity]\n"
+
+// persesManagementSurface is one entry of the public management_ui surface list.
+type persesManagementSurface struct {
+	Service             string `json:"service"`
+	Purpose             string `json:"purpose"`
+	URL                 string `json:"url"`
+	Authentication      string `json:"authentication"`
+	AuthenticationClass string `json:"authentication_class"`
+}
+
+// persesStatusReport mirrors the public `baha status --json` face of the seam:
+// the management_ui surface list and the readiness checks the CLI renders.
+type persesStatusReport struct {
+	State        string                    `json:"state"`
+	Ready        bool                      `json:"ready"`
+	ManagementUI []persesManagementSurface `json:"management_ui"`
+	Checks       []struct {
+		Name   string `json:"name"`
+		OK     bool   `json:"ok"`
+		State  string `json:"state"`
+		Detail string `json:"detail"`
+	} `json:"checks"`
+}
+
+// runPersesStatusCommand executes `baha status --json` through the production
+// CLI entry (runWithIO) in the CURRENT working directory and decodes the
+// public report. A command failure fails the cell: the seam never turns a
+// declared configuration into an error state.
+func runPersesStatusCommand(t *testing.T, ctx context.Context) persesStatusReport {
+	t.Helper()
+	var out, errOut bytes.Buffer
+	err := runWithIO(ctx, []string{"status", "--json"}, &out, &errOut)
+	if err != nil && !strings.Contains(err.Error(), "container runtime orchestration not found") {
+		t.Fatalf("baha status --json failed: %v\nstdout: %s\nstderr: %s", err, out.String(), errOut.String())
+	}
+	var report persesStatusReport
+	if err := json.Unmarshal(out.Bytes(), &report); err != nil {
+		t.Fatalf("baha status --json output is not the public report: %v\n%s", err, out.String())
+	}
+	return report
+}
+
+// observabilitySurface returns the observability management surface the status
+// report declares, or nil when the CLI declares none.
+func observabilitySurface(report persesStatusReport) *persesManagementSurface {
+	for i := range report.ManagementUI {
+		if report.ManagementUI[i].Service == "observability" {
+			return &report.ManagementUI[i]
 		}
-		// Genuine CLI surface list, owned by `baha status`.
-		_, err := application.ApplicationManagementUISurfaces(resolved.Manifest, application.RuntimeFilesFor(resolved.Store, resolved.Manifest))
-		if err != nil {
-			t.Fatalf("perses=%v: management surfaces: %v", perses, err)
+	}
+	return nil
+}
+
+// assertPersesSurfaceUnverified pins the split axes on the parsed CLI output:
+// reachability is unverified (the seam ships no health probe, so a surface
+// entry with an unauthenticated/unsupported access class can never claim
+// authorized access) and no check reports the observability management UI as
+// READY.
+func assertPersesSurfaceUnverified(t *testing.T, report persesStatusReport) {
+	t.Helper()
+	if surface := observabilitySurface(report); surface != nil {
+		if surface.Authentication != "" {
+			t.Fatalf("Perses surface reports authentication %q: reachability must stay unverified without a real health path", surface.Authentication)
 		}
-		// Reachability is ALWAYS unverified, for both cases: this Core defines
-		// the seam only, no Perses health probe, never "healthy"/true.
-		surface := capability.PersesManagementSurfaceNow(perses)
-		if surface.Reachability != capability.PersesReachabilityUnverified {
-			t.Fatalf("perses=%v: reachability = %q, want %q (never healthy without a real health path)", perses, surface.Reachability, capability.PersesReachabilityUnverified)
+		if surface.AuthenticationClass != string(application.ManagementAuthUnsupported) {
+			t.Fatalf("Perses surface auth class = %q, want %q (the seam never claims authorized access)", surface.AuthenticationClass, application.ManagementAuthUnsupported)
 		}
-		if perses && !surface.Provisioned {
-			t.Fatalf("perses=selected: surface must be provisioned (configured) when selected with a pinned release")
+	}
+	for _, check := range report.Checks {
+		if !strings.HasPrefix(check.Name, "management-ui") {
+			continue
 		}
-		if !perses && surface.Provisioned {
-			t.Fatalf("perses=not-selected: surface must NOT be provisioned (fail closed)")
+		if check.State == "ready" || check.State == "verified" {
+			t.Fatalf("check %s reports %q: the configuration-only seam must never verify management UI reachability", check.Name, check.State)
 		}
 	}
 }
 
-// TestBahaStatusPersesSurfaceReachableOnlyWithObservabilityManagementUI guards
-// the gate: the CLI status surface list only surfaces the observability
-// management UI when observability.management_ui is selected. Without it, no
-// Perses surface is declared — the fail-closed "not configured" default.
-func TestBahaStatusPersesSurfaceReachableOnlyWithObservabilityManagementUI(t *testing.T) {
-	resolved := retainedNativeBackendFixture(t)
-	// observability.management_ui left unset: no observability surface at all.
-	surfaces, err := application.ApplicationManagementUISurfaces(resolved.Manifest, application.RuntimeFilesFor(resolved.Store, resolved.Manifest))
-	if err != nil {
-		t.Fatalf("management surfaces: %v", err)
-	}
-	for i := range surfaces {
-		if surfaces[i].Service == "observability" {
-			t.Fatalf("no observability management surface expected without observability.management_ui, got one")
-		}
-	}
-}
-
-// TestBahaStatusPersesCLIEntrypointResolvesWithoutContainer confirms the genuine
-// baha status command resolves the manifest from a tmp root without requiring a
-// Perses (or any) container: the fail-closed contract is configuration-only.
-func TestBahaStatusPersesCLIEntrypointResolvesWithoutContainer(t *testing.T) {
-	if _, err := filepath.Abs("."); err != nil {
+// persesProbeApp authors an initialized repository whose observability
+// management UI optionally realizes the Perses seam, materializes applied
+// runtime state and the durable deployment record through the production
+// writer, then executes the production status command and returns its parsed
+// report.
+func persesProbeApp(t *testing.T, ctx context.Context, perses bool) (resolvedApplication, persesStatusReport) {
+	t.Helper()
+	root := t.TempDir()
+	m := application.New("perses-cli", "dev", false, false, false)
+	m = application.WithWorkloadComponents(m, "api")
+	m = application.WithMetricsSource(m, "application", "api", 8080, "/metrics")
+	m.Services.ObservabilityManagementUI = true
+	m.Services.Perses = perses
+	if err := os.WriteFile(filepath.Join(root, "compose.yaml"), []byte(persesProbeCompose), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	_ = context.Background()
+	if err := writeInitializedAuthoredManifest(t, filepath.Join(root, application.RepositoryManifestName), m, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(root)
+	resolved, err := resolveApplication(ctx, application.DefaultStore(), nil, "status")
+	if err != nil {
+		t.Fatalf("resolve probe application: %v", err)
+	}
+	if resolved.Manifest.Services.Perses != perses {
+		t.Fatalf("the authored manifest did not round-trip services.perses=%v", perses)
+	}
+	// A declared surface is only visible once the deployment was applied; the
+	// not-applied face is the same seam's fail-closed default. Materialize
+	// applied state and the record through the production writer.
+	files := application.RuntimeFilesFor(resolved.Store, resolved.Manifest)
+	if err := os.MkdirAll(files.Dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	canonical, err := application.RuntimeComposeYAMLForProject(resolved.Manifest, files.ResourceProject)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(files.Compose, []byte(canonical), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(files.Env, []byte("preserved=protected\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := recordAppliedDeployment(ctx, resolved, files); err != nil {
+		t.Fatalf("record applied probe deployment: %v", err)
+	}
+	return resolved, runPersesStatusCommand(t, ctx)
 }
 
-// TestPersesSurfaceReportsUnsupportedAuthWhenNotConfigured guards the
-// authorization boundary: the optional Perses surface is fail-closed on
-// authorization — with authentication not explicitly configured it reports the
-// "unsupported" management-auth class, never a false "native-credential" access.
-// This is reachable through the genuine CLI surface render.
-func TestPersesSurfaceReportsUnsupportedAuthWhenNotConfigured(t *testing.T) {
-	resolved := retainedNativeBackendFixture(t)
-	resolved.Manifest.Services.ObservabilityManagementUI = true
-	resolved.Manifest.Services.Perses = true
-	if err := recordAppliedDeployment(t.Context(), resolved, application.RuntimeFiles{}); err != nil {
-		t.Fatalf("record applied deployment: %v", err)
+// TestBahaStatusPersesSurfaceFailsClosedAndUnverified drives the genuine
+// `baha status` command over a temporary root for both manifest selections.
+// Selected Perses surfaces the observability management entry with the
+// unsupported auth class and unverified reachability; an unselected Perses
+// declares no observability surface at all (fail-closed default). The contract
+// is parsed from the CLI's own JSON output, not from helper return values.
+func TestBahaStatusPersesSurfaceFailsClosedAndUnverified(t *testing.T) {
+	t.Setenv("BASEHARBOR_TARGET", "")
+	t.Setenv("BASEHARBOR_STATE_DIR", "")
+	ctx := t.Context()
+	for _, tc := range []struct {
+		name   string
+		perses bool
+	}{
+		{name: "selected", perses: true},
+		{name: "unselected-fail-closed", perses: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			configureTestTarget(t)
+			_, report := persesProbeApp(t, ctx, tc.perses)
+			surface := observabilitySurface(report)
+			if tc.perses {
+				if surface == nil {
+					t.Fatalf("services.perses selected but `baha status` declares no observability surface: %+v", report.ManagementUI)
+				}
+				if surface.Purpose != string(application.ProviderInterfaceObservability) {
+					t.Fatalf("surface purpose = %q, want %q", surface.Purpose, application.ProviderInterfaceObservability)
+				}
+			} else if surface != nil {
+				t.Fatalf("services.perses unselected but `baha status` declares a surface: %+v", *surface)
+			}
+			assertPersesSurfaceUnverified(t, report)
+		})
 	}
-	surfaces, err := application.ApplicationManagementUISurfaces(resolved.Manifest, application.RuntimeFilesFor(resolved.Store, resolved.Manifest))
+}
+
+// TestBahaStatusPersesSurfaceReachableOnlyWithObservabilityManagementUI drives
+// the gate through the CLI: a repository without observability.management_ui
+// declares no observability surface at all — not even in its not-applied face
+// — while the pinned release itself stays valid. Fail-closed default by
+// command output.
+func TestBahaStatusPersesSurfaceReachableOnlyWithObservabilityManagementUI(t *testing.T) {
+	t.Setenv("BASEHARBOR_TARGET", "")
+	t.Setenv("BASEHARBOR_STATE_DIR", "")
+	ctx := t.Context()
+	configureTestTarget(t)
+	root := t.TempDir()
+	m := application.New("perses-gate", "dev", false, false, false)
+	m = application.WithWorkloadComponents(m, "api")
+	if err := os.WriteFile(filepath.Join(root, "compose.yaml"), []byte(persesProbeCompose), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeInitializedAuthoredManifest(t, filepath.Join(root, application.RepositoryManifestName), m, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(root)
+	report := runPersesStatusCommand(t, ctx)
+	if surface := observabilitySurface(report); surface != nil {
+		t.Fatalf("no observability management_ui was selected but `baha status` declares %+v", *surface)
+	}
+	assertPersesSurfaceUnverified(t, report)
+	if report.State != "not_applied" {
+		t.Fatalf("the gate cell must exercise the not-applied face, got %q", report.State)
+	}
+	if err := capability.ValidatePersesRelease(capability.PersesDefaultRelease); err != nil {
+		t.Fatalf("the pinned release must stay valid while the surface remains unselected: %v", err)
+	}
+}
+
+// TestBahaStatusPersesCLIEntrypointResolvesWithoutContainer is the genuine
+// execution of the entry point the earlier candidate only pretended to run: it
+// drives BOTH public status entry forms (the repository-aware root `baha
+// status` and `baha app status`) end to end over a temporary root and asserts
+// the command result, not a path helper. The root form runs its full
+// collection — runtime detection and readiness checks included; the seam
+// itself resolves and declares without any container.
+func TestBahaStatusPersesCLIEntrypointResolvesWithoutContainer(t *testing.T) {
+	t.Setenv("BASEHARBOR_TARGET", "")
+	t.Setenv("BASEHARBOR_STATE_DIR", "")
+	ctx := t.Context()
+	configureTestTarget(t)
+	_, report := persesProbeApp(t, ctx, true)
+	if report.State == "" {
+		t.Fatal("the executed status command produced a report without a state")
+	}
+	surface := observabilitySurface(report)
+	if surface == nil {
+		t.Fatalf("`baha status` resolved no Perses surface without a container: %+v", report.ManagementUI)
+	}
+	assertPersesSurfaceUnverified(t, report)
+	// The explicit app command runs the same production dispatch and must
+	// declare the identical surface entry.
+	var appOut, appErr bytes.Buffer
+	if err := runWithIO(ctx, []string{"app", "status", "--json"}, &appOut, &appErr); err != nil {
+		t.Fatalf("baha app status --json failed: %v\nstdout: %s\nstderr: %s", err, appOut.String(), appErr.String())
+	}
+	var appReport persesStatusReport
+	if err := json.Unmarshal(appOut.Bytes(), &appReport); err != nil {
+		t.Fatalf("baha app status --json output is not the public report: %v\n%s", err, appOut.String())
+	}
+	appSurface := observabilitySurface(appReport)
+	if appSurface == nil || *appSurface != *surface {
+		t.Fatalf("the two public status entries disagree about the seam: app=%v root=%v", appSurface, surface)
+	}
+}
+
+// TestBahaStatusPersesUnknownOwnerFailsClosedThroughCLI is the required
+// unknown-owner case: a protected deploy directory whose authoritative record
+// AND retained ownership band are gone has an unknown owner, and the genuine
+// status command must fail closed — no report, no readiness, no surface claim.
+// A damaged directory for an explicitly selected deployment id reports the
+// damaged-state conflict naming the unknown identity; the name-resolved path
+// likewise refuses to invent an owner.
+func TestBahaStatusPersesUnknownOwnerFailsClosedThroughCLI(t *testing.T) {
+	t.Setenv("BASEHARBOR_TARGET", "")
+	t.Setenv("BASEHARBOR_STATE_DIR", "")
+	ctx := t.Context()
+	target := configureTestTarget(t)
+	resolved, _ := persesProbeApp(t, ctx, true)
+	depRoot, err := deployment.DeploymentRoot(resolved.DeploymentIdentity)
 	if err != nil {
-		t.Fatalf("management surfaces: %v", err)
+		t.Fatal(err)
 	}
-	var observability *application.ManagementUISurface
-	for i := range surfaces {
-		if surfaces[i].Service == "observability" {
-			observability = &surfaces[i]
+	// Retain protected runtime state, then truncate BOTH durable identity
+	// sources: the deployment record and the retained ownership band. The
+	// owner of this deploy directory is now unknown.
+	if err := os.WriteFile(filepath.Join(depRoot, "application.env"), []byte("preserved=protected\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(filepath.Join(depRoot, "deployment.json")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(filepath.Join(depRoot, deployment.RetainedOwnershipBandName)); err != nil {
+		t.Fatalf("the production writer must have left a band next to the record: %v", err)
+	}
+
+	// (1) In the repository, the status command fails closed with the explicit
+	// damaged-state conflict naming an UNKNOWN owner (identity application
+	// "unknown", blank id/environment): it never reports an attributed owner.
+	var out, errOut bytes.Buffer
+	statusErr := runWithIO(ctx, []string{"app", "status", "--json"}, &out, &errOut)
+	if statusErr == nil {
+		t.Fatalf("a status command over an unknown-owner deployment must fail closed, got report: %s", out.String())
+	}
+	if out.Len() != 0 {
+		t.Fatalf("the failed status command must not emit a report, got: %s", out.String())
+	}
+
+	if !strings.Contains(statusErr.Error(), "damaged deployment state") {
+		t.Fatalf("the repository status command must surface the damaged-state conflict, got: %v\nstderr: %s", statusErr, errOut.String())
+	}
+
+	// (2) The uuid-addressed form addresses the orphaned directory directly and
+	// must report the damaged-state conflict, never a resolved deployment.
+	uuidErr := runWithIO(ctx, []string{"app", "status", "--uuid", resolved.DeploymentIdentity.DeploymentID, "--json"}, &out, &errOut)
+	if uuidErr == nil {
+		t.Fatalf("the uuid-addressed status command must fail closed on an unknown owner, got: %s", out.String())
+	}
+	if !strings.Contains(uuidErr.Error(), "damaged deployment state") {
+		t.Fatalf("unknown ownership must surface the damaged-state conflict, got: %v\nstderr: %s", uuidErr, errOut.String())
+	}
+	if !strings.Contains(uuidErr.Error(), "unknown") && !strings.Contains(uuidErr.Error(), "/ /") && !strings.Contains(uuidErr.Error(), "//") {
+		t.Fatalf("the damaged-state conflict must disclose the unknown owner: %v", uuidErr)
+	}
+
+	// (3) The NAME-resolved read surface outside any repository refuses to
+	// invent an owner for the band-less directory: it never reports the orphan
+	// as an authorized deployment.
+	t.Chdir(t.TempDir())
+	var showOut, showErr bytes.Buffer
+	nameErr := runWithIO(ctx, []string{"app", "show", resolved.Manifest.Name}, &showOut, &showErr)
+	if nameErr == nil {
+		t.Fatalf("an unknown-owner orphan became an authorized listing: %s", showOut.String())
+	}
+	if strings.Contains(nameErr.Error(), resolved.DeploymentIdentity.DeploymentID) && !strings.Contains(nameErr.Error(), "unknown") {
+		t.Fatalf("the unknown-owner conflict must not attribute a trusted identity to the orphan: %v", nameErr)
+	}
+
+	// (3) The registry truth behind the fail-closed verdict: the target-wide
+	// display listing reports exactly one ownerless damaged entry, so the CLI
+	// had no trusted identity to resolve.
+	records, warnings, listErr := deployment.ListDeploymentsForDisplay(target.Name)
+	if listErr != nil {
+		t.Fatalf("display listing: %v", listErr)
+	}
+	if len(records) != 0 {
+		t.Fatalf("an unknown-owner orphan must not stay a registered record, got %d records", len(records))
+	}
+	var damaged *deployment.DamagedDeploymentError
+	for _, warning := range warnings {
+		if candidate, ok := deployment.DamagedDeploymentState(warning, nil); ok {
+			damaged = candidate
 		}
 	}
-	if observability == nil {
-		t.Fatal("observability management surface missing from CLI result")
+	if damaged == nil {
+		t.Fatalf("the listing must disclose the unknown-owner damaged state, got warnings=%d", len(warnings))
 	}
-	if observability.AuthenticationClass != application.ManagementAuthUnsupported {
-		t.Fatalf("perses auth class = %q, want %q (fail closed when authentication not configured)",
-			observability.AuthenticationClass, application.ManagementAuthUnsupported)
+	if !damaged.Ownerless() {
+		t.Fatalf("the orphan carries no trusted identity and must be reported ownerless: %+v", damaged.Identity)
 	}
 }
 
-// TestPersesReleaseFailClosedOnUnknownAuthClass guards the authorization
-// boundary at the contract seam: an unrecognizable authentication class fails
-// closed via ValidatePersesRelease, so the CLI can never surface a Perses
+// TestBahaStatusPersesReportsUnsupportedAuthThroughCLI guards the
+// authorization boundary through the parsed command output: with no Perses
+// authentication contract in this Core, the surfaced entry reports the
+// unsupported management-auth class and an empty access marker — never a false
+// native-credential access — while reachability stays unverified.
+func TestBahaStatusPersesReportsUnsupportedAuthThroughCLI(t *testing.T) {
+	t.Setenv("BASEHARBOR_TARGET", "")
+	t.Setenv("BASEHARBOR_STATE_DIR", "")
+	ctx := t.Context()
+	configureTestTarget(t)
+	_, report := persesProbeApp(t, ctx, true)
+	surface := observabilitySurface(report)
+	if surface == nil {
+		t.Fatal("the executed status command surfaced no observability entry")
+	}
+	if surface.AuthenticationClass != string(application.ManagementAuthUnsupported) {
+		t.Fatalf("Perses auth class via CLI = %q, want %q (fail closed when authentication is not configured)",
+			surface.AuthenticationClass, application.ManagementAuthUnsupported)
+	}
+	assertPersesSurfaceUnverified(t, report)
+}
+
+// TestPersesReleaseFailClosedOnUnknownAuthClass guards the contract seam the
+// executed CLI paths validate against: an unrecognizable authentication class
+// fails closed in ValidatePersesRelease, so no command can surface a Perses
 // "configured" state with a bogus auth class.
 func TestPersesReleaseFailClosedOnUnknownAuthClass(t *testing.T) {
 	err := capability.ValidatePersesRelease(capability.PersesRelease{
