@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/coreinstallation"
@@ -29,13 +30,16 @@ func observeDestroyConsumerAuthority(ctx context.Context, operation string, targ
 	if err != nil {
 		return invalidProviderConsumerInventory(err)
 	}
+	environments := make([]string, 0, len(registry.Bindings)+len(registry.Instances))
 	for _, binding := range registry.Bindings {
+		environments = append(environments, binding.Environment)
 		if err := authorizeMCPOperation(ctx, operation, target.Name, binding.Environment, binding.ApplicationID, ""); err != nil {
 			return err
 		}
 	}
 	for _, instance := range registry.Instances {
 		if instance.Scope == capability.ScopeApplication {
+			environments = append(environments, instance.OwnerEnvironment)
 			if err := authorizeMCPOperation(ctx, operation, target.Name, instance.OwnerEnvironment, instance.OwnerApplicationID, ""); err != nil {
 				return err
 			}
@@ -62,9 +66,20 @@ func observeDestroyConsumerAuthority(ctx context.Context, operation string, targ
 	if state.Spec.Target != target.Name || state.Spec.Runtime != target.RuntimeProvider {
 		return invalidProviderConsumerInventory(errors.New("installation target/runtime changed"))
 	}
-	environment := "dev"
-	if state.Defaults.ProtectedManagement {
-		environment = "prod"
-	}
+	// Installation-level work uses the most protected registered environment.
+	// The host role alone cannot manufacture a prod deployment context.
+	environment := installationDestroyAuthorizationEnvironment(environments)
 	return authorizeMCPOperation(ctx, operation, target.Name, environment, state.ID, "")
+}
+
+func installationDestroyAuthorizationEnvironment(environments []string) string {
+	ranks := map[string]int{"dev": 0, "development": 0, "test": 1, "staging": 2, "stage": 2, "prod": 3, "production": 3}
+	selected, highest := "dev", 0
+	for _, environment := range environments {
+		environment = strings.ToLower(strings.TrimSpace(environment))
+		if ranks[environment] > highest {
+			selected, highest = environment, ranks[environment]
+		}
+	}
+	return selected
 }
