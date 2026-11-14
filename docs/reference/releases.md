@@ -80,7 +80,7 @@ Source rule: the release issue and release notes must identify the exact BaseHar
 Normal releases are prepared on `develop` and promoted to `main` after validating the immutable candidate. Hotfixes start from `main`. The [complete release audit](https://github.com/mcpdev80/baseharbor/blob/develop/docs/internal/pre-release-documentation-audit.md) covers implementation, ecosystem consumers, EN/DE docs, the Pages candidate build, changelog and human-readable release notes.
 
 1. Complete implementation, contracts, documentation and release notes.
-2. Freeze exact Core, Demo, Console and Connector commits where required by the release scope.
+2. Freeze exact Core and active-consumer commits required by the release scope. Archived or deferred consumers are excluded unless a release explicitly brings them back into scope.
 3. Run affected tests during development and fix diagnosed failures.
 4. Run complete pre-release validation on the immutable candidate only after explicit authorization. Normal required jobs must succeed; failing, cancelled or missing required work blocks.
 5. Open a release PR containing the validated release content against `main`. Promotion, tagging and publication each require the authorized scope.
