@@ -47,7 +47,7 @@ jobs:
       if: inputs.runtime != 'static'
       run: bash scripts/ci-core-rootless-runtime.sh
     - name: Install verified ORAS for Core bootstrap
-      if: inputs.reuse_from == '' && inputs.runtime != 'static'
+      if: inputs.runtime != 'static'
       run: bash scripts/ci-install-oras.sh
     - name: Resolve candidate SHA
       id: candidate
