@@ -716,6 +716,8 @@ jobs:
         git -C "$workdir" checkout --detach FETCH_HEAD
         test "$(git -C "$workdir" rev-parse HEAD)" = "$DEMO_REF"
         echo "workdir=$workdir" >> "$GITHUB_OUTPUT"
+    - name: Publish exact candidate image for ORAS verification
+      run: bash scripts/ci-local-oci-registry.sh publish "$BASEHARBOR_RUNTIME_IMAGE" localhost:5000/baseharbor-runtime:pre-release
     - name: Run complete reference journey
       id: journey
       shell: bash
@@ -888,6 +890,8 @@ jobs:
         cache: false
     - name: Build exact Core runtime image
       run: docker build --pull -t "$BASEHARBOR_RUNTIME_IMAGE" -f deploy/control-plane/Dockerfile .
+    - name: Publish Core runtime image for ORAS verification
+      run: bash scripts/ci-local-oci-registry.sh publish "$BASEHARBOR_RUNTIME_IMAGE" localhost:5000/baseharbor-runtime:core-bootstrap
     - name: Verify Core-only bootstrap and ownership-safe retry
       env:
         CANDIDATE_SHA: ${{ needs.source.outputs.candidate_sha }}
@@ -923,6 +927,8 @@ jobs:
         cache: false
     - name: Build exact Core runtime image
       run: podman build --pull -t "$BASEHARBOR_RUNTIME_IMAGE" -f deploy/control-plane/Dockerfile .
+    - name: Publish Core runtime image for ORAS verification
+      run: bash scripts/ci-local-oci-registry.sh publish "$BASEHARBOR_RUNTIME_IMAGE" localhost:5000/baseharbor-runtime:core-bootstrap
     - name: Verify Core-only bootstrap and ownership-safe retry
       env:
         CANDIDATE_SHA: ${{ needs.source.outputs.candidate_sha }}
@@ -965,6 +971,7 @@ jobs:
         CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.version=dev -X main.commit=${{ needs.source.outputs.candidate_sha }} -X main.date=unknown" -o "$out/baha" ./cmd/baha
         cp deploy/control-plane/Dockerfile.binary "$out/Dockerfile"
         docker build --pull -t "$BASEHARBOR_RUNTIME_IMAGE" "$out"
+        bash scripts/ci-local-oci-registry.sh publish "$BASEHARBOR_RUNTIME_IMAGE" localhost:5000/baseharbor-runtime:coreless-lifecycle
     - name: Verify fresh Core-less lifecycle, ownership-safe recovery and managed reuse
       env:
         CANDIDATE_SHA: ${{ needs.source.outputs.candidate_sha }}
@@ -1007,6 +1014,7 @@ jobs:
         CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.version=dev -X main.commit=${{ needs.source.outputs.candidate_sha }} -X main.date=unknown" -o "$out/baha" ./cmd/baha
         cp deploy/control-plane/Dockerfile.binary "$out/Dockerfile"
         podman build --pull -t "$BASEHARBOR_RUNTIME_IMAGE" "$out"
+        bash scripts/ci-local-oci-registry.sh publish "$BASEHARBOR_RUNTIME_IMAGE" localhost:5000/baseharbor-runtime:coreless-lifecycle
     - name: Verify fresh Core-less lifecycle, ownership-safe recovery and managed reuse
       env:
         CANDIDATE_SHA: ${{ needs.source.outputs.candidate_sha }}
@@ -1127,7 +1135,7 @@ jobs:
         set -euo pipefail
         image="localhost/baseharbor-runtime:browser-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
         docker build -f .browser-core-source/deploy/control-plane/Dockerfile -t "$image" .browser-core-source
-        echo "BASEHARBOR_RUNTIME_IMAGE=$image" >> "$GITHUB_ENV"
+        bash .browser-core-source/scripts/ci-local-oci-registry.sh publish "$image" localhost:5000/baseharbor-runtime:browser
         awk '/^[[:space:]]+image:/ {print $2}' .browser-core-source/internal/runtime/assets/compose-single.yaml | sort -u | while read -r provider; do docker pull "$provider"; done
     - name: Pin the repository's native Keycloak image
       shell: bash
@@ -1344,7 +1352,7 @@ jobs:
         set -euo pipefail
         image="localhost/baseharbor-runtime:browser-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
         docker build -f .browser-core-source/deploy/control-plane/Dockerfile -t "$image" .browser-core-source
-        echo "BASEHARBOR_RUNTIME_IMAGE=$image" >> "$GITHUB_ENV"
+        bash .browser-core-source/scripts/ci-local-oci-registry.sh publish "$image" localhost:5000/baseharbor-runtime:browser
         awk '/^[[:space:]]+image:/ {print $2}' .browser-core-source/internal/runtime/assets/compose-single.yaml | sort -u | while read -r provider; do docker pull "$provider"; done
     - name: Pin the repository's native Keycloak image
       shell: bash
@@ -1561,7 +1569,7 @@ jobs:
         set -euo pipefail
         image="localhost/baseharbor-runtime:browser-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
         docker build -f .browser-core-source/deploy/control-plane/Dockerfile -t "$image" .browser-core-source
-        echo "BASEHARBOR_RUNTIME_IMAGE=$image" >> "$GITHUB_ENV"
+        bash .browser-core-source/scripts/ci-local-oci-registry.sh publish "$image" localhost:5000/baseharbor-runtime:browser
         awk '/^[[:space:]]+image:/ {print $2}' .browser-core-source/internal/runtime/assets/compose-single.yaml | sort -u | while read -r provider; do docker pull "$provider"; done
     - name: Pin the repository's native Keycloak image
       shell: bash
