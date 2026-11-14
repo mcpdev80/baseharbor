@@ -211,7 +211,7 @@ func appNewEditSelection(ctx context.Context, reader *bufio.Reader, out io.Write
 	}
 }
 
-func finishAppNewWizard(ctx context.Context, root string, result development.CreationResult, profile development.StackProfile, controller appWizardController, mode string, out, errOut io.Writer, release func()) error {
+func finishAppNewWizard(ctx context.Context, reader *bufio.Reader, root string, result development.CreationResult, profile development.StackProfile, controller appWizardController, mode string, out, errOut io.Writer, release func()) error {
 	decision, ok := controller.Decision()
 	if !ok {
 		return errors.New("confirmed New decision missing")
@@ -240,6 +240,18 @@ func finishAppNewWizard(ctx context.Context, root string, result development.Cre
 	}
 	defer func() { _ = os.Chdir(previous) }()
 	err := appNewLifecycleExecutor(ctx, application.DefaultStore(), nil, out, errOut)
+	if digest := candidateConsentDigestFromError(err); digest != "" {
+		confirmed, promptErr := promptYesNo(reader, out,
+			"Bind this exact candidate and continue with its lifecycle?", false)
+		if promptErr != nil {
+			return promptErr
+		}
+		if !confirmed {
+			fmt.Fprintf(out, "Candidate not bound. Project files remain at %s; run baha app apply --confirm-candidate %s from that directory when ready.\n", displayUserPath(root), digest)
+			return nil
+		}
+		err = appNewLifecycleExecutor(ctx, application.DefaultStore(), []string{"--confirm-candidate", digest}, out, errOut)
+	}
 	if err != nil {
 		fmt.Fprintln(errOut, "Project files were created; the authorized lifecycle did not complete.")
 		// The error-only lifecycle cannot attest individual provider effects.

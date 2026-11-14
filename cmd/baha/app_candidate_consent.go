@@ -2,14 +2,34 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"regexp"
 	"strings"
 	"time"
 
+	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/mcpdev80/baseharbor/internal/delivery"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 )
+
+var candidateConsentDigestPattern = regexp.MustCompile(`--confirm-candidate ([0-9a-f]{64})`)
+
+// candidateConsentDigestFromError returns only the exact digest supplied by
+// the candidate-consent UsageError. Other errors never trigger an interactive
+// retry from the New wizard.
+func candidateConsentDigestFromError(err error) string {
+	var usage *cli.UsageError
+	if !errors.As(err, &usage) {
+		return ""
+	}
+	match := candidateConsentDigestPattern.FindStringSubmatch(usage.Hint)
+	if len(match) != 2 {
+		return ""
+	}
+	return match[1]
+}
 
 // candidateConsentOverrideKey carries the operator-provided candidate digest
 // (--confirm-candidate) through the apply lifecycle. The zero value means no
