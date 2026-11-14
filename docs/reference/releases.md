@@ -26,6 +26,10 @@ Internal Go packages are not public API unless explicitly documented.
 
 Manifest v1 remains the supported v0.4 compatibility surface. v0.4 adds provider-neutral contract/runtime seams behind that surface rather than forcing applications to rewrite their manifest for future providers.
 
+### Optional observability management surface
+
+Observability backends (Prometheus, Loki, Tempo) are optional, opt-in data owners, not required Core bundles. For v0.4.28 the visualization surface is optional **Perses** (pinned at v0.55.1, image `persesdev/perses:v0.55.1`). Perses is a provider-owned, dashboard-as-code surface, not an application capability and not part of the required Core bundle. When Perses is not selected or configured, that is the normal state and is not an error: the observability management surface is reported as `unsupported` rather than "configured". The Prometheus, Loki and Tempo data backends remain available regardless of whether a visualization surface is selected.
+
 ## Development versus releases
 
 BaseHarbor uses two long-lived branches with distinct responsibilities:

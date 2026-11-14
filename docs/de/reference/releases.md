@@ -25,6 +25,10 @@ Der versionierte Vertrag enthält dokumentierte `baha` Befehle und Flags, die `b
 Interne Go-Pakete sind keine öffentliche API, es sei denn, explizit dokumentiert.
 
 Das Manifest v1 bleibt die unterstützte v0.4 Kompatibilitätsoberfläche. v0.4 fügt anbieterneutrale Kontrakt-/Laufzeitnähte hinter dieser Oberfläche hinzu, anstatt Anwendungen zu zwingen, ihr Manifest für zukünftige Anbieter umzuschreiben.
+### Optionale Beobachtbarkeits-Verwaltungsoberfläche
+
+Beobachtbarkeits-Backends (Prometheus, Loki, Tempo) sind optionale, opt-in Datenanbieter, kein Pflicht-Core-Bundle. Für v0.4.28 ist die Visualisierungsoberfläche die optionale **Perses** (fixiert bei v0.55.1, Image `persesdev/perses:v0.55.1`). Perses ist eine provider-basierte, Dashboard-as-Code-Oberfläche, keine Anwendungsfähigkeit und kein Teil des Pflicht-Core-Bundles. Wenn Perses nicht gewählt oder konfiguriert ist, ist das der Normalzust und kein Fehler — die Verwaltungs-Beobachtbarkeits-Oberfläche wird als `unsupported` statt „konfiguriert" gemeldet. Die Daten-Backends Prometheus, Loki und Tempo bleiben unabhängig davon verfügbar, ob eine Visualisierungsoberfläche gewählt wird.
+
 
 ## Entwicklung versus Veröffentlichungen
 

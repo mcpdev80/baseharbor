@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+- Optional Perses visualization surface (pinned at v0.55.1, image `persesdev/perses:v0.55.1`) for the v0.4.28 release. Perses is a provider-owned, dashboard-as-code surface, not an application capability and not part of the required Core bundle; when Perses is not selected or configured that is the normal state and is not an error.
+
 ## [0.4.27]
 
 ### Added
