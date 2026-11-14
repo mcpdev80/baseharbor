@@ -227,6 +227,27 @@ func TestResolveRejectsPublicDockerDefault(t *testing.T) {
 	}
 }
 
+func TestIsLocalRuntimeImageReference(t *testing.T) {
+	cases := []struct {
+		reference string
+		want      bool
+	}{
+		{reference: "localhost/team/app:dev", want: true},
+		{reference: "localhost:5000/team/app:pre-release", want: true},
+		{reference: "registry.example.invalid/team/app:dev", want: false},
+		{reference: "127.0.0.1:5000/team/app:dev", want: false},
+		{reference: "localhost.invalid/team/app:dev", want: false},
+		{reference: "localhost:invalid/team/app:dev", want: false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.reference, func(t *testing.T) {
+			if got := isLocalRuntimeImageReference(tc.reference); got != tc.want {
+				t.Fatalf("isLocalRuntimeImageReference(%q)=%t want %t", tc.reference, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestCanonicalArtifactRepositoryStripsTagButKeepsHost(t *testing.T) {
 	cases := map[string]string{
 		"registry.example.invalid/org/app@sha256:" + strings.Repeat("a", 64): "registry.example.invalid/org/app",
