@@ -20,7 +20,7 @@ func retainedApplicationBackendIntent(resolved resolvedApplication) (application
 	if resolved.DeploymentIdentity.DeploymentID == "" {
 		return resolved.Manifest, nil
 	}
-	record, err := deployment.LoadDeploymentRecord(resolved.DeploymentIdentity)
+	record, err := deployment.LoadOptionalDeploymentRecord(resolved.DeploymentIdentity)
 	if errors.Is(err, os.ErrNotExist) {
 		return resolved.Manifest, nil
 	}

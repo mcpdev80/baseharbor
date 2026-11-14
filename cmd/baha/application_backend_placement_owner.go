@@ -2,7 +2,9 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"reflect"
 
@@ -100,10 +102,10 @@ func resolveAppliedBackendSelection(resolved resolvedApplication, command ...str
 		return projectDesired(m)
 	}
 	encoded := ""
-	record, err := deployment.LoadDeploymentRecord(resolved.DeploymentIdentity)
+	record, err := deployment.LoadOptionalDeploymentRecord(resolved.DeploymentIdentity)
 	if err == nil {
 		encoded = record.Applied.GeneratedState["backend_placements"]
-	} else if state, ok := deployment.DeploymentRecordState(err); (!ok || state.Kind != "incomplete") &&
+	} else if state, ok := deployment.DeploymentRecordState(err); !errors.Is(err, os.ErrNotExist) && (!ok || state.Kind != "incomplete") &&
 		!(len(command) > 0 && eligibleNeverDeliveredLocalDestroy(resolved.Target, resolved.TargetStateRoot, m, command[0], err)) {
 		// A missing deployment record (Kind "incomplete") is not an error here:
 		// an application that was never delivered (e.g. refused by the consent

@@ -635,22 +635,12 @@ func writeRetainedOwnerBand(root string, id DeploymentIdentity) error {
 }
 
 func LoadDeploymentRecord(id DeploymentIdentity) (DeploymentRecord, error) {
+	if err := verifyDeploymentOwnerAtSeam(id.Target, id.DeploymentID); err != nil {
+		return DeploymentRecord{}, &DeploymentRecordStateError{Identity: id, Kind: "missing", Err: err}
+	}
 	root, err := DeploymentRoot(id)
 	if err != nil {
 		return DeploymentRecord{}, err
-	}
-	// A fresh application has no deployment namespace yet, so there is no
-	// persisted state whose owner needs verification. This keeps read-only
-	// planning and local first-run workflows usable before Core bootstrap. Once
-	// the deployment directory exists, owner verification remains mandatory,
-	// including for incomplete or damaged records.
-	if _, err := os.Lstat(root); errors.Is(err, os.ErrNotExist) {
-		return DeploymentRecord{}, os.ErrNotExist
-	} else if err != nil {
-		return DeploymentRecord{}, err
-	}
-	if err := verifyDeploymentOwnerAtSeam(id.Target, id.DeploymentID); err != nil {
-		return DeploymentRecord{}, &DeploymentRecordStateError{Identity: id, Kind: "missing", Err: err}
 	}
 	return loadDeploymentRecordFile(id.Target, id.DeploymentID, filepath.Join(root, "deployment.json"), &id)
 }
