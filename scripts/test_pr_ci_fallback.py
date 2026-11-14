@@ -75,6 +75,21 @@ class ConservativeFallbackTests(unittest.TestCase):
         self.assertTrue(unknown['fallback_used'])
         self.assertEqual([], unknown['selected_gates'])
 
+    def test_v0427_demo_pin_uses_only_exact_source_validation(self):
+        result = planner.plan(changes('docs/releases/v0.4.27.demo-ref'), CATALOG, MAPPING,
+                              conservative_fallback=True)
+        self.assertEqual('resolved', result['coverage_status'])
+        self.assertNotIn('fallback_used', result)
+        self.assertEqual([], result['selected_gates'])
+        self.assertEqual(['demo-source-pin-validation'],
+                         [row['id'] for row in result['required_validation_checks']])
+
+    def test_v0427_demo_pin_rename_or_mixed_change_stays_conservative(self):
+        source = changes('docs/releases/v0.4.27.demo-ref')
+        source['changes'].append({'status': 'modified', 'path': 'NOTICE'})
+        result = planner.plan(source, CATALOG, MAPPING, conservative_fallback=True)
+        self.assertTrue(result['fallback_used'])
+
     def test_invalid_source_and_missing_catalog_checks_remain_errors(self):
         for edit in ({'broad_required': True}, {'head_sha': 'bad'},
                      {'changes': [{'status': 'modified', 'path': '../escape.go'}]}):

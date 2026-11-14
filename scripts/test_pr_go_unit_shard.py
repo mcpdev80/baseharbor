@@ -16,19 +16,19 @@ class GoUnitShardTests(unittest.TestCase):
     def test_every_discovered_cli_test_is_assigned_exactly_once(self):
         names = ["TestA", "TestB", "TestC", "TestD", "TestE", "ExampleFoo", "FuzzBar"]
         with patch.object(shards, "owner_loan_cohort", return_value=set()):
-            partitions = [shards.selected_tests(names, f"cli-{index}") for index in range(3)]
+            partitions = [shards.selected_tests(names, f"cli-{index}") for index in range(4)]
         self.assertEqual(set(names), set().union(*map(set, partitions)))
         self.assertEqual(len(names), sum(map(len, partitions)))
         with patch.object(shards, "owner_loan_cohort", return_value=set()):
             self.assertEqual(partitions, [shards.selected_tests(names, f"cli-{index}")
-                                          for index in range(3)])
+                                          for index in range(4)])
         with self.assertRaises(ValueError):
             shards.selected_tests(names, "cli-9")
 
     def test_owner_loan_tests_keep_their_shared_process_order(self):
         cohort = shards.owner_loan_cohort()
         self.assertGreaterEqual(len(cohort), 7)
-        assignments = [index for index in range(3)
+        assignments = [index for index in range(4)
                        if cohort.intersection(shards.selected_tests(sorted(cohort), f"cli-{index}"))]
         self.assertEqual(1, len(assignments))
         self.assertEqual(cohort, set(shards.selected_tests(sorted(cohort), f"cli-{assignments[0]}")))

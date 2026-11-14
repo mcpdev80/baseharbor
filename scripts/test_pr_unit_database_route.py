@@ -13,6 +13,7 @@ class PRUnitDatabaseRouteTests(unittest.TestCase):
         self.assertEqual(2, workflow.count("bash scripts/pr-unit-database.sh"))
         self.assertIn("pr_unit_shards:", workflow)
         self.assertIn("unit_scope:", workflow)
+        self.assertIn("cli-0', 'cli-1', 'cli-2', 'cli-3", workflow)
         self.assertIn("Require complete selected Go shard coverage", workflow)
 
     def test_database_script_preserves_real_test_failure_and_cleans_up(self):
@@ -25,9 +26,20 @@ class PRUnitDatabaseRouteTests(unittest.TestCase):
             'docker exec "$name" pg_isready',
             "BASEHARBOR_TEST_DATABASE_URL=", "go test ./... -count=1",
             'python3 scripts/pr-go-unit-shard.py --mode "$mode"',
-            "cli-0|cli-1|cli-2|packages"
+            "cli-0|cli-1|cli-2|cli-3|packages"
         ):
             self.assertIn(required, fixture)
+
+    def test_owner_shard_does_not_repeat_cli_shard_tests(self):
+        fixture = (ROOT / 'scripts/pr-unit-database.sh').read_text()
+        for duplicate in (
+            'TestInitialTenantDefaultAndCustomOptions',
+            'TestCoreConnectorOIDCUsesConfiguredOperatorRealm',
+            'TestNodeAuthorityDefaultsAndCustom',
+            'TestNodePublicEndpointFailClosed',
+            'TestNodeAuthorityRejectsIndependentCustomCA',
+        ):
+            self.assertNotIn(duplicate, fixture)
 
 
 if __name__ == "__main__":

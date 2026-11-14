@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 spec = importlib.util.spec_from_file_location('runner', Path(__file__).with_name('pr-check-runner.py'))
 runner = importlib.util.module_from_spec(spec)
@@ -16,6 +17,33 @@ PLAN = {'required_validation_checks': [{'id': 'mkdocs-en-strict'}, {'id': 'docum
 
 
 class RunnerTests(unittest.TestCase):
+    def test_demo_pin_validation_requires_exact_sha_and_existing_remote_commit(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            pin = root / 'docs/releases/v0.4.27.demo-ref'
+            pin.parent.mkdir(parents=True)
+            sha = 'a' * 40
+            pin.write_text(sha + '\n')
+            resolved = subprocess.CompletedProcess(['gh'], 0, stdout=sha + '\n', stderr='')
+            with patch.object(runner.subprocess, 'run', return_value=resolved) as lookup:
+                self.assertEqual([sha], runner.validate_demo_source_pin('demo-source-pin-validation', root))
+                self.assertIn('repos/mcpdev80/baseharbor-demo/commits/' + sha,
+                              lookup.call_args.args[0])
+            pin.write_text('not-a-commit\n')
+            with self.assertRaisesRegex(RuntimeError, 'exactly one full lowercase'):
+                runner.validate_demo_source_pin('demo-source-pin-validation', root)
+            pin.write_text(sha + '\n')
+            with patch.object(runner.subprocess, 'run', return_value=subprocess.CompletedProcess(
+                    ['gh'], 1, stdout='', stderr='not found')):
+                with self.assertRaisesRegex(RuntimeError, 'does not resolve'):
+                    runner.validate_demo_source_pin('demo-source-pin-validation', root)
+
+    def test_demo_pin_check_uses_trusted_runner_route(self):
+        workflow = (Path(__file__).parent.parent / '.github' / 'workflows' / 'ci.yml').read_text()
+        self.assertIn('demo-source-pin-validation)', workflow)
+        self.assertIn('git show "$BASE_SHA":scripts/pr-check-runner.py', workflow)
+        self.assertIn('GH_TOKEN: ${{ github.token }}', workflow)
+
     def test_only_required_validations_are_in_matrix(self):
         self.assertEqual([{'check': 'mkdocs-en-strict'}, {'check': 'documentation-audit'}],
                          runner.matrix(PLAN)['include'])
@@ -39,7 +67,8 @@ class RunnerTests(unittest.TestCase):
         for group in (planner.DOC_CHECKS, planner.CODE_CHECKS, planner.CLI_CHECKS,
                       planner.WIZARD_BASE_CHECKS, planner.CAPABILITY_CHECKS,
                       planner.CI_CHECKS, planner.WORKFLOW_SYNTAX_CHECKS,
-                      planner.INSPECT_CHECKS, planner.RESOLVER_CHECKS):
+                      planner.INSPECT_CHECKS, planner.RESOLVER_CHECKS,
+                      planner.DEMO_SOURCE_PIN_VALIDATION):
             emitted |= {check['id'] for check in group}
         self.assertEqual(set(), emitted - runner.VALIDATIONS)
 

@@ -10,7 +10,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 CLI_PACKAGE = "./cmd/baha"
-CLI_SHARDS = 3
+CLI_SHARDS = 4
 TEST_NAME = re.compile(r"^(?:Test|Example|Fuzz)[A-Za-z0-9_]*$")
 REQUIRED_CLIENT_TESTS = {
     "TestClientCommandsTwoHomesSameDeploymentPrecedence",
@@ -62,7 +62,7 @@ def shard_key(name, cohort):
 
 
 def selected_tests(all_names, shard):
-    if not re.fullmatch(r"cli-[0-2]", shard):
+    if not re.fullmatch(r"cli-[0-3]", shard):
         raise ValueError("unknown CLI shard")
     index = int(shard[-1])
     cohort = owner_loan_cohort()
@@ -137,7 +137,7 @@ def packages():
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--mode", choices=["cli-0", "cli-1", "cli-2", "packages"], required=True)
+    parser.add_argument("--mode", choices=["cli-0", "cli-1", "cli-2", "cli-3", "packages"], required=True)
     mode = parser.parse_args().mode
     if mode == "packages":
         packages()

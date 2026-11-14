@@ -35,7 +35,7 @@ case "$mode" in
   all)
     go test ./... -count=1
     ;;
-  cli-0|cli-1|cli-2|packages)
+  cli-0|cli-1|cli-2|cli-3|packages)
     python3 scripts/pr-go-unit-shard.py --mode "$mode"
     exit 0
     ;;
@@ -47,12 +47,13 @@ case "$mode" in
     ;;
 esac
 
-# Keep the first-owner onboarding and node authorization contract mandatory.
-# Go exits successfully if -run matches nothing, so assert exact PASS events.
+# Keep the owner-only onboarding and authorization package contracts mandatory.
+# CLI-owned contracts run exactly once in the parallel CLI shards. Go exits
+# successfully if -run matches nothing, so assert exact PASS events here too.
 owner_node_report="$(mktemp "${RUNNER_TEMP:-/tmp}/baseharbor-owner-node.XXXXXX.jsonl")"
 trap 'rm -f "$owner_node_report"; cleanup' EXIT
 go test -p 1 ./cmd/baha ./internal/onboardingwizard ./internal/targetenrollment ./internal/database ./internal/identityprovider \
-  -run '^(TestInitialTenantDefaultAndCustomOptions|TestCoreConnectorOIDCUsesConfiguredOperatorRealm|TestNodeAuthorityDefaultsAndCustom|TestNodePublicEndpointFailClosed|TestNodeAuthorityRejectsIndependentCustomCA|TestFirstOwnerWizardDefaultCustomAndCancel|TestOwnerContextRequiresVerifiedAuthorizedScope|TestBootstrapInitialOperatorTenantIntegration|TestManagedOperatorCanonicalBaseURL)$' \
+  -run '^(TestFirstOwnerWizardDefaultCustomAndCancel|TestOwnerContextRequiresVerifiedAuthorizedScope|TestBootstrapInitialOperatorTenantIntegration|TestManagedOperatorCanonicalBaseURL)$' \
   -count=1 -json > "$owner_node_report"
 python3 - "$owner_node_report" <<'PY'
 import json
@@ -60,11 +61,6 @@ import pathlib
 import sys
 
 required = {
-    "TestInitialTenantDefaultAndCustomOptions",
-    "TestCoreConnectorOIDCUsesConfiguredOperatorRealm",
-    "TestNodeAuthorityDefaultsAndCustom",
-    "TestNodePublicEndpointFailClosed",
-    "TestNodeAuthorityRejectsIndependentCustomCA",
     "TestFirstOwnerWizardDefaultCustomAndCancel",
     "TestOwnerContextRequiresVerifiedAuthorizedScope",
     "TestBootstrapInitialOperatorTenantIntegration",

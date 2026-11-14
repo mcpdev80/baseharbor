@@ -711,6 +711,14 @@ PINNED_PINS_VALIDATION = [
      'command': ('python3 scripts/pr-check-runner.py execute --check pins-data-validation '
                  '--repository .')},
 ]
+
+# Release metadata only: verify the immutable Demo SHA without scheduling
+# application or runtime suites.
+DEMO_SOURCE_PIN_VALIDATION = [
+    {'id': 'demo-source-pin-validation', 'owner': 'exact immutable Demo source pin',
+     'command': ('python3 scripts/pr-check-runner.py execute --check '
+                 'demo-source-pin-validation --repository .')},
+]
 def openbao_retry_checks(diff, repository='.', context_repository=None,
                          context_target_branch=None):
     """Bind the frozen retry candidate and clean target merges to strict tests."""
@@ -1086,7 +1094,12 @@ def targeted_plan(diff, requirements, mapping, repository='.',
                 'reasons': ['Trusted target record: exact repository, branch, head, full '
                             'inventory, raw SHA-256 blobs and clean integration verified.']}
     for path in paths:
-        if re.fullmatch(r'docs/releases/v0\.4\.(?:23|24|25|26)\.consumer-pins\.json', path):
+        if path == 'docs/releases/v0.4.27.demo-ref':
+            area = 'release-demo-source-pin'
+            require(DEMO_SOURCE_PIN_VALIDATION)
+            if len(paths) != 1 or path_status.get(path) != 'modified':
+                unresolved.append('v0.4.27 Demo source pin must be a standalone modified file')
+        elif re.fullmatch(r'docs/releases/v0\.4\.(?:23|24|25|26)\.consumer-pins\.json', path):
             area = 'pins-data'
             require(PINNED_PINS_VALIDATION)
             if path_status.get(path) != 'added':
