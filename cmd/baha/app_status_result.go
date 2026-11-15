@@ -25,17 +25,18 @@ type runtimeArtifactObservation struct {
 
 type applicationStatusResult struct {
 	application.StatusResult
-	ApplicationID   string                                       `json:"application_id"`
-	DeploymentID    string                                       `json:"deployment_id"`
-	TLS             *applicationTLSObservation                   `json:"tls,omitempty"`
-	ServiceTLS      []application.BackendTLSLifecycleObservation `json:"service_tls,omitempty"`
-	RuntimeArtifact *runtimeArtifactObservation                  `json:"runtime_artifact,omitempty"`
-	RuntimeDocsURL  string                                       `json:"runtime_docs_url,omitempty"`
-	ApplicationURLs []string                                     `json:"application_urls,omitempty"`
-	ManagementUI    []application.ManagementUISurface            `json:"management_ui,omitempty"`
-	OperatorAuth    operatorAuthObservation                      `json:"operator_auth"`
-	Availability    []availability.NegotiationResult             `json:"availability,omitempty"`
-	Perses          *capability.PersesStatus                     `json:"perses,omitempty"`
+	ApplicationID            string                                                          `json:"application_id"`
+	DeploymentID             string                                                          `json:"deployment_id"`
+	TLS                      *applicationTLSObservation                                      `json:"tls,omitempty"`
+	ServiceTLS               []application.BackendTLSLifecycleObservation                    `json:"service_tls,omitempty"`
+	RuntimeArtifact          *runtimeArtifactObservation                                     `json:"runtime_artifact,omitempty"`
+	RuntimeDocsURL           string                                                          `json:"runtime_docs_url,omitempty"`
+	ApplicationURLs          []string                                                        `json:"application_urls,omitempty"`
+	ManagementUI             []application.ManagementUISurface                               `json:"management_ui,omitempty"`
+	OperatorAuth             operatorAuthObservation                                         `json:"operator_auth"`
+	Availability             []availability.NegotiationResult                                `json:"availability,omitempty"`
+	Perses                   *capability.PersesStatus                                        `json:"perses,omitempty"`
+	HostContainersDashboards map[string]metricsprovider.PersesHostDashboardAvailabilityEntry `json:"host_containers_dashboards,omitempty"`
 
 	tlsStatus     *applicationTLSStatus
 	tlsErr        error
@@ -235,20 +236,21 @@ func collectApplicationStatusResult(ctx context.Context, store application.Store
 		}
 	}
 	return applicationStatusResult{
-		StatusResult:    result,
-		ApplicationID:   resolved.Manifest.ApplicationID,
-		DeploymentID:    resolved.DeploymentIdentity.DeploymentID,
-		OperatorAuth:    collectOperatorAuthObservation(ctx, resolved.Target.Name, resolved.Manifest.Environment),
-		Availability:    availabilityResults,
-		TLS:             tlsObservation,
-		ServiceTLS:      serviceTLS,
-		RuntimeArtifact: runtimeArtifact,
-		RuntimeDocsURL:  runtimeDocsURL,
-		ApplicationURLs: applicationAccessURLs(resolved, result.Ready),
-		ManagementUI:    managementUI,
-		Perses:          persesStatus,
-		tlsStatus:       tlsStatus,
-		tlsErr:          tlsErr,
-		serviceTLSErr:   serviceTLSErr,
+		StatusResult:             result,
+		ApplicationID:            resolved.Manifest.ApplicationID,
+		DeploymentID:             resolved.DeploymentIdentity.DeploymentID,
+		OperatorAuth:             collectOperatorAuthObservation(ctx, resolved.Target.Name, resolved.Manifest.Environment),
+		Availability:             availabilityResults,
+		TLS:                      tlsObservation,
+		ServiceTLS:               serviceTLS,
+		RuntimeArtifact:          runtimeArtifact,
+		RuntimeDocsURL:           runtimeDocsURL,
+		ApplicationURLs:          applicationAccessURLs(resolved, result.Ready),
+		ManagementUI:             managementUI,
+		Perses:                   persesStatus,
+		HostContainersDashboards: metricsprovider.PersesHostDashboardAvailability(),
+		tlsStatus:                tlsStatus,
+		tlsErr:                   tlsErr,
+		serviceTLSErr:            serviceTLSErr,
 	}, nil
 }

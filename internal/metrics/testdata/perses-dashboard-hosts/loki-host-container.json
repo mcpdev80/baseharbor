@@ -1,0 +1,66 @@
+{
+  "kind": "Dashboard",
+  "metadata": {
+    "name": "loki-host-container",
+    "version": 0
+  },
+  "spec": {
+    "display": {
+      "name": "BaseHarbor host & container logs",
+      "description": "Provider container error log stream from BaseHarbor Loki."
+    },
+    "datasources": {
+      "loki": {
+        "kind": "LokiDatasource",
+        "name": "loki",
+        "default": true
+      }
+    },
+    "panels": {
+      "provider-logs": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "BaseHarbor provider container logs"
+          },
+          "plugin": {
+            "kind": "LogsTable"
+          },
+          "queries": [
+            {
+              "kind": "LogQuery",
+              "spec": {
+                "kind": "LokiLogQuery",
+                "spec": {
+                  "query": "{job=\"baseharbor-providers\"} |= \"error\""
+                },
+                "datasource": {
+                  "kind": "LokiDatasource",
+                  "name": "loki"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "layouts": [
+      {
+        "kind": "Grid",
+        "spec": {
+          "items": [
+            {
+              "x": 0,
+              "y": 0,
+              "width": 24,
+              "height": 10,
+              "content": {
+                "$ref": "#/spec/panels/provider-logs"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

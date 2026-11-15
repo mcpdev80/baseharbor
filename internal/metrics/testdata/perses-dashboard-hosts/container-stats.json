@@ -1,0 +1,7 @@
+{
+  "kind": "DashboardUnavailable",
+  "key": "container-stats",
+  "backend": "prometheus",
+  "unavailable": true,
+  "reason": "BaseHarbor ships no native cAdvisor per-container metrics; the dashboard is explicitly unavailable and no exporter is installed"
+}

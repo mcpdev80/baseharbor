@@ -1,0 +1,67 @@
+{
+  "kind": "Dashboard",
+  "metadata": {
+    "name": "prometheus-host-container",
+    "version": 0
+  },
+  "spec": {
+    "display": {
+      "name": "BaseHarbor host & container targets",
+      "description": "Provider container up-signal scraped by BaseHarbor Prometheus."
+    },
+    "datasources": {
+      "prometheus": {
+        "kind": "PrometheusDatasource",
+        "name": "prometheus",
+        "default": true
+      }
+    },
+    "panels": {
+      "provider-up": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "BaseHarbor provider container up"
+          },
+          "plugin": {
+            "kind": "StatChart"
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "kind": "PrometheusTimeSeriesQuery",
+                "spec": {
+                  "query": "up{job=\"baseharbor-providers\"}"
+                },
+                "datasource": {
+                  "kind": "PrometheusDatasource",
+                  "name": "prometheus"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "layouts": [
+      {
+        "kind": "Grid",
+        "spec": {
+          "items": [
+            {
+              "x": 0,
+              "y": 0,
+              "width": 24,
+              "height": 6,
+              "content": {
+                "$ref": "#/spec/panels/provider-up"
+              }
+            }
+          ]
+        }
+      }
+    ],
+    "duration": "5m"
+  }
+}
