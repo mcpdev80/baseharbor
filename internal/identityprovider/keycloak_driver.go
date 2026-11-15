@@ -462,7 +462,7 @@ func reloadKeycloakDatabaseCertificates(ctx context.Context, runtime KeycloakRun
 	for _, service := range services {
 		for {
 			_, err := executor.ExecProjectAs(reloadCtx, files.Project, files.Compose, files.Env, service, "postgres",
-				"sh", "-ec", `export PGPASSWORD="$PGPASSWORD_SUPERUSER"; exec psql -w -h /var/run/postgresql -U postgres -d postgres -v ON_ERROR_STOP=1 -c 'SELECT pg_reload_conf()'`)
+				"sh", "-ec", `exec pg_ctl -D "$PGDATA" reload`)
 			if err == nil {
 				break
 			}

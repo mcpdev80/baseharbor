@@ -114,7 +114,34 @@ func TestCorelessFreshWorkloadRuntimeLifecycle(t *testing.T) {
 			t.Errorf("isolated app cleanup: %v", err)
 		}
 	})
-	confirmedUp := []string{"up", "--yes", "--skip-memory-preflight", "--confirm-candidate", confirmDigest}
+	// `up` may persist runtime initialization intent before it reaches the
+	// deployment-consent boundary. That changes the candidate, so the digest
+	// computed immediately after `app init` is deliberately stale for this
+	// first attempt. Verify that Core refuses it without recording deployment
+	// state, then bind only the exact digest printed by that refusal.
+	if _, found, err := deployment.FindDeployment(target.Name, m.ApplicationID, m.Environment); err != nil {
+		t.Fatal(err)
+	} else if found {
+		t.Fatal("fresh coreless app unexpectedly has deployment state before up")
+	}
+	staleUp := []string{"up", "--yes", "--skip-memory-preflight", "--confirm-candidate", confirmDigest}
+	var staleOut bytes.Buffer
+	staleErr := runWithIO(ctx, staleUp, &staleOut, &staleOut)
+	if staleErr == nil || !strings.Contains(staleErr.Error(), "candidate confirm digest does not match") {
+		t.Fatalf("stale pre-up digest was not refused at candidate consent: %v\n%s", staleErr, staleOut.String())
+	}
+	currentDigest := extractCandidateConfirmDigest(staleOut.String())
+	if currentDigest == "" || currentDigest == confirmDigest || !strings.Contains(staleOut.String(), "Re-run with --confirm-candidate "+currentDigest) {
+		t.Fatalf("up did not publish a new exact candidate confirmation digest: %s", staleOut.String())
+	}
+	if _, found, err := deployment.FindDeployment(target.Name, m.ApplicationID, m.Environment); err != nil {
+		t.Fatal(err)
+	} else if found {
+		t.Fatal("refused stale candidate consent wrote deployment state")
+	}
+	t.Log("stale pre-up candidate digest refused; exact refreshed digest captured without deployment state")
+
+	confirmedUp := []string{"up", "--yes", "--skip-memory-preflight", "--confirm-candidate", currentDigest}
 	for _, command := range [][]string{{"app", "plan", "--json"}, confirmedUp, {"app", "status", "--json"}, {"app", "doctor", "--json"}, {"app", "down"}, confirmedUp} {
 		out.Reset()
 		var operationErr error
