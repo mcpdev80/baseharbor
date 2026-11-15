@@ -192,7 +192,7 @@ func runCoreOnlyBootstrapRuntimeWithHA(t *testing.T, role coreinstallation.Machi
 			ReadOnlyRootfs:      true,
 			NoNewPrivs:          true,
 			AllowRootEntrypoint: true,
-			AllowedCapAdd:       []string{"DAC_READ_SEARCH"},
+			AllowedCapAdd:       []string{"CHOWN", "DAC_READ_SEARCH", "FOWNER", "SETGID", "SETUID"},
 			RequireCapDropAll:   true,
 		}); err != nil {
 			t.Fatalf("single PostgreSQL entrypoint security settings invalid: %v", err)
