@@ -41,27 +41,36 @@ func reloadKeycloakDatabaseCertificates(ctx context.Context, runtime KeycloakRun
 		return errors.New("Keycloak PostgreSQL TLS reload requires a known, owned topology")
 	}
 	reloadCommand := keycloakDatabaseTLSReloadCommand(keyPath)
+	verifyCommand := keycloakDatabaseTLSServedCertificateCommand(keyPath)
 	for _, service := range services {
-		var lastOutput string
-		var lastErr error
-		for {
-			attemptCtx, attemptCancel := context.WithTimeout(reloadCtx, 10*time.Second)
-			output, err := executor.ExecProjectAs(attemptCtx, files.Project, files.Compose, files.Env, service, "postgres",
-				"sh", "-ec", reloadCommand)
-			attemptCancel()
-			if err == nil {
-				break
-			}
-			lastOutput = strings.TrimSpace(output)
-			lastErr = err
-			select {
-			case <-reloadCtx.Done():
-				return fmt.Errorf("reload Keycloak PostgreSQL certificates on %s: %w (last command output: %q)", service, errors.Join(reloadCtx.Err(), lastErr), lastOutput)
-			case <-ticker.C:
-			}
+		if err := execKeycloakDatabaseTLSCommand(reloadCtx, executor, files, service, "reload", reloadCommand, ticker.C); err != nil {
+			return err
+		}
+		if err := execKeycloakDatabaseTLSCommand(reloadCtx, executor, files, service, "verify served certificate", verifyCommand, ticker.C); err != nil {
+			return err
 		}
 	}
 	return nil
+}
+
+func execKeycloakDatabaseTLSCommand(ctx context.Context, executor keycloakProjectUserExecutor, files KeycloakFiles, service, operation, command string, retry <-chan time.Time) error {
+	var lastOutput string
+	var lastErr error
+	for {
+		attemptCtx, attemptCancel := context.WithTimeout(ctx, 10*time.Second)
+		output, err := executor.ExecProjectAs(attemptCtx, files.Project, files.Compose, files.Env, service, "postgres", "sh", "-ec", command)
+		attemptCancel()
+		if err == nil {
+			return nil
+		}
+		lastOutput = strings.TrimSpace(output)
+		lastErr = err
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("%s Keycloak PostgreSQL certificates on %s: %w (last command output: %q)", operation, service, errors.Join(ctx.Err(), lastErr), lastOutput)
+		case <-retry:
+		}
+	}
 }
 
 type keycloakDatabaseTLSKeyPaths struct {
@@ -87,20 +96,25 @@ umask 077
 tmp_key=$(mktemp "${runtime_key}.next.XXXXXX")
 cert_pub="${tmp_key}.cert.pub"
 key_pub="${tmp_key}.key.pub"
-probe_output="${tmp_key}.probe"
-served_cert="${tmp_key}.served.pem"
-trap 'rm -f "$tmp_key" "$cert_pub" "$key_pub" "$probe_output" "$served_cert"' EXIT HUP INT TERM
+trap 'rm -f "$tmp_key" "$cert_pub" "$key_pub"' EXIT HUP INT TERM
 cp "$source_key" "$tmp_key"
 chmod 0600 "$tmp_key"
 openssl x509 -in "$source_cert" -pubkey -noout > "$cert_pub"
 openssl pkey -in "$tmp_key" -pubout > "$key_pub"
 cmp -s "$cert_pub" "$key_pub" || { echo 'postgres server certificate and key do not match' >&2; exit 1; }
 mv -f "$tmp_key" "$runtime_key"
-kill -HUP "$pid"
+kill -HUP "$pid"`, paths.certificate, paths.sourceKey, paths.runtimeKey)
+}
+
+func keycloakDatabaseTLSServedCertificateCommand(paths keycloakDatabaseTLSKeyPaths) string {
+	return fmt.Sprintf(`source_cert=%q
+probe_output=$(mktemp)
+served_cert="${probe_output}.served.pem"
+trap 'rm -f "$probe_output" "$served_cert"' EXIT HUP INT TERM
 if ! timeout 5 openssl s_client -starttls postgres -connect 127.0.0.1:5432 -showcerts </dev/null > "$probe_output" 2>&1; then echo 'postgres TLS probe failed after certificate reload' >&2; cat "$probe_output" >&2; exit 1; fi
 sed -n '/-----BEGIN CERTIFICATE-----/,/-----END CERTIFICATE-----/p' "$probe_output" > "$served_cert"
 [ -s "$served_cert" ] || { echo 'postgres TLS probe returned no server certificate' >&2; exit 1; }
 expected_fingerprint=$(openssl x509 -in "$source_cert" -noout -fingerprint -sha256)
 served_fingerprint=$(openssl x509 -in "$served_cert" -noout -fingerprint -sha256)
-[ "$served_fingerprint" = "$expected_fingerprint" ] || { echo "postgres still serves a stale certificate (expected $expected_fingerprint, got $served_fingerprint)" >&2; exit 1; }`, paths.certificate, paths.sourceKey, paths.runtimeKey)
+[ "$served_fingerprint" = "$expected_fingerprint" ] || { echo "postgres still serves a stale certificate (expected $expected_fingerprint, got $served_fingerprint)" >&2; exit 1; }`, paths.certificate)
 }

@@ -14,20 +14,28 @@ import (
 
 type databaseReloadRuntime struct {
 	recordingKeycloakRuntime
-	services          []string
-	users             []string
-	commands          [][]string
-	failOn            string
-	failure           error
-	cancel            context.CancelFunc
-	remainingFailures int
+	services            []string
+	users               []string
+	commands            [][]string
+	callBudgets         []time.Duration
+	failOn              string
+	failure             error
+	cancel              context.CancelFunc
+	remainingFailures   int
+	failCommandContains string
 }
 
-func (r *databaseReloadRuntime) ExecProjectAs(_ context.Context, _, _, _, service, user string, args ...string) (string, error) {
+func (r *databaseReloadRuntime) ExecProjectAs(ctx context.Context, _, _, _, service, user string, args ...string) (string, error) {
 	r.services = append(r.services, service)
 	r.users = append(r.users, user)
 	r.commands = append(r.commands, append([]string(nil), args...))
-	if service == r.failOn && r.remainingFailures != 0 {
+	if deadline, ok := ctx.Deadline(); ok {
+		r.callBudgets = append(r.callBudgets, time.Until(deadline))
+	} else {
+		r.callBudgets = append(r.callBudgets, 0)
+	}
+	commandMatches := r.failCommandContains == "" || strings.Contains(strings.Join(args, " "), r.failCommandContains)
+	if service == r.failOn && commandMatches && r.remainingFailures != 0 {
 		r.remainingFailures--
 		if r.cancel != nil {
 			r.cancel()
@@ -52,7 +60,7 @@ func TestKeycloakDatabaseReloadFailsClosed(t *testing.T) {
 	if err := reloadKeycloakDatabaseCertificates(ctx, runtime, files); !errors.Is(err, failure) || !errors.Is(err, context.Canceled) {
 		t.Fatalf("database reload failure = %v, want original failure", err)
 	}
-	if !reflect.DeepEqual(runtime.services, []string{"keycloak-db-member-1", "keycloak-db-member-2"}) {
+	if !reflect.DeepEqual(runtime.services, []string{"keycloak-db-member-1", "keycloak-db-member-1", "keycloak-db-member-2"}) {
 		t.Fatalf("reload continued after a member rejected it: %v", runtime.services)
 	}
 }
@@ -68,20 +76,76 @@ func TestKeycloakDatabaseReloadWaitsForRecoveringMembers(t *testing.T) {
 	if err := reloadKeycloakDatabaseCertificates(ctx, runtime, KeycloakFiles{Env: env}); err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"keycloak-db-member-1", "keycloak-db-member-1", "keycloak-db-member-2", "keycloak-db-member-3"}
+	want := []string{"keycloak-db-member-1", "keycloak-db-member-1", "keycloak-db-member-1", "keycloak-db-member-2", "keycloak-db-member-2", "keycloak-db-member-3", "keycloak-db-member-3"}
 	if !reflect.DeepEqual(runtime.services, want) {
 		t.Fatalf("database reload did not wait for every member: got %v want %v", runtime.services, want)
 	}
-	wantCommand := []string{"sh", "-ec", keycloakDatabaseTLSReloadCommand(keycloakDatabaseTLSKeyPaths{
+	paths := keycloakDatabaseTLSKeyPaths{
 		certificate: "/run/baseharbor/db-tls-source/server.pem",
 		sourceKey:   "/run/baseharbor/db-tls-source/server-key.pem",
 		runtimeKey:  "/run/baseharbor/etcd-runtime/server-key.pem",
-	})}
-	if !reflect.DeepEqual(runtime.commands[0], wantCommand) {
-		t.Fatalf("database reload must use Spilo's local postgres control process without password authentication: got %v want %v", runtime.commands[0], wantCommand)
 	}
-	if !reflect.DeepEqual(runtime.users, []string{"postgres", "postgres", "postgres", "postgres"}) {
+	reload := []string{"sh", "-ec", keycloakDatabaseTLSReloadCommand(paths)}
+	verify := []string{"sh", "-ec", keycloakDatabaseTLSServedCertificateCommand(paths)}
+	wantCommands := [][]string{reload, reload, verify, reload, verify, reload, verify}
+	if !reflect.DeepEqual(runtime.commands, wantCommands) {
+		t.Fatalf("each HA member must reload then verify its own served certificate (the first reload may retry): got %v want %v", runtime.commands, wantCommands)
+	}
+	if !reflect.DeepEqual(runtime.users, []string{"postgres", "postgres", "postgres", "postgres", "postgres", "postgres", "postgres"}) {
 		t.Fatalf("database reload users = %v, want postgres for every member attempt", runtime.users)
+	}
+}
+
+func TestKeycloakDatabaseServedCertificateRetryDoesNotRepeatKeyInstall(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	env := filepath.Join(t.TempDir(), "runtime.env")
+	if err := writeProtectedEnv(env, map[string]string{"BASEHARBOR_KEYCLOAK_TOPOLOGY": "ha"}); err != nil {
+		t.Fatal(err)
+	}
+	runtime := &databaseReloadRuntime{
+		failOn:              "keycloak-db-member-1",
+		failure:             errors.New("served certificate is not current yet"),
+		remainingFailures:   1,
+		failCommandContains: "openssl s_client",
+	}
+	if err := reloadKeycloakDatabaseCertificates(ctx, runtime, KeycloakFiles{Env: env}); err != nil {
+		t.Fatal(err)
+	}
+	if len(runtime.commands) < 3 || !strings.Contains(strings.Join(runtime.commands[1], " "), "openssl s_client") || !strings.Contains(strings.Join(runtime.commands[2], " "), "openssl s_client") {
+		t.Fatalf("expected one reload followed by a retried served-certificate probe; commands=%v", runtime.commands)
+	}
+	if strings.Contains(strings.Join(runtime.commands[1], " "), "kill -HUP") || strings.Contains(strings.Join(runtime.commands[2], " "), "kill -HUP") {
+		t.Fatalf("verification retries must not reinstall the key or signal PostgreSQL again: commands=%v", runtime.commands[:3])
+	}
+	for i, budget := range runtime.callBudgets {
+		if budget <= 0 || budget > 10*time.Second {
+			t.Fatalf("runtime call %d must have a positive per-attempt deadline <= 10s, got %s", i, budget)
+		}
+	}
+}
+
+func TestKeycloakDatabaseServedCertificateFailureNamesPhaseAndStops(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	env := filepath.Join(t.TempDir(), "runtime.env")
+	if err := writeProtectedEnv(env, map[string]string{"BASEHARBOR_KEYCLOAK_TOPOLOGY": "ha"}); err != nil {
+		t.Fatal(err)
+	}
+	failure := errors.New("probe unavailable")
+	runtime := &databaseReloadRuntime{
+		failOn:              "keycloak-db-member-1",
+		failure:             failure,
+		remainingFailures:   -1,
+		cancel:              cancel,
+		failCommandContains: "openssl s_client",
+	}
+	err := reloadKeycloakDatabaseCertificates(ctx, runtime, KeycloakFiles{Env: env})
+	cancel()
+	if !errors.Is(err, failure) || !strings.Contains(err.Error(), "verify served certificate") {
+		t.Fatalf("served-certificate error must identify its phase and preserve the cause: %v", err)
+	}
+	if !reflect.DeepEqual(runtime.services, []string{"keycloak-db-member-1", "keycloak-db-member-1"}) {
+		t.Fatalf("verification failure must stop before another member and must not repeat reload: %v", runtime.services)
 	}
 }
 
@@ -94,11 +158,14 @@ func TestKeycloakSingleDatabaseReload(t *testing.T) {
 	if err := reloadKeycloakDatabaseCertificates(context.Background(), runtime, KeycloakFiles{Env: env}); err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(runtime.services, []string{"keycloak-db"}) {
+	if !reflect.DeepEqual(runtime.services, []string{"keycloak-db", "keycloak-db"}) {
 		t.Fatalf("single topology attempted HA reload: %v", runtime.services)
 	}
 	if got := runtime.commands[0][2]; !strings.Contains(got, `source_cert="/run/baseharbor/db-tls/server.pem"`) || !strings.Contains(got, `source_key="/run/baseharbor/db-tls/server-key.pem"`) || !strings.Contains(got, `runtime_key="/tmp/server-key.pem"`) {
 		t.Fatalf("single topology did not refresh the copied PostgreSQL key from its mounted source: %s", got)
+	}
+	if !strings.Contains(runtime.commands[1][2], `source_cert="/run/baseharbor/db-tls/server.pem"`) {
+		t.Fatalf("single topology did not verify the served certificate against its projected certificate: %s", runtime.commands[1][2])
 	}
 }
 
@@ -117,11 +184,6 @@ func TestKeycloakDatabaseTLSReloadCommandValidatesAndAtomicallyInstallsMatchingK
 		`cmp -s "$cert_pub" "$key_pub" || { echo 'postgres server certificate and key do not match' >&2; exit 1; }`,
 		`mv -f "$tmp_key" "$runtime_key"`,
 		`kill -HUP "$pid"`,
-		`timeout 5 openssl s_client -starttls postgres -connect 127.0.0.1:5432 -showcerts`,
-		`sed -n '/-----BEGIN CERTIFICATE-----/,/-----END CERTIFICATE-----/p' "$probe_output" > "$served_cert"`,
-		`expected_fingerprint=$(openssl x509 -in "$source_cert" -noout -fingerprint -sha256)`,
-		`served_fingerprint=$(openssl x509 -in "$served_cert" -noout -fingerprint -sha256)`,
-		`[ "$served_fingerprint" = "$expected_fingerprint" ] || { echo "postgres still serves a stale certificate`,
 	}
 	last := -1
 	for _, fragment := range ordered {
@@ -133,6 +195,18 @@ func TestKeycloakDatabaseTLSReloadCommandValidatesAndAtomicallyInstallsMatchingK
 	}
 	if !strings.Contains(command, `postgres postmaster pid is not ready`) || !strings.Contains(command, `postgres process is not ready`) {
 		t.Fatalf("reload command must fail closed when PostgreSQL is not running:\n%s", command)
+	}
+	verify := keycloakDatabaseTLSServedCertificateCommand(keycloakDatabaseTLSKeyPaths{certificate: "/run/baseharbor/db-tls-source/server.pem"})
+	for _, fragment := range []string{
+		`timeout 5 openssl s_client -starttls postgres -connect 127.0.0.1:5432 -showcerts`,
+		`sed -n '/-----BEGIN CERTIFICATE-----/,/-----END CERTIFICATE-----/p' "$probe_output" > "$served_cert"`,
+		`expected_fingerprint=$(openssl x509 -in "$source_cert" -noout -fingerprint -sha256)`,
+		`served_fingerprint=$(openssl x509 -in "$served_cert" -noout -fingerprint -sha256)`,
+		`[ "$served_fingerprint" = "$expected_fingerprint" ] || { echo "postgres still serves a stale certificate`,
+	} {
+		if !strings.Contains(verify, fragment) {
+			t.Fatalf("served-certificate command lacks verification step %q:\n%s", fragment, verify)
+		}
 	}
 }
 
