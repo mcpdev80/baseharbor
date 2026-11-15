@@ -35,6 +35,7 @@ type applicationStatusResult struct {
 	ManagementUI    []application.ManagementUISurface            `json:"management_ui,omitempty"`
 	OperatorAuth    operatorAuthObservation                      `json:"operator_auth"`
 	Availability    []availability.NegotiationResult             `json:"availability,omitempty"`
+	Perses          *capability.PersesStatus                     `json:"perses,omitempty"`
 
 	tlsStatus     *applicationTLSStatus
 	tlsErr        error
@@ -133,10 +134,18 @@ func collectApplicationStatusResult(ctx context.Context, store application.Store
 	if err != nil {
 		return applicationStatusResult{}, err
 	}
+	// The Perses three-state contract is manifest-declaration truth, exposed on
+	// every status JSON — local AND remote-target faces — regardless of the
+	// applied/stopped/not_applied runtime face: not_configured |
+	// configured_unverified | verified. Pin validation alone can never map into
+	// verified — only a real Perses health probe could. Computed before the
+	// remote-target early return below so remote-status --json also carries it.
+	persesStatus := capability.PersesStatusNow(resolved.Manifest.Services.ObservabilityManagementUI && resolved.Manifest.Services.Perses)
 	if hasRemoteApplicationTarget(resolved) {
 		return applicationStatusResult{StatusResult: result, ApplicationID: resolved.Manifest.ApplicationID,
 			DeploymentID: resolved.DeploymentIdentity.DeploymentID,
-			OperatorAuth: collectOperatorAuthObservation(ctx, resolved.Target.Name, resolved.Manifest.Environment)}, nil
+			OperatorAuth: collectOperatorAuthObservation(ctx, resolved.Target.Name, resolved.Manifest.Environment),
+			Perses:       persesStatus}, nil
 	}
 	tlsStatus, tlsObservation, tlsErr := collectApplicationTLSObservation(resolved)
 	if tlsErr != nil || (tlsObservation != nil && !tlsObservation.Healthy) {
@@ -157,7 +166,7 @@ func collectApplicationStatusResult(ctx context.Context, store application.Store
 	var managementUI []application.ManagementUISurface
 	if result.State != "not_applied" {
 		if files, filesErr := application.ExistingRuntimeFiles(resolved.Store, resolved.Manifest); filesErr == nil {
-			managementUI, _ = application.ApplicationManagementUISurfaces(resolved.Manifest, files)
+			managementUI, _, _ = application.ApplicationManagementUISurfaces(resolved.Manifest, files)
 		}
 		if identityUI, identityErr := identityprovider.KeycloakManagementSurfaces(resolved.Manifest, resolved.TargetStateRoot, resolved.Target.Name); identityErr == nil {
 			managementUI = append(managementUI, identityUI...)
@@ -237,6 +246,7 @@ func collectApplicationStatusResult(ctx context.Context, store application.Store
 		RuntimeDocsURL:  runtimeDocsURL,
 		ApplicationURLs: applicationAccessURLs(resolved, result.Ready),
 		ManagementUI:    managementUI,
+		Perses:          persesStatus,
 		tlsStatus:       tlsStatus,
 		tlsErr:          tlsErr,
 		serviceTLSErr:   serviceTLSErr,
