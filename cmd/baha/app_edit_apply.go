@@ -182,6 +182,7 @@ func appEditDesiredFromDecision(loaded appEditLoaded, decision appWizardDecision
 			preferences = append(preferences, carried)
 		}
 	}
+	manifest = application.WithProviderPreferences(manifest, preferences)
 	if err := manifest.Validate(); err != nil {
 		return appEditDesired{}, err
 	}

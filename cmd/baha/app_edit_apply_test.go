@@ -828,6 +828,25 @@ func TestAppEditDesiredIntentDoesNotInheritRemovedProviderPreference(t *testing.
 	if _, err := application.PreviewReferenceProviderRegistryAt(root, desired); err != nil {
 		t.Fatalf("read-only preview inherited the removed SQL preference: %v", err)
 	}
+	resolved, err := resolveApplication(context.Background(), application.DefaultStore(), []string{"edit-remove-sql"}, "edit")
+	if err != nil {
+		t.Fatal(err)
+	}
+	source, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decisionDesired, err := appEditDesiredFromDecision(appEditLoaded{
+		Source: source, Target: target.Name, ApplicationID: m.ApplicationID,
+		Preferences: []application.ProviderPreference{pref},
+	}, appWizardDecision{Target: target.Name})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolved.Manifest = decisionDesired.Manifest
+	if _, err := readGuidedApplicationContext(context.Background(), resolved); err != nil {
+		t.Fatalf("guided preview of removed SQL was unverifiable: %v", err)
+	}
 	saved, err := application.DesiredProviderPreferencesAt(root, m)
 	if err != nil || len(saved) != 1 || saved[0] != pref {
 		t.Fatalf("read-only proposal changed persisted provider preference: %+v %v", saved, err)
