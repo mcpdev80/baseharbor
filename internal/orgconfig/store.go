@@ -14,6 +14,11 @@ type ActiveState struct {
 	Config     Config     `json:"config"`
 }
 
+// legacyTempSelectionRel is the relative path (under the world-writable config
+// root) of the pre-fix persisted selection. It is adopted once into the private
+// canonical location and then never consulted again.
+const legacyTempSelectionRel = "active.json"
+
 // worldWritableCheckOptOutEnv, when set to "skip", disables the world-writable
 // /tmp guard in tests that intentionally use a world-writable t.TempDir() as
 // XDG_CONFIG_HOME. Production never sets it, so the guard stays enforced.
@@ -54,12 +59,152 @@ func cacheRoot() (string, error) {
 	return filepath.Join(home, ".cache", "baseharbor", "organization"), nil
 }
 
+// ActivePath returns the private, canonical location of the persisted selection
+// under the user config directory. It is never under a world-writable path.
 func ActivePath() (string, error) {
 	root, err := configRoot()
 	if err != nil {
 		return "", err
 	}
 	return filepath.Join(root, "active.json"), nil
+}
+
+// legacyActivePath returns the prior world-writable location of the persisted
+// selection under the (currently resolved) config root. It is used only for a
+// one-time migration into the private fallback location (see
+// migrateFromWorldWritable) and is never consulted a second time.
+func legacyActivePath() (string, error) {
+	root, err := configRoot()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(root, legacyTempSelectionRel), nil
+}
+
+// privateFallbackConfigRoot returns the private, non-world-writable config root
+// that ignores a broken XDG_CONFIG_HOME pointing at a world-writable directory.
+// It follows the same 0700/0600 convention as the rest of the project: config
+// under the user's home directory.
+func privateFallbackConfigRoot() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil || strings.TrimSpace(home) == "" {
+		return "", errors.New("cannot determine BaseHarbor user home directory")
+	}
+	return filepath.Join(home, ".config", "baseharbor", "organization"), nil
+}
+
+// privateCanonicalPath returns the private, non-world-writable path of the
+// persisted selection. When XDG_CONFIG_HOME is a private directory it equals
+// ActivePath(); when XDG_CONFIG_HOME (or BASEHARBOR_STATE_DIR) resolves to a
+// world-writable location it falls back to the user's real config directory so
+// the selection is never written under /tmp.
+func privateCanonicalPath() (string, error) {
+	candidate, err := ActivePath()
+	if err != nil {
+		return "", err
+	}
+	if os.Getenv(worldWritableCheckOptOutEnv) == "skip" || isWorldWritableDir(filepath.Dir(candidate)) {
+		return privateFallbackPath()
+	}
+	return candidate, nil
+}
+
+// isWorldWritableCandidate reports whether the currently resolved selection
+// location (ActivePath) sits under a world-writable directory, independent of
+// the private fallback applied by privateCanonicalPath.
+func isWorldWritableCandidate() bool {
+	candidate, err := ActivePath()
+	if err != nil {
+		return false
+	}
+	return isWorldWritableDir(filepath.Dir(candidate))
+}
+
+// privateFallbackPath returns the private canonical selection path under the
+// user's real config directory, independent of a broken world-writable
+// XDG_CONFIG_HOME/BASEHARBOR_STATE_DIR.
+func privateFallbackPath() (string, error) {
+	root, err := privateFallbackConfigRoot()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(root, "active.json"), nil
+}
+
+// adoptLegacySelection migrates a stale selection from a world-writable /tmp
+// location into the private canonical location exactly once. It is fail-closed:
+// it rejects symlinks and any non-regular entry (Lstat, no-follow), refuses to
+// read from a world-writable source, and refuses to overwrite a private
+// selection that already exists. After a successful adopt the source file is
+// frozen read-only with a tombstone marker so the location can never receive a
+// further write or a second adopt.
+//
+// legacyPath is the world-writable location that was resolved (and refused by
+// SaveActive/LoadActive); canonical is the private fallback the value is adopted
+// into. It returns true when a legacy file was adopted, false when there was
+// nothing to adopt, and a non-nil error on any safety violation.
+func adoptLegacySelection(legacyPath, canonical string) (bool, error) {
+	info, err := os.Lstat(legacyPath)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return false, nil
+		}
+		return false, fmt.Errorf("inspect legacy organization selection %q: %w", legacyPath, err)
+	}
+	// Fail closed: a symlink or any non-regular entry must not be adopted.
+	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
+		return false, fmt.Errorf("rejecting legacy organization selection at %q: symlink or non-regular entry", legacyPath)
+	}
+	// Refuse to read a world-writable source: an attacker may have pre-created or
+	// replaced the file between the stat and the read.
+	if info.Mode().Perm()&0o002 != 0 {
+		return false, fmt.Errorf("rejecting world-writable legacy organization selection at %q", legacyPath)
+	}
+
+	// Never clobber an existing (private) selection.
+	if _, err := os.Lstat(canonical); err == nil {
+		return false, nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return false, fmt.Errorf("inspect canonical organization selection %q: %w", canonical, err)
+	}
+
+	data, err := os.ReadFile(legacyPath)
+	if err != nil {
+		return false, fmt.Errorf("read legacy organization selection %q: %w", legacyPath, err)
+	}
+	if err := migrateToCanonical(legacyPath, canonical, data); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// migrateToCanonical writes data into canonical using a temp+rename within the
+// canonical directory and freezes the source as a read-only tombstone so it can
+// never receive a further write.
+func migrateToCanonical(src, dst string, data []byte) error {
+	if err := os.MkdirAll(filepath.Dir(dst), 0o700); err != nil {
+		return fmt.Errorf("create organization config directory: %w", err)
+	}
+	tmp := dst + ".tmp"
+	if err := os.WriteFile(tmp, data, 0o600); err != nil {
+		return fmt.Errorf("write active organization configuration: %w", err)
+	}
+	if err := os.Chmod(tmp, 0o600); err != nil {
+		_ = os.Remove(tmp)
+		return fmt.Errorf("secure active organization configuration: %w", err)
+	}
+	if err := os.Rename(tmp, dst); err != nil {
+		_ = os.Remove(tmp)
+		return fmt.Errorf("replace active organization configuration: %w", err)
+	}
+	// Freeze the source as a tombstone; ignore failure to chmod (best effort)
+	// but leave the tombstone marker regardless.
+	_ = os.Chmod(src, 0o400)
+	tomb := filepath.Join(filepath.Dir(src), "active.world-writable.tombstone")
+	_ = os.WriteFile(tomb, []byte("# Legacy organization selection path frozen after one-time migration.\n"+
+		"This file exists to prevent a second migration.\n"+
+		"Original location: "+src+"\n"), 0o600)
+	return nil
 }
 
 func LoadActive() (ActiveState, error) {
@@ -74,17 +219,42 @@ func LoadActive() (ActiveState, error) {
 }
 
 func LoadActiveOptional() (ActiveState, bool, error) {
-	path, err := ActivePath()
+	canonical, err := privateCanonicalPath()
 	if err != nil {
 		return ActiveState{}, false, err
 	}
+	legacy, err := legacyActivePath()
+	if err != nil {
+		return ActiveState{}, false, err
+	}
+	path := canonical
 	data, err := os.ReadFile(path)
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
+		if !errors.Is(err, os.ErrNotExist) {
+			return ActiveState{}, false, fmt.Errorf("read active organization configuration: %w", err)
+		}
+		// One-time migration: adopt a stale world-writable /tmp selection into
+		// the private canonical path if it still exists.
+		adopted, adoptErr := adoptLegacySelection(legacy, canonical)
+		if adoptErr != nil {
+			return ActiveState{}, false, adoptErr
+		}
+		if !adopted {
 			return ActiveState{}, false, nil
 		}
-		return ActiveState{}, false, fmt.Errorf("read active organization configuration: %w", err)
+		// Adopted: the canonical path now holds the migrated selection.
+		data, err = os.ReadFile(canonical)
+		if err != nil {
+			return ActiveState{}, false, fmt.Errorf("read active organization configuration after migration: %w", err)
+		}
 	}
+	return decodeActive(data)
+}
+
+// decodeActive validates a decoded active organization configuration. It is
+// shared by LoadActiveOptional (both the direct-read and one-time-migration
+// paths) so adoption never falls through to a stale read error.
+func decodeActive(data []byte) (ActiveState, bool, error) {
 	var state ActiveState
 	if err := json.Unmarshal(data, &state); err != nil {
 		return ActiveState{}, false, fmt.Errorf("decode active organization configuration: %w", err)
@@ -105,14 +275,33 @@ func SaveActive(state ActiveState) error {
 	if err := state.Resolution.Validate(); err != nil {
 		return err
 	}
-	path, err := ActivePath()
+	canonical, err := privateCanonicalPath()
 	if err != nil {
 		return err
 	}
-	if err := migrateFromWorldWritable(path); err != nil {
+	legacy, err := legacyActivePath()
+	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+	// One-time migration: adopt a stale world-writable /tmp selection into the
+	// private canonical path before writing, so the write lands in the safe
+	// location and never re-touches the /tmp source.
+	adopted, adoptErr := adoptLegacySelection(legacy, canonical)
+	if adoptErr != nil {
+		return adoptErr
+	}
+	// If the resolved selection location is world-writable and there is no
+	// private selection to write into, the write would land in a
+	// world-writable spot. That is refused: the caller must point
+	// XDG_CONFIG_HOME/BASEHARBOR_STATE_DIR at a private directory. Once a
+	// private selection exists (after a migration), the write proceeds to that
+	// private location. A non-world-writable private candidate is always safe.
+	if !adopted {
+		if _, statErr := os.Stat(canonical); errors.Is(statErr, os.ErrNotExist) && isWorldWritableCandidate() {
+			return fmt.Errorf("organization selection state resolves to a world-writable path and must be written to a private user directory first")
+		}
+	}
+	if err := os.MkdirAll(filepath.Dir(canonical), 0o700); err != nil {
 		return fmt.Errorf("create organization config directory: %w", err)
 	}
 	data, err := json.MarshalIndent(state, "", "  ")
@@ -120,7 +309,7 @@ func SaveActive(state ActiveState) error {
 		return fmt.Errorf("encode active organization configuration: %w", err)
 	}
 	data = append(data, '\n')
-	tmp := path + ".tmp"
+	tmp := canonical + ".tmp"
 	if err := os.WriteFile(tmp, data, 0o600); err != nil {
 		return fmt.Errorf("write active organization configuration: %w", err)
 	}
@@ -128,113 +317,15 @@ func SaveActive(state ActiveState) error {
 		_ = os.Remove(tmp)
 		return fmt.Errorf("secure active organization configuration: %w", err)
 	}
-	if err := os.Rename(tmp, path); err != nil {
+	if err := os.Rename(tmp, canonical); err != nil {
 		_ = os.Remove(tmp)
 		return fmt.Errorf("replace active organization configuration: %w", err)
 	}
-	return nil
-}
-
-// migrateFromWorldWritable enforces the world-writable /tmp prohibition for the
-// persisted organization (target) selection. The active state determines which
-// registry reads resolve against, so it must never sit in a path a local user
-// can pre-create under the sticky-bit world-writable /tmp.
-//
-// Behaviour:
-//   - If the resolved path is NOT under a world-writable directory, nothing
-//     happens (the normal case for os.UserConfigDir()).
-//   - If the resolved path IS under a world-writable directory:
-//   - an existing selection file there is adopted once into the canonical
-//     user-state location, then left in place as a read-only tombstone —
-//     future SaveActive calls reject further writes so the stale /tmp copy
-//     can never be updated again;
-//   - a missing selection file there is an immediate rejection, because
-//     accepting it would persist the vulnerable state.
-func migrateFromWorldWritable(path string) error {
-	if strings.TrimSpace(os.Getenv(worldWritableCheckOptOutEnv)) == "skip" {
-		return nil
-	}
-	if isWorldFrozenTombstone(filepath.Dir(path)) {
-		return fmt.Errorf("organization selection state at %q was frozen after a world-writable /tmp migration; rewrite it in the user-state directory", path)
-	}
-	info, err := os.Stat(path)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			// A missing selection is only a problem under a world-writable dir:
-			// an attacker could pre-create it. For a private location a missing
-			// file is the normal "not configured yet" case and must not be
-			// rejected here (SaveActive writes the file afterwards).
-			if isWorldWritableDir(filepath.Dir(path)) {
-				return fmt.Errorf("organization selection state resolves to a world-writable path and must be written to the user-state directory first: %w", err)
-			}
-			return nil
-		}
-		return fmt.Errorf("inspect organization selection state: %w", err)
-	}
-	if !info.Mode().IsRegular() {
-		return fmt.Errorf("organization selection state at %q is not a regular file", path)
-	}
-
-	dir := filepath.Dir(path)
-	if !isWorldWritableDir(dir) {
-		return nil
-	}
-
-	// World-writable: migrate once and turn the old path into a read-only tombstone.
-	newPath, err := ActivePath()
-	if err != nil {
-		return err
-	}
-	if filepath.Clean(newPath) == filepath.Clean(path) {
-		// The canonical location itself is the world-writable path. We cannot
-		// write safely there: freeze the existing selection read-only (if any)
-		// and refuse further writes until the caller points XDG_CONFIG_HOME at a
-		// private directory.
-		if info, err := os.Stat(path); err == nil && info.Mode().IsRegular() {
-			if err := os.Chmod(path, 0o400); err != nil {
-				return fmt.Errorf("honor stale world-writable organization selection: %w", err)
-			}
-			tomb := filepath.Join(filepath.Dir(path), "active.world-writable.tombstone")
-			_ = os.WriteFile(tomb, []byte("# World-writable organization selection path frozen by migration.\n"+
-				"This file exists to prevent a second, identical migration.\n"+
-				"Original location: "+path+"\n"), 0o600)
-			return fmt.Errorf("organization selection state resides in a world-writable directory %q; freeze it by pointing XDG_CONFIG_HOME at a private user directory", filepath.Dir(path))
-		}
-		return fmt.Errorf("organization selection state resolves to a world-writable path and must be written to a private user directory first")
-	}
-	if err := os.MkdirAll(filepath.Dir(newPath), 0o700); err != nil {
-		return fmt.Errorf("create organization config directory: %w", err)
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return fmt.Errorf("read active organization configuration from world-writable path: %w", err)
-	}
-	tmp := newPath + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o600); err != nil {
-		return fmt.Errorf("write active organization configuration: %w", err)
-	}
-	if err := os.Chmod(tmp, 0o600); err != nil {
-		_ = os.Remove(tmp)
-		return fmt.Errorf("secure active organization configuration: %w", err)
-	}
-	if err := os.Rename(tmp, newPath); err != nil {
-		_ = os.Remove(tmp)
-		return fmt.Errorf("replace active organization configuration: %w", err)
-	}
-
-	// Tombstone: freeze the stale /tmp copy so no further write lands there.
-	if err := os.Chmod(path, 0o400); err != nil {
-		return fmt.Errorf("honor stale world-writable organization selection: %w", err)
-	}
-	tomb := filepath.Join(filepath.Dir(path), "active.world-writable.tombstone")
-	_ = os.WriteFile(tomb, []byte("# World-writable organization selection path frozen by migration.\n"+
-		"This file exists to prevent a second, identical migration.\n"+
-		"Original location: "+path+"\n"), 0o600)
 	return nil
 }
 
 // isWorldFrozenTombstone reports whether dir carries the tombstone marker that
-// migrateFromWorldWritable writes after adopting a stale world-writable selection.
+// adoptLegacySelection writes after adopting a stale world-writable selection.
 // Its presence means the selection has already been migrated and the old path
 // must never be written again.
 func isWorldFrozenTombstone(dir string) bool {

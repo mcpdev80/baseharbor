@@ -296,6 +296,12 @@ func TestCanonicalLocationUsesUserConfigDir(t *testing.T) {
 }
 
 func TestWorldWritableConfigRootIsRejected(t *testing.T) {
+	// Isolate the private fallback: HOME points at a test-private dir that does
+	// not yet contain a selection, so the migration fallback can never
+	// accidentally satisfy the write against the real home directory.
+	privateHome := t.TempDir()
+	t.Setenv("HOME", privateHome)
+
 	root := t.TempDir() // t.TempDir() is 0777 world-writable
 	cfgDir := filepath.Join(root, "config")
 	if err := os.MkdirAll(cfgDir, 0o777); err != nil {
@@ -306,22 +312,33 @@ func TestWorldWritableConfigRootIsRejected(t *testing.T) {
 	}
 	t.Setenv("XDG_CONFIG_HOME", cfgDir)
 
+	// A fresh selection into a world-writable XDG_CONFIG_HOME must be rejected
+	// outright: there is no legacy file to adopt, so writing into a
+	// world-writable location is refused.
 	state := ActiveState{
 		Resolution: Resolution{ResolvedRevision: "deadbeef", Source: Source{Kind: SourceLocal, Location: "ignored"}},
 		Config:     parseConfigForTest(t),
 	}
 	err := SaveActive(state)
 	if err == nil {
-		t.Fatal("SaveActive into a world-writable XDG_CONFIG_HOME must be rejected")
+		t.Fatal("SaveActive into a world-writable XDG_CONFIG_HOME with no legacy file must be rejected")
 	}
 }
 
 func TestWorldWritableMigrationAdoptsOnceThenFreezes(t *testing.T) {
+	// Isolate the private fallback: HOME points at a test-private dir so the
+	// migration target (~/.config) never touches the real home directory.
+	privateHome := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(privateHome, ".config"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", privateHome)
+
+	// The resolved selection location is world-writable (broken XDG_CONFIG_HOME).
 	root := t.TempDir() // 0777 world-writable
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(root, "config"))
 
-	// Seed a stale /tmp selection at the (world-writable) canonical-for-this-env
-	// path: XDG_CONFIG_HOME itself points at a world-writable tree.
+	// Seed a stale /tmp selection at the (world-writable) resolved path.
 	seed := `{"resolution":{"resolved_revision":"mig-1","source":{"kind":"local","location":"x"}},"config":` + testConfigJSON(t) + `}`
 	seedPath, err := ActivePath()
 	if err != nil {
@@ -330,7 +347,6 @@ func TestWorldWritableMigrationAdoptsOnceThenFreezes(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(seedPath), 0o777); err != nil {
 		t.Fatal(err)
 	}
-	// MkdirAll honours umask, so force the world-writable bits explicitly.
 	if err := os.Chmod(filepath.Dir(seedPath), 0o777); err != nil {
 		t.Fatal(err)
 	}
@@ -341,49 +357,66 @@ func TestWorldWritableMigrationAdoptsOnceThenFreezes(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// First SaveActive in the world-writable location: a stale selection exists,
-	// so it is frozen read-only and the write is refused.
-	if _, err := SaveActiveForTest(); err == nil {
-		t.Fatal("first SaveActive in a world-writable XDG_CONFIG_HOME must be rejected")
-	}
-	if info, err := os.Stat(seedPath); err != nil {
-		t.Fatalf("seed file removed after freeze: %v", err)
-	} else if info.Mode().Perm()&0o077 != 0 {
-		t.Fatalf("stale /tmp selection not frozen to read-only: %v", info.Mode().Perm())
-	}
-	if !isWorldFrozenTombstone(filepath.Dir(seedPath)) {
-		t.Fatal("expected world-writable tombstone marker next to the frozen selection")
-	}
-
-	// The frozen selection remains readable, so LoadActive still returns the
-	// adopted value (the read path is unaffected).
+	// LoadActive adopts the legacy /tmp selection into the private HOME fallback.
 	loaded, err := LoadActive()
 	if err != nil {
-		t.Fatalf("LoadActive after freeze = %v", err)
+		t.Fatalf("LoadActive after migration = %v", err)
 	}
 	if loaded.Resolution.ResolvedRevision != "mig-1" {
-		t.Fatalf("LoadActive did not return the frozen selection: %+v", loaded.Resolution)
+		t.Fatalf("LoadActive did not return the adopted selection: %+v", loaded.Resolution)
 	}
 
-	// Pointing XDG_CONFIG_HOME at a private directory then writing succeeds and
-	// the canonical location is private.
-	privateRoot := filepath.Join(t.TempDir(), "cfg")
-	if err := os.MkdirAll(privateRoot, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("XDG_CONFIG_HOME", privateRoot)
-	canonical, err := ActivePath()
+	// The value now lives in the private, non-world-writable canonical path.
+	canonical, err := privateCanonicalPath()
 	if err != nil {
 		t.Fatal(err)
 	}
 	if isWorldWritableDir(filepath.Dir(canonical)) {
-		t.Fatalf("test private location is world-writable: %q", canonical)
+		t.Fatalf("canonical path is still world-writable: %q", canonical)
 	}
-	if _, err := SaveActiveForTest(); err != nil {
-		t.Fatalf("SaveActive in private directory failed: %v", err)
+	info, err := os.Stat(canonical)
+	if err != nil || info.Size() == 0 {
+		t.Fatalf("canonical private selection missing after migration: %v %v", info, err)
 	}
-	if info, err := os.Stat(canonical); err != nil || info.Size() == 0 {
-		t.Fatalf("canonical private location missing after migration write: %v %v", info, err)
+	if info.Mode().Perm()&0o077 != 0 {
+		t.Fatalf("canonical selection file is not private: %v", info.Mode().Perm())
+	}
+	if dirInfo, err := os.Stat(filepath.Dir(canonical)); err == nil && dirInfo.Mode().Perm()&0o077 != 0 {
+		t.Fatalf("canonical organization directory is not private: %v", dirInfo.Mode().Perm())
+	}
+
+	// The source /tmp file is frozen read-only with a tombstone; it must never
+	// be written again.
+	if info, err := os.Stat(seedPath); err == nil && info.Mode().Perm()&0o077 != 0 {
+		t.Fatalf("legacy /tmp selection not frozen to read-only: %v", info.Mode().Perm())
+	}
+	if !isWorldFrozenTombstone(filepath.Dir(seedPath)) {
+		t.Fatal("expected tombstone marker next to the frozen legacy selection")
+	}
+
+	// A subsequent write goes to the private canonical path only; the /tmp
+	// source is never re-touched.
+	state := ActiveState{
+		Resolution: Resolution{ResolvedRevision: "mig-2", Source: Source{Kind: SourceLocal, Location: "y"}},
+		Config:     parseConfigForTest(t),
+	}
+	if err := SaveActive(state); err != nil {
+		t.Fatalf("SaveActive after migration = %v", err)
+	}
+	final, err := LoadActive()
+	if err != nil {
+		t.Fatalf("LoadActive after write = %v", err)
+	}
+	if final.Resolution.ResolvedRevision != "mig-2" {
+		t.Fatalf("write after migration did not land in canonical path: %+v", final.Resolution)
+	}
+	// The frozen /tmp source still holds the original migrated content.
+	data, err := os.ReadFile(seedPath)
+	if err != nil {
+		t.Fatalf("read legacy /tmp selection: %v", err)
+	}
+	if !strings.Contains(string(data), "mig-1") {
+		t.Fatalf("legacy /tmp source was re-touched by migration write: %q", string(data))
 	}
 }
 
