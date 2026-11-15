@@ -244,11 +244,17 @@ type applicationLifecyclePlan struct {
 }
 
 func buildResolvedApplicationPlan(ctx context.Context, resolved resolvedApplication) (applicationLifecyclePlan, error) {
+	return buildResolvedApplicationPlanWithFacts(ctx, resolved, observeApplicationProviderFacts(ctx, resolved))
+}
+
+// buildResolvedApplicationPlanWithFacts lets callers that already took a
+// provider observation use the same fresh facts for their snapshot and plan.
+func buildResolvedApplicationPlanWithFacts(ctx context.Context, resolved resolvedApplication, observations map[string]application.ProviderFact) (applicationLifecyclePlan, error) {
 	plan, err := application.BuildPlan(resolved.Manifest)
 	if err != nil {
 		return applicationLifecyclePlan{}, err
 	}
-	snapshot, preferences, err := applicationLifecycleSnapshotContext(ctx, resolved, observeApplicationProviderFacts(ctx, resolved))
+	snapshot, preferences, err := applicationLifecycleSnapshotContext(ctx, resolved, observations)
 	if err != nil {
 		return applicationLifecyclePlan{}, err
 	}
