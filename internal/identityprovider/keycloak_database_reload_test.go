@@ -20,6 +20,7 @@ type databaseReloadRuntime struct {
 	callBudgets         []time.Duration
 	failOn              string
 	failure             error
+	failureOutput       string
 	cancel              context.CancelFunc
 	remainingFailures   int
 	failCommandContains string
@@ -40,7 +41,7 @@ func (r *databaseReloadRuntime) ExecProjectAs(ctx context.Context, _, _, _, serv
 		if r.cancel != nil {
 			r.cancel()
 		}
-		return "", r.failure
+		return r.failureOutput, r.failure
 	}
 	return "server signaled", nil
 }
@@ -56,9 +57,15 @@ func TestKeycloakDatabaseReloadFailsClosed(t *testing.T) {
 	failure := errors.New("database reload rejected")
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	runtime := &databaseReloadRuntime{failOn: "keycloak-db-member-2", failure: failure, cancel: cancel, remainingFailures: -1}
-	if err := reloadKeycloakDatabaseCertificates(ctx, runtime, files); !errors.Is(err, failure) || !errors.Is(err, context.Canceled) {
+	runtime := &databaseReloadRuntime{failOn: "keycloak-db-member-2", failure: failure, failureOutput: "safe diagnostic", cancel: cancel, remainingFailures: -1}
+	err := reloadKeycloakDatabaseCertificates(ctx, runtime, files)
+	if !errors.Is(err, failure) || !errors.Is(err, context.Canceled) {
 		t.Fatalf("database reload failure = %v, want original failure", err)
+	}
+	for _, fragment := range []string{"install PostgreSQL key", "keycloak-db-member-2", "failed after 1 attempts over ", "per-attempt timeout: 10s", "parent context: context canceled", "deadline: 20", "last attempt context: context canceled", "last attempt error: database reload rejected", `last command output: "safe diagnostic"`} {
+		if !strings.Contains(err.Error(), fragment) {
+			t.Errorf("database reload diagnostic missing %q: %v", fragment, err)
+		}
 	}
 	if !reflect.DeepEqual(runtime.services, []string{"keycloak-db-member-1", "keycloak-db-member-1", "keycloak-db-member-1", "keycloak-db-member-2"}) {
 		t.Fatalf("reload continued after a member rejected it: %v", runtime.services)

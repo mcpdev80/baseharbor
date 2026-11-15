@@ -60,9 +60,14 @@ func reloadKeycloakDatabaseCertificates(ctx context.Context, runtime KeycloakRun
 func execKeycloakDatabaseTLSCommand(ctx context.Context, executor keycloakProjectUserExecutor, files KeycloakFiles, service, operation, command string, retry <-chan time.Time) error {
 	var lastOutput string
 	var lastErr error
+	var lastAttemptContextErr error
+	var attempts int
+	startedAt := time.Now()
 	for {
+		attempts++
 		attemptCtx, attemptCancel := context.WithTimeout(ctx, 10*time.Second)
 		output, err := executor.ExecProjectAs(attemptCtx, files.Project, files.Compose, files.Env, service, "postgres", "sh", "-ec", command)
+		lastAttemptContextErr = attemptCtx.Err()
 		attemptCancel()
 		if err == nil {
 			return nil
@@ -71,7 +76,15 @@ func execKeycloakDatabaseTLSCommand(ctx context.Context, executor keycloakProjec
 		lastErr = err
 		select {
 		case <-ctx.Done():
-			return fmt.Errorf("%s Keycloak PostgreSQL certificates on %s: %w (last command output: %q)", operation, service, errors.Join(ctx.Err(), lastErr), lastOutput)
+			parentDeadline := "none"
+			if deadline, ok := ctx.Deadline(); ok {
+				parentDeadline = deadline.UTC().Format(time.RFC3339Nano)
+			}
+			attemptContext := "still active"
+			if lastAttemptContextErr != nil {
+				attemptContext = lastAttemptContextErr.Error()
+			}
+			return fmt.Errorf("%s Keycloak PostgreSQL certificates on %s failed after %d attempts over %s (per-attempt timeout: 10s; parent context: %v, deadline: %s; last attempt context: %s): last attempt error: %v (last command output: %q): %w", operation, service, attempts, time.Since(startedAt).Round(time.Millisecond), ctx.Err(), parentDeadline, attemptContext, lastErr, lastOutput, errors.Join(ctx.Err(), lastErr))
 		case <-retry:
 		}
 	}
