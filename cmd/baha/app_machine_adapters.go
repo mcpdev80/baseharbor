@@ -7,6 +7,7 @@ import (
 	"errors"
 	"reflect"
 	"slices"
+	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
@@ -311,9 +312,14 @@ func appMachineProposalStage(stage string, err error) error {
 
 func appMachineProposalAuthorityFailure(stage string, err error) error {
 	classified := &appMachineProposalAuthorityError{Stage: stage}
-	var plannerStage *appMachineProposalStageError
-	if errors.As(err, &plannerStage) && plannerStage != nil {
-		classified.Stage += "/" + plannerStage.Stage
+	var plannerStages []string
+	for current := err; current != nil; current = errors.Unwrap(current) {
+		if plannerStage, ok := current.(*appMachineProposalStageError); ok && plannerStage != nil {
+			plannerStages = append(plannerStages, plannerStage.Stage)
+		}
+	}
+	if len(plannerStages) > 0 {
+		classified.Stage += "/" + strings.Join(plannerStages, "/")
 	}
 	classified.Cause = appMachineReadError(err)
 	// appMachineReadError deliberately collapses private failures to a stable
