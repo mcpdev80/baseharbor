@@ -125,35 +125,6 @@ func LoadActiveOptional() (ActiveState, bool, error) {
 // below that root, it names the root's own organization state directory, or
 // it carries no location claim at all — an empty resolution is the root's
 // state wherever the root keeps it (BF-01, h-d28 akte).
-func (r Resolution) selectsWithin(root string) bool {
-	root = filepath.Clean(strings.TrimSpace(root))
-	if root == "" {
-		return true
-	}
-	source := filepath.Clean(strings.TrimSpace(r.Source.Location))
-	if source == "" && strings.TrimSpace(r.CachePath) == "" {
-		return true
-	}
-	for _, path := range []string{source, r.CachePath} {
-		path = filepath.Clean(strings.TrimSpace(path))
-		if path == "" {
-			continue
-		}
-		if path == root || strings.HasPrefix(path, root+string(os.PathSeparator)) {
-			return true
-		}
-	}
-	return source == filepath.Join(root, "config", "organization") || source == filepath.Join(root, "config")
-}
-
-// StateRootOwnsOrganizationState reports whether the active organization
-// state is the selected installation root's own state: under a dedicated
-// state root, the state resolves exclusively below that root, so the
-// selection a call consults is this installation's selection — never the
-// organization default of a different installation (BF-01, h-d28 akte;
-// docs/explanation/targets.md: the override takes precedence over XDG data
-// and configuration paths). Without a selected root the state is the
-// root-less user state it has always been.
 func StateRootOwnsOrganizationState(state ActiveState) bool {
 	if !StateRootSelected() {
 		return true
@@ -221,6 +192,36 @@ func SaveActive(state ActiveState) error {
 	}
 	return nil
 }
+
+func (r Resolution) selectsWithin(root string) bool {
+	root = filepath.Clean(strings.TrimSpace(root))
+	if root == "" {
+		return true
+	}
+	source := filepath.Clean(strings.TrimSpace(r.Source.Location))
+	if source == "" && strings.TrimSpace(r.CachePath) == "" {
+		return true
+	}
+	for _, path := range []string{source, r.CachePath} {
+		path = filepath.Clean(strings.TrimSpace(path))
+		if path == "" {
+			continue
+		}
+		if path == root || strings.HasPrefix(path, root+string(os.PathSeparator)) {
+			return true
+		}
+	}
+	return source == filepath.Join(root, "config", "organization") || source == filepath.Join(root, "config")
+}
+
+// StateRootOwnsOrganizationState reports whether the active organization
+// state is the selected installation root's own state: under a dedicated
+// state root, the state resolves exclusively below that root, so the
+// selection a call consults is this installation's selection — never the
+// organization default of a different installation (BF-01, h-d28 akte;
+// docs/explanation/targets.md: the override takes precedence over XDG data
+// and configuration paths). Without a selected root the state is the
+// root-less user state it has always been.
 
 func writeCache(resolution Resolution, config Config, content []byte, sourceRoot string) (string, error) {
 	root, err := cacheRoot()
