@@ -34,8 +34,6 @@ type targetShowResult struct {
 	ContractVersion   string                             `json:"contract_version"`
 	Target            deployment.ResolvedTarget          `json:"target"`
 	StateRoot         string                             `json:"state_root"`
-	EnvironmentID     string                             `json:"environment_id,omitempty"`
-	EnvironmentName   string                             `json:"environment_name,omitempty"`
 }
 
 type targetInspectionResult struct {
@@ -245,7 +243,6 @@ func targetCommand() *cli.Command {
 				},
 			},
 			targetShowCommand(),
-			targetEnvCommand(),
 			targetPolicyCommand(),
 			{
 				Name:    "create",
@@ -355,32 +352,13 @@ func targetShowCommand() *cli.Command {
 			if err != nil {
 				return err
 			}
-			// Resolve the durable environment identity for the shown Target. This
-			// is the production CLI-entry seam for the environment UID feature:
-			// `target show` now exercises GetEnvironment through the real command
-			// path, so the UID is created/reused as a real attribute of the
-			// Target's per-Target state, not only from a unit fixture.
-			envName := strings.TrimSpace(os.Getenv("BASEHARBOR_ENVIRONMENT"))
-			envID := ""
-			envRecordName := ""
-			if envName != "" {
-				// Propagate a binding failure (a record under this path that
-				// belongs to a different (Target, environment)): the command must
-				// fail closed, never resolve an aliased UID.
-				record, gErr := deployment.GetEnvironment(target.Name, envName)
-				if gErr != nil {
-					return gErr
-				}
-				envID = record.Identity
-				envRecordName = record.Name
-			}
 			engine, engineErr := inspectTargetDockerEngine(ctx, target)
 			engineError := ""
 			if engineErr != nil {
 				engineError = engineErr.Error()
 			}
 			if format == outputJSON {
-				return writeJSON(out, targetShowResult{ContractVersion: machine.ContractVersion, Target: target, StateRoot: root, DockerEngine: engine, DockerEngineError: engineError, EnvironmentID: envID, EnvironmentName: envRecordName})
+				return writeJSON(out, targetShowResult{ContractVersion: machine.ContractVersion, Target: target, StateRoot: root, DockerEngine: engine, DockerEngineError: engineError})
 			}
 			fmt.Fprintf(out, "Target   %s\nRuntime  %s\nAccess   %s (%s)\n", target.Name, target.RuntimeProvider, target.AccessReference, target.AccessProvider)
 			if target.Scope != "" {
@@ -395,13 +373,6 @@ func targetShowCommand() *cli.Command {
 		},
 	}
 }
-
-// targetEnvCommand exposes the environment UID rename as a real mutation on the
-// production CLI. `baha target env rename OLD NEW` drives RenameEnvironment
-// The full `baha target env` command set (targetEnvCommand dispatcher,
-// targetEnvShowCommand, targetEnvRenameCommand and targetEnvShowResult) lives
-// in command_target_env.go, which keeps cmd/baha/target.go under the
-// source-readability line limit.
 
 func inspectTargetCommand(ctx context.Context, args []string, out, errOut io.Writer) error {
 	filtered, format, err := parseReadOutputArgs(args, "target")
