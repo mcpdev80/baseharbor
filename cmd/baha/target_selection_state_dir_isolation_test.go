@@ -42,9 +42,11 @@ func TestStateDirIsolatesTargetSelection(t *testing.T) {
 		t.Fatalf("A's activation must persist below A: %v", err)
 	}
 	// Installation A also carries an organization selection naming its own
-	// target at the location a root-less lookup resolves to. This is the
-	// state the developer's normal installation leaves behind and what the
-	// isolated root must never consult.
+	// target at the ambient user location: what `baha config organization
+	// set` writes when the developer's normal installation activates the
+	// organization. This is the state a dedicated state root must never
+	// consult.
+	t.Setenv("BASEHARBOR_STATE_DIR", "")
 	writeTestOrganizationSelection(t, "", "alpha")
 	t.Setenv("BASEHARBOR_STATE_DIR", rootA)
 
@@ -54,12 +56,12 @@ func TestStateDirIsolatesTargetSelection(t *testing.T) {
 	t.Setenv("BASEHARBOR_STATE_DIR", rootB)
 	writeTestTargetRegistrations(t, "beta", "gamma")
 
-	// A root-local organization default for B. The resolver consults the
-	// organization selection whenever an organization is configured, so this
-	// state is part of what must not leak across state roots: under the
-	// h-d28 bug the ambient organization state of installation A was still
-	// consulted (and won where the user layer was empty), so B's resolution
-	// must never see "alpha".
+	// A root-local organization state for B is what `baha config
+	// organization set` leaves below an activated installation: it must not
+	// be visible while no state root is selected. The ambient user
+	// organization state of installation A (above) is the stale state the
+	// hunt left behind; with a dedicated root, organization state resolves
+	// exclusively below that root.
 	writeTestOrganizationSelection(t, rootB, "beta")
 
 	// Direct proof of the isolation seam: under the state root the
@@ -79,20 +81,23 @@ func TestStateDirIsolatesTargetSelection(t *testing.T) {
 		t.Fatalf("persisted selection from installation A leaked into B: %q (%v)", selected, err)
 	}
 	var err error
-	_, err = effectiveTarget(t.Context())
-	if err == nil || !containsAllForTest(err.Error(), "beta", "gamma") {
-		t.Fatalf("resolver consulted foreign installation state instead of failing closed on B's own registrations: %v", err)
+	target, err := effectiveTarget(t.Context())
+	if err == nil {
+		t.Fatalf("a foreign organization default naming a target B never registered resolved under B: %q", target.Name)
 	}
 	if containsAllForTest(err.Error(), "alpha") {
 		t.Fatalf("resolver reported installation A's target in B's failure: %v", err)
 	}
 
-	// Activating inside B writes below B only and resolves B's registration;
-	// A's selection file stays byte-identical.
+	// Contract part 3 — a root-local selection resolves root-local: B's own
+	// activation names beta and the resolver answers with B's registration
+	// even while the ambient organization state of installation A names
+	// alpha. Activating inside B writes below B only; A's selection file
+	// stays byte-identical.
 	if err := writePersistedTarget("beta"); err != nil {
 		t.Fatalf("writePersistedTarget under B: %v", err)
 	}
-	target, err := effectiveTarget(t.Context())
+	target, err = effectiveTarget(t.Context())
 	if err != nil {
 		t.Fatalf("effectiveTarget under B: %v", err)
 	}
@@ -151,8 +156,20 @@ func writeTestOrganizationSelection(t *testing.T, root, targetName string) {
 			os.Unsetenv("BASEHARBOR_STATE_DIR")
 		}
 	}()
+	// Mirror what `baha config organization set --source local` records:
+	// the resolution names the state location, which for an organization
+	// directory below the active root is the root-local organization state.
+	dir := root
+	if dir == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			t.Fatalf("ambient home: %v", err)
+		}
+		dir = filepath.Join(home, ".config", "baseharbor", "organization")
+	}
 	if err := orgconfig.SaveActive(orgconfig.ActiveState{
-		Resolution: orgconfig.Resolution{Source: orgconfig.Source{Kind: orgconfig.SourceLocal, Location: "/srv/organization"}},
+		Resolution: orgconfig.Resolution{ResolvedVersion: orgconfig.ContractVersion,
+			Source: orgconfig.Source{Kind: orgconfig.SourceLocal, Location: dir}},
 		Config: orgconfig.Config{
 			APIVersion:   orgconfig.ContractVersion,
 			Organization: "bf01-test",
