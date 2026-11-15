@@ -153,8 +153,11 @@ class ReleaseWorkflowPinsTests(unittest.TestCase):
         finalizer = self.jobs['checks']['steps'][0]['run']
         outputs = {key: '0' for key in ['adoption_count', 'static_count', 'light_docker_count',
                    'light_podman_count', 'heavy_docker_count', 'heavy_podman_count',
-                   'ha_docker_count', 'ha_podman_count', 'journey_count']}
+                   'ha_docker_count', 'ha_podman_count', 'journey_count',
+                   'light_docker_execute_count', 'light_podman_execute_count',
+                   'heavy_docker_execute_count', 'heavy_podman_execute_count']}
         outputs['light_docker_count'] = '1'
+        outputs['light_docker_execute_count'] = '1'
         outputs['tag'] = 'v0.4.26'
         outputs['integration'] = '[]'
         required = {'source', 'runtime_candidate', 'runtime_light_gates', 'runtime_heavy_gates',
@@ -235,7 +238,9 @@ class ReleaseWorkflowPinsTests(unittest.TestCase):
         finalizer = self.jobs['checks']['steps'][0]['run']
         outputs = {key: '0' for key in ['adoption_count', 'static_count', 'light_docker_count',
                    'light_podman_count', 'heavy_docker_count', 'heavy_podman_count',
-                   'ha_docker_count', 'ha_podman_count', 'journey_count']}
+                   'ha_docker_count', 'ha_podman_count', 'journey_count',
+                   'light_docker_execute_count', 'light_podman_execute_count',
+                   'heavy_docker_execute_count', 'heavy_podman_execute_count']}
         outputs['integration'] = '[]'
         outputs['tag'] = 'v0.4.27'
         required = {'source', 'runtime_light_gates', 'runtime_heavy_gates',

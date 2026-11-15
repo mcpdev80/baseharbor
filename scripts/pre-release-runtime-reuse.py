@@ -2,7 +2,7 @@
 """Fail-closed incremental reuse planner for Pre-Release runtime matrix gates.
 
 Only successful, manifest-backed gates from this workflow, created in the last
-24 hours, can be reused. Core and Demo changes need proven ancestry and an
+7 days, can be reused. Core and Demo changes need proven ancestry and an
 explicit impact-map classification. Unknown paths invalidate every matrix gate.
 """
 import argparse
@@ -22,7 +22,7 @@ import urllib.request
 import zipfile
 
 SHA = re.compile(r"^[0-9a-f]{40}$")
-TTL_SECONDS = 24 * 60 * 60
+TTL_SECONDS = 7 * 24 * 60 * 60
 SCHEMA = "baseharbor.pre-release-runtime-gate-evidence/v1"
 MAX_ARTIFACT_BYTES = 256 * 1024
 
@@ -92,7 +92,7 @@ def parse_time(value):
     return parsed if parsed.tzinfo and parsed.utcoffset() == timedelta(0) else None
 
 
-def within_24_hours(previous_created_at, current_created_at):
+def within_7_days(previous_created_at, current_created_at):
     before = parse_time(previous_created_at)
     current = parse_time(current_created_at)
     if before is None or current is None:
@@ -132,8 +132,26 @@ def tree_fingerprint(revision, paths, cwd=None):
     return rows
 
 
+def execution_tree_fingerprint(revision, paths, cwd=None):
+    """Fingerprint executable release contracts, excluding only the push hook."""
+    rows = []
+    for path in sorted(set(paths)):
+        if path == ".github/workflows/pre-release.yml":
+            data = subprocess.check_output(("git", "show", revision + ":" + path), cwd=cwd,
+                                           stderr=subprocess.DEVNULL, timeout=15)
+            # Adding the release-branch auto-dispatch hook changes how a run
+            # starts, not what it qualifies. Preserve all manual/call inputs,
+            # jobs and execution steps in the fingerprint.
+            data = data.replace(b"    - release/v*\n", b"")
+            digest = sha256_bytes(data)
+        else:
+            digest = blob_at(revision, path, cwd=cwd)
+        rows.append((path, digest))
+    return rows
+
+
 def version_digests(core_sha, demo_sha, impact, *, core_cwd=None, demo_cwd=None):
-    workflow = tree_fingerprint(core_sha, impact["workflow_inputs"], cwd=core_cwd)
+    workflow = execution_tree_fingerprint(core_sha, impact["execution_inputs"], cwd=core_cwd)
     catalog = tree_fingerprint(demo_sha, impact["demo_catalog_inputs"], cwd=demo_cwd)
     return canonical_hash(workflow), canonical_hash(catalog)
 
@@ -168,8 +186,9 @@ def gate_demo_paths(gate, demo_sha, impact, *, demo_cwd=None):
 
 def gate_fingerprint(tag, gate, core_sha, demo_sha, workflow_version,
                      catalog_version, impact, *, core_cwd=None, demo_cwd=None):
-    core_inputs = tree_fingerprint(
-        core_sha, impact["workflow_inputs"] + gate_core_paths(gate, impact), cwd=core_cwd)
+    core_inputs = sorted(
+        execution_tree_fingerprint(core_sha, impact["execution_inputs"], cwd=core_cwd) +
+        tree_fingerprint(core_sha, gate_core_paths(gate, impact), cwd=core_cwd))
     demo_inputs = tree_fingerprint(
         demo_sha, gate_demo_paths(gate, demo_sha, impact, demo_cwd=demo_cwd), cwd=demo_cwd)
     return canonical_hash({
@@ -180,6 +199,63 @@ def gate_fingerprint(tag, gate, core_sha, demo_sha, workflow_version,
         "core_inputs": core_inputs,
         "demo_inputs": demo_inputs,
     })
+
+
+def legacy_evidence_identity(manifest, tag, gate, impact, *, current_core, current_demo,
+                             core_cwd, demo_cwd):
+    """Verify pre-execution-input-schema evidence against its original source.
+
+    Older manifests fingerprinted the reuse planner and impact map together
+    with the actual runtime executors. Recompute that historical fingerprint
+    from the evidence's own immutable commits, then separately require that all
+    current executor/catalog inputs still match those commits.
+    """
+    old_core, old_demo = manifest.get("candidate_sha", ""), manifest.get("demo_ref", "")
+    if not SHA.fullmatch(old_core) or not SHA.fullmatch(old_demo):
+        return None
+    try:
+        old_impact = json.loads(subprocess.check_output(
+            ("git", "show", old_core + ":scripts/pre-release-runtime-impact.json"),
+            cwd=core_cwd, text=True, stderr=subprocess.DEVNULL, timeout=15))
+        old_workflow_inputs = old_impact["workflow_inputs"]
+        old_execution_inputs = [path for path in old_workflow_inputs if path not in (
+            "scripts/pre-release-runtime-impact.json", "scripts/pre-release-runtime-reuse.py")]
+        if old_execution_inputs != impact["execution_inputs"]:
+            return None
+        old_execution = canonical_hash(execution_tree_fingerprint(
+            old_core, old_execution_inputs, cwd=core_cwd))
+        current_execution = canonical_hash(execution_tree_fingerprint(
+            current_core, impact["execution_inputs"], cwd=core_cwd))
+        if old_execution != current_execution:
+            return None
+        subprocess.run(("git", "-C", str(demo_cwd), "fetch", "--quiet", "--no-tags",
+                        "origin", old_demo), check=True, stdout=subprocess.DEVNULL,
+                       stderr=subprocess.DEVNULL, timeout=45)
+        old_catalog = canonical_hash(tree_fingerprint(
+            old_demo, old_impact["demo_catalog_inputs"], cwd=demo_cwd))
+        current_catalog = canonical_hash(tree_fingerprint(
+            current_demo, impact["demo_catalog_inputs"], cwd=demo_cwd))
+        if old_catalog != current_catalog:
+            return None
+        workflow_version = canonical_hash(tree_fingerprint(
+            old_core, old_workflow_inputs, cwd=core_cwd))
+        if workflow_version != manifest.get("workflow_version") or old_catalog != manifest.get("catalog_version"):
+            return None
+        core_inputs = tree_fingerprint(
+            old_core, old_workflow_inputs + gate_core_paths(gate, old_impact), cwd=core_cwd)
+        demo_inputs = tree_fingerprint(
+            old_demo, gate_demo_paths(gate, old_demo, old_impact, demo_cwd=demo_cwd), cwd=demo_cwd)
+        fingerprint = canonical_hash({
+            "tag": tag, "gate": gate, "workflow_version": workflow_version,
+            "catalog_version": old_catalog, "core_inputs": core_inputs,
+            "demo_inputs": demo_inputs,
+        })
+        if fingerprint != manifest.get("input_fingerprint"):
+            return None
+        return fingerprint, workflow_version, old_catalog
+    except (KeyError, OSError, TypeError, ValueError, subprocess.SubprocessError,
+            json.JSONDecodeError):
+        return None
 
 
 def classify_paths(paths, mapping, safe_patterns):
@@ -259,11 +335,11 @@ def valid_manifest(manifest, *, run_id, tag, runtime, gate, fingerprint,
             SHA.fullmatch(manifest.get("candidate_sha", "")) is not None and
             SHA.fullmatch(manifest.get("demo_ref", "")) is not None and
             manifest.get("artifact_name") == artifact_name(runtime, gate.rsplit("/", 1)[-1]) and
-            within_24_hours(run_created_at, now) and
-            within_24_hours(evidence_created_at, now) and
-            within_24_hours(source_run_created, now) and
-            within_24_hours(source_artifact_created, now) and
-            within_24_hours(qualified, now) and
+            within_7_days(run_created_at, now) and
+            within_7_days(evidence_created_at, now) and
+            within_7_days(source_run_created, now) and
+            within_7_days(source_artifact_created, now) and
+            within_7_days(qualified, now) and
             timestamps_ordered(run_created_at, evidence_created_at, current_run_created_at) and
             timestamps_ordered(source_run_created, qualified, source_artifact_created))
 
@@ -363,7 +439,7 @@ def build_outputs(gates, tag, candidate_sha, demo_sha, current_run, token,
             continue
         if run.get("event") not in ("workflow_dispatch", "workflow_call"):
             continue
-        if within_24_hours(run.get("created_at"), actual_now):
+        if within_7_days(run.get("created_at"), actual_now):
             previous_runs.append(run)
 
     for row in gates:
@@ -417,13 +493,28 @@ def build_outputs(gates, tag, candidate_sha, demo_sha, current_run, token,
                     continue
                 if gate_id in core_affected or gate_id in demo_affected:
                     continue
-                if decide_reuse(
-                        job_ok=True, manifest=manifest, run_id=previous["id"], tag=tag,
-                        runtime=runtime, gate=gate_id, fingerprint=fingerprint,
-                        workflow_version=workflow_version, catalog_version=catalog_version,
-                        now=actual_now, run_created_at=previous.get("created_at"),
-                        current_run_created_at=current_time,
-                        evidence_created_at=artifact.get("created_at")):
+                reusable_evidence = decide_reuse(
+                    job_ok=True, manifest=manifest, run_id=previous["id"], tag=tag,
+                    runtime=runtime, gate=gate_id, fingerprint=fingerprint,
+                    workflow_version=workflow_version, catalog_version=catalog_version,
+                    now=actual_now, run_created_at=previous.get("created_at"),
+                    current_run_created_at=current_time,
+                    evidence_created_at=artifact.get("created_at"))
+                if not reusable_evidence:
+                    legacy = legacy_evidence_identity(
+                        manifest, tag, gate_id, impact, current_core=candidate_sha,
+                        current_demo=demo_sha, core_cwd=core_cwd,
+                        demo_cwd=Path(temp_dir) / "demo-current")
+                    if legacy is not None:
+                        old_fingerprint, old_workflow, old_catalog = legacy
+                        reusable_evidence = decide_reuse(
+                            job_ok=True, manifest=manifest, run_id=previous["id"], tag=tag,
+                            runtime=runtime, gate=gate_id, fingerprint=old_fingerprint,
+                            workflow_version=old_workflow, catalog_version=old_catalog,
+                            now=actual_now, run_created_at=previous.get("created_at"),
+                            current_run_created_at=current_time,
+                            evidence_created_at=artifact.get("created_at"))
+                if reusable_evidence:
                     reusable = str(previous["id"])
                     row["evidence_artifact_id"] = str(artifact["id"])
                     row["evidence_created_at"] = artifact["created_at"]
@@ -521,8 +612,8 @@ def main():
             raise ValueError("current run has no workflow identity")
     except (KeyError, OSError, TypeError, ValueError, urllib.error.URLError,
             subprocess.SubprocessError, json.JSONDecodeError):
-        workflow_version = canonical_hash(tree_fingerprint(
-            args.candidate_sha, impact["workflow_inputs"], cwd=base))
+        workflow_version = canonical_hash(execution_tree_fingerprint(
+            args.candidate_sha, impact["execution_inputs"], cwd=base))
         catalog_version = "unavailable"
         rows = no_reuse_outputs(gates, args.tag, args.candidate_sha, args.demo_ref,
                                 workflow_version, catalog_version, impact,

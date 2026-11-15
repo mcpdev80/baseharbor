@@ -531,7 +531,7 @@ jobs:
             greenfield.jsonl
             greenfield.jsonl.sha
           if-no-files-found: error
-          retention-days: 1
+          retention-days: 7
       - name: Cleanup native runtime
         if: always()
         run: bash scripts/ci-runtime-reset.sh "${{ matrix.runtime }}"
@@ -601,6 +601,163 @@ jobs:
             test -z "$files" || { echo "$files"; exit 1; }
           fi
           bash scripts/source-readability-audit.sh
+
+  main_release_source:
+    name: PR · Main release source
+    if: github.event_name == 'pull_request' && github.base_ref == 'main' && github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: '3.14'
+      - name: Install documentation validation dependencies
+        run: python -m pip install --disable-pip-version-check -r requirements-docs.txt
+      - name: Check source format, readability, and build
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
+          files="$(gofmt -l cmd internal spec contracts)"
+          test -z "$files" || { echo "$files" >&2; exit 1; }
+          bash scripts/source-readability-audit.sh
+          go build ./...
+          go vet ./...
+      - name: Run all discovered Python validation tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t tests < <(find scripts -maxdepth 1 -type f -name 'test_*.py' -print | sort)
+          test "${#tests[@]}" -gt 0
+          for test_file in "${tests[@]}"; do
+            python3 "$test_file"
+          done
+      - name: Validate documentation
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdocs build --strict --config-file mkdocs.yml
+          mkdocs build --strict --config-file mkdocs.de.yml
+          bash scripts/documentation-audit.sh
+
+  main_release_go_shards:
+    name: PR · Main release Go · ${{ matrix.shard }}
+    if: github.event_name == 'pull_request' && github.base_ref == 'main' && github.event.pull_request.draft == false
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [cli-0, cli-1, cli-2, cli-3, packages, owner]
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Execute discovered Go tests in canonical shards with isolated PostgreSQL
+        run: bash scripts/pr-unit-database.sh "${{ matrix.shard }}"
+
+  main_release_selected:
+    name: PR · Main release checks
+    needs: [workflow_policy, main_release_source, main_release_go_shards, main_release_prerelease]
+    if: always() && github.event_name == 'pull_request' && github.base_ref == 'main' && github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require all main-target release checks
+        env:
+          POLICY: ${{ needs.workflow_policy.result }}
+          SOURCE: ${{ needs.main_release_source.result }}
+          GO_SHARDS: ${{ needs.main_release_go_shards.result }}
+          PRE_RELEASE: ${{ needs.main_release_prerelease.result }}
+          PRE_RELEASE_REQUIRED: ${{ startsWith(github.head_ref, 'release/') }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$POLICY" = success
+          test "$SOURCE" = success
+          test "$GO_SHARDS" = success
+          if [ "$PRE_RELEASE_REQUIRED" = true ]; then
+            test "$PRE_RELEASE" = success
+          else
+            test "$PRE_RELEASE" = skipped
+          fi
+
+  main_release_prerelease:
+    name: PR · Exact full Pre-Release
+    if: github.event_name == 'pull_request' && github.base_ref == 'main' && startsWith(github.head_ref, 'release/') && github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Wait for and verify the exact full Pre-Release run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+          EXPECTED_BRANCH: ${{ github.head_ref }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 170); do
+            runs="$(gh api "repos/$REPOSITORY/actions/workflows/pre-release.yml/runs?head_sha=$EXPECTED_HEAD&per_page=100")"
+            run_id="$(jq -r --arg sha "$EXPECTED_HEAD" --arg branch "$EXPECTED_BRANCH" '
+              [.workflow_runs[] | select(.event == "push" and .head_sha == $sha and .head_branch == $branch)] | first | .id // empty
+            ' <<< "$runs")"
+            if [ -z "$run_id" ]; then
+              echo "No Pre-Release dispatch for exact PR head $EXPECTED_HEAD yet; waiting."
+              sleep 120
+              continue
+            fi
+            run="$(gh api "repos/$REPOSITORY/actions/runs/$run_id")"
+            status="$(jq -r '.status' <<< "$run")"
+            conclusion="$(jq -r '.conclusion // ""' <<< "$run")"
+            if [ "$status" != completed ]; then
+              echo "Exact Pre-Release run $run_id is $status; waiting."
+              sleep 120
+              continue
+            fi
+            if [ "$conclusion" != success ]; then
+              echo "Exact Pre-Release run $run_id concluded $conclusion." >&2
+              exit 1
+            fi
+            jobs="$(gh api "repos/$REPOSITORY/actions/runs/$run_id/jobs?per_page=100")"
+            for required in \
+              'Source · Candidate and Gate Plan' \
+              'runtime light gates · All runtime results' \
+              'runtime heavy gates · All runtime results' \
+              'v0421 ha groups · All runtime results' \
+              'Greenfield · Docker + Podman · All built-in stacks' \
+              'Pre-Release Checks'; do
+              matches="$(jq -r --arg name "$required" '[.jobs[] | select(.name == $name)] | length' <<< "$jobs")"
+              test "$matches" = 1 || { echo "Expected exactly one required job: $required" >&2; exit 1; }
+              result="$(jq -r --arg name "$required" '.jobs[] | select(.name == $name) | .conclusion // ""' <<< "$jobs")"
+              test "$result" = success || { echo "$required concluded $result" >&2; exit 1; }
+            done
+            echo "Full Pre-Release run $run_id passed for exact head $EXPECTED_HEAD."
+            exit 0
+          done
+          echo "Timed out waiting for a successful full Pre-Release run on $EXPECTED_HEAD." >&2
+          exit 1
 
   pr_plan:
     name: PR · Trusted Plan
@@ -771,7 +928,7 @@ jobs:
         with:
           name: trusted-pr-plan
           path: pr-plan.json
-          retention-days: 30
+          retention-days: 7
 
       - name: Route only required Go tests into mandatory parallel shards
         id: unit_split
@@ -885,7 +1042,7 @@ jobs:
           name: pr-consumer-pins
           path: ${{ runner.temp }}/pr-consumer-pins.json
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 7
 
   pr_demo_pin:
     name: PR · Demo Pin
@@ -930,7 +1087,7 @@ jobs:
           name: verified-pr-demo-pin
           path: ${{ runner.temp }}/verified-demo.sha
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 7
 
   pr_candidate:
     name: PR · Exact Candidate
@@ -969,7 +1126,7 @@ jobs:
           name: pr-exact-candidate-${{ github.event.pull_request.head.sha }}
           path: ${{ runner.temp }}/pr-exact-candidate
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 7
 
   pr_focused:
     name: PR · Focused Python

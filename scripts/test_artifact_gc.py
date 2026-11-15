@@ -20,7 +20,7 @@ class Response(io.BytesIO):
 
 
 class ArtifactGC(unittest.TestCase):
-    def test_historical_records_survive_but_new_ci_runs_can_expire(self):
+    def test_completed_runs_expire_uniformly_after_seven_days(self):
         workflow = yaml.safe_load((pathlib.Path(__file__).resolve().parents[1] /
                                    '.github/workflows/artifact-gc.yml').read_text())
         shell = workflow['jobs']['repository-hygiene']['steps'][0]['run']
@@ -35,8 +35,7 @@ class ArtifactGC(unittest.TestCase):
                 for i, branch, outcome in [(1, core, 'success'), (2, core, 'failure'),
                                             (3, templates, 'cancelled'),
                                             (4, ordinary, 'failure')]]
-        # Pre-migration run history remains available. Later runs follow
-        # normal cleanup regardless of which test workflow produced them.
+        # Workflows and historical branch names no longer get retention exceptions.
         runs.append(dict(id=5, path='.github/workflows/ci.yml',
                          head_branch='merged/old-pr', status='completed',
                          conclusion='success', updated_at='2020-01-01T00:00:00Z'))
@@ -51,6 +50,10 @@ class ArtifactGC(unittest.TestCase):
                          head_branch='merged/new-pr', status='completed',
                          conclusion='success', created_at='2026-11-05T00:00:00Z',
                          updated_at='2026-11-05T00:00:00Z'))
+        runs.append(dict(id=9, path='.github/workflows/ci.yml',
+                         head_branch='recent', status='completed',
+                         conclusion='success', created_at='2026-12-31T00:00:00Z',
+                         updated_at='2026-12-31T00:00:00Z'))
         deleted = []
 
         class LaterDate(datetime):
@@ -80,8 +83,10 @@ class ArtifactGC(unittest.TestCase):
                 patch('datetime.datetime', LaterDate), \
                 contextlib.redirect_stdout(io.StringIO()):
             exec(compile(source, 'artifact-gc.yml', 'exec'), {})
-        self.assertEqual(deleted, ['actions/runs/4', 'actions/runs/8',
-                                   'git/refs/heads/diag%2Fdisposable'])
+        self.assertEqual(deleted, [f'actions/runs/{i}' for i in range(1, 9)] + [
+            'git/refs/heads/runtime-validation%2Fha%2Fcore-bootstrap%2Frelease%2Fpodman',
+            'git/refs/heads/runtime-validation%2Fha%2Fbug-hunt%2Frelease-templates',
+            'git/refs/heads/diag%2Fdisposable'])
 
     def test_artifact_gc_retains_active_refs_and_deletes_inactive(self):
         workflow = yaml.safe_load((pathlib.Path(__file__).resolve().parents[1] /

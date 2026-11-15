@@ -417,7 +417,7 @@ jobs:
         name: pre-release-source-candidate
         path: ${{ runner.temp }}/pre-release-candidate
         if-no-files-found: error
-        retention-days: 1
+        retention-days: 7
         compression-level: 0
 
   source:
@@ -524,7 +524,7 @@ jobs:
         name: pre-release-runtime-candidate
         path: ${{ runner.temp }}/pre-release-candidate
         if-no-files-found: error
-        retention-days: 1
+        retention-days: 7
         compression-level: 0
     - name: Cleanup Docker runner state
       if: always()
@@ -2045,6 +2045,7 @@ jobs:
   push:
     branches:
     - release-candidate/**
+    - release/v*
     - validation/pre-release/**
   workflow_call:
     inputs:

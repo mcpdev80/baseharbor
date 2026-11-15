@@ -77,7 +77,7 @@ jobs:
       run: |
         set -euo pipefail
         [[ "$REUSED_RUN" =~ ^[0-9]+$ ]]
-        echo "Reused native gate $GATE_NAME from previously successful pre-release run $REUSED_RUN. The trusted planner checked gate evidence, source ancestry, input fingerprints, workflow/catalog versions, and the 24-hour TTL." >> "$GITHUB_STEP_SUMMARY"
+        echo "Reused native gate $GATE_NAME from previously successful pre-release run $REUSED_RUN. The trusted planner checked gate evidence, source ancestry, input fingerprints, workflow/catalog versions, and the 7-day TTL." >> "$GITHUB_STEP_SUMMARY"
     - name: Validate candidate ref before checkout
       if: inputs.reuse_from == ''
       shell: bash
@@ -591,7 +591,7 @@ jobs:
         name: pre-release-runtime-evidence-${{ inputs.runtime }}-${{ inputs.gate }}
         path: ${{ runner.temp }}/pre-release-gate-evidence/manifest.json
         if-no-files-found: error
-        retention-days: 1
+        retention-days: 7
         compression-level: 0
     - name: Upload propagated gate evidence after reuse
       if: ${{ success() && inputs.evidence_reuse && inputs.reuse_from != '' }}
@@ -600,7 +600,7 @@ jobs:
         name: pre-release-runtime-evidence-${{ inputs.runtime }}-${{ inputs.gate }}
         path: ${{ runner.temp }}/pre-release-reused-evidence/manifest.json
         if-no-files-found: error
-        retention-days: 1
+        retention-days: 7
         compression-level: 0
 'on':
   workflow_call:

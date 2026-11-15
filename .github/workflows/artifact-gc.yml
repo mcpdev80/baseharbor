@@ -37,7 +37,7 @@ jobs:
           python -m unittest discover -s scripts -p test_artifact_gc.py -v
 
   artifacts:
-    name: Delete ephemeral artifacts older than 2h
+    name: Delete ephemeral artifacts older than 7d
     permissions:
       actions: write
       contents: read
@@ -61,10 +61,9 @@ jobs:
 
           repo = os.environ["REPOSITORY"]
           token = os.environ["GH_TOKEN"]
-          cutoff = datetime.now(timezone.utc) - timedelta(hours=2)
+          cutoff = datetime.now(timezone.utc) - timedelta(days=7)
 
-          # Only disposable build inputs are garbage-collected. Existing
-          # historical records are not part of this cleanup policy.
+          # Only disposable build inputs are garbage-collected.
           prefixes = (
               "targeted-",
               "demo-",
@@ -206,33 +205,12 @@ jobs:
           token = os.environ["GH_TOKEN"]
           current_run_id = int(os.environ["CURRENT_RUN_ID"])
           now = datetime.now(timezone.utc)
-          run_cutoff = now - timedelta(hours=24)
+          run_cutoff = now - timedelta(days=7)
           branch_cutoff = now - timedelta(hours=2)
-
-          # Preserve pre-migration history without making later CI runs a
-          # permanent acceptance or retention authority.
-          historical_cutoff = datetime(2026, 11, 4, tzinfo=timezone.utc)
-          historical_workflows = {
-              ".github/workflows/ci.yml",
-              ".github/workflows/docker-runtime-acceptance.yml",
-              ".github/workflows/podman-acceptance.yml",
-              ".github/workflows/pre-release.yml",
-              ".github/workflows/release.yml",
-              ".github/workflows/targeted-demo-acceptance.yml",
-          }
-
-          # These named historical validation branches are preserved.
-          historical_branch_prefixes = (
-              "runtime-validation/ha/core-bootstrap/",
-              "runtime-validation/ha/bug-hunt/",
-          )
 
           preserved_branches = {
               "main",
               "develop",
-              "feature/kubernetes-runtime-foundation",
-              "test/kubernetes-adoption-contract-demo",
-              "release/v0.4.21",
           }
 
           ephemeral_prefixes = (
@@ -247,15 +225,6 @@ jobs:
               "release-prep/",
               "runtime-validation/",
               "validation/",
-          )
-
-          merged_work_prefixes = (
-              "feature/",
-              "fix/",
-              "release/",
-              "chore/",
-              "candidate/",
-              "release-candidate/",
           )
 
           headers = {
@@ -294,7 +263,7 @@ jobs:
                       break
                   page += 1
 
-          # Workflow runs: preserve historical records and active work.
+          # Workflow runs: preserve active work and prune uniformly after 7d.
           # Collect first, delete second so pagination cannot skip entries while
           # the underlying collection is shrinking.
           run_candidates = []
@@ -311,12 +280,6 @@ jobs:
                   if run["id"] == current_run_id:
                       continue
                   if run.get("status") != "completed":
-                      continue
-                  historical_time = run.get("created_at") or run.get("updated_at")
-                  if (run.get("path") in historical_workflows and historical_time
-                          and datetime.fromisoformat(historical_time.replace("Z", "+00:00")) < historical_cutoff):
-                      continue
-                  if (run.get("head_branch") or "").startswith(historical_branch_prefixes):
                       continue
                   completed_at = run.get("updated_at") or run.get("run_started_at") or run.get("created_at")
                   if completed_at:
@@ -342,8 +305,7 @@ jobs:
               if (head.get("repo") or {}).get("full_name") == repo and head.get("ref"):
                   active_pr_heads.add(head["ref"])
           discovered_branches = list(paged(f"https://api.github.com/repos/{repo}/branches"))
-          # A merged candidate is no longer automatically active; old run
-          # records are preserved separately by the migration cutoff.
+          # A merged candidate is no longer automatically active.
           merged_heads = set()
           for pr in paged(f"https://api.github.com/repos/{repo}/pulls?state=closed"):
               head = pr.get("head") or {}
@@ -406,8 +368,6 @@ jobs:
 
           for branch in branches:
               name = branch["name"]
-              if name.startswith(historical_branch_prefixes):
-                  continue
               if name in preserved_branches:
                   continue
               if branch.get("protected"):
@@ -416,28 +376,26 @@ jobs:
                   continue
 
               ephemeral = name.startswith(ephemeral_prefixes)
-              merged_work = (
-                  name.startswith(merged_work_prefixes)
-                  and (name, (branch.get("commit") or {}).get("sha")) in merged_pr_heads
-              )
-              if not (ephemeral or merged_work):
+              exact_merged_head = (name, (branch.get("commit") or {}).get("sha")) in merged_pr_heads
+              if not (ephemeral or exact_merged_head):
                   continue
 
-              commit = request(
-                  f"https://api.github.com/repos/{repo}/commits/"
-                  f"{urllib.parse.quote(branch['commit']['sha'], safe='')}"
-              )
-              if commit:
-                  commit_meta = commit.get("commit") or {}
-                  committer = commit_meta.get("committer") or {}
-                  authored = committer.get("date")
-                  if authored:
-                      head_time = datetime.fromisoformat(
-                          authored.replace("Z", "+00:00")
-                      )
-                      if head_time > branch_cutoff:
-                          print(f"keep recent branch {name} head={authored}")
-                          continue
+              if ephemeral and not exact_merged_head:
+                  commit = request(
+                      f"https://api.github.com/repos/{repo}/commits/"
+                      f"{urllib.parse.quote(branch['commit']['sha'], safe='')}"
+                  )
+                  if commit:
+                      commit_meta = commit.get("commit") or {}
+                      committer = commit_meta.get("committer") or {}
+                      authored = committer.get("date")
+                      if authored:
+                          head_time = datetime.fromisoformat(
+                              authored.replace("Z", "+00:00")
+                          )
+                          if head_time > branch_cutoff:
+                              print(f"keep recent branch {name} head={authored}")
+                              continue
 
               encoded = urllib.parse.quote(name, safe="")
               request(

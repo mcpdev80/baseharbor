@@ -5,6 +5,8 @@ import importlib.util
 import io
 import json
 from pathlib import Path
+import subprocess
+import tempfile
 import unittest
 from unittest import mock
 
@@ -62,15 +64,15 @@ class RuntimeReuseTests(unittest.TestCase):
         value.update(overrides)
         return value
 
-    def test_24_hour_ttl_has_inclusive_edge_and_expires_after(self):
+    def test_seven_day_ttl_has_inclusive_edge_and_expires_after(self):
         current = datetime(2026, 11, 15, 12, tzinfo=timezone.utc)
-        exact = (current - timedelta(hours=24)).isoformat()
-        stale = (current - timedelta(hours=24, microseconds=1)).isoformat()
-        self.assertTrue(reuse.within_24_hours(exact, current.isoformat()))
-        self.assertFalse(reuse.within_24_hours(stale, current.isoformat()))
-        self.assertFalse(reuse.within_24_hours(None, current.isoformat()))
-        self.assertFalse(reuse.within_24_hours("2026-11-14T12:00:00", current.isoformat()))
-        self.assertFalse(reuse.within_24_hours("not-a-time", current.isoformat()))
+        exact = (current - timedelta(days=7)).isoformat()
+        stale = (current - timedelta(days=7, microseconds=1)).isoformat()
+        self.assertTrue(reuse.within_7_days(exact, current.isoformat()))
+        self.assertFalse(reuse.within_7_days(stale, current.isoformat()))
+        self.assertFalse(reuse.within_7_days(None, current.isoformat()))
+        self.assertFalse(reuse.within_7_days("2026-11-14T12:00:00", current.isoformat()))
+        self.assertFalse(reuse.within_7_days("not-a-time", current.isoformat()))
 
     def test_incomplete_api_response_retries_before_parsing(self):
         with mock.patch.object(reuse.urllib.request, "urlopen", side_effect=[
@@ -156,6 +158,148 @@ class RuntimeReuseTests(unittest.TestCase):
         self.assertIsNone(reuse.classify_paths(["internal/new_unknown.go"], {}, []))
         self.assertEqual(set(), reuse.classify_paths(["docs/new.md"], {}, ["docs/**"]))
 
+    def test_main_pr_ci_and_reuse_policy_edits_are_safe_for_runtime_evidence(self):
+        impact = json.loads(Path(__file__).with_name("pre-release-runtime-impact.json").read_text())
+        changed = [
+            ".github/workflows/ci.yml",
+            "scripts/pre-release-runtime-impact.json",
+            "scripts/pre-release-runtime-reuse.py",
+        ]
+        self.assertEqual(set(), reuse.classify_paths(
+            changed, impact["core"], impact["safe_core_paths"]))
+
+    def test_coreless_runtime_acceptance_fixes_invalidate_both_engine_gates(self):
+        impact = json.loads(Path(__file__).with_name("pre-release-runtime-impact.json").read_text())
+        expected = {"integration/docker/coreless-lifecycle",
+                    "integration/podman/coreless-lifecycle"}
+        for path in ("cmd/baha/app_coreless_runtime_test.go",
+                     "cmd/baha/app_local_stdio_runtime_test.go"):
+            self.assertEqual(expected, set(impact["core"][path]))
+
+    def test_demo_consent_fix_invalidates_affected_gate_families_only(self):
+        impact = json.loads(Path(__file__).with_name("pre-release-runtime-impact.json").read_text())
+        for path in ("tests/guided/drive.py", "tests/guided/new_edit.py"):
+            self.assertEqual({"atomic/docker/guided", "atomic/podman/guided",
+                              "atomic/docker/data-capabilities",
+                              "atomic/podman/data-capabilities"},
+                             set(impact["demo"][path]))
+        self.assertEqual([], impact["demo"]["tests/guided/new_edit_helpers_test.py"])
+
+    def test_legacy_green_evidence_survives_policy_only_changes_but_not_executor_edits(self):
+        impact = {
+            "execution_inputs": [".github/workflows/pre-release.yml",
+                                 ".github/workflows/pre-release-runtime-suite.yml",
+                                 "scripts/pre-release-check-plan.py",
+                                 "scripts/release-requirements.json"],
+            "core": {}, "demo": {}, "demo_gate_directories": {"atomic/docker/": "tests/"},
+            "safe_core_paths": [".github/workflows/ci.yml",
+                                "scripts/pre-release-runtime-impact.json",
+                                "scripts/pre-release-runtime-reuse.py"],
+            "demo_catalog_inputs": ["tests/gate-resources.json"],
+            "safe_demo_paths": [],
+        }
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            core = root / "core"
+            core.mkdir()
+            subprocess.run(["git", "init", "-q", str(core)], check=True)
+            subprocess.run(["git", "-C", str(core), "config", "user.email", "test@example.invalid"], check=True)
+            subprocess.run(["git", "-C", str(core), "config", "user.name", "Test"], check=True)
+            demo_bare = root / "demo.git"
+            subprocess.run(["git", "init", "--bare", "-q", str(demo_bare)], check=True)
+            demo_work = root / "demo-work"
+            subprocess.run(["git", "init", "-q", str(demo_work)], check=True)
+            subprocess.run(["git", "-C", str(demo_work), "remote", "add", "origin", str(demo_bare)], check=True)
+            subprocess.run(["git", "-C", str(demo_work), "config", "user.email", "test@example.invalid"], check=True)
+            subprocess.run(["git", "-C", str(demo_work), "config", "user.name", "Test"], check=True)
+            (demo_work / "tests/gate").mkdir(parents=True)
+            (demo_work / "tests/gate/gate.py").write_text("gate\n")
+            (demo_work / "tests/gate-resources.json").write_text("{}\n")
+            subprocess.run(["git", "-C", str(demo_work), "add", "."], check=True)
+            subprocess.run(["git", "-C", str(demo_work), "commit", "-qm", "demo"], check=True)
+            subprocess.run(["git", "-C", str(demo_work), "push", "-q", "origin", "HEAD:main"], check=True)
+            demo_sha = subprocess.check_output(["git", "-C", str(demo_work), "rev-parse", "HEAD"], text=True).strip()
+            legacy_impact = {
+                "workflow_inputs": impact["execution_inputs"][:3] + [
+                    "scripts/pre-release-runtime-impact.json",
+                    "scripts/pre-release-runtime-reuse.py",
+                    impact["execution_inputs"][3]],
+                "demo_catalog_inputs": ["tests/gate-resources.json"],
+                "demo_gate_directories": impact["demo_gate_directories"],
+            "core": {}, "demo": {"tests/gate-resources.json": []},
+            }
+            (core / ".github/workflows").mkdir(parents=True)
+            (core / "scripts").mkdir()
+            (core / "scripts/pre-release-runtime-impact.json").write_text(json.dumps(legacy_impact))
+            for path in impact["execution_inputs"]:
+                destination = core / path
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                if path == ".github/workflows/pre-release.yml":
+                    destination.write_text("'on':\n  push:\n    branches:\n    - release-candidate/**\n    - validation/pre-release/**\n")
+                else:
+                    destination.write_text(path + "\n")
+            (core / "scripts/pre-release-runtime-reuse.py").write_text("old policy\n")
+            subprocess.run(["git", "-C", str(core), "add", "."], check=True)
+            subprocess.run(["git", "-C", str(core), "commit", "-qm", "old candidate"], check=True)
+            old_core = subprocess.check_output(["git", "-C", str(core), "rev-parse", "HEAD"], text=True).strip()
+            old_workflow = reuse.canonical_hash(reuse.tree_fingerprint(old_core, legacy_impact["workflow_inputs"], cwd=core))
+            old_catalog = reuse.canonical_hash(reuse.tree_fingerprint(demo_sha, legacy_impact["demo_catalog_inputs"], cwd=demo_work))
+            gate = "atomic/docker/gate"
+            old_fingerprint = reuse.canonical_hash({
+                "tag": "v0.4.27", "gate": gate, "workflow_version": old_workflow,
+                "catalog_version": old_catalog,
+                "core_inputs": reuse.tree_fingerprint(old_core, legacy_impact["workflow_inputs"], cwd=core),
+                "demo_inputs": reuse.tree_fingerprint(demo_sha, ["tests/gate/gate.py", "tests/gate-resources.json"], cwd=demo_work),
+            })
+            manifest = {"candidate_sha": old_core, "demo_ref": demo_sha,
+                        "workflow_version": old_workflow, "catalog_version": old_catalog,
+                        "input_fingerprint": old_fingerprint}
+            (core / ".github/workflows/ci.yml").write_text("main PR route\n")
+            (core / "scripts/pre-release-runtime-impact.json").write_text("new impact policy\n")
+            (core / "scripts/pre-release-runtime-reuse.py").write_text("new reuse policy\n")
+            workflow_path = core / ".github/workflows/pre-release.yml"
+            workflow_path.write_text(workflow_path.read_text().replace(
+                "    - release-candidate/**\n", "    - release-candidate/**\n    - release/v*\n"))
+            subprocess.run(["git", "-C", str(core), "add", "."], check=True)
+            subprocess.run(["git", "-C", str(core), "commit", "-qm", "policy changes"], check=True)
+            current_core = subprocess.check_output(["git", "-C", str(core), "rev-parse", "HEAD"], text=True).strip()
+            manifest.update({"current_candidate_sha": current_core, "current_demo_sha": demo_sha})
+            self.assertEqual((old_fingerprint, old_workflow, old_catalog),
+                             reuse.legacy_evidence_identity(
+                                 manifest, "v0.4.27", gate, impact, current_core=current_core,
+                                 current_demo=demo_sha, core_cwd=core, demo_cwd=demo_work))
+            (core / ".github/workflows/pre-release-runtime-suite.yml").write_text("execution changed\n")
+            subprocess.run(["git", "-C", str(core), "add", "."], check=True)
+            subprocess.run(["git", "-C", str(core), "commit", "-qm", "executor change"], check=True)
+            changed_core = subprocess.check_output(["git", "-C", str(core), "rev-parse", "HEAD"], text=True).strip()
+            self.assertIsNone(reuse.legacy_evidence_identity(
+                manifest, "v0.4.27", gate, impact, current_core=changed_core,
+                current_demo=demo_sha, core_cwd=core, demo_cwd=demo_work))
+
+    def test_execution_contract_digest_excludes_reuse_policy_files(self):
+        impact = json.loads(Path(__file__).with_name("pre-release-runtime-impact.json").read_text())
+        self.assertIn(".github/workflows/pre-release.yml", impact["execution_inputs"])
+        self.assertIn(".github/workflows/pre-release-runtime-suite.yml", impact["execution_inputs"])
+        self.assertIn("scripts/pre-release-check-plan.py", impact["execution_inputs"])
+        self.assertNotIn(".github/workflows/ci.yml", impact["execution_inputs"])
+        self.assertNotIn("scripts/pre-release-runtime-impact.json", impact["execution_inputs"])
+        self.assertNotIn("scripts/pre-release-runtime-reuse.py", impact["execution_inputs"])
+        self.assertNotIn("workflow_inputs", impact)
+
+    def test_main_target_release_ci_uses_its_own_lane_and_requires_full_push_run(self):
+        root = Path(__file__).resolve().parent.parent
+        ci = (root / ".github/workflows/ci.yml").read_text()
+        prerelease = (root / ".github/workflows/pre-release.yml").read_text()
+        self.assertIn("name: PR · Main release source", ci)
+        self.assertIn("name: PR · Main release Go · ${{ matrix.shard }}", ci)
+        self.assertIn("github.base_ref == 'main'", ci)
+        self.assertIn("github.base_ref == 'develop'", ci)
+        self.assertIn(".event == \"push\" and .head_sha == $sha", ci)
+        self.assertIn("Greenfield · Docker + Podman · All built-in stacks", ci)
+        self.assertIn("- release/v*", prerelease)
+        self.assertIn("ref: ${{ inputs.ref || github.sha }}", prerelease)
+        self.assertIn("ONLY_GATES: ${{ inputs.only_gates }}", prerelease)
+
     def test_wrong_manifest_run_and_wrong_artifact_name_are_rejected(self):
         self.assertFalse(self.decide(manifest={**MANIFEST, "run_id": "999"}))
         self.assertFalse(self.decide(manifest={**MANIFEST, "artifact_name": "wrong"}))
@@ -184,8 +328,8 @@ class RuntimeReuseTests(unittest.TestCase):
         # A recent current run does not make an old prior artifact reusable;
         # both its workflow and artifact timestamps must still be within TTL.
         self.assertFalse(self.decide(
-            now="2026-11-16T12:00:01Z",
-            current_run_created_at="2026-11-16T12:00:00Z"))
+            now="2026-11-22T12:00:01Z",
+            current_run_created_at="2026-11-22T12:00:00Z"))
 
 
 if __name__ == "__main__":
