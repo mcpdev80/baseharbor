@@ -815,7 +815,9 @@ func TestAppEditDesiredIntentDoesNotInheritRemovedProviderPreference(t *testing.
 	}
 	pref := application.ProviderPreference{
 		Requirement: capability.Requirement{Kind: capability.SQL, Name: "primary"},
-		InstanceID:  selected.ID, ProviderKind: selected.Provider.Kind,
+		// The guided Edit flow stores automatic selection as a preference row
+		// with no instance ID; removing this row still has to persist [] so a
+		// later apply resolution cannot reattach it to the SQL-free manifest.
 	}
 	if err := application.SaveDesiredProviderPreferencesAt(root, target.Name, m, []application.ProviderPreference{pref}); err != nil {
 		t.Fatal(err)
@@ -843,13 +845,55 @@ func TestAppEditDesiredIntentDoesNotInheritRemovedProviderPreference(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	resolved.Manifest = decisionDesired.Manifest
-	if _, err := readGuidedApplicationContext(context.Background(), resolved); err != nil {
+	desiredResolved := resolved
+	desiredResolved.Manifest = decisionDesired.Manifest
+	if _, err := readGuidedApplicationContext(context.Background(), desiredResolved); err != nil {
 		t.Fatalf("guided preview of removed SQL was unverifiable: %v", err)
 	}
+	plan := application.ProviderImpactPlan{Version: application.ProviderImpactVersion, Target: target.Name, PlanID: "remove-sql", Revision: "r1", ConfirmationsRequired: 1}
+	var calls int
+	authorities := appEditTestAuthorities(target.Name, m.ApplicationID, nil, nil, []application.ProviderImpactPlan{plan}, &calls)
+	executor := appEditRuntimeExecuteAuthority(application.DefaultStore(), []string{"edit-remove-sql"}, resolved, source, authorities, io.Discard, io.Discard, nil,
+		func(ctx context.Context, _ application.Store, _ []string, _ application.ProviderImpactPlan, mutate func(context.Context, resolvedApplication) error, _, _ io.Writer) ([]application.ProviderExecutionOutcome, error) {
+			if err := mutate(ctx, resolved); err != nil {
+				return nil, err
+			}
+			fresh, err := resolveApplication(ctx, application.DefaultStore(), []string{"edit-remove-sql"}, "apply")
+			if err != nil {
+				return nil, err
+			}
+			if _, err := readGuidedApplicationContext(ctx, fresh); err != nil {
+				return nil, fmt.Errorf("post-mutation guided read: %w", err)
+			}
+			if _, _, err := applicationLifecycleSnapshotContext(ctx, fresh, nil); err != nil {
+				return nil, fmt.Errorf("post-mutation lifecycle snapshot: %w", err)
+			}
+			if _, err := buildResolvedApplicationPlan(ctx, fresh); err != nil {
+				return nil, fmt.Errorf("post-mutation application lifecycle plan: %w", err)
+			}
+			if err := revalidateApplicationProviderIntent(ctx, fresh); err != nil {
+				return nil, fmt.Errorf("post-mutation provider intent revalidation: %w", err)
+			}
+			if _, err := prepareApplicationProviderRetirementFunc(ctx, fresh); err != nil {
+				return nil, fmt.Errorf("post-mutation provider retirement plan: %w", err)
+			}
+			return nil, nil
+		})
+	if _, err := executor(context.Background(), decisionDesired, plan, application.ProviderChangeConsent{PlanID: plan.PlanID, First: true}); err != nil {
+		t.Fatalf("removing SQL preference failed its mutation and post-mutation preview: %v", err)
+	}
 	saved, err := application.DesiredProviderPreferencesAt(root, m)
-	if err != nil || len(saved) != 1 || saved[0] != pref {
-		t.Fatalf("read-only proposal changed persisted provider preference: %+v %v", saved, err)
+	if err != nil || len(saved) != 0 {
+		t.Fatalf("confirmed SQL removal did not clear its persisted provider preference: %+v %v", saved, err)
+	}
+}
+
+func TestAppEditRemovingAutomaticProviderPreferenceRequiresPersistence(t *testing.T) {
+	loaded := []application.ProviderPreference{{
+		Requirement: capability.Requirement{Kind: capability.SQL, Name: "primary"},
+	}}
+	if appEditPreferencesEquivalent(loaded, nil) {
+		t.Fatal("removing an automatic SQL preference must persist the empty desired preference set")
 	}
 }
 

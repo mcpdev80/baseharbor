@@ -251,7 +251,7 @@ func appEditPreferencesEquivalent(loaded, desired []application.ProviderPreferen
 		selected[preference.Requirement] = true
 	}
 	for _, preference := range loaded {
-		if preference.InstanceID != "" && !selected[preference.Requirement] {
+		if !selected[preference.Requirement] {
 			return false
 		}
 	}
