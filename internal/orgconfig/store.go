@@ -42,6 +42,24 @@ func cacheRoot() (string, error) {
 	return filepath.Join(home, ".cache", "baseharbor", "organization"), nil
 }
 
+// stateRootSelected reports whether BASEHARBOR_STATE_DIR selects a dedicated
+// isolated installation root for this invocation. When it does, the
+// installation's organization selection and cached configuration resolve
+// exclusively below that root (BF-01, h-d28 akte;
+// docs/explanation/targets.md): the resolver must never fall through to an
+// ambient organization state left by a different installation, and an ambient
+// resolution's cached artifacts must never answer below an isolated root.
+func stateRootSelected() bool {
+	return stateRootOverride() != ""
+}
+
+// stateRootOverride returns the trimmed BASEHARBOR_STATE_DIR value: the
+// authoritative isolated installation root for this invocation (the same
+// precedence source deployment.ConfigRoot and DataRoot honour).
+func stateRootOverride() string {
+	return strings.TrimSpace(os.Getenv("BASEHARBOR_STATE_DIR"))
+}
+
 func ActivePath() (string, error) {
 	root, err := configRoot()
 	if err != nil {
@@ -83,7 +101,33 @@ func LoadActiveOptional() (ActiveState, bool, error) {
 	if err := state.Resolution.Validate(); err != nil {
 		return ActiveState{}, false, fmt.Errorf("validate active organization resolution: %w", err)
 	}
+	// BF-01 (h-d28): with a dedicated state root selected, the organization
+	// resolves exclusively below that root. A selection whose cached
+	// resolution was written by a different installation points outside
+	// the active root, so it must not act here.
+	if stateRootSelected() && !state.Resolution.selectsWithin(stateRootOverride()) {
+		return ActiveState{}, false, nil
+	}
 	return state, true, nil
+}
+
+// ResolvesWithin reports whether the resolution's cached configuration — the
+// state the resolver actually reads back through ResolveCachedArtifact — lives
+// below the given installation state root. A resolution without a cache path
+// holds no cross-root reference and resolves within any root.
+func (r Resolution) selectsWithin(root string) bool {
+	path := filepath.Clean(strings.TrimSpace(r.CachePath))
+	if path == "" {
+		return true
+	}
+	root = filepath.Clean(strings.TrimSpace(root))
+	return path == root || strings.HasPrefix(path, root+string(os.PathSeparator))
+}
+
+// underRoot reports whether path equals or lives below root.
+func underRoot(path, root string) bool {
+	path, root = filepath.Clean(path), filepath.Clean(root)
+	return path == root || strings.HasPrefix(path, root+string(os.PathSeparator))
 }
 
 func SaveActive(state ActiveState) error {

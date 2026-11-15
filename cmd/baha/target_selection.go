@@ -13,11 +13,11 @@ import (
 )
 
 func targetSelectionPath() (string, error) {
-	configPath, err := deployment.ConfigPath()
+	configRoot, err := deployment.ConfigRoot()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(filepath.Dir(configPath), "active-target"), nil
+	return filepath.Join(configRoot, "active-target"), nil
 }
 
 func readPersistedTarget() (string, error) {

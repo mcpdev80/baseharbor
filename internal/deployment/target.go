@@ -92,22 +92,44 @@ type ResolvedTarget struct {
 	DeploymentPolicy *TargetDeploymentPolicy `json:"deployment_policy,omitempty"`
 }
 
-func ConfigPath() (string, error) {
-	if root := strings.TrimSpace(os.Getenv("BASEHARBOR_STATE_DIR")); root != "" {
-		return filepath.Join(root, "config", "config.yaml"), nil
+// stateRootOverride returns the trimmed BASEHARBOR_STATE_DIR value: the
+// authoritative isolated state root that owns all selection and registration
+// state for the invocation.
+func stateRootOverride() string {
+	return strings.TrimSpace(os.Getenv("BASEHARBOR_STATE_DIR"))
+}
+
+// ConfigRoot returns the directory that holds the installation's Target
+// configuration and the persisted Target selection. BASEHARBOR_STATE_DIR is
+// the authoritative isolated state root: when a dedicated root is selected,
+// every part of the installation's state — including the Target selection —
+// resolves below it, and the selection state of any other installation (the
+// ambient XDG/user location or another root) is never consulted (BF-01,
+// h-d28 akte; docs/explanation/targets.md).
+func ConfigRoot() (string, error) {
+	if root := stateRootOverride(); root != "" {
+		return filepath.Join(root, "config"), nil
 	}
 	if root := strings.TrimSpace(os.Getenv("XDG_CONFIG_HOME")); root != "" {
-		return filepath.Join(root, "baseharbor", "config.yaml"), nil
+		return filepath.Join(root, "baseharbor"), nil
 	}
 	home, err := os.UserHomeDir()
 	if err != nil || home == "" {
 		return "", errors.New("cannot determine BaseHarbor config directory")
 	}
-	return filepath.Join(home, ".config", "baseharbor", "config.yaml"), nil
+	return filepath.Join(home, ".config", "baseharbor"), nil
+}
+
+func ConfigPath() (string, error) {
+	root, err := ConfigRoot()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(root, "config.yaml"), nil
 }
 
 func DataRoot() (string, error) {
-	if root := strings.TrimSpace(os.Getenv("BASEHARBOR_STATE_DIR")); root != "" {
+	if root := stateRootOverride(); root != "" {
 		return filepath.Clean(root), nil
 	}
 	if root := strings.TrimSpace(os.Getenv("XDG_DATA_HOME")); root != "" {
