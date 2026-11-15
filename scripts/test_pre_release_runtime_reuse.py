@@ -1,6 +1,7 @@
 """Fail-closed unit tests for Pre-Release runtime evidence reuse."""
 from datetime import datetime, timedelta, timezone
 import importlib.util
+import json
 from pathlib import Path
 import unittest
 
@@ -117,6 +118,19 @@ class RuntimeReuseTests(unittest.TestCase):
         self.assertEqual({"atomic/docker/data-capabilities",
                           "atomic/podman/data-capabilities"}, affected)
         self.assertNotIn("atomic/docker/guided", affected)
+
+    def test_current_app_planning_changes_map_to_their_runtime_gates(self):
+        impact = json.loads(Path(__file__).with_name("pre-release-runtime-impact.json").read_text())
+        affected = reuse.classify_paths([
+            "cmd/baha/app_core_requirement.go",
+            "cmd/baha/app_new_wizard.go",
+            "cmd/baha/guided_application_read_context.go",
+            "cmd/baha/app_edit_apply_test.go",
+        ], impact["core"], impact["safe_core_paths"])
+        self.assertEqual({
+            "atomic/docker/guided", "atomic/podman/guided",
+            "atomic/docker/data-capabilities", "atomic/podman/data-capabilities",
+        }, affected)
 
     def test_unknown_changed_path_invalidates_all(self):
         self.assertIsNone(reuse.classify_paths(["internal/new_unknown.go"], {}, []))

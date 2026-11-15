@@ -15,9 +15,19 @@
   "core": {
     "cmd/baha/app_machine_adapters.go": ["atomic/docker/data-capabilities", "atomic/podman/data-capabilities"],
     "cmd/baha/app_machine_adapters_test.go": ["atomic/docker/data-capabilities", "atomic/podman/data-capabilities"],
+    "cmd/baha/app_core_requirement.go": [
+      "atomic/docker/guided", "atomic/podman/guided",
+      "atomic/docker/data-capabilities", "atomic/podman/data-capabilities"
+    ],
+    "cmd/baha/app_edit_apply_test.go": [],
+    "cmd/baha/app_new_wizard.go": ["atomic/docker/guided", "atomic/podman/guided"],
     "cmd/baha/app_coreless_runtime_test.go": [],
     "cmd/baha/core_installation_runtime_test.go": [],
     "cmd/baha/target_test_helpers_test.go": [],
+    "cmd/baha/guided_application_read_context.go": [
+      "atomic/docker/guided", "atomic/podman/guided",
+      "atomic/docker/data-capabilities", "atomic/podman/data-capabilities"
+    ],
     "internal/identityprovider/keycloak_ha_runtime_integration_test.go": []
   },
   "demo": {
