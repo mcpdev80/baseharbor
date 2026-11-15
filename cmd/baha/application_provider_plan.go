@@ -118,11 +118,11 @@ func resolveApplicationProviderPlanFromSnapshot(resolved resolvedApplication, sn
 		}
 	}
 	plan, err := application.ResolveProviderPlan(snapshot, consumers, true)
-	if err == nil {
-		err = appendReleasedAppliedBindings(resolved, &plan)
-	}
 	if err != nil {
-		return application.ProviderPlan{}, appMachineProposalStage("resolve-or-append-released-bindings", classifyApplicationResolutionError(err))
+		return application.ProviderPlan{}, appMachineProposalStage("resolve-provider-plan", classifyApplicationResolutionError(err))
+	}
+	if err := appendReleasedAppliedBindings(resolved, &plan); err != nil {
+		return application.ProviderPlan{}, appMachineProposalStage("append-released-applied-bindings", err)
 	}
 	return plan, nil
 }

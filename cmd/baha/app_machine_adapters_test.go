@@ -314,12 +314,12 @@ func TestAppMachineProposePreservesSafeAuthorityClassification(t *testing.T) {
 }
 
 func TestAppMachineProposalAuthorityFailurePreservesStaticPlannerStage(t *testing.T) {
-	err := appMachineProposalAuthorityFailure("plan", appMachineProposalStage(
-		"retained-backend-placement-projection", errors.New("private filesystem detail"),
+	err := appMachineProposalAuthorityFailure("plan", appMachineProposalStage("resolve-provider-plan",
+		appMachineProposalStage("retained-backend-placement-projection", errors.New("private filesystem detail")),
 	))
 	var proposalErr *appMachineProposalAuthorityError
 	var machineErr *appMachineError
-	if !errors.As(err, &proposalErr) || proposalErr.Stage != "plan/retained-backend-placement-projection" ||
+	if !errors.As(err, &proposalErr) || proposalErr.Stage != "plan/resolve-provider-plan/retained-backend-placement-projection" ||
 		!errors.As(err, &machineErr) || machineErr.Code != "denied" {
 		t.Fatalf("safe planner stage was lost: %#v (%v)", proposalErr, err)
 	}
