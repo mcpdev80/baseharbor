@@ -652,6 +652,33 @@ func TestAppEditCommandReview918SpaceAndEnterBytesAreDistinct(t *testing.T) {
 	}
 }
 
+func TestAppEditDriverReportsPreviewRefreshFailure(t *testing.T) {
+	req := capability.Requirement{Kind: capability.SQL, Name: "primary"}
+	loaded := appEditTestLoaded(t, "dev", []capability.Requirement{req}, nil)
+	manifest := mustAppEditManifest(t, loaded)
+	wantErr := errors.New("preview authority unavailable")
+	controller, err := newAppWizardController(context.Background(), appWizardInput{
+		Manifest:  manifest,
+		Snapshot:  application.ResolutionSnapshot{Target: "dev", Registry: capability.NewRegistry()},
+		Selection: appCapabilitySelectionInput{Current: []capability.Requirement{req}},
+		TTY:       true,
+		Refresh: func(context.Context, appWizardDecision) (*GuidedReadContext, *application.ProviderImpactPlan, error) {
+			return nil, nil, wantErr
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var output strings.Builder
+	_, err = driveAppEditWizard(context.Background(), appEditSession{Loaded: loaded, Controller: controller}, bufioReader("\n"), &output)
+	if !errors.Is(err, errAppWizardAbort) {
+		t.Fatalf("EOF after failed preview = %v, want %v", err, errAppWizardAbort)
+	}
+	if !strings.Contains(output.String(), "could not build read-only decision preview: preview authority unavailable") {
+		t.Fatalf("preview failure was hidden from the operator: %q", output.String())
+	}
+}
+
 func TestAppEditCommandReview918PersistExactTargetPreferenceAndResolveLater(t *testing.T) {
 	t.Setenv("BASEHARBOR_STATE_DIR", filepath.Join(t.TempDir(), "state"))
 	target := configureTestTarget(t)

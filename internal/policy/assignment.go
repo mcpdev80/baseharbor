@@ -129,7 +129,15 @@ func ResolveFinding(other []Finding, finding Finding) Decision {
 // rather than a default Allow. resolveLoad supplies the active configuration
 // so the contract holds where no disk-backed LoadActive is present.
 func ResolveAll(other []Finding, resolveOperation func(Finding) (orgconfig.Operation, error), resolveLoad func() (orgconfig.ActiveState, error)) Decision {
-	return Aggregate(append(other, profileFold(resolveOperation, resolveLoad)...))
+	return Aggregate(ResolveAllFindings(other, resolveOperation, resolveLoad))
+}
+
+// ResolveAllFindings returns the supplied findings together with the owned
+// profile findings used by the production policy fold. Callers can render the
+// same fail-closed evidence that determines the aggregate decision.
+func ResolveAllFindings(other []Finding, resolveOperation func(Finding) (orgconfig.Operation, error), resolveLoad func() (orgconfig.ActiveState, error)) []Finding {
+	findings := append([]Finding(nil), other...)
+	return append(findings, profileFold(resolveOperation, resolveLoad)...)
 }
 
 // ErrNoActiveOrganization fails closed when the active organization configuration
@@ -152,6 +160,9 @@ func profileFold(resolveOperation func(Finding) (orgconfig.Operation, error), re
 	// aggregate must fail closed. Check it before any disk-backed LoadActive
 	// so the contract holds even where no active configuration is present.
 	operation, opErr := resolveOperation(Finding{})
+	if errors.Is(opErr, ErrNoActiveOrganization) {
+		return []Finding{profileDeny("no active organization: cannot resolve owned profile")}
+	}
 	if opErr != nil || operation == "" {
 		return []Finding{profileDeny("no concrete machine operation bound: fail closed on profile resolution")}
 	}
