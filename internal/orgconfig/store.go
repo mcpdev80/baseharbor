@@ -144,12 +144,12 @@ func SaveActive(state ActiveState) error {
 //   - If the resolved path is NOT under a world-writable directory, nothing
 //     happens (the normal case for os.UserConfigDir()).
 //   - If the resolved path IS under a world-writable directory:
-//       * an existing selection file there is adopted once into the canonical
-//         user-state location, then left in place as a read-only tombstone —
-//         future SaveActive calls reject further writes so the stale /tmp copy
-//         can never be updated again;
-//       * a missing selection file there is an immediate rejection, because
-//         accepting it would persist the vulnerable state.
+//   - an existing selection file there is adopted once into the canonical
+//     user-state location, then left in place as a read-only tombstone —
+//     future SaveActive calls reject further writes so the stale /tmp copy
+//     can never be updated again;
+//   - a missing selection file there is an immediate rejection, because
+//     accepting it would persist the vulnerable state.
 func migrateFromWorldWritable(path string) error {
 	if strings.TrimSpace(os.Getenv(worldWritableCheckOptOutEnv)) == "skip" {
 		return nil
