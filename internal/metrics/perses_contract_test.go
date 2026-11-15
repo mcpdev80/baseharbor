@@ -44,15 +44,42 @@ func TestPersesReleaseVersionIsRealizationMetadataNotProviderVersion(t *testing.
 	}
 }
 
-// TestPersesIsNotAnApplicationCapability asserts Perses has no portable
-// application capability (it is a management surface, never an application
-// capability) and its validation is fail-closed.
+// TestPersesIsNotAnApplicationCapability asserts Perses is a management
+// surface, never an application-capability provider. r2 moved the exported
+// representation onto a valid IntegrationDescriptor that reuses the single
+// observability capability owner (Metrics + the versioned MetricsV1
+// specification), so the old "no versioned specifications => Validate must
+// fail" expectation is obsolete. The intent is unchanged and now asserted in
+// its positive form: at its intended boundary the descriptor validates, it
+// binds exactly the observability owner (no fake metrics/logs/traces
+// capabilities of its own), and it never appears in the shipped reference
+// provider catalog.
 func TestPersesIsNotAnApplicationCapability(t *testing.T) {
 	desc := capability.PersesManagement
-	if len(desc.Capabilities) != 0 {
-		t.Fatalf("perses must not declare application capabilities, got %d", len(desc.Capabilities))
+	// Intended boundary (r2): the management-surface descriptor is valid.
+	if err := desc.Validate(); err != nil {
+		t.Fatalf("perses management descriptor must validate at its intended boundary, got: %v", err)
 	}
-	if err := desc.Validate(); err == nil {
-		t.Fatal("perses descriptor must fail validation when it has no versioned capability specifications")
+	// It reuses exactly the one observability owner and declares no application
+	// capability of its own beyond that owner's versioned specification.
+	if len(desc.Provider.Capabilities) != 1 || desc.Provider.Capabilities[0] != capability.Metrics {
+		t.Fatalf("perses must bind exactly one capability kind (the observability owner Metrics), got %#v", desc.Provider.Capabilities)
+	}
+	if len(desc.Capabilities) != 1 || desc.Capabilities[0] != capability.MetricsV1.ID {
+		t.Fatalf("perses must declare exactly the versioned MetricsV1 specification, got %#v", desc.Capabilities)
+	}
+	services, err := desc.EffectiveServices()
+	if err != nil {
+		t.Fatalf("EffectiveServices must not error for a valid descriptor: %v", err)
+	}
+	if len(services) != 1 || services[0] != capability.ServiceObservability {
+		t.Fatalf("perses effective services = %v, want exactly [observability]: perses is a management surface, never an application capability", services)
+	}
+	// Fail-closed against false catalog membership: a management surface is
+	// never a shipped application-capability provider.
+	for _, descriptor := range capability.ReferenceIntegrations() {
+		if descriptor.Provider.Kind == capability.PersesProviderKind {
+			t.Fatalf("perses management surface must not appear in the reference provider catalog (%s)", descriptor.ID)
+		}
 	}
 }
