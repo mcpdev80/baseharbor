@@ -105,7 +105,6 @@ func TestExpectedContainerNameSetFallsBackToCanonicalOrdinal(t *testing.T) {
 	}
 }
 
-
 // A first-party Podman Quadlet labels its singleton service like Compose but
 // uses <project>-<service> as the native container name rather than the
 // rendered Compose ordinal <project>-<service>-1.
