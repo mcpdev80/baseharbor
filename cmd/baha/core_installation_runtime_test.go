@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -109,8 +110,20 @@ func runCoreOnlyBootstrapRuntimeWithHA(t *testing.T, role coreinstallation.Machi
 			t.Errorf("Core fixture cleanup authority refused; owners retained: %v", err)
 			return
 		}
-		if err := approvedNativeFixtureCleanup(t, cleanupCtx, &bytes.Buffer{}); err != nil {
-			t.Errorf("Core cleanup failed: %v", err)
+		cleanupCtx = withSelectedCoreDataDeletion(cleanupCtx, true)
+		plan, err := buildSelectedCoreDestroyPlan(cleanupCtx)
+		if err != nil {
+			t.Errorf("Core fixture cleanup plan failed; owners retained: %v", err)
+			return
+		}
+		consent := &application.ProviderChangeConsent{
+			PlanID:     plan.Impact.Scope.PlanID,
+			First:      true,
+			Second:     true,
+			DeleteData: true,
+		}
+		if err := runtimeDestroy(withProviderChangeConsent(cleanupCtx, consent), []string{"--yes", "--delete-data"}, io.Discard); err != nil {
+			t.Errorf("Core cleanup failed; owners retained: %v", err)
 		}
 	}()
 	sampler := startCoreMemorySampler(ctx, runtime, target.RuntimeProvider, targetRuntimeProjectName(target), bhruntime.SharedProjectName(target.Name), bhruntime.SharedProjectName(target.Name+"-core"))
