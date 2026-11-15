@@ -157,12 +157,12 @@ func TestLokiProviderRuntimeDoesNotMountContainerSocket(t *testing.T) {
 		t.Fatal(err)
 	}
 	compose := string(data)
-	for _, forbidden := range []string{"docker.sock", "podman.sock", "privileged: true", "network_mode: host", "user:", "provider-volume-init:"} {
+	for _, forbidden := range []string{"docker.sock", "podman.sock", "privileged: true", "network_mode: host", "provider-volume-init:"} {
 		if strings.Contains(compose, forbidden) {
 			t.Fatalf("provider runtime contains forbidden isolation bypass %q:\n%s", forbidden, compose)
 		}
 	}
-	for _, required := range []string{"read_only: true", "cap_drop:", "no-new-privileges:true", "127.0.0.1:"} {
+	for _, required := range []string{"user: \"473:473\"", "read_only: true", "cap_drop:", "no-new-privileges:true", "127.0.0.1:"} {
 		if !strings.Contains(compose, required) {
 			t.Fatalf("provider runtime missing hardening %q:\n%s", required, compose)
 		}

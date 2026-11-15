@@ -12,6 +12,7 @@ import (
 type databaseReloadRuntime struct {
 	recordingKeycloakRuntime
 	services          []string
+	users             []string
 	commands          [][]string
 	failOn            string
 	failure           error
@@ -19,8 +20,9 @@ type databaseReloadRuntime struct {
 	remainingFailures int
 }
 
-func (r *databaseReloadRuntime) ExecProject(_ context.Context, _, _, _, service string, args ...string) (string, error) {
+func (r *databaseReloadRuntime) ExecProjectAs(_ context.Context, _, _, _, service, user string, args ...string) (string, error) {
 	r.services = append(r.services, service)
+	r.users = append(r.users, user)
 	r.commands = append(r.commands, append([]string(nil), args...))
 	if service == r.failOn && r.remainingFailures != 0 {
 		r.remainingFailures--
@@ -70,6 +72,9 @@ func TestKeycloakDatabaseReloadWaitsForRecoveringMembers(t *testing.T) {
 	wantCommand := []string{"psql", "-h", "/var/run/postgresql", "-U", "postgres", "-d", "postgres", "-v", "ON_ERROR_STOP=1", "-c", "SELECT pg_reload_conf()"}
 	if !reflect.DeepEqual(runtime.commands[0], wantCommand) {
 		t.Fatalf("database reload must execute psql directly as the container's postgres user: got %v want %v", runtime.commands[0], wantCommand)
+	}
+	if !reflect.DeepEqual(runtime.users, []string{"postgres", "postgres", "postgres", "postgres"}) {
+		t.Fatalf("database reload users = %v, want postgres for every member attempt", runtime.users)
 	}
 }
 

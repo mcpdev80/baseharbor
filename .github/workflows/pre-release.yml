@@ -817,8 +817,6 @@ jobs:
       run: bash scripts/ci-core-rootless-runtime.sh
     - name: Install verified ORAS for Core bootstrap
       run: bash scripts/ci-install-oras.sh
-    - name: Publish exact candidate image for ORAS verification
-      run: bash scripts/ci-local-oci-registry.sh publish "$BASEHARBOR_RUNTIME_IMAGE" localhost:5000/baseharbor-runtime:pre-release
     - name: Verify Podman Quadlet runtime
       id: quadlet
       if: matrix.runtime == 'podman'
@@ -865,6 +863,8 @@ jobs:
         "${{ matrix.runtime }}" load -i "$archive"
         "${{ matrix.runtime }}" image inspect "$BASEHARBOR_RUNTIME_IMAGE" >/dev/null
         "$RUNNER_TEMP/pre-release-candidate/baha" version | grep -F "${{ needs.source.outputs.candidate_sha }}"
+    - name: Publish exact candidate image for ORAS verification
+      run: bash scripts/ci-local-oci-registry.sh publish "$BASEHARBOR_RUNTIME_IMAGE" localhost:5000/baseharbor-runtime:pre-release
     - name: Checkout exact demo revision
       id: demo
       shell: bash

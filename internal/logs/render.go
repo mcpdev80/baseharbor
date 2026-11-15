@@ -408,6 +408,7 @@ func providerComposeYAMLForModeAndAccess(placement Placement, registrations []Re
 	b.WriteString(serviceaccess.HTTPGatewayComposeService(access, accessSpec))
 	fmt.Fprintf(&b, "  %s:\n", alloyService)
 	fmt.Fprintf(&b, "    image: %s\n", AlloyImage)
+	b.WriteString("    user: \"473:473\"\n")
 	b.WriteString("    command: [\"run\", \"--server.http.listen-addr=127.0.0.1:12345\", \"--storage.path=/tmp/alloy-data\", \"/etc/alloy/config.alloy\"]\n")
 	b.WriteString("    read_only: true\n")
 	b.WriteString("    cap_drop: [\"ALL\"]\n")

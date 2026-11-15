@@ -2,11 +2,13 @@ package main
 
 import (
 	"context"
+	"slices"
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/coreinstallation"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
 // Extend the existing real Core bootstrap receipt, without creating an app,
@@ -27,11 +29,19 @@ func verifyIndependentManagementProviderUnion(t *testing.T, ctx context.Context,
 	if err != nil || !plan.Complete {
 		t.Fatalf("actual management union incomplete: %+v %v", plan, err)
 	}
-	wantRequired := 0
+	wantRequired := []string(nil)
 	if snapshot.ProtectCoreForConnection {
-		wantRequired = 3 // SQL registry, certificate authority and Core Identity serve the connected workstation.
+		// Three independent management roots (storage, OpenBao and Core Identity)
+		// resolve to four required provider instances because Identity's dependency
+		// closure includes Keycloak in addition to the roots' shared modules.
+		wantRequired = []string{
+			"openbao/control-plane",
+			"runtime/" + bhruntime.SharedProjectName(target.Name+"-core") + "/keycloak",
+			"runtime/" + bhruntime.SharedProjectName(target.Name) + "/control-plane/openbao",
+			"runtime/" + bhruntime.SharedProjectName(target.Name) + "/control-plane/postgresql",
+		}
 	}
-	if len(plan.Required) != wantRequired || len(snapshot.Registry.Instances) != 0 || len(snapshot.Registry.Bindings) != 0 {
+	if !slices.Equal(plan.Required, wantRequired) || len(snapshot.Registry.Instances) != 0 || len(snapshot.Registry.Bindings) != 0 {
 		t.Fatalf("actual management dependencies or registry unexpected: protected=%t plan=%+v", snapshot.ProtectCoreForConnection, plan)
 	}
 	for _, change := range plan.Changes {

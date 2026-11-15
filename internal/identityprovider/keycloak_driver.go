@@ -410,6 +410,10 @@ type keycloakProjectExecutor interface {
 	ExecProject(ctx context.Context, project, composeFile, envFile, service string, args ...string) (string, error)
 }
 
+type keycloakProjectUserExecutor interface {
+	ExecProjectAs(ctx context.Context, project, composeFile, envFile, service, user string, args ...string) (string, error)
+}
+
 func reloadKeycloakAccessGateway(ctx context.Context, runtime KeycloakRuntime, files KeycloakFiles) error {
 	executor, ok := runtime.(keycloakProjectExecutor)
 	if !ok {
@@ -437,9 +441,9 @@ func reloadKeycloakAccessGateway(ctx context.Context, runtime KeycloakRuntime, f
 // Spilo's periodic TLS reload runs every five minutes. Reload every database
 // member while both CAs are trusted, before retiring the previous CA.
 func reloadKeycloakDatabaseCertificates(ctx context.Context, runtime KeycloakRuntime, files KeycloakFiles) error {
-	executor, ok := runtime.(keycloakProjectExecutor)
+	executor, ok := runtime.(keycloakProjectUserExecutor)
 	if !ok {
-		return errors.New("Keycloak PKI rotation requires runtime database reload support")
+		return errors.New("Keycloak PKI rotation requires runtime database reload as the postgres user")
 	}
 	reloadCtx, cancel := context.WithTimeout(ctx, 90*time.Second)
 	defer cancel()
@@ -457,7 +461,7 @@ func reloadKeycloakDatabaseCertificates(ctx context.Context, runtime KeycloakRun
 	}
 	for _, service := range services {
 		for {
-			_, err := executor.ExecProject(reloadCtx, files.Project, files.Compose, files.Env, service,
+			_, err := executor.ExecProjectAs(reloadCtx, files.Project, files.Compose, files.Env, service, "postgres",
 				"psql", "-h", "/var/run/postgresql", "-U", "postgres", "-d", "postgres", "-v", "ON_ERROR_STOP=1", "-c", "SELECT pg_reload_conf()")
 			if err == nil {
 				break

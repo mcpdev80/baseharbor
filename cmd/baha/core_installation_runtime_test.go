@@ -77,7 +77,10 @@ func runCoreOnlyBootstrapRuntimeWithHA(t *testing.T, role coreinstallation.Machi
 	if os.Getenv("BASEHARBOR_FINAL_BUG_ACCEPTANCE") == "1" {
 		t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
 	}
-	target := configureTestTarget(t)
+	// Bootstrap must begin without an installation identity. The ordinary target
+	// helper seeds a ready owner for managed-deployment tests, which makes a real
+	// first Core install correctly reject replacing that existing identity.
+	target := configureTestTargetEmpty(t)
 	if os.Getenv("BASEHARBOR_TEST_RUNTIME") == "podman" {
 		cfg, err := deployment.LoadConfig()
 		if err != nil {
