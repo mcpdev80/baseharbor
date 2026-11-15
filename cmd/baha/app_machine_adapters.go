@@ -291,8 +291,31 @@ func (e *appMachineProposalAuthorityError) Error() string {
 
 func (e *appMachineProposalAuthorityError) Unwrap() error { return e.Cause }
 
+// appMachineProposalStageError carries only a static planner stage across the
+// proposal boundary. Its Cause remains private and is still reduced to the
+// stable machine denial before it reaches an operator or caller.
+type appMachineProposalStageError struct {
+	Stage string
+	Cause error
+}
+
+func (e *appMachineProposalStageError) Error() string { return e.Cause.Error() }
+func (e *appMachineProposalStageError) Unwrap() error { return e.Cause }
+
+func appMachineProposalStage(stage string, err error) error {
+	if err == nil {
+		return nil
+	}
+	return &appMachineProposalStageError{Stage: stage, Cause: err}
+}
+
 func appMachineProposalAuthorityFailure(stage string, err error) error {
-	classified := &appMachineProposalAuthorityError{Stage: stage, Cause: appMachineReadError(err)}
+	classified := &appMachineProposalAuthorityError{Stage: stage}
+	var plannerStage *appMachineProposalStageError
+	if errors.As(err, &plannerStage) && plannerStage != nil {
+		classified.Stage += "/" + plannerStage.Stage
+	}
+	classified.Cause = appMachineReadError(err)
 	// appMachineReadError deliberately collapses private failures to a stable
 	// policy-denied code. Preserve only the already-safe public machine
 	// classification alongside that code so a failed read-only proposal can be

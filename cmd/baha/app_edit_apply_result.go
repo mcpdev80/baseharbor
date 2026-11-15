@@ -331,30 +331,34 @@ func defaultAppEditAuthorities(store application.Store, args []string) appEditAu
 func planApplicationProviderImpactForDesired(ctx context.Context, resolved resolvedApplication, snapshot application.ResolutionSnapshot, preferences []application.ProviderPreference) (application.ProviderImpactPlan, error) {
 	union, err := resolveApplicationProviderPlanFromSnapshot(resolved, snapshot, preferences)
 	if err != nil {
-		return application.ProviderImpactPlan{}, err
+		return application.ProviderImpactPlan{}, appMachineProposalStage("resolve-provider-plan", err)
 	}
 	requests := applicationProviderChangeRequests(union)
 	requests, err = nativeBackendChangeRequests(resolved, requests)
 	if err != nil {
-		return application.ProviderImpactPlan{}, err
+		return application.ProviderImpactPlan{}, appMachineProposalStage("native-backend-change-requests", err)
 	}
 	requests, err = standaloneProviderVersionChangeRequests(ctx, resolved, requests)
 	if err != nil {
-		return application.ProviderImpactPlan{}, err
+		return application.ProviderImpactPlan{}, appMachineProposalStage("standalone-provider-version-change-requests", err)
 	}
 	requests, err = backendBindingChangeRequests(resolved, union, requests)
 	if err != nil {
-		return application.ProviderImpactPlan{}, err
+		return application.ProviderImpactPlan{}, appMachineProposalStage("backend-binding-change-requests", err)
 	}
 	requests, err = externalReceiverChangeRequests(resolved, requests)
 	if err != nil {
-		return application.ProviderImpactPlan{}, err
+		return application.ProviderImpactPlan{}, appMachineProposalStage("external-receiver-change-requests", err)
 	}
 	requests, err = externalIdentityChangeRequests(resolved, requests)
 	if err != nil {
-		return application.ProviderImpactPlan{}, err
+		return application.ProviderImpactPlan{}, appMachineProposalStage("external-identity-change-requests", err)
 	}
-	return resolveApplicationProviderImpact(ctx, resolved, snapshot, union, requests)
+	plan, err := resolveApplicationProviderImpact(ctx, resolved, snapshot, union, requests)
+	if err != nil {
+		return application.ProviderImpactPlan{}, appMachineProposalStage("resolve-provider-impact", err)
+	}
+	return plan, nil
 }
 
 // appEditSourceBytes returns the exact authoritative source bytes for a

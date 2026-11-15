@@ -313,6 +313,21 @@ func TestAppMachineProposePreservesSafeAuthorityClassification(t *testing.T) {
 	}
 }
 
+func TestAppMachineProposalAuthorityFailurePreservesStaticPlannerStage(t *testing.T) {
+	err := appMachineProposalAuthorityFailure("plan", appMachineProposalStage(
+		"retained-backend-placement-projection", errors.New("private filesystem detail"),
+	))
+	var proposalErr *appMachineProposalAuthorityError
+	var machineErr *appMachineError
+	if !errors.As(err, &proposalErr) || proposalErr.Stage != "plan/retained-backend-placement-projection" ||
+		!errors.As(err, &machineErr) || machineErr.Code != "denied" {
+		t.Fatalf("safe planner stage was lost: %#v (%v)", proposalErr, err)
+	}
+	if strings.Contains(err.Error(), "private filesystem detail") {
+		t.Fatalf("private planner detail leaked: %v", err)
+	}
+}
+
 func TestAppMachineAdaptersContextCancellation(t *testing.T) {
 	for _, stage := range []string{"read", "authorize", "plan"} {
 		t.Run(stage, func(t *testing.T) {
