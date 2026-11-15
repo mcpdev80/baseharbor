@@ -133,16 +133,22 @@ def tree_fingerprint(revision, paths, cwd=None):
 
 
 def execution_tree_fingerprint(revision, paths, cwd=None):
-    """Fingerprint executable release contracts, excluding only the push hook."""
+    """Fingerprint executable release contracts, excluding policy-only settings."""
     rows = []
     for path in sorted(set(paths)):
-        if path == ".github/workflows/pre-release.yml":
+        if path.endswith(".yml") or path.endswith(".yaml"):
             data = subprocess.check_output(("git", "show", revision + ":" + path), cwd=cwd,
                                            stderr=subprocess.DEVNULL, timeout=15)
-            # Adding the release-branch auto-dispatch hook changes how a run
-            # starts, not what it qualifies. Preserve all manual/call inputs,
-            # jobs and execution steps in the fingerprint.
-            data = data.replace(b"    - release/v*\n", b"")
+            if path == ".github/workflows/pre-release.yml":
+                # Adding the release-branch auto-dispatch hook changes how a
+                # run starts, not what it qualifies. Preserve all manual/call
+                # inputs, jobs and execution steps in the fingerprint.
+                data = data.replace(b"    - release/v*\n", b"")
+            # Artifact retention controls evidence availability, not the
+            # Pre-Release execution contract. Retention policy updates must
+            # not invalidate otherwise eligible successful gate evidence.
+            data = re.sub(rb"(?m)^([ \t]*retention-days:[ \t]*)[^\r\n]+",
+                          rb"\1<NORMALIZED>", data)
             digest = sha256_bytes(data)
         else:
             digest = blob_at(revision, path, cwd=cwd)

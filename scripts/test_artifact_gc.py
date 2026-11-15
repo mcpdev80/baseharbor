@@ -54,6 +54,12 @@ class ArtifactGC(unittest.TestCase):
                          head_branch='recent', status='completed',
                          conclusion='success', created_at='2026-12-31T00:00:00Z',
                          updated_at='2026-12-31T00:00:00Z'))
+        runs.extend([
+            dict(id=10, path='.github/workflows/ci.yml', head_branch='open/pr-head',
+                 status='completed', conclusion='success', updated_at='2020-01-01T00:00:00Z'),
+            dict(id=11, path='.github/workflows/ci.yml', head_branch='protected/branch',
+                 status='completed', conclusion='success', updated_at='2020-01-01T00:00:00Z'),
+        ])
         deleted = []
 
         class LaterDate(datetime):
@@ -68,11 +74,17 @@ class ArtifactGC(unittest.TestCase):
                 return Response(status=204)
             if url.startswith('actions/runs?'):
                 return Response({'workflow_runs': runs})
-            if url.startswith('pulls?'):
+            if url.startswith('pulls?state=open'):
+                return Response([{'head': {'ref': 'open/pr-head',
+                                           'repo': {'full_name': 'example/core'}}}])
+            if url.startswith('pulls?state=closed'):
                 return Response([])
             if url.startswith('branches?'):
-                return Response([dict(name=branch, protected=False, commit={'sha': 'a' * 40})
-                                 for branch in [core, templates, ordinary]])
+                return Response([
+                    dict(name=branch, protected=False, commit={'sha': 'a' * 40})
+                    for branch in [core, templates, ordinary, 'open/pr-head']
+                ] + [dict(name='protected/branch', protected=True,
+                          commit={'sha': 'a' * 40})])
             if url.startswith('commits/'):
                 return Response({'commit': {'committer': {'date': '2020-01-01T00:00:00Z'}}})
             raise AssertionError('Unexpected API request: ' + url)
@@ -84,6 +96,7 @@ class ArtifactGC(unittest.TestCase):
                 contextlib.redirect_stdout(io.StringIO()):
             exec(compile(source, 'artifact-gc.yml', 'exec'), {})
         self.assertEqual(deleted, [f'actions/runs/{i}' for i in range(1, 9)] + [
+            'actions/runs/10', 'actions/runs/11',
             'git/refs/heads/runtime-validation%2Fha%2Fcore-bootstrap%2Frelease%2Fpodman',
             'git/refs/heads/runtime-validation%2Fha%2Fbug-hunt%2Frelease-templates',
             'git/refs/heads/diag%2Fdisposable'])
@@ -250,10 +263,15 @@ class ArtifactGC(unittest.TestCase):
                         self.assertEqual(deleted, [])
                     else:
                         exec(compile(source, 'gc.yml', 'exec'), {})
-                        if case == 'merged':
-                            self.assertTrue(deleted)
+                        if job == 'artifacts':
+                            self.assertEqual(deleted, (
+                                ['actions/artifacts/9'] if case == 'merged' else []))
+                        elif case == 'merged':
+                            self.assertEqual(deleted, [
+                                'actions/runs/9',
+                                'git/refs/heads/candidate%2Fv0.4.26'])
                         else:
-                            self.assertEqual(deleted, [])
+                            self.assertEqual(deleted, ['actions/runs/9'])
 
 
     def test_pr_event_is_read_only_and_never_enters_cleanup(self):

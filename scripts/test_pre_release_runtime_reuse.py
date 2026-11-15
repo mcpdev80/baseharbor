@@ -236,6 +236,8 @@ class RuntimeReuseTests(unittest.TestCase):
                 destination.parent.mkdir(parents=True, exist_ok=True)
                 if path == ".github/workflows/pre-release.yml":
                     destination.write_text("'on':\n  push:\n    branches:\n    - release-candidate/**\n    - validation/pre-release/**\n")
+                elif path == ".github/workflows/pre-release-runtime-suite.yml":
+                    destination.write_text("name: runtime suite\nretention-days: 1\n")
                 else:
                     destination.write_text(path + "\n")
             (core / "scripts/pre-release-runtime-reuse.py").write_text("old policy\n")
@@ -257,6 +259,8 @@ class RuntimeReuseTests(unittest.TestCase):
             (core / ".github/workflows/ci.yml").write_text("main PR route\n")
             (core / "scripts/pre-release-runtime-impact.json").write_text("new impact policy\n")
             (core / "scripts/pre-release-runtime-reuse.py").write_text("new reuse policy\n")
+            (core / ".github/workflows/pre-release-runtime-suite.yml").write_text(
+                "name: runtime suite\nretention-days: 7\n")
             workflow_path = core / ".github/workflows/pre-release.yml"
             workflow_path.write_text(workflow_path.read_text().replace(
                 "    - release-candidate/**\n", "    - release-candidate/**\n    - release/v*\n"))
