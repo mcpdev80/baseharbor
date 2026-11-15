@@ -109,7 +109,11 @@ func TestCorelessFreshWorkloadRuntimeLifecycle(t *testing.T) {
 	}
 	t.Logf("runtime=%s application_id=%s target=%s fresh Core absent", engine, m.ApplicationID, target.Name)
 	assertCorelessHost(t, ctx, runtime, target)
+	destroyed := false
 	t.Cleanup(func() {
+		if destroyed {
+			return
+		}
 		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), time.Minute)
 		defer cleanupCancel()
 		if err := destroySelectiveApplicationWithConsent(machineNoninteractiveContext(cleanupCtx)); err != nil {
@@ -248,24 +252,29 @@ func TestCorelessFreshWorkloadRuntimeLifecycle(t *testing.T) {
 	if environment == "prod" {
 		qualifyActualLocalStdioWorkloadAuthority(t, ctx, target, m)
 	}
-	for i := 0; i < 2; i++ {
-		out.Reset()
-		resolved, err := resolveApplication(ctx, application.Store{}, nil, "destroy")
-		if err != nil {
-			t.Fatalf("resolve application for destroy %d: %v", i+1, err)
-		}
-		plan, err := buildApplicationDestructionPlan(ctx, resolved, true)
-		if err != nil {
-			t.Fatalf("build destruction plan %d: %v", i+1, err)
-		}
-		ack := corelessAcceptanceDestroyConsent(plan)
-		if err := runWithIO(withProviderChangeConsent(ctx, ack), []string{"app", "destroy", "--yes"}, &out, &out); err != nil {
-			t.Fatalf("destroy %d: %v\n%s", i+1, err, out.String())
-		}
-		assertCorelessHost(t, ctx, runtime, target)
+	resolved, err = resolveApplication(ctx, application.Store{}, nil, "destroy")
+	if err != nil {
+		t.Fatalf("resolve application for destroy: %v", err)
 	}
-	if record, found, err := deployment.FindDeployment(target.Name, m.ApplicationID, m.Environment); err != nil || !found || record.Observed.State != "runtime-retired" || record.Observed.Ready || record.Identity != resolved.DeploymentIdentity {
-		t.Fatalf("default destroy lost canonical recovery owner: %v", err)
+	plan, err := buildApplicationDestructionPlan(ctx, resolved, true)
+	if err != nil {
+		t.Fatalf("build destruction plan: %v", err)
+	}
+	ack := corelessAcceptanceDestroyConsent(plan)
+	if err := runWithIO(withProviderChangeConsent(ctx, ack), []string{"app", "destroy", "--yes"}, &out, &out); err != nil {
+		t.Fatalf("destroy: %v\n%s", err, out.String())
+	}
+	destroyed = true
+	assertCorelessHost(t, ctx, runtime, target)
+	if _, found, err := deployment.FindDeployment(target.Name, m.ApplicationID, m.Environment); err != nil || found {
+		t.Fatalf("full destroy retained deployment owner: found=%t err=%v", found, err)
+	}
+	out.Reset()
+	if err := runWithIO(ctx, []string{"app", "destroy", "--yes"}, &out, &out); err != nil {
+		t.Fatalf("repeated destroy of already absent application should be idempotent: %v\n%s", err, out.String())
+	}
+	if !strings.Contains(out.String(), "Application already absent") || !strings.Contains(out.String(), "source files were kept") {
+		t.Fatalf("repeated destroy did not report an idempotent no-op: %s", out.String())
 	}
 	if _, err := os.Stat(filepath.Join(root, "baseharbor.yaml")); err != nil {
 		t.Fatalf("destroy removed authored intent: %v", err)
