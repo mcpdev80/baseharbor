@@ -44,12 +44,23 @@ var PersesManagementUIInterface = ProviderInterface{
 // Its product version and image digest are realization metadata (Provider
 // Contract v1: "Provider identity and versioning"); they MUST NOT replace the
 // provider implementation version or the capability specification version.
+//
+// Perses is a provider-owned management/visualization surface, never an
+// application capability. It reuses the existing observability management-ui
+// interface that the backend data owner (Prometheus, where the pinned Perses
+// release actually ships the Prometheus plugin) already declares. To carry a
+// valid, explicit catalog/registry status it binds to that same observability
+// capability owner: the Metrics capability kind with its versioned MetricsV1
+// specification, the single observability service, the optional management-ui
+// interface, and the shared/application placement scopes. It declares NO fake
+// metrics/logs/traces application capability of its own.
 var PersesManagement = IntegrationDescriptor{
 	ID:              "baseharbor/perses",
 	Version:         "0.1.0",
 	Protocol:        ProviderProtocolV1,
-	Provider:        Provider{Kind: PersesProviderKind, Capabilities: []Kind{}},
+	Provider:        Provider{Kind: PersesProviderKind, Capabilities: []Kind{Metrics}},
 	Services:        []ServiceKind{ServiceObservability},
+	Capabilities:    []SpecificationID{MetricsV1.ID},
 	SupportedScopes: []ProviderScope{ScopeShared, ScopeApplication},
 	Interfaces:      []ProviderInterface{PersesManagementUIInterface},
 }
