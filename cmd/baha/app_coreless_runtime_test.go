@@ -193,8 +193,12 @@ func TestCorelessFreshWorkloadRuntimeLifecycle(t *testing.T) {
 				t.Fatal(err)
 			}
 			status, _, err := collectResolvedApplicationStatus(ctx, stopped)
-			if err != nil || status.State != "runtime-retired" || status.Ready {
-				t.Fatalf("stopped mistaken for absent/live: %+v %v", status, err)
+			if err != nil || status.State != "stopped" || status.Ready {
+				t.Fatalf("approved application down did not report the stopped workload: %+v %v", status, err)
+			}
+			record, found, recordErr := deployment.FindDeployment(target.Name, m.ApplicationID, m.Environment)
+			if recordErr != nil || !found || record.Observed.State != "stopped" || record.Observed.Ready {
+				t.Fatalf("application down did not preserve its stopped deployment owner: found=%t state=%q ready=%t err=%v", found, record.Observed.State, record.Observed.Ready, recordErr)
 			}
 			files, err := application.ExistingRuntimeFiles(stopped.Store, stopped.Manifest)
 			if err != nil {
