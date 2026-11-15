@@ -98,20 +98,10 @@ func runCoreOnlyBootstrapRuntimeWithHA(t *testing.T, role coreinstallation.Machi
 			t.Errorf("Core fixture cleanup authority refused; owners retained: %v", err)
 			return
 		}
-		cleanupCtx = withSelectedCoreDataDeletion(cleanupCtx, true)
-		plan, err := buildSelectedCoreDestroyPlan(cleanupCtx)
-		if err != nil {
-			t.Errorf("Core fixture cleanup plan failed; owners retained: %v", err)
-			return
-		}
-		consent := &application.ProviderChangeConsent{
-			PlanID:     plan.Impact.Scope.PlanID,
-			First:      true,
-			Second:     true,
-			DeleteData: true,
-		}
-		if err := runtimeDestroy(withProviderChangeConsent(cleanupCtx, consent), []string{"--yes", "--delete-data"}, io.Discard); err != nil {
-			t.Errorf("Core cleanup failed; owners retained: %v", err)
+		// Core Identity runs in a sibling project, so selected Core destruction
+		// alone leaves a live same-engine owner that blocks the next role fixture.
+		if err := approvedNativeFixtureCleanup(t, cleanupCtx, io.Discard); err != nil {
+			t.Errorf("Core fixture cleanup failed; owners retained: %v", err)
 		}
 	}()
 	sampler := startCoreMemorySampler(ctx, runtime, target.RuntimeProvider, targetRuntimeProjectName(target), bhruntime.SharedProjectName(target.Name), bhruntime.SharedProjectName(target.Name+"-core"))

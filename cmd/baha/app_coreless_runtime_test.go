@@ -250,7 +250,16 @@ func TestCorelessFreshWorkloadRuntimeLifecycle(t *testing.T) {
 	}
 	for i := 0; i < 2; i++ {
 		out.Reset()
-		if err := runWithIO(ctx, []string{"app", "destroy", "--yes"}, &out, &out); err != nil {
+		resolved, err := resolveApplication(ctx, application.Store{}, nil, "destroy")
+		if err != nil {
+			t.Fatalf("resolve application for destroy %d: %v", i+1, err)
+		}
+		plan, err := buildApplicationDestructionPlan(ctx, resolved, true)
+		if err != nil {
+			t.Fatalf("build destruction plan %d: %v", i+1, err)
+		}
+		ack := corelessAcceptanceDestroyConsent(plan)
+		if err := runWithIO(withProviderChangeConsent(ctx, ack), []string{"app", "destroy", "--yes"}, &out, &out); err != nil {
 			t.Fatalf("destroy %d: %v\n%s", i+1, err, out.String())
 		}
 		assertCorelessHost(t, ctx, runtime, target)
@@ -260,6 +269,35 @@ func TestCorelessFreshWorkloadRuntimeLifecycle(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(root, "baseharbor.yaml")); err != nil {
 		t.Fatalf("destroy removed authored intent: %v", err)
+	}
+}
+
+func corelessAcceptanceDestroyConsent(plan applicationDestructionPlan) *application.ProviderChangeConsent {
+	return &application.ProviderChangeConsent{
+		PlanID:     plan.Scope.PlanID,
+		First:      true,
+		Second:     true,
+		DeleteData: true,
+	}
+}
+
+func TestCorelessAcceptanceDestroyConsentBindsCurrentDestructivePlan(t *testing.T) {
+	resolved := retainedNativeBackendFixture(t)
+	plan, err := buildApplicationDestructionPlan(t.Context(), resolved, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ack := corelessAcceptanceDestroyConsent(plan)
+	if !plan.Scope.Destructive || !ack.DeleteData || ack.PlanID != plan.Scope.PlanID {
+		t.Fatalf("acceptance destroy did not bind the destructive plan and data consent: plan=%+v ack=%+v", plan.Scope, ack)
+	}
+	if err := application.ValidateProviderImpactScopeConsent(plan.Scope, *ack); err != nil {
+		t.Fatalf("current acceptance destroy consent rejected: %v", err)
+	}
+	stale := *ack
+	stale.PlanID = "stale-plan"
+	if err := application.ValidateProviderImpactScopeConsent(plan.Scope, stale); err == nil {
+		t.Fatal("stale acceptance destroy consent was accepted")
 	}
 }
 
