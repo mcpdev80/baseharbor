@@ -14,6 +14,11 @@ import (
 
 const serviceIssuerReference = "openbao://baseharbor-pki/baseharbor-services"
 
+const (
+	managerTrustRetryWindow = 20 * time.Second
+	managerTrustRetryDelay  = 250 * time.Millisecond
+)
+
 // ServiceIssuer adapts the managed OpenBao PKI engine to the provider-neutral
 // service-access issuer contract.
 type ServiceIssuer struct {
@@ -37,14 +42,36 @@ func (i *ServiceIssuer) TrustBundle(ctx context.Context) (serviceaccess.TrustBun
 	if i == nil || i.executor == nil {
 		return serviceaccess.TrustBundle{}, errors.New("OpenBao service issuer is not configured")
 	}
-	ca, err := ServiceCA(ctx, i.executor, i.files)
-	if err != nil {
-		return serviceaccess.TrustBundle{}, err
+	deadline := time.Now().Add(managerTrustRetryWindow)
+	for {
+		ca, err := ServiceCA(ctx, i.executor, i.files)
+		if err == nil {
+			return serviceaccess.TrustBundle{
+				IssuerReference: serviceIssuerReference,
+				PEM:             ca,
+			}, nil
+		}
+		// CA rotation can briefly interrupt the OpenBao listener while its TLS
+		// certificate reloads. Retry only dropped transports; authentication,
+		// authorization and malformed-response failures remain fail-fast.
+		if ctx.Err() != nil {
+			return serviceaccess.TrustBundle{}, ctx.Err()
+		}
+		if !isTransientAppRoleLoginTransportError(err) || !time.Now().Before(deadline) {
+			return serviceaccess.TrustBundle{}, err
+		}
+		delay := managerTrustRetryDelay
+		if remaining := time.Until(deadline); delay > remaining {
+			delay = remaining
+		}
+		timer := time.NewTimer(delay)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return serviceaccess.TrustBundle{}, ctx.Err()
+		case <-timer.C:
+		}
 	}
-	return serviceaccess.TrustBundle{
-		IssuerReference: serviceIssuerReference,
-		PEM:             ca,
-	}, nil
 }
 
 func (i *ServiceIssuer) Issue(ctx context.Context, request serviceaccess.CertificateRequest) (serviceaccess.IssuedCertificate, error) {

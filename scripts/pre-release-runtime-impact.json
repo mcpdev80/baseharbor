@@ -40,7 +40,9 @@
       "atomic/docker/guided", "atomic/podman/guided",
       "atomic/docker/data-capabilities", "atomic/podman/data-capabilities"
     ],
-    "internal/identityprovider/keycloak_ha_runtime_integration_test.go": []
+    "internal/identityprovider/keycloak_ha_runtime_integration_test.go": [],
+    "internal/openbao/service_issuer.go": ["atomic/docker/control-plane-recovery", "atomic/podman/control-plane-recovery"],
+    "internal/openbao/service_pki_test.go": ["atomic/docker/control-plane-recovery", "atomic/podman/control-plane-recovery"]
   },
   "demo": {
     "tests/data-capabilities/new_edit_helpers_test.py": ["atomic/docker/data-capabilities", "atomic/podman/data-capabilities"],
