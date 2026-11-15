@@ -63,7 +63,7 @@ func buildApplicationStopPlan(ctx context.Context, resolved resolvedApplication)
 	if err != nil {
 		return p, err
 	}
-	if isApplicationDownMode(ctx) {
+	if isApplicationDownMode(ctx) || isApplicationStopMode(ctx) {
 		_, retirement, err := buildApplicationRuntimeRetirementPlan(ctx, resolved)
 		if err != nil {
 			return p, err

@@ -35,7 +35,6 @@ func stopSelectiveApplicationWithConsent(ctx context.Context, out io.Writer) err
 // preserves provider data; ordinary --yes supplies neither acknowledgement.
 func destroySelectiveApplicationWithConsent(ctx context.Context) error {
 	ctx = context.WithValue(ctx, applicationStopModeKey{}, true)
-	ctx = context.WithValue(ctx, applicationDownModeKey{}, true)
 	resolved, err := resolveApplication(ctx, application.Store{}, nil, "destroy")
 	if err != nil {
 		return err

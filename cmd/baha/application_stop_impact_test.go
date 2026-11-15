@@ -104,6 +104,40 @@ func TestCorelessApplicationDownConsentNamesWorkloadUnavailability(t *testing.T)
 	}
 }
 
+func TestCorelessApplicationStopConsentNamesWorkloadUnavailability(t *testing.T) {
+	configureTestTargetEmpty(t)
+	root := t.TempDir()
+	t.Chdir(root)
+	if err := os.WriteFile(filepath.Join(root, "compose.yaml"), []byte("services:\n  api:\n    image: alpine:3.22\n    command: [sleep, infinity]\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	manifest := application.WithWorkloadComponents(application.New("plain", "dev", false, false, false), "api")
+	mustWriteInitializedAuthoredManifest(t, application.RepositoryManifestName, manifest)
+	resolved, err := resolveApplication(t.Context(), application.DefaultStore(), nil, "apply")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := recordAppliedDeployment(t.Context(), resolved, application.RuntimeFiles{}); err != nil {
+		t.Fatal(err)
+	}
+
+	stopContext := context.WithValue(t.Context(), applicationStopModeKey{}, true)
+	plan, err := buildApplicationStopPlan(stopContext, resolved)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, retirement, err := buildApplicationRuntimeRetirementPlan(stopContext, resolved)
+	if err != nil || retirement.Impact == nil {
+		t.Fatalf("expected a current stop retirement plan: %+v %v", retirement, err)
+	}
+	if plan.retirementPlanID == "" || plan.retirementPlanID != retirement.Impact.PlanID {
+		t.Fatalf("app stop consent is not bound to its exact retirement plan: stop=%q retirement=%q", plan.retirementPlanID, retirement.Impact.PlanID)
+	}
+	if len(plan.Scope.Targets) != 1 || len(plan.Scope.Targets[0].Impacts) != 0 {
+		t.Fatalf("expected a workload-only stop scope: %+v", plan.Scope.Targets)
+	}
+}
+
 func mustJSONStopTest(t *testing.T, value any) []byte {
 	t.Helper()
 	encoded, err := json.Marshal(value)
