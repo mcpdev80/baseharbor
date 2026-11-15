@@ -700,6 +700,37 @@ func podmanSystemdUnitLabel(value string) string {
 	return value
 }
 
+// parsePodmanContainerUnits rejects missing, duplicate and unexpected rows before
+// any service is stopped. The first column is the concrete Podman container name.
+func parsePodmanContainerUnits(output string, owned []RuntimeContainer) (map[string]string, error) {
+	expected := make(map[string]struct{}, len(owned))
+	for _, container := range owned {
+		expected[container.Name] = struct{}{}
+	}
+	result := make(map[string]string, len(owned))
+	for _, row := range strings.Split(strings.TrimSpace(output), "\n") {
+		if row == "" {
+			continue
+		}
+		parts := strings.SplitN(row, "|", 2)
+		if len(parts) != 2 {
+			return nil, fmt.Errorf("invalid Quadlet unit inspection row %q", row)
+		}
+		name := strings.TrimPrefix(strings.TrimSpace(parts[0]), "/")
+		if _, ok := expected[name]; !ok {
+			return nil, fmt.Errorf("unexpected Quadlet container inspection %q", name)
+		}
+		if _, exists := result[name]; exists {
+			return nil, fmt.Errorf("duplicate Quadlet container inspection %q", name)
+		}
+		result[name] = podmanSystemdUnitLabel(parts[1])
+	}
+	if len(result) != len(expected) {
+		return nil, fmt.Errorf("incomplete Quadlet unit inspection: got %d of %d containers", len(result), len(expected))
+	}
+	return result, nil
+}
+
 func (p PodmanProvider) StopOwnedProjectContainers(ctx context.Context, project string) error {
 	project = strings.TrimSpace(project)
 	if project == "" {
@@ -710,31 +741,40 @@ func (p PodmanProvider) StopOwnedProjectContainers(ctx context.Context, project 
 		return err
 	}
 
+	var owned []RuntimeContainer
+	for _, container := range containers {
+		if container.Project == project && container.Running {
+			owned = append(owned, container)
+		}
+	}
 	var units []string
 	var direct []RuntimeContainer
 	seenUnits := map[string]struct{}{}
-	for _, container := range containers {
-		if container.Project != project || !container.Running {
-			continue
+	if len(owned) > 0 {
+		args := []string{"container", "inspect", "--format", `{{.Name}}|{{ index .Config.Labels "PODMAN_SYSTEMD_UNIT" }}`}
+		for _, container := range owned {
+			args = append(args, container.Name)
 		}
-		unitOut, inspectErr := p.DirectOutput(ctx,
-			"container", "inspect", "--format",
-			`{{ index .Config.Labels "PODMAN_SYSTEMD_UNIT" }}`,
-			container.Name,
-		)
+		unitOutput, inspectErr := p.DirectOutput(ctx, args...)
 		if inspectErr != nil {
-			return fmt.Errorf("inspect Quadlet unit for %s/%s (%s): %w", project, container.Service, container.Name, inspectErr)
+			return fmt.Errorf("inspect Quadlet units for project %s: %w", project, inspectErr)
 		}
-		unit := podmanSystemdUnitLabel(unitOut)
-		if unit == "" {
-			direct = append(direct, container)
-			continue
+		unitByName, parseErr := parsePodmanContainerUnits(unitOutput, owned)
+		if parseErr != nil {
+			return parseErr
 		}
-		if _, seen := seenUnits[unit]; seen {
-			continue
+		for _, container := range owned {
+			unit := unitByName[container.Name]
+			if unit == "" {
+				direct = append(direct, container)
+				continue
+			}
+			if _, seen := seenUnits[unit]; seen {
+				continue
+			}
+			seenUnits[unit] = struct{}{}
+			units = append(units, unit)
 		}
-		seenUnits[unit] = struct{}{}
-		units = append(units, unit)
 	}
 	sort.Strings(units)
 
