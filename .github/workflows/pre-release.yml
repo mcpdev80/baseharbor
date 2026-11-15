@@ -221,10 +221,14 @@ jobs:
       run: bash scripts/source-readability-audit.sh
 
   source_tests:
-    name: Source · Go Tests
+    name: Source · Go Tests · ${{ matrix.shard }}
     needs: source_prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [cli-0, cli-1, cli-2, cli-3, packages]
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 30
     services:
       postgres:
         image: postgres:18-alpine
@@ -241,6 +245,7 @@ jobs:
           --health-retries 10
     env:
       BASEHARBOR_TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/baseharbor_test?sslmode=disable
+      BASEHARBOR_LOGS_ENABLED: "false"
     steps:
     - name: Checkout candidate source
       id: checkout
@@ -254,16 +259,36 @@ jobs:
       with:
         go-version-file: go.mod
         cache: false
-    - name: Run release-source tests
+    - name: Run discovered release-source test shard
       id: source_tests
       shell: bash
+      env:
+        SHARD: ${{ matrix.shard }}
       run: |
         set -euo pipefail
-        logs="$RUNNER_TEMP/pre-release-source-logs"
-        mkdir -p "$logs"
-        go test ./contracts/... ./internal/... ./spec/... ./conformance/... 2>&1 | tee "$logs/go-test-internal-spec.log"
-        BASEHARBOR_LOGS_ENABLED=false go test ./cmd/baha 2>&1 | tee "$logs/go-test-cmd-baha.log"
-        go vet ./... 2>&1 | tee "$logs/go-vet.log"
+        python3 scripts/pr-go-unit-shard.py --mode "$SHARD"
+
+  source_vet:
+    name: Source · Go Vet
+    needs: source_prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+    - name: Checkout candidate source
+      id: checkout
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        ref: ${{ needs.source_prepare.outputs.candidate_sha }}
+        fetch-depth: 0
+    - name: Set up Go
+      id: setup_go
+      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+      with:
+        go-version-file: go.mod
+        cache: false
+    - name: Vet all Go packages
+      id: source_vet
+      run: go vet ./...
 
   source_docs:
     name: Docs · Workflow and Release Validation
@@ -395,7 +420,7 @@ jobs:
 
   source:
     name: Source · Qualified
-    needs: [source_prepare, source_format, source_tests, source_docs, release_snapshot, release_candidate]
+    needs: [source_prepare, source_format, source_tests, source_vet, source_docs, release_snapshot, release_candidate]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -435,19 +460,20 @@ jobs:
         PREPARE_RESULT: ${{ needs.source_prepare.result }}
         FORMAT_RESULT: ${{ needs.source_format.result }}
         TEST_RESULT: ${{ needs.source_tests.result }}
+        VET_RESULT: ${{ needs.source_vet.result }}
         DOCS_RESULT: ${{ needs.source_docs.result }}
         SNAPSHOT_RESULT: ${{ needs.release_snapshot.result }}
         CANDIDATE_RESULT: ${{ needs.release_candidate.result }}
       shell: bash
       run: |
         set -euo pipefail
-        for result in "$PREPARE_RESULT" "$FORMAT_RESULT" "$TEST_RESULT" "$DOCS_RESULT" "$SNAPSHOT_RESULT" "$CANDIDATE_RESULT"; do
+        for result in "$PREPARE_RESULT" "$FORMAT_RESULT" "$TEST_RESULT" "$VET_RESULT" "$DOCS_RESULT" "$SNAPSHOT_RESULT" "$CANDIDATE_RESULT"; do
           if [ "$result" != success ]; then
             echo "Source qualification did not pass: $result" >&2
             exit 1
           fi
         done
-        echo "All source, docs, workflow, snapshot, and candidate-artifact jobs passed."
+        echo "All source test shards, vet, docs, workflow, snapshot, and candidate-artifact jobs passed."
 
   runtime_candidate:
     name: Candidate · Runtime Image
