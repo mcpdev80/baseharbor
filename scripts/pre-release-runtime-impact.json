@@ -1,0 +1,51 @@
+{
+  "schema": "baseharbor.pre-release-runtime-impact/v1",
+  "safe_core_paths": [
+    "CHANGELOG.md",
+    "README.md",
+    "CONTRIBUTING.md",
+    "docs/**"
+  ],
+  "safe_demo_paths": [
+    "CHANGELOG.md",
+    "README.md",
+    "CONTRIBUTING.md",
+    "docs/**"
+  ],
+  "core": {
+    "cmd/baha/app_machine_adapters.go": ["atomic/docker/data-capabilities", "atomic/podman/data-capabilities"],
+    "cmd/baha/app_machine_adapters_test.go": ["atomic/docker/data-capabilities", "atomic/podman/data-capabilities"],
+    "cmd/baha/app_coreless_runtime_test.go": [],
+    "cmd/baha/core_installation_runtime_test.go": [],
+    "cmd/baha/target_test_helpers_test.go": [],
+    "internal/identityprovider/keycloak_ha_runtime_integration_test.go": []
+  },
+  "demo": {
+    "tests/data-capabilities/new_edit_helpers_test.py": ["atomic/docker/data-capabilities", "atomic/podman/data-capabilities"],
+    "tests/guided/new_edit.py": ["atomic/docker/guided", "atomic/podman/guided"],
+    "tests/native-default-topology.py": ["*"],
+    "tests/native_default_topology_test.py": ["*"],
+    "tests/gate-resources.json": ["*"],
+    "tests/pre-release-suites.json": ["*"],
+    "tests/lib.sh": ["*"],
+    "scripts/acceptance.sh": ["*"]
+  },
+  "demo_gate_directories": {
+    "atomic/static/": "tests/",
+    "atomic/docker/": "tests/",
+    "atomic/podman/": "tests/"
+  },
+  "workflow_inputs": [
+    ".github/workflows/pre-release.yml",
+    ".github/workflows/pre-release-runtime-suite.yml",
+    "scripts/pre-release-check-plan.py",
+    "scripts/pre-release-runtime-impact.json",
+    "scripts/pre-release-runtime-reuse.py",
+    "scripts/release-requirements.json"
+  ],
+  "demo_catalog_inputs": [
+    "tests/gate-resources.json",
+    "tests/pre-release-suites.json",
+    "scripts/acceptance.sh"
+  ]
+}

@@ -2,6 +2,7 @@ name: Release · Pre-Release Validation
 run-name: Pre-Release · ${{ inputs.tag || github.ref_name }}
 permissions:
   contents: read
+  actions: read
 concurrency:
   group: ${{ inputs.develop_mode && format('baseharbor-develop-{0}', github.run_id) || 'baseharbor-release-qualification' }}
   cancel-in-progress: false
@@ -17,16 +18,20 @@ jobs:
       consumer_ref: ${{ steps.release.outputs.consumer_ref }}
       adoption: ${{ steps.selection.outputs.adoption }}
       adoption_count: ${{ steps.selection.outputs.adoption_count }}
-      static: ${{ steps.selection.outputs.static }}
+      static: ${{ steps.runtime_reuse.outputs.static }}
       static_count: ${{ steps.selection.outputs.static_count }}
-      light_docker: ${{ steps.selection.outputs.light_docker }}
+      light_docker: ${{ steps.runtime_reuse.outputs.light_docker }}
       light_docker_count: ${{ steps.selection.outputs.light_docker_count }}
-      light_podman: ${{ steps.selection.outputs.light_podman }}
+      light_docker_execute_count: ${{ steps.runtime_reuse.outputs.light_docker_execute_count }}
+      light_podman: ${{ steps.runtime_reuse.outputs.light_podman }}
       light_podman_count: ${{ steps.selection.outputs.light_podman_count }}
-      heavy_docker: ${{ steps.selection.outputs.heavy_docker }}
+      light_podman_execute_count: ${{ steps.runtime_reuse.outputs.light_podman_execute_count }}
+      heavy_docker: ${{ steps.runtime_reuse.outputs.heavy_docker }}
       heavy_docker_count: ${{ steps.selection.outputs.heavy_docker_count }}
-      heavy_podman: ${{ steps.selection.outputs.heavy_podman }}
+      heavy_docker_execute_count: ${{ steps.runtime_reuse.outputs.heavy_docker_execute_count }}
+      heavy_podman: ${{ steps.runtime_reuse.outputs.heavy_podman }}
       heavy_podman_count: ${{ steps.selection.outputs.heavy_podman_count }}
+      heavy_podman_execute_count: ${{ steps.runtime_reuse.outputs.heavy_podman_execute_count }}
       ha_docker: ${{ steps.selection.outputs.ha_docker }}
       ha_docker_count: ${{ steps.selection.outputs.ha_docker_count }}
       ha_podman: ${{ steps.selection.outputs.ha_podman }}
@@ -161,6 +166,26 @@ jobs:
           TAG=v0.4.26
         fi
         python3 scripts/pre-release-check-plan.py --tag "$TAG" --only-gates "$ONLY_GATES" >> "$GITHUB_OUTPUT"
+        echo "only_gates=$ONLY_GATES" >> "$GITHUB_OUTPUT"
+    - name: Plan fail-closed reuse for runtime matrix gates
+      id: runtime_reuse
+      env:
+        GH_TOKEN: ${{ github.token }}
+        REPO: ${{ github.repository }}
+        RUN_ID: ${{ github.run_id }}
+        TAG: ${{ steps.release.outputs.tag }}
+        CANDIDATE_SHA: ${{ steps.release.outputs.candidate_sha }}
+        DEMO_REF: ${{ steps.release.outputs.demo_ref }}
+        ONLY_GATES: ${{ steps.selection.outputs.only_gates }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        python3 scripts/pre-release-runtime-reuse.py \
+          --repo "$REPO" --run-id "$RUN_ID" --tag "$TAG" \
+          --candidate-sha "$CANDIDATE_SHA" --demo-ref "$DEMO_REF" \
+          --only-gates "$ONLY_GATES" --token "$GH_TOKEN" \
+          --temp-dir "$RUNNER_TEMP/pre-release-runtime-reuse" \
+          --output "$GITHUB_OUTPUT"
 
   source_format:
     name: Source · Format and Readability
@@ -385,12 +410,16 @@ jobs:
       static_count: ${{ needs.source_prepare.outputs.static_count }}
       light_docker: ${{ needs.source_prepare.outputs.light_docker }}
       light_docker_count: ${{ needs.source_prepare.outputs.light_docker_count }}
+      light_docker_execute_count: ${{ needs.source_prepare.outputs.light_docker_execute_count }}
       light_podman: ${{ needs.source_prepare.outputs.light_podman }}
       light_podman_count: ${{ needs.source_prepare.outputs.light_podman_count }}
+      light_podman_execute_count: ${{ needs.source_prepare.outputs.light_podman_execute_count }}
       heavy_docker: ${{ needs.source_prepare.outputs.heavy_docker }}
       heavy_docker_count: ${{ needs.source_prepare.outputs.heavy_docker_count }}
+      heavy_docker_execute_count: ${{ needs.source_prepare.outputs.heavy_docker_execute_count }}
       heavy_podman: ${{ needs.source_prepare.outputs.heavy_podman }}
       heavy_podman_count: ${{ needs.source_prepare.outputs.heavy_podman_count }}
+      heavy_podman_execute_count: ${{ needs.source_prepare.outputs.heavy_podman_execute_count }}
       ha_docker: ${{ needs.source_prepare.outputs.ha_docker }}
       ha_docker_count: ${{ needs.source_prepare.outputs.ha_docker_count }}
       ha_podman: ${{ needs.source_prepare.outputs.ha_podman }}
@@ -423,8 +452,8 @@ jobs:
   runtime_candidate:
     name: Candidate · Runtime Image
     needs: source
-    if: needs.source.outputs.light_docker_count != '0' || needs.source.outputs.light_podman_count != '0' || needs.source.outputs.heavy_docker_count
-      != '0' || needs.source.outputs.heavy_podman_count != '0' || needs.source.outputs.journey_count != '0'
+    if: needs.source.outputs.light_docker_execute_count != '0' || needs.source.outputs.light_podman_execute_count != '0' || needs.source.outputs.heavy_docker_execute_count
+      != '0' || needs.source.outputs.heavy_podman_execute_count != '0' || needs.source.outputs.journey_count != '0'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -533,7 +562,7 @@ jobs:
       fail-fast: false
       max-parallel: 5
       matrix:
-        gate: ${{ fromJSON(needs.source.outputs.static) }}
+        include: ${{ fromJSON(needs.source.outputs.static) }}
     uses: ./.github/workflows/pre-release-runtime-suite.yml
     with:
       ref: ${{ needs.source.outputs.candidate_sha }}
@@ -541,20 +570,29 @@ jobs:
       runtime: static
       gate: ${{ matrix.gate }}
       candidate_artifact: pre-release-source-candidate
+      tag: ${{ needs.source.outputs.tag }}
+      input_fingerprint: ${{ matrix.input_fingerprint }}
+      workflow_version: ${{ matrix.workflow_version }}
+      catalog_version: ${{ matrix.catalog_version }}
+      reuse_from: ${{ matrix.reuse_from }}
+      evidence_reuse: ${{ matrix.evidence_reuse }}
+      evidence_artifact_id: ${{ matrix.evidence_artifact_id }}
+      evidence_created_at: ${{ matrix.evidence_created_at }}
+      evidence_run_created_at: ${{ matrix.evidence_run_created_at }}
+      current_run_created_at: ${{ matrix.current_run_created_at }}
   runtime_light_gates_docker:
     name: Light · ${{ matrix.runtime }} · ${{ matrix.gate }}
     needs:
     - source
     - runtime_candidate
-    if: ${{ always() && !cancelled() && needs.source.result == 'success' && needs.runtime_candidate.result == 'success'
+    if: ${{ always() && !cancelled() && needs.source.result == 'success'
+      && (needs.runtime_candidate.result == 'success' || (needs.runtime_candidate.result == 'skipped' && needs.source.outputs.light_docker_execute_count == '0'))
       && needs.source.outputs.light_docker_count != '0' }}
     strategy:
       fail-fast: false
       max-parallel: 2
       matrix:
-        runtime:
-        - docker
-        gate: ${{ fromJSON(needs.source.outputs.light_docker) }}
+        include: ${{ fromJSON(needs.source.outputs.light_docker) }}
     uses: ./.github/workflows/pre-release-runtime-suite.yml
     with:
       ref: ${{ needs.source.outputs.candidate_sha }}
@@ -562,20 +600,29 @@ jobs:
       runtime: ${{ matrix.runtime }}
       gate: ${{ matrix.gate }}
       candidate_artifact: pre-release-runtime-candidate
+      tag: ${{ needs.source.outputs.tag }}
+      input_fingerprint: ${{ matrix.input_fingerprint }}
+      workflow_version: ${{ matrix.workflow_version }}
+      catalog_version: ${{ matrix.catalog_version }}
+      reuse_from: ${{ matrix.reuse_from }}
+      evidence_reuse: ${{ matrix.evidence_reuse }}
+      evidence_artifact_id: ${{ matrix.evidence_artifact_id }}
+      evidence_created_at: ${{ matrix.evidence_created_at }}
+      evidence_run_created_at: ${{ matrix.evidence_run_created_at }}
+      current_run_created_at: ${{ matrix.current_run_created_at }}
   runtime_light_gates_podman:
     name: Light · ${{ matrix.runtime }} · ${{ matrix.gate }}
     needs:
     - source
     - runtime_candidate
-    if: ${{ always() && !cancelled() && needs.source.result == 'success' && needs.runtime_candidate.result == 'success'
+    if: ${{ always() && !cancelled() && needs.source.result == 'success'
+      && (needs.runtime_candidate.result == 'success' || (needs.runtime_candidate.result == 'skipped' && needs.source.outputs.light_podman_execute_count == '0'))
       && needs.source.outputs.light_podman_count != '0' }}
     strategy:
       fail-fast: false
       max-parallel: 2
       matrix:
-        runtime:
-        - podman
-        gate: ${{ fromJSON(needs.source.outputs.light_podman) }}
+        include: ${{ fromJSON(needs.source.outputs.light_podman) }}
     uses: ./.github/workflows/pre-release-runtime-suite.yml
     with:
       ref: ${{ needs.source.outputs.candidate_sha }}
@@ -583,6 +630,16 @@ jobs:
       runtime: ${{ matrix.runtime }}
       gate: ${{ matrix.gate }}
       candidate_artifact: pre-release-runtime-candidate
+      tag: ${{ needs.source.outputs.tag }}
+      input_fingerprint: ${{ matrix.input_fingerprint }}
+      workflow_version: ${{ matrix.workflow_version }}
+      catalog_version: ${{ matrix.catalog_version }}
+      reuse_from: ${{ matrix.reuse_from }}
+      evidence_reuse: ${{ matrix.evidence_reuse }}
+      evidence_artifact_id: ${{ matrix.evidence_artifact_id }}
+      evidence_created_at: ${{ matrix.evidence_created_at }}
+      evidence_run_created_at: ${{ matrix.evidence_run_created_at }}
+      current_run_created_at: ${{ matrix.current_run_created_at }}
   runtime_light_gates:
     name: runtime light gates · All runtime results
     needs:
@@ -608,15 +665,14 @@ jobs:
     needs:
     - source
     - runtime_candidate
-    if: ${{ always() && !cancelled() && needs.source.result == 'success' && needs.runtime_candidate.result == 'success'
+    if: ${{ always() && !cancelled() && needs.source.result == 'success'
+      && (needs.runtime_candidate.result == 'success' || (needs.runtime_candidate.result == 'skipped' && needs.source.outputs.heavy_docker_execute_count == '0'))
       && needs.source.outputs.heavy_docker_count != '0' }}
     strategy:
       fail-fast: false
       max-parallel: 2
       matrix:
-        runtime:
-        - docker
-        gate: ${{ fromJSON(needs.source.outputs.heavy_docker) }}
+        include: ${{ fromJSON(needs.source.outputs.heavy_docker) }}
     uses: ./.github/workflows/pre-release-runtime-suite.yml
     with:
       ref: ${{ needs.source.outputs.candidate_sha }}
@@ -624,20 +680,29 @@ jobs:
       runtime: ${{ matrix.runtime }}
       gate: ${{ matrix.gate }}
       candidate_artifact: pre-release-runtime-candidate
+      tag: ${{ needs.source.outputs.tag }}
+      input_fingerprint: ${{ matrix.input_fingerprint }}
+      workflow_version: ${{ matrix.workflow_version }}
+      catalog_version: ${{ matrix.catalog_version }}
+      reuse_from: ${{ matrix.reuse_from }}
+      evidence_reuse: ${{ matrix.evidence_reuse }}
+      evidence_artifact_id: ${{ matrix.evidence_artifact_id }}
+      evidence_created_at: ${{ matrix.evidence_created_at }}
+      evidence_run_created_at: ${{ matrix.evidence_run_created_at }}
+      current_run_created_at: ${{ matrix.current_run_created_at }}
   runtime_heavy_gates_podman:
     name: Heavy · ${{ matrix.runtime }} · ${{ matrix.gate }}
     needs:
     - source
     - runtime_candidate
-    if: ${{ always() && !cancelled() && needs.source.result == 'success' && needs.runtime_candidate.result == 'success'
+    if: ${{ always() && !cancelled() && needs.source.result == 'success'
+      && (needs.runtime_candidate.result == 'success' || (needs.runtime_candidate.result == 'skipped' && needs.source.outputs.heavy_podman_execute_count == '0'))
       && needs.source.outputs.heavy_podman_count != '0' }}
     strategy:
       fail-fast: false
       max-parallel: 2
       matrix:
-        runtime:
-        - podman
-        gate: ${{ fromJSON(needs.source.outputs.heavy_podman) }}
+        include: ${{ fromJSON(needs.source.outputs.heavy_podman) }}
     uses: ./.github/workflows/pre-release-runtime-suite.yml
     with:
       ref: ${{ needs.source.outputs.candidate_sha }}
@@ -645,6 +710,16 @@ jobs:
       runtime: ${{ matrix.runtime }}
       gate: ${{ matrix.gate }}
       candidate_artifact: pre-release-runtime-candidate
+      tag: ${{ needs.source.outputs.tag }}
+      input_fingerprint: ${{ matrix.input_fingerprint }}
+      workflow_version: ${{ matrix.workflow_version }}
+      catalog_version: ${{ matrix.catalog_version }}
+      reuse_from: ${{ matrix.reuse_from }}
+      evidence_reuse: ${{ matrix.evidence_reuse }}
+      evidence_artifact_id: ${{ matrix.evidence_artifact_id }}
+      evidence_created_at: ${{ matrix.evidence_created_at }}
+      evidence_run_created_at: ${{ matrix.evidence_run_created_at }}
+      current_run_created_at: ${{ matrix.current_run_created_at }}
   runtime_heavy_gates:
     name: runtime heavy gates · All runtime results
     needs:
@@ -1901,7 +1976,7 @@ jobs:
             value = int(out[count])
             assert value >= 0, 'invalid selected count'
             if value: required.add(key)
-        if any(int(out[key]) for key in ['light_docker_count','light_podman_count','heavy_docker_count','heavy_podman_count','journey_count']):
+        if any(int(out[key]) for key in ['light_docker_execute_count','light_podman_execute_count','heavy_docker_execute_count','heavy_podman_execute_count','journey_count']):
             required.add('runtime_candidate')
         for gate in json.loads(out['integration']):
             _, runtime, name = gate.split('/')
