@@ -136,7 +136,7 @@ func developmentPostgresUIEmail(username string) string {
 }
 
 func EnsureApplicationManagementUIs(ctx context.Context, issuer serviceaccess.Issuer, files RuntimeFiles, m Manifest) error {
-	if !m.Services.SQLManagementUI && !m.Services.CacheManagementUI && !m.Services.KeyValueManagementUI && !m.Services.MessagingManagementUI && !m.Services.DocumentDatabaseManagementUI {
+	if !m.Services.SQLManagementUI && !m.Services.CacheManagementUI && !m.Services.KeyValueManagementUI && !m.Services.MessagingManagementUI && !m.Services.DocumentDatabaseManagementUI && !m.Services.Perses {
 		return nil
 	}
 	if issuer == nil {
@@ -163,6 +163,11 @@ func EnsureApplicationManagementUIs(ctx context.Context, issuer serviceaccess.Is
 	}
 	if m.Services.DocumentDatabaseManagementUI {
 		if err := ensureMongoDBManagementUI(ctx, issuer, files, m, values); err != nil {
+			return err
+		}
+	}
+	if m.Services.Perses {
+		if err := EnsurePersesManagementUI(ctx, issuer, files, m); err != nil {
 			return err
 		}
 	}
@@ -265,6 +270,26 @@ func VerifyApplicationManagementUIChecks(ctx context.Context, m Manifest, files 
 		}
 	}
 
+	if m.Services.Perses {
+		checks = append(checks, struct {
+			enabled     bool
+			name        string
+			portKey     string
+			dir         string
+			path        string
+			usernameKey string
+			passwordKey string
+		}{
+			enabled: true,
+			name:    "perses",
+			portKey: PersesUIHostPortEnv,
+			// Perses is a loopback visualization surface; BaseHarbor ships no
+			// Perses health probe, so reachability stays unverified. The check
+			// must never report "ready"/"verified" for this surface.
+			dir: PersesManagementUIPath(files),
+		})
+	}
+
 	results := make([]ManagementUICheckResult, 0, len(checks))
 	for _, check := range checks {
 		if !check.enabled {
@@ -280,6 +305,13 @@ func VerifyApplicationManagementUIChecks(ctx context.Context, m Manifest, files 
 			port, err := strconv.Atoi(portValue)
 			if err != nil {
 				return fmt.Errorf("%s management UI has invalid host port: %w", check.name, err)
+			}
+			// Perses has no health probe in this Core; a selected surface is
+			// "configured_unverified", never "ready"/"verified". Surface the
+			// unverified state as a degraded (non-ready) check without asserting
+			// reachability that this Core cannot observe.
+			if check.name == "perses" {
+				return fmt.Errorf("%s management UI is configured_unverified: no Perses health probe exists, reachability cannot be asserted", check.name)
 			}
 			policy, err := serviceaccess.Resolve(m.Environment, check.name, serviceaccess.AuthenticationNative)
 			if err != nil {

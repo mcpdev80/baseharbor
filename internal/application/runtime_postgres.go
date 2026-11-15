@@ -365,6 +365,9 @@ func RuntimeComposeYAMLForProject(m Manifest, resourceProject string) (string, e
 	if (m.Services.CacheManagementUI || m.Services.KeyValueManagementUI) && !UsesSharedValkey(m) {
 		writeCacheUIComposeServices(&b, m)
 	}
+	if m.Services.Perses {
+		writePersesUIComposeService(&b, m, resourceProject)
+	}
 	b.WriteString("\nvolumes:\n")
 	for _, instance := range sqlInstances {
 		service := runtimeServiceName("postgres", instance)
@@ -390,6 +393,10 @@ func RuntimeComposeYAMLForProject(m Manifest, resourceProject string) (string, e
 	}
 	b.WriteString("\nnetworks:\n  default:\n")
 	fmt.Fprintf(&b, "    name: %s\n", ApplicationBackendNetworkNameForProject(resourceProject))
+	if m.Services.Perses {
+		service := runtimeServiceName("perses", defaultServiceInstance)
+		fmt.Fprintf(&b, "  %s:\n    name: %s\n", service, PersesRuntimeVolumeName(resourceProject, service))
+	}
 	for _, instance := range cacheInstances {
 		if valkeyMemberCount(m, instance) > 1 {
 			fmt.Fprintf(&b, "  %s-ha:\n    internal: true\n", valkeyMemberServiceName(instance, 0))

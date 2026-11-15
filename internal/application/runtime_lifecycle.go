@@ -94,6 +94,13 @@ func ExpectedRuntimeResourcesForIdentity(m Manifest, composeProject, resourcePro
 			bhruntime.ProjectResource{Kind: "container", Name: composeProject + "-cache-ui-access-1"},
 		)
 	}
+	if m.Services.Perses {
+		service := runtimeServiceName("perses", defaultServiceInstance)
+		resources = append(resources,
+			bhruntime.ProjectResource{Kind: "container", Name: composeProject + "-" + service + "-1"},
+			bhruntime.ProjectResource{Kind: "volume", Name: PersesRuntimeVolumeName(resourceProject, service)},
+		)
+	}
 	return resources
 }
 

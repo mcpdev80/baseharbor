@@ -226,6 +226,16 @@ func ensureDesiredRuntimeValues(values map[string]string, m Manifest) error {
 			excluded[port] = struct{}{}
 		}
 	}
+	if m.Services.Perses {
+		if values[PersesUIHostPortEnv] == "" {
+			port, err := allocateLoopbackPort(excluded)
+			if err != nil {
+				return err
+			}
+			values[PersesUIHostPortEnv] = strconv.Itoa(port)
+			excluded[port] = struct{}{}
+		}
+	}
 	for _, bucket := range ObjectStorageBucketNames(m) {
 		accessKey := s3RuntimeKey(bucket, "ACCESS_KEY_ID")
 		secretKey := s3RuntimeKey(bucket, "SECRET_ACCESS_KEY")
@@ -298,6 +308,9 @@ func runtimeEnvContent(m Manifest, values map[string]string) string {
 		for _, key := range []string{CacheUIHostPortEnv, CacheUIUserEnv, CacheUIPasswordEnv} {
 			fmt.Fprintf(&b, "%s=%s\n", key, values[key])
 		}
+	}
+	if m.Services.Perses {
+		fmt.Fprintf(&b, "%s=%s\n", PersesUIHostPortEnv, values[PersesUIHostPortEnv])
 	}
 	if values[S3TLSHostCAEnv] != "" {
 		fmt.Fprintf(&b, "%s=%s\n", S3TLSHostCAEnv, values[S3TLSHostCAEnv])
@@ -410,6 +423,14 @@ func validateRuntimeValues(values map[string]string, m Manifest) error {
 			}
 		}
 		if err := validatePortValue(values[CacheUIHostPortEnv], CacheUIHostPortEnv); err != nil {
+			return err
+		}
+	}
+	if m.Services.Perses {
+		if values[PersesUIHostPortEnv] == "" {
+			return fmt.Errorf("application runtime environment is missing %s", PersesUIHostPortEnv)
+		}
+		if err := validatePortValue(values[PersesUIHostPortEnv], PersesUIHostPortEnv); err != nil {
 			return err
 		}
 	}
