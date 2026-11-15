@@ -1,17 +1,18 @@
 package deployment
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
 
-// TestLoadConfigMigratesLegacyTargetIdempotent proves the real read seam
+// TestLoadConfigMigratesLegacyTargetIdempotent proves the read seam
 // (LoadConfig) fills the missing stable Target UID for a legacy definition and
-// persists it exactly once: the first load generates the UID, a second load
-// observes no change (no write, no UID churn). State directories and target
-// names are left untouched.
+// persists it exactly once: the first load generates the UID, and a second load
+// observes no churn (same UID, no rewrite). State directories and target names
+// are left untouched.
 func TestLoadConfigMigratesLegacyTargetIdempotent(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("XDG_DATA_HOME", filepath.Join(root, "data"))
@@ -39,32 +40,34 @@ func TestLoadConfigMigratesLegacyTargetIdempotent(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// First read: migration generates a UID and persists it.
+	// First read: LoadConfig fills the missing UID for the legacy Target and
+	// persists it exactly once.
 	cfg1, err := LoadConfig()
 	if err != nil {
 		t.Fatalf("first LoadConfig: %v", err)
 	}
 	uid1 := cfg1.Targets["docker-legacy"].TargetUID
 	if uid1 == "" {
-		t.Fatal("LoadConfig did not migrate the legacy Target UID")
+		t.Fatal("LoadConfig did not fill a stable Target UID for the legacy Target")
 	}
 
 	// The persisted config now carries the UID.
-	persisted, err := os.ReadFile(cfgPath)
-	if err != nil {
-		t.Fatal(err)
-	}
+	persisted, _ := os.ReadFile(cfgPath)
 	if !strings.Contains(string(persisted), "target-uid:") {
 		t.Fatalf("migrated UID not persisted to config.yaml:\n%s", string(persisted))
 	}
 
-	// Second read: same UID, no churn.
+	// Second read: same UID, no churn — the idempotent read contract.
 	cfg2, err := LoadConfig()
 	if err != nil {
 		t.Fatalf("second LoadConfig: %v", err)
 	}
 	if uid2 := cfg2.Targets["docker-legacy"].TargetUID; uid2 != uid1 {
 		t.Fatalf("UID churned across reads: %q != %q", uid1, uid2)
+	}
+	persistedAfter, _ := os.ReadFile(cfgPath)
+	if !bytes.Equal(persisted, persistedAfter) {
+		t.Fatal("second LoadConfig rewrote the config (UID churn on read)")
 	}
 
 	// The runtime definition is untouched by migration.

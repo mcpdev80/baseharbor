@@ -170,51 +170,21 @@ func LoadConfig() (Config, error) {
 	// second read finds no empty UID and performs no write — and it never moves
 	// Target data directories; only the missing config field is filled. A
 	// collision among the generated UIDs fails closed and persists nothing.
+	// Legacy Targets have no Core installation, so this uses a direct CAS
+	// read-modify-write on the protected configuration owner (no installation
+	// lock required) rather than SaveExpected's mutation framing.
 	return migrateAndPersistTargetUIDs(path, cfg, data)
 }
 
-// migrateAndPersistTargetUIDs fills the missing stable Target UID for legacy
-// Targets and atomically persists the migrated configuration through the
-// protected configuration owner. expected is the exact raw owner bytes just
-// read, used for the compare-and-swap so a concurrent configuration change
-// refuses rather than overwriting. changed definitions are left otherwise
+// migrateAndPersistTargetUIDs fills the missing stable Target UID for any
+// legacy Target in cfg and atomically persists the migrated configuration
+// through the protected configuration owner. expected is the exact raw owner
+// bytes just read, used for the compare-and-swap so a concurrent configuration
+// change refuses rather than overwriting. changed definitions are left otherwise
 // untouched: target names, data directories and the ownership TenantID are not
 // modified. The write is a single CAS; a subsequent call with an already
 // migrated configuration performs no write at all.
 func migrateAndPersistTargetUIDs(path string, cfg Config, expected []byte) (Config, error) {
-	_, changed, err := MigrateLegacyTargetUIDs(cfg)
-	if err != nil {
-		return Config{}, err
-	}
-	if len(changed) == 0 {
-		return cfg, nil
-	}
-	// Persist the migrated configuration exactly once. Legacy Targets have no
-	// Core installation lock, so this uses a direct CAS read-modify-write on the
-	// protected configuration owner rather than SaveExpected's mutation framing
-	// (which requires an installation lock). It re-reads the file, re-decodes,
-	// re-applies the migration and only writes if the on-disk content still
-	// matches what we read; a concurrent change fails closed and persists
-	// nothing. The write is idempotent: a second read finds no empty UID and
-	// performs no write at all.
-	return migrateConfigUIDsAt(path, expected)
-}
-
-// migrateConfigUIDsAt atomically fills the missing stable Target UID for any
-// legacy Target in the on-disk configuration and persists it. path is the
-// protected configuration owner; expected is the exact raw owner bytes already
-// read, used for the compare-and-swap so a concurrent configuration change
-// refuses rather than overwriting. It never moves Target data directories; only
-// the missing config fields are filled. An empty changed set is a no-op.
-func migrateConfigUIDsAt(path string, expected []byte) (Config, error) {
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		return Config{}, fmt.Errorf("read BaseHarbor config for UID migration: %w", err)
-	}
-	cfg, err := decodeConfig(raw)
-	if err != nil {
-		return Config{}, err
-	}
 	migrated, changed, err := MigrateLegacyTargetUIDs(cfg)
 	if err != nil {
 		return Config{}, err
@@ -222,6 +192,22 @@ func migrateConfigUIDsAt(path string, expected []byte) (Config, error) {
 	if len(changed) == 0 {
 		return cfg, nil
 	}
+	// Persist the migrated configuration exactly once via a direct CAS
+	// read-modify-write. Legacy Targets have no Core installation lock, so this
+	// bypasses SaveExpected's mutation framing and instead re-reads the file,
+	// re-applies the migration, and only writes if the on-disk content still
+	// matches what we read; a concurrent change fails closed and persists
+	// nothing. The write is idempotent: a second read finds no empty UID and
+	// performs no write at all.
+	return writeMigratedTargetUIDs(path, expected, migrated)
+}
+
+// writeMigratedTargetUIDs atomically persists the migrated configuration at
+// path. path is the protected configuration owner; expected is the exact raw
+// owner bytes already read, used for the compare-and-swap. It never moves Target
+// data directories; only the missing config fields are filled. An empty changed
+// set is a no-op.
+func writeMigratedTargetUIDs(path string, expected []byte, migrated Config) (Config, error) {
 	data, err := yaml.Marshal(migrated)
 	if err != nil {
 		return Config{}, fmt.Errorf("encode BaseHarbor config: %w", err)
@@ -230,7 +216,7 @@ func migrateConfigUIDsAt(path string, expected []byte) (Config, error) {
 		return Config{}, errors.New("Target configuration exceeds the supported owner size")
 	}
 	// CAS guard: refuse if the file changed between our read and our write.
-	if len(expected) > 0 {
+	if expected != nil {
 		current, rerr := os.ReadFile(path)
 		if rerr != nil {
 			return Config{}, fmt.Errorf("read BaseHarbor config for UID migration: %w", rerr)
@@ -325,8 +311,10 @@ func (c Config) saveAt(path string, revalidate func() error) error {
 	if err := file.Close(); err != nil {
 		return err
 	}
-	if err := revalidate(); err != nil {
-		return err
+	if revalidate != nil {
+		if err := revalidate(); err != nil {
+			return err
+		}
 	}
 	if err := os.Rename(tmp, path); err != nil {
 		return fmt.Errorf("replace BaseHarbor config: %w", err)
