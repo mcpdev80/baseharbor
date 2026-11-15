@@ -154,7 +154,9 @@ func TestCorelessFreshWorkloadRuntimeLifecycle(t *testing.T) {
 	t.Log("stale pre-up candidate digest refused; configured runtime intent remains unconsented")
 
 	confirmedUp := []string{"up", "--yes", "--skip-memory-preflight", "--confirm-candidate", currentDigest}
-	for _, command := range [][]string{{"app", "plan", "--json"}, confirmedUp, {"app", "status", "--json"}, {"app", "doctor", "--json"}, {"app", "down"}, confirmedUp} {
+	// --yes authorizes attempting the stop; the provider consequence plan still
+	// requires its own current acknowledgement, which this first stop omits.
+	for _, command := range [][]string{{"app", "plan", "--json"}, confirmedUp, {"app", "status", "--json"}, {"app", "doctor", "--json"}, {"app", "down", "--yes"}, confirmedUp} {
 		out.Reset()
 		var operationErr error
 		if command[1] == "down" {
