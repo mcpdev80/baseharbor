@@ -307,7 +307,12 @@ func waitForKeycloakPostgresMemberReady(t *testing.T, ctx context.Context, runti
 
 func waitForKeycloakPostgresHAClusterReady(t *testing.T, ctx context.Context, runtimeProvider bhruntime.RuntimeProvider, files KeycloakFiles) {
 	t.Helper()
-	readyCtx, cancel := context.WithTimeout(ctx, 90*time.Second)
+	// A restarted Patroni member may need to re-seed its data directory with
+	// pg_basebackup. On hosted runners that bootstrap can take longer than the
+	// local readiness probe, so allow three minutes while retaining the strict
+	// three-sample, one-primary/two-replica assertion below.
+	const readinessTimeout = 180 * time.Second
+	readyCtx, cancel := context.WithTimeout(ctx, readinessTimeout)
 	defer cancel()
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
@@ -352,7 +357,7 @@ sys.exit(1)'`
 		}
 		select {
 		case <-readyCtx.Done():
-			t.Fatalf("Keycloak PostgreSQL HA cluster did not converge to one primary and two ready replicas for three consecutive probes within 90s: roles=%v last_error=%v", lastRoles, lastErr)
+			t.Fatalf("Keycloak PostgreSQL HA cluster did not converge to one primary and two ready replicas for three consecutive probes within %s: roles=%v last_error=%v", readinessTimeout, lastRoles, lastErr)
 		case <-ticker.C:
 		}
 	}
