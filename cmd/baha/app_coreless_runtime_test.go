@@ -31,6 +31,9 @@ func TestCorelessFreshWorkloadRuntimeLifecycle(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 	ctx = machineNoninteractiveContext(ctx)
+	// This direct helper call stands in for the local CLI boundary. In
+	// production the CLI adds this marker before authorizing local prod work.
+	ctx = withLocalInvocation(ctx, "cli")
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
 	target := configureTestTargetEmpty(t)
 	engine := "docker"
@@ -110,8 +113,9 @@ func TestCorelessFreshWorkloadRuntimeLifecycle(t *testing.T) {
 	t.Logf("runtime=%s application_id=%s target=%s fresh Core absent", engine, m.ApplicationID, target.Name)
 	assertCorelessHost(t, ctx, runtime, target)
 	destroyed := false
+	cleanupRequired := false
 	t.Cleanup(func() {
-		if destroyed {
+		if destroyed || !cleanupRequired {
 			return
 		}
 		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), time.Minute)
@@ -138,6 +142,7 @@ func TestCorelessFreshWorkloadRuntimeLifecycle(t *testing.T) {
 	if err != nil || !found || beforeRefusal.Observed.State != "configured" || beforeRefusal.Consent != nil {
 		t.Fatalf("runtime input preparation did not leave an unconsented configured record: found=%t state=%q consent=%+v err=%v", found, beforeRefusal.Observed.State, beforeRefusal.Consent, err)
 	}
+	cleanupRequired = true
 	staleUp := []string{"up", "--yes", "--skip-memory-preflight", "--confirm-candidate", confirmDigest}
 	var staleOut bytes.Buffer
 	staleErr := runWithIO(ctx, staleUp, &staleOut, &staleOut)
