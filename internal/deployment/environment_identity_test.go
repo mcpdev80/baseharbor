@@ -2,6 +2,8 @@ package deployment
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
@@ -345,7 +347,149 @@ func TestReadEnvironmentRecordFailsClosedOnCorruptBinding(t *testing.T) {
 	if err := os.WriteFile(bad, []byte("{\"target\":\"\",\"name\":\"prod\",\"id\":\"00000000-0000-4000-8000-000000000000\"}\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := readEnvironmentRecord(bad); err == nil {
+	if _, err := readEnvironmentRecord(bad, "target-a", "prod"); err == nil {
 		t.Fatal("corrupt record with empty target accepted")
+	}
+
+	// Valid mismatched binding: a syntactically valid record whose stored
+	// (target, name) do not match the path it was read from. This is the exact
+	// cross-aliasing path the review flagged — a valid record copied under a
+	// different (Target, environment) must fail closed on the bind-check, not
+	// return its UUID.
+	mismatch := filepath.Join(home, "environment.json")
+	if err := os.WriteFile(mismatch, []byte("{\"target\":\"other-target\",\"name\":\"other\",\"id\":\"00000000-0000-4000-8000-000000000000\"}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, err := readEnvironmentRecord(mismatch, "target-a", "prod")
+	if err == nil {
+		t.Fatal("record with valid-but-mismatched binding accepted")
+	}
+	if !errors.Is(err, ErrEnvironmentBindingMismatch) {
+		t.Fatalf("expected ErrEnvironmentBindingMismatch, got %v", err)
+	}
+}
+
+// TestRenameRefusesExistingDestinationUID proves a rename must never overwrite
+// the identity of a DIFFERENT environment that already exists at the
+// destination name. This is the collision-risk the review flagged: a naive
+// os.Rename would clobber the destination record's UUID.
+func TestRenameRefusesExistingDestinationUID(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("BASEHARBOR_STATE_DIR", root)
+
+	// Two distinct environments, each with its own UUID.
+	first, err := GetEnvironment("target-a", "alpha")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := GetEnvironment("target-a", "beta")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.Identity == second.Identity {
+		t.Fatal("setup: two environments share a UUID")
+	}
+
+	// Renaming alpha onto beta must refuse (beta already holds a different UID)
+	// and must leave beta's record byte-for-byte intact.
+	_, err = RenameEnvironment("target-a", "alpha", "beta")
+	if err == nil {
+		t.Fatal("rename onto a different-UID destination was allowed")
+	}
+
+	// beta is unchanged; alpha is unchanged; no overwrite occurred.
+	stillBeta, err := GetEnvironment("target-a", "beta")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stillBeta.Identity != second.Identity {
+		t.Fatalf("beta identity changed after refused rename: %q -> %q", second.Identity, stillBeta.Identity)
+	}
+	stillAlpha, err := GetEnvironment("target-a", "alpha")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stillAlpha.Identity != first.Identity {
+		t.Fatalf("alpha identity changed: %q -> %q", first.Identity, stillAlpha.Identity)
+	}
+}
+
+// TestRenameConvergesUnderContention proves two concurrent renames of the same
+// (target, src)→dst pair converge on a single stable identity: exactly one wins
+// the registry lock, the other observes the winner's record and returns the
+// same UUID. This is the rename-side analogue of the concurrent-registration
+// convergence already proven for first creation.
+func TestRenameConvergesUnderContention(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("BASEHARBOR_STATE_DIR", root)
+
+	src, err := GetEnvironment("target-a", "converge-src")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	const goroutines = 16
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+	ids := make([]string, goroutines)
+	errs := make([]error, goroutines)
+	for i := 0; i < goroutines; i++ {
+		go func(i int) {
+			defer wg.Done()
+			rec, rErr := RenameEnvironment("target-a", "converge-src", "converge-dst")
+			ids[i] = rec.Identity
+			errs[i] = rErr
+		}(i)
+	}
+	wg.Wait()
+	for i := 0; i < goroutines; i++ {
+		if errs[i] != nil {
+			t.Fatalf("concurrent rename %d failed: %v", i, errs[i])
+		}
+		if ids[i] != src.Identity {
+			t.Fatalf("concurrent rename %d diverged: %q != %q", i, ids[i], src.Identity)
+		}
+	}
+	// Exactly one record remains — at dst, none at the old name.
+	if _, err := GetEnvironment("target-a", "converge-dst"); err != nil {
+		t.Fatalf("converged dst missing: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "targets", "target-a", ".baseharbor", "environments", "converge-src", "environment.json")); !os.IsNotExist(err) {
+		t.Fatalf("old name not removed after rename: %v", err)
+	}
+}
+
+// TestLegacyStateReuseViaGetEnvironment proves a pre-existing legacy environment
+// record (written in the canonical shape by an earlier checkout) is reused
+// unchanged by GetEnvironment — the UID is regenerated neither by a reopen nor
+// by a rename. This is the migration/reuse the card requires.
+func TestLegacyStateReuseViaGetEnvironment(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("BASEHARBOR_STATE_DIR", root)
+
+	home := filepath.Join(root, "targets", "target-a", ".baseharbor", "environments", "legacy")
+	if err := os.MkdirAll(home, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	legacyID := "00000000-0000-4000-8000-000000000001"
+	legacy := fmt.Sprintf("{\"target\":\"target-a\",\"name\":\"legacy\",\"id\":\"%s\"}\n", legacyID)
+	if err := os.WriteFile(filepath.Join(home, "environment.json"), []byte(legacy), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	rec, err := GetEnvironment("target-a", "legacy")
+	if err != nil {
+		t.Fatalf("GetEnvironment on legacy state: %v", err)
+	}
+	if rec.Identity != legacyID {
+		t.Fatalf("legacy ID regenerated: got %q want %q", rec.Identity, legacyID)
+	}
+	// Renaming the reused legacy env keeps the historical UUID.
+	moved, err := RenameEnvironment("target-a", "legacy", "legacy-v2")
+	if err != nil {
+		t.Fatalf("rename legacy: %v", err)
+	}
+	if moved.Identity != legacyID {
+		t.Fatalf("rename changed legacy identity: %q -> %q", legacyID, moved.Identity)
 	}
 }

@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/environment"
 )
@@ -63,13 +64,24 @@ func environmentStateRoot(target, environmentName string) (string, string, error
 	return home, filepath.Join(home, environmentRecordFile), nil
 }
 
-// readEnvironmentRecord loads and validates a persisted identity record. It is
-// a pure read: no allocation, no mutation.
+// ErrEnvironmentBindingMismatch is returned when a persisted identity record's
+// stored (Target, Name) binding does not match the path it was read from. The
+// UID is an attribute of one canonical (Target, environment) location; a record
+// found under a different path is foreign to that location and must never be
+// adopted, or it would alias a different (Target, environment) under one UUID
+// (cross-tenant mixing, precedent 0427).
+var ErrEnvironmentBindingMismatch = errors.New("environment identity record binding does not match its path")
+
+// readEnvironmentRecord loads, validates, and binds-checks a persisted identity
+// record. It is a pure read: no allocation, no mutation.
 //
-// Binding validation is fail-closed: the stored Target and Name are re-checked
-// against the durable identity, so a corrupted or cross-target record never
-// surfaces a valid UUID that then aliases a different (Target, environment).
-func readEnvironmentRecord(path string) (EnvironmentRecord, error) {
+// Binding validation is fail-closed: the stored Target and Name are compared
+// against the (target, environment) the record was read from. A corrupt record
+// (empty/invalid binding) or a record that belongs to a DIFFERENT location
+// (valid binding, wrong path) is rejected, so a stray copy under another
+// (Target, environment) never surfaces a valid UUID that then aliases a
+// different environment.
+func readEnvironmentRecord(path, target, environmentName string) (EnvironmentRecord, error) {
 	data, readErr := os.ReadFile(path)
 	if readErr != nil {
 		return EnvironmentRecord{}, fmt.Errorf("read environment identity: %w", readErr)
@@ -82,8 +94,8 @@ func readEnvironmentRecord(path string) (EnvironmentRecord, error) {
 		return EnvironmentRecord{}, fmt.Errorf("environment carries an invalid identity: %w", err)
 	}
 	// Fail closed on a record whose binding is malformed: an empty target or
-	// name, or a name that escaped slug validation, means the on-disk record is
-	// corrupt and must never be adopted (never-delivered/foreign-state style
+	// name, or a target/name that escaped validation, means the on-disk record
+	// is corrupt and must never be adopted (never-delivered/foreign-state style
 	// fail-closed, precedent 0427).
 	if strings.TrimSpace(record.Target) == "" {
 		return EnvironmentRecord{}, fmt.Errorf("environment identity at %q carries an empty target", path)
@@ -93,6 +105,15 @@ func readEnvironmentRecord(path string) (EnvironmentRecord, error) {
 	}
 	if strings.TrimSpace(record.Name) == "" {
 		return EnvironmentRecord{}, fmt.Errorf("environment identity at %q carries an empty name", path)
+	}
+	// Bind-check: the record must name exactly the (target, environment) its
+	// path declares. A valid record copied or renamed under another path keeps
+	// its old binding and is refused here — the UID belongs to one location.
+	if strings.TrimSpace(record.Target) != strings.TrimSpace(target) {
+		return EnvironmentRecord{}, fmt.Errorf("%w at %q: stored target %q != %q", ErrEnvironmentBindingMismatch, path, record.Target, target)
+	}
+	if strings.TrimSpace(record.Name) != strings.TrimSpace(environmentName) {
+		return EnvironmentRecord{}, fmt.Errorf("%w at %q: stored name %q != %q", ErrEnvironmentBindingMismatch, path, record.Name, environmentName)
 	}
 	return record, nil
 }
@@ -133,9 +154,10 @@ func persistEnvironmentRecord(home, path, target, name string, id string) (Envir
 	}
 	// Foreign-claim rejection at the rename seam: if the record file now exists
 	// and does NOT name our freshly generated ID, a concurrent writer won it —
-	// refuse rather than silently overwrite the historical identity.
+	// refuse rather than silently overwrite the historical identity. The read
+	// also bind-checks the freshly written path.
 	if existing, statErr := os.Stat(path); statErr == nil && !existing.IsDir() {
-		if other, rErr := readEnvironmentRecord(path); rErr == nil && other.Identity != id {
+		if other, rErr := readEnvironmentRecord(path, target, name); rErr == nil && other.Identity != id {
 			return EnvironmentRecord{}, fmt.Errorf("%w: %q", ErrEnvironmentAlreadyExists, other.Identity)
 		}
 	}
@@ -164,7 +186,7 @@ func GetEnvironment(target, environmentName string) (EnvironmentRecord, error) {
 		return EnvironmentRecord{}, err
 	}
 	if info, statErr := os.Stat(path); statErr == nil && !info.IsDir() {
-		return readEnvironmentRecord(path)
+		return readEnvironmentRecord(path, target, environmentName)
 	} else if !errors.Is(statErr, os.ErrNotExist) {
 		return EnvironmentRecord{}, fmt.Errorf("inspect environment identity: %w", statErr)
 	}
@@ -206,7 +228,7 @@ func GetEnvironment(target, environmentName string) (EnvironmentRecord, error) {
 		case errors.Is(err, ErrEnvironmentAlreadyExists):
 			// A concurrent writer won. Read and return its identity so the
 			// caller observes the single converged ID, not an empty record.
-			return readEnvironmentRecord(path)
+			return readEnvironmentRecord(path, target, environmentName)
 		default:
 			return EnvironmentRecord{}, err
 		}
@@ -214,7 +236,7 @@ func GetEnvironment(target, environmentName string) (EnvironmentRecord, error) {
 	// Exhaustion means we could never take the lock; fall back to reading the
 	// record that a concurrent writer must have persisted, so the caller still
 	// observes the single converged identity rather than an empty one.
-	return readEnvironmentRecord(path)
+	return readEnvironmentRecord(path, target, environmentName)
 }
 
 // createEnvironmentUnderLock takes the registry write lock, re-checks, and
@@ -226,7 +248,7 @@ func createEnvironmentUnderLock(target, home, path, name, id string) (Environmen
 	err := WithDeploymentRegistryWriteLock(target, func() error {
 		// Re-check inside the lock: a concurrent writer may have created it.
 		if info, statErr := os.Stat(path); statErr == nil && !info.IsDir() {
-			existing, rErr := readEnvironmentRecord(path)
+			existing, rErr := readEnvironmentRecord(path, target, name)
 			if rErr != nil {
 				return rErr
 			}
@@ -288,7 +310,7 @@ func RenameEnvironment(target, oldName, newName string) (EnvironmentRecord, erro
 	var source EnvironmentRecord
 	existing, statErr := os.Stat(oldPath)
 	if statErr == nil && !existing.IsDir() {
-		source, err = readEnvironmentRecord(oldPath)
+		source, err = readEnvironmentRecord(oldPath, target, oldName)
 		if err != nil {
 			return EnvironmentRecord{}, err
 		}
@@ -299,88 +321,131 @@ func RenameEnvironment(target, oldName, newName string) (EnvironmentRecord, erro
 		}
 	}
 
+	// Pre-lock collision guard: if the destination already exists and holds a
+	// DIFFERENT environment's UID, refuse the rename before we take the lock or
+	// touch anything (the atomic os.Rename below would otherwise overwrite that
+	// identity on systems where a rename replaces an existing file). Idempotent
+	// only when the destination already carries OUR identity.
+	if _, destStat := os.Stat(newPath); destStat == nil {
+		if dest, dErr := readEnvironmentRecord(newPath, target, newName); dErr == nil {
+			if dest.Identity != source.Identity {
+				return EnvironmentRecord{}, fmt.Errorf("%w: destination %q already exists as %q", ErrEnvironmentAlreadyExists, newName, dest.Identity)
+			}
+		} else if !errors.Is(dErr, ErrEnvironmentBindingMismatch) {
+			// A corrupt/non-conforming destination blocks the rename; surface it.
+			return EnvironmentRecord{}, fmt.Errorf("inspect destination %q: %w", newPath, dErr)
+		}
+	}
+
 	// Take the registry write lock for the whole check → move → remove so a
 	// concurrent rename of the same pair cannot both move it (rename race).
+	//
+	// The lock is a NON-blocking kernel lock shared with first-registration:
+	// concurrent renames of the same pair collide on it exactly like concurrent
+	// first registrations do. Renames are rare, cheap commands, so retry
+	// briefly on ErrRegistryConcurrentWrite — exactly one writer wins the
+	// critical section, the others observe the converged record and return the
+	// same UUID. Both the winner and the observers return one identity, never
+	// two.
+	const renameRetries = 4096
 	var moved EnvironmentRecord
-	err = WithDeploymentRegistryWriteLock(target, func() error {
-		// Re-check the source under the lock: a concurrent writer may have moved
-		// or replaced it.
-		if _, sErr := os.Stat(oldPath); sErr == nil {
-			rec, rErr := readEnvironmentRecord(oldPath)
-			if rErr != nil {
-				return rErr
-			}
-			if rec.Identity != source.Identity {
-				return fmt.Errorf("%w: %q", ErrEnvironmentAlreadyExists, rec.Identity)
-			}
-			source = rec // authoritative source identity under the lock
-		} else {
-			// Source is gone: a concurrent rename already moved it (or a
-			// concurrent create placed a different identity at the old path).
-			// If the new-name path already holds our identity, converge on it;
-			// if it holds a DIFFERENT identity, the old path is gone and the
-			// winner's identity stands — refuse rather than overwrite.
-			if _, nErr := os.Stat(newPath); nErr == nil {
-				existing, rErr := readEnvironmentRecord(newPath)
+	for attempt := 0; ; attempt++ {
+		var lockErr error
+		lockErr = WithDeploymentRegistryWriteLock(target, func() error {
+			// Re-check the source under the lock: a concurrent writer may have
+			// moved or replaced it.
+			if _, sErr := os.Stat(oldPath); sErr == nil {
+				rec, rErr := readEnvironmentRecord(oldPath, target, oldName)
 				if rErr != nil {
 					return rErr
 				}
-				if existing.Identity != source.Identity {
-					return fmt.Errorf("%w: %q", ErrEnvironmentAlreadyExists, existing.Identity)
+				if rec.Identity != source.Identity {
+					return fmt.Errorf("%w: %q", ErrEnvironmentAlreadyExists, rec.Identity)
 				}
-				moved = existing
-				return nil
+				source = rec // authoritative source identity under the lock
+			} else {
+				// Source is gone: a concurrent rename already moved it (or a
+				// concurrent create placed a different identity at the old path).
+				// If the new-name path already holds our identity, converge on it;
+				// if it holds a DIFFERENT identity, the old path is gone and the
+				// winner's identity stands — refuse rather than overwrite.
+				if _, nErr := os.Stat(newPath); nErr == nil {
+					existing, rErr := readEnvironmentRecord(newPath, target, newName)
+					if rErr != nil {
+						// A different (Target, environment) already owns this path:
+						// refuse to rename onto it rather than overwrite its UID
+						// (the rename must never clobber another identity).
+						return rErr
+					}
+					if existing.Identity != source.Identity {
+						// Destination holds a DIFFERENT environment's UID — refuse,
+						// never overwrite. Idempotent only when the new name already
+						// carries OUR identity (converged rename).
+						return fmt.Errorf("%w at %q: destination %q", ErrEnvironmentAlreadyExists, newPath, newName)
+					}
+					moved = existing
+					return nil
+				}
+				// Old path gone, new path empty: a concurrent create at the OLD path
+				// won a different identity — we must not adopt it, and we cannot
+				// rename a non-existent source. Fail closed so the caller retries
+				// with the authoritative identity.
+				return fmt.Errorf("%w: source %q vanished during rename", ErrEnvironmentAlreadyExists, oldName)
 			}
-			// Old path gone, new path empty: a concurrent create at the OLD path
-			// won a different identity — we must not adopt it, and we cannot
-			// rename a non-existent source. Fail closed so the caller retries
-			// with the authoritative identity.
-			return fmt.Errorf("%w: source %q vanished during rename", ErrEnvironmentAlreadyExists, oldName)
-		}
 
-		// Move the identity to the new name atomically: write the new-name
-		// record, then remove the old path so the identity lives at exactly one
-		// location with a single UUID retained.
-		if err := os.MkdirAll(newHome, 0o700); err != nil {
-			return fmt.Errorf("create new environment state dir: %w", err)
+			// Move the identity to the new name atomically: write the new-name
+			// record, then remove the old path so the identity lives at exactly one
+			// location with a single UUID retained.
+			if err := os.MkdirAll(newHome, 0o700); err != nil {
+				return fmt.Errorf("create new environment state dir: %w", err)
+			}
+			record := EnvironmentRecord{Target: source.Target, Name: newName, Identity: source.Identity}
+			data, wErr := json.MarshalIndent(record, "", "  ")
+			if wErr != nil {
+				return fmt.Errorf("encode environment identity: %w", wErr)
+			}
+			tmp, wErr := os.CreateTemp(newHome, ".environment-*")
+			if wErr != nil {
+				return fmt.Errorf("create temp environment identity: %w", wErr)
+			}
+			tmpName := tmp.Name()
+			defer os.Remove(tmpName)
+			if wErr = tmp.Chmod(0600); wErr != nil {
+				tmp.Close()
+				return fmt.Errorf("chmod environment identity: %w", wErr)
+			}
+			if _, wErr = tmp.Write(data); wErr != nil {
+				tmp.Close()
+				return fmt.Errorf("write environment identity: %w", wErr)
+			}
+			if wErr = tmp.Close(); wErr != nil {
+				return fmt.Errorf("close environment identity: %w", wErr)
+			}
+			if wErr = os.Rename(tmpName, newPath); wErr != nil {
+				return fmt.Errorf("persist environment identity: %w", wErr)
+			}
+			// Remove the old identity record so the identity lives at exactly one
+			// path (oldPath is already the record file).
+			if rErr := os.Remove(oldPath); rErr != nil && !errors.Is(rErr, os.ErrNotExist) {
+				return fmt.Errorf("remove stale old environment record: %w", rErr)
+			}
+			moved = record
+			return nil
+		})
+		if lockErr == nil {
+			return moved, nil
 		}
-		record := EnvironmentRecord{Target: source.Target, Name: newName, Identity: source.Identity}
-		data, wErr := json.MarshalIndent(record, "", "  ")
-		if wErr != nil {
-			return fmt.Errorf("encode environment identity: %w", wErr)
+		if !errors.Is(lockErr, ErrRegistryConcurrentWrite) {
+			return EnvironmentRecord{}, lockErr
 		}
-		tmp, wErr := os.CreateTemp(newHome, ".environment-*")
-		if wErr != nil {
-			return fmt.Errorf("create temp environment identity: %w", wErr)
+		if attempt >= renameRetries {
+			return EnvironmentRecord{}, fmt.Errorf("rename %q → %q: could not acquire registry lock after %d attempts: %w", oldName, newName, renameRetries, lockErr)
 		}
-		tmpName := tmp.Name()
-		defer os.Remove(tmpName)
-		if wErr = tmp.Chmod(0600); wErr != nil {
-			tmp.Close()
-			return fmt.Errorf("chmod environment identity: %w", wErr)
-		}
-		if _, wErr = tmp.Write(data); wErr != nil {
-			tmp.Close()
-			return fmt.Errorf("write environment identity: %w", wErr)
-		}
-		if wErr = tmp.Close(); wErr != nil {
-			return fmt.Errorf("close environment identity: %w", wErr)
-		}
-		if wErr = os.Rename(tmpName, newPath); wErr != nil {
-			return fmt.Errorf("persist environment identity: %w", wErr)
-		}
-		// Remove the old identity record so the identity lives at exactly one
-		// path (oldPath is already the record file).
-		if rErr := os.Remove(oldPath); rErr != nil && !errors.Is(rErr, os.ErrNotExist) {
-			return fmt.Errorf("remove stale old environment record: %w", rErr)
-		}
-		moved = record
-		return nil
-	})
-	if err != nil {
-		return EnvironmentRecord{}, err
+		// Yield to the scheduler with a bounded backoff so a concurrent writer
+		// holding the lock can release it; a tight spin would starve the
+		// holder. Mirrors the non-blocking lock discipline: refuse, never block.
+		time.Sleep(time.Millisecond)
 	}
-	return moved, nil
 }
 
 // EnvironmentID returns just the durable identity of a (Target, environment)
