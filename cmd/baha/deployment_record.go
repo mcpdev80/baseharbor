@@ -397,12 +397,36 @@ var errCandidateAlreadyImmutable = errors.New(
 	"candidate is already persisted with consent and is immutable; a second identical submission is refused, apply a changed source to record a new candidate",
 )
 
+// admissionEvidenceForApplyingMutation builds the Core-owned deployment
+// admission evidence from verified facts, never from client metadata. It is the
+// single provenance source for the applying choke point: the resolved record
+// identity is owner-verified at the same call, and the candidate Digest is the
+// Core-computed content hash of the verified source. A Git repository source
+// yields source/commit/remote verified with a clean tree; an OCI source adds
+// image-digest verified. Unverified source, an unbound application identity or
+// an unknown source kind yields nil so a restrictive Target fails closed.
+func admissionEvidenceForApplyingMutation(resolved resolvedApplication) *deployment.DeploymentAdmissionEvidence {
+	if !resolved.SourceAvailable || resolved.DeploymentRecord == nil {
+		return nil
+	}
+	source := resolved.DeploymentRecord.Source
+	policy := resolved.Target.DeploymentPolicy
+	return deployment.AdmissionEvidenceForApplyingMutation(
+		resolved.SourceAvailable, source,
+		resolved.DeploymentIdentity.ApplicationID, resolved.Manifest.ApplicationID,
+		policy != nil && policy.RequireApproval,
+	)
+}
+
 func recordDeploymentBeforeMutation(ctx context.Context, resolved resolvedApplication, state string, rawCandidateConsent string) (deployment.DeploymentRecord, error) {
 	// Defense in depth: every admission path must pass before writing a pending
-	// deployment. The legacy caller has no trusted provenance yet, so configured
-	// restrictive Targets are refused instead of trusting user-provided fields.
+	// deployment. The admission evidence is built only from Core-owned source
+	// facts (the verified candidate identity below), never from client
+	// metadata, so configured restrictive Targets fail closed when that
+	// provenance is unavailable.
+	admissionEvidence := admissionEvidenceForApplyingMutation(resolved)
 	if state == "applying" {
-		if err := deployment.EvaluateDeploymentAdmission(resolved.Target.DeploymentPolicy, nil); err != nil {
+		if err := deployment.EvaluateDeploymentAdmission(resolved.Target.DeploymentPolicy, admissionEvidence); err != nil {
 			return deployment.DeploymentRecord{}, err
 		}
 	}
