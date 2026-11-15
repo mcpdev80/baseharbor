@@ -26,6 +26,21 @@ func configRoot() (string, error) {
 	return filepath.Join(base, "baseharbor", "organization"), nil
 }
 
+// userConfigRoot returns the root-less organization state location with the
+// documented environment precedence (XDG_CONFIG_HOME, then the user config
+// home): the location `baha config organization set` records when the
+// ambient developer installation activates an organization.
+func userConfigRoot() (string, error) {
+	if root := strings.TrimSpace(os.Getenv("XDG_CONFIG_HOME")); root != "" {
+		return filepath.Join(root, "baseharbor", "organization"), nil
+	}
+	home, err := os.UserHomeDir()
+	if err != nil || strings.TrimSpace(home) == "" {
+		return "", errors.New("cannot determine BaseHarbor organization config directory")
+	}
+	return filepath.Join(home, ".config", "baseharbor", "organization"), nil
+}
+
 func cacheRoot() (string, error) {
 	if root := strings.TrimSpace(os.Getenv("BASEHARBOR_STATE_DIR")); root != "" {
 		return filepath.Join(root, "cache", "organization"), nil
@@ -64,11 +79,21 @@ func stateRootOverride() string {
 }
 
 func ActivePath() (string, error) {
-	root, err := configRoot()
+	root, err := organizationDirRoot()
 	if err != nil {
 		return "", err
 	}
 	return filepath.Join(root, "active.json"), nil
+}
+
+// organizationDirRoot selects the organization state directory for the
+// invocation: the isolated installation root's own location under
+// BASEHARBOR_STATE_DIR, the ambient user location otherwise.
+func organizationDirRoot() (string, error) {
+	if root := strings.TrimSpace(os.Getenv("BASEHARBOR_STATE_DIR")); root != "" {
+		return filepath.Join(root, "config", "organization"), nil
+	}
+	return userConfigRoot()
 }
 
 func LoadActive() (ActiveState, error) {
@@ -137,13 +162,14 @@ func decodeActive(data []byte) (ActiveState, bool, error) {
 	if err := state.Resolution.Validate(); err != nil {
 		return ActiveState{}, false, fmt.Errorf("validate active organization resolution: %w", err)
 	}
-	// BF-01 (h-d28): with a dedicated state root selected, the organization
-	// resolves exclusively below that root. The source location is the
-	// state root's own claim about where its organization state lives; a
-	// selection written by a different installation — or an ambient one
-	// with no location claim at all — must not act inside an isolated
-	// root. Root-local organization state written through the CLI names
-	// its own location below the root and stays authoritative.
+	// BF-01 (h-d28): with a dedicated state root selected, organization
+	// state resolves exclusively below that root — the documented override
+	// precedence (docs/explanation/targets.md: the override takes
+	// precedence over XDG data and configuration paths). A resolution
+	// that names a source or cache reference outside the selected root
+	// belongs to a different installation; it must not act inside an
+	// isolated root. A root-local state written through the CLI names its
+	// own location below the root and stays authoritative.
 	if StateRootSelected() && !state.Resolution.selectsWithin(stateRootOverride()) {
 		return ActiveState{}, false, nil
 	}

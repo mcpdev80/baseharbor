@@ -73,31 +73,24 @@ func TestStateDirIsolatesTargetSelection(t *testing.T) {
 		t.Fatalf("organization state path %q does not follow the state root %q", path, rootB)
 	}
 
-	// Contract part 3 — a dedicated state root owns the selection: with no
-	// B-local activation the resolver answers from B's own registrations
-	// only. Installation A's ambient organization default must not resolve
-	// (or act on) A's registrations from below B, and it must not even be
-	// named in the failure. On the unfixed code the ambient state
-	// answered here and the switch read A's registrations.
-	if target, err := effectiveTarget(t.Context()); err != nil {
-		if containsAllForTest(err.Error(), "alpha") {
-			t.Fatalf("resolver reported installation A's target under B: %v", err)
-		}
-		if !containsAllForTest(err.Error(), "beta", "spare-b") {
-			t.Fatalf("resolver did not fail closed on B's own registrations: %v", err)
-		}
-	} else if target.Name == "alpha" || target.Name == "local" {
-		t.Fatalf("A's ambient organization default resolved against B's state as %q; want fail closed", target.Name)
-	}
-
-	// Contract part 4 — the isolation holds for the organization consult
-	// itself: below a dedicated root, organization state with a source
-	// outside that root (A's ambient state) must not answer.
+	// Contract part 3 — the isolation holds for the organization consult:
+	// below a dedicated root, organization state whose source lives
+	// outside that root (A's ambient state) is foreign state and must not
+	// act. On the unfixed code B's resolver consulted it and read A's
+	// registrations.
 	if _, ok, err := orgconfig.LoadActiveOptional(); err != nil || ok {
 		t.Fatalf("installation A's organization state answered under B: found=%v (%v)", ok, err)
 	}
-
-	// Contract part 5 — the root-local organization state completes the
+	// Contract part 4 — with no B-local selection the resolver must still
+	// run the organization chain (not the ambiguity shortcut) and fail
+	// closed on B's own registrations, naming them — never A's.
+	if target, err := effectiveTarget(t.Context()); err == nil {
+		t.Fatalf("resolution under B answered %q without any B-local selection; want fail closed", target.Name)
+	} else if containsAllForTest(err.Error(), "alpha") {
+		t.Fatalf("resolver reported installation A's target under B: %v", err)
+	} else if !containsAllForTest(err.Error(), "beta", "spare-b") {
+		t.Fatalf("resolver did not fail closed on B's own registrations: %v", err)
+	} // Contract part 5 — the root-local organization state completes the
 	// root-local selection chain: B's own organization default answers
 	// under B — declared, as a real root-local organization state is, and
 	// naming B's registration — where the root holds no activation. An

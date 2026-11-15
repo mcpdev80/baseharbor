@@ -54,35 +54,50 @@ func resolveTargetBelowStateRoot(ctx context.Context, cfg deployment.Config, sta
 			"Run baha target deactivate and choose an existing target.", false)
 	}
 	if configured {
+		// A dedicated state root never consults foreign registrations: an
+		// organization default that lives below this root selects its own
+		// registration; a default from elsewhere never resolves anything
+		// here, and the root's state alone decides.
+		candidate := ""
 		if orgconfig.StateRootOwnsOrganizationState(state) {
-			candidate := orgconfig.OrganizationTargetSelection(state)
-			if _, ok := cfg.Targets[candidate]; ok {
-				return cfg.ResolveTarget(candidate, "")
-			}
-			if len(cfg.Targets) > 1 {
-				// The root-local organization default names no registration
-				// of this root: a default from another installation, or a
-				// stale root-local default. Never resolve foreign
-				// registrations.
-				return deployment.ResolvedTarget{}, fmt.Errorf("organization default target %q is not registered below the selected state root", candidate)
-			}
+			candidate = orgconfig.OrganizationTargetSelection(state)
+		}
+		if _, ok := cfg.Targets[candidate]; ok {
+			return cfg.ResolveTarget(candidate, "")
+		}
+		if candidate != "" {
+			// The default names no registration of this root: a default
+			// from another installation, or a stale root-local default.
+			// Never resolve foreign registrations.
+			return deployment.ResolvedTarget{}, fmt.Errorf("organization default target %q is not registered below the selected state root", candidate)
 		}
 	}
+	return resolveTargetBelowStateRootFallback(cfg, selected)
+}
+
+// resolveTargetBelowStateRootFallback decides the selection of a dedicated
+// state root when the persisted activation, the invocation layers and the
+// organization state all say nothing. Under BF-01 the root registers its
+// own selection — the state-root chain never consults foreign
+// registrations, the ambient organization default or the builtin fallback
+// to fill a missing selection, so this fails closed and names exactly the
+// targets registered below this root.
+func resolveTargetBelowStateRootFallback(cfg deployment.Config, selected string) (deployment.ResolvedTarget, error) {
 	if names := cfg.TargetNames(); len(names) == 1 && names[0] != "local" {
+		// A single registration below the root is the root's own implicit
+		// selection — the same first-run convenience the root-less chain
+		// offers. It is state-root-local, so BF-01 is honoured: no foreign
+		// registration, activation or organization default is consulted.
 		return cfg.ResolveTarget(names[0], "")
 	}
 	if len(cfg.Targets) > 1 {
+		// Several registrations are a deliberate ambiguity: fail closed and
+		// name this root's own targets — never a foreign selection.
 		choices := cfg.TargetNames()
 		sort.Strings(choices)
 		return deployment.ResolvedTarget{}, machine.NewError(machine.ErrorConflict,
 			fmt.Sprintf("multiple deployment targets configured; choose one of: %s", strings.Join(choices, ", ")),
 			"Run baha target activate NAME below the state root, or set BASEHARBOR_TARGET=NAME for this command. Use baha target list to inspect available targets.", false)
-	}
-	if configured && !orgconfig.StateRootOwnsOrganizationState(state) && orgconfig.OrganizationTargetSelection(state) != "" {
-		// The root has no organization state of its own; an organization
-		// default from a different installation must not resolve this
-		// root's registrations. Fail closed instead.
-		return deployment.ResolvedTarget{}, fmt.Errorf("organization default target %q is not registered below the selected state root", orgconfig.OrganizationTargetSelection(state))
 	}
 	return cfg.ResolveTarget(selected, "")
 }
