@@ -176,17 +176,22 @@ func runCoreOnlyBootstrapRuntimeWithHA(t *testing.T, role coreinstallation.Machi
 		allowedEntrypointCaps := []string{"CHOWN", "DAC_READ_SEARCH", "FOWNER", "SETGID", "SETUID"}
 		if os.Getenv("BASEHARBOR_TEST_RUNTIME") == "podman" {
 			// Rootless Podman reports only DAC_READ_SEARCH in HostConfig.CapAdd
-			// for this service. Keep that exact observed allowance; the later
+			// for this service, while its container-level effective-capability
+			// list includes the bounded root-entrypoint grants below. The later
 			// process check still requires postgres to have zero effective caps.
 			allowedEntrypointCaps = []string{"DAC_READ_SEARCH"}
 		}
-		if err := containersecurity.VerifyComposeService(ctx, files.Project, "postgres-member-1", containersecurity.Requirements{
+		requirements := containersecurity.Requirements{
 			ReadOnlyRootfs:      true,
 			DropAllCaps:         true,
 			NoNewPrivs:          true,
 			AllowRootEntrypoint: true,
 			AllowedCapAdd:       allowedEntrypointCaps,
-		}); err != nil {
+		}
+		if os.Getenv("BASEHARBOR_TEST_RUNTIME") == "podman" {
+			requirements.AllowedEffectiveCaps = []string{"CHOWN", "DAC_READ_SEARCH", "FOWNER", "SETGID", "SETUID"}
+		}
+		if err := containersecurity.VerifyComposeService(ctx, files.Project, "postgres-member-1", requirements); err != nil {
 			t.Fatalf("single PostgreSQL entrypoint security settings invalid: %v", err)
 		}
 		const processSecurity = `seen=0

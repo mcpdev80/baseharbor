@@ -39,7 +39,7 @@ func destroySelectiveApplicationWithConsent(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	plan, err := buildApplicationStopPlan(ctx, resolved)
+	plan, err := buildApplicationDestructionPlan(ctx, resolved, false)
 	if err != nil {
 		return err
 	}

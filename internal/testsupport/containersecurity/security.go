@@ -18,6 +18,9 @@ type Requirements struct {
 	AllowRootEntrypoint bool
 	// AllowedCapAdd is the exact set of capabilities permitted in HostConfig.
 	AllowedCapAdd []string
+	// AllowedEffectiveCaps is the exact set Podman may report for a bounded
+	// root entrypoint. Workload processes must still be checked separately.
+	AllowedEffectiveCaps []string
 	// RequireCapDropAll checks the configured CapDrop list on any runtime.
 	RequireCapDropAll bool
 }
@@ -75,8 +78,8 @@ func VerifyComposeService(ctx context.Context, project, service string, req Requ
 	}
 	if req.DropAllCaps {
 		if containerRuntime() == "podman" {
-			if len(r.EffectiveCaps) != 0 {
-				return fmt.Errorf("%s/%s retains effective capabilities under Podman: %v", project, service, r.EffectiveCaps)
+			if err := validateEffectiveCapabilities(r.EffectiveCaps, req.AllowedEffectiveCaps); err != nil {
+				return fmt.Errorf("%s/%s has unexpected effective capabilities under Podman: %v", project, service, r.EffectiveCaps)
 			}
 		} else if !containsFold(r.HostConfig.CapDrop, "ALL") {
 			return fmt.Errorf("%s/%s does not drop ALL capabilities: %v", project, service, r.HostConfig.CapDrop)
@@ -87,6 +90,19 @@ func VerifyComposeService(ctx context.Context, project, service string, req Requ
 	}
 	if req.NoNewPrivs && !containsSecurityOpt(r.HostConfig.SecurityOpt, "no-new-privileges") {
 		return fmt.Errorf("%s/%s does not enable no-new-privileges: %v", project, service, r.HostConfig.SecurityOpt)
+	}
+	return nil
+}
+
+func validateEffectiveCapabilities(actual, allowed []string) error {
+	if allowed == nil {
+		if len(actual) != 0 {
+			return fmt.Errorf("unexpected effective capability set %v", actual)
+		}
+		return nil
+	}
+	if !sameCapabilities(actual, allowed) {
+		return fmt.Errorf("effective capabilities %v do not match allowed set %v", actual, allowed)
 	}
 	return nil
 }

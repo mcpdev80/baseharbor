@@ -23,6 +23,24 @@ func TestSameCapabilitiesRequiresExactCapabilitySet(t *testing.T) {
 	}
 }
 
+func TestValidateEffectiveCapabilitiesAllowsOnlyExplicitPodmanEntrypointSet(t *testing.T) {
+	allowed := []string{"CHOWN", "DAC_READ_SEARCH", "FOWNER", "SETGID", "SETUID"}
+	if err := validateEffectiveCapabilities([]string{"CAP_CHOWN", "DAC_READ_SEARCH", "FOWNER", "SETGID", "SETUID"}, allowed); err != nil {
+		t.Fatalf("bounded entrypoint capabilities rejected: %v", err)
+	}
+	for _, actual := range [][]string{
+		{"CHOWN", "DAC_READ_SEARCH", "FOWNER", "SETGID"},
+		{"CHOWN", "DAC_READ_SEARCH", "FOWNER", "SETGID", "SETUID", "NET_ADMIN"},
+	} {
+		if err := validateEffectiveCapabilities(actual, allowed); err == nil {
+			t.Fatalf("unexpected effective capability set accepted: %v", actual)
+		}
+	}
+	if err := validateEffectiveCapabilities([]string{"CHOWN"}, nil); err == nil {
+		t.Fatal("nonempty capability set accepted when no entrypoint allowance is configured")
+	}
+}
+
 func TestPodmanOwnershipUsesInspectedRunningState(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("POSIX command fixture")
