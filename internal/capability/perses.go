@@ -158,9 +158,9 @@ const PersesReachabilityUnverified = "unverified"
 type PersesStatus string
 
 const (
-	PersesStatusNotConfigured      PersesStatus = "not_configured"
+	PersesStatusNotConfigured        PersesStatus = "not_configured"
 	PersesStatusConfiguredUnverified PersesStatus = "configured_unverified"
-	PersesStatusVerified           PersesStatus = "verified"
+	PersesStatusVerified             PersesStatus = "verified"
 )
 
 // PersesStatusNotConfiguredPtr is the pointer form of
