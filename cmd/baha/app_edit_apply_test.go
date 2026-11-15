@@ -803,6 +803,9 @@ func TestAppEditDesiredIntentDoesNotInheritRemovedProviderPreference(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
+	if err := (capability.RegistryStore{Path: filepath.Join(root, "provider-registry.json")}).Save(projected); err != nil {
+		t.Fatalf("persist applied SQL binding fixture: %v", err)
+	}
 	var selected capability.ProviderInstance
 	for _, instance := range projected.Instances {
 		if instance.Provider.Kind == capability.ProviderPostgreSQL {
@@ -847,6 +850,23 @@ func TestAppEditDesiredIntentDoesNotInheritRemovedProviderPreference(t *testing.
 	}
 	desiredResolved := resolved
 	desiredResolved.Manifest = decisionDesired.Manifest
+	snapshot, preferences, err := applicationLifecycleSnapshotContext(context.Background(), desiredResolved, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(preferences) != 0 {
+		t.Fatalf("SQL-free desired manifest retained SQL provider preferences: %+v", preferences)
+	}
+	retainedAppliedSQL := false
+	for _, binding := range snapshot.Registry.Bindings {
+		if binding.ApplicationID == m.ApplicationID && binding.Environment == m.Environment && binding.Resource.Kind == capability.SQL {
+			retainedAppliedSQL = true
+			break
+		}
+	}
+	if !retainedAppliedSQL {
+		t.Fatal("post-mutation planning snapshot dropped the still-applied SQL binding")
+	}
 	if _, err := readGuidedApplicationContext(context.Background(), desiredResolved); err != nil {
 		t.Fatalf("guided preview of removed SQL was unverifiable: %v", err)
 	}

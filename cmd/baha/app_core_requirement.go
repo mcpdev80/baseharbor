@@ -65,23 +65,19 @@ func applicationLifecycleSnapshotContext(ctx context.Context, resolved resolvedA
 		requested[capability.Requirement{Kind: capability.Secrets, Name: "default"}] = true
 	}
 	var preferences []application.ProviderPreference
-	actualBindings := []capability.ProviderBinding{}
+	actualBindings := append([]capability.ProviderBinding(nil), registry.Bindings...)
 	for _, binding := range planned.Bindings {
 		if binding.ApplicationID != resolved.Manifest.ApplicationID || binding.Environment != resolved.Manifest.Environment {
-			actualBindings = append(actualBindings, binding)
 			continue
 		}
 		requirement := capability.Requirement{Kind: binding.Resource.Kind, Name: binding.Resource.Name}
 		if requested[requirement] {
 			preferences = append(preferences, application.ProviderPreference{Requirement: requirement, InstanceID: binding.ProviderInstanceID, ProviderKind: binding.Resource.Provider})
 		}
-		for _, old := range registry.Bindings {
-			if old == binding {
-				actualBindings = append(actualBindings, binding)
-				break
-			}
-		}
 	}
+	// Keep actual ownership bindings from the loaded registry, including
+	// capabilities removed from the desired manifest. Preferences above remain
+	// derived from the desired projection, so removed selections are not revived.
 	planned.Bindings = actualBindings
 	snapshot := application.ResolutionSnapshot{DependencyRoots: []string{}, Target: resolved.Target.Name, Registry: planned, Facts: map[string]application.ProviderFact{}}
 	snapshot.DependencyRoots, err = application.RuntimeDependencyRoots(resolved.Manifest, planned)

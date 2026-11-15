@@ -27,6 +27,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/machine"
 	"github.com/mcpdev80/baseharbor/internal/operatorauth"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+	"github.com/mcpdev80/baseharbor/internal/tenancy"
 	"github.com/mcpdev80/baseharbor/internal/testsupport/containersecurity"
 )
 
@@ -265,11 +266,11 @@ done
 	}
 }
 
-// Core bootstrap teardown is a local test-fixture operation. Run it through
-// the existing trusted-local development path after proving the fixture still
-// resolves to this test's only configured local Runtime Target. The destroy
-// planner and its exact-plan consent remain unchanged. Do not authenticate a
-// Keycloak master administrator as though it were a claim-bound tenant owner.
+// Core bootstrap teardown is a local test-fixture operation. Bind its cleanup
+// identity to this test's only configured local Runtime Target; deployment-role
+// Core owns a prod-scoped management consumer, so fixture teardown needs an
+// explicit test operator membership. The destroy planner, exact-plan consent,
+// and production authentication requirements remain unchanged.
 func coreBootstrapFixtureCleanupContext(ctx context.Context, target deployment.ResolvedTarget) (context.Context, error) {
 	if target.Name == "" || target.Scope != "local" || target.AccessProvider != "local" ||
 		(target.RuntimeProvider != "docker" && target.RuntimeProvider != "podman") {
@@ -290,7 +291,19 @@ func coreBootstrapFixtureCleanupContext(ctx context.Context, target deployment.R
 		resolved.AccessProvider != "local" || resolved.Scope != "local" || resolved.AccessReference != target.AccessReference {
 		return ctx, errors.New("Core fixture cleanup Target no longer matches the verified local Runtime binding")
 	}
-	return machineNoninteractiveContext(withTargetOverride(ctx, target.Name)), nil
+	cleanup := machineNoninteractiveContext(withTargetOverride(ctx, target.Name))
+	// Installation cleanup can include a production-scoped management consumer.
+	// Give this test-only fixture teardown a bounded synthetic editor identity;
+	// production auth and local-runtime authorization paths remain unchanged.
+	principal := &identity.Principal{
+		Issuer: "https://fixture.invalid", Subject: "core-bootstrap-cleanup",
+		IssuerVerified: true, Groups: []string{"editor"},
+	}
+	cleanup = operatorauth.WithVerifiedPrincipal(cleanup, principal)
+	cleanup = operatorauth.WithMembershipProvider(cleanup, &firstRunMembershipProvider{
+		memberships: []tenancy.Membership{{TenantID: "core-bootstrap-fixture", Role: "editor"}},
+	})
+	return cleanup, nil
 }
 
 func TestCoreBootstrapFixtureCleanupContextIsBoundToItsLocalTarget(t *testing.T) {
@@ -299,12 +312,15 @@ func TestCoreBootstrapFixtureCleanupContextIsBoundToItsLocalTarget(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, authenticated := operatorauth.PrincipalFromContext(ctx); authenticated {
-		t.Fatal("fixture cleanup manufactured an operator principal")
+	if principal, authenticated := operatorauth.PrincipalFromContext(ctx); !authenticated || principal.Subject != "core-bootstrap-cleanup" || !principal.IssuerVerified {
+		t.Fatal("fixture cleanup did not use its bounded test operator identity")
 	}
 	resolved, err := effectiveTarget(ctx)
 	if err != nil || resolved.Name != target.Name || resolved.RuntimeProvider != target.RuntimeProvider || resolved.AccessProvider != "local" {
 		t.Fatalf("fixture cleanup selected an unexpected Target: %+v %v", resolved, err)
+	}
+	if err := authorizeMCPOperation(ctx, "installation.destroy", target.Name, "prod", "", ""); err != nil {
+		t.Fatalf("fixture cleanup operator could not authorize the managed teardown scope: %v", err)
 	}
 	remote := target
 	remote.AccessProvider = "ssh"
