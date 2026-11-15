@@ -1,0 +1,137 @@
+{
+  "kind": "Dashboard",
+  "metadata": {
+    "name": "identity-keycloak",
+    "version": 0
+  },
+  "spec": {
+    "display": {
+      "name": "BaseHarbor Keycloak identity",
+      "description": "Identity-provider panels for the verified current Keycloak metric signal (native openmetrics /metrics)."
+    },
+    "datasources": {
+      "keycloak": {
+        "kind": "KeycloakDatasource",
+        "name": "keycloak",
+        "default": true
+      }
+    },
+    "panels": {
+      "keycloak-http-requests": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Keycloak HTTP server request duration"
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart"
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "kind": "HTTPServerRequestsQuery",
+                "spec": {
+                  "query": "http_server_requests_seconds_count{status!=\"2xx\"}"
+                },
+                "datasource": {
+                  "kind": "KeycloakDatasource",
+                  "name": "keycloak"
+                }
+              }
+            }
+          ]
+        }
+      },
+      "keycloak-jvm-memory": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Keycloak JVM memory used"
+          },
+          "plugin": {
+            "kind": "GaugeChart"
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "kind": "JVMMemoryQuery",
+                "spec": {
+                  "query": "jvm_memory_used_bytes{area=\"heap\"}"
+                },
+                "datasource": {
+                  "kind": "KeycloakDatasource",
+                  "name": "keycloak"
+                }
+              }
+            }
+          ]
+        }
+      },
+      "keycloak-users": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Keycloak users"
+          },
+          "plugin": {
+            "kind": "StatChart"
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "kind": "KeycloakUsersQuery",
+                "spec": {
+                  "query": "keycloak_users{type=\"real\"}"
+                },
+                "datasource": {
+                  "kind": "KeycloakDatasource",
+                  "name": "keycloak"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "layouts": [
+      {
+        "kind": "Grid",
+        "spec": {
+          "items": [
+            {
+              "x": 0,
+              "y": 0,
+              "width": 8,
+              "height": 6,
+              "content": {
+                "$ref": "#/spec/panels/keycloak-jvm-memory"
+              }
+            },
+            {
+              "x": 8,
+              "y": 0,
+              "width": 8,
+              "height": 6,
+              "content": {
+                "$ref": "#/spec/panels/keycloak-http-requests"
+              }
+            },
+            {
+              "x": 16,
+              "y": 0,
+              "width": 8,
+              "height": 6,
+              "content": {
+                "$ref": "#/spec/panels/keycloak-users"
+              }
+            }
+          ]
+        }
+      }
+    ],
+    "duration": "5m"
+  }
+}
