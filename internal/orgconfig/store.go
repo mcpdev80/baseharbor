@@ -257,23 +257,28 @@ func LoadActiveOptional() (ActiveState, bool, error) {
 		if !errors.Is(err, os.ErrNotExist) {
 			return ActiveState{}, false, fmt.Errorf("read active organization configuration: %w", err)
 		}
-		// One-time migration: adopt a stale world-writable /tmp selection into
-		// the private canonical path if it still exists. The durable once-only
-		// marker in the private canonical namespace is consulted first so a
-		// deleted canonical file cannot restore the stale legacy selection.
-		if !canonicalMigrationFrozen(canonical) {
-			adopted, adoptErr := adoptLegacySelection(legacy, canonical)
-			if adoptErr != nil {
-				return ActiveState{}, false, adoptErr
-			}
-			if !adopted {
-				return ActiveState{}, false, nil
-			}
-			// Adopted: the canonical path now holds the migrated selection.
-			data, err = os.ReadFile(canonical)
-			if err != nil {
-				return ActiveState{}, false, fmt.Errorf("read active organization configuration after migration: %w", err)
-			}
+		// The private selection is absent. Two cases:
+		//   - the durable once-only marker is present: the legacy /tmp selection
+		//     was already adopted and frozen, so nothing exists to load and no
+		//     legacy path may be read again. Return the normal not-configured
+		//     result (do NOT fall through to decodeActive with nil data, which
+		//     would surface a JSON EOF error instead of ErrNotConfigured);
+		//   - otherwise a one-time migration may still apply if the legacy file
+		//     still exists.
+		if canonicalMigrationFrozen(canonical) {
+			return ActiveState{}, false, nil
+		}
+		adopted, adoptErr := adoptLegacySelection(legacy, canonical)
+		if adoptErr != nil {
+			return ActiveState{}, false, adoptErr
+		}
+		if !adopted {
+			return ActiveState{}, false, nil
+		}
+		// Adopted: the canonical path now holds the migrated selection.
+		data, err = os.ReadFile(canonical)
+		if err != nil {
+			return ActiveState{}, false, fmt.Errorf("read active organization configuration after migration: %w", err)
 		}
 	}
 	return decodeActive(data)

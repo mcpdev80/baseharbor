@@ -511,6 +511,90 @@ func TestWorldWritableMigrationRejectsForeignSymlink(t *testing.T) {
 	}
 }
 
+// TestWorldWritableMigrationFrozenWhenSourceAndTargetRemoved is the regression
+// the r2/r3 reviews required: after a successful migration, if both the private
+// canonical active.json and the legacy /tmp source are removed while the
+// durable once-only marker in the private canonical namespace remains, no
+// re-adoption may occur (the marker honors the freeze) and LoadActive must
+// return the normal not-configured result — not a decode error, not a panic.
+func TestWorldWritableMigrationFrozenWhenSourceAndTargetRemoved(t *testing.T) {
+	privateHome := t.TempDir()
+	t.Setenv("HOME", privateHome)
+
+	root := t.TempDir()
+	cfgDir := filepath.Join(root, "config")
+	if err := os.MkdirAll(cfgDir, 0o777); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(cfgDir, 0o777); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("XDG_CONFIG_HOME", cfgDir)
+
+	seed := `{"resolution":{"resolved_revision":"mig-1","source":{"kind":"local","location":"x"}},"config":` + testConfigJSON(t) + `}`
+	legacyPath, err := ActivePath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(legacyPath), 0o777); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(filepath.Dir(legacyPath), 0o777); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(legacyPath, []byte(seed), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// Adopt the legacy selection into the private canonical path.
+	loaded, err := LoadActive()
+	if err != nil {
+		t.Fatalf("LoadActive after migration = %v", err)
+	}
+	if loaded.Resolution.ResolvedRevision != "mig-1" {
+		t.Fatalf("LoadActive did not return the adopted selection: %+v", loaded.Resolution)
+	}
+
+	canon, err := privateCanonicalPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The durable once-only marker must be present after a successful adopt.
+	marker := filepath.Join(filepath.Dir(canon), canonicalFrozenMarker)
+	if _, err := os.Lstat(marker); err != nil {
+		t.Fatalf("expected durable migration marker %q: %v", marker, err)
+	}
+	// The legacy source must still be frozen read-only (0400).
+	if info, err := os.Stat(legacyPath); err == nil {
+		if info.Mode().Perm() != 0o400 {
+			t.Fatalf("legacy frozen source mode = %v, want 0o400", info.Mode().Perm())
+		}
+	}
+
+	// Remove ONLY the canonical active.json, leaving the frozen legacy /tmp
+	// source in place. With the marker present, no re-adoption may occur.
+	//
+	// This deliberately keeps the legacy source: without the durable marker the
+	// loader would fall through to adoptLegacySelection, re-read the retained
+	// legacy selection and return it successfully. The assertion therefore
+	// proves the marker — not merely the absent source — is what makes the
+	// migration once-only.
+	if err := os.Remove(canon); err != nil {
+		t.Fatalf("remove canonical: %v", err)
+	}
+
+	// LoadActive must return ErrNotConfigured: the migration is frozen, so the
+	// absent canonical state yields the normal not-configured result and the
+	// legacy path is never re-read.
+	_, err = LoadActive()
+	if err == nil {
+		t.Fatal("LoadActive with marker present but canonical missing must return ErrNotConfigured")
+	}
+	if !errors.Is(err, ErrNotConfigured) {
+		t.Fatalf("LoadActive error = %v, want ErrNotConfigured", err)
+	}
+}
+
 func parseConfigForTest(t *testing.T) Config {
 	t.Helper()
 	config, err := parseConfig([]byte(testOrgYAML))
