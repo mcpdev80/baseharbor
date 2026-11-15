@@ -330,15 +330,20 @@ func providerComposeYAML(placement Placement, registrations []Registration) stri
 	})
 }
 
+type journalGroupMapping struct{ HostGID string }
+
 func providerComposeYAMLForModeAndAccess(placement Placement, registrations []Registration, mode bhruntime.LogCollectionMode, access serviceaccess.HTTPGatewayFiles, options ...any) string {
 	platformPort := 0
 	storageNetwork := ""
+	journalHostGID := ""
 	for _, option := range options {
 		switch value := option.(type) {
 		case int:
 			platformPort = value
 		case string:
 			storageNetwork = strings.TrimSpace(value)
+		case journalGroupMapping:
+			journalHostGID = strings.TrimSpace(value.HostGID)
 		}
 	}
 	lokiService := "loki"
@@ -422,6 +427,12 @@ func providerComposeYAMLForModeAndAccess(placement Placement, registrations []Re
 	if mode == bhruntime.LogCollectionJournald {
 		b.WriteString("      - /var/log/journal:/var/log/journal:ro\n")
 		b.WriteString("      - /etc/machine-id:/etc/machine-id:ro\n")
+		if journalHostGID != "" {
+			// Keep the collector unprivileged and grant only the host journal
+			// group through Podman's user-namespace mapping.
+			b.WriteString("    group_add: [\"470\"]\n")
+			fmt.Fprintf(&b, "    x-baseharbor-podman-gid-map: %s\n", strconv.Quote("+g470:@"+journalHostGID+":1"))
+		}
 	}
 	if mode == bhruntime.LogCollectionJournald {
 		// Journal collection does not need a host-published syslog listener.

@@ -327,11 +327,19 @@ func quadletRenderServiceSecurity(unit *strings.Builder, service quadletComposeS
 	if mode := strings.TrimSpace(service.UserNSMode); mode != "" {
 		fmt.Fprintf(unit, "UserNS=%s\n", mode)
 	}
+	if gidMap := strings.TrimSpace(service.PodmanGIDMap); gidMap != "" {
+		fmt.Fprintf(unit, "GIDMap=%s\n", gidMap)
+	}
 	if user := strings.TrimSpace(service.User); user != "" {
 		userPart, groupPart, found := strings.Cut(user, ":")
 		fmt.Fprintf(unit, "User=%s\n", userPart)
 		if found && strings.TrimSpace(groupPart) != "" {
 			fmt.Fprintf(unit, "Group=%s\n", groupPart)
+		}
+	}
+	for _, group := range service.GroupAdd {
+		if strings.TrimSpace(group) != "" {
+			fmt.Fprintf(unit, "GroupAdd=%s\n", strings.TrimSpace(group))
 		}
 	}
 	if service.ReadOnly {

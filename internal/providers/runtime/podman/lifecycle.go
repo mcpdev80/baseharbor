@@ -207,8 +207,7 @@ func (p PodmanProvider) ExecProjectAs(ctx context.Context, project, composeFile,
 	if !ok {
 		return "", fmt.Errorf("Quadlet service %q is not part of project %s", service, project)
 	}
-	args = append([]string{"--user", user}, args...)
-	return quadletExec(ctx, p.CommandPath(), container, nil, args...)
+	return quadletExecAs(ctx, p.CommandPath(), container, user, nil, args...)
 }
 
 func (p PodmanProvider) ExecProjectInput(ctx context.Context, project, composeFile, envFile string, input []byte, service string, args ...string) (string, error) {

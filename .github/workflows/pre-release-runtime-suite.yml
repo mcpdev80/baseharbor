@@ -214,7 +214,8 @@ jobs:
       if: inputs.reuse_from == '' && (inputs.runtime != 'static' && steps.resource_profile.outputs.class == 'runtime')
       timeout-minutes: ${{ inputs.gate == 'backup-restore' && 55 || inputs.gate == 'observability' && 25 || inputs.gate
         == 'lifecycle' && 35 || steps.resource_profile.outputs.profile == 'recovery' && 20 || inputs.gate == 'data-capabilities'
-        && 25 || steps.resource_profile.outputs.profile == 'data' && 20 || inputs.gate == 'security' && 12 || 8
+        && 25 || steps.resource_profile.outputs.profile == 'data' && 20 || inputs.gate == 'security' && 12 || inputs.gate == 'guided'
+        && 12 || 8
         }}
       shell: bash
       env:

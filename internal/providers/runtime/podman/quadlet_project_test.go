@@ -146,6 +146,45 @@ networks:
 	}
 }
 
+func TestRenderComposeProjectQuadletMapsExactSupplementaryJournalGroup(t *testing.T) {
+	root := t.TempDir()
+	compose := filepath.Join(root, "compose.yaml")
+	data := `services:
+  alloy:
+    image: grafana/alloy:latest
+    user: "473:473"
+    group_add: ["470"]
+    x-baseharbor-podman-gid-map: "+g470:@999:1"
+    read_only: true
+    volumes:
+      - /var/log/journal:/var/log/journal:ro
+`
+	if err := os.WriteFile(compose, []byte(data), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := RenderComposeProjectQuadlets(compose, "", "baseharbor-logs")
+	if err != nil {
+		t.Fatal(err)
+	}
+	unit := got.Files["baseharbor-logs-alloy.container"]
+	for _, want := range []string{
+		"User=473",
+		"Group=473",
+		"GroupAdd=470",
+		"GIDMap=+g470:@999:1",
+		"ReadOnly=true",
+		"Volume=/var/log/journal:/var/log/journal:ro",
+	} {
+		if !strings.Contains(unit, want) {
+			t.Errorf("Alloy Quadlet missing %q:\n%s", want, unit)
+		}
+	}
+	if strings.Contains(unit, "User=0") || strings.Contains(unit, "GroupAdd=keep-groups") {
+		t.Fatalf("journal access must preserve UID 473 and grant only the journal GID:\n%s", unit)
+	}
+}
+
 func TestRenderComposeProjectQuadletsPinsLocalBaseHarborImage(t *testing.T) {
 	root := t.TempDir()
 	compose := filepath.Join(root, "compose.yaml")

@@ -14,6 +14,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/coreinstallation"
+	"github.com/mcpdev80/baseharbor/internal/delivery"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/machine"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
@@ -95,6 +96,11 @@ func TestCorelessFreshWorkloadRuntimeLifecycle(t *testing.T) {
 	if m.ApplicationID == "" || m.Services.SQL {
 		t.Fatal("minimal initialization allocated implicit SQL or no stable identity")
 	}
+	submission, _ := candidateSubmissionForResolvedApp(ctx, initialized)
+	confirmDigest := delivery.CandidateConsentDigest(submission)
+	if confirmDigest == "" {
+		t.Fatal("minimal repository candidate did not produce a confirmation digest")
+	}
 	after, err := os.ReadFile("baseharbor.yaml")
 	if err != nil || string(after) != authored {
 		t.Fatal("initialization rewrote authored minimal intent")
@@ -108,7 +114,8 @@ func TestCorelessFreshWorkloadRuntimeLifecycle(t *testing.T) {
 			t.Errorf("isolated app cleanup: %v", err)
 		}
 	})
-	for _, command := range [][]string{{"app", "plan", "--json"}, {"up", "--yes", "--skip-memory-preflight"}, {"app", "status", "--json"}, {"app", "doctor", "--json"}, {"app", "down"}, {"up", "--yes", "--skip-memory-preflight"}} {
+	confirmedUp := []string{"up", "--yes", "--skip-memory-preflight", "--confirm-candidate", confirmDigest}
+	for _, command := range [][]string{{"app", "plan", "--json"}, confirmedUp, {"app", "status", "--json"}, {"app", "doctor", "--json"}, {"app", "down"}, confirmedUp} {
 		out.Reset()
 		var operationErr error
 		if command[1] == "down" {

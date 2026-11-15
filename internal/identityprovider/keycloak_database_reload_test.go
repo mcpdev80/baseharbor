@@ -69,9 +69,9 @@ func TestKeycloakDatabaseReloadWaitsForRecoveringMembers(t *testing.T) {
 	if !reflect.DeepEqual(runtime.services, want) {
 		t.Fatalf("database reload did not wait for every member: got %v want %v", runtime.services, want)
 	}
-	wantCommand := []string{"psql", "-h", "/var/run/postgresql", "-U", "postgres", "-d", "postgres", "-v", "ON_ERROR_STOP=1", "-c", "SELECT pg_reload_conf()"}
+	wantCommand := []string{"sh", "-ec", `export PGPASSWORD="$PGPASSWORD_SUPERUSER"; exec psql -w -h /var/run/postgresql -U postgres -d postgres -v ON_ERROR_STOP=1 -c 'SELECT pg_reload_conf()'`}
 	if !reflect.DeepEqual(runtime.commands[0], wantCommand) {
-		t.Fatalf("database reload must execute psql directly as the container's postgres user: got %v want %v", runtime.commands[0], wantCommand)
+		t.Fatalf("database reload must source Spilo's superuser password inside the postgres-owned container process: got %v want %v", runtime.commands[0], wantCommand)
 	}
 	if !reflect.DeepEqual(runtime.users, []string{"postgres", "postgres", "postgres", "postgres"}) {
 		t.Fatalf("database reload users = %v, want postgres for every member attempt", runtime.users)
