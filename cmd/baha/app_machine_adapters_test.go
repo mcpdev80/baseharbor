@@ -7,10 +7,12 @@ import (
 	"errors"
 	"go/format"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/machine"
 )
 
 func appMachineFixture() GuidedReadContext {
@@ -289,6 +291,25 @@ func TestAppMachineProposeReportsSafeAuthorityStage(t *testing.T) {
 				t.Fatalf("missing safe authority stage or leaked detail: %v", err)
 			}
 		})
+	}
+}
+
+func TestAppMachineProposePreservesSafeAuthorityClassification(t *testing.T) {
+	private := errors.New("private filesystem detail")
+	authority := &machine.Error{
+		Code: machine.ErrorOwnershipAmbiguous, CauseCode: "provider_consumer_inventory_invalid",
+		Message: "private filesystem detail", Cause: private,
+	}
+	err := appMachineProposalAuthorityFailure("plan", authority)
+	var proposalErr *appMachineProposalAuthorityError
+	var machineErr *appMachineError
+	if !errors.As(err, &proposalErr) || proposalErr.AuthorityCode != string(machine.ErrorOwnershipAmbiguous) ||
+		proposalErr.AuthorityCauseCode != "provider_consumer_inventory_invalid" ||
+		!errors.As(err, &machineErr) || machineErr.Code != "denied" {
+		t.Fatalf("safe authority classification was lost: %#v (%v)", proposalErr, err)
+	}
+	if strings.Contains(err.Error(), "private filesystem detail") {
+		t.Fatalf("private authority detail leaked: %v", err)
 	}
 }
 

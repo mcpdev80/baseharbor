@@ -271,18 +271,38 @@ type appMachineDesiredPlanner func(context.Context, string, []capability.Require
 // expose at the interactive preview boundary; the underlying authority error
 // remains classified and is never printed.
 type appMachineProposalAuthorityError struct {
-	Stage string
-	Cause error
+	Stage              string
+	Cause              error
+	AuthorityCode      string
+	AuthorityCauseCode string
 }
 
 func (e *appMachineProposalAuthorityError) Error() string {
-	return "application proposal " + e.Stage + ": " + e.Cause.Error()
+	message := "application proposal " + e.Stage + ": " + e.Cause.Error()
+	if e.AuthorityCode != "" {
+		message += " (authority classification: " + e.AuthorityCode
+		if e.AuthorityCauseCode != "" {
+			message += "/" + e.AuthorityCauseCode
+		}
+		message += ")"
+	}
+	return message
 }
 
 func (e *appMachineProposalAuthorityError) Unwrap() error { return e.Cause }
 
 func appMachineProposalAuthorityFailure(stage string, err error) error {
-	return &appMachineProposalAuthorityError{Stage: stage, Cause: appMachineReadError(err)}
+	classified := &appMachineProposalAuthorityError{Stage: stage, Cause: appMachineReadError(err)}
+	// appMachineReadError deliberately collapses private failures to a stable
+	// policy-denied code. Preserve only the already-safe public machine
+	// classification alongside that code so a failed read-only proposal can be
+	// diagnosed without exposing the underlying authority error or its details.
+	var authority *machine.Error
+	if errors.As(err, &authority) && authority != nil {
+		classified.AuthorityCode = string(authority.Code)
+		classified.AuthorityCauseCode = authority.CauseCode
+	}
+	return classified
 }
 
 // appMachineDesiredResult is the typed propose response carried back across the
