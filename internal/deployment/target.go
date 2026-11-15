@@ -99,6 +99,16 @@ func stateRootOverride() string {
 	return strings.TrimSpace(os.Getenv("BASEHARBOR_STATE_DIR"))
 }
 
+// StateRootSelected reports whether BASEHARBOR_STATE_DIR selects a dedicated
+// isolated installation root for this invocation. An isolated installation
+// cannot discover or rewrite the normal user's Target selection, and the
+// selection layers it owns — the persisted activation and its own
+// organization state — live exclusively below that root (BF-01, h-d28 akte;
+// docs/explanation/targets.md).
+func StateRootSelected() bool {
+	return stateRootOverride() != ""
+}
+
 func ConfigPath() (string, error) {
 	if root := stateRootOverride(); root != "" {
 		return filepath.Join(root, "config", "config.yaml"), nil

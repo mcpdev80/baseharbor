@@ -91,6 +91,16 @@ func effectiveTarget(ctx context.Context) (deployment.ResolvedTarget, error) {
 	}
 	explicit := targetOverrideFromContext(ctx)
 	activated := strings.TrimSpace(os.Getenv("BASEHARBOR_TARGET"))
+	if deployment.StateRootSelected() {
+		// BF-01 (h-d28): a dedicated state root owns this installation's
+		// selection chain; resolve it from this root's own state without
+		// the root-less selection shortcuts.
+		state, configured, stateErr := orgconfig.LoadActiveOptional()
+		if stateErr != nil {
+			return deployment.ResolvedTarget{}, stateErr
+		}
+		return resolveTargetBelowStateRoot(ctx, cfg, state, configured, explicit, activated)
+	}
 	selected, selectionErr := selectedTargetName(explicit, activated, cfg)
 	if selectionErr != nil {
 		return deployment.ResolvedTarget{}, selectionErr
@@ -103,6 +113,9 @@ func effectiveTarget(ctx context.Context) (deployment.ResolvedTarget, error) {
 // resolves directly.
 func resolveTargetWithOrganization(ctx context.Context, cfg deployment.Config, explicit, selected string) (deployment.ResolvedTarget, error) {
 	state, configured, err := orgconfig.LoadActiveOptional()
+	if deployment.StateRootSelected() {
+		return resolveTargetBelowStateRoot(ctx, cfg, state, configured, explicit, selected)
+	}
 	if err != nil || !configured {
 		if err == nil {
 			return cfg.ResolveTarget(selected, "")
@@ -130,7 +143,7 @@ func resolveTargetWithOrganization(ctx context.Context, cfg deployment.Config, e
 		// organization defaults and the builtin `local` fallback included.
 		// Same root => same selection; other root => foreign entries stay
 		// invisible rather than silently reachable.
-		if orgconfig.StateRootSelected() &&
+		if deployment.StateRootSelected() &&
 			effective.Provenance["target"].Winner.Scope != orgconfig.ScopeUser &&
 			effective.Provenance["target"].Winner.Scope != orgconfig.ScopeInvocation {
 			if _, ok := cfg.Targets[effective.Target.Value]; !ok {

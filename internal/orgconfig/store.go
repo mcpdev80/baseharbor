@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -119,22 +120,21 @@ func LoadActiveOptional() (ActiveState, bool, error) {
 	return state, true, nil
 }
 
-// ResolvesWithin reports whether the resolution's cached configuration — the
-// state the resolver actually reads back through ResolveCachedArtifact — lives
-// below the given installation state root. A resolution without a cache path
-// holds no cross-root reference and resolves within any root.
 // selectsWithin reports whether the resolution's organization state belongs
-// below the given installation state root. A resolution names its source
-// location and its cached configuration; either of them below the root
-// proves root membership (BF-01, h-d28 akte). A resolution with neither a
-// source nor a cache reference holds no cross-root claim and resolves within
-// any root.
+// to the given installation state root: its source or cache reference lives
+// below that root, it names the root's own organization state directory, or
+// it carries no location claim at all — an empty resolution is the root's
+// state wherever the root keeps it (BF-01, h-d28 akte).
 func (r Resolution) selectsWithin(root string) bool {
 	root = filepath.Clean(strings.TrimSpace(root))
 	if root == "" {
 		return true
 	}
-	for _, path := range []string{r.Source.Location, r.CachePath} {
+	source := filepath.Clean(strings.TrimSpace(r.Source.Location))
+	if source == "" && strings.TrimSpace(r.CachePath) == "" {
+		return true
+	}
+	for _, path := range []string{source, r.CachePath} {
 		path = filepath.Clean(strings.TrimSpace(path))
 		if path == "" {
 			continue
@@ -143,8 +143,43 @@ func (r Resolution) selectsWithin(root string) bool {
 			return true
 		}
 	}
-	// An empty resolution carries no cross-root claim at all.
-	return strings.TrimSpace(r.Source.Location) == "" && strings.TrimSpace(r.CachePath) == ""
+	return source == filepath.Join(root, "config", "organization") || source == filepath.Join(root, "config")
+}
+
+// StateRootOwnsOrganizationState reports whether the active organization
+// state is the selected installation root's own state: under a dedicated
+// state root, the state resolves exclusively below that root, so the
+// selection a call consults is this installation's selection — never the
+// organization default of a different installation (BF-01, h-d28 akte;
+// docs/explanation/targets.md: the override takes precedence over XDG data
+// and configuration paths). Without a selected root the state is the
+// root-less user state it has always been.
+func StateRootOwnsOrganizationState(state ActiveState) bool {
+	if !StateRootSelected() {
+		return true
+	}
+	return state.Resolution.selectsWithin(stateRootOverride())
+}
+
+// OrganizationTargetSelection returns the target the organization state
+// selects: the organization's own default when it names one, otherwise the
+// first per-environment target. Empty means the organization state selects
+// no target.
+func OrganizationTargetSelection(state ActiveState) string {
+	if target := strings.TrimSpace(state.Config.Defaults.Target); target != "" {
+		return target
+	}
+	names := make([]string, 0, len(state.Config.Environments))
+	for name := range state.Config.Environments {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		if target := strings.TrimSpace(state.Config.Environments[name].Target); target != "" {
+			return target
+		}
+	}
+	return ""
 }
 
 // underRoot reports whether path equals or lives below root.

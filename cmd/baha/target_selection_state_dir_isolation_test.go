@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -29,11 +30,12 @@ func TestStateDirIsolatesTargetSelection(t *testing.T) {
 	t.Setenv("XDG_DATA_HOME", filepath.Join(home, ".local", "share"))
 	t.Setenv("XDG_CACHE_HOME", filepath.Join(home, ".cache"))
 
-	// Installation A: one registration, activated through the persistable
-	// selection, below its own state root.
+	// Installation A: one registration plus the implicit `local` fallback,
+	// so an unattributed organization default cannot hide behind the
+	// single-registration shortcut, activated below its own state root.
 	rootA := t.TempDir()
 	t.Setenv("BASEHARBOR_STATE_DIR", rootA)
-	writeTestTargetRegistrations(t, "alpha")
+	writeTestTargetRegistrations(t, "alpha", "spare-a")
 	if err := writePersistedTarget("alpha"); err != nil {
 		t.Fatalf("writePersistedTarget under A: %v", err)
 	}
@@ -41,68 +43,109 @@ func TestStateDirIsolatesTargetSelection(t *testing.T) {
 	if _, err := os.Stat(selectionA); err != nil {
 		t.Fatalf("A's activation must persist below A: %v", err)
 	}
-	// Installation A also carries an organization selection naming its own
-	// target at the ambient user location: what `baha config organization
-	// set` writes when the developer's normal installation activates the
-	// organization. This is the state a dedicated state root must never
-	// consult.
-	t.Setenv("BASEHARBOR_STATE_DIR", "")
-	writeTestOrganizationSelection(t, "", "alpha")
-	t.Setenv("BASEHARBOR_STATE_DIR", rootA)
 
-	// Installation B: a dedicated state root with two registrations and no
-	// activation of its own.
+	// Installation B: a dedicated state root with its own registrations and
+	// no activation.
 	rootB := t.TempDir()
 	t.Setenv("BASEHARBOR_STATE_DIR", rootB)
-	writeTestTargetRegistrations(t, "beta", "gamma")
+	writeTestTargetRegistrations(t, "beta", "spare-b")
 
-	// A root-local organization state for B is what `baha config
-	// organization set` leaves below an activated installation: it must not
-	// be visible while no state root is selected. The ambient user
-	// organization state of installation A (above) is the stale state the
-	// hunt left behind; with a dedicated root, organization state resolves
-	// exclusively below that root.
-	writeTestOrganizationSelection(t, rootB, "beta")
-
-	// Direct proof of the isolation seam: under the state root the
-	// organization lookup must resolve B's OWN state location, not the
-	// ambient user path. Before the fix the organization selection lookup
-	// followed an environment-only chain that let the ambient file answer
-	// even while a dedicated root was active — exactly the h-d28 leakage.
+	// Contract part 1 — with a state root the persisted selection lives
+	// strictly below that root.
+	if path, err := targetSelectionPath(); err != nil {
+		t.Fatalf("targetSelectionPath under a state root: %v", err)
+	} else if want := filepath.Join(rootB, "config", "active-target"); path != want {
+		t.Fatalf("state-root selection path %q, want %q", path, want)
+	}
+	// Contract part 2 — the organization state of installation A, recorded
+	// the way an ambient call writes it (source location outside every
+	// dedicated root), must be invisible below B: the state-root loader
+	// resolves organization state below the selected root only.
+	t.Setenv("BASEHARBOR_STATE_DIR", "")
+	writeTestOrganizationSelection(t, "", "alpha")
+	if _, ok, err := orgconfig.LoadActiveOptional(); err != nil || !ok {
+		t.Fatalf("the root-less lookup must find the ambient organization state: found=%v (%v)", ok, err)
+	}
+	t.Setenv("BASEHARBOR_STATE_DIR", rootB)
 	if path, err := orgconfig.ActivePath(); err != nil {
 		t.Fatalf("ActivePath under B: %v", err)
 	} else if !strings.HasPrefix(path, rootB+string(os.PathSeparator)) {
-		t.Fatalf("organization state resolves to %q, outside B's state root %q", path, rootB)
+		t.Fatalf("organization state path %q does not follow the state root %q", path, rootB)
 	}
 
-	// B must observe none of A's selection: neither through the persisted
-	// file nor through the resolver.
-	if selected, err := readPersistedTarget(); err != nil || selected != "" {
-		t.Fatalf("persisted selection from installation A leaked into B: %q (%v)", selected, err)
+	// Contract part 3 — a dedicated state root owns the selection: with no
+	// B-local activation the resolver answers from B's own registrations
+	// only. Installation A's ambient organization default must not resolve
+	// (or act on) A's registrations from below B, and it must not even be
+	// named in the failure. On the unfixed code the ambient state
+	// answered here and the switch read A's registrations.
+	if target, err := effectiveTarget(t.Context()); err != nil {
+		if containsAllForTest(err.Error(), "alpha") {
+			t.Fatalf("resolver reported installation A's target under B: %v", err)
+		}
+		if !containsAllForTest(err.Error(), "beta", "spare-b") {
+			t.Fatalf("resolver did not fail closed on B's own registrations: %v", err)
+		}
+	} else if target.Name == "alpha" || target.Name == "local" {
+		t.Fatalf("A's ambient organization default resolved against B's state as %q; want fail closed", target.Name)
 	}
-	var err error
+
+	// Contract part 4 — the isolation holds for the organization consult
+	// itself: below a dedicated root, organization state with a source
+	// outside that root (A's ambient state) must not answer.
+	if _, ok, err := orgconfig.LoadActiveOptional(); err != nil || ok {
+		t.Fatalf("installation A's organization state answered under B: found=%v (%v)", ok, err)
+	}
+
+	// Contract part 5 — the root-local organization state completes the
+	// root-local selection chain: B's own organization default answers
+	// under B — declared, as a real root-local organization state is, and
+	// naming B's registration — where the root holds no activation. An
+	// ambient default never wins here; with an activation present, the
+	// activation stays authoritative.
+	if err := clearPersistedTarget(); err != nil {
+		t.Fatalf("clearPersistedTarget under B: %v", err)
+	}
+	writeTestOrganizationSelection(t, rootB, "beta")
 	target, err := effectiveTarget(t.Context())
-	if err == nil {
-		t.Fatalf("a foreign organization default naming a target B never registered resolved under B: %q", target.Name)
+	if err != nil {
+		t.Fatalf("effectiveTarget with the root-local organization selection: %v", err)
 	}
-	if containsAllForTest(err.Error(), "alpha") {
-		t.Fatalf("resolver reported installation A's target in B's failure: %v", err)
+	if target.Name != "beta" {
+		t.Fatalf("effective target under B is %q, want the root-local organization selection beta", target.Name)
 	}
-
-	// Contract part 3 — a root-local selection resolves root-local: B's own
-	// activation names beta and the resolver answers with B's registration
-	// even while the ambient organization state of installation A names
-	// alpha. Activating inside B writes below B only; A's selection file
-	// stays byte-identical.
 	if err := writePersistedTarget("beta"); err != nil {
 		t.Fatalf("writePersistedTarget under B: %v", err)
 	}
-	target, err = effectiveTarget(t.Context())
-	if err != nil {
-		t.Fatalf("effectiveTarget under B: %v", err)
+
+	// Contract part 6 — a selection naming a registration that does not
+	// exist below the current root must fail closed, never resolve
+	// ambiently.
+	if err := clearPersistedTarget(); err != nil {
+		t.Fatalf("clearPersistedTarget under B: %v", err)
 	}
-	if target.Name != "beta" {
-		t.Fatalf("effective target under B is %q, want the root-local selection beta", target.Name)
+	if err := writePersistedTarget("alpha"); err != nil {
+		t.Fatalf("writePersistedTarget(alpha) under B: %v", err)
+	}
+	if _, err := effectiveTarget(t.Context()); err == nil {
+		t.Fatal("installation A's activated target resolved against B's state; want fail closed")
+	}
+
+	// Contract part 7 — activation state moves with the root: activating
+	// inside B persists below B only, and A's activation stays exactly as
+	// A wrote it.
+	if err := clearPersistedTarget(); err != nil {
+		t.Fatalf("clearPersistedTarget under B: %v", err)
+	}
+	if err := writePersistedTarget("beta"); err != nil {
+		t.Fatalf("writePersistedTarget(beta) under B: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(rootB, "config", "active-target")); err != nil {
+		t.Fatalf("B's activation did not persist below B: %v", err)
+	}
+	t.Setenv("BASEHARBOR_STATE_DIR", "")
+	if selected, err := readPersistedTarget(); err != nil || selected != "" {
+		t.Fatalf("B's activation leaked into the root-less user state: %q (%v)", selected, err)
 	}
 	t.Setenv("BASEHARBOR_STATE_DIR", rootA)
 	if selected, err := readPersistedTarget(); err != nil || selected != "alpha" {
@@ -145,37 +188,59 @@ func containsAllForTest(hay string, needles ...string) bool {
 // writeTestOrganizationSelection persists an organization default target at
 // the organization state location: below <root>/config/organization for a
 // state root, below the ambient user configuration for root "".
-func writeTestOrganizationSelection(t *testing.T, root, targetName string) {
+func writeTestOrganizationSelection(t *testing.T, root, targetName string, declared ...string) {
 	t.Helper()
-	previous, hadPrevious := os.LookupEnv("BASEHARBOR_STATE_DIR")
-	t.Setenv("BASEHARBOR_STATE_DIR", root)
-	defer func() {
-		if hadPrevious {
-			os.Setenv("BASEHARBOR_STATE_DIR", previous)
-		} else {
-			os.Unsetenv("BASEHARBOR_STATE_DIR")
-		}
-	}()
-	// Mirror what `baha config organization set --source local` records:
-	// the resolution names the state location, which for an organization
-	// directory below the active root is the root-local organization state.
-	dir := root
-	if dir == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			t.Fatalf("ambient home: %v", err)
-		}
-		dir = filepath.Join(home, ".config", "baseharbor", "organization")
+	// Persist the organization state of the installation rooted at `root`
+	// (the empty root stands for the ambient user installation) directly at
+	// that installation's organization state location, independently of
+	// what the environment currently selects — exactly where the CLI
+	// records it.
+	dir := organizationStateSourceRoot(root)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
 	}
-	if err := orgconfig.SaveActive(orgconfig.ActiveState{
+	refs := map[string]orgconfig.Reference{}
+	for _, name := range append([]string{targetName}, declared...) {
+		refs[name] = orgconfig.Reference{Reference: "local://" + name}
+	}
+	state := orgconfig.ActiveState{
 		Resolution: orgconfig.Resolution{ResolvedVersion: orgconfig.ContractVersion,
 			Source: orgconfig.Source{Kind: orgconfig.SourceLocal, Location: dir}},
 		Config: orgconfig.Config{
 			APIVersion:   orgconfig.ContractVersion,
 			Organization: "bf01-test",
 			Defaults:     orgconfig.EnvironmentDefaults{Target: targetName},
+			Targets:      refs,
 		},
-	}); err != nil {
+	}
+	data, err := json.MarshalIndent(state, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "active.json"), append(data, '\n'), 0o600); err != nil {
 		t.Fatalf("saving organization selection below %q: %v", root, err)
 	}
+}
+
+// organizationStateSourceRoot names the state location an organization
+// selection refers to: the installation root whose state it is (the empty
+// root stands for the ambient user installation).
+func organizationStateSourceRoot(root string) string {
+	if root != "" {
+		return filepath.Join(root, "config", "organization")
+	}
+	return ambientUserOrganizationRoot()
+}
+
+// ambientUserOrganizationRoot is the organization state location of the
+// root-less user installation.
+func ambientUserOrganizationRoot() string {
+	if root := strings.TrimSpace(os.Getenv("XDG_CONFIG_HOME")); root != "" {
+		return filepath.Join(root, "baseharbor", "organization")
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(home, ".config", "baseharbor", "organization")
 }

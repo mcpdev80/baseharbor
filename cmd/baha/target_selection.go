@@ -84,7 +84,14 @@ func selectedTargetName(explicit, environment string, cfg deployment.Config) (st
 	if cfg.DefaultTarget != "" {
 		return cfg.DefaultTarget, nil
 	}
-	if len(cfg.Targets) == 1 {
+	if len(cfg.Targets) == 1 && !deployment.StateRootSelected() {
+		// A single registration implies its own selection — the first-run
+		// convenience of the user installation. Under a dedicated state
+		// root BF-01 forbids the shortcut: an implicit choice would let a
+		// lower layer (the builtin fallback, or a foreign installation's
+		// organization default) decide what this root acts on; the
+		// root-local organization state answers explicitly instead (see
+		// resolveTargetWithOrganization).
 		for name := range cfg.Targets {
 			return name, nil
 		}
