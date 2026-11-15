@@ -595,6 +595,87 @@ func TestWorldWritableMigrationFrozenWhenSourceAndTargetRemoved(t *testing.T) {
 	}
 }
 
+// TestWorldWritableMigrationFrozenWhenSourceAndTargetBothRemoved is the exact
+// regression the r3/r4 reviews required: after a successful migration, if BOTH
+// the private canonical active.json AND the legacy /tmp source are removed
+// while the durable once-only marker in the private canonical namespace
+// remains, the next LoadActive must return the normal not-configured result —
+// no decode/EOF error and no re-adoption of the deleted legacy source. This is
+// a distinct case from TestWorldWritableMigrationFrozenWhenSourceAndTargetRemoved
+// (which retains the legacy source to prove the marker blocks re-adoption even
+// when a live source is present); here the source is gone too, so the only
+// correct outcome is the absent result, and the deleted source must never be
+// resurrected by a second migration.
+func TestWorldWritableMigrationFrozenWhenSourceAndTargetBothRemoved(t *testing.T) {
+	privateHome := t.TempDir()
+	t.Setenv("HOME", privateHome)
+
+	root := t.TempDir()
+	cfgDir := filepath.Join(root, "config")
+	if err := os.MkdirAll(cfgDir, 0o777); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(cfgDir, 0o777); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("XDG_CONFIG_HOME", cfgDir)
+
+	seed := `{"resolution":{"resolved_revision":"mig-1","source":{"kind":"local","location":"x"}},"config":` + testConfigJSON(t) + `}`
+	legacyPath, err := ActivePath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(legacyPath), 0o777); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(filepath.Dir(legacyPath), 0o777); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(legacyPath, []byte(seed), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// Adopt the legacy selection into the private canonical path.
+	loaded, err := LoadActive()
+	if err != nil {
+		t.Fatalf("LoadActive after migration = %v", err)
+	}
+	if loaded.Resolution.ResolvedRevision != "mig-1" {
+		t.Fatalf("LoadActive did not return the adopted selection: %+v", loaded.Resolution)
+	}
+
+	canon, err := privateCanonicalPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The durable once-only marker must be present after a successful adopt.
+	marker := filepath.Join(filepath.Dir(canon), canonicalFrozenMarker)
+	if _, err := os.Lstat(marker); err != nil {
+		t.Fatalf("expected durable migration marker %q: %v", marker, err)
+	}
+
+	// Remove BOTH the canonical active.json and the frozen legacy /tmp source,
+	// leaving only the durable private marker behind.
+	if err := os.Remove(canon); err != nil {
+		t.Fatalf("remove canonical: %v", err)
+	}
+	if err := os.Remove(legacyPath); err != nil {
+		t.Fatalf("remove legacy source: %v", err)
+	}
+
+	// LoadActive must return ErrNotConfigured: the migration is frozen, so the
+	// absent canonical state yields the normal not-configured result and the
+	// deleted legacy path is never re-read or re-adopted. A decode/EOF error
+	// (or a successful return) would prove the marker was not honored.
+	_, err = LoadActive()
+	if err == nil {
+		t.Fatal("LoadActive with both canonical and legacy removed must return ErrNotConfigured")
+	}
+	if !errors.Is(err, ErrNotConfigured) {
+		t.Fatalf("LoadActive error = %v, want ErrNotConfigured", err)
+	}
+}
+
 func parseConfigForTest(t *testing.T) Config {
 	t.Helper()
 	config, err := parseConfig([]byte(testOrgYAML))
