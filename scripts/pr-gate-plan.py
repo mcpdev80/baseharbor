@@ -675,7 +675,8 @@ RECEIPT_CONTROL_PLANE_WORKFLOWS = frozenset({'.github/workflows/receipt-post-run
 
 CI_CHECKS = [
     {'id': 'pr-planner-tests', 'owner': 'scripts/test_pr_gate_plan.py',
-     'command': 'python3 -m unittest scripts/test_pr_gate_plan.py'},
+     'command': ('python3 -m unittest scripts/test_pr_gate_plan.py '
+                 'scripts/test_pre_release_runtime_reuse.py')},
     {'id': 'ci-policy', 'owner': 'scripts/ci-workflow-policy.sh',
      'command': 'bash scripts/ci-workflow-policy.sh'},
     {'id': 'ci-executor-tests', 'owner': 'normal selected CI regressions',
