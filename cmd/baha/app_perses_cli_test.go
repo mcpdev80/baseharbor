@@ -304,6 +304,10 @@ func TestBahaStatusPersesCLIEntrypointResolvesWithoutContainer(t *testing.T) {
 	if appSurface == nil || *appSurface != *surface {
 		t.Fatalf("the two public status entries disagree about the seam: app=%v root=%v", appSurface, surface)
 	}
+	// Positive is-equality: the explicit `app status --json` field must itself be
+	// configured_unverified for the selected + no-health case — direct coverage
+	// of the app-status JSON field, not only via the root status surface.
+	assertPersesConfiguredUnverified(t, appReport)
 }
 
 // TestBahaStatusPersesUnknownOwnerFailsClosedThroughCLI is the required

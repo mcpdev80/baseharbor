@@ -40,7 +40,8 @@ Perses release actually ships and supports their plugin) already declare.
 
 - Pin the Perses release (product version + production image/digest) as
   realization metadata; a selected but unprovisioned Perses surface MUST be
-  reported as `unsupported` (fail-closed "not configured"), never as configured.
+  reported as `not_configured` (fail-closed), never as `configured_unverified`
+  or `verified`.
 - Authentication is opt-in; when enabled, honor the upstream mandatory
   encryption-key requirement. Do not enable external notifications/routing by
   default.

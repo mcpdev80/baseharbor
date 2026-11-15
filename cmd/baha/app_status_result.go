@@ -134,10 +134,18 @@ func collectApplicationStatusResult(ctx context.Context, store application.Store
 	if err != nil {
 		return applicationStatusResult{}, err
 	}
+	// The Perses three-state contract is manifest-declaration truth, exposed on
+	// every status JSON — local AND remote-target faces — regardless of the
+	// applied/stopped/not_applied runtime face: not_configured |
+	// configured_unverified | verified. Pin validation alone can never map into
+	// verified — only a real Perses health probe could. Computed before the
+	// remote-target early return below so remote-status --json also carries it.
+	persesStatus := capability.PersesStatusNow(resolved.Manifest.Services.ObservabilityManagementUI && resolved.Manifest.Services.Perses)
 	if hasRemoteApplicationTarget(resolved) {
 		return applicationStatusResult{StatusResult: result, ApplicationID: resolved.Manifest.ApplicationID,
 			DeploymentID: resolved.DeploymentIdentity.DeploymentID,
-			OperatorAuth: collectOperatorAuthObservation(ctx, resolved.Target.Name, resolved.Manifest.Environment)}, nil
+			OperatorAuth: collectOperatorAuthObservation(ctx, resolved.Target.Name, resolved.Manifest.Environment),
+			Perses:       persesStatus}, nil
 	}
 	tlsStatus, tlsObservation, tlsErr := collectApplicationTLSObservation(resolved)
 	if tlsErr != nil || (tlsObservation != nil && !tlsObservation.Healthy) {
@@ -154,12 +162,6 @@ func collectApplicationStatusResult(ctx context.Context, store application.Store
 			}
 		}
 	}
-
-	// The Perses three-state contract is manifest-declaration truth, exposed on
-	// every status JSON regardless of the applied/stopped/not_applied runtime
-	// face: not_configured | configured_unverified | verified. Pin validation
-	// alone can never map into verified — only a real Perses health probe could.
-	persesStatus := capability.PersesStatusNow(resolved.Manifest.Services.ObservabilityManagementUI && resolved.Manifest.Services.Perses)
 
 	var managementUI []application.ManagementUISurface
 	if result.State != "not_applied" {
