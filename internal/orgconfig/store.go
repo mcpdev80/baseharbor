@@ -42,20 +42,25 @@ func cacheRoot() (string, error) {
 	return filepath.Join(home, ".cache", "baseharbor", "organization"), nil
 }
 
-// stateRootSelected reports whether BASEHARBOR_STATE_DIR selects a dedicated
+// StateRootSelected reports whether BASEHARBOR_STATE_DIR selects a dedicated
 // isolated installation root for this invocation. When it does, the
 // installation's organization selection and cached configuration resolve
 // exclusively below that root (BF-01, h-d28 akte;
 // docs/explanation/targets.md): the resolver must never fall through to an
 // ambient organization state left by a different installation, and an ambient
 // resolution's cached artifacts must never answer below an isolated root.
-func stateRootSelected() bool {
+func StateRootSelected() bool {
 	return stateRootOverride() != ""
+}
+
+// stateRootSelected is the package-internal alias of StateRootSelected.
+func stateRootSelected() bool {
+	return StateRootSelected()
 }
 
 // stateRootOverride returns the trimmed BASEHARBOR_STATE_DIR value: the
 // authoritative isolated installation root for this invocation (the same
-// precedence source deployment.ConfigRoot and DataRoot honour).
+// precedence source deployment.ConfigPath and DataRoot honour).
 func stateRootOverride() string {
 	return strings.TrimSpace(os.Getenv("BASEHARBOR_STATE_DIR"))
 }
@@ -102,10 +107,13 @@ func LoadActiveOptional() (ActiveState, bool, error) {
 		return ActiveState{}, false, fmt.Errorf("validate active organization resolution: %w", err)
 	}
 	// BF-01 (h-d28): with a dedicated state root selected, the organization
-	// resolves exclusively below that root. A selection whose cached
-	// resolution was written by a different installation points outside
-	// the active root, so it must not act here.
-	if stateRootSelected() && !state.Resolution.selectsWithin(stateRootOverride()) {
+	// resolves exclusively below that root. The source location is the
+	// state root's own claim about where its organization state lives; a
+	// selection written by a different installation — or an ambient one
+	// with no location claim at all — must not act inside an isolated
+	// root. Root-local organization state written through the CLI names
+	// its own location below the root and stays authoritative.
+	if StateRootSelected() && !state.Resolution.selectsWithin(stateRootOverride()) {
 		return ActiveState{}, false, nil
 	}
 	return state, true, nil
@@ -115,13 +123,28 @@ func LoadActiveOptional() (ActiveState, bool, error) {
 // state the resolver actually reads back through ResolveCachedArtifact — lives
 // below the given installation state root. A resolution without a cache path
 // holds no cross-root reference and resolves within any root.
+// selectsWithin reports whether the resolution's organization state belongs
+// below the given installation state root. A resolution names its source
+// location and its cached configuration; either of them below the root
+// proves root membership (BF-01, h-d28 akte). A resolution with neither a
+// source nor a cache reference holds no cross-root claim and resolves within
+// any root.
 func (r Resolution) selectsWithin(root string) bool {
-	path := filepath.Clean(strings.TrimSpace(r.CachePath))
-	if path == "" {
+	root = filepath.Clean(strings.TrimSpace(root))
+	if root == "" {
 		return true
 	}
-	root = filepath.Clean(strings.TrimSpace(root))
-	return path == root || strings.HasPrefix(path, root+string(os.PathSeparator))
+	for _, path := range []string{r.Source.Location, r.CachePath} {
+		path = filepath.Clean(strings.TrimSpace(path))
+		if path == "" {
+			continue
+		}
+		if path == root || strings.HasPrefix(path, root+string(os.PathSeparator)) {
+			return true
+		}
+	}
+	// An empty resolution carries no cross-root claim at all.
+	return strings.TrimSpace(r.Source.Location) == "" && strings.TrimSpace(r.CachePath) == ""
 }
 
 // underRoot reports whether path equals or lives below root.

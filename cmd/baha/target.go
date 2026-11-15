@@ -95,6 +95,13 @@ func effectiveTarget(ctx context.Context) (deployment.ResolvedTarget, error) {
 	if selectionErr != nil {
 		return deployment.ResolvedTarget{}, selectionErr
 	}
+	return resolveTargetWithOrganization(ctx, cfg, explicit, selected)
+}
+
+// resolveTargetWithOrganization layers the organization preferences onto the
+// selection chain. Without an active organization the local selection
+// resolves directly.
+func resolveTargetWithOrganization(ctx context.Context, cfg deployment.Config, explicit, selected string) (deployment.ResolvedTarget, error) {
 	state, configured, err := orgconfig.LoadActiveOptional()
 	if err != nil || !configured {
 		if err == nil {
@@ -118,6 +125,18 @@ func effectiveTarget(ctx context.Context) (deployment.ResolvedTarget, error) {
 		return deployment.ResolvedTarget{}, err
 	}
 	if effective.Target != nil {
+		// BF-01 (h-d28): with an isolated state root selected, a target the
+		// root does not register must never resolve through this call —
+		// organization defaults and the builtin `local` fallback included.
+		// Same root => same selection; other root => foreign entries stay
+		// invisible rather than silently reachable.
+		if orgconfig.StateRootSelected() &&
+			effective.Provenance["target"].Winner.Scope != orgconfig.ScopeUser &&
+			effective.Provenance["target"].Winner.Scope != orgconfig.ScopeInvocation {
+			if _, ok := cfg.Targets[effective.Target.Value]; !ok {
+				return deployment.ResolvedTarget{}, fmt.Errorf("organization default target %q is not registered below the selected state root", effective.Target.Value)
+			}
+		}
 		return cfg.ResolveTarget(effective.Target.Value, "")
 	}
 	return cfg.ResolveTarget(selected, "")

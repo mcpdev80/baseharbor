@@ -99,14 +99,31 @@ func stateRootOverride() string {
 	return strings.TrimSpace(os.Getenv("BASEHARBOR_STATE_DIR"))
 }
 
-// ConfigRoot returns the directory that holds the installation's Target
-// configuration and the persisted Target selection. BASEHARBOR_STATE_DIR is
-// the authoritative isolated state root: when a dedicated root is selected,
-// every part of the installation's state — including the Target selection —
-// resolves below it, and the selection state of any other installation (the
-// ambient XDG/user location or another root) is never consulted (BF-01,
-// h-d28 akte; docs/explanation/targets.md).
-func ConfigRoot() (string, error) {
+func ConfigPath() (string, error) {
+	if root := stateRootOverride(); root != "" {
+		return filepath.Join(root, "config", "config.yaml"), nil
+	}
+	if root := strings.TrimSpace(os.Getenv("XDG_CONFIG_HOME")); root != "" {
+		return filepath.Join(root, "baseharbor", "config.yaml"), nil
+	}
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return "", errors.New("cannot determine BaseHarbor config directory")
+	}
+	return filepath.Join(home, ".config", "baseharbor", "config.yaml"), nil
+}
+
+// TargetSelectionRoot returns the directory that owns the persisted Target
+// selection (the `active-target` file). BASEHARBOR_STATE_DIR is the
+// authoritative isolated installation root: with it set, the selection
+// resolves below that root — beside the Target configuration it chooses
+// between — and the selection state of any other installation is never read
+// or written (BF-01, h-d28 akte; docs/explanation/targets.md: an isolated
+// installation cannot discover or rewrite the normal user's Target
+// selection). Without the override the selection is the user-wide activation
+// it has always been, resolving through the same XDG/user precedence as the
+// configuration file.
+func TargetSelectionRoot() (string, error) {
 	if root := stateRootOverride(); root != "" {
 		return filepath.Join(root, "config"), nil
 	}
@@ -118,14 +135,6 @@ func ConfigRoot() (string, error) {
 		return "", errors.New("cannot determine BaseHarbor config directory")
 	}
 	return filepath.Join(home, ".config", "baseharbor"), nil
-}
-
-func ConfigPath() (string, error) {
-	root, err := ConfigRoot()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(root, "config.yaml"), nil
 }
 
 func DataRoot() (string, error) {

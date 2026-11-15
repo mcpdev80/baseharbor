@@ -12,12 +12,20 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/machine"
 )
 
+// targetSelectionPath is the one seam where the persisted Target selection
+// resolves. BASEHARBOR_STATE_DIR is the authoritative isolated installation
+// root, so with it set the selection lives below that root — beside the
+// Target configuration it chooses between (BF-01, h-d28 akte;
+// docs/explanation/targets.md: an isolated installation cannot discover or
+// rewrite the normal user's Target selection). Without the override the
+// selection is the user-wide activation it has always been, resolving
+// through the user configuration locations.
 func targetSelectionPath() (string, error) {
-	configRoot, err := deployment.ConfigRoot()
+	selectionRoot, err := deployment.TargetSelectionRoot()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(configRoot, "active-target"), nil
+	return filepath.Join(selectionRoot, "active-target"), nil
 }
 
 func readPersistedTarget() (string, error) {
