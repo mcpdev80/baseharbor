@@ -300,3 +300,47 @@ func TestEnvironmentUIDRenameIdempotentSameRequest(t *testing.T) {
 		t.Fatalf("idempotent rename reported name=%q, want %q", second.EnvironmentName, newName)
 	}
 }
+
+// TestEnvironmentUIDNoAuthoredLeak proves the no-authored-leak guarantee for
+// the environment UID (decision B): the environment identity is a
+// system-generated UUID that is NEVER authored in a developer contract and
+// NEVER allocated by a read command. A pure GetEnvironment call must only
+// validate/reuse — it must not manufacture an id, and it must never read an
+// authored id out of a manifest. This mirrors the app.id precedent
+// (app_binding_production_test) adapted to the per-(target,env) identity
+// record: the UID lives in the system-owned environment.json, never in the
+// developer-authored contract.
+func TestEnvironmentUIDNoAuthoredLeak(t *testing.T) {
+	stateRoot := configureIsolatedTargetForEnvironment(t)
+
+	const envName = "prod"
+
+	// A pure read (GetEnvironment) must resolve the durable identity without
+	// manufacturing one from authored intent and without returning any non-
+	// server-assigned id.
+	id, idErr := deployment.GetEnvironment("env-tgt", envName)
+	if idErr != nil {
+		t.Fatalf("GetEnvironment read failed: %v", idErr)
+	}
+	if id.Identity == "" {
+		t.Fatalf("GetEnvironment did not resolve an identity: %+v", id)
+	}
+	// The resolved id must be a valid server-assigned environment UUID, never
+	// an authored value.
+	if err := environment.Validate(id.Identity); err != nil {
+		t.Fatalf("environment identity is not a valid server-assigned id: %v (%q)", err, id.Identity)
+	}
+
+	// The developer-authored contract (baseharbor.yaml) must NOT carry the
+	// environment id; only the system-owned environment.json owns it.
+	manifestPath := filepath.Join(stateRoot, "baseharbor.yaml")
+	if _, statErr := os.Stat(manifestPath); statErr == nil {
+		authored, readErr := os.ReadFile(manifestPath)
+		if readErr != nil {
+			t.Fatal(readErr)
+		}
+		if strings.Contains(string(authored), "environment_id") {
+			t.Fatalf("authored contract carries an authored environment id; id assignment is not server-side")
+		}
+	}
+}
