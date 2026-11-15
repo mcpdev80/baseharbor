@@ -33,10 +33,19 @@ var ErrEnvironmentAlreadyExists = errors.New("environment identity already exist
 // back as an identity, and Identity must never be read back as a name. This
 // separation is what makes a rename a pure metadata update — renaming changes
 // Name and keeps Identity byte-identical.
+//
+// Associations is the Core-authoritative membership list of this environment
+// (app/target/node association for shared environments, card 0428-054). It is
+// an additive field on the same record, never a sibling file: it is an
+// attribute of the single source of truth, so a reader that predates this seam
+// still decodes target/name/id unchanged and a writer that predates this seam
+// still produces a record that decodes cleanly. It is omitempty so a record
+// with no membership omits the field entirely.
 type EnvironmentRecord struct {
-	Target   string `json:"target"`
-	Name     string `json:"name"`
-	Identity string `json:"id"`
+	Target       string               `json:"target"`
+	Name         string               `json:"name"`
+	Identity     string               `json:"id"`
+	Associations []AssociationBinding `json:"associations,omitempty"`
 }
 
 // environmentStateRoot resolves the home directory and record path of an
@@ -118,11 +127,19 @@ func readEnvironmentRecord(path, target, environmentName string) (EnvironmentRec
 	return record, nil
 }
 
-// persistEnvironmentRecord atomically writes a freshly created identity. The
-// rename is the atomic seam: a concurrent writer that wrote a DIFFERENT record
-// first is detected here and refused, so two first registrations can never
-// leave two divergent identities behind (state split, precedent 0427).
-func persistEnvironmentRecord(home, path, target, name string, id string) (EnvironmentRecord, error) {
+// persistEnvironmentRecord atomically writes a freshly created identity and the
+// supplied membership list. The rename is the atomic seam: a concurrent writer
+// that wrote a DIFFERENT record first is detected here and refused, so two
+// first registrations can never leave two divergent identities behind (state
+// split, precedent 0427).
+//
+// associations is the authoritative member list written alongside the identity.
+// It is nil/empty for a plain first creation (the field is omitempty), and is
+// populated only by the association seam when a subject is registered. A
+// nil slice is deliberately NOT treated as "delete the existing list" here:
+// persistEnvironmentRecord is a create-path primitive, and the association
+// mutation writes its own intended list through the same atomic seam.
+func persistEnvironmentRecord(home, path, target, name string, id string, associations []AssociationBinding) (EnvironmentRecord, error) {
 	if err := os.MkdirAll(home, 0o700); err != nil {
 		return EnvironmentRecord{}, fmt.Errorf("create environment state dir: %w", err)
 	}
@@ -130,7 +147,7 @@ func persistEnvironmentRecord(home, path, target, name string, id string) (Envir
 	// the Identity field — never the id into the name slot. Name and identity
 	// are distinct json fields (see EnvironmentRecord), so a name can never be
 	// mistaken for an identity on read.
-	record := EnvironmentRecord{Target: target, Name: strings.TrimSpace(name), Identity: id}
+	record := EnvironmentRecord{Target: target, Name: strings.TrimSpace(name), Identity: id, Associations: normalizeAssociations(associations)}
 	data, err := json.MarshalIndent(record, "", "  ")
 	if err != nil {
 		return EnvironmentRecord{}, fmt.Errorf("encode environment identity: %w", err)
@@ -259,7 +276,7 @@ func createEnvironmentUnderLock(target, home, path, name, id string) (Environmen
 			return nil
 		}
 		var persistErr error
-		created, persistErr = persistEnvironmentRecord(home, path, target, name, id)
+		created, persistErr = persistEnvironmentRecord(home, path, target, name, id, nil)
 		return persistErr
 	})
 	return created, err
