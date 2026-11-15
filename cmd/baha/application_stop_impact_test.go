@@ -56,8 +56,65 @@ func TestApplicationStopRequiresBothCurrentAcknowledgementsWithoutReleasingBindi
 	}
 }
 
+func TestCorelessApplicationDownConsentNamesWorkloadUnavailability(t *testing.T) {
+	configureTestTargetEmpty(t)
+	root := t.TempDir()
+	t.Chdir(root)
+	if err := os.WriteFile(filepath.Join(root, "compose.yaml"), []byte("services:\n  api:\n    image: alpine:3.22\n    command: [sleep, infinity]\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	manifest := application.WithWorkloadComponents(application.New("plain", "dev", false, false, false), "api")
+	mustWriteInitializedAuthoredManifest(t, application.RepositoryManifestName, manifest)
+	resolved, err := resolveApplication(t.Context(), application.DefaultStore(), nil, "apply")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := recordAppliedDeployment(t.Context(), resolved, application.RuntimeFiles{}); err != nil {
+		t.Fatal(err)
+	}
+
+	downContext := context.WithValue(t.Context(), applicationDownModeKey{}, true)
+	plan, err := buildApplicationStopPlan(downContext, resolved)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.retirementPlanID == "" || len(plan.Scope.Targets) != 1 || len(plan.Scope.Targets[0].Impacts) != 0 {
+		t.Fatalf("expected a workload-only stop scope bound to runtime retirement: %+v", plan)
+	}
+	found := false
+	for _, consequence := range plan.Functions {
+		found = found || (consequence.Function == "workload-availability" && consequence.Outcome == "unavailable" && consequence.Required)
+	}
+	if !found {
+		t.Fatal("coreless down consent omitted the required workload unavailability consequence")
+	}
+	_, err = authorizeApplicationStop(machineNoninteractiveContext(downContext), resolved, io.Discard)
+	var failure *machine.Error
+	if !errors.As(err, &failure) || failure.Code != machine.ErrorApprovalRequired {
+		t.Fatalf("coreless down bypassed explicit workload consent: %v", err)
+	}
+	var output bytes.Buffer
+	err = runWithIO(machineNoninteractiveContext(t.Context()), []string{"app", "down", "--yes", "--json"}, &output, io.Discard)
+	if !errors.As(err, &failure) || failure.Code != machine.ErrorApprovalRequired {
+		t.Fatalf("app down --yes bypassed workload consent: %v\n%s", err, output.String())
+	}
+	var denied applicationStopPlan
+	if json.Unmarshal(mustJSONStopTest(t, failure.Details), &denied) != nil || len(denied.Functions) == 0 || len(denied.Scope.Targets) != 1 {
+		t.Fatal("app down did not return the current workload consequence scope")
+	}
+}
+
+func mustJSONStopTest(t *testing.T, value any) []byte {
+	t.Helper()
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return encoded
+}
+
 func TestApplicationStopCLIJSONMCPExposeSameRequiredAcknowledgement(t *testing.T) {
-	retainedNativeBackendFixture(t)
+	r := retainedNativeBackendFixture(t)
 	var out bytes.Buffer
 	err := runWithIO(withProviderChangeConsent(t.Context(), nil), []string{"app", "down", "--yes", "--json"}, &out, io.Discard)
 	var cliFailure *machine.Error
@@ -79,9 +136,17 @@ func TestApplicationStopCLIJSONMCPExposeSameRequiredAcknowledgement(t *testing.T
 	}
 	cliPlan, _ := json.Marshal(cliFailure.Details)
 	mcpPlan, _ := json.Marshal(actual.Error.Details)
-	var cliImpact, mcpImpact application.ProviderImpactPlan
-	if json.Unmarshal(cliPlan, &cliImpact) != nil || json.Unmarshal(mcpPlan, &mcpImpact) != nil || cliImpact.PlanID == "" || cliImpact.PlanID != mcpImpact.PlanID {
-		t.Fatal("CLI/MCP do not expose the same concrete current stop plan")
+	var cliImpact, mcpImpact applicationStopPlan
+	downPlan, err := buildApplicationStopPlan(context.WithValue(t.Context(), applicationDownModeKey{}, true), r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stopPlan, err := buildApplicationStopPlan(t.Context(), r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if json.Unmarshal(cliPlan, &cliImpact) != nil || json.Unmarshal(mcpPlan, &mcpImpact) != nil || cliImpact.Scope.PlanID != downPlan.Scope.PlanID || mcpImpact.Scope.PlanID != stopPlan.Scope.PlanID {
+		t.Fatal("CLI down and MCP stop do not expose their current scoped authorities")
 	}
 }
 
@@ -95,12 +160,12 @@ func TestApplicationStopHTTPUsesCurrentScopeAndCannotEscapeAuthorizedContext(t *
 		t.Fatalf("HTTP stop did not require current impact acknowledgement: %v", httpErr)
 	}
 	httpPlan, _ := json.Marshal(httpFailure.Details)
-	_, local, err := buildApplicationRuntimeRetirementPlan(t.Context(), r)
+	local, err := buildApplicationStopPlan(t.Context(), r)
 	if err != nil {
 		t.Fatal(err)
 	}
-	var decoded application.ProviderImpactPlan
-	if json.Unmarshal(httpPlan, &decoded) != nil || local.Impact == nil || decoded.PlanID != local.Impact.PlanID {
+	var decoded applicationStopPlan
+	if json.Unmarshal(httpPlan, &decoded) != nil || decoded.Scope.PlanID == "" || decoded.Scope.PlanID != local.Scope.PlanID {
 		t.Fatal("HTTP stop uses a different consequence authority")
 	}
 	for _, raw := range []json.RawMessage{json.RawMessage(`{"target":"foreign"}`), json.RawMessage(`{"environment":"foreign"}`), json.RawMessage(`{"name":"foreign"}`)} {

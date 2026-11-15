@@ -2,8 +2,11 @@ package identityprovider
 
 import (
 	"context"
+	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/hex"
+	"encoding/pem"
 	"fmt"
 	"net"
 	"net/http"
@@ -143,10 +146,69 @@ func TestKeycloakHARuntimeFailoverAcceptanceInCI(t *testing.T) {
 	}
 	issuer.Rotate(t)
 	if err := driver.RotatePKI(ctx); err != nil {
+		logKeycloakDatabaseTLSState(t, ctx, runtimeProvider, files)
 		t.Fatalf("rotate Keycloak PKI: %v", err)
 	}
 	waitForKeycloakContinuity(t, ctx, driver, resource, binding, "Keycloak PKI rotation")
 	assertKeycloakOldCARejected(t, ctx, oldCA, files.PublicPort)
+}
+
+// Log enough public certificate metadata to distinguish a stale PostgreSQL
+// leaf from a stale Keycloak JDBC trust projection when a live CA rotation
+// fails. The certificate bytes and fingerprints are public material; no keys
+// or connection credentials are emitted.
+func logKeycloakDatabaseTLSState(t *testing.T, ctx context.Context, runtimeProvider bhruntime.RuntimeProvider, files KeycloakFiles) {
+	t.Helper()
+	rootPath := filepath.Join(files.Dir, "db-ha", "runtime", "ca.pem")
+	leafPath := filepath.Join(files.Dir, "db-ha", "runtime", "server.pem")
+	rootPEM, rootErr := os.ReadFile(rootPath)
+	leafPEM, leafErr := os.ReadFile(leafPath)
+	if rootErr != nil || leafErr != nil {
+		t.Logf("Keycloak database TLS file diagnostic: trust_read_error=%v leaf_read_error=%v", rootErr, leafErr)
+	} else {
+		roots := x509.NewCertPool()
+		for rest := rootPEM; len(rest) > 0; {
+			block, next := pem.Decode(rest)
+			if block == nil {
+				break
+			}
+			rest = next
+			if block.Type != "CERTIFICATE" {
+				continue
+			}
+			cert, parseErr := x509.ParseCertificate(block.Bytes)
+			if parseErr != nil {
+				t.Logf("Keycloak database trust certificate parse error: %v", parseErr)
+				continue
+			}
+			roots.AddCert(cert)
+			t.Logf("Keycloak database projected trust anchor: subject=%q serial=%s sha256=%s", cert.Subject.String(), cert.SerialNumber.Text(16), certificateFingerprint(cert))
+		}
+		block, _ := pem.Decode(leafPEM)
+		if block == nil {
+			t.Log("Keycloak database projected server leaf is not valid PEM")
+		} else if leaf, parseErr := x509.ParseCertificate(block.Bytes); parseErr != nil {
+			t.Logf("Keycloak database projected server leaf parse error: %v", parseErr)
+		} else {
+			_, verifyErr := leaf.Verify(x509.VerifyOptions{Roots: roots, DNSName: "keycloak-db", KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}})
+			t.Logf("Keycloak database projected server leaf: subject=%q issuer=%q serial=%s sha256=%s verifies_against_projected_trust=%t verify_error=%v", leaf.Subject.String(), leaf.Issuer.String(), leaf.SerialNumber.Text(16), certificateFingerprint(leaf), verifyErr == nil, verifyErr)
+		}
+	}
+
+	// Query the live PostgreSQL endpoint from a cluster member and print only
+	// the TLS handshake/certificate chain. This lets the next hosted run show
+	// whether PostgreSQL still presents a leaf different from the projection.
+	command := `set -o pipefail; timeout 10 openssl s_client -starttls postgres -connect keycloak-db:5432 -showcerts </dev/null 2>&1 | sed -n '1,100p'`
+	output, execErr := runtimeProvider.ExecProject(ctx, files.Project, files.Compose, files.Env, "keycloak-db-member-1", "sh", "-ec", command)
+	if len(output) > 12000 {
+		output = output[:12000] + "[truncated]"
+	}
+	t.Logf("Keycloak live PostgreSQL TLS probe (error=%v):\n%s", execErr, output)
+}
+
+func certificateFingerprint(cert *x509.Certificate) string {
+	sum := sha256.Sum256(cert.Raw)
+	return hex.EncodeToString(sum[:])
 }
 
 func assertKeycloakOldCARejected(t *testing.T, ctx context.Context, oldCA []byte, port int) {

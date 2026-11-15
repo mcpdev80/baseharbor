@@ -368,32 +368,41 @@ func TestAppWizardControllerProviderRowsUseRealNewlines(t *testing.T) {
 	}
 }
 
-func TestAppWizardControllerFreshFactsBlocksWithoutTimeout(t *testing.T) {
+func TestAppWizardControllerFreshFactsUsesBoundedRuntimeTimeout(t *testing.T) {
 	input := appWizardTestInput(t)
+	var remaining time.Duration
 	input.Refresh = func(ctx context.Context, d appWizardDecision) (*GuidedReadContext, *application.ProviderImpactPlan, error) {
-		// Block indefinitely – simulates the Cluster B wizard-hang
-		// After fix: freshFacts wraps refresh in context.WithTimeout(30s)
-		// so this test will get a timeout error instead of hanging forever
-		<-ctx.Done()
-		return nil, nil, ctx.Err()
+		deadline, ok := ctx.Deadline()
+		if !ok {
+			t.Fatal("preview refresh has no deadline")
+		}
+		remaining = time.Until(deadline)
+		return nil, nil, errors.New("stop after inspecting preview deadline")
 	}
 	w, err := newAppWizardController(context.Background(), input)
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Step with appWizardNext triggers freshFacts in appWizardNeeds case
-	// With the fix, this should timeout rather than hang forever
-	type testDone struct{}
-	done := make(chan testDone, 1)
-	go func() {
-		w.Step(context.Background(), appWizardNext)
-		done <- testDone{}
-	}()
-	select {
-	case <-done:
-		// Test completed – if the fix is in place, freshFacts timed out
-	case <-time.After(35 * time.Second):
-		t.Fatal("freshFacts blocked indefinitely – no timeout on refresh callback")
+	_, _, err = w.freshFacts(context.Background(), w.intent())
+	if err == nil || err.Error() != "stop after inspecting preview deadline" {
+		t.Fatalf("freshFacts error = %v", err)
+	}
+	if remaining < 119*time.Second || remaining > appWizardPreviewRefreshTimeout {
+		t.Fatalf("preview refresh timeout budget = %s, want about %s", remaining, appWizardPreviewRefreshTimeout)
+	}
+	canceled, cancel := context.WithCancel(context.Background())
+	cancel()
+	input.Refresh = func(ctx context.Context, d appWizardDecision) (*GuidedReadContext, *application.ProviderImpactPlan, error) {
+		<-ctx.Done()
+		return nil, nil, ctx.Err()
+	}
+	w, err = newAppWizardController(context.Background(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _, err = w.freshFacts(canceled, w.intent())
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("freshFacts error after caller cancellation = %v, want context.Canceled", err)
 	}
 }
 
