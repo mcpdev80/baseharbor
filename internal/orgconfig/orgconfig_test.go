@@ -2,6 +2,7 @@ package orgconfig
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"os/exec"
@@ -65,6 +66,7 @@ func TestLocalActivationAndEffectiveProvenance(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(root, "config"))
 	t.Setenv("XDG_CACHE_HOME", filepath.Join(root, "cache"))
+	t.Setenv(worldWritableCheckOptOutEnv, "skip")
 	sourceDir := filepath.Join(root, "org")
 	if err := os.MkdirAll(sourceDir, 0o700); err != nil {
 		t.Fatal(err)
@@ -115,6 +117,7 @@ func TestGitResolutionPinsRevisionAndCheckDoesNotActivate(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(root, "config"))
 	t.Setenv("XDG_CACHE_HOME", filepath.Join(root, "cache"))
+	t.Setenv(worldWritableCheckOptOutEnv, "skip")
 	repo := filepath.Join(root, "repo")
 	if err := os.MkdirAll(repo, 0o700); err != nil {
 		t.Fatal(err)
@@ -270,4 +273,153 @@ func TestTypedOrganizationSourceErrors(t *testing.T) {
 	if !errors.Is(err, ErrSourceUnavailable) {
 		t.Fatalf("Resolve unavailable Git error = %v, want ErrSourceUnavailable", err)
 	}
+}
+
+func TestCanonicalLocationUsesUserConfigDir(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "cfg")
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("XDG_CONFIG_HOME", root)
+
+	path, err := ActivePath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := filepath.Join(root, "baseharbor", "organization", "active.json"); filepath.Clean(path) != want {
+		t.Fatalf("ActivePath = %q, want %q (canonical user-state location)", path, want)
+	}
+	// The canonical location is not world-writable, so the guard must pass.
+	if info, err := os.Stat(root); err != nil || info.Mode()&0o002 != 0 {
+		t.Fatalf("test config root is not private: %v %v", info, err)
+	}
+}
+
+func TestWorldWritableConfigRootIsRejected(t *testing.T) {
+	root := t.TempDir() // t.TempDir() is 0777 world-writable
+	cfgDir := filepath.Join(root, "config")
+	if err := os.MkdirAll(cfgDir, 0o777); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(cfgDir, 0o777); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("XDG_CONFIG_HOME", cfgDir)
+
+	state := ActiveState{
+		Resolution: Resolution{ResolvedRevision: "deadbeef", Source: Source{Kind: SourceLocal, Location: "ignored"}},
+		Config:     parseConfigForTest(t),
+	}
+	err := SaveActive(state)
+	if err == nil {
+		t.Fatal("SaveActive into a world-writable XDG_CONFIG_HOME must be rejected")
+	}
+}
+
+func TestWorldWritableMigrationAdoptsOnceThenFreezes(t *testing.T) {
+	root := t.TempDir() // 0777 world-writable
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(root, "config"))
+
+	// Seed a stale /tmp selection at the (world-writable) canonical-for-this-env
+	// path: XDG_CONFIG_HOME itself points at a world-writable tree.
+	seed := `{"resolution":{"resolved_revision":"mig-1","source":{"kind":"local","location":"x"}},"config":` + testConfigJSON(t) + `}`
+	seedPath, err := ActivePath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(seedPath), 0o777); err != nil {
+		t.Fatal(err)
+	}
+	// MkdirAll honours umask, so force the world-writable bits explicitly.
+	if err := os.Chmod(filepath.Dir(seedPath), 0o777); err != nil {
+		t.Fatal(err)
+	}
+	if !isWorldWritableDir(filepath.Dir(seedPath)) {
+		t.Fatalf("test did not create a world-writable selection directory")
+	}
+	if err := os.WriteFile(seedPath, []byte(seed), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// First SaveActive in the world-writable location: a stale selection exists,
+	// so it is frozen read-only and the write is refused.
+	if _, err := SaveActiveForTest(); err == nil {
+		t.Fatal("first SaveActive in a world-writable XDG_CONFIG_HOME must be rejected")
+	}
+	if info, err := os.Stat(seedPath); err != nil {
+		t.Fatalf("seed file removed after freeze: %v", err)
+	} else if info.Mode().Perm()&0o077 != 0 {
+		t.Fatalf("stale /tmp selection not frozen to read-only: %v", info.Mode().Perm())
+	}
+	if !isWorldFrozenTombstone(filepath.Dir(seedPath)) {
+		t.Fatal("expected world-writable tombstone marker next to the frozen selection")
+	}
+
+	// The frozen selection remains readable, so LoadActive still returns the
+	// adopted value (the read path is unaffected).
+	loaded, err := LoadActive()
+	if err != nil {
+		t.Fatalf("LoadActive after freeze = %v", err)
+	}
+	if loaded.Resolution.ResolvedRevision != "mig-1" {
+		t.Fatalf("LoadActive did not return the frozen selection: %+v", loaded.Resolution)
+	}
+
+	// Pointing XDG_CONFIG_HOME at a private directory then writing succeeds and
+	// the canonical location is private.
+	privateRoot := filepath.Join(t.TempDir(), "cfg")
+	if err := os.MkdirAll(privateRoot, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("XDG_CONFIG_HOME", privateRoot)
+	canonical, err := ActivePath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if isWorldWritableDir(filepath.Dir(canonical)) {
+		t.Fatalf("test private location is world-writable: %q", canonical)
+	}
+	if _, err := SaveActiveForTest(); err != nil {
+		t.Fatalf("SaveActive in private directory failed: %v", err)
+	}
+	if info, err := os.Stat(canonical); err != nil || info.Size() == 0 {
+		t.Fatalf("canonical private location missing after migration write: %v %v", info, err)
+	}
+}
+
+func parseConfigForTest(t *testing.T) Config {
+	t.Helper()
+	config, err := parseConfig([]byte(testOrgYAML))
+	if err != nil {
+		t.Fatalf("parseConfig: %v", err)
+	}
+	return config
+}
+
+func parseConfigForTestRaw() Config {
+	config, err := parseConfig([]byte(testOrgYAML))
+	if err != nil {
+		panic(err)
+	}
+	return config
+}
+
+func testConfigJSON(t *testing.T) string {
+	t.Helper()
+	config := parseConfigForTest(t)
+	data, err := json.Marshal(config)
+	if err != nil {
+		t.Fatalf("marshal config: %v", err)
+	}
+	return string(data)
+}
+
+// SaveActiveForTest writes a state with the default local source, exercising
+// the world-writable migration path under test control.
+func SaveActiveForTest() (ActiveState, error) {
+	state := ActiveState{
+		Resolution: Resolution{ResolvedRevision: "mig-1", Source: Source{Kind: SourceLocal, Location: "ignored"}},
+		Config:     parseConfigForTestRaw(),
+	}
+	return state, SaveActive(state)
 }
