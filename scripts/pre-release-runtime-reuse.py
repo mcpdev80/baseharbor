@@ -8,12 +8,14 @@ explicit impact-map classification. Unknown paths invalidate every matrix gate.
 import argparse
 from datetime import datetime, timedelta, timezone
 import hashlib
+import http.client
 import io
 import json
 import fnmatch
 from pathlib import Path
 import re
 import subprocess
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -31,8 +33,15 @@ def request_json(repo, path, token):
         headers={"Authorization": "Bearer " + token,
                  "Accept": "application/vnd.github+json",
                  "X-GitHub-Api-Version": "2022-11-28"})
-    with urllib.request.urlopen(request, timeout=15) as response:
-        return json.load(response)
+    for attempt in range(3):
+        try:
+            with urllib.request.urlopen(request, timeout=15) as response:
+                return json.load(response)
+        except http.client.IncompleteRead as error:
+            if attempt == 2:
+                raise urllib.error.URLError("incomplete GitHub API response") from error
+            time.sleep(0.25 * (2 ** attempt))
+    raise urllib.error.URLError("GitHub API response retry exhausted")
 
 
 def artifact_manifest(repo, artifact, token):

@@ -1,9 +1,12 @@
 """Fail-closed unit tests for Pre-Release runtime evidence reuse."""
 from datetime import datetime, timedelta, timezone
+import http.client
 import importlib.util
+import io
 import json
 from pathlib import Path
 import unittest
+from unittest import mock
 
 spec = importlib.util.spec_from_file_location(
     "pre_release_runtime_reuse", Path(__file__).with_name("pre-release-runtime-reuse.py"))
@@ -68,6 +71,23 @@ class RuntimeReuseTests(unittest.TestCase):
         self.assertFalse(reuse.within_24_hours(None, current.isoformat()))
         self.assertFalse(reuse.within_24_hours("2026-11-14T12:00:00", current.isoformat()))
         self.assertFalse(reuse.within_24_hours("not-a-time", current.isoformat()))
+
+    def test_incomplete_api_response_retries_before_parsing(self):
+        with mock.patch.object(reuse.urllib.request, "urlopen", side_effect=[
+                http.client.IncompleteRead(b"", 274661), io.BytesIO(b'{"ok": true}')]) as urlopen, \
+                mock.patch.object(reuse.time, "sleep") as sleep:
+            self.assertEqual({"ok": True}, reuse.request_json("owner/repo", "test", "token"))
+        self.assertEqual(2, urlopen.call_count)
+        sleep.assert_called_once_with(0.25)
+
+    def test_exhausted_incomplete_api_retries_fail_closed_as_url_error(self):
+        error = http.client.IncompleteRead(b"", 274661)
+        with mock.patch.object(reuse.urllib.request, "urlopen", side_effect=[error, error, error]) as urlopen, \
+                mock.patch.object(reuse.time, "sleep") as sleep:
+            with self.assertRaises(reuse.urllib.error.URLError):
+                reuse.request_json("owner/repo", "test", "token")
+        self.assertEqual(3, urlopen.call_count)
+        self.assertEqual(2, sleep.call_count)
 
     def test_only_successful_exact_evidence_is_reused(self):
         self.assertTrue(self.decide())
