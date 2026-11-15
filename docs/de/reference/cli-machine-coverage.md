@@ -58,10 +58,19 @@ Aktuelle Daten liefert `baha agent describe -o json` (`cli_coverage`). Nach Code
 | `baha app version` | Darstellung |  |  | Repository-bound presentation of the app.versions read model for the current deployment; machine clients invoke app.versions with explicit identity. |
 | `baha app versions` | semantisch | CLI -o json / typed MCP result | baseharbor.app.versions |  |
 | `baha app workspace` | Darstellung |  |  | Interactive presentation combining workspace.init and workspace.map; clients invoke those typed operations explicitly. |
+| `baha app workspace component` | Darstellung |  |  | Source-model component maintenance group; presentation over the portable source model that workspace.init/map/show/resolve read and write. |
+| `baha app workspace component add` | Darstellung |  |  | Edits the versioned source model directly; the shared workspace.init/domain contract performs the same validated write. |
+| `baha app workspace component list` | Darstellung |  |  | Reads the versioned source model directly; the shared workspace.show/resolve results expose the same component/source identities. |
+| `baha app workspace component remove` | Darstellung |  |  | Edits the versioned source model directly; the shared workspace.init/domain contract performs the same validated write. |
 | `baha app workspace init` | semantisch | CLI -o json / typed MCP result | baseharbor.workspace.init |  |
 | `baha app workspace map` | semantisch | CLI -o json / typed MCP result | baseharbor.workspace.map |  |
+| `baha app workspace path` | semantisch | CLI -o json / typed MCP result | baseharbor.workspace.map |  |
+| `baha app workspace paths` | Alias | CLI -o json / typed MCP result | baseharbor.workspace.map | Canonical command: baha app workspace path; shares its coverage classification. |
 | `baha app workspace resolve` | semantisch | CLI -o json / typed MCP result | baseharbor.workspace.resolve |  |
 | `baha app workspace show` | semantisch | CLI -o json / typed MCP result | baseharbor.workspace.show |  |
+| `baha app workspace source` | Darstellung |  |  | Source-model maintenance group; presentation over the portable source model that workspace.init reads and writes. |
+| `baha app workspace source add` | Darstellung |  |  | Edits the versioned source model directly; the shared workspace.init/domain contract performs the same validated write. |
+| `baha app workspace source remove` | Darstellung |  |  | Detaches source, mapping and component entries through the shared workspace domain; no runtime mutation and no local file deletion. |
 | `baha app workspace status` | semantisch | CLI -o json / typed MCP result | baseharbor.workspace.status |  |
 | `baha app workspace update` | semantisch | CLI -o json / typed MCP result | baseharbor.workspace.update |  |
 | `baha backup` | semantisch | CLI -o json / typed MCP result | baseharbor.backup |  |
@@ -103,6 +112,15 @@ Aktuelle Daten liefert `baha agent describe -o json` (`cli_coverage`). Nach Code
 | `baha user` | Darstellung |  |  | Human directory and lifecycle commands for Core-managed people. |
 | `baha user list` | Darstellung |  |  | Core-local human directory view; authentication state remains authoritative in the owned Keycloak realm. |
 | `baha user offboard` | ausgeschlossen |  |  | Human-confirmed operator directory action disables the owned Keycloak user and revokes its workstation leaves; no typed MCP operation, so excluded from the machine tool boundary by design. |
+| `baha workspace component` | Darstellung |  |  | Source-model component maintenance group; presentation over the portable source model that workspace.init/map/show/resolve read and write. |
+| `baha workspace component add` | Darstellung |  |  | Edits the versioned source model directly; the shared workspace.init/domain contract performs the same validated write. |
+| `baha workspace component list` | Darstellung |  |  | Reads the versioned source model directly; the shared workspace.show/resolve results expose the same component/source identities. |
+| `baha workspace component remove` | Darstellung |  |  | Edits the versioned source model directly; the shared workspace.init/domain contract performs the same validated write. |
+| `baha workspace path` | semantisch | CLI -o json / typed MCP result | baseharbor.workspace.map |  |
+| `baha workspace paths` | Alias | CLI -o json / typed MCP result | baseharbor.workspace.map | Canonical command: baha workspace path; shares its coverage classification. |
+| `baha workspace source` | Darstellung |  |  | Source-model maintenance group; presentation over the portable source model that workspace.init reads and writes. |
+| `baha workspace source add` | Darstellung |  |  | Edits the versioned source model directly; the shared workspace.init/domain contract performs the same validated write. |
+| `baha workspace source remove` | Darstellung |  |  | Detaches source, mapping and component entries through the shared workspace domain; no runtime mutation and no local file deletion. |
 | `baha workstation` | Darstellung |  |  | Human inventory and lifecycle commands for Core-managed workstation certificates. |
 | `baha workstation list` | Darstellung |  |  | Core-local inventory of workstation certificate ownership, expiry and revocation state. |
 | `baha workstation new` | ausgeschlossen |  |  | Human invitation workflow for a new device; private one-use invitation transfer is an operator action and has no machine equivalent. |
@@ -154,7 +172,7 @@ Aktuelle Daten liefert `baha agent describe -o json` (`cli_coverage`). Nach Code
 | `baha use` | Darstellung |  |  | Persists local user selection; machine clients supply explicit target arguments on each semantic operation. |
 | `baha version` | Darstellung |  |  | Executable build identity is provided by agent describe and MCP initialization. |
 | `baha whoami` | semantisch | CLI -o json / typed MCP result | baseharbor.operator.identity |  |
-| `baha workspace` | Darstellung |  |  | Canonical interactive presentation of the same workspace.init/map operations. |
+| `baha workspace` | Darstellung |  |  | Canonical interactive presentation of the same workspace.init/map operations. `baha workspace source` und `baha workspace component` sind die Kanalnamen für die Gruppenpflege von Quellen und Komponenten. |
 | `baha workspace init` | semantisch | CLI -o json / typed MCP result | baseharbor.workspace.init |  |
 | `baha workspace map` | semantisch | CLI -o json / typed MCP result | baseharbor.workspace.map |  |
 | `baha workspace resolve` | semantisch | CLI -o json / typed MCP result | baseharbor.workspace.resolve |  |

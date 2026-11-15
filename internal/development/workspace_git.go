@@ -63,16 +63,55 @@ type WorkspaceGitUpdateResult struct {
 	Repositories  []WorkspaceGitRepositoryStatus `json:"repositories"`
 }
 
+// workspaceLocalSourceIsGitRepository reports whether a local directory source
+// is itself a Git checkout; plain directories have no Git state to inspect.
+// workspaceGitRepositoryAt reports whether the given directory is itself a Git
+// checkout root; a plain directory or any path error means "no Git state".
+func workspaceGitRepositoryAt(ctx context.Context, root string) bool {
+	if root == "" {
+		return false
+	}
+	info, err := os.Stat(root)
+	if err != nil || !info.IsDir() {
+		return false
+	}
+	out, err := workspaceGitOutput(ctx, root, "rev-parse", "--show-toplevel")
+	return err == nil && filepath.Clean(strings.TrimSpace(out)) == filepath.Clean(root)
+}
+
+func workspaceLocalSourceIsGitRepository(ctx context.Context, source SourceDefinition) bool {
+	return workspaceGitRepositoryAt(ctx, strings.TrimSpace(source.Path))
+}
+
+// localSourceRoot is the workspace root of a local directory source: the
+// portable path, replaced by an explicit developer-local mapping when set.
+func localSourceRoot(mapping WorkspaceMapping, source SourceDefinition) string {
+	if mapped := strings.TrimSpace(mapping.Sources[source.ID]); mapped != "" {
+		return mapped
+	}
+	return strings.TrimSpace(source.Path)
+}
+
 func InspectWorkspaceGit(ctx context.Context, model SourceModel, mapping WorkspaceMapping, fetch bool) (WorkspaceGitStatus, error) {
 	if err := model.Validate(); err != nil {
 		return WorkspaceGitStatus{}, err
 	}
 	status := WorkspaceGitStatus{SchemaVersion: WorkspaceGitStatusVersion}
 	for _, source := range model.Sources {
-		if source.Type != SourceRepository {
+		// Local directory sources keep their path in the portable source model.
+		// The developer-local mapping may override it for this workstation;
+		// plain directories without Git state are skipped and never enter any
+		// update loop, exactly like OCI sources.
+		if source.Type != SourceRepository && source.Type != SourceLocal {
 			continue
 		}
 		path := strings.TrimSpace(mapping.Sources[source.ID])
+		if source.Type == SourceLocal {
+			path = localSourceRoot(mapping, source)
+			if path == "" || !workspaceGitRepositoryAt(ctx, path) {
+				continue
+			}
+		}
 		item := WorkspaceGitRepositoryStatus{Source: source.ID, Path: path}
 		if path == "" {
 			item.State = WorkspaceGitUnavailable

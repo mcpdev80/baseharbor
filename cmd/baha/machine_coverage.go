@@ -62,6 +62,13 @@ func classifyCommandCoverage(path string, command *cli.Command) commandCoverage 
 		row.Reason = "Command group; invoke its supported subcommands."
 		return row
 	}
+	// Workspace namespace clones (workspaceNamespaceCommand) classify through
+	// their canonical app-workspace twins; group rows above already matched.
+	if isWorkspaceNamespaceClone(path) {
+		twin := classifyCommandCoverage(canonicalCoveragePath(path), command)
+		twin.Command = path
+		return twin
+	}
 	if operationID, ok := cliMachineOperations[path]; ok {
 		if operation, exists := machine.OperationByID(operationID); exists {
 			row.Classification = "semantic"
@@ -88,15 +95,39 @@ func classifyCommandCoverage(path string, command *cli.Command) commandCoverage 
 	if reason, ok := cliPresentationCommands[path]; ok {
 		row.Classification = "presentation"
 		row.Reason = reason
+		return row
 	}
 	return row
 }
 
+// isWorkspaceNamespaceClone reports whether a path belongs to the root
+// workspace namespace, including its nested group commands.
+func isWorkspaceNamespaceClone(path string) bool {
+	return strings.HasPrefix(path, "baha workspace") && !strings.HasPrefix(path, "baha app workspace")
+}
+
+// canonicalCoveragePath maps a root-namespace workspace command onto its
+// canonical app-workspace twin. Both namespaces execute identical shared
+// implementations (workspaceNamespaceCommand reuses the app workspace tree),
+// so one classification table serves both surfaces; the generated
+// machine-coverage reference still lists every command path explicitly.
+func canonicalCoveragePath(path string) string {
+	if !isWorkspaceNamespaceClone(path) {
+		return path
+	}
+	remainder := strings.TrimSpace(strings.TrimPrefix(path, "baha workspace"))
+	if remainder == "" {
+		return "baha app workspace"
+	}
+	return "baha app workspace " + remainder
+}
+
+// isWorkspaceNamespaceClone reports whether a path belongs to the root
+
 var cliMachineOperations = map[string]string{
-	"baha app edit":           "app.edit",
-	"baha app footprint show": "app.footprint.show",
-	"baha update":             "release.check",
-	"baha up":                 "control-plane.up", "baha down": "control-plane.stop", "baha destroy": "control-plane.destroy", "baha status": "control-plane.status", "baha doctor": "control-plane.doctor",
+	"baha app edit": "app.edit", "baha app footprint show": "app.footprint.show",
+	"baha update": "release.check",
+	"baha up":     "control-plane.up", "baha down": "control-plane.stop", "baha destroy": "control-plane.destroy", "baha status": "control-plane.status", "baha doctor": "control-plane.doctor",
 	"baha openbao status":    "openbao.status",
 	"baha openbao bootstrap": "openbao.bootstrap",
 	"baha openbao unseal":    "openbao.unseal",
@@ -124,36 +155,45 @@ var cliMachineOperations = map[string]string{
 	"baha app workspace resolve": "workspace.resolve", "baha workspace resolve": "workspace.resolve",
 	"baha app workspace status": "workspace.status", "baha workspace status": "workspace.status", "baha app workspace update": "workspace.update", "baha workspace update": "workspace.update",
 	"baha app workspace init": "workspace.init", "baha workspace init": "workspace.init", "baha app workspace map": "workspace.map", "baha workspace map": "workspace.map",
+	"baha app workspace path": "workspace.map",
+
 	"baha provider list": "provider.list", "baha provider inspect": "provider.inspect", "baha provider verify": "provider.verify", "baha provider add": "provider.add", "baha provider remove": "provider.remove",
 	"baha policy check": "policy.check", "baha policy explain": "policy.explain",
 	"baha config organization show": "organization.inspect", "baha config organization check": "organization.check", "baha config organization set": "organization.set", "baha config organization update": "organization.update",
 }
 
 var cliPresentationCommands = map[string]string{
-	"baha config prompt":             "Client-local shell prompt display preferences; explicit target arguments and target inspection provide semantic context.",
-	"baha app workspace":             "Interactive presentation combining workspace.init and workspace.map; clients invoke those typed operations explicitly.",
-	"baha app secure-profile export": "Operator-local, password-locked file export of opt-in local credentials; no runtime mutation or machine tool. Ciphertext opens only with the export password.",
-	"baha workspace":                 "Canonical interactive presentation of the same workspace.init/map operations.",
-	"baha target activate":           "Persists local user selection; machine clients supply explicit target arguments on each semantic operation.",
-	"baha target policy set":         "Owner-local protected Target configuration edit with CAS; no remote operator policy mutation is exposed yet. Remote targets refuse this action; machine clients must not bypass the owning Core authority.",
-	"baha use":                       "Persists local user selection; machine clients supply explicit target arguments on each semantic operation.",
-	"baha target deactivate":         "Clears persisted local user selection; machine clients omit explicit target to resolve configured defaults.",
-	"baha":                           "Root help and routing; use semantic operations for product actions.",
-	"baha agent describe":            "Machine registry/discovery itself, rather than a product mutation.",
-	"baha mcp serve":                 "Starts the local MCP transport; clients launch it before discovery.",
-	"baha completion":                "Shell completion emits client-local shell text; semantic discovery is agent describe.",
-	"baha shell-init":                "Shell-local helpers; explicit Target selection remains product functionality.",
-	"baha prompt":                    "Displays shell-local context; target inspection is the semantic equivalent.",
-	"baha version":                   "Executable build identity is provided by agent describe and MCP initialization.",
-	"baha open":                      "Host browser presentation over validated application/TLS state; typed clients inspect app status and TLS instead.",
-	"baha new":                       "Human creation chooser delegating to existing app.new, stack.create, target.create, provider.init and workspace operations.",
-	"baha onboard":                   "Guided workstation onboarding presentation; the underlying installation, target and enrollment operations retain their own authenticated semantic contracts.",
-	"baha user":                      "Human directory and lifecycle commands for Core-managed people.",
-	"baha user list":                 "Core-local human directory view; authentication state remains authoritative in the owned Keycloak realm.",
-	"baha workstation":               "Human inventory and lifecycle commands for Core-managed workstation certificates.",
-	"baha workstation list":          "Core-local inventory of workstation certificate ownership, expiry and revocation state.",
-	"baha tui":                       "Human interactive presentation; its product actions require individual semantic coverage.",
-	"baha app version":               "Repository-bound presentation of the app.versions read model for the current deployment; machine clients invoke app.versions with explicit identity.",
+	"baha config prompt":                  "Client-local shell prompt display preferences; explicit target arguments and target inspection provide semantic context.",
+	"baha app workspace":                  "Interactive presentation combining workspace.init and workspace.map; clients invoke those typed operations explicitly.",
+	"baha app workspace component":        "Source-model component maintenance group; presentation over the portable source model that workspace.init/map/show/resolve read and write.",
+	"baha app workspace component add":    "Edits the versioned source model directly; the shared workspace.init/domain contract performs the same validated write.",
+	"baha app workspace component list":   "Reads the versioned source model directly; the shared workspace.show/resolve results expose the same component/source identities.",
+	"baha app workspace component remove": "Edits the versioned source model directly; the shared workspace.init/domain contract performs the same validated write.",
+	"baha app workspace source":           "Source-model maintenance group; presentation over the portable source model that workspace.init reads and writes.",
+	"baha app workspace source add":       "Edits the versioned source model directly; the shared workspace.init/domain contract performs the same validated write.",
+	"baha app workspace source remove":    "Detaches source, mapping and component entries through the shared workspace domain; no runtime mutation and no local file deletion.",
+	"baha app secure-profile export":      "Operator-local, password-locked file export of opt-in local credentials; no runtime mutation or machine tool. Ciphertext opens only with the export password.",
+	"baha workspace":                      "Canonical interactive presentation of the same workspace.init/map operations.",
+	"baha target activate":                "Persists local user selection; machine clients supply explicit target arguments on each semantic operation.",
+	"baha target policy set":              "Owner-local protected Target configuration edit with CAS; no remote operator policy mutation is exposed yet. Remote targets refuse this action; machine clients must not bypass the owning Core authority.",
+	"baha use":                            "Persists local user selection; machine clients supply explicit target arguments on each semantic operation.",
+	"baha target deactivate":              "Clears persisted local user selection; machine clients omit explicit target to resolve configured defaults.",
+	"baha":                                "Root help and routing; use semantic operations for product actions.",
+	"baha agent describe":                 "Machine registry/discovery itself, rather than a product mutation.",
+	"baha mcp serve":                      "Starts the local MCP transport; clients launch it before discovery.",
+	"baha completion":                     "Shell completion emits client-local shell text; semantic discovery is agent describe.",
+	"baha shell-init":                     "Shell-local helpers; explicit Target selection remains product functionality.",
+	"baha prompt":                         "Displays shell-local context; target inspection is the semantic equivalent.",
+	"baha version":                        "Executable build identity is provided by agent describe and MCP initialization.",
+	"baha open":                           "Host browser presentation over validated application/TLS state; typed clients inspect app status and TLS instead.",
+	"baha new":                            "Human creation chooser delegating to existing app.new, stack.create, target.create, provider.init and workspace operations.",
+	"baha onboard":                        "Guided workstation onboarding presentation; the underlying installation, target and enrollment operations retain their own authenticated semantic contracts.",
+	"baha user":                           "Human directory and lifecycle commands for Core-managed people.",
+	"baha user list":                      "Core-local human directory view; authentication state remains authoritative in the owned Keycloak realm.",
+	"baha workstation":                    "Human inventory and lifecycle commands for Core-managed workstation certificates.",
+	"baha workstation list":               "Core-local inventory of workstation certificate ownership, expiry and revocation state.",
+	"baha tui":                            "Human interactive presentation; its product actions require individual semantic coverage.",
+	"baha app version":                    "Repository-bound presentation of the app.versions read model for the current deployment; machine clients invoke app.versions with explicit identity.",
 }
 
 // These modes are outside the semantic tool boundary by design. Business
