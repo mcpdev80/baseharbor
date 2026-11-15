@@ -52,8 +52,43 @@ func TestExplicitLocalTargetOwnsCorelessDeploymentNamespace(t *testing.T) {
 	if _, err := LoadDeploymentRecord(identity); err != nil {
 		t.Fatalf("load local workload deployment: %v", err)
 	}
+	orphans, err := CollectableOrphans(target)
+	if err != nil {
+		t.Fatalf("collect local workload deployment before Target detach: %v", err)
+	}
+	if len(orphans) != 1 || orphans[0].Identity.DeploymentID != identity.DeploymentID {
+		t.Fatalf("Target detach did not identify the Coreless deployment whose configuration owner would be removed: %#v", orphans)
+	}
 	if _, err := os.Lstat(runtimeRoot); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("local workload owner created Core runtime state: %v", err)
+	}
+}
+
+func TestCollectableOrphansRetainsTenantOwnerGrant(t *testing.T) {
+	t.Setenv("BASEHARBOR_STATE_DIR", "")
+	data, config := t.TempDir(), t.TempDir()
+	t.Setenv("XDG_DATA_HOME", data)
+	t.Setenv("XDG_CONFIG_HOME", config)
+	target := "tenant-workload"
+	saveLocalOwnerTestConfig(t, target, localOwnerTestDefinition("", "podman", "11111111-1111-4111-8111-111111111111"), AccessDefinition{Provider: "baseharbor-node-connector", Reference: "node-a"})
+	previous := TenantOwnerResolver
+	TenantOwnerResolver = func(name string) (bool, error) { return name == target, nil }
+	t.Cleanup(func() { TenantOwnerResolver = previous })
+
+	identity := testDeploymentIdentity(t, target, "tenant-app", "dev")
+	if err := SaveDeploymentRecord(DeploymentRecord{
+		Version:  DeploymentRecordVersion,
+		Identity: identity,
+		Source:   DeploymentSource{Kind: "repository", Repository: "/tenant/source"},
+	}); err != nil {
+		t.Fatalf("save tenant deployment through the owner grant: %v", err)
+	}
+	orphans, err := CollectableOrphans(target)
+	if err != nil {
+		t.Fatalf("collect tenant deployment before Target detach: %v", err)
+	}
+	if len(orphans) != 0 {
+		t.Fatalf("valid enrolled tenant owner was treated as missing during detach: %#v", orphans)
 	}
 }
 
