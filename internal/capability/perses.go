@@ -182,6 +182,11 @@ func persesStatusNotConfiguredInstance() *PersesStatus {
 // It never returns "verified": a real Perses health probe is required for that,
 // and this Core defines the optional seam only. Pin validation alone must never
 // map into "verified"/"ready".
+//
+// The declaration check is deliberately release-only. Operator authorization is
+// a separate question with its own fail-closed verdict; see
+// PersesConfiguredStatusNow, which ANDs the two so no status path can report a
+// configured surface that is not actually protected.
 func PersesStatusNow(selected bool) *PersesStatus {
 	if !selected {
 		status := PersesStatusNotConfigured
@@ -192,6 +197,19 @@ func PersesStatusNow(selected bool) *PersesStatus {
 		return &status
 	}
 	status := PersesStatusConfiguredUnverified
+	return &status
+}
+
+// PersesConfiguredStatusNow is the fail-closed variant of PersesStatusNow: a
+// surface is "configured" only when the pinned release validates AND its
+// effective security policy validates. An anonymous or unrestricted surface is
+// never configured, so the public status cannot advertise management access
+// that would in fact be an unauthenticated datasource proxy.
+func PersesConfiguredStatusNow(selected bool, policy PersesSecurityPolicy) *PersesStatus {
+	status := PersesStatusNotConfigured
+	if selected && ValidatePersesSecurityPolicy(policy) == nil {
+		status = PersesStatusConfiguredUnverified
+	}
 	return &status
 }
 

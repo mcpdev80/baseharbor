@@ -406,13 +406,18 @@ func ApplicationManagementUISurfaces(m Manifest, files RuntimeFiles) ([]Manageme
 	}
 	if m.Services.ObservabilityManagementUI && m.Services.Perses {
 		perses := capability.PersesManagementSurfaceNow(true)
+		// The access class is the effective one, resolved from what is actually
+		// configured: the pinned default is opt-in and ships unauthenticated, so
+		// the surface reports "unsupported" until a provider is really wired up.
+		// An empty authentication string stays empty: this Core has no verified
+		// Perses health path, so it can never claim an authenticated route.
 		result = append(result, ManagementUISurface{
 			Service:             "observability",
 			Purpose:             ProviderInterfaceObservability,
 			URL:                 "",
 			Authentication:      "",
 			AuthenticationClass: ManagementAuthenticationClass(perses.AuthClass()),
-			RoleMappings:        nil,
+			RoleMappings:        PersesUnsupportedRoleMappings(),
 		})
 		_ = perses.Release
 		_ = perses.Image
