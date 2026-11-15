@@ -39,7 +39,10 @@ func destroySelectiveApplicationWithConsent(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	plan, err := buildApplicationDestructionPlan(ctx, resolved, false)
+	// `app stop` authorizes the workload-stop scope and binds it to the
+	// provider-retirement plan. The destruction scope has a different PlanID,
+	// even though both operations retain data.
+	plan, err := buildApplicationStopPlan(ctx, resolved)
 	if err != nil {
 		return err
 	}
