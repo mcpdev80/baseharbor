@@ -182,10 +182,10 @@ func runCoreOnlyBootstrapRuntimeWithHA(t *testing.T, role coreinstallation.Machi
 		}
 		if err := containersecurity.VerifyComposeService(ctx, files.Project, "postgres-member-1", containersecurity.Requirements{
 			ReadOnlyRootfs:      true,
+			DropAllCaps:         true,
 			NoNewPrivs:          true,
 			AllowRootEntrypoint: true,
 			AllowedCapAdd:       allowedEntrypointCaps,
-			RequireCapDropAll:   true,
 		}); err != nil {
 			t.Fatalf("single PostgreSQL entrypoint security settings invalid: %v", err)
 		}
