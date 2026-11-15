@@ -88,19 +88,7 @@ func finishUninitializedRepositoryDestroy(ctx context.Context, target deployment
 	if err != nil {
 		return false, err
 	}
-	// A repository identity can outlive a successful full destroy: it is local
-	// source identity, while the Target deployment and provider owners are the
-	// mutable runtime state. Do not mistake that retained identity for a live
-	// deployment; below we prove absence against the selected Target itself.
-	applicationIDs := map[string]bool{}
-	if selection.Manifest.ApplicationID != "" {
-		applicationIDs[selection.Manifest.ApplicationID] = true
-	}
-	for _, id := range snapshot.ApplicationIDs {
-		if id != "" {
-			applicationIDs[id] = true
-		}
-	}
+	applicationIDs := applicationDestroyIdentityIDs(selection.Manifest, snapshot)
 	records, warnings, err := deployment.ListDeploymentsForDisplay(target.Name)
 	if err != nil || len(warnings) != 0 {
 		// A damaged deployment inventory must keep using the normal recovery path;
