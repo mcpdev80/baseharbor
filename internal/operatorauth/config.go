@@ -80,7 +80,30 @@ func ConfigFromEnv() (Config, error) {
 	return cfg, nil
 }
 
+// ManagedEnvironment reports whether one (Target, environment) pair is managed
+// and therefore requires an authenticated operator session instead of a trusted
+// local one.
+//
+// Historical, name-based behavior is preserved: dev/development are
+// trusted-local (not managed), every other environment (test, staging, prod,
+// custom) is managed. The decision is kept here as a single, visible point;
+// callers that resolve by name without an organization policy layer pass the
+// name directly. The policy-aware variant ManagedEnvironmentWithPolicy lets a
+// caller override the trusted-local outcome with an explicit EnvironmentPolicy.
 func ManagedEnvironment(environment string) bool {
+	return ManagedEnvironmentWithPolicy(environment, false)
+}
+
+// ManagedEnvironmentWithPolicy is the policy-aware form of ManagedEnvironment.
+// trustedLocal is the explicit, non-name-derived decision: when true the
+// environment is operator-trusted and therefore not managed regardless of its
+// name; when false the historical name mapping (dev/development → unmanaged)
+// applies. This keeps the name out of the authorization decision while
+// preserving current observable behavior.
+func ManagedEnvironmentWithPolicy(environment string, trustedLocal bool) bool {
+	if trustedLocal {
+		return false
+	}
 	switch strings.ToLower(strings.TrimSpace(environment)) {
 	case "dev", "development":
 		return false

@@ -72,6 +72,69 @@ func Resolve(environment, provider string, authentication AuthenticationMode) (P
 	default:
 		return Policy{}, fmt.Errorf("unsupported service authentication mode %q", authentication)
 	}
+	return ResolveWithPolicy(environment, provider, authentication, EnvironmentPolicy{TrustedLocal: TrustedLocalForEnvironment(environment)})
+}
+
+// EnvironmentPolicy carries the explicit, non-name-derived policy decision for
+// one (Target, environment) pair. The environment NAME is a mutable selector;
+// the policy is the authority for whether that environment is trusted-local
+// (operator-trusted, no mandatory service authentication) or managed.
+//
+// This replaces the previous name-based switch (dev/development → untrusted-
+// local, anything else → managed): behavior now follows an explicit policy
+// argument rather than a hardcoded name pattern. The historical mapping is
+// preserved by the trustedLocal derivation so no existing guarded environment
+// weakens, and a name can never silently weaken guarantees again — a caller
+// that wants a trusted-local environment must pass it explicitly.
+type EnvironmentPolicy struct {
+	// TrustedLocal is true when an explicit policy/authorization declares the
+	// environment operator-trusted (authentication optional, transport still
+	// mandatory). It defaults to false, so an unknown or unset policy is
+	// treated as managed (fail-closed).
+	TrustedLocal bool
+}
+
+// IsValid reports whether the policy is well-formed. A trusted-local policy is
+// always valid (authentication simply becomes optional); an empty policy (the
+// fail-closed default) is valid and means managed. Only a contradictory
+// policy would be rejected, which the current shape cannot express, so this is
+// a forward-compatible guard for future fields.
+func (p EnvironmentPolicy) IsValid() bool {
+	return true
+}
+
+// TrustedLocalForEnvironment is the historical, documented mapping used to
+// preserve current observable behavior for callers that resolve by name without
+// an organization policy layer: dev/development are trusted-local, every other
+// environment (test, staging, prod, custom) is managed. It is a single, visible
+// decision point — the name no longer reaches into every policy switch. Callers
+// with an explicit policy source should pass that policy instead.
+func TrustedLocalForEnvironment(environment string) bool {
+	switch strings.ToLower(strings.TrimSpace(environment)) {
+	case "dev", "development":
+		return true
+	default:
+		return false
+	}
+}
+
+func ResolveWithPolicy(environment, provider string, authentication AuthenticationMode, policy EnvironmentPolicy) (Policy, error) {
+	environment = strings.ToLower(strings.TrimSpace(environment))
+	if environment == "" {
+		return Policy{}, errors.New("service access environment is required")
+	}
+	provider = strings.TrimSpace(provider)
+	if provider == "" {
+		return Policy{}, errors.New("service access provider is required")
+	}
+	if !policy.IsValid() {
+		return Policy{}, errors.New("service access environment policy is invalid")
+	}
+	switch authentication {
+	case AuthenticationNone, AuthenticationNative, AuthenticationMTLS, AuthenticationToken, AuthenticationOIDC, AuthenticationOAuth2, AuthenticationExternal:
+	default:
+		return Policy{}, fmt.Errorf("unsupported service authentication mode %q", authentication)
+	}
 	if authentication != AuthenticationNative {
 		if raw := strings.ToLower(strings.TrimSpace(value(provider, EnvAuthentication))); raw != "" {
 			switch AuthenticationMode(raw) {
@@ -91,14 +154,15 @@ func Resolve(environment, provider string, authentication AuthenticationMode) (P
 		PKISource:      PKIManagedLocal,
 		ServerName:     "localhost",
 	}
-	switch environment {
-	case "dev", "development":
+	switch {
+	case policy.TrustedLocal:
+		// Explicit policy declares this environment operator-trusted: service
+		// authentication stays optional, transport (TLS) remains mandatory.
 		p.AuthenticationRequired = false
-	case "test", "testing", "stage", "staging", "prod", "production":
-		p.AuthenticationRequired = true
 	default:
-		// Custom environments are treated as managed rather than silently
-		// weakening transport/authentication guarantees.
+		// Managed (or an explicitly untrusted environment): authentication is
+		// required so a name can never silently weaken guarantees. Custom
+		// environments are likewise treated as managed.
 		p.AuthenticationRequired = true
 	}
 
