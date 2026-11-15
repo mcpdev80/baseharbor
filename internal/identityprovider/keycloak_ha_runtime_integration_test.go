@@ -128,6 +128,7 @@ func TestKeycloakHARuntimeFailoverAcceptanceInCI(t *testing.T) {
 		t.Fatalf("restart Keycloak PostgreSQL member %s: %v", primary, err)
 	}
 	waitForKeycloakPostgresMemberReady(t, ctx, runtimeProvider, files, primary)
+	waitForKeycloakPostgresHAClusterReady(t, ctx, runtimeProvider, files)
 	waitForKeycloakContinuity(t, ctx, driver, resource, binding, "Keycloak PostgreSQL member recovery")
 
 	if err := driver.RotateClientSecret(ctx); err != nil {
@@ -302,6 +303,77 @@ func waitForKeycloakPostgresMemberReady(t *testing.T, ctx context.Context, runti
 		case <-ticker.C:
 		}
 	}
+}
+
+func waitForKeycloakPostgresHAClusterReady(t *testing.T, ctx context.Context, runtimeProvider bhruntime.RuntimeProvider, files KeycloakFiles) {
+	t.Helper()
+	readyCtx, cancel := context.WithTimeout(ctx, 90*time.Second)
+	defer cancel()
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+
+	const roleProbe = `python3 -c 'import sys,urllib.request
+for role in ("primary", "replica"):
+ try:
+  response=urllib.request.urlopen("http://127.0.0.1:8008/"+role, timeout=2)
+  if response.status == 200:
+   print(role)
+   sys.exit(0)
+ except Exception:
+  pass
+sys.exit(1)'`
+	stableSamples := 0
+	var lastRoles []string
+	var lastErr error
+	for {
+		roles := make([]string, 0, 3)
+		lastErr = nil
+		for ordinal := 1; ordinal <= 3; ordinal++ {
+			service := fmt.Sprintf("keycloak-db-member-%d", ordinal)
+			output, err := runtimeProvider.ExecProject(readyCtx, files.Project, files.Compose, files.Env,
+				service, "sh", "-ec", roleProbe)
+			if err != nil {
+				lastErr = fmt.Errorf("read Patroni role on %s: %w", service, err)
+				break
+			}
+			roles = append(roles, strings.TrimSpace(output))
+		}
+		if lastErr == nil && keycloakPostgresHAClusterRolesReady(roles) {
+			stableSamples++
+			lastRoles = roles
+			if stableSamples >= 3 {
+				return
+			}
+		} else {
+			stableSamples = 0
+			if lastErr == nil {
+				lastRoles = roles
+			}
+		}
+		select {
+		case <-readyCtx.Done():
+			t.Fatalf("Keycloak PostgreSQL HA cluster did not converge to one primary and two ready replicas for three consecutive probes within 90s: roles=%v last_error=%v", lastRoles, lastErr)
+		case <-ticker.C:
+		}
+	}
+}
+
+func keycloakPostgresHAClusterRolesReady(roles []string) bool {
+	if len(roles) != 3 {
+		return false
+	}
+	primaryCount, replicaCount := 0, 0
+	for _, role := range roles {
+		switch role {
+		case "primary":
+			primaryCount++
+		case "replica":
+			replicaCount++
+		default:
+			return false
+		}
+	}
+	return primaryCount == 1 && replicaCount == 2
 }
 
 func waitForKeycloakContinuity(t *testing.T, ctx context.Context, driver *KeycloakDriver, resource capability.Resource, binding capability.Binding, phase string) {

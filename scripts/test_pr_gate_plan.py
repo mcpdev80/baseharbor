@@ -2754,7 +2754,8 @@ class CLISelectedCheckDeduplicationTests(unittest.TestCase):
 class IdentityProviderPackageRoutingTests(unittest.TestCase):
     def test_keycloak_test_only_selects_one_package_not_broad_fallback(self):
         for filename in ('internal/identityprovider/keycloak_single_native_ci_test.go',
-                         'internal/identityprovider/keycloak_files_test.go'):
+                         'internal/identityprovider/keycloak_files_test.go',
+                         'internal/identityprovider/keycloak_secret_rotation_test.go'):
             result = planner.plan(diff(paths(filename)), REQ, MAP_26,
                                   conservative_fallback=True)
             checks = {row['id'] for row in result['required_validation_checks']}
