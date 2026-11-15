@@ -99,6 +99,7 @@ nav:
   - Extension artifact trust: spec/extension-artifact-trust-v1.md
 - Betrieb:
   - Fehlerbehebung: troubleshooting/index.md
+  - Core-Bediene-API-Runbook: how-to/operator-api.md
   - Fehler: reference/errors.md
 - Automation und Agents:
   - Automation-Befehle: cli/automation-agents.md
