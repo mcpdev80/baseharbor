@@ -1,0 +1,13 @@
+{
+  "apiVersion": "perses.dev/v1alpha1",
+  "kind": "PersesDashboard",
+  "metadata": {
+    "name": "rabbitmq-messaging"
+  },
+  "spec": {
+    "duration": "24h",
+    "display": {
+      "name": "Messaging (RabbitMQ) — not available"
+    }
+  }
+}
