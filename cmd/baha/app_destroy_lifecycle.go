@@ -88,8 +88,18 @@ func finishUninitializedRepositoryDestroy(ctx context.Context, target deployment
 	if err != nil {
 		return false, err
 	}
-	if snapshot.PreviouslyRegistered || len(snapshot.ApplicationIDs) != 0 {
-		return false, nil
+	// A repository identity can outlive a successful full destroy: it is local
+	// source identity, while the Target deployment and provider owners are the
+	// mutable runtime state. Do not mistake that retained identity for a live
+	// deployment; below we prove absence against the selected Target itself.
+	applicationIDs := map[string]bool{}
+	if selection.Manifest.ApplicationID != "" {
+		applicationIDs[selection.Manifest.ApplicationID] = true
+	}
+	for _, id := range snapshot.ApplicationIDs {
+		if id != "" {
+			applicationIDs[id] = true
+		}
 	}
 	records, warnings, err := deployment.ListDeploymentsForDisplay(target.Name)
 	if err != nil || len(warnings) != 0 {
@@ -98,7 +108,9 @@ func finishUninitializedRepositoryDestroy(ctx context.Context, target deployment
 		return false, err
 	}
 	for _, record := range records {
-		if record.Identity.Application == selection.Manifest.Name && record.Identity.Environment == selection.Manifest.Environment {
+		if (record.Identity.Application == selection.Manifest.Name && record.Identity.Environment == selection.Manifest.Environment) ||
+			applicationIDs[record.Identity.ApplicationID] ||
+			(record.Source.Repository != "" && filepath.Clean(record.Source.Repository) == filepath.Clean(selection.RepositoryRoot)) {
 			return false, nil
 		}
 	}
@@ -110,8 +122,14 @@ func finishUninitializedRepositoryDestroy(ctx context.Context, target deployment
 	if err != nil {
 		return false, err
 	}
+	for _, binding := range registry.Bindings {
+		if applicationIDs[binding.ApplicationID] && (binding.Environment == "" || binding.Environment == selection.Manifest.Environment) {
+			return false, nil
+		}
+	}
 	for _, instance := range registry.Instances {
-		if instance.OwnerApplication == selection.Manifest.Name && instance.OwnerEnvironment == selection.Manifest.Environment {
+		if (instance.OwnerApplicationID != "" && applicationIDs[instance.OwnerApplicationID]) ||
+			(instance.OwnerApplication == selection.Manifest.Name && instance.OwnerEnvironment == selection.Manifest.Environment) {
 			return false, nil
 		}
 	}
