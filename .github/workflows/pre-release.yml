@@ -275,7 +275,7 @@ jobs:
         bash scripts/documentation-audit.sh
     - name: Validate v0.4.20 release-note hygiene
       id: v0420_hygiene
-      if: steps.release.outputs.tag == 'v0.4.20'
+      if: needs.source_prepare.outputs.tag == 'v0.4.20'
       shell: bash
       run: |
         set -euo pipefail
@@ -289,7 +289,7 @@ jobs:
         }
     - name: Validate v0.4.21 release readiness
       id: v0421_readiness
-      if: steps.release.outputs.tag == 'v0.4.21'
+      if: needs.source_prepare.outputs.tag == 'v0.4.21'
       shell: bash
       run: bash scripts/v0.4.21-readiness.sh
     - name: Validate workflow syntax
