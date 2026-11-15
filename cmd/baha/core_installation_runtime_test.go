@@ -70,23 +70,11 @@ func runCoreOnlyBootstrapRuntimeWithHA(t *testing.T, role coreinstallation.Machi
 	// Bootstrap must begin without an installation identity. The ordinary target
 	// helper seeds a ready owner for managed-deployment tests, which makes a real
 	// first Core install correctly reject replacing that existing identity.
-	target := configureTestTargetEmpty(t)
-	if os.Getenv("BASEHARBOR_TEST_RUNTIME") == "podman" {
-		cfg, err := deployment.LoadConfig()
-		if err != nil {
-			t.Fatal(err)
-		}
-		definition := cfg.Targets[target.Name]
-		definition.Runtime.Provider = "podman"
-		cfg.Targets[target.Name] = definition
-		if err := cfg.Save(); err != nil {
-			t.Fatal(err)
-		}
-		target, err = cfg.ResolveTarget("", "")
-		if err != nil {
-			t.Fatal(err)
-		}
+	runtimeProvider := os.Getenv("BASEHARBOR_TEST_RUNTIME")
+	if runtimeProvider == "" {
+		runtimeProvider = "docker"
 	}
+	target := configureIsolatedEmptyRuntimeTarget(t, isolatedTargetName(t), runtimeProvider)
 	t.Chdir(t.TempDir()) // Deliberately no repository or application contract.
 	runtime, err := detectRuntimeForTarget(ctx, target)
 	if err != nil {

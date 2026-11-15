@@ -127,6 +127,7 @@ func TestKeycloakHARuntimeFailoverAcceptanceInCI(t *testing.T) {
 	if err := runtimeProvider.UpProjectFilesSelected(ctx, files.Project, files.Dir, environment, []string{primary}, files.Compose); err != nil {
 		t.Fatalf("restart Keycloak PostgreSQL member %s: %v", primary, err)
 	}
+	waitForKeycloakPostgresMemberReady(t, ctx, runtimeProvider, files, primary)
 	waitForKeycloakContinuity(t, ctx, driver, resource, binding, "Keycloak PostgreSQL member recovery")
 
 	if err := driver.RotateClientSecret(ctx); err != nil {
@@ -275,6 +276,32 @@ func mustKeycloakPostgresPrimary(t *testing.T, ctx context.Context, runtimeProvi
 	}
 	t.Fatal("no Keycloak Patroni primary found")
 	return ""
+}
+
+func waitForKeycloakPostgresMemberReady(t *testing.T, ctx context.Context, runtimeProvider bhruntime.RuntimeProvider, files KeycloakFiles, service string) {
+	t.Helper()
+	executor, ok := runtimeProvider.(keycloakProjectUserExecutor)
+	if !ok {
+		t.Fatal("Keycloak PostgreSQL readiness requires execution as the postgres user")
+	}
+	readyCtx, cancel := context.WithTimeout(ctx, 90*time.Second)
+	defer cancel()
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
+	var lastErr error
+	for {
+		attemptCtx, attemptCancel := context.WithTimeout(readyCtx, 5*time.Second)
+		_, lastErr = executor.ExecProjectAs(attemptCtx, files.Project, files.Compose, files.Env, service, "postgres", "pg_isready", "-h", "/var/run/postgresql", "-U", "postgres", "-d", "postgres")
+		attemptCancel()
+		if lastErr == nil {
+			return
+		}
+		select {
+		case <-readyCtx.Done():
+			t.Fatalf("restarted Keycloak PostgreSQL member %s did not become locally ready within 90s: %v", service, lastErr)
+		case <-ticker.C:
+		}
+	}
 }
 
 func waitForKeycloakContinuity(t *testing.T, ctx context.Context, driver *KeycloakDriver, resource capability.Resource, binding capability.Binding, phase string) {
