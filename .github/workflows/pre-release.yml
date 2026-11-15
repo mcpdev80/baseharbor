@@ -1914,7 +1914,6 @@ jobs:
         print('All selected Pre-Release checks passed.')
         PYTHON
 'on':
-'on':
   workflow_dispatch:
     inputs:
       tag:
