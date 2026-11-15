@@ -40,14 +40,14 @@ func reloadKeycloakDatabaseCertificates(ctx context.Context, runtime KeycloakRun
 	} else if values["BASEHARBOR_KEYCLOAK_TOPOLOGY"] != "single" {
 		return errors.New("Keycloak PostgreSQL TLS reload requires a known, owned topology")
 	}
-	installCommand := keycloakDatabaseTLSKeyInstallCommand(keyPath)
-	reloadCommand := keycloakDatabaseTLSReloadSignalCommand()
-	verifyCommand := keycloakDatabaseTLSServedCertificateCommand(keyPath)
+	installCommand := []string{"sh", "-ec", keycloakDatabaseTLSKeyInstallCommand(keyPath)}
+	reloadCommand := keycloakDatabaseTLSReloadCommand()
+	verifyCommand := []string{"sh", "-ec", keycloakDatabaseTLSServedCertificateCommand(keyPath)}
 	for _, service := range services {
 		if err := execKeycloakDatabaseTLSCommand(reloadCtx, executor, files, service, "install PostgreSQL key", installCommand, ticker.C); err != nil {
 			return err
 		}
-		if err := execKeycloakDatabaseTLSCommand(reloadCtx, executor, files, service, "signal PostgreSQL TLS reload", reloadCommand, ticker.C); err != nil {
+		if err := execKeycloakDatabaseTLSCommand(reloadCtx, executor, files, service, "reload PostgreSQL TLS", reloadCommand, ticker.C); err != nil {
 			return err
 		}
 		if err := execKeycloakDatabaseTLSCommand(reloadCtx, executor, files, service, "verify served certificate", verifyCommand, ticker.C); err != nil {
@@ -57,7 +57,7 @@ func reloadKeycloakDatabaseCertificates(ctx context.Context, runtime KeycloakRun
 	return nil
 }
 
-func execKeycloakDatabaseTLSCommand(ctx context.Context, executor keycloakProjectUserExecutor, files KeycloakFiles, service, operation, command string, retry <-chan time.Time) error {
+func execKeycloakDatabaseTLSCommand(ctx context.Context, executor keycloakProjectUserExecutor, files KeycloakFiles, service, operation string, command []string, retry <-chan time.Time) error {
 	var lastOutput string
 	var lastErr error
 	var lastAttemptContextErr error
@@ -66,7 +66,7 @@ func execKeycloakDatabaseTLSCommand(ctx context.Context, executor keycloakProjec
 	for {
 		attempts++
 		attemptCtx, attemptCancel := context.WithTimeout(ctx, 10*time.Second)
-		output, err := executor.ExecProjectAs(attemptCtx, files.Project, files.Compose, files.Env, service, "postgres", "sh", "-ec", command)
+		output, err := executor.ExecProjectAs(attemptCtx, files.Project, files.Compose, files.Env, service, "postgres", command...)
 		lastAttemptContextErr = attemptCtx.Err()
 		attemptCancel()
 		if err == nil {
@@ -88,6 +88,10 @@ func execKeycloakDatabaseTLSCommand(ctx context.Context, executor keycloakProjec
 		case <-retry:
 		}
 	}
+}
+
+func keycloakDatabaseTLSReloadCommand() []string {
+	return []string{"psql", "-w", "-h", "/var/run/postgresql", "-U", "postgres", "-d", "postgres", "-v", "ON_ERROR_STOP=1", "-c", "SELECT pg_reload_conf()"}
 }
 
 type keycloakDatabaseTLSKeyPaths struct {
@@ -120,16 +124,6 @@ openssl x509 -in "$source_cert" -pubkey -noout > "$cert_pub"
 openssl pkey -in "$tmp_key" -pubout > "$key_pub"
 cmp -s "$cert_pub" "$key_pub" || { echo 'postgres server certificate and key do not match' >&2; exit 1; }
 mv -f "$tmp_key" "$runtime_key"`, paths.certificate, paths.sourceKey, paths.runtimeKey)
-}
-
-func keycloakDatabaseTLSReloadSignalCommand() string {
-	return `if [ ! -s "$PGDATA/postmaster.pid" ]; then echo 'postgres postmaster pid is not ready' >&2; exit 1; fi
-pid=$(sed -n '1p' "$PGDATA/postmaster.pid")
-case "$pid" in ''|*[!0-9]*) exit 1 ;; esac
-[ -r "/proc/$pid/comm" ] || { echo 'postgres process is not ready' >&2; exit 1; }
-comm=$(cat "/proc/$pid/comm")
-case "$comm" in postgres|postmaster) ;; *) echo "unexpected postgres process: $comm" >&2; exit 1 ;; esac
-kill -HUP "$pid"`
 }
 
 func keycloakDatabaseTLSServedCertificateCommand(paths keycloakDatabaseTLSKeyPaths) string {

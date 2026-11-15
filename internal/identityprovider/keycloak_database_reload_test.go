@@ -57,17 +57,17 @@ func TestKeycloakDatabaseReloadFailsClosed(t *testing.T) {
 	failure := errors.New("database reload rejected")
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	runtime := &databaseReloadRuntime{failOn: "keycloak-db-member-2", failure: failure, failureOutput: "safe diagnostic", cancel: cancel, remainingFailures: -1}
+	runtime := &databaseReloadRuntime{failOn: "keycloak-db-member-2", failure: failure, failureOutput: "safe diagnostic", cancel: cancel, remainingFailures: -1, failCommandContains: "SELECT pg_reload_conf()"}
 	err := reloadKeycloakDatabaseCertificates(ctx, runtime, files)
 	if !errors.Is(err, failure) || !errors.Is(err, context.Canceled) {
 		t.Fatalf("database reload failure = %v, want original failure", err)
 	}
-	for _, fragment := range []string{"install PostgreSQL key", "keycloak-db-member-2", "failed after 1 attempts over ", "per-attempt timeout: 10s", "parent context: context canceled", "deadline: 20", "last attempt context: context canceled", "last attempt error: database reload rejected", `last command output: "safe diagnostic"`} {
+	for _, fragment := range []string{"reload PostgreSQL TLS", "keycloak-db-member-2", "failed after 1 attempts over ", "per-attempt timeout: 10s", "parent context: context canceled", "deadline: 20", "last attempt context: context canceled", "last attempt error: database reload rejected", `last command output: "safe diagnostic"`} {
 		if !strings.Contains(err.Error(), fragment) {
 			t.Errorf("database reload diagnostic missing %q: %v", fragment, err)
 		}
 	}
-	if !reflect.DeepEqual(runtime.services, []string{"keycloak-db-member-1", "keycloak-db-member-1", "keycloak-db-member-1", "keycloak-db-member-2"}) {
+	if !reflect.DeepEqual(runtime.services, []string{"keycloak-db-member-1", "keycloak-db-member-1", "keycloak-db-member-1", "keycloak-db-member-2", "keycloak-db-member-2"}) {
 		t.Fatalf("reload continued after a member rejected it: %v", runtime.services)
 	}
 }
@@ -75,7 +75,7 @@ func TestKeycloakDatabaseReloadFailsClosed(t *testing.T) {
 func TestKeycloakDatabaseReloadWaitsForRecoveringMembers(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	runtime := &databaseReloadRuntime{failOn: "keycloak-db-member-1", failure: errors.New("database system is starting up"), remainingFailures: 1}
+	runtime := &databaseReloadRuntime{failOn: "keycloak-db-member-1", failure: errors.New("database system is starting up"), remainingFailures: 1, failCommandContains: "SELECT pg_reload_conf()"}
 	env := filepath.Join(t.TempDir(), "runtime.env")
 	if err := writeProtectedEnv(env, map[string]string{"BASEHARBOR_KEYCLOAK_TOPOLOGY": "ha"}); err != nil {
 		t.Fatal(err)
@@ -93,9 +93,9 @@ func TestKeycloakDatabaseReloadWaitsForRecoveringMembers(t *testing.T) {
 		runtimeKey:  "/run/baseharbor/etcd-runtime/server-key.pem",
 	}
 	install := []string{"sh", "-ec", keycloakDatabaseTLSKeyInstallCommand(paths)}
-	reload := []string{"sh", "-ec", keycloakDatabaseTLSReloadSignalCommand()}
+	reload := []string{"psql", "-w", "-h", "/var/run/postgresql", "-U", "postgres", "-d", "postgres", "-v", "ON_ERROR_STOP=1", "-c", "SELECT pg_reload_conf()"}
 	verify := []string{"sh", "-ec", keycloakDatabaseTLSServedCertificateCommand(paths)}
-	wantCommands := [][]string{install, install, reload, verify, install, reload, verify, install, reload, verify}
+	wantCommands := [][]string{install, reload, reload, verify, install, reload, verify, install, reload, verify}
 	if !reflect.DeepEqual(runtime.commands, wantCommands) {
 		t.Fatalf("each HA member must reload then verify its own served certificate (the first reload may retry): got %v want %v", runtime.commands, wantCommands)
 	}
@@ -120,8 +120,8 @@ func TestKeycloakDatabaseServedCertificateRetryDoesNotRepeatKeyInstall(t *testin
 	if err := reloadKeycloakDatabaseCertificates(ctx, runtime, KeycloakFiles{Env: env}); err != nil {
 		t.Fatal(err)
 	}
-	if len(runtime.commands) < 4 || !strings.Contains(strings.Join(runtime.commands[0], " "), "mv -f") || !strings.Contains(strings.Join(runtime.commands[1], " "), "kill -HUP") || !strings.Contains(strings.Join(runtime.commands[2], " "), "openssl s_client") || !strings.Contains(strings.Join(runtime.commands[3], " "), "openssl s_client") {
-		t.Fatalf("expected key install, one signal, and retried served-certificate probe; commands=%v", runtime.commands)
+	if len(runtime.commands) < 4 || !strings.Contains(strings.Join(runtime.commands[0], " "), "mv -f") || !reflect.DeepEqual(runtime.commands[1], keycloakDatabaseTLSReloadCommand()) || !strings.Contains(strings.Join(runtime.commands[2], " "), "openssl s_client") || !strings.Contains(strings.Join(runtime.commands[3], " "), "openssl s_client") {
+		t.Fatalf("expected key install, direct psql reload, and retried served-certificate probe; commands=%v", runtime.commands)
 	}
 	for i, budget := range runtime.callBudgets {
 		if budget <= 0 || budget > 10*time.Second {
@@ -169,15 +169,15 @@ func TestKeycloakSingleDatabaseReload(t *testing.T) {
 	if got := runtime.commands[0][2]; !strings.Contains(got, `source_cert="/run/baseharbor/db-tls/server.pem"`) || !strings.Contains(got, `source_key="/run/baseharbor/db-tls/server-key.pem"`) || !strings.Contains(got, `runtime_key="/tmp/server-key.pem"`) {
 		t.Fatalf("single topology did not refresh the copied PostgreSQL key from its mounted source: %s", got)
 	}
-	if !strings.Contains(runtime.commands[1][2], `kill -HUP "$pid"`) {
-		t.Fatalf("single topology did not signal PostgreSQL after key installation: %s", runtime.commands[1][2])
+	if !reflect.DeepEqual(runtime.commands[1], keycloakDatabaseTLSReloadCommand()) {
+		t.Fatalf("single topology did not reload PostgreSQL directly as postgres: %v", runtime.commands[1])
 	}
 	if !strings.Contains(runtime.commands[2][2], `source_cert="/run/baseharbor/db-tls/server.pem"`) {
 		t.Fatalf("single topology did not verify the served certificate against its projected certificate: %s", runtime.commands[2][2])
 	}
 }
 
-func TestKeycloakDatabaseTLSReloadCommandsValidateInstallThenSignal(t *testing.T) {
+func TestKeycloakDatabaseTLSReloadCommandsValidateInstallThenReload(t *testing.T) {
 	command := keycloakDatabaseTLSKeyInstallCommand(keycloakDatabaseTLSKeyPaths{
 		certificate: "/run/baseharbor/db-tls-source/server.pem",
 		sourceKey:   "/run/baseharbor/db-tls-source/server-key.pem",
@@ -200,12 +200,9 @@ func TestKeycloakDatabaseTLSReloadCommandsValidateInstallThenSignal(t *testing.T
 		}
 		last = at
 	}
-	if strings.Contains(command, `kill -HUP`) {
-		t.Fatalf("key install and PostgreSQL signal must be separate bounded runtime calls:\n%s", command)
-	}
-	signal := keycloakDatabaseTLSReloadSignalCommand()
-	if !strings.Contains(signal, `postgres postmaster pid is not ready`) || !strings.Contains(signal, `postgres process is not ready`) || !strings.Contains(signal, `kill -HUP "$pid"`) {
-		t.Fatalf("signal command must validate and signal only the live postgres process:\n%s", signal)
+	wantReload := []string{"psql", "-w", "-h", "/var/run/postgresql", "-U", "postgres", "-d", "postgres", "-v", "ON_ERROR_STOP=1", "-c", "SELECT pg_reload_conf()"}
+	if got := keycloakDatabaseTLSReloadCommand(); !reflect.DeepEqual(got, wantReload) {
+		t.Fatalf("reload must select postgres as container user and invoke psql with bounded noninteractive args: got %v want %v", got, wantReload)
 	}
 	verify := keycloakDatabaseTLSServedCertificateCommand(keycloakDatabaseTLSKeyPaths{certificate: "/run/baseharbor/db-tls-source/server.pem"})
 	for _, fragment := range []string{
