@@ -135,7 +135,7 @@ var cliPresentationCommands = map[string]string{
 	"baha app secure-profile export": "Operator-local, password-locked file export of opt-in local credentials; no runtime mutation or machine tool. Ciphertext opens only with the export password.",
 	"baha workspace":                 "Canonical interactive presentation of the same workspace.init/map operations.",
 	"baha target activate":           "Persists local user selection; machine clients supply explicit target arguments on each semantic operation.",
-	"baha target policy set":         "Owner-local protected Target configuration edit with CAS; no remote operator policy mutation is exposed yet. Remote targets refuse this action; machine clients must not bypass the owning Core authority.",
+	"baha target policy set":         "Owner-local protected Target configuration edit with CAS; remote operator policy mutation for existing Targets is future scope (see card 0427-186). Remote targets refuse this workstation action; machine clients must not bypass the owning Core authority.",
 	"baha use":                       "Persists local user selection; machine clients supply explicit target arguments on each semantic operation.",
 	"baha target deactivate":         "Clears persisted local user selection; machine clients omit explicit target to resolve configured defaults.",
 	"baha":                           "Root help and routing; use semantic operations for product actions.",
