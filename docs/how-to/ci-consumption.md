@@ -35,7 +35,7 @@ BaseHarbor publishes, for every release `X.Y.Z` (and `0.x` hotfix `X.Y.Z.H`):
 - matching runtime image `ghcr.io/mcpdev80/baseharbor-runtime:X.Y.Z`;
 - the `baha` binary whose version matches the release.
 
-See [Releases and versioning](releases.md) for the full channel table and the
+See [Releases and versioning](../reference/releases.md) for the full channel table and the
 compatibility policy. During the `0.x` line, patch releases stay backward
 compatible within the active minor line; pin an explicit range instead of
 tracking `develop`.
@@ -146,7 +146,7 @@ baha --no-input up --control-plane-only --ha --yes
 `baha up` is fail-closed: validation and preflight run before runtime mutation.
 The standard startup plan contains seven services (one native PostgreSQL server
 and one OpenBao server on fresh targets), not a hidden HA cluster. See
-[Core workflow commands](core.md) for the full command table and modes.
+[Core workflow commands](../cli/core.md) for the full command table and modes.
 
 ## Seeding application secrets
 
