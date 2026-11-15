@@ -63,6 +63,49 @@ EXACTLY one of three distinguishable states:
 - `verified`: only when a real Perses health probe observes the surface. Pin
   validation alone MUST NOT emit this state.
 
+A configured state additionally requires that the effective security posture
+validates, not only that a pin exists. BaseHarbor reports `not_configured` when
+the surface would be reachable without authentication, when authentication is
+enabled without the encryption key the pinned release requires, or when the
+datasource proxy is left unrestricted. Publishing such a surface would turn an
+optional dashboard into an unauthenticated proxy into the Target network.
+
+### Transport and authorization
+
+Perses binds a loopback address that BaseHarbor never publishes. Operators reach
+it through the managed service-access gateway, which enforces TLS 1.2 or later
+and either a verified client certificate or a bearer token. Credential material
+is referenced by file path and never inlined into a rendered manifest, a
+command line or a status record.
+
+The gateway refuses the datasource-proxy route prefix. Panels reach
+datasources through the ordinary query routes; the raw proxy is not an
+operator-facing surface, and BaseHarbor never converts a management credential
+into an upstream datasource credential.
+
+### Datasource proxy destinations
+
+The pinned release denies loopback, "this network", link-local, cloud metadata
+and credential endpoints, multicast and reserved addresses by default. Those
+lists are site-specific in part, so BaseHarbor adds the Target knowledge the
+product cannot have: the deployment's own operator networks and, on a Kubernetes
+Target, the API service address. Where a private-network allow and a default
+deny overlap, the most specific prefix wins, and an allow at equal length wins —
+the same precedence the upstream server applies, so the gateway and Perses can
+never disagree about a destination.
+
+A hostname is never cleared by name. Datasource destinations are re-verified at
+connection time against every address the name resolves to, including the
+addresses reached through redirects.
+
+### Environment policy for this surface
+
+The gateway authentication requirement follows the managed-environment rule in
+this specification: production and staging require an authenticated surface, and
+a development Target may reuse the single Target-scoped developer credential.
+The Perses process itself must be authenticated in every environment, because
+its own default would expose the API and the proxy without credentials.
+
 ## Management roles
 
 The only provider-neutral BaseHarbor management-role profile is:
