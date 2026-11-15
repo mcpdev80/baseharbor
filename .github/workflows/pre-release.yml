@@ -245,7 +245,6 @@ jobs:
           --health-retries 10
     env:
       BASEHARBOR_TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/baseharbor_test?sslmode=disable
-      BASEHARBOR_LOGS_ENABLED: "false"
     steps:
     - name: Checkout candidate source
       id: checkout
@@ -266,6 +265,9 @@ jobs:
         SHARD: ${{ matrix.shard }}
       run: |
         set -euo pipefail
+        if [[ "$SHARD" == cli-* ]]; then
+          export BASEHARBOR_LOGS_ENABLED=false
+        fi
         python3 scripts/pr-go-unit-shard.py --mode "$SHARD"
 
   source_vet:
