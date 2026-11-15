@@ -40,10 +40,14 @@ func reloadKeycloakDatabaseCertificates(ctx context.Context, runtime KeycloakRun
 	} else if values["BASEHARBOR_KEYCLOAK_TOPOLOGY"] != "single" {
 		return errors.New("Keycloak PostgreSQL TLS reload requires a known, owned topology")
 	}
-	reloadCommand := keycloakDatabaseTLSReloadCommand(keyPath)
+	installCommand := keycloakDatabaseTLSKeyInstallCommand(keyPath)
+	reloadCommand := keycloakDatabaseTLSReloadSignalCommand()
 	verifyCommand := keycloakDatabaseTLSServedCertificateCommand(keyPath)
 	for _, service := range services {
-		if err := execKeycloakDatabaseTLSCommand(reloadCtx, executor, files, service, "reload", reloadCommand, ticker.C); err != nil {
+		if err := execKeycloakDatabaseTLSCommand(reloadCtx, executor, files, service, "install PostgreSQL key", installCommand, ticker.C); err != nil {
+			return err
+		}
+		if err := execKeycloakDatabaseTLSCommand(reloadCtx, executor, files, service, "signal PostgreSQL TLS reload", reloadCommand, ticker.C); err != nil {
 			return err
 		}
 		if err := execKeycloakDatabaseTLSCommand(reloadCtx, executor, files, service, "verify served certificate", verifyCommand, ticker.C); err != nil {
@@ -79,7 +83,7 @@ type keycloakDatabaseTLSKeyPaths struct {
 	runtimeKey  string
 }
 
-func keycloakDatabaseTLSReloadCommand(paths keycloakDatabaseTLSKeyPaths) string {
+func keycloakDatabaseTLSKeyInstallCommand(paths keycloakDatabaseTLSKeyPaths) string {
 	return fmt.Sprintf(`if [ ! -s "$PGDATA/postmaster.pid" ]; then echo 'postgres postmaster pid is not ready' >&2; exit 1; fi
 pid=$(sed -n '1p' "$PGDATA/postmaster.pid")
 case "$pid" in ''|*[!0-9]*) exit 1 ;; esac
@@ -102,8 +106,17 @@ chmod 0600 "$tmp_key"
 openssl x509 -in "$source_cert" -pubkey -noout > "$cert_pub"
 openssl pkey -in "$tmp_key" -pubout > "$key_pub"
 cmp -s "$cert_pub" "$key_pub" || { echo 'postgres server certificate and key do not match' >&2; exit 1; }
-mv -f "$tmp_key" "$runtime_key"
-kill -HUP "$pid"`, paths.certificate, paths.sourceKey, paths.runtimeKey)
+mv -f "$tmp_key" "$runtime_key"`, paths.certificate, paths.sourceKey, paths.runtimeKey)
+}
+
+func keycloakDatabaseTLSReloadSignalCommand() string {
+	return `if [ ! -s "$PGDATA/postmaster.pid" ]; then echo 'postgres postmaster pid is not ready' >&2; exit 1; fi
+pid=$(sed -n '1p' "$PGDATA/postmaster.pid")
+case "$pid" in ''|*[!0-9]*) exit 1 ;; esac
+[ -r "/proc/$pid/comm" ] || { echo 'postgres process is not ready' >&2; exit 1; }
+comm=$(cat "/proc/$pid/comm")
+case "$comm" in postgres|postmaster) ;; *) echo "unexpected postgres process: $comm" >&2; exit 1 ;; esac
+kill -HUP "$pid"`
 }
 
 func keycloakDatabaseTLSServedCertificateCommand(paths keycloakDatabaseTLSKeyPaths) string {
