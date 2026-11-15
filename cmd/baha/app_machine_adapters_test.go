@@ -257,6 +257,41 @@ func TestAppMachineAdaptersDesiredNamedSQL(t *testing.T) {
 	}
 }
 
+func TestAppMachineProposeReportsSafeAuthorityStage(t *testing.T) {
+	for _, stage := range []string{"read", "choices", "plan"} {
+		t.Run(stage, func(t *testing.T) {
+			fail := func(at string) error {
+				if at == stage {
+					return errors.New("private authority detail")
+				}
+				return nil
+			}
+			read := func(context.Context, string) (GuidedReadContext, error) {
+				if err := fail("read"); err != nil {
+					return GuidedReadContext{}, err
+				}
+				return appMachineFixture(), nil
+			}
+			choices := func(context.Context, string, []capability.Requirement) ([]appProviderChoice, error) {
+				return nil, fail("choices")
+			}
+			plan := func(context.Context, string, []capability.Requirement, []application.ProviderPreference) (application.ProviderImpactPlan, error) {
+				return application.ProviderImpactPlan{}, fail("plan")
+			}
+			_, err := appMachinePropose(context.Background(), appMachineDesiredRequest{
+				Target: "dev", SnapshotRevision: "snapshot-1",
+			}, read, choices, plan)
+			var authorityErr *appMachineProposalAuthorityError
+			var machineErr *appMachineError
+			if !errors.As(err, &authorityErr) || authorityErr.Stage != stage ||
+				!errors.As(err, &machineErr) || machineErr.Code != "denied" ||
+				bytes.Contains([]byte(err.Error()), []byte("private authority detail")) {
+				t.Fatalf("missing safe authority stage or leaked detail: %v", err)
+			}
+		})
+	}
+}
+
 func TestAppMachineAdaptersContextCancellation(t *testing.T) {
 	for _, stage := range []string{"read", "authorize", "plan"} {
 		t.Run(stage, func(t *testing.T) {

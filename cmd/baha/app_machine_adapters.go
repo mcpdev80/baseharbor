@@ -266,6 +266,25 @@ type appMachineDesiredRequest struct {
 type appMachineChoiceReader func(context.Context, string, []capability.Requirement) ([]appProviderChoice, error)
 type appMachineDesiredPlanner func(context.Context, string, []capability.Requirement, []application.ProviderPreference) (application.ProviderImpactPlan, error)
 
+// appMachineProposalAuthorityError preserves the stable machine classification
+// while identifying which read-only authority failed. The stage is safe to
+// expose at the interactive preview boundary; the underlying authority error
+// remains classified and is never printed.
+type appMachineProposalAuthorityError struct {
+	Stage string
+	Cause error
+}
+
+func (e *appMachineProposalAuthorityError) Error() string {
+	return "application proposal " + e.Stage + ": " + e.Cause.Error()
+}
+
+func (e *appMachineProposalAuthorityError) Unwrap() error { return e.Cause }
+
+func appMachineProposalAuthorityFailure(stage string, err error) error {
+	return &appMachineProposalAuthorityError{Stage: stage, Cause: appMachineReadError(err)}
+}
+
 // appMachineDesiredResult is the typed propose response carried back across the
 // MCP boundary. Its public JSON contract is snake_case so the SDK infers
 // consistent field names; no field leaks internal reconciliation state.
@@ -292,7 +311,7 @@ func appMachinePropose(ctx context.Context, req appMachineDesiredRequest, read a
 	}
 	view, err := read(ctx, req.Target)
 	if err != nil {
-		return appMachineDesiredResult{}, appMachineReadError(err)
+		return appMachineDesiredResult{}, appMachineProposalAuthorityFailure("read", err)
 	}
 	if err := ctx.Err(); err != nil {
 		return appMachineDesiredResult{}, appMachineReadError(err)
@@ -310,7 +329,7 @@ func appMachinePropose(ctx context.Context, req appMachineDesiredRequest, read a
 	}
 	candidates, err := choices(ctx, req.Target, req.Requirements)
 	if err != nil {
-		return appMachineDesiredResult{}, appMachineReadError(err)
+		return appMachineDesiredResult{}, appMachineProposalAuthorityFailure("choices", err)
 	}
 	if err := ctx.Err(); err != nil {
 		return appMachineDesiredResult{}, appMachineReadError(err)
@@ -344,7 +363,7 @@ func appMachinePropose(ctx context.Context, req appMachineDesiredRequest, read a
 	}
 	proposed, err := plan(ctx, req.Target, req.Requirements, preferences)
 	if err != nil {
-		return appMachineDesiredResult{}, appMachineReadError(err)
+		return appMachineDesiredResult{}, appMachineProposalAuthorityFailure("plan", err)
 	}
 	if err := ctx.Err(); err != nil {
 		return appMachineDesiredResult{}, appMachineReadError(err)
