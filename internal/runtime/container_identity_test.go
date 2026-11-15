@@ -104,3 +104,23 @@ func TestExpectedContainerNameSetFallsBackToCanonicalOrdinal(t *testing.T) {
 		t.Fatalf("expected names = %v, want [owned-missing-1]", got)
 	}
 }
+
+
+// A first-party Podman Quadlet labels its singleton service like Compose but
+// uses <project>-<service> as the native container name rather than the
+// rendered Compose ordinal <project>-<service>-1.
+func TestContainerNameInPlannedSetAcceptsPodmanSingletonQuadletName(t *testing.T) {
+	container := RuntimeContainer{Name: "owned-sql", Project: "owned", Service: "sql"}
+	if !ContainerNameInPlannedSet(ProviderPodman, container, "owned", []string{"owned-sql-1"}) {
+		t.Fatal("Podman singleton Quadlet name was rejected for its owned service")
+	}
+	if ContainerNameInPlannedSet(ProviderDocker, container, "owned", []string{"owned-sql-1"}) {
+		t.Fatal("Docker accepted the Podman-only singleton alias")
+	}
+	if ContainerNameInPlannedSet(ProviderPodman, container, "owned", []string{"owned-sql-1", "owned-sql-2"}) {
+		t.Fatal("Podman accepted the singleton alias for a scaled service")
+	}
+	if ContainerNameInPlannedSet(ProviderPodman, container, "owned", []string{"custom-sql"}) {
+		t.Fatal("Podman accepted the singleton alias for a pinned-name plan")
+	}
+}
