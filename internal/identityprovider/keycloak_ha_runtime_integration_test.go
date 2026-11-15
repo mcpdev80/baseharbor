@@ -198,7 +198,7 @@ func logKeycloakDatabaseTLSState(t *testing.T, ctx context.Context, runtimeProvi
 	// Query the live PostgreSQL endpoint from a cluster member and print only
 	// the TLS handshake/certificate chain. This lets the next hosted run show
 	// whether PostgreSQL still presents a leaf different from the projection.
-	command := `set -o pipefail; timeout 10 openssl s_client -starttls postgres -connect keycloak-db:5432 -showcerts </dev/null 2>&1 | sed -n '1,100p'`
+	command := `timeout 10 openssl s_client -starttls postgres -connect keycloak-db:5432 -showcerts </dev/null 2>&1 | sed -n '1,100p'`
 	output, execErr := runtimeProvider.ExecProject(ctx, files.Project, files.Compose, files.Env, "keycloak-db-member-1", "sh", "-ec", command)
 	if len(output) > 12000 {
 		output = output[:12000] + "[truncated]"
