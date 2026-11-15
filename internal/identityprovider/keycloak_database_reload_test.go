@@ -69,7 +69,13 @@ func TestKeycloakDatabaseReloadWaitsForRecoveringMembers(t *testing.T) {
 	if !reflect.DeepEqual(runtime.services, want) {
 		t.Fatalf("database reload did not wait for every member: got %v want %v", runtime.services, want)
 	}
-	wantCommand := []string{"sh", "-ec", `exec pg_ctl -D "$PGDATA" reload`}
+	wantCommand := []string{"sh", "-ec", `if [ ! -s "$PGDATA/postmaster.pid" ]; then exit 0; fi
+pid=$(sed -n '1p' "$PGDATA/postmaster.pid")
+case "$pid" in ''|*[!0-9]*) exit 1 ;; esac
+if [ ! -r "/proc/$pid/comm" ]; then exit 0; fi
+comm=$(cat "/proc/$pid/comm")
+case "$comm" in postgres|postmaster) ;; *) exit 0 ;; esac
+kill -HUP "$pid"`}
 	if !reflect.DeepEqual(runtime.commands[0], wantCommand) {
 		t.Fatalf("database reload must use Spilo's local postgres control process without password authentication: got %v want %v", runtime.commands[0], wantCommand)
 	}

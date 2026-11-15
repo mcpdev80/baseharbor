@@ -29,6 +29,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/auth"
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/coreinstallation"
+	"github.com/mcpdev80/baseharbor/internal/delivery"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/development"
 	"github.com/mcpdev80/baseharbor/internal/development/pythonadapter"
@@ -191,7 +192,7 @@ func runCoreOnlyBootstrapRuntimeWithHA(t *testing.T, role coreinstallation.Machi
 			ReadOnlyRootfs:      true,
 			NoNewPrivs:          true,
 			AllowRootEntrypoint: true,
-			AllowedCapAdd:       []string{"CHOWN", "DAC_READ_SEARCH", "FOWNER", "SETGID", "SETUID"},
+			AllowedCapAdd:       []string{"DAC_READ_SEARCH"},
 			RequireCapDropAll:   true,
 		}); err != nil {
 			t.Fatalf("single PostgreSQL entrypoint security settings invalid: %v", err)
@@ -749,6 +750,10 @@ func coreBootstrapFixtureConsent(t *testing.T, ctx context.Context) context.Cont
 	resolved, err := resolveApplication(ctx, application.Store{}, nil, "apply")
 	if err != nil {
 		t.Fatal(err)
+	}
+	submission, _ := candidateSubmissionForResolvedApp(ctx, resolved)
+	if submission.SourceRevision != "" {
+		ctx = withCandidateConsentDigest(ctx, delivery.CandidateConsentDigest(submission))
 	}
 	plan, err := buildResolvedApplicationPlan(ctx, resolved)
 	if err != nil {

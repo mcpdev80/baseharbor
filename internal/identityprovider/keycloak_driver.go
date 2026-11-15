@@ -460,15 +460,27 @@ func reloadKeycloakDatabaseCertificates(ctx context.Context, runtime KeycloakRun
 		return errors.New("Keycloak PostgreSQL TLS reload requires a known, owned topology")
 	}
 	for _, service := range services {
+		var lastOutput string
+		var lastErr error
 		for {
-			_, err := executor.ExecProjectAs(reloadCtx, files.Project, files.Compose, files.Env, service, "postgres",
-				"sh", "-ec", `exec pg_ctl -D "$PGDATA" reload`)
+			attemptCtx, attemptCancel := context.WithTimeout(reloadCtx, 10*time.Second)
+			output, err := executor.ExecProjectAs(attemptCtx, files.Project, files.Compose, files.Env, service, "postgres",
+				"sh", "-ec", `if [ ! -s "$PGDATA/postmaster.pid" ]; then exit 0; fi
+pid=$(sed -n '1p' "$PGDATA/postmaster.pid")
+case "$pid" in ''|*[!0-9]*) exit 1 ;; esac
+if [ ! -r "/proc/$pid/comm" ]; then exit 0; fi
+comm=$(cat "/proc/$pid/comm")
+case "$comm" in postgres|postmaster) ;; *) exit 0 ;; esac
+kill -HUP "$pid"`)
+			attemptCancel()
 			if err == nil {
 				break
 			}
+			lastOutput = strings.TrimSpace(output)
+			lastErr = err
 			select {
 			case <-reloadCtx.Done():
-				return fmt.Errorf("reload Keycloak PostgreSQL certificates on %s: %w", service, errors.Join(reloadCtx.Err(), err))
+				return fmt.Errorf("reload Keycloak PostgreSQL certificates on %s: %w (last command output: %q)", service, errors.Join(reloadCtx.Err(), lastErr), lastOutput)
 			case <-ticker.C:
 			}
 		}

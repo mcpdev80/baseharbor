@@ -5,9 +5,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -114,15 +116,23 @@ func TestCorelessFreshWorkloadRuntimeLifecycle(t *testing.T) {
 			t.Errorf("isolated app cleanup: %v", err)
 		}
 	})
-	// `up` may persist runtime initialization intent before it reaches the
-	// deployment-consent boundary. That changes the candidate, so the digest
-	// computed immediately after `app init` is deliberately stale for this
-	// first attempt. Verify that Core refuses it without recording deployment
-	// state, then bind only the exact digest printed by that refusal.
+	// `up` may persist a configured deployment record while initializing
+	// runtime intent before it reaches the deployment-consent boundary. That
+	// changes the candidate, so the digest computed immediately after `app init`
+	// is deliberately stale for this first attempt. Verify the stale digest is
+	// refused without advancing that configuration record to an applying or
+	// consented state, then bind only the exact digest printed by the refusal.
 	if _, found, err := deployment.FindDeployment(target.Name, m.ApplicationID, m.Environment); err != nil {
 		t.Fatal(err)
 	} else if found {
 		t.Fatal("fresh coreless app unexpectedly has deployment state before up")
+	}
+	if err := ensureRepositoryDeploymentInputsForUp(ctx, strings.NewReader(""), io.Discard, runtimeUpOptions{Yes: true}); err != nil {
+		t.Fatalf("prepare deployment inputs before candidate refusal: %v", err)
+	}
+	beforeRefusal, found, err := deployment.FindDeployment(target.Name, m.ApplicationID, m.Environment)
+	if err != nil || !found || beforeRefusal.Observed.State != "configured" || beforeRefusal.Consent != nil {
+		t.Fatalf("runtime input preparation did not leave an unconsented configured record: found=%t state=%q consent=%+v err=%v", found, beforeRefusal.Observed.State, beforeRefusal.Consent, err)
 	}
 	staleUp := []string{"up", "--yes", "--skip-memory-preflight", "--confirm-candidate", confirmDigest}
 	var staleOut bytes.Buffer
@@ -134,12 +144,14 @@ func TestCorelessFreshWorkloadRuntimeLifecycle(t *testing.T) {
 	if currentDigest == "" || currentDigest == confirmDigest || !strings.Contains(staleOut.String(), "Re-run with --confirm-candidate "+currentDigest) {
 		t.Fatalf("up did not publish a new exact candidate confirmation digest: %s", staleOut.String())
 	}
-	if _, found, err := deployment.FindDeployment(target.Name, m.ApplicationID, m.Environment); err != nil {
+	configured, found, err := deployment.FindDeployment(target.Name, m.ApplicationID, m.Environment)
+	if err != nil {
 		t.Fatal(err)
-	} else if found {
-		t.Fatal("refused stale candidate consent wrote deployment state")
 	}
-	t.Log("stale pre-up candidate digest refused; exact refreshed digest captured without deployment state")
+	if !found || !reflect.DeepEqual(configured, beforeRefusal) {
+		t.Fatalf("refused stale candidate consent advanced deployment state: found=%t state=%q consent=%+v", found, configured.Observed.State, configured.Consent)
+	}
+	t.Log("stale pre-up candidate digest refused; configured runtime intent remains unconsented")
 
 	confirmedUp := []string{"up", "--yes", "--skip-memory-preflight", "--confirm-candidate", currentDigest}
 	for _, command := range [][]string{{"app", "plan", "--json"}, confirmedUp, {"app", "status", "--json"}, {"app", "doctor", "--json"}, {"app", "down"}, confirmedUp} {
