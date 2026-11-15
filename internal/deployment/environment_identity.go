@@ -307,6 +307,14 @@ func RenameEnvironment(target, oldName, newName string) (EnvironmentRecord, erro
 
 	// Ensure a record exists at the old location (brownfield reuse: keep its
 	// UUID) before we move it.
+	//
+	// Idempotent-rename check (finding 4): if the source path is GONE but the
+	// destination already carries a valid identity, the rename already ran for
+	// this (oldName → newName) request (or a prior identical request did). The
+	// destination record is the result — return it directly. Crucially, we must
+	// NOT call GetEnvironment(target, oldName) here to invent a fresh UUID for
+	// the now-dead old name: that would then mismatch the destination's UUID and
+	// spuriously refuse the idempotent no-op.
 	var source EnvironmentRecord
 	existing, statErr := os.Stat(oldPath)
 	if statErr == nil && !existing.IsDir() {
@@ -314,27 +322,46 @@ func RenameEnvironment(target, oldName, newName string) (EnvironmentRecord, erro
 		if err != nil {
 			return EnvironmentRecord{}, err
 		}
-	} else {
+	} else if _, destStat := os.Stat(newPath); destStat == nil {
+		destination, dErr := readEnvironmentRecord(newPath, target, newName)
+		if dErr == nil {
+			// Source gone, destination present and valid: the rename already
+			// completed. Converge on the destination record — idempotent no-op
+			// (finding 4). If the destination is misbound we fall through to the
+			// strict pre-lock guard below, which refuses rather than inventing.
+			source = destination
+		}
+	}
+	if source.Identity == "" {
+		// Source truly absent (not moved to the destination): the source name
+		// never existed here, so the rename cannot carry a UID. Create it so the
+		// rename starts from a real identity rather than an invented one.
 		source, err = GetEnvironment(target, oldName)
 		if err != nil {
 			return EnvironmentRecord{}, err
 		}
 	}
 
-	// Pre-lock collision guard: if the destination already exists and holds a
-	// DIFFERENT environment's UID, refuse the rename before we take the lock or
-	// touch anything (the atomic os.Rename below would otherwise overwrite that
-	// identity on systems where a rename replaces an existing file). Idempotent
-	// only when the destination already carries OUR identity.
+	// Pre-lock collision guard: if the destination already exists, validate it
+	// strictly. A destination record whose binding does NOT match this rename's
+	// path (a different (Target, environment)) is a foreign claim and must be
+	// refused — the reviewer's finding 3: the previous guard swallowed
+	// ErrEnvironmentBindingMismatch, letting a subsequent os.Rename clobber the
+	// foreign record. A destination that already carries OUR identity is the
+	// idempotent no-op case (finding 4, handled below).
 	if _, destStat := os.Stat(newPath); destStat == nil {
-		if dest, dErr := readEnvironmentRecord(newPath, target, newName); dErr == nil {
-			if dest.Identity != source.Identity {
-				return EnvironmentRecord{}, fmt.Errorf("%w: destination %q already exists as %q", ErrEnvironmentAlreadyExists, newName, dest.Identity)
-			}
-		} else if !errors.Is(dErr, ErrEnvironmentBindingMismatch) {
-			// A corrupt/non-conforming destination blocks the rename; surface it.
+		dest, dErr := readEnvironmentRecord(newPath, target, newName)
+		if dErr != nil {
+			// A mismatched destination binding (or any read error) blocks the
+			// rename; never swallow it into a clobber.
 			return EnvironmentRecord{}, fmt.Errorf("inspect destination %q: %w", newPath, dErr)
 		}
+		if dest.Identity == source.Identity {
+			// The destination already carries OUR identity: the rename is a no-op
+			// and this record is the result (idempotent, finding 4).
+			return dest, nil
+		}
+		return EnvironmentRecord{}, fmt.Errorf("%w: destination %q already exists as %q", ErrEnvironmentAlreadyExists, newName, dest.Identity)
 	}
 
 	// Take the registry write lock for the whole check → move → remove so a
@@ -364,11 +391,14 @@ func RenameEnvironment(target, oldName, newName string) (EnvironmentRecord, erro
 				}
 				source = rec // authoritative source identity under the lock
 			} else {
-				// Source is gone: a concurrent rename already moved it (or a
-				// concurrent create placed a different identity at the old path).
-				// If the new-name path already holds our identity, converge on it;
-				// if it holds a DIFFERENT identity, the old path is gone and the
-				// winner's identity stands — refuse rather than overwrite.
+				// Source is gone: either a prior rename of THIS request already
+				// completed, or a concurrent writer moved it. Find the result:
+				// - destination carries OUR identity → the rename already ran (or
+				//   converged); return that record idempotently (finding 4).
+				// - destination carries a DIFFERENT identity → refuse; the old
+				//   path is gone and the winner's identity stands.
+				// - destination absent → the source truly vanished mid-flight; we
+				//   cannot invent a new identity for a gone source.
 				if _, nErr := os.Stat(newPath); nErr == nil {
 					existing, rErr := readEnvironmentRecord(newPath, target, newName)
 					if rErr != nil {
@@ -378,10 +408,7 @@ func RenameEnvironment(target, oldName, newName string) (EnvironmentRecord, erro
 						return rErr
 					}
 					if existing.Identity != source.Identity {
-						// Destination holds a DIFFERENT environment's UID — refuse,
-						// never overwrite. Idempotent only when the new name already
-						// carries OUR identity (converged rename).
-						return fmt.Errorf("%w at %q: destination %q", ErrEnvironmentAlreadyExists, newPath, newName)
+						return fmt.Errorf("%w: destination %q holds %q", ErrEnvironmentAlreadyExists, newName, existing.Identity)
 					}
 					moved = existing
 					return nil

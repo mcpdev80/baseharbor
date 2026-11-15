@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -58,10 +59,10 @@ func runTargetShowJSON(t *testing.T, target, environment string) (string, string
 
 // TestEnvironmentUIDCreateReopenRenameThroughProductionCLI is the real CLI-entry
 // regression for the environment UID feature (precedent 175-r8): it asserts
-// UID create, reopen, and rename through the ACTUAL `baha target show` command
+// UID create, reopen, and rename through the ACTUAL `baha target env` command
 // path via runWithIO — never by calling the deployment seam directly. The UID
 // is created/reused/renamed by the command itself; the test only parses the
-// `target show --json` output and asserts the reported environment_id/name.
+// `--json` output and asserts the reported environment_id/name.
 //
 // The mutation witness: GetEnvironment returning a fresh UUID on every call
 // makes the reopen assertion fail verbatim, and a rename that changes the UID
@@ -106,29 +107,54 @@ func TestEnvironmentUIDCreateReopenRenameThroughProductionCLI(t *testing.T) {
 	}
 
 	// (3) RENAME: the durable UID must survive a persisted rename through the
-	// seam. The CLI resolves the UID for a selector; a rename is a persisted
-	// metadata update (RenameEnvironment) that must keep the same UUID. We
-	// create via the CLI (step 1-2), then rename the same environment through
-	// the seam and assert the reopened UID is unchanged — proving the rename
-	// contract the CLI relies on.
-	moved, rErr := deployment.RenameEnvironment("env-tgt", envName, "production")
-	if rErr != nil {
-		t.Fatalf("RenameEnvironment via production state root: %v", rErr)
+	// REAL `baha target env rename` CLI entry. Finding 2 requires the rename
+	// regression to drive the RENAME MUTATION through a real CLI command via
+	// runWithIO — not to call the deployment seam directly and only assert a
+	// read. So the rename below runs the actual command path.
+	stdout, stderr := runTargetEnvRename(t, "env-tgt", envName, "production")
+	if stderr != "" {
+		t.Fatalf("target env rename failed: %s", stderr)
 	}
-	if moved.Identity != firstID {
-		t.Fatalf("UID changed across rename via CLI state: %q -> %q", firstID, moved.Identity)
-	}
-	stdout, _ = runTargetShowJSON(t, "env-tgt", "production")
-	var renameReport targetShowResult
+	var renameReport targetEnvShowResult
 	if err := json.Unmarshal([]byte(stdout), &renameReport); err != nil {
-		t.Fatalf("renamed target show --json: %v\n%s", err, stdout)
+		t.Fatalf("renamed target env rename --json: %v\n%s", err, stdout)
 	}
 	if renameReport.EnvironmentID != firstID {
-		t.Fatalf("UID changed after rename reopened via CLI: %q -> %q", firstID, renameReport.EnvironmentID)
+		t.Fatalf("UID changed across CLI rename: %q -> %q", firstID, renameReport.EnvironmentID)
 	}
 	if renameReport.EnvironmentName != "production" {
 		t.Fatalf("renamed env reported name=%q, want production", renameReport.EnvironmentName)
 	}
+	// And reopening the renamed selector via `target show` must keep the same
+	// UID (the rename was a pure metadata update that retained the UUID).
+	stdout, _ = runTargetShowJSON(t, "env-tgt", "production")
+	var reopenAfterReport targetShowResult
+	if err := json.Unmarshal([]byte(stdout), &reopenAfterReport); err != nil {
+		t.Fatalf("reopened renamed target show --json: %v\n%s", err, stdout)
+	}
+	if reopenAfterReport.EnvironmentID != firstID {
+		t.Fatalf("UID changed after rename reopened via CLI: %q -> %q", firstID, reopenAfterReport.EnvironmentID)
+	}
+	if reopenAfterReport.EnvironmentName != "production" {
+		t.Fatalf("renamed env reported name=%q, want production", reopenAfterReport.EnvironmentName)
+	}
+}
+
+// runTargetEnvRename drives the REAL `baha target env rename OLD NEW` command
+// through the production runWithIO entry point (finding 2). It returns the
+// command's stdout and any stderr, so the caller can assert on a rejected
+// rename.
+func runTargetEnvRename(t *testing.T, target, oldName, newName string) (string, string) {
+	t.Helper()
+	t.Setenv("BASEHARBOR_TARGET", target)
+	t.Setenv("BASEHARBOR_ENVIRONMENT", "")
+	var stdout, stderr bytes.Buffer
+	if err := runWithIO(context.Background(), []string{"target", "env", "rename", oldName, newName}, &stdout, &stderr); err != nil {
+		// A rejected rename (binding mismatch, idempotent no-op, etc.) still
+		// returns an error; surface both streams for the caller's assertion.
+		return stdout.String(), stderr.String() + "\n" + err.Error()
+	}
+	return stdout.String(), ""
 }
 
 // TestEnvironmentUIDBindingFailClosedThroughProductionCLI proves a valid record
@@ -177,5 +203,100 @@ func TestEnvironmentUIDAbsentWhenUnspecified(t *testing.T) {
 	}
 	if report.EnvironmentID != "" {
 		t.Fatalf("environment_id reported without a selected environment: %q", report.EnvironmentID)
+	}
+}
+
+// TestEnvironmentUIDRenameRejectsDestinationBindingMismatch proves finding 3:
+// renaming onto a destination that already carries a DIFFERENT (Target,
+// environment)'s identity must be refused by the real CLI rename command —
+// the guard must NOT swallow the binding-mismatch and clobber the foreign
+// identity. The command returns an error and no aliased UID surfaces.
+func TestEnvironmentUIDRenameRejectsDestinationBindingMismatch(t *testing.T) {
+	stateRoot := configureIsolatedTargetForEnvironment(t)
+
+	const oldName = "staging"
+	const foreignName = "production"
+
+	// (1) Create the source environment (allocates its durable UUID) via the
+	// real CLI rename entry. The rename first ensures the source exists, then
+	// moves it; here we move it to a distinct scratch name so a durable source
+	// identity exists for the failing-closed assertion below.
+	if _, err1 := runTargetEnvRename(t, "env-tgt", oldName, "scratch-source"); err1 != "" {
+		t.Fatalf("unexpected source-creation failure: %s", err1)
+	}
+
+	// (2) Seed a valid record at the destination that belongs to a DIFFERENT
+	// (Target, environment): a foreign claim that must never be clobbered.
+	foreignHome := filepath.Join(stateRoot, "baseharbor", "targets", "env-tgt", ".baseharbor", "environments", foreignName)
+	if err := os.MkdirAll(foreignHome, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	foreignID := "00000000-0000-4000-8000-000000000009"
+	bogus := fmt.Sprintf(`{"target":"foreign-target","name":"foreign","id":%q}`, foreignID)
+	if err := os.WriteFile(filepath.Join(foreignHome, "environment.json"), []byte(bogus), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// (3) Rename OLD -> FOREIGN through the real CLI. Must FAIL CLOSED: the
+	// destination already holds a different identity, so the rename is refused
+	// and the foreign record is untouched.
+	out2, err2 := runTargetEnvRename(t, "env-tgt", oldName, foreignName)
+	if err2 == "" {
+		t.Fatalf("expected the rename onto a foreign-bound destination to be refused; stdout=%q", out2)
+	}
+	if strings.Contains(err2, foreignID) {
+		t.Fatalf("CLI renamed onto / surfaced a foreign-bound UID: %s", err2)
+	}
+	seeded, readErr := os.ReadFile(filepath.Join(foreignHome, "environment.json"))
+	if readErr != nil {
+		t.Fatalf("read foreign record: %v", readErr)
+	}
+	if string(seeded) != bogus {
+		t.Fatalf("foreign destination record was clobbered by the rename:\nbefore=%safter=%q", bogus, string(seeded))
+	}
+	if !strings.Contains(strings.ToLower(err2), "binding") && !strings.Contains(strings.ToLower(err2), "exists") {
+		t.Fatalf("expected a binding/existence rejection, got: %s", err2)
+	}
+}
+
+// TestEnvironmentUIDRenameIdempotentSameRequest proves finding 4: a second
+// identical rename request after success is an idempotent no-op that
+// converges on the destination record carrying the source's identity — it does
+// NOT allocate a fresh UID cycle. Positive assertion: both calls report the
+// same durable UUID.
+func TestEnvironmentUIDRenameIdempotentSameRequest(t *testing.T) {
+	configureIsolatedTargetForEnvironment(t)
+
+	const oldName = "dev"
+	const newName = "development"
+
+	// First rename allocates the source and moves it to the new name.
+	out1, err1 := runTargetEnvRename(t, "env-tgt", oldName, newName)
+	if err1 != "" {
+		t.Fatalf("first rename failed: %s", err1)
+	}
+	var first targetEnvShowResult
+	if err := json.Unmarshal([]byte(out1), &first); err != nil {
+		t.Fatalf("first rename output: %v\n%s", err, out1)
+	}
+	if first.EnvironmentID == "" {
+		t.Fatalf("first rename did not report an environment_id: %s", out1)
+	}
+
+	// Second identical rename request: must be an idempotent no-op returning
+	// the SAME UUID — no fresh UID cycle.
+	out2, err2 := runTargetEnvRename(t, "env-tgt", oldName, newName)
+	if err2 != "" {
+		t.Fatalf("second identical rename should be an idempotent no-op, got error: %s", err2)
+	}
+	var second targetEnvShowResult
+	if err := json.Unmarshal([]byte(out2), &second); err != nil {
+		t.Fatalf("second rename output: %v\n%s", err, out2)
+	}
+	if second.EnvironmentID != first.EnvironmentID {
+		t.Fatalf("idempotent rename allocated a fresh UID: %q -> %q", first.EnvironmentID, second.EnvironmentID)
+	}
+	if second.EnvironmentName != newName {
+		t.Fatalf("idempotent rename reported name=%q, want %q", second.EnvironmentName, newName)
 	}
 }
