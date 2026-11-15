@@ -782,6 +782,58 @@ func TestAppEditCommandReview918PersistExactTargetPreferenceAndResolveLater(t *t
 	}
 }
 
+func TestAppEditDesiredIntentDoesNotInheritRemovedProviderPreference(t *testing.T) {
+	t.Setenv("BASEHARBOR_STATE_DIR", filepath.Join(t.TempDir(), "state"))
+	target := configureTestTarget(t)
+	root, err := deployment.TargetStateRoot(target.Name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := application.WithSQLInstances(application.New("edit-remove-sql", "dev", true, false, false), "primary")
+	m.ApplicationID = application.MustNewApplicationID()
+	m.Workload = application.WorkloadConfig{Components: []string{"api"}}
+	parent := t.TempDir()
+	t.Chdir(parent)
+	mustWriteWizardTestFile(t, filepath.Join(parent, "compose.yaml"), "services:\n  api:\n    image: alpine:3.22\n")
+	path := filepath.Join(parent, application.RepositoryManifestName)
+	mustWriteInitializedAuthoredManifest(t, path, m)
+	registerTestDeployment(t, target, m, parent, path)
+
+	projected, err := application.PreviewReferenceProviderRegistryAt(root, m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var selected capability.ProviderInstance
+	for _, instance := range projected.Instances {
+		if instance.Provider.Kind == capability.ProviderPostgreSQL {
+			selected = instance
+			break
+		}
+	}
+	if selected.ID == "" {
+		t.Fatal("SQL selection lacks a canonical PostgreSQL provider instance")
+	}
+	pref := application.ProviderPreference{
+		Requirement: capability.Requirement{Kind: capability.SQL, Name: "primary"},
+		InstanceID:  selected.ID, ProviderKind: selected.Provider.Kind,
+	}
+	if err := application.SaveDesiredProviderPreferencesAt(root, target.Name, m, []application.ProviderPreference{pref}); err != nil {
+		t.Fatal(err)
+	}
+
+	desired, err := appEditProjectDesiredIntent(m, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := application.PreviewReferenceProviderRegistryAt(root, desired); err != nil {
+		t.Fatalf("read-only preview inherited the removed SQL preference: %v", err)
+	}
+	saved, err := application.DesiredProviderPreferencesAt(root, m)
+	if err != nil || len(saved) != 1 || saved[0] != pref {
+		t.Fatalf("read-only proposal changed persisted provider preference: %+v %v", saved, err)
+	}
+}
+
 func TestAppEditCommandIncompleteSQLConsumerRemainsPartial(t *testing.T) {
 	t.Setenv("BASEHARBOR_STATE_DIR", filepath.Join(t.TempDir(), "state"))
 	t.Setenv(application.ProviderScopeEnv(capability.ProviderPostgreSQL), string(capability.ScopeApplication))

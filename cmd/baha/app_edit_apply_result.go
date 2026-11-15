@@ -283,7 +283,7 @@ func defaultAppEditAuthorities(store application.Store, args []string) appEditAu
 		if err != nil {
 			return application.ProviderImpactPlan{}, err
 		}
-		desired, err := appEditProjectRequirements(resolved.Manifest, requirements)
+		desired, err := appEditProjectDesiredIntent(resolved.Manifest, requirements, preferences)
 		if err != nil {
 			return application.ProviderImpactPlan{}, err
 		}

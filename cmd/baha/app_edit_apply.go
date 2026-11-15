@@ -138,6 +138,18 @@ func appEditProjectRequirements(original application.Manifest, requirements []ca
 	return manifest, nil
 }
 
+// appEditProjectDesiredIntent binds the proposed provider preferences to the
+// in-memory desired manifest. An explicit empty slice matters: a read-only
+// registry preview must not inherit persisted preferences for capabilities
+// that this proposal removes.
+func appEditProjectDesiredIntent(original application.Manifest, requirements []capability.Requirement, preferences []application.ProviderPreference) (application.Manifest, error) {
+	manifest, err := appEditProjectRequirements(original, requirements)
+	if err != nil {
+		return application.Manifest{}, err
+	}
+	return application.WithProviderPreferences(manifest, preferences), nil
+}
+
 func appEditDesiredFromDecision(loaded appEditLoaded, decision appWizardDecision) (appEditDesired, error) {
 	if decision.Target == "" || decision.Target != loaded.Target {
 		return appEditDesired{}, errors.New("confirmed edit decision has the wrong Target")
