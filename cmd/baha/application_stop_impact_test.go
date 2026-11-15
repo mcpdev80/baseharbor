@@ -175,7 +175,7 @@ func TestApplicationStopCLIJSONMCPExposeSameRequiredAcknowledgement(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	stopPlan, err := buildApplicationStopPlan(t.Context(), r)
+	stopPlan, err := buildApplicationStopPlan(context.WithValue(t.Context(), applicationStopModeKey{}, true), r)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -194,7 +194,7 @@ func TestApplicationStopHTTPUsesCurrentScopeAndCannotEscapeAuthorizedContext(t *
 		t.Fatalf("HTTP stop did not require current impact acknowledgement: %v", httpErr)
 	}
 	httpPlan, _ := json.Marshal(httpFailure.Details)
-	local, err := buildApplicationStopPlan(t.Context(), r)
+	local, err := buildApplicationStopPlan(context.WithValue(t.Context(), applicationStopModeKey{}, true), r)
 	if err != nil {
 		t.Fatal(err)
 	}
