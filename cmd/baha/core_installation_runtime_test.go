@@ -162,9 +162,6 @@ func runCoreOnlyBootstrapRuntimeWithHA(t *testing.T, role coreinstallation.Machi
 		t.Fatal(err)
 	}
 	services := []string{"postgres", "openbao", "openbao-member-1"}
-	if !ha {
-		services = append(services, "postgres-member-1")
-	}
 	for _, service := range services {
 		if err := containersecurity.VerifyComposeService(ctx, files.Project, service, containersecurity.Requirements{ReadOnlyRootfs: true, DropAllCaps: true, NoNewPrivs: true}); err != nil {
 			inventory, inventoryErr := runtime.ListRuntimeContainers(ctx)
@@ -185,6 +182,35 @@ func runCoreOnlyBootstrapRuntimeWithHA(t *testing.T, role coreinstallation.Machi
 		const processUID = `ps -eo comm=,uid= | awk '$1 == "postgres" { found=1; if ($2 == 0) bad=1 } END { exit (!found || bad) }'`
 		if _, err := runtime.ExecProject(ctx, files.Project, files.Compose, files.Env, "postgres-member-1", "sh", "-ec", processUID); err != nil {
 			t.Fatalf("HA PostgreSQL database process must be non-root: %v", err)
+		}
+	} else {
+		// The official postgres image starts its entrypoint as root to initialize
+		// fresh volumes, then drops to postgres before launching the server. Check
+		// both the bounded entrypoint settings and the actual server process.
+		if err := containersecurity.VerifyComposeService(ctx, files.Project, "postgres-member-1", containersecurity.Requirements{
+			ReadOnlyRootfs:      true,
+			NoNewPrivs:          true,
+			AllowRootEntrypoint: true,
+			AllowedCapAdd:       []string{"CHOWN", "DAC_READ_SEARCH", "FOWNER", "SETGID", "SETUID"},
+			RequireCapDropAll:   true,
+		}); err != nil {
+			t.Fatalf("single PostgreSQL entrypoint security settings invalid: %v", err)
+		}
+		const processSecurity = `seen=0
+for status in /proc/[0-9]*/status; do
+  [ -r "$status" ] || continue
+  name=$(awk '$1 == "Name:" { print $2; exit }' "$status" 2>/dev/null) || continue
+  case "$name" in postgres*) ;; *) continue ;; esac
+  uid=$(awk '$1 == "Uid:" { print $2; exit }' "$status" 2>/dev/null) || continue
+  caps=$(awk '$1 == "CapEff:" { print $2; exit }' "$status" 2>/dev/null) || continue
+  [ -n "$uid" ] && [ -n "$caps" ] || continue
+  seen=1
+  [ "$uid" != "0" ] || exit 1
+  case "$caps" in *[!0]*) exit 1 ;; esac
+done
+		[ "$seen" = "1" ]`
+		if _, err := runtime.ExecProject(ctx, files.Project, files.Compose, files.Env, "postgres-member-1", "sh", "-ec", processSecurity); err != nil {
+			t.Fatalf("single PostgreSQL server processes must run non-root without effective capabilities: %v", err)
 		}
 	}
 	second, err := installCore(ctx, strings.NewReader(""), &out, opts)

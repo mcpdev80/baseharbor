@@ -8,6 +8,21 @@ import (
 	"testing"
 )
 
+func TestSameCapabilitiesRequiresExactCapabilitySet(t *testing.T) {
+	if !sameCapabilities([]string{"CAP_CHOWN", "SETUID"}, []string{"chown", "cap_setuid"}) {
+		t.Fatal("capability names should compare case-insensitively with optional CAP_ prefix")
+	}
+	for _, actual := range [][]string{
+		{"CHOWN"},
+		{"CHOWN", "SETUID", "DAC_READ_SEARCH"},
+		{"CHOWN", "CHOWN"},
+	} {
+		if sameCapabilities(actual, []string{"CHOWN", "SETUID"}) {
+			t.Fatalf("unexpected capability set accepted: %v", actual)
+		}
+	}
+}
+
 func TestPodmanOwnershipUsesInspectedRunningState(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("POSIX command fixture")
