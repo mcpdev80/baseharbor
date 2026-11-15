@@ -5,6 +5,7 @@ import (
 	"errors"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -71,13 +72,11 @@ func TestKeycloakDatabaseReloadWaitsForRecoveringMembers(t *testing.T) {
 	if !reflect.DeepEqual(runtime.services, want) {
 		t.Fatalf("database reload did not wait for every member: got %v want %v", runtime.services, want)
 	}
-	wantCommand := []string{"sh", "-ec", `if [ ! -s "$PGDATA/postmaster.pid" ]; then exit 0; fi
-pid=$(sed -n '1p' "$PGDATA/postmaster.pid")
-case "$pid" in ''|*[!0-9]*) exit 1 ;; esac
-if [ ! -r "/proc/$pid/comm" ]; then exit 0; fi
-comm=$(cat "/proc/$pid/comm")
-case "$comm" in postgres|postmaster) ;; *) exit 0 ;; esac
-kill -HUP "$pid"`}
+	wantCommand := []string{"sh", "-ec", keycloakDatabaseTLSReloadCommand(keycloakDatabaseTLSKeyPaths{
+		certificate: "/run/baseharbor/db-tls-source/server.pem",
+		sourceKey:   "/run/baseharbor/db-tls-source/server-key.pem",
+		runtimeKey:  "/run/baseharbor/etcd-runtime/server-key.pem",
+	})}
 	if !reflect.DeepEqual(runtime.commands[0], wantCommand) {
 		t.Fatalf("database reload must use Spilo's local postgres control process without password authentication: got %v want %v", runtime.commands[0], wantCommand)
 	}
@@ -97,6 +96,43 @@ func TestKeycloakSingleDatabaseReload(t *testing.T) {
 	}
 	if !reflect.DeepEqual(runtime.services, []string{"keycloak-db"}) {
 		t.Fatalf("single topology attempted HA reload: %v", runtime.services)
+	}
+	if got := runtime.commands[0][2]; !strings.Contains(got, `source_cert="/run/baseharbor/db-tls/server.pem"`) || !strings.Contains(got, `source_key="/run/baseharbor/db-tls/server-key.pem"`) || !strings.Contains(got, `runtime_key="/tmp/server-key.pem"`) {
+		t.Fatalf("single topology did not refresh the copied PostgreSQL key from its mounted source: %s", got)
+	}
+}
+
+func TestKeycloakDatabaseTLSReloadCommandValidatesAndAtomicallyInstallsMatchingKey(t *testing.T) {
+	command := keycloakDatabaseTLSReloadCommand(keycloakDatabaseTLSKeyPaths{
+		certificate: "/run/baseharbor/db-tls-source/server.pem",
+		sourceKey:   "/run/baseharbor/db-tls-source/server-key.pem",
+		runtimeKey:  "/run/baseharbor/etcd-runtime/server-key.pem",
+	})
+	ordered := []string{
+		`[ ! -L "$runtime_key" ]`,
+		`cp "$source_key" "$tmp_key"`,
+		`chmod 0600 "$tmp_key"`,
+		`openssl x509 -in "$source_cert" -pubkey -noout > "$cert_pub"`,
+		`openssl pkey -in "$tmp_key" -pubout > "$key_pub"`,
+		`cmp -s "$cert_pub" "$key_pub" || { echo 'postgres server certificate and key do not match' >&2; exit 1; }`,
+		`mv -f "$tmp_key" "$runtime_key"`,
+		`kill -HUP "$pid"`,
+		`timeout 5 openssl s_client -starttls postgres -connect 127.0.0.1:5432 -showcerts`,
+		`sed -n '/-----BEGIN CERTIFICATE-----/,/-----END CERTIFICATE-----/p' "$probe_output" > "$served_cert"`,
+		`expected_fingerprint=$(openssl x509 -in "$source_cert" -noout -fingerprint -sha256)`,
+		`served_fingerprint=$(openssl x509 -in "$served_cert" -noout -fingerprint -sha256)`,
+		`[ "$served_fingerprint" = "$expected_fingerprint" ] || { echo "postgres still serves a stale certificate`,
+	}
+	last := -1
+	for _, fragment := range ordered {
+		at := strings.Index(command, fragment)
+		if at <= last {
+			t.Fatalf("reload command must validate and atomically install the matching key before HUP; fragment %q at %d after %d in:\n%s", fragment, at, last, command)
+		}
+		last = at
+	}
+	if !strings.Contains(command, `postgres postmaster pid is not ready`) || !strings.Contains(command, `postgres process is not ready`) {
+		t.Fatalf("reload command must fail closed when PostgreSQL is not running:\n%s", command)
 	}
 }
 
