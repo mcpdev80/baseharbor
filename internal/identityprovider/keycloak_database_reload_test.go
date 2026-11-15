@@ -7,6 +7,8 @@ import (
 	"reflect"
 	"testing"
 	"time"
+
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
 type databaseReloadRuntime struct {
@@ -95,5 +97,67 @@ func TestKeycloakSingleDatabaseReload(t *testing.T) {
 	}
 	if !reflect.DeepEqual(runtime.services, []string{"keycloak-db"}) {
 		t.Fatalf("single topology attempted HA reload: %v", runtime.services)
+	}
+}
+
+type keycloakTrustReloadRecorder struct {
+	services []string
+	ready    []string
+}
+
+func (r *keycloakTrustReloadRecorder) UpProjectFilesSelectedForceRecreateNoBuild(_ context.Context, _, _ string, _ map[string]string, services []string, _ ...string) error {
+	if len(services) != 1 {
+		return errors.New("trust reload must recreate one Keycloak member at a time")
+	}
+	if len(r.services) > 0 && len(r.ready) < len(r.services) {
+		return errors.New("next Keycloak member recreated before the previous member became ready")
+	}
+	r.services = append(r.services, services[0])
+	return nil
+}
+
+func (r *keycloakTrustReloadRecorder) ServiceStatesProjectFilesEnv(_ context.Context, _, _ string, _ map[string]string, _ ...string) ([]bhruntime.ServiceState, error) {
+	if len(r.services) == 0 {
+		return nil, errors.New("service state read before Keycloak member recreation")
+	}
+	service := r.services[len(r.services)-1]
+	if len(r.ready) < len(r.services) {
+		r.ready = append(r.ready, service)
+	}
+	return []bhruntime.ServiceState{{Service: service, State: "running", Health: "healthy"}}, nil
+}
+
+func TestKeycloakDatabaseTrustReloadRollsMembersAndWaitsForReadiness(t *testing.T) {
+	for _, topology := range []struct {
+		name string
+		want []string
+	}{
+		{name: "single", want: []string{"keycloak-1"}},
+		{name: "ha", want: []string{"keycloak-1", "keycloak-2", "keycloak-3"}},
+	} {
+		t.Run(topology.name, func(t *testing.T) {
+			files := KeycloakFiles{Project: "identity", Dir: t.TempDir(), Compose: "compose.yaml", Env: filepath.Join(t.TempDir(), "runtime.env")}
+			if err := writeProtectedEnv(files.Env, map[string]string{"BASEHARBOR_KEYCLOAK_TOPOLOGY": topology.name}); err != nil {
+				t.Fatal(err)
+			}
+			runtime := &keycloakTrustReloadRecorder{}
+			if err := reloadKeycloakDatabaseTrust(context.Background(), runtime, files); err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(runtime.services, topology.want) || !reflect.DeepEqual(runtime.ready, topology.want) {
+				t.Fatalf("database trust reload order: restarted=%v ready=%v want=%v", runtime.services, runtime.ready, topology.want)
+			}
+		})
+	}
+}
+
+func TestKeycloakDatabaseTrustReloadRejectsUnknownTopology(t *testing.T) {
+	files := KeycloakFiles{Project: "identity", Dir: t.TempDir(), Compose: "compose.yaml", Env: filepath.Join(t.TempDir(), "runtime.env")}
+	if err := writeProtectedEnv(files.Env, map[string]string{"BASEHARBOR_KEYCLOAK_TOPOLOGY": "unknown"}); err != nil {
+		t.Fatal(err)
+	}
+	runtime := &keycloakTrustReloadRecorder{}
+	if err := reloadKeycloakDatabaseTrust(context.Background(), runtime, files); err == nil || len(runtime.services) != 0 {
+		t.Fatalf("unknown Keycloak topology was not rejected before mutation: services=%v err=%v", runtime.services, err)
 	}
 }

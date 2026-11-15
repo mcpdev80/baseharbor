@@ -17,6 +17,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
 
@@ -488,6 +489,70 @@ kill -HUP "$pid"`)
 	return nil
 }
 
+type keycloakTrustReloadRuntime interface {
+	UpProjectFilesSelectedForceRecreateNoBuild(context.Context, string, string, map[string]string, []string, ...string) error
+	ServiceStatesProjectFilesEnv(context.Context, string, string, map[string]string, ...string) ([]bhruntime.ServiceState, error)
+}
+
+// Reload the JDBC trust manager from the mounted overlap bundle before the
+// database starts presenting a leaf signed only by the replacement CA. A
+// Compose up does not restart an unchanged Keycloak container when only a
+// bind-mounted file changed, and the JDBC driver's trust manager is cached by
+// the running JVM.
+func reloadKeycloakDatabaseTrust(ctx context.Context, reloader keycloakTrustReloadRuntime, files KeycloakFiles) error {
+	values, err := readProtectedEnv(files.Env)
+	if err != nil {
+		return err
+	}
+	var services []string
+	switch values["BASEHARBOR_KEYCLOAK_TOPOLOGY"] {
+	case "ha":
+		services = []string{"keycloak-1", "keycloak-2", "keycloak-3"}
+	case "single":
+		services = []string{"keycloak-1"}
+	default:
+		return errors.New("Keycloak JDBC trust reload requires a known, owned topology")
+	}
+	for _, service := range services {
+		if err := reloader.UpProjectFilesSelectedForceRecreateNoBuild(ctx, files.Project, files.Dir, values, []string{service}, files.Compose); err != nil {
+			return fmt.Errorf("restart %s to reload the Keycloak database trust bundle: %w", service, err)
+		}
+		if err := waitKeycloakServiceReady(ctx, reloader, files, values, service); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func waitKeycloakServiceReady(ctx context.Context, runtime keycloakTrustReloadRuntime, files KeycloakFiles, environment map[string]string, service string) error {
+	deadline := time.NewTimer(90 * time.Second)
+	defer deadline.Stop()
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
+	var lastState []bhruntime.ServiceState
+	var lastErr error
+	for {
+		states, err := runtime.ServiceStatesProjectFilesEnv(ctx, files.Project, files.Dir, environment, files.Compose)
+		if err == nil {
+			lastState = states
+			for _, state := range states {
+				if state.Service == service && state.Ready() && strings.EqualFold(state.Health, "healthy") {
+					return nil
+				}
+			}
+		} else {
+			lastErr = err
+		}
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("wait for %s after reloading Keycloak database trust: %w", service, ctx.Err())
+		case <-deadline.C:
+			return fmt.Errorf("wait for %s after reloading Keycloak database trust: timed out (last state: %+v, last error: %v)", service, lastState, lastErr)
+		case <-ticker.C:
+		}
+	}
+}
+
 func waitKeycloakNativeCertificateReload(ctx context.Context) error {
 	timer := time.NewTimer(2*keycloakCertificateReloadPeriod + 2*time.Second)
 	defer timer.Stop()
@@ -525,6 +590,15 @@ func (d *KeycloakDriver) RotatePKI(ctx context.Context) error {
 		}
 		if err := r.lifecycle.Apply(ctx, files); err != nil {
 			return KeycloakFiles{}, err
+		}
+		if waitForNativeReload {
+			trustRuntime, ok := r.runtime.(keycloakTrustReloadRuntime)
+			if !ok {
+				return KeycloakFiles{}, errors.New("Keycloak PKI rotation requires runtime trust-bundle reload support")
+			}
+			if err := reloadKeycloakDatabaseTrust(ctx, trustRuntime, files); err != nil {
+				return KeycloakFiles{}, err
+			}
 		}
 		if err := reloadKeycloakDatabaseCertificates(ctx, r.runtime, files); err != nil {
 			return KeycloakFiles{}, err
