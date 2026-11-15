@@ -19,6 +19,15 @@ type ActiveState struct {
 // canonical location and then never consulted again.
 const legacyTempSelectionRel = "active.json"
 
+// canonicalFrozenMarker is a durable, once-only migration marker written into
+// the private canonical organization directory when the persisted selection is
+// adopted from a world-writable /tmp location. Its presence means the legacy
+// /tmp selection has already been migrated, so the loader must never read a
+// legacy path again — even if the canonical active.json is later deleted. It
+// lives in the private canonical namespace (not the world-writable source) so
+// an attacker cannot recreate it in /tmp to force a re-adoption.
+const canonicalFrozenMarker = "active.frozen.tombstone"
+
 // worldWritableCheckOptOutEnv, when set to "skip", disables the world-writable
 // /tmp guard in tests that intentionally use a world-writable t.TempDir() as
 // XDG_CONFIG_HOME. Production never sets it, so the guard stays enforced.
@@ -136,8 +145,9 @@ func privateFallbackPath() (string, error) {
 // it rejects symlinks and any non-regular entry (Lstat, no-follow), refuses to
 // read from a world-writable source, and refuses to overwrite a private
 // selection that already exists. After a successful adopt the source file is
-// frozen read-only with a tombstone marker so the location can never receive a
-// further write or a second adopt.
+// frozen read-only with a tombstone marker and a durable once-only marker is
+// written into the private canonical directory so the location can never
+// receive a further write or a second adopt.
 //
 // legacyPath is the world-writable location that was resolved (and refused by
 // SaveActive/LoadActive); canonical is the private fallback the value is adopted
@@ -179,8 +189,10 @@ func adoptLegacySelection(legacyPath, canonical string) (bool, error) {
 }
 
 // migrateToCanonical writes data into canonical using a temp+rename within the
-// canonical directory and freezes the source as a read-only tombstone so it can
-// never receive a further write.
+// canonical directory, freezes the source as a read-only tombstone so it can
+// never receive a further write, and writes the durable once-only marker into
+// the private canonical directory so adoption can never fire a second time,
+// even if the canonical active.json is deleted.
 func migrateToCanonical(src, dst string, data []byte) error {
 	if err := os.MkdirAll(filepath.Dir(dst), 0o700); err != nil {
 		return fmt.Errorf("create organization config directory: %w", err)
@@ -200,10 +212,22 @@ func migrateToCanonical(src, dst string, data []byte) error {
 	// Freeze the source as a tombstone; ignore failure to chmod (best effort)
 	// but leave the tombstone marker regardless.
 	_ = os.Chmod(src, 0o400)
-	tomb := filepath.Join(filepath.Dir(src), "active.world-writable.tombstone")
-	_ = os.WriteFile(tomb, []byte("# Legacy organization selection path frozen after one-time migration.\n"+
+	legacyTomb := filepath.Join(filepath.Dir(src), "active.world-writable.tombstone")
+	_ = os.WriteFile(legacyTomb, []byte("# Legacy organization selection path frozen after one-time migration.\n"+
 		"This file exists to prevent a second migration.\n"+
 		"Original location: "+src+"\n"), 0o600)
+	// Durable once-only marker in the private canonical namespace. Write it
+	// last (after the canonical file is in place) so a crash before the file
+	// lands cannot leave a marker without the migrated selection. Ignore
+	// failure to write it: a missing marker only makes the once-only
+	// guarantee best-effort, never incorrect — the canonical file is already
+	// authoritative.
+	if err := os.WriteFile(filepath.Join(filepath.Dir(dst), canonicalFrozenMarker), []byte(
+		"# One-time world-writable migration marker.\n"+
+			"Wrote the adopted selection into this private directory. Do NOT re-read\n"+
+			"any legacy /tmp selection, even if active.json is missing.\n"), 0o600); err != nil {
+		return fmt.Errorf("write frozen migration marker: %w", err)
+	}
 	return nil
 }
 
@@ -234,18 +258,22 @@ func LoadActiveOptional() (ActiveState, bool, error) {
 			return ActiveState{}, false, fmt.Errorf("read active organization configuration: %w", err)
 		}
 		// One-time migration: adopt a stale world-writable /tmp selection into
-		// the private canonical path if it still exists.
-		adopted, adoptErr := adoptLegacySelection(legacy, canonical)
-		if adoptErr != nil {
-			return ActiveState{}, false, adoptErr
-		}
-		if !adopted {
-			return ActiveState{}, false, nil
-		}
-		// Adopted: the canonical path now holds the migrated selection.
-		data, err = os.ReadFile(canonical)
-		if err != nil {
-			return ActiveState{}, false, fmt.Errorf("read active organization configuration after migration: %w", err)
+		// the private canonical path if it still exists. The durable once-only
+		// marker in the private canonical namespace is consulted first so a
+		// deleted canonical file cannot restore the stale legacy selection.
+		if !canonicalMigrationFrozen(canonical) {
+			adopted, adoptErr := adoptLegacySelection(legacy, canonical)
+			if adoptErr != nil {
+				return ActiveState{}, false, adoptErr
+			}
+			if !adopted {
+				return ActiveState{}, false, nil
+			}
+			// Adopted: the canonical path now holds the migrated selection.
+			data, err = os.ReadFile(canonical)
+			if err != nil {
+				return ActiveState{}, false, fmt.Errorf("read active organization configuration after migration: %w", err)
+			}
 		}
 	}
 	return decodeActive(data)
@@ -285,10 +313,17 @@ func SaveActive(state ActiveState) error {
 	}
 	// One-time migration: adopt a stale world-writable /tmp selection into the
 	// private canonical path before writing, so the write lands in the safe
-	// location and never re-touches the /tmp source.
-	adopted, adoptErr := adoptLegacySelection(legacy, canonical)
-	if adoptErr != nil {
-		return adoptErr
+	// location and never re-touches the /tmp source. The durable once-only
+	// marker in the private canonical namespace is consulted first so a deleted
+	// canonical file cannot restore the stale legacy selection or force another
+	// freeze.
+	adopted := false
+	if !canonicalMigrationFrozen(canonical) {
+		var adoptErr error
+		adopted, adoptErr = adoptLegacySelection(legacy, canonical)
+		if adoptErr != nil {
+			return adoptErr
+		}
 	}
 	// If the resolved selection location is world-writable and there is no
 	// private selection to write into, the write would land in a
@@ -331,6 +366,18 @@ func SaveActive(state ActiveState) error {
 func isWorldFrozenTombstone(dir string) bool {
 	_, err := os.Stat(filepath.Join(dir, "active.world-writable.tombstone"))
 	return err == nil
+}
+
+// canonicalMigrationFrozen reports whether the private canonical organization
+// directory already carries the durable once-only migration marker. When it
+// does, the legacy /tmp selection has already been adopted and the loader must
+// never consult a legacy path again — even if the canonical active.json was
+// deleted in the meantime. This is consulted before any legacy-path access so
+// a deleted canonical file cannot restore the stale legacy selection.
+func canonicalMigrationFrozen(canonical string) bool {
+	marker := filepath.Join(filepath.Dir(canonical), canonicalFrozenMarker)
+	info, err := os.Lstat(marker)
+	return err == nil && !info.Mode().IsDir()
 }
 
 // isWorldWritableDir reports whether dir is a directory that any local user may

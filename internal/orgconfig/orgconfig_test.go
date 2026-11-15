@@ -375,20 +375,26 @@ func TestWorldWritableMigrationAdoptsOnceThenFreezes(t *testing.T) {
 		t.Fatalf("canonical path is still world-writable: %q", canonical)
 	}
 	info, err := os.Stat(canonical)
-	if err != nil || info.Size() == 0 {
+	if err != nil {
 		t.Fatalf("canonical private selection missing after migration: %v %v", info, err)
 	}
-	if info.Mode().Perm()&0o077 != 0 {
-		t.Fatalf("canonical selection file is not private: %v", info.Mode().Perm())
+	if info.Mode().Perm() != 0o600 {
+		t.Fatalf("canonical selection file mode = %v, want exactly 0o600", info.Mode().Perm())
 	}
-	if dirInfo, err := os.Stat(filepath.Dir(canonical)); err == nil && dirInfo.Mode().Perm()&0o077 != 0 {
-		t.Fatalf("canonical organization directory is not private: %v", dirInfo.Mode().Perm())
+	dirInfo, err := os.Stat(filepath.Dir(canonical))
+	if err != nil {
+		t.Fatalf("stat canonical organization directory: %v", err)
+	}
+	if dirInfo.Mode().Perm() != 0o700 {
+		t.Fatalf("canonical organization directory mode = %v, want exactly 0o700", dirInfo.Mode().Perm())
 	}
 
-	// The source /tmp file is frozen read-only with a tombstone; it must never
-	// be written again.
-	if info, err := os.Stat(seedPath); err == nil && info.Mode().Perm()&0o077 != 0 {
-		t.Fatalf("legacy /tmp selection not frozen to read-only: %v", info.Mode().Perm())
+	// The source /tmp file is frozen read-only (0400) with a tombstone; it must
+	// never be written again.
+	if info, err := os.Stat(seedPath); err == nil {
+		if info.Mode().Perm() != 0o400 {
+			t.Fatalf("legacy /tmp selection mode = %v, want exactly 0o400 after freeze", info.Mode().Perm())
+		}
 	}
 	if !isWorldFrozenTombstone(filepath.Dir(seedPath)) {
 		t.Fatal("expected tombstone marker next to the frozen legacy selection")
@@ -417,6 +423,91 @@ func TestWorldWritableMigrationAdoptsOnceThenFreezes(t *testing.T) {
 	}
 	if !strings.Contains(string(data), "mig-1") {
 		t.Fatalf("legacy /tmp source was re-touched by migration write: %q", string(data))
+	}
+}
+
+// TestWorldWritableMigrationRejectsForeignSymlink asserts fail-closed behavior
+// for a positive symlink case: the legacy selection at the world-writable
+// resolved path is a symlink to a foreign file. LoadActive must refuse (the
+// symlink is rejected before any read) and the foreign target must remain
+// byte-for-byte and mode unchanged. This is the positive symlink regression
+// the PR #1582 review R2 required.
+func TestWorldWritableMigrationRejectsForeignSymlink(t *testing.T) {
+	// Isolate the private fallback so nothing is written to the real home.
+	privateHome := t.TempDir()
+	t.Setenv("HOME", privateHome)
+
+	// World-writable resolved location (broken XDG_CONFIG_HOME).
+	root := t.TempDir() // 0777 world-writable
+	cfgDir := filepath.Join(root, "config")
+	if err := os.MkdirAll(cfgDir, 0o777); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(cfgDir, 0o777); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("XDG_CONFIG_HOME", cfgDir)
+
+	// A foreign target that must never be altered.
+	foreignDir := filepath.Join(t.TempDir(), "foreign")
+	if err := os.MkdirAll(foreignDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	foreignPath := filepath.Join(foreignDir, "target.json")
+	foreignBytes := []byte(`{"resolution":{"resolved_revision":"foreign","source":{"kind":"local","location":"foreign"}},"config":` + testConfigJSON(t) + `}`)
+	if err := os.WriteFile(foreignPath, foreignBytes, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	foreignInfo, err := os.Stat(foreignPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	origForeignMode := foreignInfo.Mode().Perm()
+
+	// Seed the legacy path as a symlink to the foreign file.
+	legacyPath, err := ActivePath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(legacyPath), 0o777); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(filepath.Dir(legacyPath), 0o777); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(foreignPath, legacyPath); err != nil {
+		t.Fatal(err)
+	}
+	// Verify the symlink is a symlink (Lstat must not follow it).
+	legacyInfo, err := os.Lstat(legacyPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if legacyInfo.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("test did not create a symlink at %q", legacyPath)
+	}
+
+	// LoadActive must fail closed: a symlink must not be adopted.
+	_, err = LoadActive()
+	if err == nil {
+		t.Fatal("LoadActive into a world-writable XDG with a symlink legacy selection must fail closed")
+	}
+
+	// The foreign target must be completely unchanged (bytes and mode): the
+	// adoption rejected before any read could touch it.
+	got, err := os.ReadFile(foreignPath)
+	if err != nil {
+		t.Fatalf("read foreign target: %v", err)
+	}
+	if string(got) != string(foreignBytes) {
+		t.Fatalf("foreign target was altered by symlink adoption: got %q", string(got))
+	}
+	afterInfo, err := os.Stat(foreignPath)
+	if err != nil {
+		t.Fatalf("stat foreign target: %v", err)
+	}
+	if afterInfo.Mode().Perm() != origForeignMode {
+		t.Fatalf("foreign target mode changed: before %v after %v", origForeignMode, afterInfo.Mode().Perm())
 	}
 }
 
