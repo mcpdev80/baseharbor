@@ -5,8 +5,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"path/filepath"
+	"sort"
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
@@ -90,11 +92,82 @@ func authorizeConfirmedApplicationEdit(ctx context.Context, resolved resolvedApp
 		return err
 	}
 	if current.ProviderPlan.Impact == nil || !sameAppEditAuthorizationSurface(approved, *current.ProviderPlan.Impact) {
+		if current.ProviderPlan.Impact != nil && out != nil {
+			fmt.Fprintf(out, "authorization surface differs at %s\n", firstAppEditAuthorizationSurfaceDifference(approved, *current.ProviderPlan.Impact))
+		}
 		return classifyProviderChangeConsent(&application.ProviderChangeError{Code: "stale-impact-consent"})
 	}
 	forwarded := *consent
 	forwarded.PlanID = current.ProviderPlan.Impact.PlanID
 	return authorizeApplicationProviderChanges(withProviderChangeConsent(ctx, &forwarded), resolved, in, out)
+}
+
+// firstAppEditAuthorizationSurfaceDifference is temporary diagnostic support
+// for locating a stale-consent mismatch without printing plan values.
+func firstAppEditAuthorizationSurfaceDifference(left, right application.ProviderImpactPlan) string {
+	lraw, lerr := appEditAuthorizationSurface(left)
+	rraw, rerr := appEditAuthorizationSurface(right)
+	if lerr != nil || rerr != nil {
+		return "<marshal>"
+	}
+	var l, r any
+	if json.Unmarshal(lraw, &l) != nil || json.Unmarshal(rraw, &r) != nil {
+		return "<decode>"
+	}
+	return firstJSONDifferencePath(l, r, "$")
+}
+
+func firstJSONDifferencePath(left, right any, path string) string {
+	lm, lok := left.(map[string]any)
+	rm, rok := right.(map[string]any)
+	if lok && rok {
+		keys := make(map[string]struct{}, len(lm)+len(rm))
+		for key := range lm {
+			keys[key] = struct{}{}
+		}
+		for key := range rm {
+			keys[key] = struct{}{}
+		}
+		ordered := make([]string, 0, len(keys))
+		for key := range keys {
+			ordered = append(ordered, key)
+		}
+		sort.Strings(ordered)
+		for _, key := range ordered {
+			lv, lexists := lm[key]
+			rv, rexists := rm[key]
+			if !lexists || !rexists {
+				return path + "." + key
+			}
+			if difference := firstJSONDifferencePath(lv, rv, path+"."+key); difference != "" {
+				return difference
+			}
+		}
+		return ""
+	}
+	la, larr := left.([]any)
+	ra, rarr := right.([]any)
+	if larr && rarr {
+		if len(la) != len(ra) {
+			return path + ".length"
+		}
+		for i := range la {
+			if difference := firstJSONDifferencePath(la[i], ra[i], fmt.Sprintf("%s[%d]", path, i)); difference != "" {
+				return difference
+			}
+		}
+		return ""
+	}
+	if !reflectJSONEqual(left, right) {
+		return path
+	}
+	return ""
+}
+
+func reflectJSONEqual(left, right any) bool {
+	l, _ := json.Marshal(left)
+	r, _ := json.Marshal(right)
+	return bytes.Equal(l, r)
 }
 
 func sameAppEditAuthorizationSurface(left, right application.ProviderImpactPlan) bool {
@@ -123,7 +196,7 @@ func stripAppEditAuthorizationMetadata(value any, top bool) {
 	switch typed := value.(type) {
 	case map[string]any:
 		for key, child := range typed {
-			if key == "evidence" || top && (key == "plan_id" || key == "revision") {
+			if key == "evidence" || key == "remaining_validity_seconds" || top && (key == "plan_id" || key == "revision") {
 				delete(typed, key)
 				continue
 			}
