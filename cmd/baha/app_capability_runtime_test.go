@@ -308,7 +308,10 @@ func qualifyCoreBackedSecretsLifecycle(t *testing.T, ctx context.Context, runtim
 	if err != nil || !result.OwnerPreserved || result.DataDeleted == nil || *result.DataDeleted || result.ProviderChangeResult == nil {
 		t.Fatalf("Core-backed Secrets retirement result: %+v %v", result, err)
 	}
-	assertCoreBackedSecretsState(t, ctx, runtime, inventory, retired, initialOwner, baseline, retainedVolumes, envDigest, true, false, false)
+	// app down removes the entire app-owned Compose project after stopping it,
+	// so the broker container is absent (while its generated application secret
+	// remains available from the independent Core provider).
+	assertCoreBackedSecretsState(t, ctx, runtime, inventory, retired, initialOwner, baseline, retainedVolumes, envDigest, false, false, false)
 	if coreBackedApplicationSecretDigest(t, ctx, runtime, inventory, retired) != secretDigest {
 		t.Fatal("app down lost the retained Core-backed application secret")
 	}
@@ -369,9 +372,23 @@ func assertCoreBackedSecretsState(t *testing.T, ctx context.Context, runtime bhr
 	if err != nil {
 		t.Fatalf("inspect Core provider inventory during Secrets lifecycle: %v", err)
 	}
-	for _, resource := range inventory.Resources {
-		if resource.Kind == "container" && !application.ResourceNamedExists(actual, resource) {
-			t.Fatalf("Core provider container disappeared during Secrets lifecycle: %s", resource.Name)
+	// The canonical resource inventory also includes profile-only helpers and
+	// successful one-shot jobs such as postgres-init. They are retained in the
+	// owner inventory for lifecycle/recovery, but are not expected to exist as
+	// persistent containers on every runtime. Require all continuous Core
+	// services here; the full runtime baseline below still catches changes to
+	// every container actually present before the Secrets lifecycle.
+	continuousServices := append(
+		inventory.ContinuousServices(inventory.SQLServices),
+		inventory.ContinuousServices(inventory.SecretsServices)...,
+	)
+	for _, service := range continuousServices {
+		resource := bhruntime.ProjectResource{
+			Kind: "container",
+			Name: inventory.Files.Project + "-" + service + "-1",
+		}
+		if !application.ResourceNamedExists(actual, resource) {
+			t.Fatalf("continuous Core provider container disappeared during Secrets lifecycle: %s", resource.Name)
 		}
 	}
 	for _, volume := range volumes {
