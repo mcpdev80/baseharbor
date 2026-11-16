@@ -1292,8 +1292,7 @@
       "path": ".github/workflows/targeted-integration.yml",
       "surfaces": ["source.gate.integration.docker.coreless.lifecycle", "source.gate.integration.podman.coreless.lifecycle"],
       "runtime_specific": true
-    }
-,
+    },
     {
       "id": "source.cmd.baha.oras.setup.go",
       "path": "cmd/baha/oras_setup.go",
