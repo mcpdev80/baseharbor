@@ -1,6 +1,7 @@
 package deployment
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"os"
@@ -15,6 +16,13 @@ import (
 )
 
 const ConfigVersion = 1
+
+// ErrConfigMissing is returned when the configured BaseHarbor config root is
+// populated (other BaseHarbor state files are present) but the authoritative
+// config.yaml is absent. This is a misconfiguration the user must fix, never
+// a silent empty default — a missing config under an active config root would
+// otherwise make the daemon fall through to its implicit defaults.
+var ErrConfigMissing = errors.New("BaseHarbor config root is configured but the config.yaml is missing")
 
 var targetTenantID = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
 
@@ -145,13 +153,78 @@ func LoadConfig() (Config, error) {
 		return Config{}, err
 	}
 	data, err := os.ReadFile(path)
-	if errors.Is(err, os.ErrNotExist) {
-		return Config{Version: ConfigVersion, Access: map[string]AccessDefinition{}, Targets: map[string]TargetDefinition{}}, nil
-	}
 	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			// A config the user believes exists but that this process cannot
+			// resolve is not a clean empty default: it is a configuration that
+			// is being silently ignored (BF-05). When the resolved config
+			// directory is populated by other BaseHarbor state files, the user
+			// clearly intends this to be their BaseHarbor config root, so a
+			// missing config.yaml here is a misconfiguration worth a loud,
+			// actionable error rather than a silent fall-through to the
+			// implicit default. An absent directory is still a clean no-config.
+			if dirExistsAndHasBaseharborState(filepath.Dir(path)) {
+				return Config{}, fmt.Errorf("%w: %s", ErrConfigMissing, path)
+			}
+			return Config{Version: ConfigVersion, Access: map[string]AccessDefinition{}, Targets: map[string]TargetDefinition{}}, nil
+		}
 		return Config{}, fmt.Errorf("read BaseHarbor config: %w", err)
 	}
+	if len(bytes.TrimSpace(data)) == 0 {
+		// A zero-byte or whitespace-only config carries no user intent and no
+		// damage signal: treat it as a clean no-config rather than a parse
+		// error (an empty file decodes to version 0, which would otherwise
+		// surface as an obscure "unsupported BaseHarbor config version 0").
+		// This keeps a deliberately emptied config from failing the daemon.
+		return Config{Version: ConfigVersion, Access: map[string]AccessDefinition{}, Targets: map[string]TargetDefinition{}}, nil
+	}
 	return decodeConfig(data)
+}
+
+// dirExistsAndHasBaseharborState reports whether the user's BaseHarbor config
+// root is populated but the authoritative config.yaml is missing, so
+// LoadConfig can fail loud (BF-05) instead of silently falling through to the
+// implicit default. Two precise signals, no speculative climbing:
+//
+//  1. A config.yaml sits exactly one level up from where ConfigPath() looks.
+//     This is the XDG double-append that made the H-D28 repro fall silently
+//     through: XDG_CONFIG_HOME already targets the baseharbor config root, so
+//     ConfigPath() appends a second "/baseharbor" and never reads the user's
+//     file.
+//  2. The resolved config directory exists and already carries the deployment
+//     target marker (active-target) or the installation lock: the user's root
+//     is active for deployment, so a missing config.yaml is a misconfiguration.
+//
+// Only deployment markers count. active.json / an organization/ subtree is the
+// separate org-config system and must not, by itself, mark the deployment
+// config root as populated. Anything else (unrelated subdirs, sibling temp
+// directories) is ignored so a clean empty root stays a clean no-config.
+func dirExistsAndHasBaseharborState(dir string) bool {
+	// Signal 1: a config.yaml exactly one level up (XDG double-append).
+	parent := filepath.Dir(dir)
+	if parent != dir {
+		if info, err := os.Stat(parent); err == nil && info.IsDir() {
+			if entries, rerr := os.ReadDir(parent); rerr == nil {
+				for _, entry := range entries {
+					if entry.Name() == "config.yaml" {
+						return true
+					}
+				}
+			}
+		}
+	}
+	// Signal 2: the resolved config directory carries deployment-target state.
+	if info, err := os.Stat(dir); err == nil && info.IsDir() {
+		if entries, rerr := os.ReadDir(dir); rerr == nil {
+			for _, entry := range entries {
+				switch entry.Name() {
+				case "active-target", ".installation.lock":
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 func decodeConfig(data []byte) (Config, error) {
