@@ -2467,10 +2467,15 @@ class ReceiptControlPlaneExecutionTests(unittest.TestCase):
                 self.assertIn(path, ' '.join(result['unresolved_coverage']))
 
     def test_native_workflow_changes_select_normal_ci_checks(self):
-        path = '.github/workflows/runtime-s3-acceptance.yml'
-        result = planner.plan(diff([{'status': 'modified', 'path': path}]), REQ, MAP_26)
-        self.assertEqual('resolved', result['coverage_status'])
-        self.assertTrue({'ci-actionlint', 'ci-policy', 'ci-executor-tests'} <= self.check_ids(result))
+        for path in ('.github/workflows/runtime-s3-acceptance.yml',
+                     '.github/workflows/pre-release.yml',
+                     '.github/workflows/release.yml'):
+            with self.subTest(path=path):
+                result = planner.plan(diff([{'status': 'modified', 'path': path}]), REQ, MAP_26)
+                self.assertEqual('resolved', result['coverage_status'])
+                self.assertFalse(result['unresolved_coverage'])
+                self.assertTrue({'ci-actionlint', 'ci-policy', 'ci-executor-tests'} <=
+                                self.check_ids(result))
 
     def test_receipt_execution_check_actually_runs_receipt_suites(self):
         # Coupling guard: the receipt-execution-tests id the planner emits must
