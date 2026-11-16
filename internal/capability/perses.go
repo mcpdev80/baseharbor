@@ -301,24 +301,65 @@ func PersesManagementSurfaceUnprovisioned() PersesManagementSurface {
 	}
 }
 
+// hostProviderMetricsNativeVerified reports whether the shipped reference
+// provider catalog declares a real, native, backend-verified host/provider
+// metrics signal — the openmetrics /metrics endpoint the OTel collector scrapes
+// (baseharbor/opentelemetry-collector, collector-metrics). It is a read-only
+// scan of the static reference descriptors; it never runs a backend probe and
+// never builds the enable-path resolver (that is a parallel owner task,
+// 0428-080).
+//
+// This is the "matching native host/container signal" witness Luna r3
+// (act-luna-r3, PR #1602) requires: the host/container dashboards may only report
+// positive availability when a verified current native metrics signal actually
+// exists in the shipped contract, never when the positive result is self-confirmed
+// by the same manifest declaration it is meant to establish.
+func hostProviderMetricsNativeVerified() bool {
+	for _, descriptor := range ReferenceIntegrations() {
+		for _, signal := range descriptor.Observability.Signals {
+			if signal.Name != "collector-metrics" {
+				continue
+			}
+			return signal.Kind == ObservabilityMetrics &&
+				signal.Status == ObservabilitySupported &&
+				signal.Mode == ObservabilityNative &&
+				signal.Verification == ObservabilityVerifyBackend
+		}
+	}
+	return false
+}
+
 // ResolveHostDashboardSignalStatus maps the manifest truth to the authoritative
 // resolved observability-signal verdict the Perses host/container dashboards
 // consume. It is a read-only resolver: it never runs a backend probe and never
 // builds the enable-path resolver (that is a parallel owner task, 0428-080).
 //
-// Fail closed: the host dashboard is realized as "supported" only when the
-// manifest authoritatively declares the observability backend selected AND the
-// Perses surface pinned (observabilityManagementUI && persesSelected and the
-// pinned Perses release validates). Any other manifest state resolves to the
-// empty status, which the dashboard reports as unavailable-preserving (no
-// fabricated panel, no silent availability claim), exactly like the valkey and
-// identity-r2 precedents. This keeps runtime availability bound to
-// authoritative manifest selection and the pinned Perses release, never to a
-// static catalog.
+// Fail closed on BOTH axes. The host dashboard is realized as "supported" only
+// when:
+//   - the manifest authoritatively declares the observability backend selected
+//     AND the Perses surface pinned (observabilityManagementUI && persesSelected
+//     and the pinned Perses release validates); AND
+//   - the shipped reference provider catalog declares a real, native,
+//     backend-verified host/provider metrics signal (hostProviderMetricsNativeVerified).
+//
+// Any missing axis resolves to the empty status, which the dashboard reports as
+// unavailable-preserving (no fabricated panel, no silent availability claim),
+// exactly like the valkey and identity-r2 precedents. This keeps runtime
+// availability bound to authoritative manifest selection AND an actual verified
+// host/container metric signal, never to a static catalog or a self-confirmed
+// manifest declaration.
 //
 // The manifest fields are passed explicitly to avoid the capability/application
 // import cycle; the caller (app_status_result.go) resolves them from the
 // manifest in its own package.
+//
+// Note: this resolver provides the signal witness only. It does NOT scope access
+// by the actual Target/tenant permissions — that ownership/authorization witness
+// for the current Target is a parallel owner thread (0428-080, the unaccepted
+// selection/enable path) and is out of scope for this lane (FÄCHERREGEL). Where
+// Target/authorization scoping is not yet resolvable here, availability stays
+// bound to the signal witness below; it is never silently claimed available on
+// manifest selection alone.
 func ResolveHostDashboardSignalStatus(observabilityManagementUI bool, persesSelected bool) ObservabilitySupportStatus {
 	if !observabilityManagementUI || !persesSelected {
 		// No selected observability backend + Perses surface: fail closed. The
@@ -328,6 +369,13 @@ func ResolveHostDashboardSignalStatus(observabilityManagementUI bool, persesSele
 	if ValidatePersesRelease(PersesDefaultRelease) != nil {
 		// Selected but the pinned release contract does not validate: fail
 		// closed.
+		return ""
+	}
+	if !hostProviderMetricsNativeVerified() {
+		// No real, native, backend-verified host/provider metrics signal in the
+		// shipped contract: fail closed. The host dashboard must not report
+		// positive availability that the same manifest declaration cannot
+		// establish without an actual verified metric signal.
 		return ""
 	}
 	return ObservabilitySupported
