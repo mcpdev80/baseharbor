@@ -34,7 +34,7 @@ func qualifySelectiveBackendLifecycle(t *testing.T, service string) {
 	ctx, cancel := context.WithTimeout(machineNoninteractiveContext(context.Background()), 10*time.Minute)
 	defer cancel()
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
-	target := configureTestTargetEmpty(t)
+	target := configureTestTarget(t)
 	{
 		cfg, err := deployment.LoadConfig()
 		if err != nil {
