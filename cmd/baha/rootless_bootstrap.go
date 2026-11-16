@@ -62,6 +62,13 @@ func maybeRepairRootlessDocker(ctx context.Context, in io.Reader, out io.Writer,
 	if os.Getenv("XDG_RUNTIME_DIR") == "" {
 		socket = fmt.Sprintf("/run/user/%d/docker.sock", os.Getuid())
 	}
+	// The normal resolver is authoritative. In particular, system-only hosts
+	// may legitimately resolve the active/default engine as rootful; they
+	// must never be forced through rootless repair.
+	observation, resolveErr := bhruntime.ResolveDockerEngine(targetDockerEngineContext(ctx, target), "docker")
+	if resolveErr == nil || observation.Endpoint != "unix://"+socket {
+		return nil
+	}
 	if info, err := os.Stat(socket); err == nil && info.Mode()&os.ModeSocket != 0 {
 		// Existing sockets are handled by the normal verified resolver. A
 		// daemon that fails its probe must not trigger a blind reinstall.
