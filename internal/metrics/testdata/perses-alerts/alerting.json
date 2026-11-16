@@ -1,7 +1,0 @@
-{
-  "kind": "PrometheusRuleEvaluator",
-  "name": "baseharbor-observability-alerts",
-  "evaluator": "PrometheusRuleEvaluator",
-  "owner": "prometheus",
-  "recipient_validated": true
-}

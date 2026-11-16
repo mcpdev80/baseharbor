@@ -3,13 +3,9 @@ package metrics
 import (
 	"context"
 	"encoding/json"
-	"errors"
-	"fmt"
-	"os"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
-	"github.com/mcpdev80/baseharbor/internal/observability"
 )
 
 // Perses Prometheus alert rule evaluator and notification owner (0428-073).
@@ -31,12 +27,18 @@ import (
 // pass the health contract.
 //
 // The real evaluator is not the Prometheus datasource-plugin pin: the pin is a
-// datasource reference, never a rule evaluator. A real evaluator exists only
-// when the selected surface carries an AUTHORIZED, materialized Prometheus rule
-// source (the retained runtime source snapshot: a materialized, provider-owned,
-// policy-allowed Prometheus source of this project). The datasource pin alone,
-// Perses selection alone, and the combination of both are NOT evaluator proof
-// and NOT recipient proof.
+// datasource reference, never a rule evaluator. It is also not an authorized
+// metrics SCRAPE source: a /metrics scrape target is neither a rule evaluator
+// nor a notification recipient. Luna r3 (act-luna-r3.md) confirmed that no
+// real Prometheus rule-evaluation and no notification-owner (recipient/sender)
+// contract exists in this Core, so this seam can never currently produce a
+// positive "alerting enabled" contract: every selected, pinned surface fails
+// closed (not_enabled, RecipientValidated=false). A future Owner-approved real
+// evaluator + recipient contract would set
+// persesAlertRealEvaluatorContractPresent() to true and gate the positive path
+// behind it; until then the alerting contract stays unavailable. The datasource
+// pin alone, Perses selection alone, and a materialized /metrics scrape source
+// are all NOT evaluator proof and NOT recipient proof.
 //
 // No notification-channel secret is ever materialized into this contract: the
 // notification owner is an owner reference (the Prometheus/owner notification
@@ -143,26 +145,15 @@ func persesAlertEvaluatorFromRelease(m application.Manifest, release capability.
 	if !m.Services.ObservabilityManagementUI || !m.Services.Perses {
 		return PersesAlertEvaluationResult{}, newPersesAlertEvaluatorError("the observability management UI (Perses) must be selected to define an alert evaluator")
 	}
-	// A real evaluator must be present. The evaluator is an AUTHORIZED,
-	// materialized Prometheus rule source of this project — not the datasource
-	// pin. Absent, denied or foreign-owned sources are not evaluator proof:
-	// without them the contract is fail-closed, never a false "alerting enabled"
-	// declaration.
-	sources, err := persesAlertRealEvaluator(m)
-	if err != nil {
-		return PersesAlertEvaluationResult{}, newPersesAlertEvaluatorError(err.Error())
-	}
-	if len(sources) == 0 {
-		return PersesAlertEvaluationResult{}, newPersesAlertEvaluatorError("no authorized Prometheus rule evaluator sources for this project; selection and datasource pin alone are not evaluator proof, so the alerting contract is fail-closed")
-	}
-	// A validated recipient must be present. Fail-closed: an alert contract
-	// with no validated recipient is not_enabled, never external notifications
-	// by default. A recipient is validated only by selection AND a real,
-	// authorized evaluator (a materialized, policy-allowed Prometheus rule
-	// source of this project); selection alone, the datasource pin alone, or
-	// the combination of both are not recipient proof.
-	if !persesAlertValidatedRecipient(sources) {
-		return PersesAlertEvaluationResult{}, newPersesAlertEvaluatorError("a validated notification recipient is required; an alert contract with no validated recipient is not alerting-enabled and never enables external notifications by default")
+	// Fail-closed: the alerting contract requires a real, authorized Prometheus
+	// rule-evaluation AND a validated notification owner contract. This Core
+	// ships NEITHER — see the contract banner on this file and the file:line
+	// finding in the round-6 evidence. An authorized metrics SCRAPE source is a
+	// scrape target, never a rule evaluator, and never a notification recipient:
+	// it proves neither. Selection, the datasource pin, and a materialized
+	// /metrics source are all not evaluator proof and not recipient proof.
+	if !persesAlertRealEvaluatorContractPresent() {
+		return PersesAlertEvaluationResult{}, newPersesAlertEvaluatorError("no real Prometheus rule-evaluation and notification-owner contract exists in this Core; selection, datasource pin and an authorized metrics scrape source are not evaluator or recipient proof, so the alerting contract is fail-closed (not_enabled)")
 	}
 	return PersesAlertEvaluationResult{
 		Evaluator: PersesAlertEvaluator{
@@ -176,88 +167,19 @@ func persesAlertEvaluatorFromRelease(m application.Manifest, release capability.
 	}, nil
 }
 
-// persesAlertRealEvaluator reports the authorized, materialized Prometheus rule
-// sources that constitute the real evaluator of the selected alerting surface.
-// It is fail-closed: the datasource pin alone, Perses selection alone, and the
-// combination of both are NOT evaluator proof. A real evaluator exists only
-// when the selected, pinned surface carries at least one materialized,
-// provider-owned, policy-allowed Prometheus source of this project.
-func persesAlertRealEvaluator(m application.Manifest) ([]observability.MetricsSource, error) {
-	// Fail-closed: without a materialized Prometheus provider there is no
-	// evaluator to point at — the datasource pin alone is not a source.
-	files, err := ExistingProviderFiles(m)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return nil, errors.New("a native Prometheus rule evaluator requires a materialized Prometheus provider; without it the alerting contract is fail-closed")
-		}
-		return nil, errors.New("a native Prometheus rule evaluator requires a materialized Prometheus provider; missing provider state fails closed")
-	}
-	placement, err := PlacementFor(m)
-	if err != nil {
-		return nil, errors.New("a native Prometheus rule evaluator requires provider placement; missing placement fails closed")
-	}
-	policy, err := application.MetricsPolicy(m)
-	if err != nil {
-		return nil, fmt.Errorf("perses alert evaluator metrics authorization: %w", err)
-	}
-	sources, found, err := readRuntimeSourceSnapshot(files, placement)
-	if err != nil {
-		return nil, err
-	}
-	if !found {
-		return nil, errors.New("no materialized Prometheus rule sources; the alerting contract is fail-closed without them")
-	}
-	var all []observability.MetricsSource
-	for _, source := range sources {
-		switch source.Class {
-		case observability.SourceApplication:
-			if source.OwnerApplication != m.Name {
-				continue
-			}
-		case observability.SourceApplicationProvider, observability.SourcePlatformProvider:
-		}
-		all = append(all, source)
-	}
-	return policyAuthorizedSources(policy, all), nil
-}
-
-// policyAuthorizedSources returns the subset of candidate Prometheus sources
-// that the metrics-collection policy is allowed to collect for this project. It
-// mirrors the datasource precedent: absent, denied or foreign-owned sources are
-// not evaluator proof, so an empty result is a fail-closed "no evaluator"
-// rather than a fabricated contract.
-func policyAuthorizedSources(policy application.MetricsDeploymentPolicy, sources []observability.MetricsSource) []observability.MetricsSource {
-	var authorized []observability.MetricsSource
-	for _, source := range sources {
-		switch source.Class {
-		case observability.SourceApplication:
-			if policy.Collect[application.MetricsSourceApplication] {
-				authorized = append(authorized, source)
-			}
-		case observability.SourceApplicationProvider:
-			if policy.Collect[application.MetricsSourceApplicationProvider] {
-				authorized = append(authorized, source)
-			}
-		case observability.SourcePlatformProvider:
-			if policy.Collect[application.MetricsSourcePlatformProvider] {
-				authorized = append(authorized, source)
-			}
-		}
-	}
-	return authorized
-}
-
-// persesAlertValidatedRecipient reports whether a real, validated notification
-// recipient exists. This Core names the real owner (Prometheus/owner
-// notification system) as an owner reference and never fabricates a
-// notification-channel secret. A recipient is validated only when the alerting
-// surface is selected AND a real, authorized evaluator (a materialized,
-// policy-allowed Prometheus rule source) is present — selection alone, the
-// datasource pin alone, or the combination of both are NOT recipient proof.
-// Fail-closed: an unknown or unauthorized ownership is never treated as a valid
-// recipient.
-func persesAlertValidatedRecipient(sources []observability.MetricsSource) bool {
-	return len(sources) > 0
+// persesAlertRealEvaluatorContractPresent enforces the fail-closed reality that
+// this Core ships no real Prometheus rule-evaluation and no notification-owner
+// (recipient/sender) contract. It reports false so that every selected, pinned
+// surface fails closed with not_enabled and RecipientValidated=false.
+//
+// This is NOT a scrape-source check: an authorized /metrics scrape source is a
+// scrape target, never a rule evaluator, and never a notification recipient.
+// The finding that no such contract exists in this Core is documented at the
+// stop criterion below and in the round-6 evidence. A future Owner-approved
+// real evaluator/recipient contract would set this to true and gate the
+// positive path behind it; until then the alerting contract stays unavailable.
+func persesAlertRealEvaluatorContractPresent() bool {
+	return false
 }
 
 // VerifyPersesAlertEvaluatorHealth enforces the fail-closed alerting health
@@ -273,24 +195,14 @@ func VerifyPersesAlertEvaluatorHealth(_ context.Context, m application.Manifest)
 	if err := capability.ValidatePersesRelease(capability.PersesDefaultRelease); err != nil {
 		return newPersesAlertEvaluatorError("a pinned Perses release (product version + image) is required to define an alert evaluator")
 	}
-	// Ground the health contract in manifest truth: the alerting surface must be
-	// selected with a real, authorized evaluator (a materialized, policy-allowed
-	// Prometheus rule source of this project) and a validated recipient.
-	// Selection alone and the datasource pin alone are NOT proof, and no runtime
-	// rule-evaluation/notification sender probe exists here. Pin validation
-	// alone can NEVER pass.
-	if !m.Services.ObservabilityManagementUI || !m.Services.Perses {
-		return newPersesAlertEvaluatorError("the observability management UI (Perses) must be selected to verify an alert evaluator health")
-	}
-	sources, err := persesAlertRealEvaluator(m)
-	if err != nil {
-		return newPersesAlertEvaluatorError(err.Error())
-	}
-	if len(sources) == 0 {
-		return newPersesAlertEvaluatorError("no authorized Prometheus rule evaluator sources for this project; selection and datasource pin alone are not evaluator proof, so the alerting contract is fail-closed")
-	}
-	if !persesAlertValidatedRecipient(sources) {
-		return newPersesAlertEvaluatorError("a real, authorized Prometheus rule evaluator and a validated notification recipient are required; without them the alerting contract is fail-closed")
+	// Ground the health contract in manifest truth: a real, authorized
+	// Prometheus rule-evaluation and a validated notification owner contract are
+	// both required. This Core ships neither, so the health contract always
+	// fails closed (not_enabled): selection, the datasource pin, and a
+	// materialized /metrics scrape source are neither evaluator nor recipient
+	// proof. Pin validation alone can NEVER pass.
+	if !persesAlertRealEvaluatorContractPresent() {
+		return newPersesAlertEvaluatorError("no real Prometheus rule-evaluation and notification-owner contract exists in this Core; selection, datasource pin and an authorized metrics scrape source are not evaluator or recipient proof, so the alerting contract fails closed (not_enabled)")
 	}
 	// Declared, pinned, evaluator-present and recipient-named; reachability stays
 	// not_enabled/configured_unverified — no Prometheus/Perses runtime

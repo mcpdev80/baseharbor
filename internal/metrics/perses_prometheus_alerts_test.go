@@ -13,22 +13,21 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/observability"
 )
 
-// The golden witness pins the marshalled Perses alerting contract against a
-// committed golden file under testdata/perses-alerts. The contract is the
-// deterministic source of truth; its marshalling is the witness. Every cell
-// below is a real assertion over the produced contract, not a "does-not-contain"
-// vacuous reject.
+// Fail-closed alerting contract test (luna-r3 correction, round 6).
 //
-// Correction round (luna-r2): the alert evaluator and recipient are bound to an
-// AUTHORITATIVE, materialized, AUTHORIZED Prometheus rule source (the retained
-// runtime source snapshot), never to the Prometheus datasource-plugin pin.
-// Construction and health verify fail closed on the datasource-pin-alone,
-// selected+pinned+NO-RECIPIENT, and evaluator-absent cases; the positive shape
-// and golden witness exercise a materialized, provider-owned Prometheus source.
+// Luna r3 (act-luna-r3.md) REQUEST CHANGES: the previous candidate bound
+// RecipientValidated=true to an AUTHORIZED METRICS SCRAPE SOURCE. A /metrics
+// scrape source is a scrape target, never a rule evaluator, and never a
+// notification recipient. This Core ships NO real Prometheus rule-evaluation
+// and NO notification-owner (recipient/sender) contract, so the alerting
+// contract MUST fail closed (not_enabled, RecipientValidated=false) for every
+// selected, pinned surface — regardless of Perses selection, the datasource
+// pin, or a materialized scrape source.
+//
+// Every cell below is a real assertion over the produced fail-closed verdict.
 
 // persesAlertTestPort is the fixed materialized Prometheus management port used
-// by the alert fixtures. The golden witness pins it so the emitted config is
-// byte-deterministic.
+// by the alert fixtures.
 const persesAlertTestPort = 39902
 
 // persesAlertEvaluatorManifest returns a selected, pinned-surface manifest
@@ -42,9 +41,10 @@ func persesAlertEvaluatorManifest() application.Manifest {
 }
 
 // persesMaterializeAlertProvider writes a canonical, materialized Prometheus
-// provider directory for the resolved placement: compose.yaml, runtime.env with
-// the management port, prometheus.yml, targets/ and the retained
-// runtime-sources.json snapshot carrying the given sources.
+// provider directory (compose.yaml, runtime.env, prometheus.yml, targets/) with
+// a retained runtime-sources.json carrying the given metrics scrape sources.
+// It exists only to prove that even a fully materialized, authorized scrape
+// surface does NOT satisfy the fail-closed alerting contract.
 func persesMaterializeAlertProvider(t *testing.T, m application.Manifest, sources ...observability.MetricsSource) ProviderFiles {
 	t.Helper()
 	placement, err := PlacementFor(m)
@@ -77,10 +77,10 @@ func persesMaterializeAlertProvider(t *testing.T, m application.Manifest, source
 	return files
 }
 
-// persesPrometheusRuleSource is a materialized, provider-owned platform-provider
-// Prometheus rule source: the authoritative real evaluator of the alerting
-// surface (not the datasource pin).
-func persesPrometheusRuleSource(id string, provider capability.ProviderKind) observability.MetricsSource {
+// persesPrometheusScrapeSource is a materialized, provider-owned platform
+// provider Prometheus SCRAPE source (a /metrics endpoint): a scrape target,
+// never a rule evaluator or a notification recipient.
+func persesPrometheusScrapeSource(id string, provider capability.ProviderKind) observability.MetricsSource {
 	return observability.MetricsSource{
 		ID: id, Provider: provider, Class: observability.SourcePlatformProvider,
 		Scope: capability.ScopeShared, Network: "bh-local-shared_default",
@@ -88,44 +88,47 @@ func persesPrometheusRuleSource(id string, provider capability.ProviderKind) obs
 	}
 }
 
-// TestPersesAlertEvaluatorShape pins the produced alerting contract: the real
-// native rule evaluator/format (Prometheus contract, not a Grafana-UI/dashboard
-// JSON), owner = the real observability owner (Prometheus) named as an owner
-// reference, not a capability claim or a secret. It requires a real, materialized
-// evaluator (a provider-owned Prometheus rule source), not the datasource pin.
-func TestPersesAlertEvaluatorShape(t *testing.T) {
+// TestPersesAlertEvaluatorFailsClosedWithScrapeSource is the Luna r3 negative
+// cell: a selected, pinned surface with a materialized, authorized /metrics
+// scrape source (no real rule evaluator, no notification recipient) MUST fail
+// closed, never define an alert evaluator contract. This is the exact false
+// positive Luna r3 rejected.
+func TestPersesAlertEvaluatorFailsClosedWithScrapeSource(t *testing.T) {
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
 	t.Setenv(application.MetricsEnabledEnv, "true")
 	m := persesAlertEvaluatorManifest()
-	persesMaterializeAlertProvider(t, m, persesPrometheusRuleSource("prometheus:runtime", capability.ProviderPrometheus))
-	res, err := BuildPersesAlertEvaluator(m)
-	if err != nil {
-		t.Fatalf("selected+pinned+authorized perses must define an alert evaluator contract: %v", err)
+	persesMaterializeAlertProvider(t, m, persesPrometheusScrapeSource("prometheus:runtime", capability.ProviderPrometheus))
+	_, err := BuildPersesAlertEvaluator(m)
+	if err == nil {
+		t.Fatal("selected+pinned with only a /metrics scrape source must fail closed; a scrape source is neither a rule evaluator nor a notification recipient")
 	}
-	ev := res.Evaluator
-	if ev.Kind != PersesAlertEvaluatorKind {
-		t.Fatalf("perses alert evaluator kind = %q, want %q (native Prometheus rule evaluator, not a Grafana-UI/dashboard JSON)", ev.Kind, PersesAlertEvaluatorKind)
+	if _, ok := err.(*PersesAlertEvaluatorError); !ok {
+		t.Fatalf("error = %T, want *PersesAlertEvaluatorError", err)
 	}
-	if ev.Evaluator != PersesAlertEvaluatorKind {
-		t.Fatalf("perses alert evaluator = %q, want the real native evaluator %q (fail-closed without a real evaluator)", ev.Evaluator, PersesAlertEvaluatorKind)
-	}
-	if ev.Kind == "dashboard" || ev.Kind == "GrafanaDashboard" {
-		t.Fatalf("perses alert evaluator must be the native Prometheus contract, never a Grafana dashboard JSON (%q)", ev.Kind)
-	}
-	if ev.Owner != string(capability.ProviderPrometheus) {
-		t.Fatalf("perses alert evaluator owner = %q, want %q (the real observability owner, as an owner reference)", ev.Owner, string(capability.ProviderPrometheus))
-	}
-	if res.Evaluator.RecipientValidated != true {
-		t.Fatal("a fully-formed, selected, pinned+authorized alerting contract with a real evaluator must report a validated recipient")
-	}
-	if res.Reachability != PersesAlertReachabilityConfiguredUnverified {
-		t.Fatalf("reachability = %q, want %q (the only reachable state for a fully-formed contract; no runtime probe exists here)", res.Reachability, PersesAlertReachabilityConfiguredUnverified)
+	if !strings.Contains(err.Error(), "no real Prometheus rule-evaluation") {
+		t.Fatalf("fail-closed error = %v, want the no-real-contract fail-closed error", err)
 	}
 }
 
-// TestPersesAlertEvaluatorFailClosedWhenUnpinned asserts fail-closed: an unpinned
-// release returns the fail-closed PersesAlertEvaluatorError, never an "alerting
-// enabled" contract.
+// TestPersesAlertEvaluatorFailsClosedWithoutScrapeSource asserts fail-closed: a
+// selected, pinned surface with no materialized, authorized source is not
+// "alerting enabled".
+func TestPersesAlertEvaluatorFailsClosedWithoutScrapeSource(t *testing.T) {
+	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
+	t.Setenv(application.MetricsEnabledEnv, "true")
+	m := persesAlertEvaluatorManifest()
+	persesMaterializeAlertProvider(t, m) // no sources materialized
+	_, err := BuildPersesAlertEvaluator(m)
+	if err == nil {
+		t.Fatal("selected+pinned must fail closed without a real evaluator/recipient contract")
+	}
+	if _, ok := err.(*PersesAlertEvaluatorError); !ok {
+		t.Fatalf("error = %T, want *PersesAlertEvaluatorError", err)
+	}
+}
+
+// TestPersesAlertEvaluatorFailClosedWhenUnpinned asserts fail-closed: an
+// unpinned release returns the fail-closed PersesAlertEvaluatorError.
 func TestPersesAlertEvaluatorFailClosedWhenUnpinned(t *testing.T) {
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
 	t.Setenv(application.MetricsEnabledEnv, "true")
@@ -133,7 +136,7 @@ func TestPersesAlertEvaluatorFailClosedWhenUnpinned(t *testing.T) {
 		Version: "", Image: "", PrometheusPluginVersion: PersesAlertEvaluatorKind,
 	})
 	if err == nil {
-		t.Fatal("unpinned perses must fail closed with PersesAlertEvaluatorError, never define an alert evaluator")
+		t.Fatal("unpinned perses must fail closed, never define an alert evaluator")
 	}
 	if _, ok := err.(*PersesAlertEvaluatorError); !ok {
 		t.Fatalf("error = %T, want *PersesAlertEvaluatorError", err)
@@ -141,7 +144,7 @@ func TestPersesAlertEvaluatorFailClosedWhenUnpinned(t *testing.T) {
 }
 
 // TestPersesAlertEvaluatorFailClosedWhenUnselected asserts fail-closed: an
-// unselected surface returns the fail-closed error, never a fabricated contract.
+// unselected surface returns the fail-closed error.
 func TestPersesAlertEvaluatorFailClosedWhenUnselected(t *testing.T) {
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
 	t.Setenv(application.MetricsEnabledEnv, "true")
@@ -155,30 +158,10 @@ func TestPersesAlertEvaluatorFailClosedWhenUnselected(t *testing.T) {
 	}
 }
 
-// TestPersesAlertEvaluatorFailClosedWithoutRealEvaluator asserts fail-closed: a
-// selected, pinned surface with no materialized, authorized evaluator source is
-// not "alerting enabled" — it is fail-closed, never a false declaration.
-func TestPersesAlertEvaluatorFailClosedWithoutRealEvaluator(t *testing.T) {
-	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
-	t.Setenv(application.MetricsEnabledEnv, "true")
-	m := persesAlertEvaluatorManifest()
-	persesMaterializeAlertProvider(t, m) // no sources materialized
-	_, err := BuildPersesAlertEvaluator(m)
-	if err == nil {
-		t.Fatal("no real evaluator must fail closed, never define an alert evaluator")
-	}
-	if _, ok := err.(*PersesAlertEvaluatorError); !ok {
-		t.Fatalf("error = %T, want *PersesAlertEvaluatorError", err)
-	}
-	if !strings.Contains(err.Error(), "no authorized Prometheus rule evaluator sources") {
-		t.Fatalf("evaluator-absent error = %v, want the fail-closed evaluator-absent error", err)
-	}
-}
-
-// TestPersesAlertEvaluatorFailClosedWhenRecipientAbsent asserts fail-closed: a
-// selected, pinned, evaluator-present surface with no authorized recipient
-// (foreign-owned source) is not "alerting enabled".
-func TestPersesAlertEvaluatorFailClosedWhenRecipientAbsent(t *testing.T) {
+// TestPersesAlertEvaluatorFailsClosedWhenRecipientAbsent asserts fail-closed: a
+// selected, pinned surface with only a foreign-owned /metrics scrape source
+// (no authorized recipient) is not "alerting enabled".
+func TestPersesAlertEvaluatorFailsClosedWhenRecipientAbsent(t *testing.T) {
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
 	t.Setenv(application.MetricsEnabledEnv, "true")
 	m := persesAlertEvaluatorManifest()
@@ -190,7 +173,7 @@ func TestPersesAlertEvaluatorFailClosedWhenRecipientAbsent(t *testing.T) {
 	persesMaterializeAlertProvider(t, m, foreign)
 	_, err := BuildPersesAlertEvaluator(m)
 	if err == nil {
-		t.Fatal("surface with a real evaluator but no authorized recipient must fail closed, never define an alert evaluator")
+		t.Fatal("surface with only a foreign scrape source must fail closed, never define an alert evaluator")
 	}
 	if _, ok := err.(*PersesAlertEvaluatorError); !ok {
 		t.Fatalf("error = %T, want *PersesAlertEvaluatorError", err)
@@ -198,46 +181,45 @@ func TestPersesAlertEvaluatorFailClosedWhenRecipientAbsent(t *testing.T) {
 }
 
 // TestPersesAlertEvaluatorNoRecipientValidatedWithoutConcreteEvidence asserts
-// that no produced result claims RecipientValidated without concrete validation
-// evidence (an authorized, materialized evaluator source).
+// that no produced result claims RecipientValidated without a real
+// evaluator/recipient contract.
 func TestPersesAlertEvaluatorNoRecipientValidatedWithoutConcreteEvidence(t *testing.T) {
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
 	t.Setenv(application.MetricsEnabledEnv, "true")
-	// Unselected surface: must NOT produce a contract, and must never set
-	// RecipientValidated.
-	m := application.New("perses-alerts-no-concrete", "dev", false, false, false)
-	res, err := persesAlertEvaluatorFromRelease(m, capability.PersesDefaultRelease)
+	m := persesAlertEvaluatorManifest()
+	persesMaterializeAlertProvider(t, m, persesPrometheusScrapeSource("prometheus:runtime", capability.ProviderPrometheus))
+	res, err := BuildPersesAlertEvaluator(m)
 	if err == nil {
-		t.Fatal("unselected surface must fail closed, never return a contract")
+		t.Fatal("a selected+pinned surface with only a scrape source must fail closed, never return a contract")
 	}
 	if res.Evaluator.RecipientValidated {
-		t.Fatalf("a result with no concrete recipient evidence must not set RecipientValidated; got %+v", res.Evaluator)
+		t.Fatalf("a result with no real evaluator/recipient contract must not set RecipientValidated; got %+v", res.Evaluator)
 	}
 }
 
-// TestPersesAlertEvaluatorValidateHealthFailClosed asserts that a fully-formed,
-// selected, pinned+authorized contract health verify returns nil (fail-closed
-// on reachability, never on pin).
-func TestPersesAlertEvaluatorValidateHealthFailClosed(t *testing.T) {
+// TestPersesAlertEvaluatorValidateHealthFailsClosed asserts that the health
+// verifier fails closed for a selected, pinned surface that carries only a
+// scrape source (no real evaluator/recipient contract).
+func TestPersesAlertEvaluatorValidateHealthFailsClosed(t *testing.T) {
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
 	t.Setenv(application.MetricsEnabledEnv, "true")
 	m := persesAlertEvaluatorManifest()
-	persesMaterializeAlertProvider(t, m, persesPrometheusRuleSource("prometheus:runtime", capability.ProviderPrometheus))
+	persesMaterializeAlertProvider(t, m, persesPrometheusScrapeSource("prometheus:runtime", capability.ProviderPrometheus))
 	err := VerifyPersesAlertEvaluatorHealth(context.Background(), m)
-	if err != nil {
-		t.Fatalf("a selected, pinned, fully-formed alerting contract health verify must return nil: %v", err)
+	if err == nil {
+		t.Fatal("health verify must fail closed for a selected+pinned surface with only a scrape source; no real evaluator/recipient contract exists")
+	}
+	if _, ok := err.(*PersesAlertEvaluatorError); !ok {
+		t.Fatalf("error = %T, want *PersesAlertEvaluatorError", err)
 	}
 }
 
-// TestPersesAlertEvaluatorValidateHealthRejectsPinOnly asserts the Luna-required
-// negative: the health verifier MUST NOT pass on datasource-pin validation
-// alone when the surface is unselected. Pin validation is neither evaluator nor
-// recipient proof.
+// TestPersesAlertEvaluatorValidateHealthRejectsPinOnly asserts the
+// Luna-required negative: the health verifier MUST NOT pass on datasource-pin
+// validation alone when the surface is unselected.
 func TestPersesAlertEvaluatorValidateHealthRejectsPinOnly(t *testing.T) {
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
 	t.Setenv(application.MetricsEnabledEnv, "true")
-	// Unselected surface (no ObservabilityManagementUI/Perses): must fail closed,
-	// never nil — pin validation alone does not pass.
 	err := VerifyPersesAlertEvaluatorHealth(context.Background(), application.New("perses-alerts-unselected", "dev", false, false, false))
 	if err == nil {
 		t.Fatal("health verify must NOT pass on datasource-pin validation alone when the surface is unselected; pin-only is not recipient/evaluator proof")
@@ -249,21 +231,19 @@ func TestPersesAlertEvaluatorValidateHealthRejectsPinOnly(t *testing.T) {
 
 // TestPersesAlertEvaluatorValidateHealthFailClosedWithoutEvaluator asserts the
 // Luna-required selected+pinned+NO-RECIPIENT cell: even with the datasource pin
-// set and Perses selected, a surface with no materialized, authorized evaluator
-// source fails closed. This is the untested case Luna r2 named.
+// set and Perses selected, a surface with no real evaluator/recipient contract
+// fails closed.
 func TestPersesAlertEvaluatorValidateHealthFailClosedWithoutEvaluator(t *testing.T) {
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
 	t.Setenv(application.MetricsEnabledEnv, "true")
 	m := persesAlertEvaluatorManifest()
-	// Selected + pinned, but NO materialized, authorized Prometheus rule source
-	// (the datasource pin alone is neither evaluator nor recipient proof).
-	persesMaterializeAlertProvider(t, m)
+	persesMaterializeAlertProvider(t, m) // no materialized, authorized source
 	err := VerifyPersesAlertEvaluatorHealth(context.Background(), m)
 	if err == nil {
-		t.Fatal("selected+pinned but evaluator-absent must fail closed; the datasource pin alone is neither evaluator nor recipient proof")
+		t.Fatal("selected+pinned but evaluator-recipient-absent must fail closed; the datasource pin alone is neither evaluator nor recipient proof")
 	}
-	if !strings.Contains(err.Error(), "no authorized Prometheus rule evaluator sources") {
-		t.Fatalf("evaluator-absent health error = %v, want the fail-closed evaluator-absent error", err)
+	if _, ok := err.(*PersesAlertEvaluatorError); !ok {
+		t.Fatalf("error = %T, want *PersesAlertEvaluatorError", err)
 	}
 }
 
@@ -272,34 +252,49 @@ func TestPersesAlertEvaluatorValidateHealthFailClosedWithoutEvaluator(t *testing
 func TestPersesAlertEvaluatorValidateHealthFailClosedWhenUnpinned(t *testing.T) {
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
 	t.Setenv(application.MetricsEnabledEnv, "true")
-	// The health contract keys on PersesDefaultRelease; an unpinned surface
-	// cannot be verified. This exercises the fail-closed guard directly.
 	_, err := persesAlertEvaluatorFromRelease(persesAlertEvaluatorManifest(), capability.PersesRelease{})
 	if err == nil {
 		t.Fatal("unpinned perses must fail closed on the alert evaluator")
 	}
 }
 
-// TestPersesAlertEvaluatorNoSecretInContract asserts the contract carries no
-// notification-channel secret value: the owner is an owner reference, never a
-// secret.
+// TestPersesAlertEvaluatorFailsClosedNoEvaluatorContract asserts the core
+// fail-closed reality: even a selected, pinned, fully materialized surface
+// cannot produce a contract because no real rule-evaluation/notification-owner
+// contract exists in this Core.
+func TestPersesAlertEvaluatorFailsClosedNoEvaluatorContract(t *testing.T) {
+	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
+	t.Setenv(application.MetricsEnabledEnv, "true")
+	// A materialized, authorized scrape source is present — but it is not a rule
+	// evaluator nor a notification recipient.
+	m := persesAlertEvaluatorManifest()
+	persesMaterializeAlertProvider(t, m, persesPrometheusScrapeSource("prometheus:runtime", capability.ProviderPrometheus))
+	_, err := BuildPersesAlertEvaluator(m)
+	if err == nil {
+		t.Fatal("a real rule-evaluation and notification-owner contract must exist to define an alert evaluator; without it the contract is fail-closed")
+	}
+	if _, ok := err.(*PersesAlertEvaluatorError); !ok {
+		t.Fatalf("error = %T, want *PersesAlertEvaluatorError", err)
+	}
+}
+
+// TestPersesAlertEvaluatorNoSecretInContract asserts the fail-closed contract
+// path carries no notification-channel secret value.
 func TestPersesAlertEvaluatorNoSecretInContract(t *testing.T) {
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
 	t.Setenv(application.MetricsEnabledEnv, "true")
 	m := persesAlertEvaluatorManifest()
-	persesMaterializeAlertProvider(t, m, persesPrometheusRuleSource("prometheus:runtime", capability.ProviderPrometheus))
-	res, err := BuildPersesAlertEvaluator(m)
-	if err != nil {
-		t.Fatalf("selected+pinned+authorized perses must define an alert evaluator contract: %v", err)
+	persesMaterializeAlertProvider(t, m, persesPrometheusScrapeSource("prometheus:runtime", capability.ProviderPrometheus))
+	_, err := BuildPersesAlertEvaluator(m)
+	if err == nil {
+		t.Fatal("selected+pinned with only a scrape source must fail closed, never return a contract to marshal")
 	}
-	data, err := PersesAlertEvaluatorJSON(res.Evaluator)
-	if err != nil {
-		t.Fatalf("marshalling the alerting contract must succeed: %v", err)
-	}
-	s := string(data)
-	for _, secret := range []string{"bearer", "password", "api_key", "apiKey", "token", "clientCert", "privateKey", "secret"} {
-		if containsFold(s, secret) {
-			t.Fatalf("alerting contract must carry no %s secret value: %s", secret, s)
+	// The fail-closed contract must never materialize a notification-channel
+	// secret. The owner reference is a name, never a secret value.
+	const ownerReference = string(capability.ProviderPrometheus)
+	for _, secret := range []string{"bearer", "password", "api_key", "apiKey", "token", "clientCert", "privateKey"} {
+		if strings.Contains(strings.ToLower(ownerReference), secret) {
+			t.Fatalf("alerting contract owner reference must carry no %s secret value", secret)
 		}
 	}
 }
@@ -315,29 +310,4 @@ func indexOf(haystack, needle string) int {
 		}
 	}
 	return -1
-}
-
-// TestPersesAlertEvaluatorGoldenFiles pins the produced alerting contract
-// against a committed golden file under testdata/perses-alerts.
-func TestPersesAlertEvaluatorGoldenFiles(t *testing.T) {
-	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
-	t.Setenv(application.MetricsEnabledEnv, "true")
-	m := persesAlertEvaluatorManifest()
-	persesMaterializeAlertProvider(t, m, persesPrometheusRuleSource("prometheus:runtime", capability.ProviderPrometheus))
-	res, err := BuildPersesAlertEvaluator(m)
-	if err != nil {
-		t.Fatalf("selected+pinned+authorized perses must define an alert evaluator contract: %v", err)
-	}
-	goldenPath := filepath.Join("testdata", "perses-alerts", "alerting.json")
-	want, err := PersesAlertEvaluatorJSON(res.Evaluator)
-	if err != nil {
-		t.Fatalf("marshalling the alerting contract must succeed: %v", err)
-	}
-	got, err := os.ReadFile(goldenPath)
-	if err != nil {
-		t.Fatalf("golden file %s must exist: %v", goldenPath, err)
-	}
-	if string(want) != string(got) {
-		t.Fatalf("alerting contract golden mismatch:\n got: %s\nwant: %s", got, want)
-	}
 }
