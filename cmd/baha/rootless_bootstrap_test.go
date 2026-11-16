@@ -200,3 +200,23 @@ func TestRootlessSetupMissingUIDMapAfterInstallFailsClosed(t *testing.T) {
 		t.Fatalf("unexpected changes after invalid installation: %v", called)
 	}
 }
+
+func TestRootlessSetupContextRestoreFailureIsReported(t *testing.T) {
+	var called []string
+	run := func(_ context.Context, _ io.Reader, _ io.Writer, name string, args ...string) error {
+		key := name + " " + strings.Join(args, " ")
+		called = append(called, key)
+		if key == "docker context use default" {
+			return errors.New("cannot restore context")
+		}
+		return nil
+	}
+	lookup := func(name string) (string, error) { return "/usr/bin/" + name, nil }
+	err := runApprovedRootlessSetup(context.Background(), strings.NewReader(""), io.Discard, true, false, run, lookup)
+	if err == nil || !strings.Contains(err.Error(), "restore Docker context") {
+		t.Fatalf("lost context restore error: %v", err)
+	}
+	if len(called) < 2 || called[len(called)-1] != "docker context use default" {
+		t.Fatalf("context was not restored on error: %v", called)
+	}
+}
