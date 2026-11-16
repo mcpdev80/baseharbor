@@ -17,13 +17,14 @@ def catalog():
     return {
         "schema": coverage_module.SCHEMA,
         "release": "v0.4.27",
-        "surfaces": ["runtime.container-ownership", "application.data-capabilities"],
+        "surfaces": ["runtime.container-ownership", "application.data-capabilities", "application.lifecycle"],
         "packages": [
             {"path": "internal/runtime", "surfaces": ["runtime.container-ownership"]}
         ],
         "gates": [
             {"id": DOCKER, "covers": ["runtime.container-ownership", "application.data-capabilities"]},
             {"id": PODMAN, "covers": ["runtime.container-ownership", "application.data-capabilities"]},
+            {"id": "atomic/podman/lifecycle", "covers": ["application.lifecycle"]},
         ],
     }
 
@@ -31,7 +32,7 @@ def catalog():
 def requirements():
     return {
         "releases": ["v0.4.27"],
-        "gates": [{"id": DOCKER}, {"id": PODMAN}],
+        "gates": [{"id": DOCKER}, {"id": PODMAN}, {"id": "atomic/podman/lifecycle"}],
     }
 
 
