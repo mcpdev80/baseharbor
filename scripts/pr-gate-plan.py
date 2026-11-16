@@ -1446,6 +1446,18 @@ def targeted_plan(diff, requirements, mapping, repository='.',
             if not path.endswith('_test.go'):
                 require(CODE_CHECKS + CLI_CHECKS)
                 selected.update(('atomic/docker/lifecycle', 'atomic/podman/lifecycle'))
+        elif path in ('internal/runtime/service_stop.go',
+                      'internal/runtime/service_stop_test.go'):
+            # Podman selected-stop name planning is runtime-specific: its native
+            # acceptance must exercise the pinned-name backup path on Podman.
+            # Keep the Go package checks (including auto-discovered unit tests)
+            # and bind this narrow source/test pair to the existing Podman
+            # lifecycle gate only.
+            area = 'podman-selected-service-stop'
+            require(RUNTIME_PROVIDER_CHECKS)
+            if path == 'internal/runtime/service_stop.go':
+                require(CODE_CHECKS + CLI_CHECKS)
+            selected.add('atomic/podman/lifecycle')
         elif path.startswith('internal/runtime/') and path.endswith('.go') and not path.startswith('internal/runtime/resolver/'):
             area = 'runtime-package'
             require(RUNTIME_PROVIDER_CHECKS)

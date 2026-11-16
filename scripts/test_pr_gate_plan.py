@@ -1349,6 +1349,17 @@ class CliGofmtTestBindingTests(unittest.TestCase):
 
 
 class RuntimeDockerEngineMappingTests(unittest.TestCase):
+    def test_podman_pinned_service_stop_selects_exact_podman_lifecycle(self):
+        for name in ('internal/runtime/service_stop.go',
+                     'internal/runtime/service_stop_test.go'):
+            with self.subTest(path=name):
+                result = planner.plan(diff(paths(name)), REQ, MAP_26)
+                self.assertEqual('resolved', result['coverage_status'])
+                self.assertEqual(['atomic/podman/lifecycle'], result['selected_gates'])
+                self.assertFalse(result.get('fallback_used', False))
+                checks = {row['id'] for row in result['required_validation_checks']}
+                self.assertIn('runtime-provider-package-tests', checks)
+
     def test_docker_engine_path_classifies_to_lifecycle_gate(self):
         # core-1240 permanent lane: changing ONLY internal/runtime/docker_engine.go
         # must resolve with the real atomic docker lifecycle gate.  This is the exact

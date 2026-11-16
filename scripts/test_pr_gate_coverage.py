@@ -115,6 +115,14 @@ class CoverageCatalogTests(unittest.TestCase):
         self.assertEqual(["atomic/podman/data-capabilities"], selected)
         self.assertEqual([], unresolved)
 
+    def test_podman_pinned_service_stop_selects_only_podman_lifecycle(self):
+        current = json.loads((ROOT / "pr-gate-coverage.json").read_text())
+        selected, unresolved = coverage_module.resolve_covered_gates(
+            ["internal/runtime/service_stop.go",
+             "internal/runtime/service_stop_test.go"], current)
+        self.assertEqual(["atomic/podman/lifecycle"], selected)
+        self.assertEqual([], unresolved)
+
     def test_selective_identity_runtime_test_has_both_executable_lifecycle_gates(self):
         current = json.loads((ROOT / "pr-gate-coverage.json").read_text())
         selected, unresolved = coverage_module.resolve_covered_gates(
