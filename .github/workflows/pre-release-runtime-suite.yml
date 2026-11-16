@@ -338,6 +338,7 @@ jobs:
           git diff --no-renames --name-only "$PR_BASE_SHA" "$CANDIDATE_SHA" -- \
             cmd/baha/app_repository_integration_test.go \
             cmd/baha/app_workload_integration_test.go \
+            cmd/baha/app_identity_selective_runtime_test.go \
             internal/application/runtime_multi_integration_test.go > "$changed"
           if [ -s "$changed" ]; then
             bash scripts/ci-runtime-reset.sh "$RUNTIME"
@@ -365,6 +366,11 @@ jobs:
             fi
             if grep -Fxq 'internal/application/runtime_multi_integration_test.go' "$changed"; then
               run_native_test ./internal/application TestMultiInstanceComposeLifecycleInCI
+            fi
+            if grep -Fxq 'cmd/baha/app_identity_selective_runtime_test.go' "$changed"; then
+              BASEHARBOR_IDENTITY_LIFECYCLE_ACCEPTANCE=1 \
+              BASEHARBOR_TEST_RUNTIME="$RUNTIME" \
+                run_native_test ./cmd/baha TestSelectiveIdentityRuntimeAddRemoveReAdd
             fi
           fi
         fi

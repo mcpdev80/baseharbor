@@ -1,0 +1,294 @@
+"""Tests for declarative PR gate coverage validation and resolution."""
+import importlib.util
+import json
+from pathlib import Path
+import unittest
+
+ROOT = Path(__file__).resolve().parent
+SPEC = importlib.util.spec_from_file_location(
+    "validate_pr_gate_coverage", ROOT / "validate-pr-gate-coverage.py")
+coverage_module = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(coverage_module)
+PLANNER_SPEC = importlib.util.spec_from_file_location(
+    "pr_gate_plan", ROOT / "pr-gate-plan.py")
+planner = importlib.util.module_from_spec(PLANNER_SPEC)
+PLANNER_SPEC.loader.exec_module(planner)
+
+DOCKER = "atomic/docker/data-capabilities"
+PODMAN = "atomic/podman/data-capabilities"
+LIFECYCLE = "atomic/podman/lifecycle"
+
+
+def catalog():
+    return {
+        "schema": coverage_module.SCHEMA,
+        "release": "v0.4.27",
+        "surfaces": [
+            "runtime.container-ownership",
+            "application.data-capabilities",
+            "application.lifecycle",
+            "installation.destroy-retry",
+            "installation.second-target-conflict",
+        ],
+        "packages": [
+            {"path": "internal/runtime", "surfaces": ["runtime.container-ownership"]}
+        ],
+        "components": [
+            {"id": "runtime.container-identity",
+             "path": "internal/runtime/container_identity.go",
+             "surfaces": ["runtime.container-ownership"]},
+            {"id": "podman.installation-destroy",
+             "path": "cmd/baha/installation_destroy_native_test.go",
+             "surfaces": ["installation.destroy-retry"]},
+            {"id": "podman.second-target-conflict-tests",
+             "path": "cmd/baha/second_target_conflict_native_test.go",
+             "surfaces": ["installation.second-target-conflict"]},
+        ],
+        "gates": [
+            {"id": DOCKER, "runtime": "docker", "selection_scope": "focused",
+             "covers": ["runtime.container-ownership", "application.data-capabilities"]},
+            {"id": PODMAN, "runtime": "podman", "selection_scope": "focused",
+             "covers": ["runtime.container-ownership", "application.data-capabilities"]},
+            {"id": LIFECYCLE, "runtime": "podman", "selection_scope": "focused",
+             "covers": ["application.lifecycle"]},
+        ],
+        "native_checks": [
+            {"id": "native/podman/installation-destroy", "runtime": "podman",
+             "covers": ["installation.destroy-retry"],
+             "source_components": ["podman.installation-destroy"],
+             "selection_scope": "focused"},
+            {"id": "native/podman/second-target-conflict", "runtime": "podman",
+             "covers": ["installation.second-target-conflict"],
+             "source_components": ["podman.second-target-conflict-tests"],
+             "selection_scope": "focused"},
+        ],
+    }
+
+
+def requirements():
+    ids = [DOCKER, PODMAN, LIFECYCLE]
+    return {
+        "releases": ["v0.4.27"],
+        "gates": [{"id": gate_id, "required_for": ["v0.4.27"]} for gate_id in ids],
+    }
+
+
+class CoverageCatalogTests(unittest.TestCase):
+    def test_runtime_neutral_package_fallback_uses_docker_representative(self):
+        selected, unresolved = coverage_module.resolve_covered_gates(
+            ["internal/runtime/new_feature.go"], catalog())
+        self.assertEqual([DOCKER], selected)
+        self.assertEqual([], unresolved)
+
+    def test_podman_only_component_selects_exact_podman_gate(self):
+        data = catalog()
+        data["components"] = [{"id": "podman.only", "path": "internal/podman/only.go",
+                               "surfaces": ["application.lifecycle"]}]
+        selected, unresolved = coverage_module.resolve_covered_gates(
+            ["internal/podman/only.go"], data)
+        self.assertEqual([LIFECYCLE], selected)
+        self.assertEqual([], unresolved)
+
+    def test_shared_and_podman_only_changes_keep_their_own_smallest_gates(self):
+        data = catalog()
+        data["components"].append({"id": "podman.only", "path": "internal/podman/only.go",
+                                   "surfaces": ["application.lifecycle"]})
+        selected, unresolved = coverage_module.resolve_covered_gates(
+            ["internal/runtime/container_identity.go", "internal/podman/only.go"], data)
+        self.assertEqual([DOCKER, LIFECYCLE], selected)
+        self.assertEqual([], unresolved)
+
+    def test_exact_runtime_neutral_component_uses_docker_representative(self):
+        selected, unresolved = coverage_module.resolve_covered_gates(
+            ["internal/runtime/container_identity.go"], catalog())
+        self.assertEqual([DOCKER], selected)
+        self.assertEqual([], unresolved)
+
+    def test_selective_identity_runtime_test_has_executable_docker_lifecycle_gate(self):
+        current = json.loads((ROOT / "pr-gate-coverage.json").read_text())
+        selected, unresolved = coverage_module.resolve_covered_gates(
+            ["cmd/baha/app_identity_selective_runtime_test.go"], current)
+        self.assertEqual(["atomic/docker/lifecycle"], selected)
+        self.assertEqual([], unresolved)
+
+    def test_unknown_package_is_returned_for_conservative_fallback(self):
+        selected, unresolved = coverage_module.resolve_covered_gates(
+            ["internal/unknown/new_surface.go"], catalog())
+        self.assertEqual([], selected)
+        self.assertEqual(["internal/unknown/new_surface.go"], unresolved)
+
+    def test_unrelated_changes_do_not_select_runtime_gates(self):
+        selected, unresolved = coverage_module.resolve_covered_gates(
+            ["docs/how-to/example.md"], catalog())
+        self.assertEqual([], selected)
+        self.assertEqual(["docs/how-to/example.md"], unresolved)
+
+    def test_podman_native_check_is_runtime_specific(self):
+        selected = coverage_module.resolve_native_checks(
+            ["cmd/baha/installation_destroy_native_test.go"], catalog())
+        self.assertEqual(["native/podman/installation-destroy"], selected)
+
+    def test_second_target_conflict_selects_only_its_runtime_check(self):
+        selected = coverage_module.resolve_native_checks(
+            ["cmd/baha/second_target_conflict_native_test.go"], catalog())
+        self.assertEqual(["native/podman/second-target-conflict"], selected)
+
+    def test_runtime_neutral_native_checks_use_docker_representative(self):
+        data = catalog()
+        data["components"].append({"id": "neutral.native", "path": "internal/neutral/native.go",
+                                   "surfaces": ["application.data-capabilities"]})
+        data["native_checks"] += [
+            {"id": "native/docker/neutral", "runtime": "docker", "covers": ["application.data-capabilities"],
+             "source_components": ["neutral.native"], "selection_scope": "focused"},
+            {"id": "native/podman/neutral", "runtime": "podman", "covers": ["application.data-capabilities"],
+             "source_components": ["neutral.native"], "selection_scope": "focused"},
+        ]
+        selected = coverage_module.resolve_native_checks(["internal/neutral/native.go"], data)
+        self.assertEqual(["native/docker/neutral"], selected)
+
+    def test_mixed_neutral_and_podman_native_sources_keep_both_scoped_checks(self):
+        data = catalog()
+        data["components"].append({"id": "neutral.native", "path": "internal/neutral/native.go",
+                                   "surfaces": ["application.data-capabilities"]})
+        data["native_checks"] += [
+            {"id": "native/docker/data-capabilities", "runtime": "docker",
+             "covers": ["application.data-capabilities"],
+             "source_components": ["neutral.native"], "selection_scope": "focused"},
+            {"id": "native/podman/data-capabilities", "runtime": "podman",
+             "covers": ["application.data-capabilities"],
+             "source_components": ["neutral.native"], "selection_scope": "focused"},
+        ]
+        selected = coverage_module.resolve_native_checks([
+            "internal/neutral/native.go", "cmd/baha/installation_destroy_native_test.go"], data)
+        self.assertEqual([
+            "native/docker/data-capabilities",
+            "native/podman/installation-destroy",
+        ], selected)
+
+    def test_catalog_accounts_for_every_active_release_gate(self):
+        self.assertEqual([], coverage_module.validate(catalog(), requirements()))
+
+    def test_repo_core_paths_preserve_legacy_release_gate_coverage(self):
+        legacy = json.loads((ROOT / "pre-release-runtime-impact.json").read_text())
+        current = json.loads((ROOT / "pr-gate-coverage.json").read_text())
+        for path, expected in legacy["core"].items():
+            with self.subTest(path=path):
+                selected, _ = coverage_module.resolve_covered_gates([path], current)
+                expected = set(expected)
+                expected = {gate for gate in expected
+                            if not (gate.startswith(("atomic/podman/", "integration/podman/")) and
+                                    gate.replace("/podman/", "/docker/") in expected)}
+                self.assertTrue(expected <= set(selected),
+                                f"legacy gates {expected} missing from {selected}")
+
+    def test_package_surface_without_gate_owner_is_rejected(self):
+        data = catalog()
+        data["gates"] = [gate for gate in data["gates"] if gate["id"] != DOCKER and gate["id"] != PODMAN]
+        errors = coverage_module.validate(data, requirements())
+        self.assertTrue(any("has no release gate owner" in error for error in errors))
+
+    def test_unknown_gate_and_path_traversal_are_rejected(self):
+        data = catalog()
+        data["packages"][0]["path"] = "../internal/runtime"
+        data["gates"][0]["id"] = "atomic/docker/does-not-exist"
+        errors = coverage_module.validate(data, requirements())
+        self.assertTrue(any("normalized repository-relative directory" in error for error in errors))
+        self.assertTrue(any("unknown release gate" in error for error in errors))
+
+    def test_pr_plan_includes_declared_data_capabilities_gates_for_runtime_component(self):
+        requirements = json.loads((ROOT / "release-requirements.json").read_text())
+        mapping = json.loads((ROOT / "pr-gate-map-v1.json").read_text())
+        changes = [{"status": "modified", "path": "internal/runtime/container_identity.go"}]
+        diff = {
+            "target_base_sha": "a" * 40,
+            "head_sha": "b" * 40,
+            "merge_base_sha": "c" * 40,
+            "integration_sha": "d" * 40,
+            "broad_required": False,
+            "reasons": [],
+            "changes": changes,
+        }
+        result = planner.plan(diff, requirements, mapping)
+        self.assertEqual("resolved", result["coverage_status"])
+        self.assertIn(DOCKER, result["selected_gates"])
+        self.assertNotIn(PODMAN, result["selected_gates"])
+        self.assertNotIn("atomic/podman/control-plane-recovery", result["selected_gates"])
+        self.assertNotIn("atomic/podman/backup-restore", result["selected_gates"])
+        self.assertNotIn("journey/podman", result["selected_gates"])
+        self.assertEqual([DOCKER], result["selected_gates"])
+
+    def test_legacy_app_core_requirement_keeps_only_declared_narrow_gates(self):
+        requirements = json.loads((ROOT / "release-requirements.json").read_text())
+        mapping = json.loads((ROOT / "pr-gate-map-v1.json").read_text())
+        diff = {
+            "target_base_sha": "a" * 40, "head_sha": "b" * 40,
+            "merge_base_sha": "c" * 40, "integration_sha": "d" * 40,
+            "broad_required": False, "reasons": [],
+            "changes": [{"status": "modified", "path": "cmd/baha/app_core_requirement.go"}],
+        }
+        result = planner.plan(diff, requirements, mapping)
+        self.assertEqual("unresolved", result["coverage_status"])
+        self.assertEqual([
+            "atomic/docker/data-capabilities", "atomic/docker/guided",
+        ], result["selected_gates"])
+        self.assertFalse(any("journey/" in gate for gate in result["selected_gates"]))
+
+    def test_podman_doctor_change_selects_only_podman_lifecycle(self):
+        requirements = json.loads((ROOT / "release-requirements.json").read_text())
+        mapping = json.loads((ROOT / "pr-gate-map-v1.json").read_text())
+        diff = {
+            "target_base_sha": "a" * 40, "head_sha": "b" * 40,
+            "merge_base_sha": "c" * 40, "integration_sha": "d" * 40,
+            "broad_required": False, "reasons": [],
+            "changes": [{"status": "modified", "path": "cmd/baha/podman_doctor_checks.go"}],
+        }
+        result = planner.plan(diff, requirements, mapping)
+        self.assertEqual(["atomic/podman/lifecycle"], result["selected_gates"])
+
+    def test_unreviewed_runtime_file_falls_back_without_package_wide_false_gate(self):
+        requirements = json.loads((ROOT / "release-requirements.json").read_text())
+        mapping = json.loads((ROOT / "pr-gate-map-v1.json").read_text())
+        diff = {
+            "target_base_sha": "a" * 40, "head_sha": "b" * 40,
+            "merge_base_sha": "c" * 40, "integration_sha": "d" * 40,
+            "broad_required": False, "reasons": [],
+            "changes": [{"status": "modified", "path": "internal/runtime/new_feature.go"}],
+        }
+        result = planner.plan(diff, requirements, mapping, conservative_fallback=True)
+        self.assertTrue(result["fallback_used"])
+        self.assertEqual([], result["selected_gates"])
+        self.assertNotIn("atomic/docker/data-capabilities", result["selected_gates"])
+        self.assertNotIn("atomic/podman/lifecycle", result["selected_gates"])
+
+    def test_unknown_source_fallback_does_not_guess_runtime_gate(self):
+        requirements = json.loads((ROOT / "release-requirements.json").read_text())
+        mapping = json.loads((ROOT / "pr-gate-map-v1.json").read_text())
+        diff = {
+            "target_base_sha": "a" * 40, "head_sha": "b" * 40,
+            "merge_base_sha": "c" * 40, "integration_sha": "d" * 40,
+            "broad_required": False, "reasons": [],
+            "changes": [{"status": "added", "path": "internal/unknown/new.go"}],
+        }
+        result = planner.plan(diff, requirements, mapping, conservative_fallback=True)
+        self.assertTrue(result["fallback_used"])
+        self.assertEqual([], result["selected_gates"])
+        self.assertIn("go-unit-tests", {row["id"] for row in result["required_validation_checks"]})
+
+    def test_legacy_runtime_hint_without_catalog_owner_is_unresolved(self):
+        requirements = json.loads((ROOT / "release-requirements.json").read_text())
+        mapping = json.loads((ROOT / "pr-gate-map-v1.json").read_text())
+        diff = {
+            "target_base_sha": "a" * 40, "head_sha": "b" * 40,
+            "merge_base_sha": "c" * 40, "integration_sha": "d" * 40,
+            "broad_required": False, "reasons": [],
+            "changes": [{"status": "modified", "path": "internal/runtime/new_feature.go"}],
+        }
+        result = planner.plan(diff, requirements, mapping, conservative_fallback=True)
+        self.assertTrue(result["fallback_used"])
+        self.assertEqual("resolved", result["coverage_status"])
+        self.assertNotIn("atomic/docker/lifecycle", result["selected_gates"])
+        self.assertNotIn("atomic/podman/lifecycle", result["selected_gates"])
+
+
+if __name__ == "__main__":
+    unittest.main()

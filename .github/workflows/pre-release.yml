@@ -339,8 +339,8 @@ jobs:
           echo "$release_internal" >&2
           exit 1
         }
-    - name: Validate v0.4.21 release readiness
-      id: v0421_readiness
+    - name: Validate release readiness
+      id: release_readiness
       if: needs.source_prepare.outputs.tag == 'v0.4.21'
       shell: bash
       run: bash scripts/v0.4.21-readiness.sh
@@ -768,8 +768,8 @@ jobs:
         test "$SOURCE_RESULT" = success
         test "$DOCKER_RESULT" = success || { test "$DOCKER_RESULT" = skipped && test "$DOCKER_COUNT" = 0; }
         test "$PODMAN_RESULT" = success || { test "$PODMAN_RESULT" = skipped && test "$PODMAN_COUNT" = 0; }
-  v0421_ha_groups_docker:
-    name: v0.4.21 HA · ${{ matrix.group }} · ${{ matrix.runtime }}
+  ha_groups_docker:
+    name: HA · ${{ matrix.group }} · ${{ matrix.runtime }}
     needs: source
     if: ${{ always() && !cancelled() && needs.source.result == 'success' && needs.source.outputs.ha_docker_count
       != '0' }}
@@ -821,8 +821,8 @@ jobs:
       shell: bash
       timeout-minutes: 3
       run: bash scripts/ci-runtime-reset.sh "${{ matrix.runtime }}"
-  v0421_ha_groups_podman:
-    name: v0.4.21 HA · ${{ matrix.group }} · ${{ matrix.runtime }}
+  ha_groups_podman:
+    name: HA · ${{ matrix.group }} · ${{ matrix.runtime }}
     needs: source
     if: ${{ always() && !cancelled() && needs.source.result == 'success' && needs.source.outputs.ha_podman_count
       != '0' }}
@@ -874,19 +874,19 @@ jobs:
       shell: bash
       timeout-minutes: 3
       run: bash scripts/ci-runtime-reset.sh "${{ matrix.runtime }}"
-  v0421_ha_groups:
-    name: v0421 ha groups · All runtime results
+  ha_groups:
+    name: HA groups · All runtime results
     needs:
     - source
-    - v0421_ha_groups_docker
-    - v0421_ha_groups_podman
+    - ha_groups_docker
+    - ha_groups_podman
     if: ${{ always() }}
     runs-on: ubuntu-latest
     steps:
     - name: Require both runtime matrices
       env:
-        DOCKER_RESULT: ${{ needs.v0421_ha_groups_docker.result }}
-        PODMAN_RESULT: ${{ needs.v0421_ha_groups_podman.result }}
+        DOCKER_RESULT: ${{ needs.ha_groups_docker.result }}
+        PODMAN_RESULT: ${{ needs.ha_groups_podman.result }}
         SOURCE_RESULT: ${{ needs.source.result }}
         DOCKER_COUNT: ${{ needs.source.outputs.ha_docker_count }}
         PODMAN_COUNT: ${{ needs.source.outputs.ha_podman_count }}
@@ -1964,9 +1964,9 @@ jobs:
     - runtime_heavy_gates_docker
     - runtime_heavy_gates_podman
     - runtime_heavy_gates
-    - v0421_ha_groups_docker
-    - v0421_ha_groups_podman
-    - v0421_ha_groups
+    - ha_groups_docker
+    - ha_groups_podman
+    - ha_groups
     - reference_journey
     - integration_public_contracts
     - integration_configuration_policy
@@ -1993,13 +1993,13 @@ jobs:
         source = jobs['source']
         assert source['result'] == 'success', 'source checks failed'
         out = source['outputs']
-        required = {'source', 'runtime_light_gates', 'runtime_heavy_gates', 'v0421_ha_groups'}
+        required = {'source', 'runtime_light_gates', 'runtime_heavy_gates', 'ha_groups'}
         if out['tag'] == 'v0.4.27' and not os.environ.get('ONLY_GATES', ''):
             required.add('greenfield_native')
         for key, count in [('adoption','adoption_count'), ('static_gates','static_count'),
                            ('runtime_light_gates_docker','light_docker_count'), ('runtime_light_gates_podman','light_podman_count'),
                            ('runtime_heavy_gates_docker','heavy_docker_count'), ('runtime_heavy_gates_podman','heavy_podman_count'),
-                           ('v0421_ha_groups_docker','ha_docker_count'), ('v0421_ha_groups_podman','ha_podman_count'),
+                           ('ha_groups_docker','ha_docker_count'), ('ha_groups_podman','ha_podman_count'),
                            ('reference_journey','journey_count')]:
             value = int(out[count])
             assert value >= 0, 'invalid selected count'
