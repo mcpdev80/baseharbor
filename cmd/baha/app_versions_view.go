@@ -70,7 +70,8 @@ func collectSourceModelComponents(resolved resolvedApplication, stages machinere
 			intent = applied
 		}
 	}
-	declared := declaredVersionServices(intent)
+	classify := retainedPlacementClassifier(resolved.DeploymentRecord)
+	declared := declaredVersionServices(intent, classify)
 	byName := make(map[string]struct{}, len(declared))
 	components := make([]machinereadmodels.ComponentVersion, 0, len(declared))
 	for _, service := range declared {
@@ -362,6 +363,14 @@ type declaredVersionService struct {
 	image string
 }
 
+// placementClassifier classifies one backend provider as a shared Target
+// provider (owned component row omitted) for a manifest under a given
+// placement. Production builders thread the record's retained per-provider
+// placement through it so the unified view classifies shared PostgreSQL/Valkey
+// by the deployment's own placement, never by the ambient organization or
+// environment policy of the process that runs it.
+type placementClassifier func(m application.Manifest, provider capability.ProviderKind) bool
+
 // declaredVersionServices enumerates the backend component identities this
 // application realizes INSIDE its own runtime project, reusing the accepted
 // placement and instance-name seams so the view never restates provider
@@ -372,19 +381,26 @@ type declaredVersionService struct {
 // own workload image is deliberately not listed either: BaseHarbor does not
 // own it and must not invent its version. Backend images come from the
 // delivered pinned-provider contract, never from a parallel literal here.
-func declaredVersionServices(m application.Manifest) []declaredVersionService {
+//
+// The classification is a PURE function of manifest plus placement classifier:
+// it never touches process-global state, so concurrent CLI/MCP requests for
+// different deployments cannot leak each other's placement into the rows.
+func declaredVersionServices(m application.Manifest, classify placementClassifier) []declaredVersionService {
+	if classify == nil {
+		classify = ambientPlacementClassifier
+	}
 	var services []declaredVersionService
 	add := func(name, image string) {
 		services = append(services, declaredVersionService{name: name, image: image})
 	}
 	for _, instance := range application.SQLInstanceNames(m) {
-		if application.UsesSharedPostgreSQL(m) {
+		if classify(m, capability.ProviderPostgreSQL) {
 			continue
 		}
 		add(runtimeServiceNameForView("postgres", instance), pinnedRuntimeImage("postgres"))
 	}
 	for _, instance := range application.ValkeyInstanceNames(m) {
-		if application.UsesSharedValkey(m) {
+		if classify(m, capability.ProviderValkey) {
 			continue
 		}
 		add(runtimeServiceNameForView("valkey", instance), pinnedRuntimeImage("valkey"))
@@ -399,31 +415,65 @@ func declaredVersionServices(m application.Manifest) []declaredVersionService {
 	return services
 }
 
-// viewPlacementServices renders the backend component rows for the version
-// view under the record's retained placement: the retained placement (when
-// the persisted record carries one) replaces the ambient organization and
-// environment policy for the duration of the read, and the ambient
-// environment is restored afterwards so nothing leaks into later calls.
-// Without a retained placement the ambient classification is respected: the
-// view never invents a backend row the deployment does not own.
-func viewPlacementServices(
-	retained *capability.ProviderPlacement,
-	m application.Manifest,
-) ([]declaredVersionService, func()) {
-	if retained == nil {
-		return declaredVersionServices(m), func() {}
+// ambientPlacementClassifier classifies a backend as a shared Target provider
+// through the ambient organization/environment policy (the historical
+// classification). Production builders replace it with a placement classifier
+// that reads the record's retained placement.
+func ambientPlacementClassifier(m application.Manifest, provider capability.ProviderKind) bool {
+	switch provider {
+	case capability.ProviderPostgreSQL:
+		return application.UsesSharedPostgreSQL(m)
+	case capability.ProviderValkey:
+		return application.UsesSharedValkey(m)
+	default:
+		return false
 	}
-	scopeEnv := application.ProviderScopeEnv(capability.ProviderPostgreSQL)
-	previous, hadPrev := os.LookupEnv(scopeEnv)
-	restore := func() {
-		if hadPrev {
-			_ = os.Setenv(scopeEnv, previous)
-		} else {
-			_ = os.Unsetenv(scopeEnv)
+}
+
+// retainedPlacementClassifier returns a placement classifier that classifies
+// PostgreSQL/Valkey by the deployment's OWN per-provider placement, read from
+// the persisted record's retained backend-placement projection. It never
+// touches process-global state: the placement is resolved from the record's
+// retained intent snapshot (or its ambient fallback) and classified in memory,
+// so concurrent CLI/MCP requests for different deployments cannot leak each
+// other's placement into the rows. A record without a retained placement falls
+// back to the ambient classification, preserving the documented
+// unavailable/ambient fallback without inferring shared-resource ownership from
+// unrelated ambient state.
+func retainedPlacementClassifier(record *deployment.DeploymentRecord) placementClassifier {
+	encoded := ""
+	if record != nil {
+		encoded = record.Applied.GeneratedState["backend_placements"]
+	}
+	var retained map[capability.ProviderKind]capability.ProviderPlacement
+	if encoded != "" {
+		if err := json.Unmarshal([]byte(encoded), &retained); err != nil || retained == nil {
+			retained = nil
 		}
 	}
-	_ = os.Setenv(scopeEnv, string(retained.Scope))
-	return declaredVersionServices(m), restore
+	return func(m application.Manifest, provider capability.ProviderKind) bool {
+		if provider != capability.ProviderPostgreSQL && provider != capability.ProviderValkey {
+			return false
+		}
+		if placement, ok := retained[provider]; ok {
+			return placement.Scope == capability.ScopeShared && len(instanceNames(m, provider)) > 0
+		}
+		return ambientPlacementClassifier(m, provider)
+	}
+}
+
+// instanceNames returns the per-provider instance names for a manifest, used
+// to mirror the ambient "shared provider without instances stays row-free"
+// guard.
+func instanceNames(m application.Manifest, provider capability.ProviderKind) []string {
+	switch provider {
+	case capability.ProviderPostgreSQL:
+		return application.SQLInstanceNames(m)
+	case capability.ProviderValkey:
+		return application.ValkeyInstanceNames(m)
+	default:
+		return nil
+	}
 }
 
 // pinnedRuntimeImage reports the backend provider image the delivered runtime

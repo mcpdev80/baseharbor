@@ -157,9 +157,10 @@ func componentRowsForRecord(record deployment.DeploymentRecord, stages machinere
 	if stages.Wanted != nil && !stages.Wanted.MissingData {
 		desired = stages.Wanted.Reference
 	}
-	components := make([]machinereadmodels.ComponentVersion, 0, len(declaredVersionServices(manifest)))
+	components := make([]machinereadmodels.ComponentVersion, 0, len(declaredVersionServices(manifest, retainedPlacementClassifier(&record))))
 	byName := map[string]struct{}{}
-	for _, service := range declaredVersionServices(manifest) {
+	classify := retainedPlacementClassifier(&record)
+	for _, service := range declaredVersionServices(manifest, classify) {
 		row := componentRowFromWanted(service, desired)
 		components = append(components, row)
 		byName[service.name] = struct{}{}
