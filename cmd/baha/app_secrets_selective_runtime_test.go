@@ -35,9 +35,10 @@ func runSelectiveSecretsRuntimeLifecycle(t *testing.T, shared bool) {
 	defer cancel()
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
 	// Secrets uses the managed provider registry, which requires a durable
-	// installation owner. Keep the synthetic owner fixture, but run no Core
-	// services on the runtime so this still exercises the Coreless workload path.
-	target := configureTestTarget(t)
+	// installation owner. Seed a synthetic owner for the exact selected runtime,
+	// but run no Core services on the host so this exercises the Coreless
+	// workload path.
+	target := configureTestTargetEmpty(t)
 	cfg, err := deployment.LoadConfig()
 	if err != nil {
 		t.Fatal(err)
@@ -56,11 +57,8 @@ func runSelectiveSecretsRuntimeLifecycle(t *testing.T, shared bool) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	root := seedProviderRuntimeOwner(t, ctx, target.Name, target.RuntimeProvider, false)
 	provider, err := detectRuntimeForTarget(ctx, target)
-	if err != nil {
-		t.Fatal(err)
-	}
-	root, err := targetRuntimeStateRoot(target)
 	if err != nil {
 		t.Fatal(err)
 	}
