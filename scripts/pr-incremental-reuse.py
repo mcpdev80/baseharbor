@@ -120,7 +120,7 @@ def completed_previous(repo, workflow_id, branch, pr_number, run_id, token):
     return None
 
 
-def within_24_hours(previous, current):
+def within_7_days(previous, current):
     """Compare authenticated GitHub server timestamps, never local wall clocks."""
     try:
         now = datetime.fromisoformat(current["created_at"].replace("Z", "+00:00"))
@@ -128,7 +128,7 @@ def within_24_hours(previous, current):
         if now.tzinfo is None or before.tzinfo is None:
             return False
         elapsed = (now - before).total_seconds()
-        return 0 <= elapsed <= 24 * 60 * 60
+        return 0 <= elapsed <= 7 * 24 * 60 * 60
     except (TypeError, ValueError, AttributeError, KeyError):
         return False
 
@@ -303,8 +303,8 @@ def main():
             raise ValueError("current run is not an authenticated PR workflow")
         previous = completed_previous(a.repo, workflow_id, a.branch,
                                       int(a.pr_number), int(a.run_id), a.token)
-        if previous and not within_24_hours(previous, current):
-            result["reason"] = "previous run is outside the 24-hour window"
+        if previous and not within_7_days(previous, current):
+            result["reason"] = "previous run is outside the 7-day window"
         elif previous:
             paths = qualified_ancestry(previous["head_sha"], a.integration, a.head)
             if paths is None:
