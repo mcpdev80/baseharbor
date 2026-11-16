@@ -7,8 +7,9 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"path/filepath"
+	"os/user"
 	"runtime"
+	"strconv"
 	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/deployment"
@@ -58,10 +59,7 @@ func maybeRepairRootlessDocker(ctx context.Context, in io.Reader, out io.Writer,
 	if !rootlessBootstrapEligible(target, os.Getuid(), os.Getenv) {
 		return nil
 	}
-	socket := filepath.Join(os.Getenv("XDG_RUNTIME_DIR"), "docker.sock")
-	if os.Getenv("XDG_RUNTIME_DIR") == "" {
-		socket = fmt.Sprintf("/run/user/%d/docker.sock", os.Getuid())
-	}
+	socket := fmt.Sprintf("/run/user/%d/docker.sock", os.Getuid())
 	// The normal resolver is authoritative. In particular, system-only hosts
 	// may legitimately resolve the active/default engine as rootful; they
 	// must never be forced through rootless repair.
@@ -69,27 +67,39 @@ func maybeRepairRootlessDocker(ctx context.Context, in io.Reader, out io.Writer,
 	if resolveErr == nil || observation.Endpoint != "unix://"+socket {
 		return nil
 	}
-	if info, err := os.Stat(socket); err == nil && info.Mode()&os.ModeSocket != 0 {
-		// Existing sockets are handled by the normal verified resolver. A
-		// daemon that fails its probe must not trigger a blind reinstall.
-		return nil
+	_, socketErr := os.Stat(socket)
+	if socketErr != nil && !errors.Is(socketErr, os.ErrNotExist) {
+		return fmt.Errorf("inspect selected Rootless Docker socket %s: %w", socket, socketErr)
 	}
+	// An existing but unreachable socket is treated as a stopped/unhealthy
+	// daemon: restart its user service after consent, never reinstall it.
+	needsInstall := errors.Is(socketErr, os.ErrNotExist)
 	// Only the default Docker context qualifies: a named context is user
 	// intent even when the Target did not specify one.
 	current, err := exec.CommandContext(ctx, "docker", "context", "show").Output()
 	if err != nil || strings.TrimSpace(string(current)) != "default" {
 		return nil
 	}
-	if _, err := exec.LookPath("dockerd-rootless-setuptool.sh"); err != nil {
-		return fmt.Errorf("Rootless Docker socket %s is missing and its setup tool is not installed; install Docker rootless extras, then retry", socket)
+	if needsInstall {
+		if _, err := exec.LookPath("dockerd-rootless-setuptool.sh"); err != nil {
+			return fmt.Errorf("Rootless Docker socket %s is missing and its setup tool is not installed; install Docker rootless extras, then retry", socket)
+		}
+		if !rootlessUbuntuOrDebian() {
+			return fmt.Errorf("Rootless Docker socket %s is missing; automatic repair is currently limited to Ubuntu/Debian; no changes made", socket)
+		}
+		if err := checkRootlessSubIDs(); err != nil {
+			return err
+		}
 	}
-	if !rootlessUbuntuOrDebian() {
-		return fmt.Errorf("Rootless Docker socket %s is missing; automatic repair is currently limited to Ubuntu/Debian; no changes made", socket)
+	if _, err := exec.LookPath("systemctl"); err != nil {
+		return fmt.Errorf("Rootless Docker setup requires a systemd user service: %w", err)
 	}
 	needUIDMap := false
-	for _, binary := range []string{"newuidmap", "newgidmap"} {
-		if _, err := exec.LookPath(binary); err != nil {
-			needUIDMap = true
+	if needsInstall {
+		for _, binary := range []string{"newuidmap", "newgidmap"} {
+			if _, err := exec.LookPath(binary); err != nil {
+				needUIDMap = true
+			}
 		}
 	}
 	fmt.Fprintln(out, "Rootless Docker is not running at "+socket+".")
@@ -98,7 +108,11 @@ func maybeRepairRootlessDocker(ctx context.Context, in io.Reader, out io.Writer,
 	if needUIDMap {
 		fmt.Fprintln(out, "  - Install the missing Ubuntu/Debian uidmap package with sudo (newuidmap/newgidmap for user namespaces).")
 	}
-	fmt.Fprintln(out, "  - Run dockerd-rootless-setuptool.sh install --force for your user; --force allows the existing System Docker to keep running.")
+	if needsInstall {
+		fmt.Fprintln(out, "  - Run dockerd-rootless-setuptool.sh install --force for your user; --force permits the existing System Docker to keep running.")
+	} else {
+		fmt.Fprintln(out, "  - Restart the existing Rootless Docker user service; do not reinstall Docker.")
+	}
 	fmt.Fprintln(out, "  - Enable and start the user-owned Docker service with systemctl --user.")
 	fmt.Fprintln(out, "  - Restore the original Docker CLI context and verify the rootless engine. Existing System Docker stays unchanged.")
 	if err := requireRootlessSetupConsent(ctx, in, out, !noInput(ctx) && readerIsTerminal(in)); err != nil {
@@ -114,16 +128,20 @@ func maybeRepairRootlessDocker(ctx context.Context, in io.Reader, out io.Writer,
 			}
 		}
 	}
-	// setup tool changes the active Docker CLI context as a side effect.
-	// Restore the recorded context even if the installation fails.
-	defer func() {
-		_ = runRootlessSetupStep(context.Background(), in, io.Discard, "docker", "context", "use", "default")
-	}()
-	if err := runRootlessSetupStep(ctx, in, out, "dockerd-rootless-setuptool.sh", "install", "--force"); err != nil {
-		return fmt.Errorf("configure Rootless Docker: %w", err)
-	}
-	if err := runRootlessSetupStep(ctx, in, out, "systemctl", "--user", "enable", "--now", "docker"); err != nil {
-		return fmt.Errorf("start Rootless Docker user service: %w", err)
+	if needsInstall {
+		// Rootless setup changes the CLI context; restore it before verifying
+		// the originally selected Target, including when installation fails.
+		defer func() {
+			_ = runRootlessSetupStep(context.Background(), in, io.Discard, "docker", "context", "use", "default")
+		}()
+		if err := runRootlessSetupStep(ctx, in, out, "dockerd-rootless-setuptool.sh", "install", "--force"); err != nil {
+			return fmt.Errorf("configure Rootless Docker: %w", err)
+		}
+		if err := runRootlessSetupStep(ctx, in, out, "systemctl", "--user", "enable", "--now", "docker"); err != nil {
+			return fmt.Errorf("start Rootless Docker user service: %w", err)
+		}
+	} else if err := runRootlessSetupStep(ctx, in, out, "systemctl", "--user", "restart", "docker"); err != nil {
+		return fmt.Errorf("restart existing Rootless Docker user service: %w", err)
 	}
 	// The setup tool switches contexts; verify the original/default Target
 	// after restoring it, never mistake the new context for Target intent.
@@ -155,4 +173,40 @@ func requireRootlessSetupConsent(ctx context.Context, in io.Reader, out io.Write
 		return errors.New("Rootless Docker setup declined; no system changes made")
 	}
 	return nil
+}
+
+
+// Refuse to allocate UID/GID ranges automatically: guessing a free range
+// could overlap an existing account. Docker's rootless setup requires both
+// mappings to be configured for the current user beforehand.
+func checkRootlessSubIDs() error {
+	current, err := user.Current()
+	if err != nil || current.Username == "" {
+		return fmt.Errorf("cannot determine user for Rootless Docker subordinate ID mappings: %v", err)
+	}
+	for _, name := range []string{"subuid", "subgid"} {
+		contents, err := os.ReadFile("/etc/" + name)
+		if err != nil {
+			return fmt.Errorf("read Rootless Docker subordinate ID mappings /etc/%s: %w", name, err)
+		}
+		if !hasRootlessSubIDRange(string(contents), current.Username) {
+			return fmt.Errorf("Rootless Docker requires a subordinate ID allocation for %s in /etc/%s (at least 65536 IDs); configure a non-overlapping allocation with your system administrator, then rerun baha up; no system changes made", current.Username, name)
+		}
+	}
+	return nil
+}
+
+func hasRootlessSubIDRange(contents, username string) bool {
+	for _, line := range strings.Split(contents, "\n") {
+		fields := strings.Split(strings.TrimSpace(line), ":")
+		if len(fields) != 3 || fields[0] != username {
+			continue
+		}
+		start, startErr := strconv.ParseUint(fields[1], 10, 32)
+		count, countErr := strconv.ParseUint(fields[2], 10, 32)
+		if startErr == nil && countErr == nil && start > 0 && count >= 65536 && start+count <= 4294967296 {
+			return true
+		}
+	}
+	return false
 }
