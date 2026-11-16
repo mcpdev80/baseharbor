@@ -254,29 +254,29 @@ func TestEnvironmentRecordAssociationsRejectsInvalidPersistedEntry(t *testing.T)
 	raw := mustReadEnvironmentRecord(t, "target-a", "prod")
 
 	cases := []struct {
-		name     string
-		mutate   func(record *EnvironmentRecord)
-		wantErr  bool
+		name    string
+		mutate  func(record *EnvironmentRecord)
+		wantErr bool
 	}{
 		{
-			name:     "unknown kind",
-			mutate:   func(r *EnvironmentRecord) { r.Associations[0].SubjectKind = "frobnicate" },
-			wantErr:  true,
+			name:    "unknown kind",
+			mutate:  func(r *EnvironmentRecord) { r.Associations[0].SubjectKind = "frobnicate" },
+			wantErr: true,
 		},
 		{
-			name:     "empty kind",
-			mutate:   func(r *EnvironmentRecord) { r.Associations[0].SubjectKind = "" },
-			wantErr:  true,
+			name:    "empty kind",
+			mutate:  func(r *EnvironmentRecord) { r.Associations[0].SubjectKind = "" },
+			wantErr: true,
 		},
 		{
-			name:     "empty id",
-			mutate:   func(r *EnvironmentRecord) { r.Associations[0].SubjectID = "" },
-			wantErr:  true,
+			name:    "empty id",
+			mutate:  func(r *EnvironmentRecord) { r.Associations[0].SubjectID = "" },
+			wantErr: true,
 		},
 		{
-			name:     "path-bearing id",
-			mutate:   func(r *EnvironmentRecord) { r.Associations[0].SubjectID = "../escape" },
-			wantErr:  true,
+			name:    "path-bearing id",
+			mutate:  func(r *EnvironmentRecord) { r.Associations[0].SubjectID = "../escape" },
+			wantErr: true,
 		},
 	}
 
