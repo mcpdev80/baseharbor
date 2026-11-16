@@ -56,6 +56,13 @@ type IdentitySelectionWitness struct {
 	// Available is NOT a caller input: it is the derived availability this
 	// resolver computes from the four evidence flags above. A caller must
 	// never set it true directly; NewIdentitySelectionWitness derives it.
+	//
+	// Available is intentionally a plain exported result field for consumers
+	// that only need a boolean, but it is NOT a valid, non-forgeable gate
+	// input on its own: a caller could construct the struct literal with
+	// Available: true and skip the evidence. The validated, non-forgeable
+	// availability is NonForgeableAvailable(), and every gate/decision path
+	// must use it.
 	Available bool
 }
 
@@ -66,6 +73,9 @@ type IdentitySelectionWitness struct {
 // `unavailable` (fail-closed). A caller cannot make a dashboard available by
 // supplying a status boolean — only by attesting a real Keycloak metric signal
 // plus a real Target authorization.
+//
+// Consumers that must not be fooled by a caller-supplied Available use
+// NonForgeableAvailable(); the zero value is not available.
 func NewIdentitySelectionWitness(selectionConfirmed, metricPresent, metricCurrent, targetAuthorized bool) IdentitySelectionWitness {
 	witness := IdentitySelectionWitness{
 		SelectionConfirmed: selectionConfirmed,
@@ -78,6 +88,20 @@ func NewIdentitySelectionWitness(selectionConfirmed, metricPresent, metricCurren
 	// target) fails closed to unavailable.
 	witness.Available = witness.SelectionConfirmed && witness.MetricPresent && witness.MetricCurrent && witness.TargetAuthorized
 	return witness
+}
+
+// NonForgeableAvailable reports a non-forgeable positive identity availability.
+// It is the AND of the four real-evidence flags the resolver must attest — a
+// real Keycloak native metrics signal present and pinned to the current
+// AcceptedPersesVersion, the identity provider actually selected, and a real
+// Target authorization for the provider. A caller can never obtain true by
+// setting the exported Available result directly (e.g. the literal
+// IdentitySelectionWitness{Available: true}); only the evidence flags do. The
+// zero value is not available (fail-closed). This is the single validated
+// entrance every gate and decision path must use; Available alone must never
+// be trusted as gate input.
+func (w IdentitySelectionWitness) NonForgeableAvailable() bool {
+	return w.SelectionConfirmed && w.MetricPresent && w.MetricCurrent && w.TargetAuthorized
 }
 
 // DashboardEligibility is the selection verdict for one Perses-native
@@ -209,18 +233,30 @@ func (c PersesDashboardCatalog) HasTemplate(key string) bool {
 // derived from the authoritative witness (real Keycloak metric + real Target
 // authorization), never from a caller-supplied status boolean.
 //
-// witness is the authoritative, non-forgeable evidence the resolver produced:
-// a positive verdict requires an available witness (every real-evidence flag
-// true). Passing an unconstructed / zero-value witness is not availability —
-// it fails closed, never a false "configured" claim.
-func (c PersesDashboardCatalog) EligibleFor(key string, witness IdentitySelectionWitness) (DashboardEligibility, error) {
+// witness is the authoritative, non-forgeable identity evidence the resolver
+// produced, and backendSignals is the real, per-backend signal inventory of
+// the manifest (see the observability signal registry). Eligibility is scoped
+// to the dashboard's own backend: a dashboard is eligible only when its backend
+// actually produces the signal the dashboard queries (backendSignals[backend])
+// AND the identity-selection witness is non-forgeably available. This is
+// deliberately NOT a single cross-dashboard aggregate: a positive Keycloak
+// identity witness does not make an unrelated backend eligible, and an absent
+// identity witness does not suppress a dashboard whose backend has its own
+// real signal unless identity selection is a required prerequisite. Passing an
+// unconstructed / zero-value witness (or the struct literal with only
+// Available: true and no evidence) is not availability — NonForgeableAvailable
+// fails closed, never a false "configured" claim.
+func (c PersesDashboardCatalog) EligibleFor(key string, witness IdentitySelectionWitness, backendSignals map[DashboardBackend]bool) (DashboardEligibility, error) {
 	if _, ok := c.templates[key]; !ok {
 		return DashboardEligibility{
 			Dashboard:     key,
 			VersionPinned: c.release,
 		}, fmt.Errorf("no Perses-native dashboard template for %q", key)
 	}
-	if !witness.Available {
+	// First line of defense: the identity-selection witness must be
+	// non-forgeably available. NonForgeableAvailable is the AND of the four
+	// real-evidence flags; Available alone is never trusted as gate input.
+	if !witness.NonForgeableAvailable() {
 		return DashboardEligibility{
 			Dashboard:     key,
 			Eligible:      false,
@@ -247,14 +283,24 @@ func (c PersesDashboardCatalog) EligibleFor(key string, witness IdentitySelectio
 			VersionPinned: c.release,
 		}, nil
 	}
-	backend := c.templates[key].Backend
-	// The backend is a real template backend of this catalog (Prometheus,
-	// Loki or Tempo) — established by the template-existence check above. A
-	// real backend signal of the pinned release is required; the catalog is
+	// Second line of defense, scoped to this dashboard's own backend: a real
+	// backend signal of the pinned release is required. The backend is a real
+	// template backend of this catalog (Prometheus, Loki or Tempo) —
+	// established by the template-existence check above. The catalog is
 	// populated only for backends that actually ship such a signal, so a
 	// missing template (e.g. PostgreSQL/Valkey requires-adapter) never enters
-	// here. The availability verdict was already fail-closed above when the
-	// identity-selection witness is not available.
+	// here. This is the per-backend gate that prevents a single identity
+	// witness from globally enabling every dashboard backend.
+	backend := c.templates[key].Backend
+	if !backendSignals[backend] {
+		return DashboardEligibility{
+			Dashboard:     key,
+			Eligible:      false,
+			Reason:        fmt.Sprintf("no real %s signal of %s in this manifest", backend, c.release),
+			Backend:       string(backend),
+			VersionPinned: c.release,
+		}, nil
+	}
 	return DashboardEligibility{
 		Dashboard:     key,
 		Eligible:      true,
@@ -265,13 +311,14 @@ func (c PersesDashboardCatalog) EligibleFor(key string, witness IdentitySelectio
 
 // EligibleCount returns the number of eligible dashboards for the manifest
 // selection + release across the whole catalog. witness is the authoritative
-// identity-selection witness: only an available witness (real Keycloak metric
-// + real Target authorization) yields any eligible dashboard; an unconstructed
-// witness yields zero.
-func (c PersesDashboardCatalog) EligibleCount(witness IdentitySelectionWitness) (int, error) {
+// identity-selection witness and backendSignals is the real, per-backend signal
+// inventory. A dashboard is eligible only when its own backend has a real
+// signal AND the identity-selection witness is non-forgeably available; an
+// unconstructed witness yields zero.
+func (c PersesDashboardCatalog) EligibleCount(witness IdentitySelectionWitness, backendSignals map[DashboardBackend]bool) (int, error) {
 	count := 0
 	for key := range c.templates {
-		elig, err := c.EligibleFor(key, witness)
+		elig, err := c.EligibleFor(key, witness, backendSignals)
 		if err != nil {
 			return 0, err
 		}
@@ -317,13 +364,14 @@ func VerifyPersesDashboardCatalogBuilds() error {
 // FilterEligibleDashboards returns the catalog keys that are eligible for the
 // manifest selection + release. Unknown keys are skipped (they are not part of
 // the shipped catalog). witness is the authoritative identity-selection
-// witness: only an available witness (real Keycloak metric + real Target
-// authorization) yields an eligible dashboard; an unconstructed witness yields
-// none, because no real signal/authorization exists.
-func FilterEligibleDashboards(catalog PersesDashboardCatalog, witness IdentitySelectionWitness) ([]string, error) {
+// witness and backendSignals is the real, per-backend signal inventory. A
+// dashboard is eligible only when its own backend has a real signal AND the
+// identity-selection witness is non-forgeably available; an unconstructed
+// witness yields none, because no real signal/authorization exists.
+func FilterEligibleDashboards(catalog PersesDashboardCatalog, witness IdentitySelectionWitness, backendSignals map[DashboardBackend]bool) ([]string, error) {
 	var eligible []string
 	for key := range catalog.Templates() {
-		elig, err := catalog.EligibleFor(key, witness)
+		elig, err := catalog.EligibleFor(key, witness, backendSignals)
 		if err != nil {
 			return nil, err
 		}
