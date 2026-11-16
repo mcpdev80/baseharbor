@@ -132,7 +132,7 @@ baha destroy -o json
 baha destroy --yes -o json
 ```
 
-The plan names owned containers, networks and volumes, including older resources from the same target. Creation time alone never grants ownership. Runtime cleanup verifies remaining resources before deleting installation state. Existing OpenBao recovery files are listed for deletion and are removed only after the acknowledged permanent installation destroy. The file contents are never read into the report. Keep a separate backup if the recovery material is still needed.
+The plan names owned containers, networks and volumes, including older resources from the same target. Creation time alone never grants ownership. Runtime cleanup verifies remaining resources before deleting installation state. Existing OpenBao recovery files are listed as preserved operator-held material; installation destruction never deletes or reads their contents.
 
 If one Target runtime cannot be reached, BaseHarbor leaves that runtime untouched and reports it as `PRESERVED`, while continuing cleanup on reachable Targets. Local configuration and ownership state are removed after the acknowledged workstation destroy; remote Target services are never implied to have been removed when they could not be inspected.
 

@@ -13,6 +13,16 @@ type Requirements struct {
 	ReadOnlyRootfs bool
 	DropAllCaps    bool
 	NoNewPrivs     bool
+	// AllowRootEntrypoint accepts a root-configured service whose image entrypoint
+	// is separately verified to drop privileges before starting its workload.
+	AllowRootEntrypoint bool
+	// AllowedCapAdd is the exact set of capabilities permitted in HostConfig.
+	AllowedCapAdd []string
+	// AllowedEffectiveCaps is the exact set Podman may report for a bounded
+	// root entrypoint. Workload processes must still be checked separately.
+	AllowedEffectiveCaps []string
+	// RequireCapDropAll checks the configured CapDrop list on any runtime.
+	RequireCapDropAll bool
 }
 
 type inspectRecord struct {
@@ -54,31 +64,70 @@ func VerifyComposeService(ctx context.Context, project, service string, req Requ
 	if !r.State.Running {
 		return fmt.Errorf("%s/%s is not running", project, service)
 	}
-	if isRootUser(r.Config.User) && !rootlessPodman() {
+	if isRootUser(r.Config.User) && !rootlessPodman() && !req.AllowRootEntrypoint {
 		return fmt.Errorf("%s/%s runs as root (Config.User=%q)", project, service, r.Config.User)
 	}
 	if r.HostConfig.Privileged {
 		return fmt.Errorf("%s/%s is privileged", project, service)
 	}
-	if len(r.HostConfig.CapAdd) != 0 {
-		return fmt.Errorf("%s/%s adds Linux capabilities: %v", project, service, r.HostConfig.CapAdd)
+	if !sameCapabilities(r.HostConfig.CapAdd, req.AllowedCapAdd) {
+		return fmt.Errorf("%s/%s adds unexpected Linux capabilities: got %v, want %v", project, service, r.HostConfig.CapAdd, req.AllowedCapAdd)
 	}
 	if req.ReadOnlyRootfs && !r.HostConfig.ReadonlyRootfs {
 		return fmt.Errorf("%s/%s root filesystem is writable", project, service)
 	}
 	if req.DropAllCaps {
 		if containerRuntime() == "podman" {
-			if len(r.EffectiveCaps) != 0 {
-				return fmt.Errorf("%s/%s retains effective capabilities under Podman: %v", project, service, r.EffectiveCaps)
+			if err := validateEffectiveCapabilities(r.EffectiveCaps, req.AllowedEffectiveCaps); err != nil {
+				return fmt.Errorf("%s/%s has unexpected effective capabilities under Podman: %v", project, service, r.EffectiveCaps)
 			}
 		} else if !containsFold(r.HostConfig.CapDrop, "ALL") {
 			return fmt.Errorf("%s/%s does not drop ALL capabilities: %v", project, service, r.HostConfig.CapDrop)
 		}
 	}
+	if req.RequireCapDropAll && !containsFold(r.HostConfig.CapDrop, "ALL") {
+		return fmt.Errorf("%s/%s does not configure cap_drop ALL: %v", project, service, r.HostConfig.CapDrop)
+	}
 	if req.NoNewPrivs && !containsSecurityOpt(r.HostConfig.SecurityOpt, "no-new-privileges") {
 		return fmt.Errorf("%s/%s does not enable no-new-privileges: %v", project, service, r.HostConfig.SecurityOpt)
 	}
 	return nil
+}
+
+func validateEffectiveCapabilities(actual, allowed []string) error {
+	if allowed == nil {
+		if len(actual) != 0 {
+			return fmt.Errorf("unexpected effective capability set %v", actual)
+		}
+		return nil
+	}
+	if !sameCapabilities(actual, allowed) {
+		return fmt.Errorf("effective capabilities %v do not match allowed set %v", actual, allowed)
+	}
+	return nil
+}
+
+func sameCapabilities(actual, expected []string) bool {
+	if len(actual) != len(expected) {
+		return false
+	}
+	seen := make(map[string]bool, len(expected))
+	for _, capability := range expected {
+		seen[normalizeCapability(capability)] = true
+	}
+	for _, capability := range actual {
+		name := normalizeCapability(capability)
+		if !seen[name] {
+			return false
+		}
+		delete(seen, name)
+	}
+	return len(seen) == 0
+}
+
+func normalizeCapability(capability string) string {
+	capability = strings.ToUpper(strings.TrimSpace(capability))
+	return strings.TrimPrefix(capability, "CAP_")
 }
 
 func composeServiceContainerID(ctx context.Context, project, service string) (string, error) {
