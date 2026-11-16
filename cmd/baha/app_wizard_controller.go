@@ -27,6 +27,8 @@ const (
 var errAppWizardAbort = errors.New("wizard cancelled without changes")
 var errAppWizardNonInteractive = errors.New("interactive wizard requires a TTY and input")
 
+const appWizardPreviewRefreshTimeout = 120 * time.Second
+
 type appWizardEvent string
 
 const (
@@ -216,7 +218,7 @@ func (w appWizardController) freshFacts(ctx context.Context, d appWizardDecision
 	if w.refresh == nil {
 		return nil, nil, errors.New("current preview authority required")
 	}
-	refreshCtx, refreshCancel := context.WithTimeout(ctx, 30*time.Second)
+	refreshCtx, refreshCancel := context.WithTimeout(ctx, appWizardPreviewRefreshTimeout)
 	defer refreshCancel()
 	fp, impact, err := w.refresh(refreshCtx, d)
 	if err != nil {

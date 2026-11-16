@@ -329,7 +329,7 @@ class NativeMCPWorkflowRoute(TestCase):
         artifacts = [step for step in job["steps"] if step.get("uses", "").startswith("actions/upload-artifact@")]
         self.assertEqual(1, len(artifacts))
         self.assertEqual("always()", artifacts[0]["if"])
-        self.assertEqual(30, artifacts[0]["with"]["retention-days"])
+        self.assertEqual(7, artifacts[0]["with"]["retention-days"])
         self.assertEqual("error", artifacts[0]["with"]["if-no-files-found"])
         self.assertIn("mcp-edit-native-evidence", artifacts[0]["with"]["path"])
 

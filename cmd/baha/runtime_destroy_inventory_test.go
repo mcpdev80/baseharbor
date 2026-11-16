@@ -184,7 +184,7 @@ func TestDestroyInventoryFailureAndResidualResourcesBlockCompletion(t *testing.T
 	}
 }
 
-func TestFullDestroyRemovesAcknowledgedRecoveryFileWithoutReadingContents(t *testing.T) {
+func TestFullDestroyPreservesOperatorRecoveryFileWithoutReadingContents(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("XDG_DATA_HOME", t.TempDir())
 	root, err := deployment.TargetStateRoot("orphan")
@@ -212,14 +212,17 @@ func TestFullDestroyRemovesAcknowledgedRecoveryFileWithoutReadingContents(t *tes
 	if err := json.Unmarshal(out.Bytes(), &report); err != nil {
 		t.Fatal(err)
 	}
-	if !report.Destroyed || report.Preview || !report.All || len(report.Preserved) != 0 {
+	if !report.Destroyed || report.Preview || !report.All || len(report.Preserved) != 1 || report.Preserved[0].Resource != "external recovery file" {
 		t.Fatalf("incorrect structured cleanup report: %#v", report)
+	}
+	if report.Impact == nil || len(report.Impact.RecoveryFiles) != 1 || report.Impact.RecoveryFiles[0].Status != "PRESERVED" {
+		t.Fatalf("recovery-file impact was not reported as preserved: %#v", report.Impact)
 	}
 	if strings.Contains(out.String(), "private-recovery-material") || !strings.Contains(out.String(), "external recovery file") {
 		t.Fatal("recovery secret leaked into cleanup inventory")
 	}
-	if _, err := os.Lstat(recovery); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("acknowledged recovery file was not removed: %v", err)
+	if data, err := os.ReadFile(recovery); err != nil || string(data) != "private-recovery-material" {
+		t.Fatalf("operator recovery material was not preserved: %q %v", data, err)
 	}
 }
 

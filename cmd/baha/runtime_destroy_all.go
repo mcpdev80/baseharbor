@@ -118,7 +118,7 @@ func destroyInstallation(parent context.Context, confirmed bool, out, errOut io.
 	fmt.Fprintln(out, "runtime resources, providers, secrets, control-plane data and local")
 	fmt.Fprintln(out, "BaseHarbor configuration/state from this installation.")
 	fmt.Fprintln(out)
-	fmt.Fprintln(out, "Application source repositories and external application-owned data are preserved.\nBaseHarbor-owned host CA anchors and listed OpenBao recovery files will be removed after confirmation; all unverified anchors remain PRESERVED.")
+	fmt.Fprintln(out, "Application source repositories, external application-owned data and listed OpenBao recovery files are preserved.\nVerified BaseHarbor-owned host CA anchors will be removed after confirmation; all unverified anchors remain PRESERVED.")
 	fmt.Fprintf(out, "Targets: %d\n", len(targets))
 	fmt.Fprintf(out, "Registered deployments: %d\n", len(deployments))
 	for _, plan := range plans {
@@ -254,14 +254,6 @@ func destroyInstallation(parent context.Context, confirmed bool, out, errOut io.
 			recordDestroyResults(parent, results, false)
 			return fmt.Errorf("host trust cleanup incomplete; CA anchors PRESERVED and installation ownership retained: %w", hostTrustErr)
 		}
-		for _, target := range targets {
-			removeTargetRecoveryFile(target, &results)
-		}
-		if countFullDestroyBlockers(results) > 0 {
-			recordDestroyResults(parent, results, false)
-			renderFullDestroyReport(out, results)
-			return errors.New("recovery-file cleanup incomplete; BaseHarbor installation state was preserved")
-		}
 		removeFullDestroyLocalState(&results)
 	} else {
 		results = append(results,
@@ -285,31 +277,6 @@ type fullDestroyRemotePhaseKey struct{}
 func skipFullDestroyRemotePhase(ctx context.Context) bool {
 	skip, _ := ctx.Value(fullDestroyRemotePhaseKey{}).(bool)
 	return skip
-}
-
-func removeTargetRecoveryFile(target deployment.ResolvedTarget, results *[]fullDestroyResult) {
-	path, err := targetRecoveryFilePath(target)
-	if err != nil {
-		*results = append(*results, fullDestroyResult{Status: "FAILED", Target: target.Name, Resource: "recovery-file", Detail: err.Error()})
-		return
-	}
-	info, err := os.Lstat(path)
-	if errors.Is(err, os.ErrNotExist) {
-		return
-	}
-	if err != nil {
-		*results = append(*results, fullDestroyResult{Status: "FAILED", Target: target.Name, Resource: "recovery-file", Detail: err.Error()})
-		return
-	}
-	if !info.Mode().IsRegular() {
-		*results = append(*results, fullDestroyResult{Status: "FAILED", Target: target.Name, Resource: "recovery-file", Detail: "not a regular file; preserved"})
-		return
-	}
-	if err := os.Remove(path); err != nil {
-		*results = append(*results, fullDestroyResult{Status: "FAILED", Target: target.Name, Resource: "recovery-file", Detail: err.Error()})
-		return
-	}
-	*results = append(*results, fullDestroyResult{Status: "REMOVED", Target: target.Name, Resource: "recovery-file", Detail: path})
 }
 
 func releaseFullDestroyConnectivity(parent context.Context, target deployment.ResolvedTarget, results *[]fullDestroyResult) {
