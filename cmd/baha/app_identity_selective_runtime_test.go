@@ -108,10 +108,13 @@ func TestSelectiveIdentityRuntimeAddRemoveReAdd(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		applyCtx := ctx
+		applyCtx, candidateDigest := withConfirmCandidateDigestForResolved(ctx, resolved)
+		if resolved.FromRepository && candidateDigest == "" {
+			t.Fatal("repository candidate has no verifiable confirmation digest")
+		}
 		if plan.ProviderPlan.Impact != nil {
 			impact := plan.ProviderPlan.Impact
-			applyCtx = withProviderChangeConsent(ctx, &application.ProviderChangeConsent{PlanID: impact.PlanID, First: true, Second: true})
+			applyCtx = withProviderChangeConsent(applyCtx, &application.ProviderChangeConsent{PlanID: impact.PlanID, First: true, Second: true})
 		}
 		out.Reset()
 		if err := runWithIO(applyCtx, []string{"app", "apply", "--skip-memory-preflight"}, &out, &out); err != nil {
