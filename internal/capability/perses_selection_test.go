@@ -2,6 +2,13 @@ package capability
 
 import "testing"
 
+// availableIdentityWitness is a test helper: an available identity-selection
+// witness attests a real Keycloak metric signal for an authorized Target with
+// the identity provider actually selected and pinned to the current release.
+func availableIdentityWitness() IdentitySelectionWitness {
+	return NewIdentitySelectionWitness(true, true, true, true)
+}
+
 // TestDashboardCatalogBuildsWithRealBackends pins the shipped catalog: it
 // has a template per real BaseHarbor observability backend (Prometheus,
 // Loki, Tempo) and every template carries a backend and a datasource kind.
@@ -30,17 +37,13 @@ func TestDashboardCatalogBuildsWithRealBackends(t *testing.T) {
 	}
 }
 
-// TestDashboardEligibleWhenSelectedAndRealSignal present is the positive
-// case: Perses selected, the pinned release valid, and the real backend
-// signal present -> the corresponding dashboard is eligible.
-func TestDashboardEligibleWhenSelectedAndRealSignalPresent(t *testing.T) {
+// TestDashboardEligibleWhenRealSignalAndAuthorizedTarget present is the
+// positive case: the identity-selection witness attests a real Keycloak metric
+// signal for an authorized Target with the provider selected and the pinned
+// release current -> the dashboard is eligible.
+func TestDashboardEligibleWhenRealSignalAndAuthorizedTarget(t *testing.T) {
 	catalog := DefaultDashboardCatalog()
-	signals := map[DashboardBackend]bool{
-		DashboardBackendPrometheus: true,
-		DashboardBackendLoki:       true,
-		DashboardBackendTempo:      true,
-	}
-	elig, err := catalog.EligibleFor("prometheus-targets", true, signals)
+	elig, err := catalog.EligibleFor("prometheus-targets", availableIdentityWitness())
 	if err != nil {
 		t.Fatalf("eligibility must not error on a real signal: %v", err)
 	}
@@ -55,151 +58,134 @@ func TestDashboardEligibleWhenSelectedAndRealSignalPresent(t *testing.T) {
 	}
 }
 
-// TestDashboardNotEligibleWithoutPersesSelection fails closed: a selected
-// backend signal alone is not enough; the Perses surface must be selected.
-func TestDashboardNotEligibleWithoutPersesSelection(t *testing.T) {
-	catalog := DefaultDashboardCatalog()
-	signals := map[DashboardBackend]bool{
-		DashboardBackendPrometheus: true,
+// TestIdentitySelectionDerivedNotSupplied pins the core invariant: a witness
+// is built from the four evidence flags, and Available is the AND of them. A
+// caller cannot make availability true by asserting a single status boolean.
+func TestIdentitySelectionDerivedNotSupplied(t *testing.T) {
+	witness := NewIdentitySelectionWitness(true, true, true, true)
+	if !witness.Available {
+		t.Fatalf("a fully-evidenced witness must derive available")
 	}
-	elig, err := catalog.EligibleFor("prometheus-targets", false, signals)
-	if err != nil {
-		t.Fatalf("eligibility must not error when unselected: %v", err)
-	}
-	if elig.Eligible {
-		t.Fatalf("dashboard must not be eligible when Perses is unselected")
-	}
-	if elig.Status() != DashboardNotEligible {
-		t.Fatalf("status = %q, want %q", elig.Status(), DashboardNotEligible)
+	// Every single missing flag fails closed.
+	for name, w := range map[string]IdentitySelectionWitness{
+		"not-selected":    NewIdentitySelectionWitness(false, true, true, true),
+		"no-metric":       NewIdentitySelectionWitness(true, false, true, true),
+		"metric-not-curr": NewIdentitySelectionWitness(true, true, false, true),
+		"unauthorized":    NewIdentitySelectionWitness(true, true, true, false),
+		"all-missing":     NewIdentitySelectionWitness(false, false, false, false),
+	} {
+		if w.Available {
+			t.Fatalf("%s: a missing evidence flag must fail closed to unavailable", name)
+		}
 	}
 }
 
-// TestDashboardFailClosedWithoutPinnedRelease fails closed when the pinned
-// release is invalid/empty, even with a selected surface and a signal.
-func TestDashboardFailClosedWithoutPinnedRelease(t *testing.T) {
-	signals := map[DashboardBackend]bool{
-		DashboardBackendPrometheus: true,
+// TestIdentitySelectionDefaultUnpublishedIsUnavailable pins fail-closed: the
+// zero-value witness (an unconstructed / not-yet-resolved fan-in) is
+// unavailable and yields no eligible dashboard, even when Perses is selected.
+func TestIdentitySelectionDefaultUnpublishedIsUnavailable(t *testing.T) {
+	var zero IdentitySelectionWitness
+	if zero.Available {
+		t.Fatalf("the zero-value witness must be unavailable (fail-closed)")
 	}
-	// A release whose validation fails maps the catalog to fail closed.
-	failCatalog := PersesDashboardCatalog{
-		release: "v0.1.0",
-		templates: map[string]DashboardTemplate{
-			"prometheus-targets": {
-				Key:               "prometheus-targets",
-				Backend:           DashboardBackendPrometheus,
-				Datasource:        "prometheus",
-				SupportedVersions: []string{"v0.55.1"},
-			},
-		},
-	}
-	elig, err := failCatalog.EligibleFor("prometheus-targets", true, signals)
+	catalog := DefaultDashboardCatalog()
+	elig, err := catalog.EligibleFor("prometheus-targets", zero)
 	if err != nil {
-		t.Fatalf("eligibility must not error on an unsupported version: %v", err)
+		t.Fatalf("eligibility must not error on an unconstructed witness: %v", err)
 	}
 	if elig.Eligible {
-		t.Fatalf("dashboard must not be eligible for an unsupported perses release")
+		t.Fatalf("dashboard must not be eligible without an available witness: %+v", elig)
 	}
 	if elig.Reason == "" {
-		t.Fatal("an ineligible verdict must carry a concrete reason")
+		t.Fatalf("an unavailable verdict must carry a concrete fail-closed reason")
+	}
+	if containsString(elig.Reason, "caller-supplied status") == false {
+		t.Fatalf("the fail-closed reason must name the caller-supplied-status prohibition, got %q", elig.Reason)
 	}
 }
 
-// TestDashboardNotEligibleWithoutRealSignal fails closed when no real
-// backend signal exists for the dashboard's backend (missing metric/label
-// coverage): selection + pinned release alone must not provision.
-func TestDashboardNotEligibleWithoutRealSignal(t *testing.T) {
+// TestIdentitySelectionUnavailableWhenNoKeycloakMetricSignal fails closed when
+// no real Keycloak metric signal is present for this Target.
+func TestIdentitySelectionUnavailableWhenNoKeycloakMetricSignal(t *testing.T) {
 	catalog := DefaultDashboardCatalog()
-	// Prometheus selected + pinned, but Loki has no real signal.
-	signals := map[DashboardBackend]bool{
-		DashboardBackendPrometheus: true,
-		DashboardBackendLoki:       false,
-	}
-	elig, err := catalog.EligibleFor("loki-logs", true, signals)
+	elig, err := catalog.EligibleFor("prometheus-targets", NewIdentitySelectionWitness(true, false, true, true))
 	if err != nil {
 		t.Fatalf("eligibility must not error on a missing signal: %v", err)
 	}
 	if elig.Eligible {
-		t.Fatalf("loki-logs must not be eligible without a real Loki signal")
+		t.Fatalf("dashboard must not be eligible without a real Keycloak metric signal")
 	}
-	if !containsString(elig.Reason, "loki") {
-		t.Fatalf("reason must name the missing backend, got %q", elig.Reason)
-	}
-}
-
-// TestDashboardNotEligibleForUnknownKey rejects a key that is not part of
-// the shipped catalog (stale/unknown dashboard reference).
-func TestDashboardNotEligibleForUnknownKey(t *testing.T) {
-	catalog := DefaultDashboardCatalog()
-	signals := map[DashboardBackend]bool{
-		DashboardBackendPrometheus: true,
-	}
-	if _, err := catalog.EligibleFor("grafana-overview", true, signals); err == nil {
-		t.Fatal("an unknown dashboard key must not be eligible")
+	if !containsString(elig.Reason, "Keycloak") {
+		t.Fatalf("reason must name the missing Keycloak signal, got %q", elig.Reason)
 	}
 }
 
-// TestDashboardUnselectedNoSignalYieldsNoEligible enumerates the whole
-// catalog for an unselected surface: every dashboard is ineligible.
-func TestDashboardUnselectedNoEligible(t *testing.T) {
+// TestIdentitySelectionUnavailableWhenMetricNotCurrentVersion fails closed when
+// the metric is not pinned to the current accepted release.
+func TestIdentitySelectionUnavailableWhenMetricNotCurrentVersion(t *testing.T) {
 	catalog := DefaultDashboardCatalog()
-	n, err := catalog.EligibleCount(false, map[DashboardBackend]bool{
-		DashboardBackendPrometheus: true,
-		DashboardBackendLoki:       true,
-		DashboardBackendTempo:      true,
-	})
+	elig, err := catalog.EligibleFor("prometheus-targets", NewIdentitySelectionWitness(true, true, false, true))
 	if err != nil {
-		t.Fatalf("eligibility count must not error: %v", err)
+		t.Fatalf("eligibility must not error on an obsolete metric: %v", err)
 	}
-	if n != 0 {
-		t.Fatalf("unselected Perses surface must yield 0 eligible dashboards, got %d", n)
+	if elig.Eligible {
+		t.Fatalf("dashboard must not be eligible when the metric is not the current version")
 	}
 }
 
-// TestDashboardAllEligibleWhenAllSignalsPresent verifies the full-catalog
-// positive: selection + all real signals -> three eligible dashboards.
-func TestDashboardAllEligibleWhenAllSignalsPresent(t *testing.T) {
+// TestIdentitySelectionUnavailableWhenTargetNotAuthorized fails closed when the
+// provider is not authorized for this Target, even with a real signal present.
+func TestIdentitySelectionUnavailableWhenTargetNotAuthorized(t *testing.T) {
 	catalog := DefaultDashboardCatalog()
-	n, err := catalog.EligibleCount(true, map[DashboardBackend]bool{
-		DashboardBackendPrometheus: true,
-		DashboardBackendLoki:       true,
-		DashboardBackendTempo:      true,
-	})
+	elig, err := catalog.EligibleFor("prometheus-targets", NewIdentitySelectionWitness(true, true, true, false))
 	if err != nil {
-		t.Fatalf("eligibility count must not error: %v", err)
+		t.Fatalf("eligibility must not error on an unauthorized target: %v", err)
 	}
-	if n != 3 {
-		t.Fatalf("all three real backends must yield 3 eligible dashboards, got %d", n)
+	if elig.Eligible {
+		t.Fatalf("dashboard must not be eligible when the target is not authorized")
+	}
+}
+
+// TestIdentitySelectionNeverDerivedFromCallerStatusBoolean pins that a caller
+// cannot obtain availability from a caller-supplied status boolean alone: only
+// the four real-evidence flags derive a positive verdict.
+func TestIdentitySelectionNeverDerivedFromCallerStatusBoolean(t *testing.T) {
+	catalog := DefaultDashboardCatalog()
+	// A caller asserts only "selected" (the old persesSelected=true) without
+	// the real signal/authorization evidence -> must fail closed.
+	elig, err := catalog.EligibleFor("prometheus-targets", NewIdentitySelectionWitness(true, false, false, false))
+	if err != nil {
+		t.Fatalf("eligibility must not error on an insufficient witness: %v", err)
+	}
+	if elig.Eligible {
+		t.Fatalf("a caller-supplied selection status must not make a dashboard available")
 	}
 }
 
 // TestFilterEligibleDashboardsUnknownOwnerFailClosed guards the
-// authorization boundary: an empty signal inventory (no owned backend)
+// authorization boundary: an empty/zero witness (no owned backend signal)
 // yields no eligible dashboard even when Perses is selected.
 func TestFilterEligibleDashboardsUnknownOwnerFailClosed(t *testing.T) {
 	catalog := DefaultDashboardCatalog()
-	eligible, err := FilterEligibleDashboards(catalog, true, map[DashboardBackend]bool{})
+	eligible, err := FilterEligibleDashboards(catalog, IdentitySelectionWitness{})
 	if err != nil {
-		t.Fatalf("filter must not error on an empty signal inventory: %v", err)
+		t.Fatalf("filter must not error on an unconstructed witness: %v", err)
 	}
 	if len(eligible) != 0 {
-		t.Fatalf("an empty signal inventory must yield no eligible dashboard, got %v", eligible)
+		t.Fatalf("an unconstructed witness must yield no eligible dashboard, got %v", eligible)
 	}
 }
 
-// TestFilterEligibleDashboardsDeterministic orders the eligible keys so a
-// consumer can render them stably.
-func TestFilterEligibleDashboardsDeterministic(t *testing.T) {
+// TestFilterEligibleDashboardsAvailableYieldsExpected pins the positive filter:
+// an available witness yields the expected eligible dashboards.
+func TestFilterEligibleDashboardsAvailableYieldsExpected(t *testing.T) {
 	catalog := DefaultDashboardCatalog()
-	eligible, err := FilterEligibleDashboards(catalog, true, map[DashboardBackend]bool{
-		DashboardBackendPrometheus: true,
-		DashboardBackendLoki:       true,
-		DashboardBackendTempo:      true,
-	})
+	eligible, err := FilterEligibleDashboards(catalog, availableIdentityWitness())
 	if err != nil {
 		t.Fatalf("filter must not error: %v", err)
 	}
 	if len(eligible) != 3 {
-		t.Fatalf("expected 3 eligible dashboards, got %v", eligible)
+		t.Fatalf("expected 3 eligible dashboards with an available witness, got %v", eligible)
 	}
 	for i := 1; i < len(eligible); i++ {
 		if eligible[i-1] > eligible[i] {
