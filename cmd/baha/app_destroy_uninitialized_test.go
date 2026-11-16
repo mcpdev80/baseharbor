@@ -8,6 +8,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/deployment"
 )
 
 func TestAppDestroyAlreadyAbsentUninitializedRepository(t *testing.T) {
@@ -35,6 +38,32 @@ func TestAppDestroyAlreadyAbsentUninitializedRepository(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(root, "compose.yaml")); err != nil {
 		t.Fatalf("destroy removed authored source: %v", err)
+	}
+}
+
+func TestAppDestroyAlreadyAbsentRetainsRepositoryIdentityWithoutNeverDeliveredProof(t *testing.T) {
+	target := configureTestTarget(t)
+	selection := minimalRepositorySelection(t)
+	owner := application.Store{Root: filepath.Join(selection.RepositoryRoot, ".baseharbor", "apps")}
+	manifest := application.WithWorkloadComponents(selection.Manifest, "api")
+	initialized, err := owner.InitializeIdentity(manifest, application.IdentitySnapshot{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(selection.RepositoryRoot)
+
+	var out bytes.Buffer
+	if err := runWithIO(context.Background(), []string{"app", "destroy", "--yes"}, &out, &out); err != nil {
+		t.Fatalf("destroy of a previously initialized but Target-absent repository should be idempotent without never-delivered proof: %v\n%s", err, out.String())
+	}
+	if !strings.Contains(out.String(), "Application already absent") || !strings.Contains(out.String(), "source files were kept") {
+		t.Fatalf("missing human-readable no-op result: %s", out.String())
+	}
+	if _, found, err := deployment.FindDeployment(target.Name, initialized.ApplicationID, initialized.Environment); err != nil || found {
+		t.Fatalf("no-op created a Target deployment owner: found=%t err=%v", found, err)
+	}
+	if _, err := os.Stat(filepath.Join(selection.RepositoryRoot, ".baseharbor", "apps", selection.Manifest.Name)); err != nil {
+		t.Fatalf("no-op removed retained repository identity: %v", err)
 	}
 }
 

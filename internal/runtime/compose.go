@@ -223,6 +223,17 @@ func (c Compose) ExecProject(ctx context.Context, project, composeFile, envFile,
 	return c.outputProject(ctx, project, composeFile, envFile, cmdArgs...)
 }
 
+// ExecProjectAs executes a command inside a Compose service as the requested
+// container user. Keep the user selection in Compose's exec options so callers
+// do not need an interactive su/sudo process inside the container.
+func (c Compose) ExecProjectAs(ctx context.Context, project, composeFile, envFile, service, user string, args ...string) (string, error) {
+	if strings.TrimSpace(user) == "" {
+		return "", errors.New("Compose exec user is required")
+	}
+	cmdArgs := append([]string{"exec", "-T", "--user", user, service}, args...)
+	return c.outputProject(ctx, project, composeFile, envFile, cmdArgs...)
+}
+
 // ExecProjectInput executes a command inside a Compose service while supplying
 // stdin without placing that input in the host process argument list. It is
 // intended for sensitive operator flows such as OpenBao unseal/authentication.
