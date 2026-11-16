@@ -58,7 +58,11 @@ func ExistingRuntimeInventoryAt(dataDir, namespace string, m application.Manifes
 	}
 	dir := filepath.Join(p.Dir, "service-access")
 	access := serviceaccess.HTTPGatewayFiles{Caddyfile: filepath.Join(dir, "config", "Caddyfile"), Material: serviceaccess.TLSMaterial{ServerName: "localhost", ServerCertificate: filepath.Join(dir, "runtime", "server.pem")}}
-	canonical := providerComposeYAMLForModeAndAccess(p, registrations, mode, access, platformPort, storageNetwork)
+	journalMapping, err := journalGroupMappingForMode(string(mode))
+	if err != nil {
+		return files, p, nil, err
+	}
+	canonical := providerComposeYAMLForModeAndAccess(p, registrations, mode, access, platformPort, storageNetwork, journalMapping)
 	resources, err := bhruntime.ExistingCanonicalProjectInventory(p.Project, files.Compose, canonical, files.Env, files.Registrations)
 	return files, p, resources, err
 }

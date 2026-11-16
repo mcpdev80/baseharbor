@@ -134,11 +134,11 @@ func appendReleasedAppliedBindings(resolved resolvedApplication, plan *applicati
 	}
 	actual, err := (capability.RegistryStore{Path: filepath.Join(resolved.TargetStateRoot, "provider-registry.json")}).Load()
 	if err != nil {
-		return err
+		return appMachineProposalStage("load-current-provider-registry", err)
 	}
 	planned, err := application.PreviewReferenceProviderRegistryAt(resolved.TargetStateRoot, resolved.Manifest)
 	if err != nil {
-		return err
+		return appMachineProposalStage("preview-planned-provider-registry", err)
 	}
 	for _, old := range actual.Bindings {
 		if old.ApplicationID != resolved.Manifest.ApplicationID || (old.Environment != "" && old.Environment != resolved.Manifest.Environment) {
