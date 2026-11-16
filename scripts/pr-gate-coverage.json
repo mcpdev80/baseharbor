@@ -1236,6 +1236,22 @@
       "surfaces": [
         "source.gate.atomic.podman.data.capabilities"
       ]
+    },
+    {
+      "id": "runtime.podman-service-stop",
+      "path": "internal/runtime/service_stop.go",
+      "surfaces": [
+        "source.gate.atomic.podman.lifecycle"
+      ],
+      "runtime_specific": true
+    },
+    {
+      "id": "runtime.podman-service-stop-tests",
+      "path": "internal/runtime/service_stop_test.go",
+      "surfaces": [
+        "source.gate.atomic.podman.lifecycle"
+      ],
+      "runtime_specific": true
     }
   ],
   "gates": [
