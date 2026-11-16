@@ -37,7 +37,19 @@ class RuntimeMatrix(unittest.TestCase):
 
     def test_coreless_integration_gates_dispatch_exact_runtime_jobs(self):
         gates=["integration/docker/coreless-lifecycle", "integration/podman/coreless-lifecycle"]
-        result=module.select({"selected_gates":gates},self.catalog)
+        stage_spec=importlib.util.spec_from_file_location(
+            "stage",Path(__file__).with_name("pr-stage-boundary.py"))
+        stage=importlib.util.module_from_spec(stage_spec)
+        stage_spec.loader.exec_module(stage)
+        staged=stage.stage({
+            "schema":"baseharbor.pr-gate-plan/v1",
+            "selected_gates":gates,
+            "required_validation_checks":[{"id":"cli-package-tests"}],
+            "required_consumer_dependencies":["core","demo"],
+        })
+        self.assertEqual(gates,staged["selected_gates"])
+        self.assertEqual([],staged["deferred_integration_gates"])
+        result=module.select(staged,self.catalog)
         self.assertEqual(gates,[row["id"] for row in result["integration_include"]])
         self.assertEqual(["docker", "podman"],
                          [row["runtime"] for row in result["integration_include"]])
@@ -106,6 +118,13 @@ class RuntimeMatrix(unittest.TestCase):
         self.assertIn('json.load(open(sys.argv[1]))["required"]', workflow)
         self.assertNotIn('echo "runtime_required=false"', workflow)
         self.assertIn("needs.pr_plan.outputs.runtime_required == 'true'", workflow)
+
+    def test_coreless_integration_dispatch_pins_demo_and_is_a_final_dependency(self):
+        workflow=(Path(__file__).resolve().parent.parent/".github/workflows/ci.yml").read_text()
+        demo_job=workflow.split("  pr_demo_pin:",1)[1].split("\n  pr_runner_interface:",1)[0]
+        final_job=workflow.split("  pr_selected_final:",1)[1].split("\n    if:",1)[0]
+        self.assertIn("needs.pr_plan.outputs.integration_required == 'true'", demo_job)
+        self.assertIn("pr_selected_integration", final_job)
 
     def test_unsupported_not_marked_pass(self):
         result=module.select({"selected_gates":["integration/static/public-contracts"]},self.catalog)
