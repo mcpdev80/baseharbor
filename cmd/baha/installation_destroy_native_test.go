@@ -65,21 +65,7 @@ func TestInstallationDestroyCurrentChildrenInterruptedVolumeAndRetry(t *testing.
 	// A repository-owned candidate needs explicit, exact-submission consent.
 	// First obtain its published digest without writing deployment state, then
 	// acknowledge that same digest on the second invocation.
-	// Keep provider-impact acknowledgement separate from repository candidate
-	// consent: this first apply must prove that an exact candidate digest is
-	// required before deployment state or runtime is written.
-	resolved, err := resolveApplication(ctx, application.Store{}, nil, "apply")
-	if err != nil {
-		t.Fatal(err)
-	}
-	providerPlan, err := buildResolvedApplicationPlan(ctx, resolved)
-	if err != nil {
-		t.Fatal(err)
-	}
-	applyCtx := ctx
-	if impact := providerPlan.ProviderPlan.Impact; impact != nil {
-		applyCtx = withProviderChangeConsent(ctx, &application.ProviderChangeConsent{PlanID: impact.PlanID, First: true, Second: true})
-	}
+	applyCtx := coreBootstrapFixtureConsent(t, ctx)
 	out.Reset()
 	firstErr := runWithIO(applyCtx, []string{"app", "apply", "--skip-memory-preflight"}, &out, &out)
 	if firstErr == nil || !strings.Contains(firstErr.Error(), "candidate submission requires") {
