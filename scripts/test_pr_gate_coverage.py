@@ -152,11 +152,27 @@ class CoverageCatalogTests(unittest.TestCase):
             source = Path(temporary) / path
             source.parent.mkdir(parents=True)
             source.write_text("func TestSelectiveBackendCleanupPreservesRuntimeBaseline(t *testing.T) {}\n")
+            application_path = Path(temporary) / "cmd/baha/app_application_backend_runtime_test.go"
+            application_path.write_text(
+                "func TestSelectiveApplicationBackendRuntimeAddRemoveReAdd(t *testing.T) {}\n")
             for gate in selected:
                 self.assertEqual(
                     [["./cmd/baha", "-run", "^TestSelectiveBackendCleanupPreservesRuntimeBaseline$",
+                      "-timeout", "20m"],
+                     ["./cmd/baha", "-run", "^TestSelectiveApplicationBackendRuntimeAddRemoveReAdd$",
                       "-timeout", "20m"]],
                     integration.coreless_anchor_checks(gate, temporary))
+
+    def test_application_backend_coreless_acceptance_is_anchored_to_both_integration_gates(self):
+        current = json.loads((ROOT / "pr-gate-coverage.json").read_text())
+        path = "cmd/baha/app_application_backend_runtime_test.go"
+        selected, unresolved = coverage_module.resolve_covered_gates([path], current)
+        self.assertEqual(["integration/docker/coreless-lifecycle",
+                          "integration/podman/coreless-lifecycle"], selected)
+        self.assertEqual([], unresolved)
+        component = next(row for row in current["components"] if row["path"] == path)
+        self.assertEqual(["TestSelectiveApplicationBackendRuntimeAddRemoveReAdd"],
+                         component["required_test_names"])
 
     def test_service_stop_maps_to_podman_lifecycle_and_executor_runs_test_anchor(self):
         current = json.loads((ROOT / "pr-gate-coverage.json").read_text())

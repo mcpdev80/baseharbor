@@ -16,15 +16,24 @@ spec.loader.exec_module(integration)
 
 class ContractCheckTests(unittest.TestCase):
     def test_coreless_baseline_test_anchor_is_bound_to_both_runtime_executors(self):
-        name = 'TestSelectiveBackendCleanupPreservesRuntimeBaseline'
+        anchors = {
+            'cmd/baha/app_backend_selective_runtime_test.go':
+                'TestSelectiveBackendCleanupPreservesRuntimeBaseline',
+            'cmd/baha/app_application_backend_runtime_test.go':
+                'TestSelectiveApplicationBackendRuntimeAddRemoveReAdd',
+        }
         with tempfile.TemporaryDirectory() as temporary:
             root = pathlib.Path(temporary)
-            source = root / 'cmd/baha/app_backend_selective_runtime_test.go'
-            source.parent.mkdir(parents=True)
-            source.write_text(f'func {name}(t *testing.T) {{}}\n')
+            for source_path, name in anchors.items():
+                source = root / source_path
+                source.parent.mkdir(parents=True, exist_ok=True)
+                source.write_text(f'func {name}(t *testing.T) {{}}\n')
             for runtime in ('docker', 'podman'):
                 gate = f'integration/{runtime}/coreless-lifecycle'
-                self.assertEqual([['./cmd/baha', '-run', f'^{name}$', '-timeout', '20m']],
+                self.assertEqual([
+                    ['./cmd/baha', '-run', '^TestSelectiveBackendCleanupPreservesRuntimeBaseline$', '-timeout', '20m'],
+                    ['./cmd/baha', '-run', '^TestSelectiveApplicationBackendRuntimeAddRemoveReAdd$', '-timeout', '20m'],
+                ],
                                  integration.coreless_anchor_checks(gate, root))
         self.assertEqual([], integration.coreless_anchor_checks('integration/static/public-contracts'))
 

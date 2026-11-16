@@ -54,6 +54,8 @@ CHECKS = {
 CORELESS_TEST_ANCHORS = {
     'cmd/baha/app_backend_selective_runtime_test.go':
         'TestSelectiveBackendCleanupPreservesRuntimeBaseline',
+    'cmd/baha/app_application_backend_runtime_test.go':
+        'TestSelectiveApplicationBackendRuntimeAddRemoveReAdd',
 }
 
 
