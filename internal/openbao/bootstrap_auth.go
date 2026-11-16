@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"strings"
 	"time"
 
@@ -16,20 +17,53 @@ func loginManager(ctx context.Context, executor Executor, files bhruntime.Files,
 	if err != nil {
 		return "", errors.New("encode OpenBao AppRole login request")
 	}
-	out, err := executor.ExecProjectInput(ctx, projectNameForFiles(files), files.Compose, files.Env, payload, serviceName,
-		"bao", "write", "-format=json", "auth/approle/login", "-")
-	if err != nil {
-		return "", fmt.Errorf("OpenBao AppRole login failed: %w", err)
+	const attempts = 3
+	for attempt := 0; attempt < attempts; attempt++ {
+		out, execErr := executor.ExecProjectInput(ctx, projectNameForFiles(files), files.Compose, files.Env, payload, serviceName,
+			"bao", "write", "-format=json", "auth/approle/login", "-")
+		if execErr == nil {
+			var reply struct {
+				Auth struct {
+					ClientToken string `json:"client_token"`
+				} `json:"auth"`
+			}
+			if err := json.Unmarshal([]byte(out), &reply); err != nil || strings.TrimSpace(reply.Auth.ClientToken) == "" {
+				return "", errors.New("OpenBao AppRole login returned an invalid response")
+			}
+			return reply.Auth.ClientToken, nil
+		}
+		if ctx.Err() != nil {
+			return "", ctx.Err()
+		}
+		if attempt == attempts-1 || !isTransientAppRoleLoginTransportError(execErr) {
+			return "", fmt.Errorf("OpenBao AppRole login failed: %w", execErr)
+		}
+		timer := time.NewTimer(200 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return "", ctx.Err()
+		case <-timer.C:
+		}
 	}
-	var reply struct {
-		Auth struct {
-			ClientToken string `json:"client_token"`
-		} `json:"auth"`
+	return "", errors.New("OpenBao AppRole login did not complete")
+}
+
+// isTransientAppRoleLoginTransportError is intentionally narrower than the
+// general OpenBao readiness retry classifier. Authentication and HTTP response
+// failures must remain fail-fast; only a dropped transport can be retried here.
+func isTransientAppRoleLoginTransportError(err error) bool {
+	if err == nil {
+		return false
 	}
-	if err := json.Unmarshal([]byte(out), &reply); err != nil || strings.TrimSpace(reply.Auth.ClientToken) == "" {
-		return "", errors.New("OpenBao AppRole login returned an invalid response")
+	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+		return true
 	}
-	return reply.Auth.ClientToken, nil
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "unexpected eof") ||
+		strings.HasSuffix(strings.TrimSpace(message), "eof") ||
+		strings.Contains(message, "connection reset") ||
+		strings.Contains(message, "reset by peer")
 }
 
 func verifyManagerKV(ctx context.Context, executor Executor, files bhruntime.Files, token string) error {

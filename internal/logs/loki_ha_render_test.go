@@ -50,6 +50,19 @@ func TestLokiHARenderUsesProcessTrustStoreForSeaweedFS(t *testing.T) {
 	}
 }
 
+func TestSyslogComposeDoesNotReceivePodmanJournalGroup(t *testing.T) {
+	compose := providerComposeYAMLForModeAndAccess(
+		Placement{Scope: capability.ScopeShared, Project: "bh-test-shared", Network: "bh-test-logs", LokiVolume: "bh-test-loki"},
+		nil,
+		bhruntime.LogCollectionSyslog,
+		serviceaccess.HTTPGatewayFiles{Caddyfile: "./service-access/Caddyfile"},
+		journalGroupMapping{HostGID: "999"},
+	)
+	if strings.Contains(compose, "group_add:") || strings.Contains(compose, "x-baseharbor-podman-gid-map") {
+		t.Fatalf("syslog Compose path must not acquire Podman journal group access:\n%s", compose)
+	}
+}
+
 func TestLokiHACompactorAvoidsUnsupportedHorizontalGRPCWiring(t *testing.T) {
 	cfg := lokiHAConfig()
 	for _, forbidden := range []string{

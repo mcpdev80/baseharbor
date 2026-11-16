@@ -1048,14 +1048,28 @@ class MappingTests(unittest.TestCase):
                 self.assertNotEqual(['atomic/docker/lifecycle'], result['selected_gates'])
 
     def test_ci_evidence_selects_policy_planner_executor_verifier(self):
-        for name in ['scripts/pr-gate-plan.py', 'scripts/test_pr_gate_plan.py']:
+        for name in ['scripts/pr-gate-plan.py', 'scripts/test_pr_gate_plan.py',
+                     'scripts/pre-release-runtime-reuse.py',
+                     'scripts/pre-release-runtime-impact.json',
+                     'scripts/test_pre_release_runtime_reuse.py',
+                     'scripts/test_pr_runtime_workflow_shape.py',
+                     '.github/workflows/ci.yml',
+                     '.github/workflows/pre-release.yml',
+                     '.github/workflows/pre-release-runtime-suite.yml']:
             with self.subTest(path=name):
                 result = planner.plan(diff(paths(name)), REQ, MAP_26)
                 self.assertEqual('resolved', result['coverage_status'])
                 self.assertEqual([], result['selected_gates'])
-                self.assertEqual({'ci-policy', 'pr-planner-tests', 'ci-executor-tests',
-                                  'receipt-execution-tests'},
+                expected_checks = {'ci-policy', 'pr-planner-tests', 'ci-executor-tests',
+                                   'receipt-execution-tests'}
+                if name.startswith('.github/workflows/'):
+                    expected_checks.add('ci-actionlint')
+                self.assertEqual(expected_checks,
                                  {c['id'] for c in result['required_validation_checks']})
+                planner_check = next(c for c in result['required_validation_checks']
+                                     if c['id'] == 'pr-planner-tests')
+                self.assertIn('scripts/test_pre_release_runtime_reuse.py',
+                              planner_check['command'])
 
     def test_unknown_never_auto_selects_full_release_catalog(self):
         for name in ['Dockerfile', 'internal/operatorauth/policy.go',
@@ -2740,7 +2754,8 @@ class CLISelectedCheckDeduplicationTests(unittest.TestCase):
 class IdentityProviderPackageRoutingTests(unittest.TestCase):
     def test_keycloak_test_only_selects_one_package_not_broad_fallback(self):
         for filename in ('internal/identityprovider/keycloak_single_native_ci_test.go',
-                         'internal/identityprovider/keycloak_files_test.go'):
+                         'internal/identityprovider/keycloak_files_test.go',
+                         'internal/identityprovider/keycloak_secret_rotation_test.go'):
             result = planner.plan(diff(paths(filename)), REQ, MAP_26,
                                   conservative_fallback=True)
             checks = {row['id'] for row in result['required_validation_checks']}
