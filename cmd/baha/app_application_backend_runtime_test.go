@@ -85,6 +85,11 @@ func qualifyApplicationBackendLifecycle(t *testing.T, service string) {
 		t.Fatal(err)
 	}
 	assertCorelessHost(t, ctx, provider, target)
+	baselineContainers, err := provider.ListRuntimeContainers(ctx)
+	if err != nil {
+		t.Fatal("inventory Coreless application runtime baseline", err)
+	}
+	baselineIDs := runtimeContainerIDSet(baselineContainers)
 	t.Chdir(t.TempDir())
 	if err := os.WriteFile("compose.yaml", []byte(corelessHTTPWorkload), 0600); err != nil {
 		t.Fatal(err)
@@ -110,8 +115,10 @@ func qualifyApplicationBackendLifecycle(t *testing.T, service string) {
 				t.Errorf("isolated application backend native cleanup: %v", err)
 			}
 		}
-		if containers, err := provider.ListRuntimeContainers(cleanupCtx); err != nil || len(containers) != 0 {
-			t.Errorf("application backend cleanup leaves containers=%d inspection=%v", len(containers), err)
+		if containers, err := provider.ListRuntimeContainers(cleanupCtx); err != nil {
+			t.Errorf("inspect Coreless application runtime cleanup: %v", err)
+		} else if created, missing := runtimeContainerBaselineDiff(containers, baselineIDs); len(created) != 0 || len(missing) != 0 {
+			t.Errorf("application backend cleanup did not preserve the Coreless runtime baseline: test-created=%v baseline-removed=%v", created, missing)
 		}
 	})
 	var selected []bhruntime.ProjectResource
@@ -154,7 +161,7 @@ func qualifyApplicationBackendLifecycle(t *testing.T, service string) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		for _, container := range live {
+		for _, container := range runtimeContainersNotInBaseline(live, baselineIDs) {
 			workload := bhruntime.ProjectResource{Kind: "container", Name: files.Project + "-api-1"}
 			matched := bhruntime.ContainerMatchesProjectResource(provider.Kind(), container, files.Project, workload)
 			for _, resource := range selected {
