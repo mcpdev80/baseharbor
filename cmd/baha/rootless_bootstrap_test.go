@@ -92,10 +92,10 @@ func TestRootlessSetupConsentNeverAssumesYes(t *testing.T) {
 
 func TestRootlessSubIDRangeValidation(t *testing.T) {
 	cases := []struct {
-		name string
+		name    string
 		content string
-		user string
-		want bool
+		user    string
+		want    bool
 	}{
 		{"valid", "other:100000:65536\nmarcel:231072:65536\n", "marcel", true},
 		{"short allocation", "marcel:100000:65535", "marcel", false},
@@ -115,10 +115,10 @@ func TestRootlessSubIDRangeValidation(t *testing.T) {
 
 func TestApprovedRootlessSetupCommandSequence(t *testing.T) {
 	for _, tc := range []struct {
-		name string
+		name    string
 		install bool
-		uidmap bool
-		want []string
+		uidmap  bool
+		want    []string
 	}{
 		{"fresh host missing uidmap", true, true, []string{
 			"sudo apt-get install -y uidmap",
@@ -144,7 +144,7 @@ func TestApprovedRootlessSetupCommandSequence(t *testing.T) {
 				commands = append(commands, name+" "+strings.Join(args, " "))
 				return nil
 			}
-			lookup := func(name string) (string, error) { return "/usr/bin/"+name, nil }
+			lookup := func(name string) (string, error) { return "/usr/bin/" + name, nil }
 			if err := runApprovedRootlessSetup(context.Background(), strings.NewReader(""), io.Discard, tc.install, tc.uidmap, run, lookup); err != nil {
 				t.Fatal(err)
 			}
