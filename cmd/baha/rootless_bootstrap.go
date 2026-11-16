@@ -67,9 +67,12 @@ func maybeRepairRootlessDocker(ctx context.Context, in io.Reader, out io.Writer,
 	if resolveErr == nil || observation.Endpoint != "unix://"+socket {
 		return nil
 	}
-	_, socketErr := os.Stat(socket)
+	socketInfo, socketErr := os.Stat(socket)
 	if socketErr != nil && !errors.Is(socketErr, os.ErrNotExist) {
 		return fmt.Errorf("inspect selected Rootless Docker socket %s: %w", socket, socketErr)
+	}
+	if socketErr == nil && socketInfo.Mode()&os.ModeSocket == 0 {
+		return fmt.Errorf("selected Rootless Docker path %s exists but is not a Unix socket; no changes made", socket)
 	}
 	// A stopped user service can have no socket. Do not attempt to
 	// reinstall it: enabling an existing service is the idempotent repair.
@@ -211,8 +214,17 @@ func runApprovedRootlessSetup(ctx context.Context, in io.Reader, out io.Writer, 
 			return fmt.Errorf("configure Rootless Docker: %w", err)
 		}
 	}
-	if err := run(ctx, in, out, "systemctl", "--user", "enable", "--now", "docker"); err != nil {
-		return fmt.Errorf("start Rootless Docker user service: %w", err)
+	if needsInstall {
+		if err := run(ctx, in, out, "systemctl", "--user", "enable", "--now", "docker"); err != nil {
+			return fmt.Errorf("start Rootless Docker user service: %w", err)
+		}
+	} else {
+		if err := run(ctx, in, out, "systemctl", "--user", "enable", "docker"); err != nil {
+			return fmt.Errorf("enable existing Rootless Docker user service: %w", err)
+		}
+		if err := run(ctx, in, out, "systemctl", "--user", "restart", "docker"); err != nil {
+			return fmt.Errorf("restart existing Rootless Docker user service: %w", err)
+		}
 	}
 	if err := run(ctx, in, io.Discard, "docker", "context", "use", "default"); err != nil {
 		return fmt.Errorf("restore Docker default context: %w", err)
