@@ -1130,7 +1130,7 @@ jobs:
                   raise SystemExit("required native Keycloak HA test failed or skipped")
               if not any(event.get("Test") == required and event.get("Action") == "pass" for event in events):
                   raise SystemExit("required native Keycloak HA test did not run and pass")
-              PY
+          PY
               ;;
             loki)
               BASEHARBOR_LOKI_HA_ACCEPTANCE=1 go test -p 1 ./internal/logs -run '^TestLokiHARuntimeFailoverAcceptanceInCI$' -count=1 -timeout 12m -v
