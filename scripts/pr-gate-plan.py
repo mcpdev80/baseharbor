@@ -1151,6 +1151,10 @@ def targeted_plan(diff, requirements, mapping, repository='.',
                                                       CORE_754_TEST_HEAD))):
                 unresolved.append('core-754 test source differs from exact reviewed candidate')
             unresolved.append('core-754 MCP test content requires independent source qualification: ' + path)
+        elif path in ('internal/openbao/bootstrap_auth.go',
+                      'internal/openbao/bootstrap_auth_test.go'):
+            area = 'openbao-manager-login'
+            require(CODE_CHECKS + OPENBAO_CHECKS)
         elif path in ('cmd/baha/application_service_issuer.go',
                       'cmd/baha/application_service_issuer_test.go',
                       'internal/openbao/service_issuer.go', 'internal/openbao/service_issuer_test.go',
@@ -1407,8 +1411,8 @@ def targeted_plan(diff, requirements, mapping, repository='.',
             unresolved.append('application lifecycle/provider resolution impact needs targeted qualification: ' + path)
         elif path.startswith('internal/openbao/'):
             # Fail-closed OpenBao handling: no blanket path exemption.
-            # Only the reviewed bootstrap source files (bootstrap.go /
-            # bootstrap_test.go) receive resolved coverage.  Any other
+            # Only explicitly mapped OpenBao source files receive resolved
+            # coverage. Any other
             # added, deleted, renamed or unreviewed OpenBao production
             # file stays unresolved and requires independent diff review.
             area = 'openbao-unreviewed'

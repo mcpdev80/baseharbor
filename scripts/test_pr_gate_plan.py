@@ -2689,6 +2689,16 @@ class ConcreteUnitTestExecutionTests(unittest.TestCase):
 
 
 class CurrentProductSeamRoutingTests(unittest.TestCase):
+    def test_openbao_manager_login_paths_resolve_package_tests(self):
+        for name in ('internal/openbao/bootstrap_auth.go',
+                     'internal/openbao/bootstrap_auth_test.go'):
+            with self.subTest(path=name):
+                result = planner.plan(diff(paths(name)), REQ, MAP_26)
+                self.assertEqual('resolved', result['coverage_status'])
+                checks = {row['id'] for row in result['required_validation_checks']}
+                self.assertIn('openbao-package-tests', checks)
+                self.assertFalse(result['unresolved_coverage'])
+
     def test_mixed_cli_tests_run_with_deployment_owner_implementation(self):
         result = planner.plan(diff(paths('cmd/baha/deployment_record.go',
                                          'cmd/baha/app_context_incomplete_test.go',

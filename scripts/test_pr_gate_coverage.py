@@ -202,6 +202,13 @@ class CoverageCatalogTests(unittest.TestCase):
                 self.assertTrue(expected <= set(selected),
                                 f"legacy gates {expected} missing from {selected}")
 
+    def test_shared_openbao_login_change_uses_docker_pr_representative(self):
+        selected, unresolved = coverage_module.resolve_covered_gates(
+            ["internal/openbao/bootstrap_auth.go"],
+            json.loads((ROOT / "pr-gate-coverage.json").read_text()))
+        self.assertEqual(["atomic/docker/control-plane-recovery"], selected)
+        self.assertEqual([], unresolved)
+
     def test_package_surface_without_gate_owner_is_rejected(self):
         data = catalog()
         data["gates"] = [gate for gate in data["gates"] if gate["id"] != DOCKER and gate["id"] != PODMAN]
