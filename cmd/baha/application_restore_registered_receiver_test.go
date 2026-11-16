@@ -129,7 +129,7 @@ func TestRestoreBindsRegisteredReceiverMaterialWithoutSurvivingDelivery(t *testi
 				for _, effect := range planned.Effects {
 					found = found || effect.Aspect == "external-telemetry-recovery" && strings.Contains(effect.After, "https://receiver-before.example.test")
 				}
-				if !found || planned.Scope.Attention != "Achtung" || planned.Scope.ConfirmationsRequired != 2 {
+				if !found || planned.Scope.Attention != "Warning" || planned.Scope.ConfirmationsRequired != 2 {
 					t.Fatal("selected canonical receiver or current consequence acknowledgements missing")
 				}
 				ack := &application.ProviderChangeConsent{PlanID: planned.Scope.PlanID, First: true, Second: true, DeleteData: true}

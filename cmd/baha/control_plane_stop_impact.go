@@ -177,7 +177,7 @@ func authorizeControlPlaneStop(ctx context.Context, out io.Writer) (controlPlane
 	if out == nil {
 		out = io.Discard
 	}
-	fmt.Fprintln(out, "Achtung: review this selected Core stop, affected consumers and retained recovery locations.")
+	fmt.Fprintln(out, "Warning: review this selected Core stop, affected consumers and retained recovery locations.")
 	if err := writeJSON(out, p); err != nil {
 		return p, err
 	}

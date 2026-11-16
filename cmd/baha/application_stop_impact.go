@@ -186,7 +186,7 @@ func authorizeApplicationStop(ctx context.Context, resolved resolvedApplication,
 	if out == nil {
 		out = io.Discard
 	}
-	fmt.Fprintln(out, "Achtung: review the current application stop, affected consumers and retained recovery locations.")
+	fmt.Fprintln(out, "Warning: review the current application stop, affected consumers and retained recovery locations.")
 	if err := writeJSON(out, plan); err != nil {
 		return plan, err
 	}

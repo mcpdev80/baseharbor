@@ -175,9 +175,9 @@ func authorizeRuntimeDestroyImpact(ctx context.Context, p runtimeDestroyImpact, 
 		report.Impact = &p
 	}
 	if p.Scope.Destructive {
-		fmt.Fprintln(out, "Achtung: permanent destruction requires two current-plan confirmations and separate data-deletion consent.")
+		fmt.Fprintln(out, "Warning: permanent destruction requires two current-plan confirmations and separate data-deletion consent.")
 	} else {
-		fmt.Fprintln(out, "Achtung: selected runtime removal requires two current-plan confirmations; persistent data and protected owners remain.")
+		fmt.Fprintln(out, "Warning: selected runtime removal requires two current-plan confirmations; persistent data and protected owners remain.")
 	}
 	if err := writeJSON(out, p); err != nil {
 		return false, err

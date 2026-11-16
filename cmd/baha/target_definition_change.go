@@ -30,7 +30,7 @@ func changeTargetDefinition(ctx context.Context, name, recovery string, out io.W
 		return result, err
 	}
 	if out != nil {
-		fmt.Fprintln(out, "Achtung: review this Target access change, retained data and actual recovery location.")
+		fmt.Fprintln(out, "Warning: review this Target access change, retained data and actual recovery location.")
 		if err := writeJSON(out, plan); err != nil {
 			return result, err
 		}
