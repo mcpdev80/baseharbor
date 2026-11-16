@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
@@ -12,12 +13,12 @@ import (
 )
 
 // withConfirmCandidateDigestForResolved returns a context carrying the operator
-// confirmation and the canonical confirm digest for the repository candidate
-// bound to resolved, so the real apply choke point can record a validated ECHT
-// consent in tests. It computes the digest exactly as the production consumer
-// does (repository desired-state fingerprint over the resolved source), so it
-// matches what recordDeploymentBeforeMutation binds. Non-candidate sources are
-// unaffected.
+// confirmation and the canonical confirm digest for a repository-backed apply,
+// so the real apply choke point can record a validated ECHT consent in tests.
+// It also covers a fresh `app init` record whose source kind is still "managed":
+// applying its authored repository manifest transitions it to a repository
+// candidate. The fingerprint and submission fields match what
+// recordDeploymentBeforeMutation binds. Non-repository sources are unaffected.
 func withConfirmCandidateDigestForResolved(ctx context.Context, resolved resolvedApplication) (context.Context, string) {
 	record := resolved.DeploymentRecord
 	if record == nil {
@@ -25,7 +26,7 @@ func withConfirmCandidateDigestForResolved(ctx context.Context, resolved resolve
 			record = &loaded
 		}
 	}
-	if record == nil || record.Source.Kind != "repository" || !resolved.FromRepository {
+	if record == nil || !resolved.FromRepository || strings.TrimSpace(record.Source.Repository) == "" {
 		return ctx, ""
 	}
 	fingerprint, err := repositoryDesiredStateFingerprint(ctx, resolved)
