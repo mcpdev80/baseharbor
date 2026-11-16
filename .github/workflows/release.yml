@@ -12,6 +12,7 @@ jobs:
     outputs:
       tag: ${{ steps.tag.outputs.tag }}
       tag_sha: ${{ steps.tag.outputs.tag_sha }}
+      develop_sha: ${{ steps.tag.outputs.develop_sha }}
       demo_ref: ${{ steps.tag.outputs.demo_ref }}
       four_part_hotfix: ${{ steps.tag.outputs.four_part_hotfix }}
     steps:
@@ -34,9 +35,20 @@ jobs:
           echo 'Invalid release tag.' >&2; exit 1
         fi
         git fetch --no-tags origin main
+        git fetch --no-tags origin develop
         git fetch origin "refs/tags/$tag:refs/tags/$tag"
         sha="$(git rev-parse "$tag^{commit}")"
+        develop_sha="$(git rev-parse origin/develop)"
         git merge-base --is-ancestor "$sha" origin/main
+        if [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          # Hotfix flow via main; develop integration follows after publish. See docs/reference/releases.md#hotfix-releases.
+          echo "Four-part hotfix: main ancestry is the release-line check; forward-port to develop remains required by the hotfix process."
+        else
+          git merge-base --is-ancestor "$sha" "$develop_sha" || {
+            echo "REJECT: release tag is not integrated into develop; refusing publication." >&2
+            exit 1
+          }
+        fi
         git show "$sha:CHANGELOG.md" | grep -Fq "## [${tag#v}]"
         git cat-file -e "$sha:docs/releases/$tag.md"
         demo=""
@@ -46,7 +58,8 @@ jobs:
         else
           case "$tag" in v0.4.24|v0.4.25|v0.4.26) ;; *) exit 1 ;; esac
         fi
-        printf 'tag=%s\ntag_sha=%s\ndemo_ref=%s\nfour_part_hotfix=%s\n' "$tag" "$sha" "$demo" "$hotfix" >> "$GITHUB_OUTPUT"
+        printf 'tag=%s\ntag_sha=%s\ndevelop_sha=%s\ndemo_ref=%s\nfour_part_hotfix=%s\n' \
+          "$tag" "$sha" "$develop_sha" "$demo" "$hotfix" >> "$GITHUB_OUTPUT"
   checks:
     name: Run release checks
     needs: tag
@@ -54,7 +67,9 @@ jobs:
     with:
       tag: ${{ needs.tag.outputs.tag }}
       ref: ${{ needs.tag.outputs.tag_sha }}
+      develop_sha: ${{ needs.tag.outputs.develop_sha }}
       demo_ref: ${{ needs.tag.outputs.demo_ref }}
+      release_mode: true
   runtime-image:
     name: publish-runtime-image
     needs:
