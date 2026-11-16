@@ -190,7 +190,6 @@ func hasRootlessSubIDRange(contents, username string) bool {
 	return false
 }
 
-
 // runApprovedRootlessSetup executes only the exact steps disclosed in the
 // consent prompt. The subprocess and lookup seams allow verifying both
 // successful and partial-failure paths without mutating a CI worker's host.
