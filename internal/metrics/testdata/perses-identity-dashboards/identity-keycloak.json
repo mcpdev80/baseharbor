@@ -1,4 +1,5 @@
 {
+  "apiVersion": "perses.dev/v1alpha1",
   "kind": "Dashboard",
   "metadata": {
     "name": "identity-keycloak",
@@ -11,7 +12,7 @@
     },
     "datasources": {
       "keycloak": {
-        "kind": "KeycloakDatasource",
+        "kind": "PrometheusDatasource",
         "name": "keycloak",
         "default": true
       }
@@ -30,12 +31,12 @@
             {
               "kind": "TimeSeriesQuery",
               "spec": {
-                "kind": "HTTPServerRequestsQuery",
+                "kind": "PrometheusTimeSeriesQuery",
                 "spec": {
                   "query": "http_server_requests_seconds_count{status!=\"2xx\"}"
                 },
                 "datasource": {
-                  "kind": "KeycloakDatasource",
+                  "kind": "PrometheusDatasource",
                   "name": "keycloak"
                 }
               }
@@ -56,12 +57,12 @@
             {
               "kind": "TimeSeriesQuery",
               "spec": {
-                "kind": "JVMMemoryQuery",
+                "kind": "PrometheusTimeSeriesQuery",
                 "spec": {
                   "query": "jvm_memory_used_bytes{area=\"heap\"}"
                 },
                 "datasource": {
-                  "kind": "KeycloakDatasource",
+                  "kind": "PrometheusDatasource",
                   "name": "keycloak"
                 }
               }
@@ -82,12 +83,12 @@
             {
               "kind": "TimeSeriesQuery",
               "spec": {
-                "kind": "KeycloakUsersQuery",
+                "kind": "PrometheusTimeSeriesQuery",
                 "spec": {
                   "query": "keycloak_users{type=\"real\"}"
                 },
                 "datasource": {
-                  "kind": "KeycloakDatasource",
+                  "kind": "PrometheusDatasource",
                   "name": "keycloak"
                 }
               }

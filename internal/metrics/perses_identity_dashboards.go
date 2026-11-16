@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"sort"
+
+	"github.com/mcpdev80/baseharbor/internal/capability"
 )
 
 // Perses-native identity dashboards for BaseHarbor.
@@ -30,10 +32,29 @@ import (
 // obsolete legacy Keycloak SPI. Identity panels are built only on this
 // verified signal.
 //
+// The panels issue PromQL against the verified current Keycloak metric. Perses
+// ships a single native PromQL datasource, the Prometheus datasource
+// (PrometheusDatasource, see https://perses.dev/docs/plugins/prometheus);
+// there is no Keycloak datasource plugin in the pinned Perses release. The
+// Keycloak openmetrics endpoint is therefore realized through the pinned
+// supported Prometheus datasource — the same authorized-datasource pattern the
+// database-dashboards precedent uses — and never through a fabricated
+// KeycloakDatasource. Keycloak metrics reach Prometheus by scrape; Perses
+// queries them by PromQL through that datasource.
+//
 // A dashboard is realized only when the verified Keycloak metric signal is
 // present for the manifest. When the signal is absent the identity dashboard
 // is explicitly UNAVAILABLE with a reason naming the missing verified signal:
 // no fabricated panel, no exporter installed, no silent Grafana-parity claim.
+//
+// Availability is proven by the AUTHORITATIVE, resolved Keycloak metric signal
+// (internal/capability/reference.go), never by a caller-supplied bool. The
+// resolved status is mapped to the available verdict: only
+// ObservabilitySupported (native openmetrics /metrics, verified by
+// backend-query) realizes the panels; every other resolved status is reported
+// as explicitly unavailable. Where the signal is not resolvable to a
+// supported status at this layer the catalog stays unavailable-preserving (the
+// enable-path resolver that wires the registry signal is a separate owner task).
 //
 // The enable-path binding of this catalog onto the selection catalog
 // (internal/capability/perses_selection.go) is OUT OF SCOPE for this lane
@@ -53,8 +74,14 @@ const identityDashboardKey = "identity-keycloak"
 
 // Perses identity dashboard/panel resource kinds.
 const (
+	// PersesIdentityDashboardAPIVersion is the pinned native Perses API
+	// version every realized identity dashboard resource carries. It is part
+	// of the Perses-native schema, never optional.
+	PersesIdentityDashboardAPIVersion = "perses.dev/v1alpha1"
+	// PersesIdentityDashboardKind is the Perses Dashboard resource kind.
 	PersesIdentityDashboardKind = "Dashboard"
-	PersesIdentityPanelKind     = "Panel"
+	// PersesIdentityPanelKind is the Perses Panel resource kind.
+	PersesIdentityPanelKind = "Panel"
 )
 
 // Perses identity panel plugin kinds shipped by BaseHarbor.
@@ -64,18 +91,21 @@ const (
 	PersesIdentityPanelStatChart  = "StatChart"
 )
 
-// Perses identity datasource plugin kind, one for the Keycloak metric signal.
-const PersesIdentityDatasourceKeycloak = "KeycloakDatasource"
+// Perses identity datasource plugin kind. The only native PromQL datasource
+// shipped with the pinned Perses release is the Prometheus datasource; the
+// identity panels query the verified Keycloak metric through it.
+const PersesIdentityDatasourcePrometheus = "PrometheusDatasource"
 
-// Perses identity query plugin kinds, one per verified Keycloak metric.
+// Perses identity datasource selector name. Prometheus scrapes the Keycloak
+// openmetrics endpoint; Perses selects that scrape target here.
+const PersesIdentityDatasourceName = "keycloak"
+
+// Perses identity query plugin kind for the TimeSeriesQuery type. Perses
+// ships only PrometheusTimeSeriesQuery as its native PromQL query.
 const (
-	PersesIdentityQueryJvmMemory     = "JVMMemoryQuery"
-	PersesIdentityQueryHttpServer    = "HTTPServerRequestsQuery"
-	PersesIdentityQueryKeycloakUsers = "KeycloakUsersQuery"
+	PersesIdentityQueryWrapperTimeSeries = "TimeSeriesQuery"
+	PersesIdentityQueryPluginTimeSeries  = "PrometheusTimeSeriesQuery"
 )
-
-// Perses identity query wrapper kind.
-const PersesIdentityQueryWrapperTimeSeries = "TimeSeriesQuery"
 
 // Perses identity grid layout kind.
 const PersesIdentityGridLayoutKind = "Grid"
@@ -136,6 +166,16 @@ type PersesIdentityPanel struct {
 	Spec PersesIdentityPanelSpec `json:"spec"`
 }
 
+// PersesIdentityDashboardResource is a Perses-native dashboard resource. The
+// apiVersion/kind pair is the pinned Perses resource envelope; metadata is the
+// Perses dashboard metadata.
+type PersesIdentityDashboardResource struct {
+	APIVersion string                          `json:"apiVersion"`
+	Kind       string                          `json:"kind"`
+	Metadata   PersesIdentityDashboardMetadata `json:"metadata"`
+	Spec       PersesIdentityDashboardSpec     `json:"spec"`
+}
+
 // PersesIdentityDashboardMetadata is the metadata section of the dashboard.
 type PersesIdentityDashboardMetadata struct {
 	Name    string `json:"name"`
@@ -184,13 +224,6 @@ type PersesIdentityGridContent struct {
 	Ref string `json:"$ref"`
 }
 
-// PersesIdentityDashboard is the minimal Perses identity dashboard resource.
-type PersesIdentityDashboard struct {
-	Kind     string                          `json:"kind"`
-	Metadata PersesIdentityDashboardMetadata `json:"metadata"`
-	Spec     PersesIdentityDashboardSpec     `json:"spec"`
-}
-
 // PersesIdentityPanelCatalogEntry is one shipped Perses-native identity
 // dashboard entry. It is the deterministic source of truth; its marshalling is
 // the golden witness.
@@ -204,7 +237,7 @@ type PersesIdentityPanelCatalogEntry struct {
 	// DatasourceName is the Perses datasource selector name.
 	DatasourceName string
 	// Dashboard is the minimal Perses identity dashboard resource.
-	Dashboard PersesIdentityDashboard
+	Dashboard PersesIdentityDashboardResource
 	// Unavailable is set when the verified Keycloak metric signal is absent.
 	Unavailable bool
 	// Reason explains an unavailable entry.
@@ -212,8 +245,9 @@ type PersesIdentityPanelCatalogEntry struct {
 }
 
 // persesIdentityPanelJvmMemory is the BaseHarbor Keycloak JVM-memory panel. It
-// queries the verified current Keycloak metric jvm_memory_used_bytes. The query
-// is a literal so the golden witness is exact.
+// queries the verified current Keycloak metric jvm_memory_used_bytes through the
+// pinned supported Prometheus datasource. The query is a literal so the golden
+// witness is exact.
 func persesIdentityPanelJvmMemory() PersesIdentityPanel {
 	return PersesIdentityPanel{
 		Kind: PersesIdentityPanelKind,
@@ -223,9 +257,9 @@ func persesIdentityPanelJvmMemory() PersesIdentityPanel {
 			Queries: []PersesIdentityQueryWrapper{{
 				Kind: PersesIdentityQueryWrapperTimeSeries,
 				Spec: PersesIdentityQueryPlugin{
-					Kind:       PersesIdentityQueryJvmMemory,
+					Kind:       PersesIdentityQueryPluginTimeSeries,
 					Spec:       mustIdentityJSON(map[string]string{"query": `jvm_memory_used_bytes{area="heap"}`}),
-					Datasource: &PersesIdentityDataSourceRef{Kind: PersesIdentityDatasourceKeycloak, Name: "keycloak"},
+					Datasource: &PersesIdentityDataSourceRef{Kind: PersesIdentityDatasourcePrometheus, Name: PersesIdentityDatasourceName},
 				},
 			}},
 		},
@@ -234,8 +268,8 @@ func persesIdentityPanelJvmMemory() PersesIdentityPanel {
 
 // persesIdentityPanelHttpServer is the BaseHarbor Keycloak HTTP server request
 // panel. It queries the verified current Keycloak metric
-// http_server_requests_seconds_count. The query is a literal so the golden
-// witness is exact.
+// http_server_requests_seconds_count through the pinned supported Prometheus
+// datasource. The query is a literal so the golden witness is exact.
 func persesIdentityPanelHttpServer() PersesIdentityPanel {
 	return PersesIdentityPanel{
 		Kind: PersesIdentityPanelKind,
@@ -245,9 +279,9 @@ func persesIdentityPanelHttpServer() PersesIdentityPanel {
 			Queries: []PersesIdentityQueryWrapper{{
 				Kind: PersesIdentityQueryWrapperTimeSeries,
 				Spec: PersesIdentityQueryPlugin{
-					Kind:       PersesIdentityQueryHttpServer,
+					Kind:       PersesIdentityQueryPluginTimeSeries,
 					Spec:       mustIdentityJSON(map[string]string{"query": `http_server_requests_seconds_count{status!="2xx"}`}),
-					Datasource: &PersesIdentityDataSourceRef{Kind: PersesIdentityDatasourceKeycloak, Name: "keycloak"},
+					Datasource: &PersesIdentityDataSourceRef{Kind: PersesIdentityDatasourcePrometheus, Name: PersesIdentityDatasourceName},
 				},
 			}},
 		},
@@ -255,8 +289,9 @@ func persesIdentityPanelHttpServer() PersesIdentityPanel {
 }
 
 // persesIdentityPanelUsers is the BaseHarbor Keycloak users panel. It queries
-// the verified current Keycloak metric keycloak_users. The query is a literal
-// so the golden witness is exact.
+// the verified current Keycloak metric keycloak_users through the pinned
+// supported Prometheus datasource. The query is a literal so the golden
+// witness is exact.
 func persesIdentityPanelUsers() PersesIdentityPanel {
 	return PersesIdentityPanel{
 		Kind: PersesIdentityPanelKind,
@@ -266,9 +301,9 @@ func persesIdentityPanelUsers() PersesIdentityPanel {
 			Queries: []PersesIdentityQueryWrapper{{
 				Kind: PersesIdentityQueryWrapperTimeSeries,
 				Spec: PersesIdentityQueryPlugin{
-					Kind:       PersesIdentityQueryKeycloakUsers,
+					Kind:       PersesIdentityQueryPluginTimeSeries,
 					Spec:       mustIdentityJSON(map[string]string{"query": `keycloak_users{type="real"}`}),
-					Datasource: &PersesIdentityDataSourceRef{Kind: PersesIdentityDatasourceKeycloak, Name: "keycloak"},
+					Datasource: &PersesIdentityDataSourceRef{Kind: PersesIdentityDatasourcePrometheus, Name: PersesIdentityDatasourceName},
 				},
 			}},
 		},
@@ -277,22 +312,24 @@ func persesIdentityPanelUsers() PersesIdentityPanel {
 
 // identityKeycloakDashboard builds the BaseHarbor identity dashboard resource
 // for the verified current Keycloak signal. It ships exactly one panel per
-// verified metric and no fabricated panel.
-func identityKeycloakDashboard() PersesIdentityDashboard {
-	return PersesIdentityDashboard{
-		Kind:     PersesIdentityDashboardKind,
-		Metadata: PersesIdentityDashboardMetadata{Name: identityDashboardKey, Version: 0},
+// verified metric and no fabricated panel. Every panel queries through the
+// pinned supported Prometheus datasource, and the resource carries the pinned
+// Perses apiVersion.
+func identityKeycloakDashboard() PersesIdentityDashboardResource {
+	return PersesIdentityDashboardResource{
+		APIVersion: PersesIdentityDashboardAPIVersion,
+		Kind:       PersesIdentityDashboardKind,
+		Metadata:   PersesIdentityDashboardMetadata{Name: identityDashboardKey, Version: 0},
 		Spec: PersesIdentityDashboardSpec{
 			Display: PersesIdentityDisplay{
 				Name:        "BaseHarbor Keycloak identity",
 				Description: "Identity-provider panels for the verified current Keycloak metric signal (native openmetrics /metrics).",
 			},
 			Datasources: map[string]PersesIdentityDataSource{
-				// The Keycloak datasource selector is registered by the
-				// coordinator fan-in that binds identity panels onto the
-				// selection catalog. This file owns the panels; it does not
-				// register the datasource.
-				"keycloak": {Kind: PersesIdentityDatasourceKeycloak, Name: "keycloak", Default: true},
+				// The Keycloak openmetrics endpoint is reached through the
+				// pinned supported Prometheus datasource (the only native
+				// PromQL datasource shipped with the pinned Perses release).
+				"keycloak": {Kind: PersesIdentityDatasourcePrometheus, Name: PersesIdentityDatasourceName, Default: true},
 			},
 			Panels: map[string]PersesIdentityPanel{
 				"keycloak-jvm-memory":    persesIdentityPanelJvmMemory(),
@@ -321,26 +358,43 @@ func identityUnavailableEntry(reason string) PersesIdentityPanelCatalogEntry {
 	}
 }
 
+// identityUnavailableReason maps a resolved, non-supported Keycloak metric
+// signal status to the reason string reported on the UNAVAILABLE entry. It
+// names the missing verified signal so the reason is authoritative, not
+// fabricated.
+func identityUnavailableReason(resolvedStatus capability.ObservabilitySupportStatus) string {
+	if resolvedStatus == "" {
+		return "Keycloak has no verified current metric signal in this manifest (the native openmetrics /metrics endpoint is not a verified current signal); the identity dashboard is explicitly unavailable and no exporter is installed, and no obsolete Keycloak SPI is assumed"
+	}
+	if resolvedStatus == capability.ObservabilityRequiresAdapter {
+		return "Keycloak metrics require an adapter in this manifest and have no verified current native metric signal; the identity dashboard is explicitly unavailable and no exporter is installed"
+	}
+	return "Keycloak metric signal " + string(resolvedStatus) + " in this manifest is not the verified current supported native openmetrics signal; the identity dashboard is explicitly unavailable and no exporter is installed, and no obsolete Keycloak SPI is assumed"
+}
+
 // identityDashboardCatalog builds the shipped Perses identity dashboard
-// catalog for the pinned release. It contains one entry for the identity
-// dashboard, realized for the verified current Keycloak metric signal and
-// explicitly UNAVAILABLE when that signal is absent. No fabricated panel ships
-// without a verified signal and no exporter is installed.
-func identityDashboardCatalog(keycloakMetricVerified bool) map[string]PersesIdentityPanelCatalogEntry {
-	if keycloakMetricVerified {
+// catalog for the pinned release, keyed on the AUTHORITATIVE, resolved
+// Keycloak metric signal status (never a caller-supplied bool). A signal
+// resolved to ObservabilitySupported realizes the panels; every other resolved
+// status (including the empty/absent status) is reported as explicitly
+// UNAVAILABLE with a concrete reason. This is the unavailable-preserving
+// realization mirroring the valkey precedent: catalog presence never becomes a
+// fabricated panel.
+func identityDashboardCatalog(resolvedKeycloakSignalStatus capability.ObservabilitySupportStatus) map[string]PersesIdentityPanelCatalogEntry {
+	if resolvedKeycloakSignalStatus == capability.ObservabilitySupported {
 		return map[string]PersesIdentityPanelCatalogEntry{
 			identityDashboardKey: {
 				Key:            identityDashboardKey,
 				Backend:        identityKeycloakBackend,
-				Datasource:     "keycloak",
-				DatasourceName: "keycloak",
+				Datasource:     PersesIdentityDatasourcePrometheus,
+				DatasourceName: PersesIdentityDatasourceName,
 				Dashboard:      identityKeycloakDashboard(),
 			},
 		}
 	}
 	return map[string]PersesIdentityPanelCatalogEntry{
 		identityDashboardKey: identityUnavailableEntry(
-			"Keycloak has no verified current metric signal in this manifest (the native openmetrics /metrics endpoint is not a verified current signal); the identity dashboard is explicitly unavailable and no exporter is installed, and no obsolete Keycloak SPI is assumed"),
+			identityUnavailableReason(resolvedKeycloakSignalStatus)),
 	}
 }
 
@@ -367,17 +421,20 @@ func identityDashboardJSON(entry PersesIdentityPanelCatalogEntry) ([]byte, error
 }
 
 // PersesIdentityDashboardAvailability returns the availability verdict of the
-// identity dashboard, keyed by catalog key, for the pinned release. A verified
-// current Keycloak metric signal returns "available" with its Perses datasource
-// kind; a manifest without that verified signal returns "unavailable" with the
-// reason naming the missing verified signal. This is the deterministic witness
-// that the identity dashboard remains explicitly unavailable rather than
-// silently omitted when its verified signal is absent.
+// identity dashboard, keyed by catalog key and resolved Keycloak metric signal
+// status, for the pinned release. A signal resolved to ObservabilitySupported
+// returns "available" with its supported Prometheus datasource kind; any other
+// resolved status returns "unavailable" with the reason naming the missing
+// verified signal. This is the deterministic witness that the identity
+// dashboard remains explicitly unavailable rather than silently omitted when
+// its verified signal is absent.
 //
-// keycloakMetricVerified is the verified-signal witness of the manifest: the
-// identity dashboard is realized only for the current Keycloak metric signal.
-func PersesIdentityDashboardAvailability(keycloakMetricVerified bool) map[string]PersesIdentityDashboardAvailabilityEntry {
-	catalog := identityDashboardCatalog(keycloakMetricVerified)
+// resolvedKeycloakSignalStatus is the authoritative resolved-signal witness of
+// the manifest (internal/capability/reference.go Keycloak metric signal). The
+// identity dashboard is realized only when that signal resolves to
+// ObservabilitySupported.
+func PersesIdentityDashboardAvailability(resolvedKeycloakSignalStatus capability.ObservabilitySupportStatus) map[string]PersesIdentityDashboardAvailabilityEntry {
+	catalog := identityDashboardCatalog(resolvedKeycloakSignalStatus)
 	out := make(map[string]PersesIdentityDashboardAvailabilityEntry, len(catalog))
 	for key, entry := range catalog {
 		avail := PersesIdentityDashboardAvailable
@@ -414,7 +471,7 @@ const (
 
 // identityPanelKeysSorted returns the identity dashboard panel keys in
 // deterministic order for golden/witness stability.
-func identityPanelKeysSorted(dashboard PersesIdentityDashboard) []string {
+func identityPanelKeysSorted(dashboard PersesIdentityDashboardResource) []string {
 	keys := make([]string, 0, len(dashboard.Spec.Panels))
 	for k := range dashboard.Spec.Panels {
 		keys = append(keys, k)

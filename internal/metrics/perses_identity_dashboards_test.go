@@ -1,20 +1,23 @@
 package metrics
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mcpdev80/baseharbor/internal/capability"
 )
 
 // TestIdentityDashboardAvailableRealizesVerifiedPanels pins the positive case:
-// with the verified current Keycloak metric signal the identity dashboard is
-// realized with exactly one panel per verified metric (jvm_memory_used_bytes,
-// http_server_requests_seconds_count, keycloak_users) and a matching
-// Keycloak datasource.
+// when the resolved Keycloak metric signal is ObservabilitySupported the
+// identity dashboard is realized with exactly one panel per verified metric
+// (jvm_memory_used_bytes, http_server_requests_seconds_count, keycloak_users)
+// and a matching supported Prometheus datasource.
 func TestIdentityDashboardAvailableRealizesVerifiedPanels(t *testing.T) {
-	catalog := identityDashboardCatalog(true)
+	catalog := identityDashboardCatalog(capability.ObservabilitySupported)
 	entry, ok := catalog[identityDashboardKey]
 	if !ok {
 		t.Fatalf("identity dashboard %q must be in the catalog", identityDashboardKey)
@@ -35,14 +38,15 @@ func TestIdentityDashboardAvailableRealizesVerifiedPanels(t *testing.T) {
 			t.Fatalf("identity dashboard missing verified panel %q", k)
 		}
 	}
-	// Every panel queries the current Keycloak metric at the Keycloak datasource.
+	// Every panel queries the current Keycloak metric at the supported
+	// Prometheus datasource.
 	for name, panel := range dashboard.Spec.Panels {
 		if len(panel.Spec.Queries) == 0 {
 			t.Fatalf("panel %q must query the verified metric", name)
 		}
 		q := panel.Spec.Queries[0]
-		if q.Spec.Datasource == nil || q.Spec.Datasource.Kind != PersesIdentityDatasourceKeycloak || q.Spec.Datasource.Name != "keycloak" {
-			t.Fatalf("panel %q datasource = %+v, want Keycloak datasource", name, q.Spec.Datasource)
+		if q.Spec.Datasource == nil || q.Spec.Datasource.Kind != PersesIdentityDatasourcePrometheus || q.Spec.Datasource.Name != PersesIdentityDatasourceName {
+			t.Fatalf("panel %q datasource = %+v, want supported Prometheus datasource", name, q.Spec.Datasource)
 		}
 	}
 }
@@ -51,7 +55,7 @@ func TestIdentityDashboardAvailableRealizesVerifiedPanels(t *testing.T) {
 // dashboard against the committed golden file byte-for-byte so the Perses-native
 // output is a stable, reviewed witness.
 func TestIdentityDashboardAvailableMatchesGoldenFile(t *testing.T) {
-	entry := identityDashboardCatalog(true)[identityDashboardKey]
+	entry := identityDashboardCatalog(capability.ObservabilitySupported)[identityDashboardKey]
 	golden, err := os.ReadFile(filepath.Join("testdata", "perses-identity-dashboards", identityDashboardKey+".json"))
 	if err != nil {
 		t.Fatalf("golden file missing: %v", err)
@@ -60,26 +64,35 @@ func TestIdentityDashboardAvailableMatchesGoldenFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
-	if string(got) != string(golden) {
-		t.Fatalf("golden mismatch:\n--- got ---\n%s\n--- want ---\n%s", got, golden)
+	// The golden file carries a single trailing newline (repo convention);
+	// MarshalIndent output does not. Compare the normalized payload so the
+	// byte-for-byte witness is exact for the marshalled JSON.
+	goldenPayload := bytes.TrimRight(golden, "\n")
+	if string(got) != string(goldenPayload) {
+		t.Fatalf("golden mismatch:\n--- got ---\n%s\n--- want ---\n%s", got, goldenPayload)
 	}
 }
 
 // TestIdentityDashboardAvailablePersesNativeJSON validates the realized
-// identity dashboard is Perses-native JSON: kind "Dashboard", a grid layout
-// referencing a panel, and a panel carrying a query with the Keycloak
-// datasource. It must never be a Grafana dashboard.
+// identity dashboard is Perses-native JSON: the pinned apiVersion and kind, a
+// grid layout referencing a panel, and a panel carrying a query with the
+// supported Prometheus datasource. It must never be a Grafana dashboard.
 func TestIdentityDashboardAvailablePersesNativeJSON(t *testing.T) {
-	entry := identityDashboardCatalog(true)[identityDashboardKey]
+	entry := identityDashboardCatalog(capability.ObservabilitySupported)[identityDashboardKey]
 	raw, err := identityDashboardJSON(entry)
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
 	var dashboard struct {
-		Kind string `json:"kind"`
+		APIVersion string `json:"apiVersion"`
+		Kind       string `json:"kind"`
 	}
 	if err := json.Unmarshal(raw, &dashboard); err != nil {
 		t.Fatalf("output is not a Perses dashboard: %v", err)
+	}
+	// The pinned native Perses schema requires the apiVersion on the resource.
+	if dashboard.APIVersion != PersesIdentityDashboardAPIVersion {
+		t.Fatalf("apiVersion = %q, want %q (pinned native Perses schema)", dashboard.APIVersion, PersesIdentityDashboardAPIVersion)
 	}
 	if dashboard.Kind != PersesIdentityDashboardKind {
 		t.Fatalf("kind = %q, want %q (Perses-native, never a Grafana dashboard)", dashboard.Kind, PersesIdentityDashboardKind)
@@ -104,11 +117,42 @@ func TestIdentityDashboardAvailablePersesNativeJSON(t *testing.T) {
 	}
 }
 
+// TestIdentityDashboardAvailablePersesNativeSchema pins the full native
+// Perses schema: the datasource kind is the supported Prometheus datasource
+// and every panel query is the native PromQL query type.
+func TestIdentityDashboardAvailablePersesNativeSchema(t *testing.T) {
+	entry := identityDashboardCatalog(capability.ObservabilitySupported)[identityDashboardKey]
+	// The dashboard datasources map carries the supported Prometheus
+	// datasource.
+	if ds, ok := entry.Dashboard.Spec.Datasources[PersesIdentityDatasourceName]; !ok || ds.Kind != PersesIdentityDatasourcePrometheus {
+		t.Fatalf("dashboard datasources must carry %q, got %+v (no fabricated KeycloakDatasource)", PersesIdentityDatasourcePrometheus, entry.Dashboard.Spec.Datasources)
+	}
+	// Every panel query uses the native PromQL query type through the
+	// supported Prometheus datasource.
+	for name, panel := range entry.Dashboard.Spec.Panels {
+		for _, q := range panel.Spec.Queries {
+			if q.Kind != PersesIdentityQueryWrapperTimeSeries {
+				t.Fatalf("panel %q query kind = %q", name, q.Kind)
+			}
+			var spec map[string]string
+			if err := json.Unmarshal(q.Spec.Spec, &spec); err != nil {
+				t.Fatalf("query spec is not JSON: %v", err)
+			}
+			if spec["query"] == "" {
+				t.Fatalf("panel %q query must carry a PromQL expression", name)
+			}
+			if q.Spec.Datasource == nil || q.Spec.Datasource.Kind != PersesIdentityDatasourcePrometheus {
+				t.Fatalf("panel %q query datasource = %+v, want %s", name, q.Spec.Datasource, PersesIdentityDatasourcePrometheus)
+			}
+		}
+	}
+}
+
 // TestIdentityDashboardJSONIsDeterministic pins the marshalling: the same
 // realized dashboard marshals to the same bytes on every call, so the golden
 // witness is stable.
 func TestIdentityDashboardJSONIsDeterministic(t *testing.T) {
-	entry := identityDashboardCatalog(true)[identityDashboardKey]
+	entry := identityDashboardCatalog(capability.ObservabilitySupported)[identityDashboardKey]
 	first, err := identityDashboardJSON(entry)
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
@@ -122,12 +166,12 @@ func TestIdentityDashboardJSONIsDeterministic(t *testing.T) {
 	}
 }
 
-// TestIdentityDashboardUnavailableWithoutVerifiedSignal fails closed: without
-// the verified current Keycloak metric signal the identity dashboard is
+// TestIdentityDashboardUnavailableWithoutVerifiedSignal fails closed: without a
+// resolved supported Keycloak metric signal the identity dashboard is
 // explicitly UNAVAILABLE with a reason naming the missing verified signal, and
 // ships no fabricated panel and no exporter.
 func TestIdentityDashboardUnavailableWithoutVerifiedSignal(t *testing.T) {
-	catalog := identityDashboardCatalog(false)
+	catalog := identityDashboardCatalog("")
 	entry := catalog[identityDashboardKey]
 	if !entry.Unavailable {
 		t.Fatal("identity dashboard must be unavailable without the verified signal")
@@ -158,10 +202,41 @@ func TestIdentityDashboardUnavailableWithoutVerifiedSignal(t *testing.T) {
 	}
 }
 
+// TestIdentityDashboardUnavailableRequiresAdapter maps a resolved
+// requires-adapter signal status to an explicit unavailable reason.
+func TestIdentityDashboardUnavailableRequiresAdapter(t *testing.T) {
+	catalog := identityDashboardCatalog(capability.ObservabilityRequiresAdapter)
+	entry := catalog[identityDashboardKey]
+	if !entry.Unavailable {
+		t.Fatal("requires-adapter signal must be reported unavailable")
+	}
+	if !strings.Contains(entry.Reason, "adapter") {
+		t.Fatalf("reason must name the missing verified signal for a requires-adapter status, got: %s", entry.Reason)
+	}
+}
+
+// TestIdentityDashboardUnavailableMapsOtherResolvedStatus keeps every
+// non-supported resolved status unavailable-preserving with a concrete reason.
+func TestIdentityDashboardUnavailableMapsOtherResolvedStatus(t *testing.T) {
+	for _, status := range []capability.ObservabilitySupportStatus{
+		capability.ObservabilityUnsupported,
+		capability.ObservabilityNotApplicable,
+	} {
+		catalog := identityDashboardCatalog(status)
+		entry := catalog[identityDashboardKey]
+		if !entry.Unavailable {
+			t.Fatalf("resolved status %q must be reported unavailable", status)
+		}
+		if entry.Reason == "" {
+			t.Fatalf("resolved status %q must carry a concrete reason", status)
+		}
+	}
+}
+
 // TestIdentityDashboardAvailableAvailabilityWitness pins the availability
 // witness returned by the public API for the realized dashboard.
 func TestIdentityDashboardAvailableAvailabilityWitness(t *testing.T) {
-	witness := PersesIdentityDashboardAvailability(true)
+	witness := PersesIdentityDashboardAvailability(capability.ObservabilitySupported)
 	entry, ok := witness[identityDashboardKey]
 	if !ok {
 		t.Fatalf("availability witness must contain %q", identityDashboardKey)
@@ -172,12 +247,17 @@ func TestIdentityDashboardAvailableAvailabilityWitness(t *testing.T) {
 	if entry.Backend != identityKeycloakBackend {
 		t.Fatalf("witness backend = %q, want %q", entry.Backend, identityKeycloakBackend)
 	}
+	// The available witness names the supported Prometheus datasource, not a
+	// fabricated Keycloak datasource.
+	if entry.Datasource != PersesIdentityDatasourcePrometheus {
+		t.Fatalf("available witness datasource = %q, want %q", entry.Datasource, PersesIdentityDatasourcePrometheus)
+	}
 }
 
 // TestIdentityDashboardUnavailableAvailabilityWitness pins the availability
-// witness returned for a manifest without the verified signal.
+// witness returned for a manifest without a resolved supported signal.
 func TestIdentityDashboardUnavailableAvailabilityWitness(t *testing.T) {
-	witness := PersesIdentityDashboardAvailability(false)
+	witness := PersesIdentityDashboardAvailability("")
 	entry, ok := witness[identityDashboardKey]
 	if !ok {
 		t.Fatalf("availability witness must contain %q", identityDashboardKey)
@@ -204,9 +284,10 @@ func TestIdentityDashboardKeyMatchesSelectionCatalogKey(t *testing.T) {
 
 // TestIdentityPanelQueriesUseCurrentKeycloakMetrics pins that the realized
 // identity panels query the documented current Keycloak (Quarkus/Micrometer)
-// openmetrics, not the obsolete legacy Keycloak SPI.
+// openmetrics, not the obsolete legacy Keycloak SPI, and through the supported
+// Prometheus datasource.
 func TestIdentityPanelQueriesUseCurrentKeycloakMetrics(t *testing.T) {
-	entry := identityDashboardCatalog(true)[identityDashboardKey]
+	entry := identityDashboardCatalog(capability.ObservabilitySupported)[identityDashboardKey]
 	queried := map[string]bool{}
 	for _, panel := range entry.Dashboard.Spec.Panels {
 		for _, q := range panel.Spec.Queries {
@@ -225,5 +306,38 @@ func TestIdentityPanelQueriesUseCurrentKeycloakMetrics(t *testing.T) {
 		if !queried[want] {
 			t.Fatalf("identity panels must query current Keycloak metric %q", want)
 		}
+	}
+}
+
+// TestIdentityCatalogDoesNotDeclareFabricatedDatasource pins the stop-clause:
+// the identity catalog never declares a fabricated Keycloak datasource plugin
+// (no KeycloakDatasource) anywhere in its realized output.
+func TestIdentityCatalogDoesNotDeclareFabricatedDatasource(t *testing.T) {
+	for _, status := range []capability.ObservabilitySupportStatus{"", capability.ObservabilitySupported, capability.ObservabilityRequiresAdapter, capability.ObservabilityUnsupported} {
+		for _, entry := range identityDashboardCatalog(status) {
+			raw, err := identityDashboardJSON(entry)
+			if err != nil {
+				t.Fatalf("marshal: %v", err)
+			}
+			if strings.Contains(string(raw), "KeycloakDatasource") {
+				t.Fatalf("identity catalog %q must not declare a fabricated KeycloakDatasource for status %q", entry.Key, status)
+			}
+		}
+	}
+}
+
+// TestIdentityAvailabilityIsAuthoritativeNotCallerBool pins the Luna r1 fix:
+// the catalog is keyed on the authoritative resolved observability-signal
+// status, never a caller-supplied bool. A non-supported resolved status keeps
+// the dashboard unavailable.
+func TestIdentityAvailabilityIsAuthoritativeNotCallerBool(t *testing.T) {
+	// The public signature takes a resolved status, not a bool. Selecting a
+	// non-supported resolved status must never flip the dashboard to
+	// available.
+	if w := PersesIdentityDashboardAvailability(capability.ObservabilityUnsupported); w[identityDashboardKey].Available != PersesIdentityDashboardUnavailable {
+		t.Fatal("a non-supported resolved signal must keep the dashboard unavailable")
+	}
+	if w := PersesIdentityDashboardAvailability(capability.ObservabilitySupported); w[identityDashboardKey].Available != PersesIdentityDashboardAvailable {
+		t.Fatal("a resolved supported signal must make the dashboard available")
 	}
 }
