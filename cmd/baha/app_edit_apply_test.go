@@ -652,6 +652,33 @@ func TestAppEditCommandReview918SpaceAndEnterBytesAreDistinct(t *testing.T) {
 	}
 }
 
+func TestAppEditDriverReportsPreviewRefreshFailure(t *testing.T) {
+	req := capability.Requirement{Kind: capability.SQL, Name: "primary"}
+	loaded := appEditTestLoaded(t, "dev", []capability.Requirement{req}, nil)
+	manifest := mustAppEditManifest(t, loaded)
+	wantErr := errors.New("preview authority unavailable")
+	controller, err := newAppWizardController(context.Background(), appWizardInput{
+		Manifest:  manifest,
+		Snapshot:  application.ResolutionSnapshot{Target: "dev", Registry: capability.NewRegistry()},
+		Selection: appCapabilitySelectionInput{Current: []capability.Requirement{req}},
+		TTY:       true,
+		Refresh: func(context.Context, appWizardDecision) (*GuidedReadContext, *application.ProviderImpactPlan, error) {
+			return nil, nil, wantErr
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var output strings.Builder
+	_, err = driveAppEditWizard(context.Background(), appEditSession{Loaded: loaded, Controller: controller}, bufioReader("\n"), &output)
+	if !errors.Is(err, errAppWizardAbort) {
+		t.Fatalf("EOF after failed preview = %v, want %v", err, errAppWizardAbort)
+	}
+	if !strings.Contains(output.String(), "could not build read-only decision preview: preview authority unavailable") {
+		t.Fatalf("preview failure was hidden from the operator: %q", output.String())
+	}
+}
+
 func TestAppEditCommandReview918PersistExactTargetPreferenceAndResolveLater(t *testing.T) {
 	t.Setenv("BASEHARBOR_STATE_DIR", filepath.Join(t.TempDir(), "state"))
 	target := configureTestTarget(t)
@@ -752,6 +779,141 @@ func TestAppEditCommandReview918PersistExactTargetPreferenceAndResolveLater(t *t
 	placement, err := application.ResolveProviderPlacement(afterResolved.Manifest, capability.ProviderPostgreSQL)
 	if err != nil || placement.SharingBoundary != selected.SharingBoundary {
 		t.Fatalf("later app resolution ignored the selected instance: %+v %v", placement, err)
+	}
+}
+
+func TestAppEditDesiredIntentDoesNotInheritRemovedProviderPreference(t *testing.T) {
+	t.Setenv("BASEHARBOR_STATE_DIR", filepath.Join(t.TempDir(), "state"))
+	target := configureTestTarget(t)
+	root, err := deployment.TargetStateRoot(target.Name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := application.WithSQLInstances(application.New("edit-remove-sql", "dev", true, false, false), "primary")
+	m.ApplicationID = application.MustNewApplicationID()
+	m.Workload = application.WorkloadConfig{Components: []string{"api"}}
+	parent := t.TempDir()
+	t.Chdir(parent)
+	mustWriteWizardTestFile(t, filepath.Join(parent, "compose.yaml"), "services:\n  api:\n    image: alpine:3.22\n")
+	path := filepath.Join(parent, application.RepositoryManifestName)
+	mustWriteInitializedAuthoredManifest(t, path, m)
+	registerTestDeployment(t, target, m, parent, path)
+
+	projected, err := application.PreviewReferenceProviderRegistryAt(root, m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := (capability.RegistryStore{Path: filepath.Join(root, "provider-registry.json")}).Save(projected); err != nil {
+		t.Fatalf("persist applied SQL binding fixture: %v", err)
+	}
+	var selected capability.ProviderInstance
+	for _, instance := range projected.Instances {
+		if instance.Provider.Kind == capability.ProviderPostgreSQL {
+			selected = instance
+			break
+		}
+	}
+	if selected.ID == "" {
+		t.Fatal("SQL selection lacks a canonical PostgreSQL provider instance")
+	}
+	pref := application.ProviderPreference{
+		Requirement: capability.Requirement{Kind: capability.SQL, Name: "primary"},
+		// The guided Edit flow stores automatic selection as a preference row
+		// with no instance ID; removing this row still has to persist [] so a
+		// later apply resolution cannot reattach it to the SQL-free manifest.
+	}
+	if err := application.SaveDesiredProviderPreferencesAt(root, target.Name, m, []application.ProviderPreference{pref}); err != nil {
+		t.Fatal(err)
+	}
+
+	desired, err := appEditProjectDesiredIntent(m, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := application.PreviewReferenceProviderRegistryAt(root, desired); err != nil {
+		t.Fatalf("read-only preview inherited the removed SQL preference: %v", err)
+	}
+	resolved, err := resolveApplication(context.Background(), application.DefaultStore(), []string{"edit-remove-sql"}, "edit")
+	if err != nil {
+		t.Fatal(err)
+	}
+	source, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decisionDesired, err := appEditDesiredFromDecision(appEditLoaded{
+		Source: source, Target: target.Name, ApplicationID: m.ApplicationID,
+		Preferences: []application.ProviderPreference{pref},
+	}, appWizardDecision{Target: target.Name})
+	if err != nil {
+		t.Fatal(err)
+	}
+	desiredResolved := resolved
+	desiredResolved.Manifest = decisionDesired.Manifest
+	snapshot, preferences, err := applicationLifecycleSnapshotContext(context.Background(), desiredResolved, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(preferences) != 0 {
+		t.Fatalf("SQL-free desired manifest retained SQL provider preferences: %+v", preferences)
+	}
+	retainedAppliedSQL := false
+	for _, binding := range snapshot.Registry.Bindings {
+		if binding.ApplicationID == m.ApplicationID && binding.Environment == m.Environment && binding.Resource.Kind == capability.SQL {
+			retainedAppliedSQL = true
+			break
+		}
+	}
+	if !retainedAppliedSQL {
+		t.Fatal("post-mutation planning snapshot dropped the still-applied SQL binding")
+	}
+	if _, err := readGuidedApplicationContext(context.Background(), desiredResolved); err != nil {
+		t.Fatalf("guided preview of removed SQL was unverifiable: %v", err)
+	}
+	plan := application.ProviderImpactPlan{Version: application.ProviderImpactVersion, Target: target.Name, PlanID: "remove-sql", Revision: "r1", ConfirmationsRequired: 1}
+	var calls int
+	authorities := appEditTestAuthorities(target.Name, m.ApplicationID, nil, nil, []application.ProviderImpactPlan{plan}, &calls)
+	executor := appEditRuntimeExecuteAuthority(application.DefaultStore(), []string{"edit-remove-sql"}, resolved, source, authorities, io.Discard, io.Discard, nil,
+		func(ctx context.Context, _ application.Store, _ []string, _ application.ProviderImpactPlan, mutate func(context.Context, resolvedApplication) error, _, _ io.Writer) ([]application.ProviderExecutionOutcome, error) {
+			if err := mutate(ctx, resolved); err != nil {
+				return nil, err
+			}
+			fresh, err := resolveApplication(ctx, application.DefaultStore(), []string{"edit-remove-sql"}, "apply")
+			if err != nil {
+				return nil, err
+			}
+			if _, err := readGuidedApplicationContext(ctx, fresh); err != nil {
+				return nil, fmt.Errorf("post-mutation guided read: %w", err)
+			}
+			if _, _, err := applicationLifecycleSnapshotContext(ctx, fresh, nil); err != nil {
+				return nil, fmt.Errorf("post-mutation lifecycle snapshot: %w", err)
+			}
+			if _, err := buildResolvedApplicationPlan(ctx, fresh); err != nil {
+				return nil, fmt.Errorf("post-mutation application lifecycle plan: %w", err)
+			}
+			if err := revalidateApplicationProviderIntent(ctx, fresh); err != nil {
+				return nil, fmt.Errorf("post-mutation provider intent revalidation: %w", err)
+			}
+			if _, err := prepareApplicationProviderRetirementFunc(ctx, fresh); err != nil {
+				return nil, fmt.Errorf("post-mutation provider retirement plan: %w", err)
+			}
+			return nil, nil
+		})
+	if _, err := executor(context.Background(), decisionDesired, plan, application.ProviderChangeConsent{PlanID: plan.PlanID, First: true}); err != nil {
+		t.Fatalf("removing SQL preference failed its mutation and post-mutation preview: %v", err)
+	}
+	saved, err := application.DesiredProviderPreferencesAt(root, m)
+	if err != nil || len(saved) != 0 {
+		t.Fatalf("confirmed SQL removal did not clear its persisted provider preference: %+v %v", saved, err)
+	}
+}
+
+func TestAppEditRemovingAutomaticProviderPreferenceRequiresPersistence(t *testing.T) {
+	loaded := []application.ProviderPreference{{
+		Requirement: capability.Requirement{Kind: capability.SQL, Name: "primary"},
+	}}
+	if appEditPreferencesEquivalent(loaded, nil) {
+		t.Fatal("removing an automatic SQL preference must persist the empty desired preference set")
 	}
 }
 

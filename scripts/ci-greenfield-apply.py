@@ -40,7 +40,10 @@ def scoped_approval(output, target):
 
 def apply(cli, target):
     env = dict(os.environ)
-    args = [cli, "up", "--yes"]
+    # The scoped consent parser requires the typed immutable impact plan. The
+    # normal human CLI output only summarizes it; --verbose emits the plan JSON
+    # that the next bounded retry binds its acknowledgement to.
+    args = [cli, "up", "--yes", "--verbose"]
     approved, candidate_confirmed = False, False
     for attempt in range(3):
         completed = subprocess.run(args, env=env, text=True, capture_output=True, check=False)
