@@ -15,13 +15,13 @@ import (
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
-// dataDirForTest returns the runtime data dir the registry read uses.
-func dataDirForTest() (string, error) {
+// registryDataDirForTest returns the runtime data dir the registry read uses.
+func registryDataDirForTest() (string, error) {
 	return bhruntime.DataDir("")
 }
 
 // dataDirForTest returns the runtime data dir the registry read uses.
-func dataDirForTest() (string, error) {
+func registryDataDirForTest() (string, error) {
 	return bhruntimeDataDir()
 }
 
@@ -125,7 +125,7 @@ func TestStatusResultIdentityGateVM(t *testing.T) {
 		// Diagnostic: read the raw registry file to see what is actually
 		// registered for this Target.
 		var raw string
-		if dir, dErr := dataDirForTest(); dErr == nil {
+		if dir, dErr := registryDataDirForTest(); dErr == nil {
 			if b, rErr := os.ReadFile(filepath.Join(dir, "observability", "signals.json")); rErr == nil {
 				raw = string(b)
 			}
