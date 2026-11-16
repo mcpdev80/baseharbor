@@ -1,0 +1,37 @@
+{
+  "schema_version": "v0.4.25-release-docs-source-evidence/v1",
+  "pre_release_ready": false,
+  "qualified_source": {
+    "commit": "db544abdd220f5d312184c90d0129ae2b73ea07b",
+    "tree": "6529a60087d7c901c99d4d5241845e98c3126fe7",
+    "run_id": 38167088091,
+    "run_attempt": 1,
+    "source_job_id": 114551843286,
+    "workflow_policy_job_id": 114551843403,
+    "conclusion": "success",
+    "url": "https://github.com/mcpdev80/baseharbor/actions/runs/38167088091"
+  },
+  "paths": [
+    "docs/internal/release-audits/v0.4.25.md",
+    "docs/internal/v0.4.25-provider-mutation-coverage.md",
+    "docs/internal/v0.4.25-selective-https-runtime-evidence.json",
+    "CHANGELOG.md",
+    "docs/releases/v0.4.25.md",
+    "docs/de/releases/v0.4.25.md"
+  ],
+  "scope": [
+    "EN/DE release notes and changelog describe canonical default retirement, realized production callbacks and source-qualified Node disconnect limitations",
+    "Release audit references latest scoped Demo receipt and qualified native HTTPS followup without erasing historical residual-gateway failure",
+    "Provider coverage distinguishes actual native family scopes, shared common source authorities and still missing universal mutation/consumer qualification"
+  ],
+  "checks": [
+    "Full source-preflight unit/vet/database checks and existing authority races",
+    "Both strict documentation builds, EN/DE page parity, technical integrity and audit",
+    "Workflow policy/actionlint and exact-source Linux snapshot/binary checks"
+  ],
+  "limitations": [
+    "No final immutable ecosystem matrix, authenticated Console/browser/current Connector qualification, final audit/issue acceptance or pre-release approval.",
+    "Native scopes remain attached to their own exact-source permanent receipts; source docs checks cannot qualify runtime behavior."
+  ],
+  "integration_parent": "0175468ad7e62807a40ed56b6b2a725ab2f29067"
+}

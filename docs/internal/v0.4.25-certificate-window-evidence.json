@@ -1,0 +1,147 @@
+{
+  "version": "baseharbor.v0425.certificate-window-evidence/v1",
+  "pre_release_ready": false,
+  "source_qualification": {
+    "source": {
+      "commit": "4beac06657f6c44fd5b4ff9e98a455dcb45efaa3",
+      "tree": "6ee804c3a02839effdc66aa42156587bd0408c48",
+      "working_tree_changes": false
+    },
+    "jobs": 4,
+    "seconds": 63.779,
+    "race_packages": [
+      "./internal/application",
+      "./cmd/baha",
+      "./contracts",
+      "./internal/runtime"
+    ],
+    "checks": [
+      {
+        "name": "cli-build",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 16.97,
+        "log": "cli-build.log"
+      },
+      {
+        "name": "docs-audit",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 0.301,
+        "log": "docs-audit.log"
+      },
+      {
+        "name": "docs-de",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 1.914,
+        "log": "docs-de.log"
+      },
+      {
+        "name": "docs-en",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 2.203,
+        "log": "docs-en.log"
+      },
+      {
+        "name": "go-race",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 50.254,
+        "log": "go-race.log"
+      },
+      {
+        "name": "go-tests",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 63.374,
+        "log": "go-tests.log"
+      },
+      {
+        "name": "go-vet",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 16.494,
+        "log": "go-vet.log"
+      },
+      {
+        "name": "readability",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 3.212,
+        "log": "readability.log"
+      },
+      {
+        "name": "script-tests",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 3.62,
+        "log": "script-tests.log"
+      }
+    ],
+    "native_runtime_qualified": false,
+    "pre_release_ready": false
+  },
+  "native_requalification": {
+    "commit": "4beac06657f6c44fd5b4ff9e98a455dcb45efaa3",
+    "tree": "6ee804c3a02839effdc66aa42156587bd0408c48",
+    "run_id": 38312603684,
+    "attempt": 1,
+    "outcome": "success",
+    "jobs": [
+      {
+        "job_id": 115021651560,
+        "runtime": "docker",
+        "gate": "TestSharedSecretsRuntimePreservesSiblingAndRetiresLastConsumer",
+        "outcome": "success",
+        "seconds": 370.5,
+        "artifact_id": 11776045224,
+        "artifact_sha256": "5621305f52f150da8599fa65aebcc46f8da1cb30ddebe6a4a69d4cc32761ac29",
+        "logs_inspected": true
+      },
+      {
+        "job_id": 115021651859,
+        "runtime": "podman",
+        "gate": "TestCoreStopRetainsOriginalSQLCredentialsAndRunningSibling",
+        "outcome": "success",
+        "seconds": 103.46,
+        "artifact_id": 11774909197,
+        "artifact_sha256": "60488b7fda1d04618cde68b59c405c596c7bfd7e2e8d31733bb24c0c8a074357",
+        "logs_inspected": true
+      },
+      {
+        "job_id": 115021651893,
+        "runtime": "podman",
+        "gate": "TestSharedSecretsRuntimePreservesSiblingAndRetiresLastConsumer",
+        "outcome": "success",
+        "seconds": 374.04,
+        "artifact_id": 11775004652,
+        "artifact_sha256": "32fb34ee71f4894bc7a7d82b7c28ac91e8fcbbd1d86e22d422da7590680bc938",
+        "logs_inspected": true
+      },
+      {
+        "job_id": 115021651940,
+        "runtime": "docker",
+        "gate": "TestCoreStopRetainsOriginalSQLCredentialsAndRunningSibling",
+        "outcome": "success",
+        "seconds": 60.84,
+        "artifact_id": 11775342925,
+        "artifact_sha256": "98939bdd99f2d4c8092d3874c31bfedc8b55344ccdaddd3af752e6733256c2c8",
+        "logs_inspected": true
+      }
+    ],
+    "boundary": "Exact-source single Core stop/resume and existing shared Secrets consumer/last-consumer lifecycle only. Selected gates ran on Docker and rootless Podman; unrelated jobs skipped. In-memory MCP Core handler, isolated real Core native credentials/data. No final Core HTTP/OIDC/browser/Connector or all-provider continuity proof."
+  },
+  "implemented": [
+    "Protected X.509 bundle current time window, including key-first files; latest validity start and earliest certificate expiry.",
+    "Optional valid_from shared material field/schema; not-yet-valid/within-window/expired consequences.",
+    "Fresh observation clock is not hashed as authority. Countdown samples remain consent-stable; actual validity boundaries and material changes invalidate consent.",
+    "Native protected owner metadata is revalidated after reading; public certificate evidence omits subjects and all key contents."
+  ],
+  "limitations": [
+    "Time bounds do not prove chain trust, revocation, active access, authentication or future renewal.",
+    "Universal provider/consumer handoff and all actual result projections remain mandatory.",
+    "This receipt predates the subsequent Target configuration detachment/recovery implementation; it does not qualify that new code."
+  ]
+}

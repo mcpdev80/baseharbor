@@ -1,0 +1,126 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/mcpdev80/baseharbor/blob/HEAD/contracts/provider-impact/v1/scope.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "owner",
+    "plan_id",
+    "complete",
+    "confirmations_required",
+    "destructive",
+    "targets"
+  ],
+  "properties": {
+    "version": {
+      "const": "baseharbor.provider-impact-scope/v1"
+    },
+    "owner": {
+      "$ref": "#/$defs/owner"
+    },
+    "plan_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "complete": {
+      "type": "boolean"
+    },
+    "attention": {
+      "const": "Achtung"
+    },
+    "confirmations_required": {
+      "enum": [
+        1,
+        2
+      ]
+    },
+    "destructive": {
+      "type": "boolean"
+    },
+    "targets": {
+      "type": "array",
+      "items": {
+        "$ref": "https://github.com/mcpdev80/baseharbor/blob/HEAD/contracts/provider-impact/v1/impact.schema.json"
+      }
+    }
+  },
+  "$defs": {
+    "owner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "owner",
+        "reference",
+        "subject",
+        "revision"
+      ],
+      "properties": {
+        "owner": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reference": {
+          "type": "string",
+          "minLength": 1
+        },
+        "subject": {
+          "type": "string",
+          "minLength": 1
+        },
+        "revision": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "anyOf": [
+          {
+            "properties": {
+              "complete": {
+                "const": false
+              }
+            },
+            "required": [
+              "complete"
+            ]
+          },
+          {
+            "properties": {
+              "destructive": {
+                "const": true
+              }
+            },
+            "required": [
+              "destructive"
+            ]
+          },
+          {
+            "properties": {
+              "confirmations_required": {
+                "const": 2
+              }
+            },
+            "required": [
+              "confirmations_required"
+            ]
+          }
+        ]
+      },
+      "then": {
+        "required": [
+          "attention"
+        ],
+        "properties": {
+          "confirmations_required": {
+            "const": 2
+          }
+        }
+      }
+    }
+  ]
+}

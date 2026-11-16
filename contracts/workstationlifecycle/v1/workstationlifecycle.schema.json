@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/mcpdev80/baseharbor/blob/HEAD/contracts/workstationlifecycle/v1/workstationlifecycle.schema.json",
+  "title": "baseharbor.workstation-lifecycle/v1 (independent renew/revoke of one workstation)",
+  "description": "Minimal, provider-neutral contract for the device lifecycle of a workstation enrollment: renew one workstation's leaf independently and revoke one workstation's identity independently, without touching any other workstation, application binding, or the platform. Import grants no rights, cannot run plugins and cannot redirect credentials.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "kind", "installation_id", "recipient", "scope"],
+  "properties": {
+    "version": {
+      "const": "baseharbor.workstation-lifecycle/v1"
+    },
+    "kind": {
+      "enum": ["workstation-lifecycle"]
+    },
+    "installation_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "recipient": {
+      "type": "string",
+      "pattern": "^spiffe://baseharbor/workstations/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/[^?#@\\s]+$"
+    },
+    "scope": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[a-z][a-z0-9.-]*$"
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "kind": { "const": "workstation-lifecycle" } } },
+      "then": {
+        "description": "The recipient must be the installation-scoped SPIFFE identity of the scope."
+      }
+    }
+  ]
+}

@@ -1,0 +1,300 @@
+package main
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+
+	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/cli"
+)
+
+func rootCommand() *cli.Command {
+	store := application.DefaultStore()
+	appCmd := configuredApplicationCommand(store)
+
+	var appPlan *cli.Command
+	for _, child := range appCmd.Children {
+		if child.Name == "plan" {
+			appPlan = child
+			break
+		}
+	}
+
+	root := &cli.Command{
+		Name:    "baha",
+		Summary: "BaseHarbor command-line interface",
+		Usage:   "baha <command> [options]",
+		Long:    "Manage BaseHarbor and isolated application backend runtimes from one binary. Commands are fail-closed: validation and preflight happen before mutation.",
+	}
+
+	root.Children = []*cli.Command{
+		humanNewCommand(),
+		humanOpenCommand(store),
+		{
+			Name:    "init",
+			Summary: "Initialize or adopt the application in the current repository",
+			Usage:   "baha init --agents [--json] | baha init [--quick] [--json] [--input NAME=VALUE]... [--yes]",
+			Long:    "Canonical application initialization. Reuses the same repository inspection and guided input resolution as application initialization; explicit flags remain available for non-interactive use. Providers are resolved from selected intent during apply.",
+			Run:     appInitWithInputResolverCommand(store).Run,
+		},
+		{
+			Name:    "list",
+			Summary: "List managed applications on the selected Target",
+			Usage:   "baha list [--all-targets]",
+			Long:    "Lists applications on the selected Target by default. With multiple configured Targets and no effective selection, listing deliberately fails closed. Use 'baha list --all-targets' for a read-only inventory with an explicit TARGET column, or run 'baha target list' and 'baha target activate NAME' (or set BASEHARBOR_TARGET) to select one Target.",
+			Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
+				for _, child := range appCmd.Children {
+					if child.Name == "list" && child.Run != nil {
+						return child.Run(ctx, args, out, errOut)
+					}
+				}
+				return errors.New("application discovery is unavailable")
+			},
+		},
+		{
+			Name:    "inspect",
+			Summary: "Inspect the current repository and its application requirements",
+			Usage:   "baha inspect [options]",
+			Run:     appInspectCommand().Run,
+		},
+		{
+			Name:    "backup",
+			Summary: "Back up the current application through its managed lifecycle",
+			Usage:   "baha backup [options]",
+			Run:     appGuidedBackupCommand(store).Run,
+		},
+		{
+			Name:    "restore",
+			Summary: "Restore an application through the ownership-safe managed lifecycle",
+			Usage:   "baha restore [options]",
+			Run:     appGuidedRestoreCommandWithRecoveryMetadata(store).Run,
+		},
+		{
+			Name:    "up",
+			Summary: "Converge selected application intent, or explicitly start the management Core",
+			Usage:   "baha up [NAME] [-e ENV|--environment ENV] [--yes] [--skip-memory-preflight] [--control-plane-only] [--ha] [--trust-host-ca] [--postgres-port PORT] [--openbao-port PORT] [--recovery-file PATH]",
+			Long:    "Inside an application repository, converges selected capabilities and genuine dependencies through the same current-plan acknowledgement, authorization and verification as app apply. It does not install a management Core merely because an application exists. Unresolved deployment inputs use the existing guided resolver; --yes does not replace provider-consequence or data-deletion consent. In a detected project without baseharbor.yaml, interactive use initializes the application through the existing guided flow; --yes uses unambiguous safe defaults. Directories without application signals retain explicit management setup. --control-plane-only explicitly selects the independent SQL/Secrets/Identity management installation and its HA, port, recovery and host-trust options. --trust-host-ca remains a separate explicit opt-in; --yes never changes host trust. -e/--environment selects resolved deployment state without rewriting authored intent.",
+			Run:     runtimeUpCommandWithInputResolver,
+		},
+		{
+			Name:    "down",
+			Summary: "Stop the current application, or the local control plane outside a repository",
+			Usage:   "baha down [options]",
+			Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
+				if inApplicationRepository() {
+					return appDownCommand(store).Run(ctx, args, out, errOut)
+				}
+				return controlPlaneDownCLI(ctx, args, out, errOut)
+			},
+		},
+		{
+			Name:    "destroy",
+			Summary: "Remove the complete BaseHarbor installation with explicit consequence consent",
+			Usage:   "baha destroy [--yes]",
+			Long:    "Removes registered applications, owned providers and runtime resources, Core services, and BaseHarbor configuration/state across all configured Targets. Application source repositories and external infrastructure are preserved. Use 'baha app destroy NAME' to remove one application while keeping the installation. The command shows the concrete impact plan and requires its acknowledgements plus separate data-deletion consent; --yes skips none of them. Targets that cannot be inventoried are left untouched and retain ownership state for retry. --all remains as a compatibility alias.",
+			Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
+				return runtimeDestroyCommand(ctx, args, out, errOut)
+			},
+		},
+		{
+			Name:    "plan",
+			Summary: "Show the application plan in the current repository",
+			Usage:   "baha plan [NAME] [-o json|--output json]",
+			Long:    "Repository-aware shorthand for 'baha app plan'. It is read-only and uses the same application planning core.",
+			Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
+				if appPlan == nil {
+					return errors.New("application plan command is unavailable")
+				}
+				return appPlan.Run(ctx, args, out, errOut)
+			},
+		},
+		{
+			Name:    "logs",
+			Summary: "Show application logs for the current workload",
+			Usage:   "baha logs [SERVICE] [--follow] [--app NAME]",
+			Long:    "Repository-aware shorthand for 'baha app logs'. It resolves the nearest application and streams the same workload logs the explicit app command provides.",
+			Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
+				return appLogsCommand(store).Run(ctx, args, out, errOut)
+			},
+		},
+		rootStatusCommand(store),
+		{
+			Name:    "doctor",
+			Summary: "Diagnose the current application repository, otherwise the control plane",
+			Usage:   "baha doctor [--fix --yes] [-o json|--output json]",
+			Long:    "Inside an application repository, runs the same application doctor used by 'baha app doctor'. Outside a repository it keeps the control-plane doctor behavior. Structured output is read-only and cannot be combined with --fix.",
+			Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
+				if inApplicationRepository() {
+					return appDoctorRepairCommandWithTLS(store).Run(ctx, args, out, errOut)
+				}
+
+				return doctorCommand(ctx, args, out, errOut)
+			},
+		},
+		providerCommand(),
+		stackCommand(),
+		workspaceNamespaceCommand(),
+		targetCommand(),
+		useTargetCommand(),
+		nodeCommand(),
+		onboardCommand(),
+		workstationCommand(),
+		userCommand(),
+		devCommand(),
+		configCommand(),
+		shellInitCommand(),
+		promptCommand(),
+		policyCommand(store),
+		accessWizardCommand(),
+		agentCommand(),
+		mcpCommand(store),
+		serveCommand(store),
+		appCmd,
+		connectCommand(),
+		disconnectCommand(),
+		connectionsCommand(),
+		openBaoCommand(),
+		trustCommand(),
+		operatorLoginCommand(),
+		operatorLogoutCommand(),
+		operatorWhoAmICommand(),
+		updateCommand(),
+		versionCommand(),
+	}
+	root.Children = append(root.Children, tuiCommand(store), completionCommand(root, store), internalCompletionCommand(root, store))
+	if inApplicationRepository() {
+		root.HelpGroups = []cli.HelpGroup{
+			{Title: "Application", Commands: []string{"init", "up", "down", "status", "open", "inspect", "plan", "doctor", "backup", "restore", "update", "destroy"}},
+			{Title: "Create and discover", Commands: []string{"new", "list"}},
+		}
+	} else {
+		root.HelpGroups = []cli.HelpGroup{
+			{Title: "Get started", Commands: []string{"new", "init", "list", "up"}},
+			{Title: "Understand and maintain", Commands: []string{"status", "inspect", "plan", "doctor", "update", "backup", "restore", "destroy", "down"}},
+		}
+	}
+	return root
+}
+
+func versionCommand() *cli.Command {
+	return &cli.Command{
+		Name:    "version",
+		Aliases: nil,
+		Summary: "Print build version",
+		Usage:   "baha version [-o json|--output json|--json]",
+		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
+			filtered, format, err := parseReadOutputArgs(args, "version")
+			if err != nil {
+				return err
+			}
+			if len(filtered) != 0 {
+				return usageError("baha version does not accept positional arguments", "Use --json or -o json for structured output.")
+			}
+			if format == outputJSON {
+				return writeJSON(out, map[string]string{
+					"version": version,
+					"commit":  commit,
+					"built":   date,
+				})
+			}
+			fmt.Fprintf(out, "baha %s (commit %s, built %s)\n", version, commit, date)
+			return nil
+		},
+	}
+}
+
+func configuredApplicationCommand(store application.Store) *cli.Command {
+	appCmd := appCommand(store)
+	for i, child := range appCmd.Children {
+		switch child.Name {
+		case "init":
+			initCmd := appInitWithInputResolverCommand(store)
+			initCmd.Usage = "baha app init --agents [--json] | baha app init [--quick] [--json] | baha app init [--input NAME=VALUE]... [--hostname HOST] [--tls acme|existing|local] [--cert-dir DIR] [--yes] | baha app init [NAME] [-e ENV|--environment ENV] [--sql|--sql-instance NAME] [--cache|--cache-instance NAME] [--key-value|--key-value-instance NAME] [--document-db|--document-db-instance NAME] [--messaging-queue|--messaging-queue-instance NAME] [--messaging-pubsub|--messaging-pubsub-instance NAME] [--messaging-stream|--messaging-stream-instance NAME] [--s3|--s3-bucket NAME] [--secrets|--require-secret NAME] [--workload-component NAME]... [--workload-source KIND:PATH]"
+			initCmd.Long += " Without baseharbor.yaml, the existing manifest flags remain available for deterministic repository-contract creation."
+			appCmd.Children[i] = initCmd
+		case "show":
+			appCmd.Children[i] = appShowCommandWithRecoveryMetadata(store)
+		}
+	}
+	appCmd.Children = append(appCmd.Children,
+		appEditRegisteredCommand(store),
+		appFootprintRegisteredCommand(store),
+		appInspectCommand(),
+		appApplyCommand(store),
+		appGuidedBackupCommand(store),
+		appGuidedRestoreCommandWithRecoveryMetadata(store),
+		appEnvCommand(store),
+		appPSQLCommand(store),
+		appRedisCommand(store),
+		appCredsCommand(store),
+		secureProfileExportCommand(store),
+		appLogsCommand(store),
+		appShellCommand(store),
+		appExecCommand(store),
+		appUpdateCommand(store),
+		appTLSCommand(store),
+		appStatusCommandWithTLS(store),
+		appDoctorRepairCommandWithTLS(store),
+		appDownCommand(store),
+		appStopCommand(store),
+		appUpCommand(store),
+		appDestroyCommand(store),
+		appSecretCommand(store),
+		appRuntimeIdentityCommand(store),
+		appEvidenceCommand(store),
+		appVersionCommand(store),
+		appVersionsCommand(),
+		appPruneCommand(store),
+	)
+	applyRemainingApplicationRuntimeProviderGuards(store, appCmd)
+
+	return appCmd
+}
+
+func usageError(message, hint string) error {
+	return &cli.UsageError{Message: message, Hint: hint}
+}
+
+type noArgsHandler func(io.Writer) error
+
+func noArgs(name string, fn noArgsHandler) cli.RunFunc {
+	return func(ctx context.Context, args []string, out, errOut io.Writer) error {
+		if len(args) != 0 {
+			return usageError(name+" does not accept arguments", "Run '"+name+" --help' for usage.")
+		}
+		return fn(out)
+	}
+}
+
+type noArgsCtxHandler func(context.Context, io.Writer) error
+
+func noArgsCtx(name string, fn noArgsCtxHandler) cli.RunFunc {
+	return func(ctx context.Context, args []string, out, errOut io.Writer) error {
+		if len(args) != 0 {
+			return usageError(name+" does not accept arguments", "Run '"+name+" --help' for usage.")
+		}
+		return fn(ctx, out)
+	}
+}
+
+func inApplicationRepository() bool {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return false
+	}
+	found, err := application.HasRepositoryApplication(cwd)
+	return err == nil && found
+}
+
+// containsExactArgument avoids guessing intent from substrings of option values.
+func containsExactArgument(args []string, expected string) bool {
+	for _, arg := range args {
+		if arg == expected {
+			return true
+		}
+	}
+	return false
+}

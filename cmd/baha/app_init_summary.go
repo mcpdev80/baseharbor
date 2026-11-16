@@ -1,0 +1,257 @@
+package main
+
+import (
+	"fmt"
+	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/devaccess"
+	"io"
+	"strings"
+)
+
+func printProjectDetection(out io.Writer, d appProjectDetection) {
+	fmt.Fprintf(out, "✓ Application name: %s\n", d.Name)
+	switch {
+	case d.SelectedWorkloadSource != nil:
+		fmt.Fprintf(out, "✓ Workload source: %s (%s; repository-owned, read-only)\n", d.SelectedWorkloadSource.Kind, d.SelectedWorkloadSource.Path)
+	case len(d.WorkloadSourceCandidates) > 1:
+		fmt.Fprintf(out, "? Workload source: %d candidates need confirmation\n", len(d.WorkloadSourceCandidates))
+	case len(d.WorkloadSourceCandidates) == 0:
+		fmt.Fprintln(out, "- Workload source: not detected")
+	}
+	if len(d.WorkloadServices) > 0 {
+		fmt.Fprintf(out, "✓ Application workload: %s\n", strings.Join(d.WorkloadServices, ", "))
+	}
+	if len(d.InfrastructureServices) > 0 {
+		fmt.Fprintf(out, "✓ Replaceable repository infrastructure: %s\n", strings.Join(d.InfrastructureServices, ", "))
+	}
+	if len(d.AmbiguousServices) > 0 {
+		fmt.Fprintf(out, "? Compose services need classification: %s\n", strings.Join(d.AmbiguousServices, ", "))
+	}
+	if d.SQL {
+		fmt.Fprintf(out, "✓ SQL Database detected (PostgreSQL-compatible evidence: %s)\n", d.SQLSource)
+		if len(d.SQLInstances) > 1 {
+			fmt.Fprintf(out, "  logical instances proposed: %s\n", strings.Join(d.SQLInstances, ", "))
+		}
+	} else {
+		fmt.Fprintln(out, "- SQL Database not detected")
+	}
+	if d.Cache {
+		fmt.Fprintf(out, "✓ Cache detected (Redis/Valkey-compatible evidence: %s)\n", d.CacheSource)
+		if len(d.CacheInstances) > 1 {
+			fmt.Fprintf(out, "  logical instances proposed: %s\n", strings.Join(d.CacheInstances, ", "))
+		}
+	} else {
+		fmt.Fprintln(out, "- Cache not detected")
+	}
+	switch {
+	case d.ObjectStorage:
+		fmt.Fprintf(out, "✓ Object Storage detected (S3-compatible evidence: %s)\n", d.ObjectStorageSource)
+	case d.ObjectStorageSuggested:
+		fmt.Fprintf(out, "? Object Storage suggested (S3-compatible evidence: %s)\n", d.ObjectStorageSource)
+	default:
+		fmt.Fprintln(out, "- Object Storage not detected")
+	}
+	switch {
+	case d.Metrics:
+		fmt.Fprintf(out, "✓ Metrics detected at /metrics (%s)\n", d.MetricsSource)
+	case d.MetricsSuggested:
+		fmt.Fprintf(out, "? Metrics suggested (%s)\n", d.MetricsSource)
+	}
+	switch {
+	case d.OTLP && len(d.OTLPSignals) > 0:
+		fmt.Fprintf(out, "✓ Observability detected (OTLP: %s)\n", strings.Join(d.OTLPSignals, ", "))
+	case d.OTLP:
+		fmt.Fprintln(out, "? Observability detected via OTLP; signal set needs confirmation")
+	case d.OTLPSuggested:
+		fmt.Fprintln(out, "? Observability via OTLP suggested")
+	}
+	if d.LogsSuggested {
+		fmt.Fprintln(out, "? Application log collection available for the selected workload")
+	}
+	if d.RuntimeAPI {
+		fmt.Fprintln(out, "✓ BaseHarbor Runtime API usage detected")
+	}
+	for capabilityID, operations := range d.RuntimePermissions {
+		fmt.Fprintf(out, "✓ Runtime operations for %s: %s\n", capabilityID, strings.Join(operations, ", "))
+	}
+	if len(d.SecretCandidates) > 0 {
+		fmt.Fprintln(out, "✓ Potential required secret names:")
+		for _, name := range d.SecretCandidates {
+			fmt.Fprintf(out, "    %s (%s)\n", name, d.SecretSources[name])
+		}
+	} else {
+		fmt.Fprintln(out, "- Required application secrets not detected")
+	}
+}
+
+func printManagedCredentialSummary(out io.Writer, selected []bool, runtimePermissions bool) {
+	var managed []string
+	appendIfSelected := func(index int, label string) {
+		if len(selected) > index && selected[index] {
+			managed = append(managed, label)
+		}
+	}
+	appendIfSelected(guidedCapabilitySQL, "SQL service credentials")
+	appendIfSelected(guidedCapabilityCache, "Cache service credentials")
+	appendIfSelected(guidedCapabilityDurableKeyValue, "Durable key-value service credentials")
+	appendIfSelected(guidedCapabilityDocumentDatabase, "Document-database service credentials")
+	if (len(selected) > guidedCapabilityMessagingQueue && selected[guidedCapabilityMessagingQueue]) ||
+		(len(selected) > guidedCapabilityMessagingPubSub && selected[guidedCapabilityMessagingPubSub]) ||
+		(len(selected) > guidedCapabilityMessagingStream && selected[guidedCapabilityMessagingStream]) {
+		managed = append(managed, "Messaging service credentials")
+	}
+	appendIfSelected(guidedCapabilityObjectStorage, "Object-storage access credentials")
+	if runtimePermissions {
+		managed = append(managed, "Runtime identity / mTLS credentials")
+	}
+	if len(managed) == 0 {
+		return
+	}
+	fmt.Fprintln(out, "\nManaged automatically by BaseHarbor")
+	for _, item := range managed {
+		fmt.Fprintf(out, "  - %s\n", item)
+	}
+	fmt.Fprintln(out, "You do not need to create or enter these managed credentials.")
+}
+
+func printAdoptionSummary(out io.Writer, m application.Manifest, detected appProjectDetection, policies []guidedSecretPolicy) {
+	fmt.Fprintln(out, "\nAdoption summary")
+	fmt.Fprintln(out, "\nApplication")
+	fmt.Fprintf(out, "  Name          %s\n", m.Name)
+	fmt.Fprintf(out, "  Environment   %s\n", m.Environment)
+
+	if application.HasExplicitWorkload(m) {
+		fmt.Fprintln(out, "\nWorkload")
+		if detected.SelectedWorkloadSource != nil {
+			fmt.Fprintf(out, "  Source        %s (repository-owned, read-only)\n", detected.SelectedWorkloadSource.Path)
+			fmt.Fprintf(out, "  Source kind   %s\n", detected.SelectedWorkloadSource.Kind)
+		}
+		if components := application.WorkloadComponentNames(m); len(components) > 0 {
+			fmt.Fprintf(out, "  Components    %s\n", strings.Join(components, ", "))
+		}
+	}
+
+	if m.Services.SQL || m.Services.Cache || m.Services.KeyValue || m.Services.DocumentDatabase ||
+		m.Services.MessagingQueue || m.Services.MessagingPubSub || m.Services.MessagingStream || m.Services.ObjectStorage {
+		fmt.Fprintln(out, "\nManaged services")
+		if m.Services.SQL {
+			fmt.Fprintf(out, "  SQL Database        %s; default provider PostgreSQL\n", adoptionOrigin(detected.SQL))
+		}
+		if m.Services.Cache {
+			fmt.Fprintf(out, "  Cache               %s; default provider Valkey/Redis-compatible\n", adoptionOrigin(detected.Cache))
+		}
+		if m.Services.KeyValue {
+			fmt.Fprintln(out, "  Durable Key-Value   user confirmed; default provider Valkey-compatible")
+		}
+		if m.Services.DocumentDatabase {
+			fmt.Fprintln(out, "  Document Database   user confirmed; default provider MongoDB-compatible")
+		}
+		if m.Services.MessagingQueue {
+			fmt.Fprintln(out, "  Messaging Queue     user confirmed; default provider RabbitMQ-compatible")
+		}
+		if m.Services.MessagingPubSub {
+			fmt.Fprintln(out, "  Messaging Pub/Sub   user confirmed; default provider RabbitMQ-compatible")
+		}
+		if m.Services.MessagingStream {
+			fmt.Fprintln(out, "  Messaging Stream    user confirmed; default provider RabbitMQ-compatible")
+		}
+		if m.Services.ObjectStorage {
+			fmt.Fprintf(out, "  Object Storage      %s; S3-compatible\n", adoptionOrigin(detected.ObjectStorage))
+		}
+	}
+
+	if devaccess.Enabled(m.Environment) && (m.Services.Identity || m.Services.SQLManagementUI || m.Services.CacheManagementUI || m.Services.KeyValueManagementUI || m.Services.MessagingManagementUI || m.Services.DocumentDatabaseManagementUI || m.Services.ObjectStorageManagementUI || m.Services.SecretsManagementUI || m.Services.IdentityManagementUI || m.Services.ObservabilityManagementUI) {
+		fmt.Fprintln(out, "\nDeveloper management access")
+		fmt.Fprintln(out, "  Scope         target / dev")
+		fmt.Fprintln(out, "  Username      target-scoped; configurable (default developer)")
+		fmt.Fprintln(out, "  Credentials   configured once and reused by compatible management surfaces")
+		fmt.Fprintln(out, "  Reveal/change baha dev credentials [--username USER] [--reset|--password-file FILE]")
+	}
+
+	if m.Services.SQLManagementUI || m.Services.CacheManagementUI || m.Services.KeyValueManagementUI || m.Services.MessagingManagementUI || m.Services.DocumentDatabaseManagementUI || m.Services.ObjectStorageManagementUI || m.Services.SecretsManagementUI || m.Services.IdentityManagementUI || m.Services.ObservabilityManagementUI {
+		fmt.Fprintln(out, "\nManagement UIs")
+		if m.Services.SQLManagementUI {
+			fmt.Fprintln(out, "  PostgreSQL    pgAdmin")
+		}
+		if m.Services.CacheManagementUI {
+			fmt.Fprintln(out, "  Cache         Redis Commander")
+		}
+		if m.Services.KeyValueManagementUI {
+			fmt.Fprintln(out, "  Durable KV    Redis Commander")
+		}
+		if m.Services.DocumentDatabaseManagementUI {
+			fmt.Fprintln(out, "  Document DB   Mongo Express")
+		}
+		if m.Services.MessagingManagementUI {
+			fmt.Fprintln(out, "  Messaging     RabbitMQ Management")
+		}
+		if m.Services.ObjectStorageManagementUI {
+			fmt.Fprintln(out, "  Object Storage provider administration UI")
+		}
+		if m.Services.SecretsManagementUI {
+			fmt.Fprintln(out, "  Secrets       OpenBao UI")
+		}
+		if m.Services.IdentityManagementUI {
+			fmt.Fprintln(out, "  Identity      provider administration UI")
+		}
+		if m.Services.ObservabilityManagementUI {
+			fmt.Fprintln(out, "  Observability Prometheus UI")
+		}
+	}
+
+	if application.HasMetricsSources(m) || application.HasOTLPTelemetry(m) || application.HasLogsCollection(m) {
+		fmt.Fprintln(out, "\nObservability")
+		if application.HasMetricsSources(m) {
+			fmt.Fprintln(out, "  Metrics       expose OpenMetrics HTTP (recommended /metrics)")
+			fmt.Fprintln(out, "                BaseHarbor collects workload + supported managed-provider metrics")
+		}
+		if application.HasLogsCollection(m) {
+			fmt.Fprintln(out, "  Logs          write application logs to stdout/stderr")
+			fmt.Fprintln(out, "                BaseHarbor collects workload + supported managed-provider logs")
+		}
+		if application.HasOTLPTelemetry(m) {
+			fmt.Fprintf(out, "  Traces/OTLP   %s\n", strings.Join(m.Telemetry.OTLP.Signals, ", "))
+			fmt.Fprintln(out, "                BaseHarbor injects the OTLP endpoint/trust binding and collects supported managed-provider traces")
+		}
+		fmt.Fprintln(out, "  Backends      no Prometheus, Loki/Alloy, Tempo or Collector configuration in application code")
+	}
+
+	printGuidedSecretSummary(out, policies)
+
+	if len(m.Runtime.Permissions) > 0 {
+		fmt.Fprintln(out, "\nRuntime permissions")
+		for _, permission := range m.Runtime.Permissions {
+			fmt.Fprintf(out, "  %s\n", permission.Capability)
+			fmt.Fprintf(out, "    services: %s\n", strings.Join(permission.Services, ", "))
+			fmt.Fprintf(out, "    operations: %s\n", strings.Join(permission.Operations, ", "))
+		}
+	}
+}
+
+func adoptionOrigin(detected bool) string {
+	if detected {
+		return "detected and confirmed"
+	}
+	return "user confirmed"
+}
+
+func printGuidedSecretSummary(out io.Writer, policies []guidedSecretPolicy) {
+	if len(policies) == 0 {
+		return
+	}
+	fmt.Fprintln(out, "\nSecret policy")
+	for _, policy := range policies {
+		requirement := "optional"
+		if policy.Required {
+			requirement = "required for startup"
+		}
+		action := "configure later"
+		switch policy.Provision {
+		case "prompt":
+			action = "ask securely during first apply"
+		case "generate":
+			action = "generate automatically"
+		}
+		fmt.Fprintf(out, "  %s: %s; %s\n", policy.Name, requirement, action)
+	}
+}

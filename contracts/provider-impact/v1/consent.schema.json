@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/mcpdev80/baseharbor/blob/HEAD/contracts/provider-impact/v1/consent.schema.json",
+  "title": "Plan-bound provider-change acknowledgement",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "plan_id",
+    "first",
+    "second",
+    "delete_data"
+  ],
+  "properties": {
+    "plan_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "first": {
+      "type": "boolean"
+    },
+    "second": {
+      "type": "boolean"
+    },
+    "delete_data": {
+      "type": "boolean"
+    }
+  }
+}

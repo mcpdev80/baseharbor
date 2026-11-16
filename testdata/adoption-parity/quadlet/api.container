@@ -1,0 +1,4 @@
+[Container]
+Image=example/api:1
+PublishPort=8080:8080
+HealthCmd=true

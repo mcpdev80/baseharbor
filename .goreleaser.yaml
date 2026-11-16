@@ -1,0 +1,56 @@
+version: 2
+
+project_name: baseharbor
+
+builds:
+  - id: baha
+    main: ./cmd/baha
+    binary: baha
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    flags:
+      - -trimpath
+    ldflags:
+      - >-
+        -s -w
+        -X main.version={{ .Version }}
+        -X main.commit={{ .Commit }}
+        -X main.date={{ .Date }}
+
+archives:
+  - id: binaries
+    ids:
+      - baha
+    formats:
+      - tar.gz
+    name_template: "baseharbor_{{ .Os }}_{{ .Arch }}"
+    files:
+      - LICENSE
+      - README.md
+      - CHANGELOG.md
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+changelog:
+  use: git
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^chore:'
+      - '^ci:'
+      - '^Merge pull request'
+      - '^Merge branch'
+
+release:
+  name_template: "BaseHarbor {{ .Tag }}"
+  prerelease: auto
+  make_latest: '{{ if .Prerelease }}false{{ else }}true{{ end }}'

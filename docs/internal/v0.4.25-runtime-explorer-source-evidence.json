@@ -1,0 +1,88 @@
+{
+  "source": {
+    "commit": "8dbd0792a05db5cc53497ed4464f64d562f924e5",
+    "tree": "90499422979b2f4ab12d9dcd5e086968f6fdf652",
+    "working_tree_changes": true
+  },
+  "jobs": 4,
+  "seconds": 65.84,
+  "race_packages": [
+    "./cmd/baha",
+    "./internal/runtimeexplorer",
+    "./contracts"
+  ],
+  "checks": [
+    {
+      "name": "cli-build",
+      "status": "pass",
+      "exit_code": 0,
+      "seconds": 14.058,
+      "log": "cli-build.log"
+    },
+    {
+      "name": "docs-audit",
+      "status": "pass",
+      "exit_code": 0,
+      "seconds": 0.302,
+      "log": "docs-audit.log"
+    },
+    {
+      "name": "docs-de",
+      "status": "pass",
+      "exit_code": 0,
+      "seconds": 2.007,
+      "log": "docs-de.log"
+    },
+    {
+      "name": "docs-en",
+      "status": "pass",
+      "exit_code": 0,
+      "seconds": 1.91,
+      "log": "docs-en.log"
+    },
+    {
+      "name": "go-race",
+      "status": "pass",
+      "exit_code": 0,
+      "seconds": 65.552,
+      "log": "go-race.log"
+    },
+    {
+      "name": "go-tests",
+      "status": "pass",
+      "exit_code": 0,
+      "seconds": 64.931,
+      "log": "go-tests.log"
+    },
+    {
+      "name": "go-vet",
+      "status": "pass",
+      "exit_code": 0,
+      "seconds": 18.196,
+      "log": "go-vet.log"
+    },
+    {
+      "name": "readability",
+      "status": "pass",
+      "exit_code": 0,
+      "seconds": 2.921,
+      "log": "readability.log"
+    },
+    {
+      "name": "script-tests",
+      "status": "pass",
+      "exit_code": 0,
+      "seconds": 3.112,
+      "log": "script-tests.log"
+    }
+  ],
+  "native_runtime_qualified": false,
+  "pre_release_ready": false,
+  "qualification_id": "htmi0ivx",
+  "scope": "Runtime Explorer common operation authority source qualification only; new isolated native fixture added afterward and affected package tests passed. No native or ecosystem readiness claim.",
+  "native_fixture_followup": {
+    "cmd/baha": "PASS 2.557s",
+    "internal/runtimeexplorer": "PASS 0.120s",
+    "contracts": "PASS 0.406s"
+  }
+}

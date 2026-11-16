@@ -1,0 +1,43 @@
+name: Task
+description: A scoped unit of work for a release (one small branch and pull request)
+title: "[v0.4.x] "
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Follow the title schema `[release] Area: concrete outcome`. One task is one assigned issue, worked on its own branch and delivered as one small pull request against `develop`. See the [development process](https://github.com/mcpdev80/baseharbor/blob/develop/docs/DEVELOPMENT_GUIDELINES.md#development-process).
+
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Outcome
+      description: The concrete result this task must produce.
+    validations:
+      required: true
+
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependencies
+      description: Other issues, tasks or changes this depends on, or "None" when standalone.
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance
+      description: Observable conditions that must hold, as a checklist.
+      value: |
+        - [ ]
+    validations:
+      required: true
+
+  - type: textarea
+    id: verification
+    attributes:
+      label: Tests / evidence
+      description: Checks, commands or evidence that prove acceptance; no runtime matrix unless the task requires one.
+    validations:
+      required: true

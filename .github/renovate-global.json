@@ -1,0 +1,8 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-global-schema.json",
+  "baseBranchPatterns": [
+    "develop"
+  ],
+  "useBaseBranchConfig": "merge",
+  "pruneStaleBranches": false
+}

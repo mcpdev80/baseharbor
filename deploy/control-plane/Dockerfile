@@ -1,0 +1,22 @@
+FROM golang:1.27-alpine AS build
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+ARG VERSION=dev
+ARG COMMIT=none
+ARG DATE=unknown
+RUN CGO_ENABLED=0 go build -trimpath \
+    -ldflags="-s -w -X main.version=${VERSION} -X main.commit=${COMMIT} -X main.date=${DATE}" \
+    -o /out/baha ./cmd/baha
+
+FROM alpine:3.24@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6
+RUN apk add --no-cache ca-certificates curl \
+    && mkdir -p /var/lib/baseharbor/runtime-operations /var/lib/baseharbor/runtime-resources /var/lib/baseharbor/runtime-metrics \
+    && chown -R 65532:65532 /var/lib/baseharbor \
+    && chgrp -R 0 /var/lib/baseharbor \
+    && chmod -R g=u /var/lib/baseharbor
+COPY --from=build /out/baha /usr/local/bin/baha
+USER 65532:65532
+ENTRYPOINT ["/usr/local/bin/baha"]
+CMD ["serve"]

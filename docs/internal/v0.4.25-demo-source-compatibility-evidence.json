@@ -1,0 +1,186 @@
+{
+  "core": "5acd98a84aa27638679481614c2d09b74257f749",
+  "demo": "b2b2a91cb8a78aa180abd8ca90f61b3b42cd5d63",
+  "scope": "actual CLI/stdio source compatibility; no native/browser/Connector acceptance",
+  "checks": [
+    {
+      "gate": "config-matrix",
+      "exit_code": 1,
+      "seconds": 1.67
+    },
+    {
+      "gate": "init",
+      "exit_code": 0,
+      "seconds": 0.47
+    },
+    {
+      "gate": "mcp",
+      "exit_code": 0,
+      "seconds": 0.17
+    },
+    {
+      "gate": "agent",
+      "exit_code": 0,
+      "seconds": 0.07
+    },
+    {
+      "gate": "shell-ux",
+      "exit_code": 0,
+      "seconds": 0.22
+    }
+  ],
+  "all_final_source_checks_passed": true,
+  "retries": [
+    {
+      "gate": "config-matrix",
+      "exit_code": 0,
+      "seconds": 1.33,
+      "reason": "initial harness omitted DEMO_SUITE and invoked standalone native profiles under static runtime; actual source-only contract matrix passed and retry uses declared atomic static-contract mode without source change"
+    }
+  ],
+  "core_tree": "57a43eaa7b73b3e4f8e2add11bab58e11e0e77f3",
+  "demo_tree": "0030e33682891707df0a1602ce0fb8149e4ca282",
+  "binary_sha256": "c83791dfd22fa588b62a2cf971484da6f1928ea5d17b5f15dbe04080c777adb5",
+  "pre_release_ready": false,
+  "native_acceptance": false,
+  "observed": [
+    "21 valid capability contracts plan after explicit initialization",
+    "7 invalid contracts rejected for their intended validation reason without authored/canonical mutation",
+    "Actual CLI source-only init and stdio MCP adoption",
+    "Actual stdio MCP discovery and bounded agent operation contract",
+    "Actual Bash completion, shell integration and Target-aware prompt"
+  ],
+  "logs": {
+    "mcp/run.log": "409a337933f1deb430ca46c3f6ffcb6201842bc421a2da009bb7734a761f178a",
+    "init/run.log": "21a3b5dbd16bbd9378faf7fb3ab1ed5c9b89beded65e1741d5cf29fba6faef2e",
+    "config-matrix/run.log": "45d74552a81f34c5101ddfb868912daced3a9c3a061613b782177dce1a6e52c5",
+    "agent/run.log": "66e9d6d018466225e39c7eec7d22344e3b0fab435fbb730488c54e5d839307e4",
+    "shell-ux/run.log": "50eaba8ae957226672d416ced78d0ba72594be68b127d075972f4c0e22dcb8e8",
+    "config-matrix/retry.log": "ed744b7832064d4c0f29cdbccfa8fa1a607d798727f68dfbba70b8c6d14df651"
+  },
+  "not_qualified": [
+    "Final immutable Core/Demo/Console/Connector matrix",
+    "Native Docker/Podman Demo provider lifecycle",
+    "Authenticated Console browser and Connector mTLS/remote lifecycle",
+    "Complete pre-release approval"
+  ],
+  "follow_up_source_checks": [
+    {
+      "core": "8fa9a2b84a25faeb88e6e44892ac994ecce5097f",
+      "core_tree": "5d32ddae3a955e2071b8e174c288dd285e4d52a9",
+      "binary_sha256": "53f15b2bc05f68d5f0b2188af1f58a8e90ded6d2fbb6d671ce286e27624a87bb",
+      "demo": "b2b2a91cb8a78aa180abd8ca90f61b3b42cd5d63",
+      "demo_tree": "0030e33682891707df0a1602ce0fb8149e4ca282",
+      "checks": {
+        "config-matrix": {
+          "exit_code": 0,
+          "positive": 21,
+          "negative": 7
+        },
+        "init": {
+          "exit_code": 0
+        },
+        "mcp": {
+          "exit_code": 0
+        },
+        "agent": {
+          "exit_code": 0
+        },
+        "shell-ux": {
+          "initial_exit_code": 1,
+          "retry_exit_code": 0,
+          "reason": "Initial local harness omitted a PATH-resolvable baha executable. Retry supplied the same binary through a symlink, unchanged source and assertions."
+        }
+      },
+      "historical_main_failure": {
+        "demo": "12da1dabcf251c4bb9a77939722392d18178184e",
+        "gate": "config-matrix",
+        "exit_code": 1,
+        "reason": "Demo main still emits developer-authored app.id; current Core correctly rejects it before mutation."
+      },
+      "console": {
+        "commit": "1fe22026f42e250f6ad5b9ce79593e928e38c357",
+        "tree": "5a2cf6c8d12749d0ebe133732766fab803576d4f",
+        "node": "24.19.0",
+        "contract_tests": 52,
+        "exit_code": 0,
+        "fixture_source": "Current Core machine-read-models and machine-control-fixtures commands; generated outputs copied only into isolated temporary Console copy. Published Console source remains unchanged.",
+        "fixture_digests": {
+          "read-models": "7c7ba26f28757d9b0a048cd6eaa0e6c72204b1eede98d96fc711a415c887efb7",
+          "control-fixtures": "769d4dd1f2dc09e4c0507b57e00b306123c84398da39342fdad7ea76933753f9"
+        }
+      },
+      "connector": {
+        "commit": "c68b41a573514af8dccd2c89cc6c305723aa4b1e",
+        "tree": "81aebd98efcaad56e37bb0fe8e3b5839e574ca77",
+        "go": "1.26.0",
+        "checks": {
+          "go-test": 0,
+          "go-vet": 0,
+          "connector-targetaccess-race": 0,
+          "cli-build": 0
+        },
+        "scope": "Own source tests/security/transport fixtures only; not current Core joint native enrollment or browser acceptance."
+      },
+      "native_acceptance": false,
+      "pre_release_ready": false,
+      "release_pins_frozen": false
+    },
+    {
+      "core": "b547956296d51f5d571986baa170cd876b6a21f3",
+      "core_tree": "20dd25a5e1a3d86105a66325a3b09751b0c8ac13",
+      "demo": "6977221a074c84436a55ea3078e2b2e002e3bda9",
+      "demo_tree": "cb08a9dd5cac24d1d6af84c9812742af997b611a",
+      "binary_sha256": "1d72d0f1e38e7619a9678dc0f1bb5a1939589163c0363029727dd565afdb3350",
+      "checks": [
+        {
+          "gate": "config-matrix",
+          "exit_code": 0,
+          "seconds": 1.223,
+          "log_sha256": "ed744b7832064d4c0f29cdbccfa8fa1a607d798727f68dfbba70b8c6d14df651"
+        },
+        {
+          "gate": "init",
+          "exit_code": 0,
+          "seconds": 0.317,
+          "log_sha256": "8cfd495bf464662dbcf62b8db0812fb333f91a529c9d3c2d9955f7c21dfdb909"
+        },
+        {
+          "gate": "mcp",
+          "exit_code": 0,
+          "seconds": 0.117,
+          "log_sha256": "409a337933f1deb430ca46c3f6ffcb6201842bc421a2da009bb7734a761f178a"
+        },
+        {
+          "gate": "agent",
+          "exit_code": 0,
+          "seconds": 0.032,
+          "log_sha256": "66e9d6d018466225e39c7eec7d22344e3b0fab435fbb730488c54e5d839307e4"
+        },
+        {
+          "gate": "shell-ux",
+          "exit_code": 0,
+          "seconds": 0.215,
+          "log_sha256": "50eaba8ae957226672d416ced78d0ba72594be68b127d075972f4c0e22dcb8e8"
+        }
+      ],
+      "native_acceptance": false,
+      "pre_release_ready": false,
+      "scope": "Actual CLI/stdio static source compatibility only; exact published Core tree binary, immutable archived Demo source, isolated configuration/data roots and PATH-resolvable same binary."
+    },
+    {
+      "core": "4e0c66344af29f67990c77d6d623dddef1582497",
+      "console": "cef4df809eb3f6de0acc5acf3cf658e299f69de0",
+      "scope": "Actual current Core synthetic fixture generators, canonical artifact equality and Console contract tests only; no current authenticated native matrix qualification.",
+      "console_contract_tests": 64,
+      "console_contract_failures": 0,
+      "console_contract_skips": 0,
+      "architecture": "pass",
+      "canonical_artifacts": 6,
+      "canonical_artifacts_result": "Core and Console bytes equal, all locked SHA256 values match; current Core read-model/control generators exactly reproduce canonical examples.",
+      "contract_log_sha256": "39a9027f04de99af89756de62b5da63c724ec4a958236b17a54430e2cdc755d0",
+      "native_acceptance": false,
+      "pre_release_ready": false
+    }
+  ]
+}

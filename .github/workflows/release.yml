@@ -1,0 +1,135 @@
+name: Release · Publish
+run-name: Release · ${{ inputs.tag || github.ref_name }}
+permissions:
+  contents: write
+  packages: write
+  id-token: write
+  attestations: write
+jobs:
+  tag:
+    name: Resolve release tag
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+      tag_sha: ${{ steps.tag.outputs.tag_sha }}
+      demo_ref: ${{ steps.tag.outputs.demo_ref }}
+      four_part_hotfix: ${{ steps.tag.outputs.four_part_hotfix }}
+    steps:
+    - name: Checkout repository metadata
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        fetch-depth: 0
+    - name: Validate exact release tag
+      id: tag
+      env:
+        INPUT_TAG: ${{ inputs.tag }}
+      run: |
+        set -euo pipefail
+        tag="${INPUT_TAG:-$GITHUB_REF_NAME}"
+        if [[ "$tag" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+          hotfix=true
+        elif [[ "$tag" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$ ]]; then
+          hotfix=false
+        else
+          echo 'Invalid release tag.' >&2; exit 1
+        fi
+        git fetch --no-tags origin main
+        git fetch origin "refs/tags/$tag:refs/tags/$tag"
+        sha="$(git rev-parse "$tag^{commit}")"
+        git merge-base --is-ancestor "$sha" origin/main
+        git show "$sha:CHANGELOG.md" | grep -Fq "## [${tag#v}]"
+        git cat-file -e "$sha:docs/releases/$tag.md"
+        demo=""
+        if git cat-file -e "$sha:docs/releases/$tag.demo-ref" 2>/dev/null; then
+          demo="$(git show "$sha:docs/releases/$tag.demo-ref" | tr -d '[:space:]')"
+          [[ "$demo" =~ ^[0-9a-f]{40}$ ]]
+        else
+          case "$tag" in v0.4.24|v0.4.25|v0.4.26) ;; *) exit 1 ;; esac
+        fi
+        printf 'tag=%s\ntag_sha=%s\ndemo_ref=%s\nfour_part_hotfix=%s\n' "$tag" "$sha" "$demo" "$hotfix" >> "$GITHUB_OUTPUT"
+  checks:
+    name: Run release checks
+    needs: tag
+    uses: ./.github/workflows/pre-release.yml
+    with:
+      tag: ${{ needs.tag.outputs.tag }}
+      ref: ${{ needs.tag.outputs.tag_sha }}
+      demo_ref: ${{ needs.tag.outputs.demo_ref }}
+  runtime-image:
+    name: publish-runtime-image
+    needs:
+    - tag
+    - checks
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    uses: ./.github/workflows/runtime-image.yml
+    with:
+      ref: ${{ needs.tag.outputs.tag }}
+      version_tag: ${{ needs.tag.outputs.tag }}
+    secrets: inherit
+  release:
+    name: publish-release
+    needs:
+    - tag
+    - checks
+    - runtime-image
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout exact release source
+      id: checkout
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        ref: ${{ needs.tag.outputs.tag }}
+        fetch-depth: 0
+    - name: Verify tagged SHA
+      shell: bash
+      run: |
+        set -euo pipefail
+        test "$(git rev-parse HEAD)" = "${{ needs.tag.outputs.tag_sha }}"
+    - name: Run GoReleaser
+      id: goreleaser
+      if: needs.tag.outputs.four_part_hotfix != 'true'
+      uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94
+      with:
+        distribution: goreleaser
+        version: ~> v2
+        args: release --clean --release-notes docs/releases/${{ needs.tag.outputs.tag }}.md
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    - name: Set up Go for four-part hotfix
+      if: needs.tag.outputs.four_part_hotfix == 'true'
+      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+      with:
+        go-version-file: go.mod
+        cache: false
+    - name: Publish four-part hotfix
+      id: hotfix_release
+      if: needs.tag.outputs.four_part_hotfix == 'true'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: bash scripts/publish-four-part-hotfix.sh "${{ needs.tag.outputs.tag }}" "docs/releases/${{ needs.tag.outputs.tag
+        }}.md"
+    - name: Attest release archives
+      id: attest_archives
+      uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
+      with:
+        subject-path: dist/baseharbor_linux_*.tar.gz
+    - name: Attest checksum manifest
+      id: attest_checksums
+      uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
+      with:
+        subject-path: dist/checksums.txt
+'on':
+  push:
+    tags:
+    - v*
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to publish or recover
+        required: true
+        type: string

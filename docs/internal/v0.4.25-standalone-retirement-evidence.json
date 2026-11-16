@@ -1,0 +1,489 @@
+{
+  "version": "baseharbor.v0425.standalone-retirement-evidence/v1",
+  "pre_release_ready": false,
+  "source_qualification": {
+    "source": {
+      "commit": "69b034478f01e9858ec90960193facd9ce799504",
+      "tree": "c382c1eec83848f4f02c39a948d96036936fcd5e",
+      "working_tree_changes": false
+    },
+    "jobs": 4,
+    "seconds": 64.171,
+    "race_packages": [
+      "./cmd/baha",
+      "./internal/metrics",
+      "./internal/logs",
+      "./internal/traces",
+      "./internal/telemetry",
+      "./internal/objectstorage"
+    ],
+    "checks": [
+      {
+        "name": "cli-build",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 17.162,
+        "log": "cli-build.log"
+      },
+      {
+        "name": "docs-audit",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 0.304,
+        "log": "docs-audit.log"
+      },
+      {
+        "name": "docs-de",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 2.506,
+        "log": "docs-de.log"
+      },
+      {
+        "name": "docs-en",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 2.404,
+        "log": "docs-en.log"
+      },
+      {
+        "name": "go-race",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 46.23,
+        "log": "go-race.log"
+      },
+      {
+        "name": "go-tests",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 63.759,
+        "log": "go-tests.log"
+      },
+      {
+        "name": "go-vet",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 17.176,
+        "log": "go-vet.log"
+      },
+      {
+        "name": "readability",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 3.011,
+        "log": "readability.log"
+      },
+      {
+        "name": "script-tests",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 3.916,
+        "log": "script-tests.log"
+      }
+    ],
+    "native_runtime_qualified": false,
+    "pre_release_ready": false
+  },
+  "native_attempts": [
+    {
+      "commit": "69b034478f01e9858ec90960193facd9ce799504",
+      "tree": "c382c1eec83848f4f02c39a948d96036936fcd5e",
+      "run_id": 38239941184,
+      "attempt": 1,
+      "outcome": "failure",
+      "jobs": [
+        {
+          "runtime": "docker",
+          "job_id": 114779762542,
+          "outcome": "failure",
+          "s3": "restart-readiness-failed",
+          "trace": "original-trace-not-readable-after-restart",
+          "artifact_id": 11743001546,
+          "artifact_sha256": "7df37974a62cdec5f99fd7f30f54f1be563b3624603436a27e06d6bec1df06cb"
+        },
+        {
+          "runtime": "podman",
+          "job_id": 114779762280,
+          "outcome": "failure",
+          "s3": "restart-readiness-failed",
+          "trace": "original-trace-read-after-collector-and-tempo-retirement-resume-without-reseeding",
+          "trace_outcome": "success",
+          "artifact_id": 11741987265,
+          "artifact_sha256": "4a8124bccba7b31dc391df90448d5bc3bd43093c2284ca19291ae938e79d6746"
+        }
+      ]
+    },
+    {
+      "commit": "7f4cd23d6bf132fa23d4714d4e624120606a6461",
+      "tree": "41eee9c505ec801e4930b6c659099a068519dea3",
+      "run_id": 38240879022,
+      "attempt": 1,
+      "outcome": "failure",
+      "jobs": [
+        {
+          "runtime": "docker",
+          "job_id": 114782890296,
+          "outcome": "failure",
+          "s3": "original-authenticated-object-and-credentials-retained-without-reseeding",
+          "s3_outcome": "success",
+          "s3_seconds": 107.24,
+          "trace": "graceful-stop-caller-context-expired-before-retirement; no successful teardown or continuity claimed",
+          "artifact_id": 11742659469,
+          "artifact_sha256": "be3e727a35296cbba32561849fb0af43a24b8c372569ece824ea7bb4c2528f27"
+        },
+        {
+          "runtime": "podman",
+          "job_id": 114782889851,
+          "outcome": "success",
+          "s3": "original-authenticated-object-and-credentials-retained-without-reseeding",
+          "s3_outcome": "success",
+          "s3_seconds": 97.41,
+          "trace": "unchanged prior successful subset intentionally not repeated",
+          "artifact_id": 11742194378,
+          "artifact_sha256": "4b4fda934cd81c14f5dbc255bad0b7d48c9f892a3ca469a82dcb4ab451796f48"
+        }
+      ]
+    },
+    {
+      "commit": "6a6c854174ab2ce0d092bb5d640446bbf1830fb5",
+      "tree": "2130c01993b3accbc3ba8285d36e25bcd5944793",
+      "run_id": 38242319160,
+      "attempt": 1,
+      "outcome": "failure",
+      "jobs": [
+        {
+          "runtime": "docker",
+          "job_id": 114787696845,
+          "outcome": "failure",
+          "trace": "Tempo still running after bounded eight-minute graceful shutdown; retained original trace after restart NOT proven",
+          "seconds": 480.84,
+          "artifact_id": 11743542615,
+          "artifact_sha256": "d6d069057191f620ed1f14fb2a963eb4b1c1e5de858d52e0edad351fff1b8a96"
+        }
+      ]
+    },
+    {
+      "commit": "a02ccc10400a2a30a229992b5f44bf93e2c07b48",
+      "tree": "4f61e2d39ff6146952809675f11cb2b1b2a85372",
+      "run_id": 38247738911,
+      "attempt": 1,
+      "outcome": "success",
+      "tempo_image": "docker.io/grafana/tempo:3.1.0",
+      "block_write_format": "vParquet4",
+      "go_version": "1.25.0",
+      "jobs": [
+        {
+          "runtime": "docker",
+          "job_id": 114805792749,
+          "outcome": "success",
+          "trace": "original-trace-read-after-collector-and-tempo-retirement-resume-without-reseeding",
+          "trace_outcome": "success",
+          "seconds": 55.8,
+          "artifact_id": 11746648916,
+          "artifact_sha256": "8d4b41804557f3837f8e2ddefb5040b3b519b7fc5c76db05ffcf7067ce689aec",
+          "s3": "unchanged previously qualified family intentionally not repeated"
+        },
+        {
+          "runtime": "podman",
+          "job_id": 114805792309,
+          "outcome": "success",
+          "trace": "original-trace-read-after-collector-and-tempo-retirement-resume-without-reseeding",
+          "trace_outcome": "success",
+          "seconds": 43.43,
+          "artifact_id": 11746274066,
+          "artifact_sha256": "b19f0633e3a9c3c39f908e0d757c0840b3d23eabd2188f168e915032ff5080f3",
+          "s3": "unchanged previously qualified family intentionally not repeated"
+        }
+      ]
+    },
+    {
+      "commit": "ba00863ec1f2221097df06d34ecf74820b9b0323",
+      "tree": "025763a93fc1c7d07a1fadf7830d2d2e807eac26",
+      "run_id": 38262712696,
+      "attempt": 1,
+      "outcome": "success",
+      "starting_tempo_image": "docker.io/grafana/tempo:3.0.2",
+      "tempo_image": "docker.io/grafana/tempo:3.1.0",
+      "block_write_format": "vParquet4",
+      "go_version": "1.25.0",
+      "scope": "Single retained canonical native leaf; original trace emitted once on actual 3.0.2, then queried after normal 3.1.0 materialization and after selected Collector/Tempo retirement/resume. Unchanged credential environments and sibling preserved. Synthetic service CA; no production issuer, HA or transport-driven version-change qualification.",
+      "jobs": [
+        {
+          "runtime": "docker",
+          "job_id": 114857040367,
+          "outcome": "success",
+          "seconds": 65.62,
+          "artifact_id": 11753097935,
+          "artifact_sha256": "e0533f1f12c41d726b4461a6f0d73d9b0e053918da8a8d3554308aadf6df9433"
+        },
+        {
+          "runtime": "podman",
+          "job_id": 114857039902,
+          "outcome": "success",
+          "seconds": 60.98,
+          "artifact_id": 11752823674,
+          "artifact_sha256": "e819a53ea570fec4cdab1bc2ac103477c1aceaef659de4ecd1af461a2bc235d2"
+        }
+      ],
+      "other_gates": "S3 intentionally not repeated; all unselected targeted gates skipped. Not final ecosystem acceptance."
+    }
+  ],
+  "corrections_pending_native_proof": [],
+  "boundary": "Source qualification and individual native results apply only to recorded exact source/scope. Universal lifecycle/consumer changes and final exact-source ecosystem readiness remain incomplete.",
+  "actual_blockers": [
+    {
+      "provider": "Tempo 3.0.2",
+      "observed": "Query frontend never terminates despite stopped data/worker modules. Increasing the fixture budget to eight minutes did not resolve it.",
+      "upstream_fix": "https://github.com/grafana/tempo/pull/7986",
+      "upstream_fix_release": "v3.1.0",
+      "release_verified_via": "https://api.github.com/repos/grafana/tempo/releases/latest",
+      "required": "HA, actual CLI/JSON/MCP/HTTP version-change consent/execution and unbound runtime owners require separate qualification. Single native 3.0.2-to-3.1.0 original-data transition is now proven on both engines; this does not prove uninterrupted delivery or rollback. Universal lifecycle and final ecosystem readiness remain incomplete.",
+      "status": "current-renderer-retirement-resolved; single-native-legacy-version-transition-qualified; HA-and-universal-lifecycle-open",
+      "resolved_by": "a02ccc10400a2a30a229992b5f44bf93e2c07b48 / run38247738911; ba00863ec1f2221097df06d34ecf74820b9b0323 / run38262712696"
+    }
+  ],
+  "source_qualifications": [
+    {
+      "source": {
+        "commit": "a02ccc10400a2a30a229992b5f44bf93e2c07b48",
+        "tree": "4f61e2d39ff6146952809675f11cb2b1b2a85372",
+        "working_tree_changes": false
+      },
+      "jobs": 4,
+      "seconds": 65.289,
+      "race_packages": [
+        "./internal/traces",
+        "./internal/telemetry",
+        "./cmd/baha"
+      ],
+      "checks": [
+        {
+          "name": "cli-build",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 18.198,
+          "log": "cli-build.log"
+        },
+        {
+          "name": "docs-audit",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 0.301,
+          "log": "docs-audit.log"
+        },
+        {
+          "name": "docs-de",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 2.517,
+          "log": "docs-de.log"
+        },
+        {
+          "name": "docs-en",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 2.704,
+          "log": "docs-en.log"
+        },
+        {
+          "name": "go-race",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 48.694,
+          "log": "go-race.log"
+        },
+        {
+          "name": "go-tests",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 64.884,
+          "log": "go-tests.log"
+        },
+        {
+          "name": "go-vet",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 17.548,
+          "log": "go-vet.log"
+        },
+        {
+          "name": "readability",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 2.714,
+          "log": "readability.log"
+        },
+        {
+          "name": "script-tests",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 3.315,
+          "log": "script-tests.log"
+        }
+      ],
+      "native_runtime_qualified": false,
+      "pre_release_ready": false
+    },
+    {
+      "source": {
+        "commit": "832575d7f15ad4c0aec65407be5187c1d5da64c5",
+        "tree": "6946a56e950107b5686ca2797d3302126809f111",
+        "working_tree_changes": false
+      },
+      "jobs": 4,
+      "seconds": 64.798,
+      "race_packages": [
+        "./internal/runtime",
+        "./cmd/baha"
+      ],
+      "checks": [
+        {
+          "name": "cli-build",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 18.936,
+          "log": "cli-build.log"
+        },
+        {
+          "name": "docs-audit",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 0.406,
+          "log": "docs-audit.log"
+        },
+        {
+          "name": "docs-de",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 2.532,
+          "log": "docs-de.log"
+        },
+        {
+          "name": "docs-en",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 2.724,
+          "log": "docs-en.log"
+        },
+        {
+          "name": "go-race",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 48.85,
+          "log": "go-race.log"
+        },
+        {
+          "name": "go-tests",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 64.316,
+          "log": "go-tests.log"
+        },
+        {
+          "name": "go-vet",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 18.489,
+          "log": "go-vet.log"
+        },
+        {
+          "name": "readability",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 2.916,
+          "log": "readability.log"
+        },
+        {
+          "name": "script-tests",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 3.207,
+          "log": "script-tests.log"
+        }
+      ],
+      "native_runtime_qualified": false,
+      "pre_release_ready": false
+    },
+    {
+      "source": {
+        "commit": "ccb81224a9638a047fe1f4594e1694e28647a87c",
+        "tree": "2732027bf2a40f6cf7a0925c77eb598c4a827d2b",
+        "working_tree_changes": false
+      },
+      "jobs": 4,
+      "seconds": 69.047,
+      "race_packages": [
+        "./cmd/baha",
+        "./internal/runtime"
+      ],
+      "checks": [
+        {
+          "name": "cli-build",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 21.003,
+          "log": "cli-build.log"
+        },
+        {
+          "name": "docs-audit",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 0.403,
+          "log": "docs-audit.log"
+        },
+        {
+          "name": "docs-de",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 2.507,
+          "log": "docs-de.log"
+        },
+        {
+          "name": "docs-en",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 2.913,
+          "log": "docs-en.log"
+        },
+        {
+          "name": "go-race",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 51.272,
+          "log": "go-race.log"
+        },
+        {
+          "name": "go-tests",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 68.697,
+          "log": "go-tests.log"
+        },
+        {
+          "name": "go-vet",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 21.313,
+          "log": "go-vet.log"
+        },
+        {
+          "name": "readability",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 3.008,
+          "log": "readability.log"
+        },
+        {
+          "name": "script-tests",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 3.216,
+          "log": "script-tests.log"
+        }
+      ],
+      "native_runtime_qualified": false,
+      "pre_release_ready": false
+    }
+  ]
+}

@@ -1,0 +1,440 @@
+{
+  "schema": "baseharbor.installation-destruction-runtime-evidence/v1",
+  "release": "0.4.25",
+  "tested_source": "495d770518ebcde8a9591f901bfabe4a7243dcd2",
+  "tested_tree": "be3fe6e161ae41987e76cc8f1c606948ee8b824c",
+  "run_id": 38476337295,
+  "run_attempt": 1,
+  "result": "failure",
+  "jobs": [
+    {
+      "id": 115567837034,
+      "runtime": "docker",
+      "result": "success",
+      "test_seconds": 45.4
+    },
+    {
+      "id": 115567836782,
+      "runtime": "podman",
+      "result": "failure",
+      "test_seconds": 62.26,
+      "finding": "Foreign holder kept the selected owned SQL volume in use; Podman cleanup incorrectly succeeded. Native Quadlet volume rm --force can remove foreign consumers. No aggregate Podman PASS."
+    }
+  ],
+  "artifacts": [
+    {
+      "id": 11854905372,
+      "name": "installation-destroy-docker-38476337295-1",
+      "digest": "sha256:5616487b55aef0c1c5ebb94075f755626fa3491458d755dbaa4db39eff43f4d3",
+      "expired": false
+    },
+    {
+      "id": 11854541263,
+      "name": "installation-destroy-podman-38476337295-1",
+      "digest": "sha256:0f89dd6b3507e0e159b0fdef247dbaa43237de601ec2f41d689fbe58491a06c4",
+      "expired": false
+    }
+  ],
+  "docker_assertions": [
+    "original seeded SQL data and consumer credentials verified through TLS after each missing-consent denial",
+    "exact aggregate plan contains real child application reset scope",
+    "in-use owned volume returns actual partial failure; foreign holder and protected Target/shared owner remain",
+    "removing only the isolated foreign fixture then freshly acknowledging the current plan permits retry",
+    "selected owned volume, installation configuration and Target owner absent only after verified completion"
+  ],
+  "current_correction": "Published native Quadlet named-volume removal avoids --force; bounded Podman retry PASS. Original failed matrix result is retained. No final candidate ecosystem qualification.",
+  "boundaries": [
+    "Single isolated development Target with selected SQL; no multi-application, HA, universal provider handoff or production continuity claim",
+    "Earlier bounded Docker PASS is preserved; final immutable ecosystem qualification remains open",
+    "Demo and authenticated Console/Connector candidate acceptance remain open"
+  ],
+  "pre_release_ready": false,
+  "podman_retry": {
+    "source": "796cb15b68040788d6b4db14762be7bc04f8d6fa",
+    "tree": "beaf512faea2e0b4cb88c0996de1ff2b3bd67fc9",
+    "run_id": 38477307782,
+    "run_attempt": 1,
+    "job_id": 115571061628,
+    "runtime": "podman",
+    "result": "success",
+    "test_seconds": 62.47,
+    "artifacts": [
+      {
+        "id": 11855330648,
+        "name": "installation-destroy-podman-38477307782-1",
+        "digest": "sha256:6a08cbe9ea14ea35743b7e598a421d3406672f869618c7ec54eeaf4049b81e46",
+        "expired": false
+      }
+    ],
+    "assertions": [
+      "in-use selected owned volume returned actual failure",
+      "foreign holder and exact protected Target/shared owner retained",
+      "only isolated foreign holder removed explicitly before retry",
+      "fresh current aggregate plan acknowledgements permitted actual completion",
+      "selected owned native volume, configuration and Target owner absent after verification"
+    ]
+  },
+  "docker_reuse_boundary": {
+    "from": "495d770518ebcde8a9591f901bfabe4a7243dcd2",
+    "to": "796cb15b68040788d6b4db14762be7bc04f8d6fa",
+    "verified_go_changes": [
+      "cmd/baha/application_provider_observation_runtime_test.go",
+      "internal/providers/runtime/podman/quadlet_resources.go",
+      "internal/providers/runtime/podman/quadlet_runtime_test.go"
+    ],
+    "meaning": "Docker production Go sources and installation destruction native fixture unchanged; bounded prior Docker PASS retained. This does not constitute final immutable ecosystem approval."
+  },
+  "current_source_requalification": {
+    "source": "93a376023b58f015f9d56fc69146eb34a2e204f8",
+    "tree": "d1dc8bb1a51bf012e6a2607e50d1410bc34bb25d",
+    "run_id": 38540528249,
+    "run_attempt": 1,
+    "result": "success",
+    "jobs": [
+      {
+        "id": 115773855474,
+        "runtime": "docker",
+        "result": "success"
+      },
+      {
+        "id": 115773855803,
+        "runtime": "podman",
+        "result": "success"
+      }
+    ],
+    "artifacts": [
+      {
+        "id": 11882566213,
+        "name": "installation-destroy-podman-38540528249-1",
+        "digest": "sha256:7c6e0075893f8d7929dcd1a4710386bd0e91f896101d5ec71f94b4c1de7ab5d2",
+        "zip_sha256_verified": true,
+        "source_txt_verified": true
+      },
+      {
+        "id": 11881952509,
+        "name": "installation-destroy-docker-38540528249-1",
+        "digest": "sha256:44bb53d1e52d87e65abcf800f8bd49ec4ea8609a3620e3f637573c95f86bf973",
+        "zip_sha256_verified": true,
+        "source_txt_verified": true
+      }
+    ],
+    "assertions": [
+      "Actual SQL consumer TLS/credentials and original row assertions passed before refused destructive consent.",
+      "Native in-use volume failure preserves exact Target/shared retry owner and foreign holder. No force-volume deletion.",
+      "After explicit fixture removal of its foreign holder, fresh current-plan acknowledgement completes owned native data/configuration/owner deletion."
+    ],
+    "scope_limit": "This existing native fixture has one child; multi-child installation remainder is independently exercised by the current joint browser/Connector runtime gates. It is not full release approval."
+  },
+  "latest_source_requalification": {
+    "source": "45fd3e2cf39161d48e185af23b5f0683ae74c367",
+    "tree": "ed600514b795b6990f70813977e81aece520adec",
+    "run_id": 38545001466,
+    "run_attempt": 1,
+    "result": "success",
+    "jobs": [
+      {
+        "id": 115788755727,
+        "runtime": "docker",
+        "result": "success"
+      },
+      {
+        "id": 115788756200,
+        "runtime": "podman",
+        "result": "success"
+      }
+    ],
+    "artifacts": [
+      {
+        "id": 11883872813,
+        "name": "installation-destroy-docker-38545001466-1",
+        "digest": "sha256:9bf613713dc61cd467906d5ef8033ca289ffe543c09a5e023f1e72bbcf656b2a",
+        "zip_sha256_verified": true,
+        "source_txt_verified": true
+      },
+      {
+        "id": 11884017796,
+        "name": "installation-destroy-podman-38545001466-1",
+        "digest": "sha256:e9f8a81eb5894be6c1f2d9f8c904f2c371aeb48bc0257b21271cfe04dbf4d7f4",
+        "zip_sha256_verified": true,
+        "source_txt_verified": true
+      }
+    ],
+    "assertions": [
+      "Actual SQL consumer TLS/credentials and original row assertions passed before refused destructive consent.",
+      "Native in-use volume failure preserves exact Target/shared retry owner and foreign holder. No force-volume deletion.",
+      "After explicit fixture removal of its foreign holder, fresh current-plan acknowledgement completes owned native data/configuration/owner deletion."
+    ],
+    "scope_limit": "This existing native fixture has one child; multi-child installation remainder is independently exercised by the current joint browser/Connector runtime gates. It is not full release approval."
+  },
+  "certificate_countdown_scope_followup": {
+    "core": "a09185ca48f37a4c0bb5a1bb0dea5474e74aa50a",
+    "tree": "0230112566dff5f3b2bc1395ea79ba1b2fa7d869",
+    "local_qualification": {
+      "source": {
+        "commit": "26b67ab92ac798ce09ee700659f2fe7e78d7e282",
+        "tree": "0230112566dff5f3b2bc1395ea79ba1b2fa7d869",
+        "working_tree_changes": true
+      },
+      "jobs": 4,
+      "seconds": 67.218,
+      "race_packages": [
+        "./cmd/baha",
+        "./internal/application"
+      ],
+      "checks": [
+        {
+          "name": "cli-build",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 17.4,
+          "log": "cli-build.log"
+        },
+        {
+          "name": "docs-audit",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 0.301,
+          "log": "docs-audit.log"
+        },
+        {
+          "name": "docs-de",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 1.912,
+          "log": "docs-de.log"
+        },
+        {
+          "name": "docs-en",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 2.107,
+          "log": "docs-en.log"
+        },
+        {
+          "name": "go-race",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 55.265,
+          "log": "go-race.log"
+        },
+        {
+          "name": "go-tests",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 66.736,
+          "log": "go-tests.log"
+        },
+        {
+          "name": "go-vet",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 16.489,
+          "log": "go-vet.log"
+        },
+        {
+          "name": "readability",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 3.518,
+          "log": "readability.log"
+        },
+        {
+          "name": "script-tests",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 3.315,
+          "log": "script-tests.log"
+        }
+      ],
+      "native_runtime_qualified": false,
+      "pre_release_ready": false
+    },
+    "red_before": "Two canonical child scope IDs remain unchanged after certificate/function countdown resampling, but the previous outer installation digest rejects the same current acknowledgements as stale-impact-consent.",
+    "green_after": "Outer revision binds the canonical child scope metadata/PlanID, omitting its already-bound Targets only from the private digest; complete child display remains unchanged. Actual child owner/material, installation owner and selected resource changes reject earlier consent.",
+    "diagnostics": "Test-only failure logs contain public plan IDs and changed field categories only; no scalar material values or per-file private hashes.",
+    "native_before": {
+      "core": "5ec1b38df90b290dc40fb6f26f18534cf19f0337",
+      "run": 38556997835,
+      "attempt": 1,
+      "docker": {
+        "artifact": 11890049087,
+        "name": "coreless-docker-38556997835-1",
+        "sha256": "3e03b6a639717875aaf3a9e7fd8c3e58253ced7b4607da6d9624a0c65c6335b2",
+        "files": [
+          "candidate-sha.txt",
+          "identity-lifecycle.log",
+          "go-version.txt",
+          "runtime-version.txt"
+        ],
+        "source": [
+          {
+            "file": "candidate-sha.txt",
+            "value": "5ec1b38df90b290dc40fb6f26f18534cf19f0337"
+          }
+        ],
+        "markers": [
+          "    application_identity_placement_runtime_test.go:164: actual end-user authorization-code/S256 PKCE login and signed ID-token verification PASS",
+          "    application_identity_placement_runtime_test.go:165: actual retained OAuth session refresh and userinfo PASS",
+          "    application_identity_placement_runtime_test.go:167: [native-managed-identity] phase=0 placement=shared OAuth/PKCE, JWT/userinfo, refresh, verified destination and retained original data PASS",
+          "    application_identity_placement_runtime_test.go:164: actual end-user authorization-code/S256 PKCE login and signed ID-token verification PASS",
+          "    application_identity_placement_runtime_test.go:165: actual retained OAuth session refresh and userinfo PASS",
+          "    application_identity_placement_runtime_test.go:167: [native-managed-identity] phase=1 placement=application OAuth/PKCE, JWT/userinfo, refresh, verified destination and retained original data PASS",
+          "    application_identity_placement_runtime_test.go:164: OAuth endpoint status=409 expected=201",
+          "    application_identity_placement_runtime_test.go:66: owned placement fixture cleanup failed: provider change: stale-impact-consent",
+          "    application_identity_placement_runtime_test.go:70: owned placement fixture containers remain or cannot be verified",
+          "--- FAIL: TestManagedIdentityNativePlacementHandoff (153.28s)"
+        ]
+      },
+      "podman": {
+        "artifact": 11891070287,
+        "name": "coreless-podman-38556997835-1",
+        "sha256": "5ef36bf2b496333685b8540b25c2cb8e83bdaf1219dc5596d6719962cffbdd9a",
+        "files": [
+          "candidate-sha.txt",
+          "go-version.txt",
+          "identity-lifecycle.log",
+          "runtime-version.txt"
+        ],
+        "source": [
+          {
+            "file": "candidate-sha.txt",
+            "value": "5ec1b38df90b290dc40fb6f26f18534cf19f0337"
+          }
+        ],
+        "markers": [
+          "    application_identity_placement_runtime_test.go:164: actual end-user authorization-code/S256 PKCE login and signed ID-token verification PASS",
+          "    application_identity_placement_runtime_test.go:165: actual retained OAuth session refresh and userinfo PASS",
+          "    application_identity_placement_runtime_test.go:167: [native-managed-identity] phase=0 placement=shared OAuth/PKCE, JWT/userinfo, refresh, verified destination and retained original data PASS",
+          "    application_identity_placement_runtime_test.go:164: actual end-user authorization-code/S256 PKCE login and signed ID-token verification PASS",
+          "    application_identity_placement_runtime_test.go:165: actual retained OAuth session refresh and userinfo PASS",
+          "    application_identity_placement_runtime_test.go:167: [native-managed-identity] phase=1 placement=application OAuth/PKCE, JWT/userinfo, refresh, verified destination and retained original data PASS",
+          "    application_identity_placement_runtime_test.go:164: OAuth endpoint status=409 expected=201",
+          "    application_identity_placement_runtime_test.go:66: owned placement fixture cleanup failed: provider change: stale-impact-consent",
+          "    application_identity_placement_runtime_test.go:70: owned placement fixture containers remain or cannot be verified",
+          "--- FAIL: TestManagedIdentityNativePlacementHandoff (249.95s)"
+        ]
+      },
+      "result": "failure on both engines: retained-user recreation409 followed by stale cleanup and remaining fixture containers. Shared and application OAuth/PKCE/JWT/refresh phases pass only as bounded subsets."
+    },
+    "native_after": {
+      "core": "40bfa96268a57ca74853f22ba6f949ffd7ff057d",
+      "run": 38559693713,
+      "attempt": 1,
+      "result": "success on both engines",
+      "verification": "Both actual ZIP SHA256 values and source files verified. All three actual Shared/Application/Shared phases, TLS-authenticated user OAuth/PKCE/JWT/userinfo/refresh, unavailable retired issuer, original retained session/user reuse, protected original data/config/credential and test cleanup zero-container assertions pass. No FAIL/SKIP.",
+      "docker": {
+        "artifact": 11890954128,
+        "sha256": "3e99b6305a8d216274ea0b43585585f7c1e628f209adb2888ccb2292d735f16a",
+        "core": "40bfa96268a57ca74853f22ba6f949ffd7ff057d",
+        "files": [
+          "candidate-sha.txt",
+          "go-version.txt",
+          "identity-lifecycle.log",
+          "runtime-version.txt"
+        ],
+        "result": "success",
+        "assertions": [
+          "    application_identity_placement_runtime_test.go:167: actual end-user authorization-code/S256 PKCE login and signed ID-token verification PASS",
+          "    application_identity_placement_runtime_test.go:174: actual retained OAuth session refresh and userinfo PASS",
+          "    application_identity_placement_runtime_test.go:176: [native-managed-identity] phase=0 placement=shared OAuth/PKCE, JWT/userinfo, refresh, verified destination and retained original data PASS",
+          "    application_identity_placement_runtime_test.go:157: disabled actual Identity no longer accepts session refresh; retained token alone cannot renew access",
+          "    application_identity_placement_runtime_test.go:167: actual end-user authorization-code/S256 PKCE login and signed ID-token verification PASS",
+          "    application_identity_placement_runtime_test.go:174: actual retained OAuth session refresh and userinfo PASS",
+          "    application_identity_placement_runtime_test.go:176: [native-managed-identity] phase=1 placement=application OAuth/PKCE, JWT/userinfo, refresh, verified destination and retained original data PASS",
+          "    application_identity_placement_runtime_test.go:157: disabled actual Identity no longer accepts session refresh; retained token alone cannot renew access",
+          "    application_identity_placement_runtime_test.go:174: actual retained OAuth session refresh and userinfo PASS",
+          "    application_identity_placement_runtime_test.go:176: [native-managed-identity] phase=2 placement=shared OAuth/PKCE, JWT/userinfo, refresh, verified destination and retained original data PASS",
+          "--- PASS: TestManagedIdentityNativePlacementHandoff (216.23s)",
+          "PASS"
+        ],
+        "job": 115837420698
+      },
+      "podman": {
+        "artifact": 11891313583,
+        "sha256": "4ed9212d8f3f4638f4f09ef191478a2f2a123e2b71ba8ce18e86e3a16d296922",
+        "core": "40bfa96268a57ca74853f22ba6f949ffd7ff057d",
+        "files": [
+          "candidate-sha.txt",
+          "go-version.txt",
+          "identity-lifecycle.log",
+          "runtime-version.txt"
+        ],
+        "result": "success",
+        "assertions": [
+          "    application_identity_placement_runtime_test.go:167: actual end-user authorization-code/S256 PKCE login and signed ID-token verification PASS",
+          "    application_identity_placement_runtime_test.go:174: actual retained OAuth session refresh and userinfo PASS",
+          "    application_identity_placement_runtime_test.go:176: [native-managed-identity] phase=0 placement=shared OAuth/PKCE, JWT/userinfo, refresh, verified destination and retained original data PASS",
+          "    application_identity_placement_runtime_test.go:157: disabled actual Identity no longer accepts session refresh; retained token alone cannot renew access",
+          "    application_identity_placement_runtime_test.go:167: actual end-user authorization-code/S256 PKCE login and signed ID-token verification PASS",
+          "    application_identity_placement_runtime_test.go:174: actual retained OAuth session refresh and userinfo PASS",
+          "    application_identity_placement_runtime_test.go:176: [native-managed-identity] phase=1 placement=application OAuth/PKCE, JWT/userinfo, refresh, verified destination and retained original data PASS",
+          "    application_identity_placement_runtime_test.go:157: disabled actual Identity no longer accepts session refresh; retained token alone cannot renew access",
+          "    application_identity_placement_runtime_test.go:174: actual retained OAuth session refresh and userinfo PASS",
+          "    application_identity_placement_runtime_test.go:176: [native-managed-identity] phase=2 placement=shared OAuth/PKCE, JWT/userinfo, refresh, verified destination and retained original data PASS",
+          "--- PASS: TestManagedIdentityNativePlacementHandoff (253.18s)",
+          "PASS"
+        ],
+        "job": 115837420109
+      }
+    },
+    "unchanged_boundaries": [
+      "Achtung and two current acknowledgements",
+      "Separate selected-data deletion consent",
+      "Current owner/material/resource revalidation",
+      "Nonforce volume deletion; foreign containers remain protected"
+    ],
+    "pre_release_ready": false
+  },
+  "current_countdown_authority_foreign_volume_requalification": {
+    "core": "4e0c66344af29f67990c77d6d623dddef1582497",
+    "run": 38560008601,
+    "attempt": 1,
+    "result": "success on both engines",
+    "scope_limit": "Existing one-child installation fixture; final common multi-child authenticated matrix remains separate and pending final pins.",
+    "verification": "Both actual ZIP SHA256 values/source.txt checked; native in-use-volume error preserves foreign holder/protected retry owners. Only explicit fixture holder release plus fresh current-plan2 acknowledgements and separate data consent permits completion; selected native data/config/owner absence verified. Test PASS/no FAIL/SKIP.",
+    "docker": {
+      "artifact": 11891573309,
+      "sha256": "7f21704ded98ba9e957884fe5fc021a7baa59eb76cfc23f6e0469c5173af7994",
+      "core": "4e0c66344af29f67990c77d6d623dddef1582497",
+      "files": [
+        "destroy.log",
+        "runtime-version.txt",
+        "source.txt"
+      ],
+      "result": "success",
+      "assertions": [
+        "    installation_destroy_native_test.go:56: backend=sql phase=0 actual consumer credential and TLS authenticated data assertion passed",
+        "    installation_destroy_native_test.go:81: backend=sql phase=2 actual consumer credential and TLS authenticated data assertion passed",
+        "    installation_destroy_native_test.go:81: backend=sql phase=2 actual consumer credential and TLS authenticated data assertion passed",
+        "    installation_destroy_native_test.go:81: backend=sql phase=2 actual consumer credential and TLS authenticated data assertion passed",
+        "    installation_destroy_native_test.go:128: explicit full-installation reset reached native in-use volume failure; exact protected Target/shared owner and foreign holder retained; no data continuity claimed after separately consented destructive steps",
+        "    installation_destroy_native_test.go:150: actual full-installation child reset, partial native deletion, preserved foreign authority and fresh current-plan retry completed; selected native data/configuration/owners absent",
+        "--- PASS: TestInstallationDestroyCurrentChildrenInterruptedVolumeAndRetry (45.60s)",
+        "PASS"
+      ],
+      "job": 115838452337
+    },
+    "podman": {
+      "artifact": 11890874333,
+      "sha256": "ef923933d916905d64ed238513cc231bb7a2c8fb6185c7051086541d2021ebd3",
+      "core": "4e0c66344af29f67990c77d6d623dddef1582497",
+      "files": [
+        "destroy.log",
+        "runtime-version.txt",
+        "source.txt"
+      ],
+      "result": "success",
+      "assertions": [
+        "    installation_destroy_native_test.go:56: backend=sql phase=0 actual consumer credential and TLS authenticated data assertion passed",
+        "    installation_destroy_native_test.go:81: backend=sql phase=2 actual consumer credential and TLS authenticated data assertion passed",
+        "    installation_destroy_native_test.go:81: backend=sql phase=2 actual consumer credential and TLS authenticated data assertion passed",
+        "    installation_destroy_native_test.go:81: backend=sql phase=2 actual consumer credential and TLS authenticated data assertion passed",
+        "    installation_destroy_native_test.go:128: explicit full-installation reset reached native in-use volume failure; exact protected Target/shared owner and foreign holder retained; no data continuity claimed after separately consented destructive steps",
+        "    installation_destroy_native_test.go:150: actual full-installation child reset, partial native deletion, preserved foreign authority and fresh current-plan retry completed; selected native data/configuration/owners absent",
+        "--- PASS: TestInstallationDestroyCurrentChildrenInterruptedVolumeAndRetry (58.22s)",
+        "PASS"
+      ],
+      "job": 115838452839
+    }
+  }
+}

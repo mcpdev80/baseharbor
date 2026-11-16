@@ -1,0 +1,665 @@
+package main
+
+import (
+	"bytes"
+	"context"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/mcpdev80/baseharbor/internal/application"
+	testruntime "github.com/mcpdev80/baseharbor/internal/testsupport/runtimeprovider"
+)
+
+// Native readiness requires authenticated SQL SELECT 1 and TLS Valkey PING.
+// Sleeping alone is running-unverified under the production status contract.
+const repositoryBackendProbeCompose = `services:
+  pg-probe:
+    image: postgres:18-alpine
+    command: ["sh", "-ec", "sleep infinity"]
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          result=$$(psql "$$DATABASE_URL" -tAc 'SELECT 1') &&
+          test "$$result" = 1
+      interval: 1s
+      timeout: 5s
+      retries: 30
+    networks:
+      - app-internal
+  valkey-probe:
+    image: valkey/valkey:9.1.2-alpine
+    command: ["sh", "-ec", "sleep infinity"]
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          result=$$(valkey-cli -u "$$REDIS_URL" --cacert "$$REDIS_CA_FILE" ping) &&
+          test "$$result" = PONG
+      interval: 1s
+      timeout: 5s
+      retries: 30
+    networks:
+      - app-internal
+networks:
+  app-internal:
+`
+
+func TestRepositoryComposeWorkloadUsesBaseHarborBackendsInCI(t *testing.T) {
+	if os.Getenv("BASEHARBOR_CI_RUNTIME_INTEGRATION") != "1" {
+		t.Skip("real repository workload lifecycle requires BASEHARBOR_CI_RUNTIME_INTEGRATION=1")
+	}
+	bootstrapCtx, bootstrapCancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer bootstrapCancel()
+	if _, err := testruntime.Resolve(bootstrapCtx); err != nil {
+		t.Fatalf("detect compose: %v", err)
+	}
+	ensureRuntimeIntegrationTrustPlane(t, bootstrapCtx)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+	compose, err := testruntime.Resolve(ctx)
+	if err != nil {
+		t.Fatalf("detect compose: %v", err)
+	}
+	isolateRuntimeForTest(t, "compose-workload-backends")
+
+	root := t.TempDir()
+	old, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(old)
+	if err := os.Chdir(root); err != nil {
+		t.Fatal(err)
+	}
+
+	manifest := `version: 1
+app:
+  name: workload-ci
+  environment: dev
+services:
+  sql:
+    enabled: true
+  cache:
+    enabled: true
+  secrets:
+    enabled: false
+workload:
+  components:
+    - pg-probe
+    - valkey-probe
+`
+	if err := os.WriteFile("baseharbor.yaml", []byte(manifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	composeYAML := repositoryBackendProbeCompose
+	if err := os.WriteFile("compose.yaml", []byte(composeYAML), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var out bytes.Buffer
+	if err := runRepositoryFixtureApply(ctx, []string{"--verbose", "app", "apply"}, &out); err != nil {
+		t.Fatalf("apply repository workload: %v\n%s", err, out.String())
+	}
+	if !strings.Contains(out.String(), "workload") {
+		t.Fatalf("apply did not report workload readiness:\n%s", out.String())
+	}
+
+	resolved, err := resolveApplication(ctx, application.Store{}, nil, "workload integration verification")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := verifyRepositoryFixtureState(resolved, []byte(manifest)); err != nil {
+		t.Fatal(err)
+	}
+	m := resolved.Manifest
+	files, err := application.ExistingRuntimeFiles(resolved.Store, m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	workload, found, err := application.MaterializeWorkload(root, m, files)
+	if err != nil || !found {
+		t.Fatalf("materialize workload for verification: found=%v err=%v", found, err)
+	}
+	composeFiles := []string{workload.Compose, workload.Override}
+
+	pg, err := compose.ExecProjectFiles(ctx, workload.Project, root, "pg-probe", composeFiles, "sh", "-ec", `psql ${DATABASE_URL} -tAc 'SELECT 1'`)
+	if err != nil {
+		t.Fatalf("postgres from workload container: %v", err)
+	}
+	if strings.TrimSpace(pg) != "1" {
+		t.Fatalf("unexpected postgres probe result %q", pg)
+	}
+	pong, err := compose.ExecProjectFiles(ctx, workload.Project, root, "valkey-probe", composeFiles, "sh", "-ec", `valkey-cli -u "$REDIS_URL" --cacert "$REDIS_CA_FILE" ping`)
+	if err != nil {
+		t.Fatalf("valkey from workload container: %v", err)
+	}
+	if strings.TrimSpace(pong) != "PONG" {
+		t.Fatalf("unexpected valkey probe result %q", pong)
+	}
+
+	for _, command := range [][]string{{"app", "status"}, {"app", "doctor"}} {
+		out.Reset()
+		if err := runWithIO(ctx, command, &out, &out); err != nil {
+			t.Fatalf("%v failed: %v\n%s", command, err, out.String())
+		}
+		if !strings.Contains(out.String(), "workload") {
+			t.Fatalf("%v did not report workload state:\n%s", command, out.String())
+		}
+	}
+
+	out.Reset()
+	if err := stopSelectiveApplicationWithConsent(ctx, &out); err != nil {
+		t.Fatalf("down workload application: %v\n%s", err, out.String())
+	}
+	running, err := compose.RunningServicesProjectFiles(ctx, workload.Project, root, composeFiles...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(running) != 0 {
+		t.Fatalf("workload services remain after down: %v", running)
+	}
+
+	out.Reset()
+	if err := runRepositoryFixtureApply(ctx, []string{"app", "up"}, &out); err != nil {
+		t.Fatalf("up workload application: %v\n%s", err, out.String())
+	}
+	pg, err = compose.ExecProjectFiles(ctx, workload.Project, root, "pg-probe", composeFiles, "sh", "-ec", `psql ${DATABASE_URL} -tAc 'SELECT 1'`)
+	if err != nil || strings.TrimSpace(pg) != "1" {
+		t.Fatalf("postgres probe after up: result=%q err=%v", pg, err)
+	}
+
+	out.Reset()
+	verifyRepositoryFixtureRetirement(t, ctx, resolved)
+	if _, err := os.Stat(filepath.Join(root, "baseharbor.yaml")); err != nil {
+		t.Fatalf("repository manifest not preserved: %v", err)
+	}
+}
+
+func TestRepositoryComposeWorkloadOnlyLifecycleInCI(t *testing.T) {
+	if os.Getenv("BASEHARBOR_CI_RUNTIME_INTEGRATION") != "1" {
+		t.Skip("real repository workload-only lifecycle requires BASEHARBOR_CI_RUNTIME_INTEGRATION=1")
+	}
+	bootstrapCtx, bootstrapCancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer bootstrapCancel()
+	if _, err := testruntime.Resolve(bootstrapCtx); err != nil {
+		t.Fatalf("detect compose: %v", err)
+	}
+	ensureRuntimeIntegrationTrustPlane(t, bootstrapCtx)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+	compose, err := testruntime.Resolve(ctx)
+	if err != nil {
+		t.Fatalf("detect compose: %v", err)
+	}
+	isolateRuntimeForTest(t, "compose-workload-only")
+
+	root := t.TempDir()
+	old, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(old)
+	if err := os.Chdir(root); err != nil {
+		t.Fatal(err)
+	}
+
+	manifest := `version: 1
+app:
+  name: workload-only-ci
+  environment: dev
+services:
+  sql:
+    enabled: false
+  cache:
+    enabled: false
+  secrets:
+    enabled: false
+workload:
+  components:
+    - app
+`
+	if err := os.WriteFile("baseharbor.yaml", []byte(manifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	composeYAML := `services:
+  app:
+    image: alpine:3.22
+    command: ["sh", "-ec", "sleep infinity"]
+    environment:
+      APP_OWNED_VALUE: preserved
+    networks:
+      - app-internal
+networks:
+  app-internal:
+`
+	if err := os.WriteFile("compose.yaml", []byte(composeYAML), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var out bytes.Buffer
+	if err := runRepositoryFixtureApply(ctx, []string{"app", "apply"}, &out); err != nil {
+		t.Fatalf("apply workload-only application: %v\n%s", err, out.String())
+	}
+	if !strings.Contains(out.String(), "workload") {
+		t.Fatalf("apply did not report workload readiness:\n%s", out.String())
+	}
+
+	resolved, err := resolveApplication(ctx, application.Store{}, nil, "workload-only integration verification")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := resolved.Manifest
+	files, err := application.ExistingRuntimeFiles(resolved.Store, m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	workload, found, err := application.MaterializeWorkload(root, m, files)
+	if err != nil || !found {
+		t.Fatalf("materialize workload-only verification: found=%v err=%v", found, err)
+	}
+	override, err := os.ReadFile(workload.Override)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, unexpected := range []string{"baseharbor-backend", "DATABASE_URL", "REDIS_URL", "VALKEY_URL"} {
+		if strings.Contains(string(override), unexpected) {
+			t.Fatalf("workload-only override invented %q:\n%s", unexpected, string(override))
+		}
+	}
+
+	composeFiles := []string{workload.Compose, workload.Override}
+	probe, err := compose.ExecProjectFiles(ctx, workload.Project, root, "app", composeFiles, "sh", "-ec", `test "$APP_OWNED_VALUE" = preserved; test -z "$DATABASE_URL"; test -z "$REDIS_URL"; echo ok`)
+	if err != nil || strings.TrimSpace(probe) != "ok" {
+		t.Fatalf("workload-only application contract probe: result=%q err=%v", probe, err)
+	}
+
+	for _, command := range [][]string{{"app", "status"}, {"app", "doctor"}} {
+		out.Reset()
+		if err := runWithIO(ctx, command, &out, &out); err != nil {
+			t.Fatalf("%v failed for workload-only app: %v\n%s", command, err, out.String())
+		}
+		if !strings.Contains(out.String(), "workload") {
+			t.Fatalf("%v did not report workload-only state:\n%s", command, out.String())
+		}
+	}
+
+	out.Reset()
+	if err := stopSelectiveApplicationWithConsent(ctx, &out); err != nil {
+		t.Fatalf("down workload-only application: %v\n%s", err, out.String())
+	}
+	running, err := compose.RunningServicesProjectFiles(ctx, workload.Project, root, composeFiles...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(running) != 0 {
+		t.Fatalf("workload-only services remain after down: %v", running)
+	}
+
+	out.Reset()
+	if err := runRepositoryFixtureApply(ctx, []string{"app", "up"}, &out); err != nil {
+		t.Fatalf("up workload-only application: %v\n%s", err, out.String())
+	}
+	probe, err = compose.ExecProjectFiles(ctx, workload.Project, root, "app", composeFiles, "sh", "-ec", `test "$APP_OWNED_VALUE" = preserved; echo ok`)
+	if err != nil || strings.TrimSpace(probe) != "ok" {
+		t.Fatalf("workload-only probe after up: result=%q err=%v", probe, err)
+	}
+
+	out.Reset()
+	if err := destroySelectiveApplicationWithConsent(ctx); err != nil {
+		t.Fatalf("destroy workload-only application: %v\n%s", err, out.String())
+	}
+	result, err := applicationDestroyResult(resolved, false)
+	if err != nil || !result.OwnerPreserved || result.DataDeleted == nil || *result.DataDeleted {
+		t.Fatalf("workload retirement lost retained owner/data receipt: %v", err)
+	}
+	containers, err := compose.ListRuntimeContainers(ctx)
+	if err != nil {
+		t.Fatal("inspect owned workload retirement", err)
+	}
+	for _, container := range containers {
+		if container.Project == workload.Project {
+			t.Fatalf("owned workload container remains after retirement: state=%s running=%t", container.State, container.Running)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(root, "baseharbor.yaml")); err != nil {
+		t.Fatalf("repository manifest not preserved: %v", err)
+	}
+}
+
+// TestRepositoryComposePinnedWorkloadLifecycleInCI proves 0427-128 on the native
+// runtime: a repository workload that pins container_name survives the full
+// apply→down→up→destroy lifecycle and the quiesce stop/retirement no longer
+// rejects the pinned native name as an "unplanned service replica". The default
+// <project>-<service>-1 lifecycle stays covered by the sibling CI test.
+func TestRepositoryComposePinnedWorkloadLifecycleInCI(t *testing.T) {
+	if os.Getenv("BASEHARBOR_CI_RUNTIME_INTEGRATION") != "1" {
+		t.Skip("real repository pinned-workload lifecycle requires BASEHARBOR_CI_RUNTIME_INTEGRATION=1")
+	}
+	bootstrapCtx, bootstrapCancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer bootstrapCancel()
+	if _, err := testruntime.Resolve(bootstrapCtx); err != nil {
+		t.Fatalf("detect compose: %v", err)
+	}
+	ensureRuntimeIntegrationTrustPlane(t, bootstrapCtx)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+	compose, err := testruntime.Resolve(ctx)
+	if err != nil {
+		t.Fatalf("detect compose: %v", err)
+	}
+	isolateRuntimeForTest(t, "compose-pinned-workload")
+
+	root := t.TempDir()
+	old, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(old)
+	if err := os.Chdir(root); err != nil {
+		t.Fatal(err)
+	}
+
+	manifest := `version: 1
+app:
+  name: pinned-workload-ci
+  environment: dev
+services:
+  sql:
+    enabled: false
+  cache:
+    enabled: false
+  secrets:
+    enabled: false
+workload:
+  components:
+    - app
+`
+	if err := os.WriteFile("baseharbor.yaml", []byte(manifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Pin the workload native container_name outside <project>-<service>-1, the
+	// linkding/JoySafety/Tier0 pattern 0427-128 fixes.
+	composeYAML := `services:
+  app:
+    image: alpine:3.22
+    container_name: linkding-pinned-web
+    command: ["sh", "-ec", "sleep infinity"]
+    environment:
+      APP_OWNED_VALUE: preserved
+    networks:
+      - app-internal
+networks:
+  app-internal:
+`
+	if err := os.WriteFile("compose.yaml", []byte(composeYAML), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var out bytes.Buffer
+	if err := runRepositoryFixtureApply(ctx, []string{"app", "apply"}, &out); err != nil {
+		t.Fatalf("apply pinned-workload application: %v\n%s", err, out.String())
+	}
+	if !strings.Contains(out.String(), "workload") {
+		t.Fatalf("apply did not report workload readiness:\n%s", out.String())
+	}
+
+	resolved, err := resolveApplication(ctx, application.Store{}, nil, "pinned workload integration verification")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := resolved.Manifest
+	files, err := application.ExistingRuntimeFiles(resolved.Store, m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	workload, found, err := application.MaterializeWorkload(root, m, files)
+	if err != nil || !found {
+		t.Fatalf("materialize pinned workload verification: found=%v err=%v", found, err)
+	}
+	composeFiles := []string{workload.Compose, workload.Override}
+
+	// The pinned native name must exist as a running container after apply: the
+	// quiesce stop accepted it instead of rejecting it as an unplanned replica.
+	pinnedExists := false
+	containers, err := compose.ListRuntimeContainers(ctx)
+	if err != nil {
+		t.Fatal("inspect pinned workload containers", err)
+	}
+	for _, c := range containers {
+		if c.Project == workload.Project && c.Name == "linkding-pinned-web" {
+			pinnedExists = true
+		}
+	}
+	if !pinnedExists {
+		t.Fatalf("pinned container_name linkding-pinned-web not present after apply:\n%v", containers)
+	}
+
+	out.Reset()
+	if err := stopSelectiveApplicationWithConsent(ctx, &out); err != nil {
+		t.Fatalf("down pinned-workload application: %v\n%s", err, out.String())
+	}
+	running, err := compose.RunningServicesProjectFiles(ctx, workload.Project, root, composeFiles...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(running) != 0 {
+		t.Fatalf("pinned-workload services remain after down: %v", running)
+	}
+
+	out.Reset()
+	if err := runRepositoryFixtureApply(ctx, []string{"app", "up"}, &out); err != nil {
+		t.Fatalf("up pinned-workload application: %v\n%s", err, out.String())
+	}
+
+	// Acceptance 0427-128: the pinned workload must reach baha app backup
+	// READY→written-archive. backup uses a password-file gate, not an interactive
+	// impact confirmation, but the runtime must already be applied and verified.
+	out.Reset()
+	backupDir := t.TempDir()
+	passwordFile := filepath.Join(backupDir, "backup-password")
+	if err := os.WriteFile(passwordFile, []byte("baseharbor-pinned-workload-ci-only-backup-secret\n"), 0o600); err != nil {
+		t.Fatalf("create isolated native CI backup password: %v", err)
+	}
+	backupFile := filepath.Join(backupDir, "pinned.bhbackup")
+	backupCmd := []string{"app", "backup", "--password-file", passwordFile, "--output", backupFile}
+	if err := runWithIO(ctx, backupCmd, &out, &out); err != nil {
+		t.Fatalf("backup pinned-workload application: %v\n%s", err, out.String())
+	}
+	if _, statErr := os.Stat(backupFile); statErr != nil {
+		t.Fatalf("pinned workload backup did not write archive: %v\n%s", statErr, out.String())
+	}
+
+	out.Reset()
+	if err := destroySelectiveApplicationWithConsent(ctx); err != nil {
+		t.Fatalf("destroy pinned-workload application: %v\n%s", err, out.String())
+	}
+	containers, err = compose.ListRuntimeContainers(ctx)
+	if err != nil {
+		t.Fatal("inspect pinned workload retirement", err)
+	}
+	for _, container := range containers {
+		if container.Project == workload.Project {
+			t.Fatalf("pinned workload container remains after retirement: state=%s running=%t", container.State, container.Running)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(root, "baseharbor.yaml")); err != nil {
+		t.Fatalf("repository manifest not preserved: %v", err)
+	}
+}
+
+func TestRepositoryBuildWorkloadRebuildsSourceChangesInCI(t *testing.T) {
+	if os.Getenv("BASEHARBOR_CI_RUNTIME_INTEGRATION") != "1" {
+		t.Skip("real repository build convergence requires BASEHARBOR_CI_RUNTIME_INTEGRATION=1")
+	}
+	bootstrapCtx, bootstrapCancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer bootstrapCancel()
+	if _, err := testruntime.Resolve(bootstrapCtx); err != nil {
+		t.Fatalf("detect runtime: %v", err)
+	}
+	ensureRuntimeIntegrationTrustPlane(t, bootstrapCtx)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+	compose, err := testruntime.Resolve(ctx)
+	if err != nil {
+		t.Fatalf("detect runtime: %v", err)
+	}
+	isolateRuntimeForTest(t, "build-workload")
+
+	root := t.TempDir()
+	old, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(old)
+	if err := os.Chdir(root); err != nil {
+		t.Fatal(err)
+	}
+
+	manifest := `version: 1
+app:
+  name: build-convergence-ci
+  environment: dev
+services:
+  sql:
+    enabled: false
+  cache:
+    enabled: false
+  secrets:
+    enabled: false
+workload:
+  components:
+    - app
+`
+	composeYAML := `services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["sh", "-ec", "sleep infinity"]
+`
+	dockerfile := "FROM alpine:3.22\nCOPY message.txt /message.txt\n"
+	if err := os.WriteFile("baseharbor.yaml", []byte(manifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile("compose.yaml", []byte(composeYAML), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile("Dockerfile", []byte(dockerfile), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(".dockerignore", []byte("ignored.txt\n.baseharbor/\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile("message.txt", []byte("one\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile("ignored.txt", []byte("ignored-one\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var out bytes.Buffer
+	if err := runRepositoryFixtureApply(ctx, []string{"app", "apply"}, &out); err != nil {
+		t.Fatalf("initial build apply: %v\n%s", err, out.String())
+	}
+	if !strings.Contains(out.String(), "rebuilt app") {
+		t.Fatalf("initial build did not report build realization:\n%s", out.String())
+	}
+
+	resolved, err := resolveApplication(ctx, application.Store{}, nil, "build convergence integration verification")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := resolved.Manifest
+	files, err := application.ExistingRuntimeFiles(resolved.Store, m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	workload, found, err := application.MaterializeWorkload(root, m, files)
+	if err != nil || !found {
+		t.Fatalf("materialize build workload: found=%v err=%v", found, err)
+	}
+	composeFiles := []string{workload.Compose, workload.Override}
+	assertMessage := func(want string) {
+		t.Helper()
+		got, err := compose.ExecProjectFiles(ctx, workload.Project, root, "app", composeFiles, "cat", "/message.txt")
+		if err != nil {
+			t.Fatalf("read realized message: %v", err)
+		}
+		if strings.TrimSpace(got) != want {
+			t.Fatalf("realized message = %q, want %q", strings.TrimSpace(got), want)
+		}
+	}
+	assertMessage("one")
+	firstIdentity, err := compose.ProjectServiceImageIdentity(ctx, workload.Project, "app")
+	if err != nil {
+		t.Fatalf("inspect first workload image: %v", err)
+	}
+
+	out.Reset()
+	if err := runRepositoryFixtureApply(ctx, []string{"app", "up"}, &out); err != nil {
+		t.Fatalf("unchanged app up: %v\n%s", err, out.String())
+	}
+	unchangedIdentity, err := compose.ProjectServiceImageIdentity(ctx, workload.Project, "app")
+	if err != nil {
+		t.Fatalf("inspect unchanged workload image: %v", err)
+	}
+	if unchangedIdentity.ImageID != firstIdentity.ImageID {
+		t.Fatalf("unchanged workload image changed: %s -> %s", firstIdentity.ImageID, unchangedIdentity.ImageID)
+	}
+
+	if err := os.WriteFile("ignored.txt", []byte("ignored-two\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out.Reset()
+	if err := runRepositoryFixtureApply(ctx, []string{"app", "up"}, &out); err != nil {
+		t.Fatalf("ignored-input app up: %v\n%s", err, out.String())
+	}
+	ignoredIdentity, err := compose.ProjectServiceImageIdentity(ctx, workload.Project, "app")
+	if err != nil {
+		t.Fatalf("inspect ignored-input workload image: %v", err)
+	}
+	if ignoredIdentity.ImageID != firstIdentity.ImageID {
+		t.Fatalf("ignored input changed workload image: %s -> %s", firstIdentity.ImageID, ignoredIdentity.ImageID)
+	}
+
+	if err := os.WriteFile("message.txt", []byte("two\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out.Reset()
+	if err := runRepositoryFixtureApply(ctx, []string{"app", "up"}, &out); err != nil {
+		t.Fatalf("changed-source app up: %v\n%s", err, out.String())
+	}
+	if !strings.Contains(out.String(), "rebuilt app") {
+		t.Fatalf("source change did not report selective rebuild:\n%s", out.String())
+	}
+	assertMessage("two")
+	changedIdentity, err := compose.ProjectServiceImageIdentity(ctx, workload.Project, "app")
+	if err != nil {
+		t.Fatalf("inspect changed workload image: %v", err)
+	}
+	if changedIdentity.ImageID == firstIdentity.ImageID {
+		t.Fatalf("source change retained stale workload image %s", changedIdentity.ImageID)
+	}
+
+	out.Reset()
+	if err := destroySelectiveApplicationWithConsent(ctx); err != nil {
+		t.Fatalf("destroy build workload: %v\n%s", err, out.String())
+	}
+	result, err := applicationDestroyResult(resolved, false)
+	if err != nil || !result.OwnerPreserved || result.DataDeleted == nil || *result.DataDeleted {
+		t.Fatalf("workload retirement lost retained owner/data receipt: %v", err)
+	}
+	containers, err := compose.ListRuntimeContainers(ctx)
+	if err != nil {
+		t.Fatal("inspect owned workload retirement", err)
+	}
+	for _, container := range containers {
+		if container.Project == workload.Project {
+			t.Fatalf("owned workload container remains after retirement: state=%s running=%t", container.State, container.Running)
+		}
+	}
+}

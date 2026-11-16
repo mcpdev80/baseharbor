@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/mcpdev80/baseharbor/blob/HEAD/contracts/provider-impact/v1/scope-result.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "plan_id",
+    "status",
+    "owner",
+    "targets"
+  ],
+  "properties": {
+    "version": {
+      "const": "baseharbor.provider-impact-scope/v1"
+    },
+    "plan_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "enum": [
+        "complete",
+        "partial"
+      ]
+    },
+    "owner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "owner",
+        "disposition",
+        "verified"
+      ],
+      "properties": {
+        "owner": {
+          "$ref": "https://github.com/mcpdev80/baseharbor/blob/HEAD/contracts/provider-impact/v1/scope.schema.json#/$defs/owner"
+        },
+        "disposition": {
+          "enum": [
+            "removed",
+            "retained",
+            "unknown"
+          ]
+        },
+        "verified": {
+          "type": "boolean"
+        },
+        "evidence": {
+          "type": "string"
+        }
+      }
+    },
+    "targets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "target",
+          "result"
+        ],
+        "properties": {
+          "target": {
+            "type": "string",
+            "minLength": 1
+          },
+          "result": {
+            "$ref": "https://github.com/mcpdev80/baseharbor/blob/HEAD/contracts/provider-impact/v1/result.schema.json"
+          }
+        }
+      }
+    }
+  }
+}

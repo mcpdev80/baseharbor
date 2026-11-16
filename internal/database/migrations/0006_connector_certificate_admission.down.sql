@@ -1,0 +1,2 @@
+ALTER TABLE connector_nodes DROP CONSTRAINT connector_nodes_revoked_has_certificate;
+ALTER TABLE connector_nodes DROP COLUMN certificate_revoked;

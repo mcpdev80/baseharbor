@@ -1,0 +1,73 @@
+{
+  "schema": "baseharbor.retained-network-runtime-evidence/v1",
+  "release": "0.4.25",
+  "tested_source": "715d9f95af60c0647f29f9ed22534f795044b952",
+  "product_fix": "cd85758aedc4994c62886bdd533c4ef57e7e9848",
+  "run_id": 38471113164,
+  "run_attempt": 1,
+  "result": "success",
+  "jobs": [
+    {
+      "id": 115550121387,
+      "runtime": "docker",
+      "result": "success",
+      "test_seconds": 173.25
+    },
+    {
+      "id": 115550120900,
+      "runtime": "podman",
+      "result": "success",
+      "test_seconds": 227.18
+    }
+  ],
+  "artifacts": [
+    {
+      "id": 11851658828,
+      "name": "retained-network-docker-38471113164-1",
+      "digest": "sha256:6f7c90bee0fa378991b846827eda8e3f48b6bfbc90833a27e685df8b4bda320b",
+      "expired": false
+    },
+    {
+      "id": 11852061184,
+      "name": "retained-network-podman-38471113164-1",
+      "digest": "sha256:3bd7fa7b82d0f012d8088e07e1ff062b3db3168d4f0ed66e093fe36d5ec5e16a",
+      "expired": false
+    }
+  ],
+  "assertions": [
+    "application-created shared SQL before independently requested management Core",
+    "actual unchanged native shared-network ID and labels; external Core reference, no Core network ownership",
+    "original once-seeded SQL marker with original consumer credentials and verify-full TLS after bootstrap/repeat",
+    "canonical interrupted protected external-reference write recovers exact secured Compose bytes",
+    "deliberately acknowledged selected Core retirement/reactivation preserves application network and original TLS SQL data",
+    "explicit separate application fixture reset and installation cleanup succeed"
+  ],
+  "failed_attempts": [
+    {
+      "run_id": 38469734409,
+      "source": "daf380382d50c4e62a443344e358649fb14fb7f0",
+      "result": "failure",
+      "finding": "Probe used pre-apply resolved binding; failed before management bootstrap. Aggregate fixture cleanup also failed; no native network proof."
+    },
+    {
+      "run_id": 38470547511,
+      "source": "254a886908a6172804153671019f77bb6f768811",
+      "result": "failure",
+      "finding": "Actual initial management bootstrap and original TLS SQL passed; fixture repeated initial port overrides, refused by existing runtime contract. No complete recovery PASS."
+    },
+    {
+      "repository": "mcpdev80/baseharbor-node-connector",
+      "run_id": 38469057321,
+      "source": "eb9b6191453edac74e3153dc50786995c5a77362",
+      "result": "failure",
+      "finding": "Both management fixtures passed SQL/network phase, then secrets_failed on unprotected browser Target configuration parent; cleanup failed. Neither row reached final remote retirement/reactivation/disconnect receipt."
+    }
+  ],
+  "boundaries": [
+    "Missing native network with a retained shared owner still requires convergence by its owning application; that damaged-state path is not natively qualified by this receipt.",
+    "Full-installation deletion of active deployments and interrupted aggregate destruction are not qualified; positive fixture cleanup separately acknowledges its application reset.",
+    "Management/bootstrap fixture uses its explicit developer role; no production/HA rollout or universal provider/material continuity is claimed.",
+    "This exact-source bounded PASS is not final candidate ecosystem acceptance or pre-release readiness."
+  ],
+  "pre_release_ready": false
+}

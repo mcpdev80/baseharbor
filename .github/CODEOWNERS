@@ -1,0 +1,6 @@
+# Central process rule: docs/DEVELOPMENT_GUIDELINES.md ("Development process").
+# Minimal coverage for #895: every path requires code-owner review by the
+# current Maintainer, which protects the ownership file itself, CI workflows
+# and review policy files. Add further entries only when a second maintainer
+# responsibility is explicitly granted.
+* @mcpdev80

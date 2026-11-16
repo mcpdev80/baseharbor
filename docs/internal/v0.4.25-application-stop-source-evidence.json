@@ -1,0 +1,100 @@
+{
+  "source": {
+    "commit": "3d7ca6fdd4555240ed08c11f212e1d5abdae2945",
+    "tree": "89c816225c30591a93faea638cf4bb1d7c50dda5",
+    "working_tree_changes": true
+  },
+  "jobs": 4,
+  "seconds": 108.611,
+  "race_packages": [
+    "./cmd/baha",
+    "./internal/application",
+    "./contracts"
+  ],
+  "checks": [
+    {
+      "name": "cli-build",
+      "status": "pass",
+      "exit_code": 0,
+      "seconds": 55.105,
+      "log": "cli-build.log"
+    },
+    {
+      "name": "docs-audit",
+      "status": "pass",
+      "exit_code": 0,
+      "seconds": 0.403,
+      "log": "docs-audit.log"
+    },
+    {
+      "name": "docs-de",
+      "status": "fail",
+      "exit_code": 1,
+      "seconds": 0.101,
+      "log": "docs-de.log"
+    },
+    {
+      "name": "docs-en",
+      "status": "fail",
+      "exit_code": 1,
+      "seconds": 0.106,
+      "log": "docs-en.log"
+    },
+    {
+      "name": "go-race",
+      "status": "pass",
+      "exit_code": 0,
+      "seconds": 95.968,
+      "log": "go-race.log"
+    },
+    {
+      "name": "go-tests",
+      "status": "pass",
+      "exit_code": 0,
+      "seconds": 108.329,
+      "log": "go-tests.log"
+    },
+    {
+      "name": "go-vet",
+      "status": "pass",
+      "exit_code": 0,
+      "seconds": 60.459,
+      "log": "go-vet.log"
+    },
+    {
+      "name": "readability",
+      "status": "pass",
+      "exit_code": 0,
+      "seconds": 3.818,
+      "log": "readability.log"
+    },
+    {
+      "name": "script-tests",
+      "status": "pass",
+      "exit_code": 0,
+      "seconds": 3.01,
+      "log": "script-tests.log"
+    }
+  ],
+  "native_runtime_qualified": false,
+  "pre_release_ready": false,
+  "qualification_id": "n6bh2bum",
+  "scope": "Recovered application stop impact/consent and native backend material projection; source qualification only. Initial strict docs checks failed solely because mkdocs was missing, and were rerun after installing the repository-pinned dependencies. Native acceptance remains pending.",
+  "followup": {
+    "docs-en": {
+      "status": "pass",
+      "seconds": 1.56,
+      "log": "baseharbor-app-stop-docs-en.log"
+    },
+    "docs-de": {
+      "status": "pass",
+      "seconds": 1.46,
+      "log": "baseharbor-app-stop-docs-de.log"
+    },
+    "workflow": {
+      "status": "pass",
+      "tool": "repository-pinned actionlint v1.7.12 plus script tests; additive app-stop marker enables only affected fresh and selected foundation gates"
+    }
+  },
+  "aggregate_status": "pass-after-documentation-environment-repair"
+}

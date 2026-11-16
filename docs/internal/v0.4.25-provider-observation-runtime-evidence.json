@@ -1,0 +1,315 @@
+{
+  "schema": "baseharbor.scoped-native-evidence/v1",
+  "release": "0.4.25",
+  "scope": "Canonical provider process/health inventory, actual HA SQL member stop and restore; complete retirement inventory retained.",
+  "source": {
+    "repository": "mcpdev80/baseharbor",
+    "commit": "04d72d1e6e818f008c68bdbf3f39715627054b2d",
+    "tree": "440cac4bddd792305981b71077cce113958c6938"
+  },
+  "workflow": {
+    "run_id": 38478683782,
+    "attempt": 1,
+    "url": "https://github.com/mcpdev80/baseharbor/actions/runs/38478683782"
+  },
+  "result": "pass",
+  "pre_release_ready": false,
+  "jobs": [
+    {
+      "id": 115575642214,
+      "runtime": "docker",
+      "result": "success",
+      "logs_reviewed": true,
+      "elapsed_seconds": 164.52,
+      "artifacts": [
+        {
+          "id": 11856836939,
+          "name": "provider-observation-docker-38478683782-1",
+          "digest": "sha256:da3cd3ce9f350f9e2b1f6aadc782f848b0f308c2d37404300b632768fe36b8da",
+          "size_in_bytes": 1826
+        }
+      ]
+    },
+    {
+      "id": 115575642081,
+      "runtime": "podman",
+      "result": "success",
+      "logs_reviewed": true,
+      "elapsed_seconds": 231.71,
+      "artifacts": [
+        {
+          "id": 11856037094,
+          "name": "provider-observation-podman-38478683782-1",
+          "digest": "sha256:005ee9063bfc5cac353fc8871411a47a1cb2df25afcfe38b21279ba659f145a1",
+          "size_in_bytes": 1826
+        }
+      ]
+    }
+  ],
+  "source_checks": {
+    "full_go_suite": "pass",
+    "full_race_packages": [
+      "./internal/runtime",
+      "./internal/application",
+      "./cmd/baha"
+    ],
+    "full_races": "pass",
+    "affected_vet": "pass",
+    "readability": "pass",
+    "documentation_audit": "pass",
+    "diff_check": "pass"
+  },
+  "preserved_failures": [
+    {
+      "run_id": 38472808368,
+      "source": "ebd8b9e6a7912799602307752de26eb8ba7f4ade",
+      "jobs": [
+        115555952797,
+        115555953238
+      ],
+      "result": "failure",
+      "reason": "Initial canonical HA SQL inventory included profile-only recovery helper; stop/restoration not reached."
+    },
+    {
+      "source": "6048559198154a4f03dbdd2490b6a982e180d34e",
+      "check": "go test ./...",
+      "result": "failure",
+      "test": "TestControlPlaneLastPermissionConsumerRetirementKeepsDataAndRecovery",
+      "reason": "First correction removed profiled helper from lifecycle service list. Final correction preserves full services and filters only availability."
+    },
+    {
+      "run_id": 38475604297,
+      "source": "6048559198154a4f03dbdd2490b6a982e180d34e",
+      "jobs": [
+        115565397073,
+        115565396925
+      ],
+      "result": "failure",
+      "reason": "Initial SQL availability still unverified on both engines; stop/restoration not reached."
+    },
+    {
+      "run_id": 38476012373,
+      "source": "381b88ddfcc25d2e188e4d3e44a435ddb36b63d1",
+      "jobs": [
+        115566751805,
+        115566752185
+      ],
+      "result": "failure",
+      "reason": "Initial SQL availability still unverified; final diagnostic adds safe complete module names/process/health observation and bounded convergence."
+    },
+    {
+      "run_id": 38476524199,
+      "source": "87b7e66a01e92db895d406b39d784f7f67c4b859",
+      "jobs": [
+        115568448946,
+        115568448732
+      ],
+      "result": "failure",
+      "reason": "Diagnostics found stopped canonical one-shot postgres-init, with the continuous SQL module otherwise running."
+    }
+  ],
+  "limits": [
+    "Process/health inventory is not HA quorum, data correctness or authenticated consumer continuity.",
+    "No operational provider migration, material handoff or authentication fallback is introduced.",
+    "All-family consumer execution, secure handoffs and final immutable ecosystem qualification remain open."
+  ],
+  "local_snapshot_qualification": {
+    "source": {
+      "commit": "0ea936563723dfa915bf5cefdff7053161200003",
+      "tree": "d4cf4da2fa456fe6fb32ff1777afa1defdb4ce3e",
+      "working_tree_changes": true
+    },
+    "jobs": 4,
+    "seconds": 65.821,
+    "race_packages": [
+      "./internal/providers/runtime/podman",
+      "./internal/application",
+      "./cmd/baha"
+    ],
+    "checks": [
+      {
+        "name": "cli-build",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 17.806,
+        "log": "cli-build.log"
+      },
+      {
+        "name": "docs-audit",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 0.401,
+        "log": "docs-audit.log"
+      },
+      {
+        "name": "docs-de",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 2.017,
+        "log": "docs-de.log"
+      },
+      {
+        "name": "docs-en",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 2.006,
+        "log": "docs-en.log"
+      },
+      {
+        "name": "go-race",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 57.004,
+        "log": "go-race.log"
+      },
+      {
+        "name": "go-tests",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 65.383,
+        "log": "go-tests.log"
+      },
+      {
+        "name": "go-vet",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 17.679,
+        "log": "go-vet.log"
+      },
+      {
+        "name": "readability",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 3.515,
+        "log": "readability.log"
+      },
+      {
+        "name": "script-tests",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 3.618,
+        "log": "script-tests.log"
+      }
+    ],
+    "native_runtime_qualified": false,
+    "pre_release_ready": false,
+    "boundary": "Snapshot contains pending receipt-only JSON; product code matches published 04d72d1e. Native outcomes are recorded separately."
+  },
+  "partial_previous_acceptance": {
+    "run_id": 38477746467,
+    "source": "e383568379692808e1ca0014b2018634133ba880",
+    "docker_job": 115572533709,
+    "docker": "pass",
+    "podman_job": 115572533337,
+    "podman": "failure",
+    "boundary": "Docker complete partial-module/restore probe passed; Podman removed one-shot container and needed existing systemd completion authority."
+  },
+  "fixture_source_corrections": [
+    "Diagnostic fixture initially used nonexistent Files.Dir; corrected to filepath.Dir(Files.Compose), then compile/vet passed."
+  ],
+  "artifact_history": [
+    {
+      "run_id": 38472808368,
+      "artifacts": [
+        {
+          "id": 11852467065,
+          "name": "provider-observation-podman-38472808368-1",
+          "digest": "sha256:3b4aebfeb581d3af3a48718dc07a0b7984d246787426099648113a74fc1cdcb8",
+          "size_in_bytes": 1889,
+          "source": "ebd8b9e6a7912799602307752de26eb8ba7f4ade"
+        },
+        {
+          "id": 11852277746,
+          "name": "provider-observation-docker-38472808368-1",
+          "digest": "sha256:d0187c37cfb85f75a346fe01780f7410d786bb9f1540385466720285438ef678",
+          "size_in_bytes": 1885,
+          "source": "ebd8b9e6a7912799602307752de26eb8ba7f4ade"
+        }
+      ]
+    },
+    {
+      "run_id": 38475604297,
+      "artifacts": [
+        {
+          "id": 11854735439,
+          "name": "provider-observation-podman-38475604297-1",
+          "digest": "sha256:79975ccac6c2424be0cbe18b5f1d9daffaaec13f676c61b8564a2206865c667d",
+          "size_in_bytes": 1890,
+          "source": "6048559198154a4f03dbdd2490b6a982e180d34e"
+        },
+        {
+          "id": 11853049823,
+          "name": "provider-observation-docker-38475604297-1",
+          "digest": "sha256:2923326701ec093523bd9ae0a3d17d30377892dc7a3228a80aa6f0d350c8ca03",
+          "size_in_bytes": 1892,
+          "source": "6048559198154a4f03dbdd2490b6a982e180d34e"
+        }
+      ]
+    },
+    {
+      "run_id": 38476012373,
+      "artifacts": [
+        {
+          "id": 11854506243,
+          "name": "provider-observation-podman-38476012373-1",
+          "digest": "sha256:c13ecca17994f12e850a3c4eb96b120e2922e3fdb1cecb44391985aba9ca729c",
+          "size_in_bytes": 1887,
+          "source": "381b88ddfcc25d2e188e4d3e44a435ddb36b63d1"
+        },
+        {
+          "id": 11854011878,
+          "name": "provider-observation-docker-38476012373-1",
+          "digest": "sha256:69a9422975f4fe8c1fff1438188f938832816e4e48e407f0834a2763e30abd03",
+          "size_in_bytes": 1888,
+          "source": "381b88ddfcc25d2e188e4d3e44a435ddb36b63d1"
+        }
+      ]
+    },
+    {
+      "run_id": 38476524199,
+      "artifacts": [
+        {
+          "id": 11854971442,
+          "name": "provider-observation-podman-38476524199-1",
+          "digest": "sha256:75250545990fbb099d169c7b6d32fca9c251ebbad40d48b877c6c07b1c20cd52",
+          "size_in_bytes": 3469,
+          "source": "87b7e66a01e92db895d406b39d784f7f67c4b859"
+        },
+        {
+          "id": 11853569802,
+          "name": "provider-observation-docker-38476524199-1",
+          "digest": "sha256:964edd4d4bad251ab838f98ff4cb5e8f80b2c53e3a0ffcd95e8c3d77d4b53401",
+          "size_in_bytes": 4808,
+          "source": "87b7e66a01e92db895d406b39d784f7f67c4b859"
+        }
+      ]
+    },
+    {
+      "run_id": 38477746467,
+      "artifacts": [
+        {
+          "id": 11856231426,
+          "name": "provider-observation-podman-38477746467-1",
+          "digest": "sha256:8eea5ee6b3ee9e01e37f2fcce99343bb2ee2496d9c495380534f36a13be30022",
+          "size_in_bytes": 3801,
+          "source": "e383568379692808e1ca0014b2018634133ba880"
+        },
+        {
+          "id": 11856101005,
+          "name": "provider-observation-docker-38477746467-1",
+          "digest": "sha256:99eae25b2cf1d5ca8818d4248425705150affae4ccf5f90d535f0fb0f552d0d9",
+          "size_in_bytes": 1823,
+          "source": "e383568379692808e1ca0014b2018634133ba880"
+        }
+      ]
+    }
+  ],
+  "assertions": [
+    "Rootless runtime is verified before fixture creation; existing runtime project is refused.",
+    "Canonical initial HA SQL module qualifies only with all normal processes and supported actual successful init evidence.",
+    "Stopping one actual owned HA PostgreSQL member changes the complete module to unverifiable.",
+    "Restoring the selected member regains complete process/health inventory without replacing existing owner authority.",
+    "Approved isolated fixture cleanup succeeds on both engines."
+  ],
+  "completion_authority": "Docker: unique canonical exited container, exit=0, no native state error. Podman: such a container or verified current canonical loaded Quadlet unit and existing successful-exit authority; observed native failure is never overridden."
+}

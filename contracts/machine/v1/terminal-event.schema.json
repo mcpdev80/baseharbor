@@ -1,0 +1,111 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/mcpdev80/baseharbor/blob/HEAD/contracts/machine/v1/terminal-event.schema.json",
+  "title": "Bounded runtime terminal event",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract_version",
+    "stream_id",
+    "sequence",
+    "kind",
+    "occurred_at"
+  ],
+  "properties": {
+    "contract_version": {
+      "const": "v1"
+    },
+    "stream_id": {
+      "type": "string",
+      "pattern": "^stream_[0-9a-f]{32}$"
+    },
+    "sequence": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "kind": {
+      "enum": [
+        "terminal.ready",
+        "terminal.output",
+        "terminal.exit"
+      ]
+    },
+    "occurred_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "data": {
+      "type": "string",
+      "contentEncoding": "base64",
+      "maxLength": 21848
+    },
+    "exit_code": {
+      "type": "integer"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "terminal.output"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "data"
+        ],
+        "not": {
+          "required": [
+            "exit_code"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "terminal.exit"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "exit_code"
+        ],
+        "not": {
+          "required": [
+            "data"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "terminal.ready"
+          }
+        }
+      },
+      "then": {
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "data"
+              ]
+            },
+            {
+              "required": [
+                "exit_code"
+              ]
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

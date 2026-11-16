@@ -1,0 +1,142 @@
+/*
+ * BaseHarbor public documentation shell.
+ *
+ * Keep the site aligned with docs/brand while relying on MkDocs Material for
+ * responsive navigation behavior. The primary domain navigation lives in the
+ * left sidebar; horizontal navigation tabs are intentionally disabled.
+ */
+
+@font-face {
+  font-family: Inter;
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("../brand/fonts/inter-latin-wght-normal.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 100 800;
+  font-display: swap;
+  src: url("../brand/fonts/jetbrains-mono-latin-wght-normal.woff2") format("woff2");
+}
+
+:root,
+[data-md-color-primary] {
+  --md-primary-fg-color: var(--bh-harbor-navy);
+  --md-primary-fg-color--light: var(--bh-steel);
+  --md-primary-fg-color--dark: var(--bh-deep-navy);
+  --md-accent-fg-color: var(--bh-signal-blue);
+}
+
+[data-md-color-scheme="default"] {
+  --md-typeset-a-color: var(--bh-ocean-blue);
+}
+
+[data-md-color-scheme="slate"] {
+  --md-typeset-a-color: var(--bh-signal-blue);
+}
+
+body,
+input {
+  font-family: var(--bh-font-ui);
+}
+
+/* Use the supplied artwork unchanged; typography/colors come from brand tokens. */
+.bh-home-mark {
+  float: right;
+  width: min(45%, 22rem);
+  height: auto;
+  margin: 0 0 1.5rem 1.5rem;
+}
+
+.md-typeset:has(.bh-home-mark) h2 {
+  clear: both;
+}
+
+@media screen and (max-width: 44.9375em) {
+  .bh-home-mark {
+    float: none;
+    display: block;
+    width: min(100%, 22rem);
+    margin: 0 auto 1.5rem;
+  }
+}
+
+code,
+kbd,
+pre {
+  font-family: var(--bh-font-code);
+}
+
+.md-header {
+  background-color: var(--bh-harbor-navy);
+}
+
+/*
+ * Defensive guard: the v0.4.24 information architecture is sidebar-first.
+ * Even if navigation.tabs is accidentally re-enabled later, never render the
+ * domain list as an overflowing horizontal menu.
+ */
+.md-tabs {
+  display: none;
+}
+
+.md-nav__link--active {
+  font-weight: 700;
+}
+
+/* Keep long domain labels readable instead of forcing horizontal overflow. */
+.md-nav__link,
+.md-nav__title {
+  overflow-wrap: anywhere;
+}
+
+@media screen and (min-width: 76.25em) {
+  .md-sidebar--primary {
+    border-right: 1px solid color-mix(in srgb, currentColor 12%, transparent);
+  }
+
+  /* Material flattens section children on desktop; retain a visible tree. */
+  .md-nav--primary .md-nav__item--section > .md-nav__link {
+    margin-top: 1rem;
+    font-weight: 750;
+    color: var(--md-default-fg-color);
+  }
+
+  .md-nav--primary .md-nav__item--section > .md-nav > .md-nav__list {
+    margin-inline-start: 0.35rem;
+    padding-inline-start: 0.8rem;
+    border-inline-start: 2px solid var(--md-default-fg-color--lighter);
+  }
+}
+
+
+/*
+ * The supplied master lockup is the canonical BaseHarbor wordmark.
+ * Do not re-typeset the brand name next to it.
+ */
+.md-header__button.md-logo {
+  margin-right: 0.6rem;
+  padding: 0.2rem 0;
+}
+
+.md-header__button.md-logo img {
+  width: auto;
+  height: 2rem;
+  max-width: 11rem;
+  object-fit: contain;
+}
+
+/* Material would otherwise render a separately typeset "BaseHarbor" title. */
+.md-header__topic:first-child {
+  display: none;
+}
+
+@media screen and (max-width: 44.984375em) {
+  .md-header__button.md-logo img {
+    height: 1.75rem;
+    max-width: 9rem;
+  }
+}

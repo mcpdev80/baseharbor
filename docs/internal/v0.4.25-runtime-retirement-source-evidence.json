@@ -1,0 +1,173 @@
+{
+  "pre_release_ready": false,
+  "complete_native_acceptance": false,
+  "source_attempts": [
+    {
+      "source": {
+        "commit": "a4386364c4c44a6ed02dfd5970caadc6eeaf1ed5",
+        "tree": "fa7341dc7a90a80949b042215635d9e6a4cefb10",
+        "working_tree_changes": true
+      },
+      "jobs": 4,
+      "seconds": 65.457,
+      "race_packages": [
+        "./cmd/baha",
+        "./internal/application",
+        "./contracts"
+      ],
+      "checks": [
+        {
+          "name": "cli-build",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 15.365
+        },
+        {
+          "name": "docs-audit",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 0.306
+        },
+        {
+          "name": "docs-de",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 1.808
+        },
+        {
+          "name": "docs-en",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 1.709
+        },
+        {
+          "name": "go-race",
+          "status": "fail",
+          "exit_code": 1,
+          "seconds": 40.858
+        },
+        {
+          "name": "go-tests",
+          "status": "fail",
+          "exit_code": 1,
+          "seconds": 65.129
+        },
+        {
+          "name": "go-vet",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 14.718
+        },
+        {
+          "name": "readability",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 2.512
+        },
+        {
+          "name": "script-tests",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 2.808
+        }
+      ],
+      "native_runtime_qualified": false,
+      "pre_release_ready": false,
+      "qualification_id": "u_acgyq_",
+      "scope": "Source-only default local runtime retirement; native acceptance is separate. First failure is generated command-index drift, corrected in follow-up."
+    },
+    {
+      "source": {
+        "commit": "a4386364c4c44a6ed02dfd5970caadc6eeaf1ed5",
+        "tree": "c9a1a7ed3b4cf85ef5a5f433f8e875e10d8b91e3",
+        "working_tree_changes": true
+      },
+      "jobs": 4,
+      "seconds": 67.734,
+      "race_packages": [
+        "./cmd/baha",
+        "./internal/application",
+        "./contracts"
+      ],
+      "checks": [
+        {
+          "name": "cli-build",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 15.599
+        },
+        {
+          "name": "docs-audit",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 0.305
+        },
+        {
+          "name": "docs-de",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 2.111
+        },
+        {
+          "name": "docs-en",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 1.904
+        },
+        {
+          "name": "go-race",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 43.292
+        },
+        {
+          "name": "go-tests",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 67.293
+        },
+        {
+          "name": "go-vet",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 15.478
+        },
+        {
+          "name": "readability",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 2.612
+        },
+        {
+          "name": "script-tests",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 3.116
+        }
+      ],
+      "native_runtime_qualified": false,
+      "pre_release_ready": false,
+      "qualification_id": "y_w4v1h0",
+      "scope": "Source-only default local runtime retirement; native acceptance is separate. First failure is generated command-index drift, corrected in follow-up."
+    }
+  ],
+  "integration_parent": "7b46cef93a40a95f58af4954feb280b9fab2b92d",
+  "integration_checks": {
+    "targeted_go_tests": {
+      "cmd/baha_seconds": 2.39,
+      "internal/application_seconds": 1.655,
+      "contracts_seconds": 0.4,
+      "status": "PASS"
+    },
+    "vet_cmd_application": "PASS",
+    "cli_build": "PASS"
+  },
+  "remaining_scope": [
+    "New default destroy/re-add Docker and rootless Podman proof",
+    "Actual Identity OAuth shared last-consumer Caddy convergence",
+    "Universal provider function/material/access outcomes",
+    "Explicit owned data deletion and remote teardown consent/result parity",
+    "Supported provider change and secure handoff adapters",
+    "Exact final ecosystem/browser/remote matrix"
+  ]
+}

@@ -1,0 +1,121 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+runtime="${BASEHARBOR_TEST_RUNTIME:?runtime is required}"
+test "$(id -u)" -ne 0
+sudo apt-get update
+sudo apt-get install -y uidmap slirp4netns dbus-user-session
+sudo loginctl enable-linger "$(id -un)"
+export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
+sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+printf 'XDG_RUNTIME_DIR=%s\nDBUS_SESSION_BUS_ADDRESS=%s\n' "$XDG_RUNTIME_DIR" "$DBUS_SESSION_BUS_ADDRESS" >> "$GITHUB_ENV"
+
+# Only public image content is cached; native manifests remain digest-verified.
+cache_script="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/ci-public-image-cache.py"
+cache_endpoint="$RUNNER_TEMP/baseharbor-public-image-cache-$runtime.endpoint"
+python3 "$cache_script" --endpoint-file "$cache_endpoint" > "$RUNNER_TEMP/baseharbor-public-image-cache-$runtime.log" 2>&1 &
+for _ in $(seq 1 40); do
+  [ -s "$cache_endpoint" ] && break
+  sleep 0.25
+done
+test -s "$cache_endpoint"
+export BASEHARBOR_CI_PUBLIC_IMAGE_CACHE="$(cat "$cache_endpoint")"
+
+case "$runtime" in
+  docker)
+    if ! command -v dockerd-rootless-setuptool.sh >/dev/null; then
+      docker_engine_version="$(docker version --format '{{.Server.Version}}')"
+      sudo install -m 0755 -d /etc/apt/keyrings
+      sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+      sudo chmod a+r /etc/apt/keyrings/docker.asc
+      . /etc/os-release
+      printf 'Types: deb\nURIs: https://download.docker.com/linux/ubuntu\nSuites: %s\nComponents: stable\nArchitectures: %s\nSigned-By: /etc/apt/keyrings/docker.asc\n' "${UBUNTU_CODENAME:-$VERSION_CODENAME}" "$(dpkg --print-architecture)" | sudo tee /etc/apt/sources.list.d/docker.sources
+      sudo apt-get update
+      extras_version="$(apt-cache madison docker-ce-rootless-extras | awk -v wanted="$docker_engine_version" 'index($3, "5:" wanted "-")==1 && !found {print $3; found=1}')"
+      test -n "$extras_version"
+      sudo apt-get install -y "docker-ce-rootless-extras=$extras_version"
+    fi
+    command -v dockerd-rootless-setuptool.sh
+    # Cache public Docker Hub layers on this isolated rootless CI daemon.
+    # Docker still verifies requested content digests and falls back to origin.
+    python3 - <<'PY'
+import json, os
+from pathlib import Path
+config = Path(os.environ.get('XDG_CONFIG_HOME', str(Path.home() / '.config'))) / 'docker' / 'daemon.json'
+config.parent.mkdir(parents=True, exist_ok=True)
+settings = json.loads(config.read_text()) if config.exists() else {}
+mirrors = settings.get('registry-mirrors', [])
+added = ['https://mirror.gcr.io', os.environ['BASEHARBOR_CI_PUBLIC_IMAGE_CACHE']]
+settings['registry-mirrors'] = added + [v for v in mirrors if v not in added]
+config.write_text(json.dumps(settings) + '\n')
+PY
+    dockerd-rootless-setuptool.sh install --force
+    export DOCKER_HOST="unix://$XDG_RUNTIME_DIR/docker.sock"
+    # The setuptool activates its 'rootless' CLI context as a side effect. An
+    # active context beats DOCKER_HOST in the engine resolver, so neutralize
+    # it and let the published endpoint decide; $GITHUB_ENV mirrors both.
+    docker context use default
+    printf 'DOCKER_HOST=%s\nDOCKER_CONTEXT=\n' "$DOCKER_HOST" >> "$GITHUB_ENV"
+    docker info --format '{{json .SecurityOptions}}'
+    ;;
+  podman)
+    sudo apt-get install -y podman
+    journal_gid="$(getent group systemd-journal | cut -d: -f3)"
+    [[ "$journal_gid" =~ ^[0-9]+$ ]]
+    runner_user="$(id -un)"
+    # Rootless Podman needs the host journal GID explicitly available as a
+    # subordinate GID before the Alloy Quadlet can map that one group into its
+    # container namespace. Keep the grant to this single GID.
+    set +e
+    sudo awk -F: -v gid="$journal_gid" -v user="$runner_user" '
+      $2 ~ /^[0-9]+$/ && $3 ~ /^[0-9]+$/ && gid >= $2 && gid < $2 + $3 {
+        if ($1 == user) found = 1; else conflict = 1
+      }
+      END { if (conflict) exit 2; if (found) exit 0; exit 1 }
+    ' /etc/subgid
+    subgid_status=$?
+    set -e
+    if [ "$subgid_status" -eq 1 ]; then
+      printf '%s:%s:1\n' "$runner_user" "$journal_gid" | sudo tee -a /etc/subgid >/dev/null
+    elif [ "$subgid_status" -ne 0 ]; then
+      echo "systemd-journal GID $journal_gid is delegated to another user in /etc/subgid" >&2
+      exit 1
+    fi
+    printf 'BASEHARBOR_SYSTEMD_JOURNAL_GID=%s\n' "$journal_gid" >> "$GITHUB_ENV"
+    mkdir -p "$HOME/.config/containers/registries.conf.d"
+    cache_location="${BASEHARBOR_CI_PUBLIC_IMAGE_CACHE#http://}"
+    cat > "$HOME/.config/containers/registries.conf.d/99-baseharbor-ci-public-cache.conf" <<EOF
+[[registry]]
+prefix = "docker.io"
+location = "docker.io"
+[[registry.mirror]]
+location = "mirror.gcr.io"
+[[registry.mirror]]
+location = "$cache_location"
+insecure = true
+[[registry]]
+prefix = "docker.io/library"
+location = "docker.io/library"
+[[registry.mirror]]
+location = "mirror.gcr.io/library"
+[[registry.mirror]]
+location = "$cache_location/library"
+insecure = true
+EOF
+    podman info --format '{{.Host.Security.Rootless}}'
+    # Podman jobs must leave a resolvable Docker CLI context: the engine
+    # probe runs 'docker context show', which errors when the current-context
+    # pointer references a context that does not exist on this host. GH
+    # ubuntu-26.04 images pre-register a "ci" context; pin the pointer to the
+    # always-present "default" (the setuptool may also have activated a
+    # "rootless" context whose daemon is never started on this path).
+    docker context use default
+    # The podman path never starts a rootless dockerd, so the Docker engine
+    # prerequisite resolves through the host's System Docker: publish
+    # DOCKER_HOST explicitly (the resolver honours DOCKER_HOST over any CLI
+    # context) and keep DOCKER_CONTEXT neutral.
+    printf 'DOCKER_HOST=unix:///var/run/docker.sock\nDOCKER_CONTEXT=\n' >> "$GITHUB_ENV"
+    ;;
+  *) echo "unsupported Core qualification runtime" >&2; exit 2 ;;
+esac

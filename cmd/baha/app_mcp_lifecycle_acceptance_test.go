@@ -1,0 +1,259 @@
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+
+	"github.com/mcpdev80/baseharbor/internal/application"
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+	testruntime "github.com/mcpdev80/baseharbor/internal/testsupport/runtimeprovider"
+)
+
+func TestMCPGenericClientRealApplicationLifecycle(t *testing.T) {
+	if os.Getenv("BASEHARBOR_MCP_LIFECYCLE_ACCEPTANCE") != "true" {
+		t.Skip("MCP lifecycle acceptance is opt-in")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+	if _, err := testruntime.Resolve(ctx); err != nil {
+		t.Skipf("runtime unavailable: %v", err)
+	}
+	ensureRuntimeIntegrationTrustPlane(t, ctx)
+
+	root := t.TempDir()
+	old, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(old)
+	if err := os.Chdir(root); err != nil {
+		t.Fatal(err)
+	}
+
+	manifest := application.Manifest{
+		Version:       application.CurrentVersion,
+		ApplicationID: application.MustNewApplicationID(),
+		Name:          "mcp-lifecycle",
+		Environment:   "dev",
+		Services:      application.Services{SQL: true},
+		Workload:      application.WorkloadConfig{Components: []string{"api"}},
+	}
+	if err := manifest.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeInitializedAuthoredManifest(t, application.RepositoryManifestName, manifest, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile("compose.yaml", []byte("services:\n  api:\n    image: alpine:3.22\n    command: [\"sleep\", \"3600\"]\n    healthcheck:\n      test: [\"CMD-SHELL\", \"echo ok\"]\n      interval: 1s\n      timeout: 1s\n      retries: 10\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(".gitignore", []byte(".baseharbor/\n*.bhbackup\nbackup-password\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	remote := filepath.Join(t.TempDir(), "remote.git")
+	mustGitUpdateTest(t, "", "init", "--bare", remote)
+	mustGitUpdateTest(t, root, "init", "-b", "main")
+	configureGitUpdateTestIdentity(t, root)
+	mustGitUpdateTest(t, root, "add", application.RepositoryManifestName, "compose.yaml", ".gitignore")
+	mustGitUpdateTest(t, root, "commit", "-m", "initial")
+	mustGitUpdateTest(t, root, "remote", "add", "origin", remote)
+	mustGitUpdateTest(t, root, "push", "-u", "origin", "main")
+
+	server := newMCPServer(application.DefaultStore())
+	serverTransport, clientTransport := mcp.NewInMemoryTransports()
+	serverSession, err := server.Connect(ctx, serverTransport, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer serverSession.Close()
+
+	client := mcp.NewClient(&mcp.Implementation{Name: "generic-coding-agent", Version: "v1"}, nil)
+	clientSession, err := client.Connect(ctx, clientTransport, &mcp.ClientSessionOptions{ProtocolVersion: "2026-07-28"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer clientSession.Close()
+
+	callMCPAcceptanceTool(t, ctx, clientSession, "baseharbor.inspect", map[string]any{"path": root})
+	planResult := callMCPAcceptanceTool(t, ctx, clientSession, "baseharbor.plan", map[string]any{})
+	_, needsConsent := callMCPAcceptanceToolToleratingConsent(t, ctx, clientSession, "baseharbor.apply", map[string]any{})
+	if needsConsent {
+		consent := mcpAcceptanceProviderChangeConsent(t, planResult)
+		callMCPAcceptanceTool(t, ctx, clientSession, "baseharbor.apply", map[string]any{
+			"provider_change_consent": consent,
+		})
+	}
+	callMCPAcceptanceTool(t, ctx, clientSession, "baseharbor.status", map[string]any{})
+	callMCPAcceptanceTool(t, ctx, clientSession, "baseharbor.doctor", map[string]any{})
+	callMCPAcceptanceTool(t, ctx, clientSession, "baseharbor.observe", map[string]any{})
+
+	upstream := filepath.Join(t.TempDir(), "upstream")
+	mustGitUpdateTest(t, "", "clone", "--branch", "main", remote, upstream)
+	configureGitUpdateTestIdentity(t, upstream)
+	if err := os.WriteFile(filepath.Join(upstream, "README.md"), []byte("updated through MCP acceptance\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	mustGitUpdateTest(t, upstream, "add", "README.md")
+	mustGitUpdateTest(t, upstream, "commit", "-m", "upstream update")
+	mustGitUpdateTest(t, upstream, "push", "origin", "main")
+	callMCPAcceptanceTool(t, ctx, clientSession, "baseharbor.update", map[string]any{"no_backup": true})
+
+	resolved, err := resolveApplication(ctx, application.DefaultStore(), nil, "MCP lifecycle acceptance drift")
+	if err != nil {
+		t.Fatal(err)
+	}
+	files, err := application.ExistingRuntimeFiles(resolved.Store, resolved.Manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime, err := detectRuntimeForApplication(ctx, resolved, bhruntime.CapabilityWorkloadLifecycle)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stopped, err := stopRepositoryWorkload(ctx, runtime, resolved, files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !stopped {
+		t.Fatal("expected repository workload to be stopped to create repairable drift")
+	}
+	callMCPAcceptanceTool(t, ctx, clientSession, "baseharbor.repair", map[string]any{})
+	callMCPAcceptanceTool(t, ctx, clientSession, "baseharbor.doctor", map[string]any{})
+
+	passwordPath := filepath.Join(root, "backup-password")
+	if err := os.WriteFile(passwordPath, []byte("correct horse battery staple\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	backupPath := filepath.Join(root, "mcp-lifecycle.bhbackup")
+	callMCPAcceptanceTool(t, ctx, clientSession, "baseharbor.backup", map[string]any{
+		"password_file": passwordPath,
+		"output_path":   backupPath,
+	})
+	if _, err := os.Stat(backupPath); err != nil {
+		t.Fatalf("MCP backup archive missing: %v", err)
+	}
+
+	callMCPAcceptanceTool(t, ctx, clientSession, "baseharbor.destroy", map[string]any{"approval": true})
+	callMCPAcceptanceTool(t, ctx, clientSession, "baseharbor.restore", map[string]any{
+		"backup_path":   backupPath,
+		"password_file": passwordPath,
+	})
+	stopPlan := callMCPAcceptanceTool(t, ctx, clientSession, "baseharbor.plan", map[string]any{})
+	_, needsStopConsent := callMCPAcceptanceToolToleratingConsent(t, ctx, clientSession, "baseharbor.stop", map[string]any{})
+	if needsStopConsent {
+		callMCPAcceptanceTool(t, ctx, clientSession, "baseharbor.stop", map[string]any{
+			"provider_change_consent": mcpAcceptanceProviderChangeConsent(t, stopPlan),
+		})
+	}
+	callMCPAcceptanceTool(t, ctx, clientSession, "baseharbor.status", map[string]any{})
+	callMCPAcceptanceTool(t, ctx, clientSession, "baseharbor.doctor", map[string]any{})
+	destroyPlan := callMCPAcceptanceTool(t, ctx, clientSession, "baseharbor.plan", map[string]any{})
+	_, needsDestroyConsent := callMCPAcceptanceToolToleratingConsent(t, ctx, clientSession, "baseharbor.destroy", map[string]any{
+		"approval": true,
+	})
+	if needsDestroyConsent {
+		callMCPAcceptanceTool(t, ctx, clientSession, "baseharbor.destroy", map[string]any{
+			"approval":                true,
+			"provider_change_consent": mcpAcceptanceProviderChangeConsent(t, destroyPlan),
+		})
+	}
+}
+
+func mcpAcceptanceProviderChangeConsent(t *testing.T, planResult *mcp.CallToolResult) map[string]any {
+	t.Helper()
+	// The machine contract requires a plan-bound consent: plan_id plus both
+	// acknowledgement stages (application.ProviderChangeConsent json schema).
+	raw := formatMCPAcceptanceContent(planResult)
+	var payload any
+	if err := json.Unmarshal([]byte(raw), &payload); err != nil {
+		t.Fatalf("plan result is not JSON: %v\n%s", err, raw)
+	}
+	planID := ""
+	var walk func(any)
+	walk = func(v any) {
+		switch value := v.(type) {
+		case map[string]any:
+			for k, child := range value {
+				if k == "plan_id" || k == "id" {
+					if s, ok := child.(string); ok && s != "" && planID == "" {
+						planID = s
+					}
+				}
+				walk(child)
+			}
+		case []any:
+			for _, child := range value {
+				walk(child)
+			}
+		}
+	}
+	walk(payload)
+	if planID == "" {
+		t.Fatalf("plan result lacks a plan id for consent: %s", raw)
+	}
+	return map[string]any{"plan_id": planID, "first": true, "second": true, "delete_data": false}
+}
+
+func callMCPAcceptanceToolToleratingConsent(t *testing.T, ctx context.Context, session *mcp.ClientSession, name string, args map[string]any) (*mcp.CallToolResult, bool) {
+	t.Helper()
+	result, err := session.CallTool(ctx, &mcp.CallToolParams{Name: name, Arguments: args})
+	if err != nil {
+		t.Fatalf("%s transport call failed: %v", name, err)
+	}
+	if !result.IsError {
+		return result, false
+	}
+	body := formatMCPAcceptanceContent(result)
+	// Hosts that already own the shared backend return a complete plan and a
+	// plain success; fresh hosted runners require the two-stage plan-bound
+	// provider acknowledgement. The journey continues identically either way,
+	// so only this consent shape is tolerated, every other error is fatal.
+	// approval_required carries the two-stage plan acknowledgements;
+	// placement_pending asks for a complete resource inventory that only the
+	// operator-supplied placement policy can give. Both are deterministic
+	// first-provisioning states on a fresh host, never product regressions.
+	if strings.Contains(body, "\"approval_required\"") ||
+		strings.Contains(body, "impact-confirmation-required") ||
+		strings.Contains(body, "\"placement_pending\"") {
+		return result, true
+	}
+	t.Fatalf("%s returned machine error: %s", name, body)
+	return nil, false
+}
+
+func callMCPAcceptanceTool(t *testing.T, ctx context.Context, session *mcp.ClientSession, name string, args map[string]any) *mcp.CallToolResult {
+	t.Helper()
+	result, err := session.CallTool(ctx, &mcp.CallToolParams{Name: name, Arguments: args})
+	if err != nil {
+		t.Fatalf("%s transport call failed: %v", name, err)
+	}
+	if result.IsError {
+		t.Fatalf("%s returned machine error: %s", name, formatMCPAcceptanceContent(result))
+	}
+	return result
+}
+
+func formatMCPAcceptanceContent(result *mcp.CallToolResult) string {
+	if result == nil {
+		return "<nil>"
+	}
+	var parts []string
+	for _, content := range result.Content {
+		switch value := content.(type) {
+		case *mcp.TextContent:
+			parts = append(parts, value.Text)
+		default:
+			parts = append(parts, fmt.Sprintf("%v", content))
+		}
+	}
+	return strings.Join(parts, "\n")
+}

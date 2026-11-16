@@ -1,0 +1,84 @@
+{
+  "source": {
+    "commit": "48cc8fd5442a7a72644c6660602800ff25569e26",
+    "tree": "09a8a33c4f548bc22cf6d91dfa191dd96a08d781",
+    "working_tree_changes": true
+  },
+  "jobs": 4,
+  "seconds": 68.127,
+  "race_packages": [
+    "./cmd/baha",
+    "./internal/runtimeexplorer",
+    "./internal/providers/runtime/podman",
+    "./contracts"
+  ],
+  "checks": [
+    {
+      "name": "cli-build",
+      "status": "pass",
+      "exit_code": 0,
+      "seconds": 15.095,
+      "log": "cli-build.log"
+    },
+    {
+      "name": "docs-audit",
+      "status": "pass",
+      "exit_code": 0,
+      "seconds": 0.302,
+      "log": "docs-audit.log"
+    },
+    {
+      "name": "docs-de",
+      "status": "pass",
+      "exit_code": 0,
+      "seconds": 1.807,
+      "log": "docs-de.log"
+    },
+    {
+      "name": "docs-en",
+      "status": "pass",
+      "exit_code": 0,
+      "seconds": 1.908,
+      "log": "docs-en.log"
+    },
+    {
+      "name": "go-race",
+      "status": "pass",
+      "exit_code": 0,
+      "seconds": 42.811,
+      "log": "go-race.log"
+    },
+    {
+      "name": "go-tests",
+      "status": "pass",
+      "exit_code": 0,
+      "seconds": 67.679,
+      "log": "go-tests.log"
+    },
+    {
+      "name": "go-vet",
+      "status": "pass",
+      "exit_code": 0,
+      "seconds": 15.414,
+      "log": "go-vet.log"
+    },
+    {
+      "name": "readability",
+      "status": "pass",
+      "exit_code": 0,
+      "seconds": 3.209,
+      "log": "readability.log"
+    },
+    {
+      "name": "script-tests",
+      "status": "pass",
+      "exit_code": 0,
+      "seconds": 3.413,
+      "log": "script-tests.log"
+    }
+  ],
+  "native_runtime_qualified": false,
+  "pre_release_ready": false,
+  "qualification_id": "f6b62d_w",
+  "scope": "Existing Quadlet owner-backed Runtime Explorer identity and supervised lifecycle. Source qualification only; native runtime and ecosystem acceptance remain pending. EN/DE opaque-ID paragraphs added after snapshot and strict builds passed separately."
+}

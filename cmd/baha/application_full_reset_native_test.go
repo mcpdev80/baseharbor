@@ -1,0 +1,202 @@
+package main
+
+import (
+	"bytes"
+	"context"
+	"crypto/sha256"
+	"encoding/json"
+	"errors"
+	"io"
+	"os"
+	"reflect"
+	"sort"
+	"testing"
+	"time"
+
+	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/applicationlifecycle"
+	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/deployment"
+	"github.com/mcpdev80/baseharbor/internal/machine"
+)
+
+func TestApplicationFullResetRequiresNativeCurrentScopeAndDeletesSelectedData(t *testing.T) {
+	if os.Getenv("BASEHARBOR_APP_FULL_RESET_ACCEPTANCE") != "1" {
+		t.Skip("requires isolated native application reset acceptance")
+	}
+	ctx, cancel := context.WithTimeout(machineNoninteractiveContext(context.Background()), 8*time.Minute)
+	defer cancel()
+	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
+	t.Setenv(application.ProviderScopeEnv(capability.ProviderPostgreSQL), "application")
+	target := configureTestTarget(t)
+	if os.Getenv("BASEHARBOR_TEST_RUNTIME") == "podman" {
+		cfg, err := deployment.LoadConfig()
+		if err != nil {
+			t.Fatal(err)
+		}
+		entry := cfg.Targets[target.Name]
+		entry.Runtime.Provider = "podman"
+		cfg.Targets[target.Name] = entry
+		if err := cfg.Save(); err != nil {
+			t.Fatal(err)
+		}
+		target, err = cfg.ResolveTarget("", "")
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	provider, err := detectRuntimeForTarget(ctx, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertCorelessHost(t, ctx, provider, target)
+	t.Chdir(t.TempDir())
+	if err := os.WriteFile("compose.yaml", []byte(corelessHTTPWorkload), 0600); err != nil {
+		t.Fatal(err)
+	}
+	source := []byte("version: 1\napp:\n  name: reset-owned\n  environment: dev\nservices:\n  sql: true\n")
+	if err := os.WriteFile("baseharbor.yaml", source, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := runWithIO(ctx, []string{"app", "init", "--quick", "--json"}, io.Discard, io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	applySelectiveIdentityIntent(t, ctx)
+	r, err := resolveApplication(ctx, application.Store{}, nil, "destroy")
+	if err != nil {
+		t.Fatal(err)
+	}
+	files, _, expected, err := nativeBackendInventory(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var credentialDigest [32]byte
+	inventory := application.SharedBackendInventory{Files: application.SharedBackendFiles{Project: files.Project, Compose: files.Compose, Env: files.Env}, Services: map[capability.ProviderKind][]string{capability.ProviderPostgreSQL: {"postgres"}}}
+	qualifySelectedBackendData(t, ctx, provider, r, inventory, "sql", 0, &credentialDigest)
+	complete := false
+	t.Cleanup(func() {
+		if complete {
+			return
+		}
+		cleanup, cancel := context.WithTimeout(machineNoninteractiveContext(context.Background()), 2*time.Minute)
+		defer cancel()
+		if err := destroySelectiveApplicationWithConsent(cleanup); err != nil {
+			t.Errorf("isolated reset fixture cleanup: %v", err)
+		}
+	})
+	p, err := buildApplicationDestructionPlan(ctx, r, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, ack := range []*application.ProviderChangeConsent{nil, {PlanID: p.Scope.PlanID, First: true}, {PlanID: p.Scope.PlanID, First: true, Second: true}} {
+		err := runWithIO(withProviderChangeConsent(ctx, ack), []string{"app", "destroy", "--yes", "--full-reset", "--json"}, io.Discard, io.Discard)
+		var failure *machine.Error
+		if !errors.As(err, &failure) || failure.Details == nil {
+			t.Fatal("native reset bypassed required scope or separate data consent", err)
+		}
+		qualifySelectedBackendData(t, ctx, provider, r, inventory, "sql", 2, &credentialDigest)
+	}
+	// A failed consent attempt cannot mutate the owner or invalidate its plan.
+	fresh, err := buildApplicationDestructionPlan(ctx, r, true)
+	if err != nil || fresh.Scope.PlanID != p.Scope.PlanID {
+		if err == nil {
+			t.Logf("unchanged reset scope: owner revision changed=%t provider impact changed=%t", fresh.Scope.Owner.Revision != p.Scope.Owner.Revision, fresh.Providers.Impact.PlanID != p.Providers.Impact.PlanID)
+			t.Logf("changed redacted provider plan field paths: %v", changedResetMetadataPaths(p.Providers.Impact, fresh.Providers.Impact))
+			for i, before := range p.Providers.Impact.Impacts {
+				if i >= len(fresh.Providers.Impact.Impacts) {
+					break
+				}
+				for j, material := range before.Materials {
+					if j >= len(fresh.Providers.Impact.Impacts[i].Materials) {
+						break
+					}
+					after := fresh.Providers.Impact.Impacts[i].Materials[j]
+					if material.Before.Evidence != after.Before.Evidence {
+						t.Logf("changed protected material metadata: id=%s before=%s after=%s", material.Before.ID, material.Before.Evidence, after.Before.Evidence)
+					}
+				}
+			}
+		}
+		t.Fatal("refused consent mutated reset scope", err)
+	}
+	ack := &application.ProviderChangeConsent{PlanID: fresh.Scope.PlanID, First: true, Second: true, DeleteData: true}
+	var output bytes.Buffer
+	if err := runWithIO(withProviderChangeConsent(ctx, ack), []string{"app", "destroy", "--yes", "--full-reset", "--json"}, &output, io.Discard); err != nil {
+		t.Fatal("explicit native reset failed", err)
+	}
+	actual, err := provider.InspectProjectResources(ctx, files.Project, expected)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, resource := range actual {
+		if resource.Kind == "container" || resource.Kind == "volume" {
+			t.Fatal("selected native reset retained owned runtime/data")
+		}
+	}
+	if _, err := deployment.LoadDeploymentRecord(r.DeploymentIdentity); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("verified reset retained selected deployment owner", err)
+	}
+	data, err := os.ReadFile("baseharbor.yaml")
+	if err != nil || sha256.Sum256(data) != sha256.Sum256(source) {
+		t.Fatal("reset changed authored source")
+	}
+	// Actual cleanup has been observed; a result-format failure must not try
+	// to destroy an already removed owner during emergency fixture cleanup.
+	complete = true
+	var result applicationlifecycle.Result
+	if err := json.Unmarshal(output.Bytes(), &result); err != nil || result.ContractVersion != machine.ContractVersion || result.Operation != "destroy" || result.State != "destroyed" || !result.Verified || result.DataDeleted == nil || !*result.DataDeleted {
+		t.Fatal("native reset lacks structured data deletion result")
+	}
+	t.Log("actual native application full reset: missing/one/two acknowledgements without separate data consent preserved original TLS-authenticated SQL; current outer scope plus separate consent removed selected native data and deployment owner while preserving authored source")
+}
+
+// Both inputs are already redacted public impact metadata. Report only field
+// paths, never values or raw runtime diagnostics. Derived IDs are not causes.
+func changedResetMetadataPaths(before, after any) []string {
+	decode := func(value any) any {
+		raw, _ := json.Marshal(value)
+		var tree any
+		_ = json.Unmarshal(raw, &tree)
+		return tree
+	}
+	changed := []string{}
+	var visit func(any, any, string)
+	visit = func(a, b any, prefix string) {
+		if len(changed) >= 32 || reflect.DeepEqual(a, b) {
+			return
+		}
+		if left, ok := a.(map[string]any); ok {
+			if right, ok := b.(map[string]any); ok {
+				keys := map[string]bool{}
+				for key := range left {
+					keys[key] = true
+				}
+				for key := range right {
+					keys[key] = true
+				}
+				ordered := []string{}
+				for key := range keys {
+					ordered = append(ordered, key)
+				}
+				sort.Strings(ordered)
+				for _, key := range ordered {
+					if key != "plan_id" && key != "revision" {
+						visit(left[key], right[key], prefix+"."+key)
+					}
+				}
+				return
+			}
+		}
+		if left, ok := a.([]any); ok {
+			if right, ok := b.([]any); ok && len(left) == len(right) {
+				for i := range left {
+					visit(left[i], right[i], prefix+"[]")
+				}
+				return
+			}
+		}
+		changed = append(changed, prefix)
+	}
+	visit(decode(before), decode(after), "impact")
+	return changed
+}

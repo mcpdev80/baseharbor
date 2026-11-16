@@ -1,0 +1,96 @@
+{
+  "version": "baseharbor.v0425.core-material-evidence/v1",
+  "pre_release_ready": false,
+  "source": {
+    "commit": "1abeea91632a37dd4d6139ac86ac9b469270f67f",
+    "tree": "cccd80794f3465a5db5f48d42d6a69dd6e2cb77b"
+  },
+  "implementation": [
+    "Observe existing protected files only for the canonical shared OpenBao module and its exact ancillary PostgreSQL backing owner.",
+    "Use the existing ProviderMaterial observation and applicationImpactFileRevision; no new registry, resolver, persistence owner, credentials or certificates.",
+    "Same-size/same-mtime protected material changes invalidate the content revision. No secret values or individual file-content digests enter the result.",
+    "Unrelated SQL, unsupported separate OpenBao placement and altered canonical Core definitions cannot acquire this material authority.",
+    "File retention remains recovery evidence; provider realization and all-consumer delivery/lease/login/renewal are not promoted to complete by this observation."
+  ],
+  "local": {
+    "go": "go1.26.0 linux/amd64",
+    "binary_sha256": "58e0aec184a3526548bbf06c50cb75e7071c0ab7697bc63a674362b28023c2ba",
+    "checks": [
+      {
+        "check": "go-test-all",
+        "exit_code": 0,
+        "outcome": "success"
+      },
+      {
+        "check": "go-vet-all",
+        "exit_code": 0,
+        "outcome": "success"
+      },
+      {
+        "check": "cli-build",
+        "exit_code": 0,
+        "outcome": "success"
+      },
+      {
+        "check": "cmd-baha-application-race",
+        "exit_code": 0,
+        "outcome": "success"
+      },
+      {
+        "check": "gofmt-diff",
+        "exit_code": 0,
+        "outcome": "success"
+      },
+      {
+        "check": "source-readability",
+        "exit_code": 0,
+        "outcome": "success"
+      }
+    ],
+    "docs": "No public documentation or contract-type change in product increment; earlier EN/DE candidate documentation and parity qualification retain their own exact source."
+  },
+  "native": {
+    "run_id": 38357410374,
+    "attempt": 1,
+    "commit": "1abeea91632a37dd4d6139ac86ac9b469270f67f",
+    "outcome": "success",
+    "test": "TestSharedSecretsRuntimePreservesSiblingAndRetiresLastConsumer",
+    "jobs": [
+      {
+        "runtime": "docker",
+        "job_id": 115163397549,
+        "outcome": "success",
+        "seconds": 366.16,
+        "artifact_id": 11793381654,
+        "artifact_sha256": "7f264cb1a4f61d3c388f045f2b22283b839fb61d729f92e8374445456e0e7bca"
+      },
+      {
+        "runtime": "podman",
+        "job_id": 115163397758,
+        "outcome": "success",
+        "seconds": 329.78,
+        "artifact_id": 11793931180,
+        "artifact_sha256": "adf700a50a2cf3e8f6fbd94bc0f67bcc75eac728ede5aa7cdadc125e0edc198e"
+      }
+    ],
+    "complete_test_logs_reviewed": true,
+    "verified_assertions": [
+      "Fresh Core/total inventory 0/0.",
+      "First consumer withdrawal preserves sibling readiness, owned broker and access to original unchanged secret.",
+      "Actual last-consumer withdrawal converges runtime to two workloads and retains one observed owned data volume.",
+      "Default runtime retirement retains canonical recovery owner, archived live intent and original protected ENV.",
+      "Same application/deployment identity reactivates and reads the original secret; no reseeding, rotation or plaintext disclosure.",
+      "Both tests and fixture cleanup pass."
+    ],
+    "phase_count_boundary": "The phase counters are sampled before last sibling withdrawal; provider counts there are not absence assertions. Last-consumer absence is asserted separately.",
+    "other_gates": "All unselected jobs skipped; not final ecosystem acceptance."
+  },
+  "remaining": [
+    "Management/Console actual Core-Identity sharing-boundary core and module owner must be projected independently of all application shared Keycloak instances; current resolveApplicationProviderPlanFromSnapshot roots over shared registry kinds are insufficient.",
+    "Complete direct/transitive functions, data/access/renewal consequences and actual consumer actions for all providers/Targets.",
+    "Deliberately confirmed Core destroy/all-target data deletion and protected retry.",
+    "Supported provider replacement and verified secure material/authentication handoffs.",
+    "Real Core HTTP, current Node enrollment/outbound mTLS/renewal/revocation/remote preservation and authenticated Console browser journeys.",
+    "Final immutable ecosystem matrix and canonical readiness audit."
+  ]
+}

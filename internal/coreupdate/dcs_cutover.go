@@ -1,0 +1,241 @@
+package coreupdate
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+)
+
+// DCSCutoverOps separates old-cluster fencing, isolated snapshot activation,
+// and new-cluster/Patroni readiness. Each method must be an idempotent native
+// RuntimeProvider action; no Compose project-wide stop is allowed.
+type DCSCutoverOps interface {
+	FenceOldDCS(context.Context) error
+	VerifyFenced(context.Context) error
+	ActivateIsolated(context.Context, DCSRecoveryEvidence) error
+	VerifyNewQuorum(context.Context, DCSRecoveryEvidence) error
+	VerifyPatroniDCS(context.Context) error
+	CommitCutover(context.Context, DCSRecoveryEvidence) error
+}
+
+// DCSCutoverJournal stores the last durable phase in a protected Core state
+// directory. A failed or ambiguous phase remains fenced and MUST NOT restore
+// the previous DCS automatically, avoiding concurrent DCS primaries.
+type DCSCutoverJournal struct {
+	Path    string
+	binding string
+}
+
+func (j DCSCutoverJournal) load() (string, error) {
+	if j.Path == "" {
+		return "", errors.New("durable DCS cutover journal path required")
+	}
+	st, err := os.Lstat(j.Path)
+	if errors.Is(err, os.ErrNotExist) {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	if !st.Mode().IsRegular() || st.Mode().Perm()&0077 != 0 || st.Size() > 160 {
+		return "", errors.New("unsafe DCS cutover journal")
+	}
+	data, err := os.ReadFile(j.Path)
+	if err != nil {
+		return "", err
+	}
+	fields := strings.Fields(string(data))
+	if len(fields) != 2 || len(fields[1]) != 64 {
+		return "", errors.New("unbound DCS cutover receipt")
+	}
+	if _, err := hex.DecodeString(fields[1]); err != nil {
+		return "", err
+	}
+	if j.binding != "" && fields[1] != j.binding {
+		return "", errors.New("DCS recovery identity changed on resume")
+	}
+	switch state := fields[0]; state {
+	case "prepared", "fenced", "activated", "verified", "committed":
+		return state, nil
+	default:
+		return "", errors.New("corrupt or unknown DCS cutover state")
+	}
+}
+func (j DCSCutoverJournal) record(previous, next string) error {
+	if j.Path == "" || j.binding == "" {
+		return errors.New("durable identity-bound DCS cutover journal required")
+	}
+	dir := filepath.Dir(j.Path)
+	info, err := os.Lstat(dir)
+	if err != nil {
+		return err
+	}
+	if !info.IsDir() || info.Mode().Perm()&0077 != 0 {
+		return errors.New("DCS cutover journal directory not private")
+	}
+	observed, err := j.load()
+	if err != nil {
+		return err
+	}
+	if observed != previous {
+		return errors.New("DCS cutover phase changed unexpectedly")
+	}
+	tmp, err := os.CreateTemp(dir, ".dcs-cutover-")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(tmp.Name())
+	if err = tmp.Chmod(0600); err != nil {
+		tmp.Close()
+		return err
+	}
+	if _, err = tmp.WriteString(next + " " + j.binding + "\n"); err == nil {
+		err = tmp.Sync()
+	}
+	closeErr := tmp.Close()
+	if err != nil {
+		return err
+	}
+	if closeErr != nil {
+		return closeErr
+	}
+	if err = os.Rename(tmp.Name(), j.Path); err != nil {
+		return err
+	}
+	handle, err := os.Open(dir)
+	if err != nil {
+		return err
+	}
+	defer handle.Close()
+	return handle.Sync()
+}
+
+// dcsCutoverBinding uses unambiguous NUL separators. The prior literal
+// backslash-x-zero-zero separator could collide with user-controlled names.
+func dcsCutoverBinding(evidence DCSRecoveryEvidence) (string, error) {
+	fields := []string{evidence.Installation, evidence.Target, evidence.Cluster, evidence.Release, evidence.SnapshotID, evidence.SHA256}
+	for _, field := range fields {
+		if field == "" || strings.ContainsRune(field, '\x00') {
+			return "", errors.New("invalid DCS cutover identity field")
+		}
+	}
+	digest := sha256.Sum256([]byte(strings.Join(fields, "\x00")))
+	return hex.EncodeToString(digest[:]), nil
+}
+
+// RunVerifiedDCSCutover MUST only run after PostgreSQL physical recovery and
+// immutable DCS snapshot validation. A resumed 'prepared' state is ambiguous:
+// an interrupted fence may already be active, so require operator recovery.
+// A resumed 'fenced' state cannot activate without observed fencing.
+func RunVerifiedDCSCutover(ctx context.Context, adapter DCSRecoveryAdapter, evidence DCSRecoveryEvidence, installation, target, cluster, release string, ops DCSCutoverOps, journal DCSCutoverJournal) error {
+	if ops == nil {
+		return ErrDCSUnsupported
+	}
+	if err := validateDCSEvidence(ctx, adapter, evidence, installation, target, cluster, release); err != nil {
+		return err
+	}
+	binding, err := dcsCutoverBinding(evidence)
+	if err != nil {
+		return err
+	}
+	journal.binding = binding
+	// Validate the private, non-symlink parent before creating even the
+	// exclusive lock. A writable foreign directory is not a safe lock root.
+	if journal.Path == "" {
+		return errors.New("durable DCS cutover journal path required")
+	}
+	parent, parentErr := os.Lstat(filepath.Dir(journal.Path))
+	if parentErr != nil {
+		return parentErr
+	}
+	if !parent.IsDir() || parent.Mode().Perm()&0077 != 0 {
+		return errors.New("DCS cutover lock directory must be owner-only")
+	}
+	lock, lockErr := os.OpenFile(journal.Path+".lock", os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	if lockErr != nil {
+		return fmt.Errorf("exclusive DCS cutover lock unavailable: %w", lockErr)
+	}
+	if err := lock.Close(); err != nil {
+		return err
+	}
+	defer os.Remove(journal.Path + ".lock")
+	phase, err := journal.load()
+	if err != nil {
+		return err
+	}
+	// The previous invocation may have completed CommitCutover before its
+	// committed receipt reached disk. Never blindly repeat that action.
+	if phase == "verified" {
+		return errors.New("UNSUPPORTED: interrupted DCS commit requires operator reconciliation before replay")
+	}
+	if phase == "" {
+		if err := adapter.VerifyRestorable(ctx, evidence); err != nil {
+			return fmt.Errorf("isolated DCS recovery proof before fencing: %w", err)
+		}
+		if err := journal.record("", "prepared"); err != nil {
+			return err
+		}
+		// Prepare phase is journaled BEFORE an old-cluster fence.
+		if err := ops.FenceOldDCS(ctx); err != nil {
+			return fmt.Errorf("old DCS fence outcome ambiguous: %w", err)
+		}
+		if err := ops.VerifyFenced(ctx); err != nil {
+			return fmt.Errorf("old DCS fence not proven: %w", err)
+		}
+		if err := journal.record("prepared", "fenced"); err != nil {
+			return err
+		}
+		phase = "fenced"
+	} else if phase == "prepared" {
+		return errors.New("UNSUPPORTED: interrupted DCS fencing requires operator verification; refusing automatic dual-primary cutover")
+	}
+	if phase == "committed" {
+		// A completed cutover must validate the active cluster, not require
+		// obsolete fencing state from the already retired old cluster.
+		if err := ops.VerifyNewQuorum(ctx, evidence); err != nil {
+			return fmt.Errorf("committed DCS quorum no longer healthy: %w", err)
+		}
+		return ops.VerifyPatroniDCS(ctx)
+	}
+	if err := ops.VerifyFenced(ctx); err != nil {
+		return fmt.Errorf("DCS fence evidence lost: %w", err)
+	}
+	if phase == "fenced" {
+		// After fencing the old cluster, restore and activate only the isolated,
+		// previously validated snapshot. On failure the old cluster stays fenced.
+		if err := ops.ActivateIsolated(ctx, evidence); err != nil {
+			return fmt.Errorf("isolated DCS activation interrupted: %w", err)
+		}
+		if err := journal.record("fenced", "activated"); err != nil {
+			return err
+		}
+		phase = "activated"
+	}
+	if err := ops.VerifyNewQuorum(ctx, evidence); err != nil {
+		return fmt.Errorf("new DCS quorum is unverified: %w", err)
+	}
+	if err := ops.VerifyPatroniDCS(ctx); err != nil {
+		return fmt.Errorf("Patroni DCS readiness unverified: %w", err)
+	}
+	if phase == "activated" {
+		if err := journal.record("activated", "verified"); err != nil {
+			return err
+		}
+		phase = "verified"
+	}
+	if phase == "verified" {
+		if err := ops.CommitCutover(ctx, evidence); err != nil {
+			return err
+		}
+		return journal.record("verified", "committed")
+	}
+	if phase != "committed" {
+		return fmt.Errorf("unsupported DCS phase %s", phase)
+	}
+	return nil
+}

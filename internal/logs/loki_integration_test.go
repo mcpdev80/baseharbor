@@ -1,0 +1,153 @@
+package logs_test
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/logs"
+	"github.com/mcpdev80/baseharbor/internal/objectstorage"
+	"github.com/mcpdev80/baseharbor/internal/testsupport/containersecurity"
+	testruntime "github.com/mcpdev80/baseharbor/internal/testsupport/runtimeprovider"
+	"github.com/mcpdev80/baseharbor/internal/testsupport/serviceissuer"
+)
+
+func TestManagedLokiIngestsRealComposeWorkloadLogs(t *testing.T) {
+	if os.Getenv("BASEHARBOR_LOGS_INTEGRATION") != "1" {
+		t.Skip("set BASEHARBOR_LOGS_INTEGRATION=1 for real Docker/Podman Loki acceptance")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+
+	compose, err := testruntime.Resolve(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := t.TempDir()
+	t.Setenv("BASEHARBOR_STATE_DIR", state)
+	t.Setenv(application.LogsEnabledEnv, "true")
+
+	m := application.WithLogsCollection(application.New("logs-acceptance", "test", false, false, false), "application")
+	driver := logs.NewDriver(compose, m, serviceissuer.New(t))
+	resource := capability.Resource{Application: m.Name, Kind: capability.Logs, Name: "api", Provider: capability.ProviderLoki}
+	binding := capability.Binding{
+		Resource: resource,
+		Workload: "service/api",
+		Logs:     &capability.LogsBinding{Direction: "collect", Format: "syslog-rfc5424", Service: "api"},
+	}
+
+	if err := driver.Preflight(ctx, resource, binding); err != nil {
+		t.Fatal(err)
+	}
+	// The required test-profile Loki storage is created only within this
+	// isolated fixture's state. Clean it after Loki, never as a Loki ownership
+	// shortcut in production.
+	defer func() {
+		cleanup, cancel := context.WithTimeout(context.Background(), time.Minute)
+		defer cancel()
+		if err := objectstorage.DestroySharedProvider(cleanup, compose); err != nil {
+			t.Errorf("owned fixture object-storage cleanup: %v", err)
+		}
+	}()
+	provisionCtx, cancelProvision := context.WithTimeout(ctx, 90*time.Second)
+	err = driver.Provision(provisionCtx, resource, binding)
+	cancelProvision()
+	if err != nil {
+		placement, placementErr := logs.PlacementFor(m)
+		files, filesErr := logs.ExistingProviderFiles(m)
+		diagnostics := ""
+		if placementErr == nil && filesErr == nil {
+			diagCtx, cancelDiag := context.WithTimeout(context.Background(), 10*time.Second)
+			status, statusErr := compose.StatusProject(diagCtx, placement.Project, files.Compose, files.Env)
+			providerLogs, logsErr := compose.LogsProject(diagCtx, placement.Project, files.Compose, files.Env, "loki", "alloy")
+			cancelDiag()
+			diagnostics = fmt.Sprintf("\ncompose ps (err=%v):\n%s\nprovider logs (err=%v):\n%s", statusErr, status, logsErr, providerLogs)
+		} else {
+			diagnostics = fmt.Sprintf("\nprovider diagnostics unavailable: placement=%v files=%v", placementErr, filesErr)
+		}
+		t.Fatalf("provision Loki provider: %v%s", err, diagnostics)
+	}
+	placement, err := logs.PlacementFor(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	services := []string{"loki", "alloy"}
+	if placement.Scope == capability.ScopeApplication {
+		services = []string{"baseharbor-internal-loki", "baseharbor-internal-alloy"}
+	}
+	for _, service := range services {
+		if err := containersecurity.VerifyComposeService(ctx, placement.Project, service, containersecurity.Requirements{
+			ReadOnlyRootfs: true, DropAllCaps: true, NoNewPrivs: true,
+		}); err != nil {
+			t.Fatalf("%s runtime security: %v", service, err)
+		}
+	}
+	defer func() {
+		cleanup, cancel := context.WithTimeout(context.Background(), time.Minute)
+		defer cancel()
+		if err := logs.DestroyProvider(cleanup, compose, m); err != nil {
+			t.Errorf("owned Loki provider cleanup: %v", err)
+		}
+	}()
+	if err := driver.Bind(ctx, resource, binding); err != nil {
+		t.Fatal(err)
+	}
+	registration, err := logs.ApplicationRegistration(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	workdir := t.TempDir()
+	composeFile := filepath.Join(workdir, "compose.yaml")
+	envFile := filepath.Join(workdir, "runtime.env")
+	project := application.WorkloadProjectName(m)
+	yaml := `services:
+  api:
+    image: busybox:1.37
+    command: ["sh", "-c", "while true; do echo baseharbor-loki-acceptance; sleep 1; done"]
+    logging:
+      driver: syslog
+      options:
+        syslog-address: "tcp://127.0.0.1:PORT"
+        syslog-format: rfc5424
+        tag: "api"
+`
+	if strings.EqualFold(strings.TrimSpace(os.Getenv("BASEHARBOR_TEST_RUNTIME")), "podman") {
+		yaml = `services:
+  api:
+    image: busybox:1.37
+    command: ["sh", "-c", "while true; do echo baseharbor-loki-acceptance; sleep 1; done"]
+    logging:
+      driver: journald
+`
+	} else {
+		yaml = strings.ReplaceAll(yaml, "PORT", fmt.Sprint(registration.SyslogPort))
+	}
+	if err := os.WriteFile(composeFile, []byte(yaml), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(envFile, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := compose.UpProject(ctx, project, composeFile, envFile); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		cleanup, cancel := context.WithTimeout(context.Background(), time.Minute)
+		defer cancel()
+		if err := compose.DestroyProject(cleanup, project, composeFile, envFile); err != nil {
+			t.Errorf("owned Loki workload cleanup: %v", err)
+		}
+	}()
+
+	if err := driver.Verify(ctx, resource, binding); err != nil {
+		t.Fatal(err)
+	}
+	assertActualLokiConsumerLine(t, ctx, m, "baseharbor-loki-acceptance")
+}

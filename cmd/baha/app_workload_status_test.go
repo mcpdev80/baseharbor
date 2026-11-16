@@ -1,0 +1,277 @@
+package main
+
+import (
+	"context"
+	"net"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"strconv"
+	"strings"
+	"testing"
+
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+)
+
+func TestBuildWorkloadServiceStatuses(t *testing.T) {
+	statuses := buildWorkloadServiceStatuses(
+		[]string{"worker", "edge", "api", "web"},
+		[]bhruntime.ServiceState{
+			{Service: "api", State: "running", Health: "healthy"},
+			{Service: "edge", State: "running"},
+			{Service: "web", State: "running", Health: "starting"},
+		},
+	)
+	if len(statuses) != 4 {
+		t.Fatalf("got %d statuses, want 4", len(statuses))
+	}
+	if statuses[0].Service != "api" || !statuses[0].Ready || statuses[0].Health != "healthy" {
+		t.Fatalf("unexpected api status: %#v", statuses[0])
+	}
+	if statuses[1].Service != "edge" || statuses[1].Ready || statuses[1].Readiness != "unverified" {
+		t.Fatalf("unexpected edge status: %#v", statuses[1])
+	}
+	if statuses[2].Service != "web" || statuses[2].Ready || statuses[2].Health != "starting" {
+		t.Fatalf("unexpected web status: %#v", statuses[2])
+	}
+	if statuses[3].Service != "worker" || statuses[3].Ready || statuses[3].State != "not running" {
+		t.Fatalf("unexpected worker status: %#v", statuses[3])
+	}
+}
+
+func TestRepositoryWorkloadStatusReadyIncludesExposure(t *testing.T) {
+	services := []workloadServiceStatus{
+		{Service: "api", State: "running", Ready: true},
+		{Service: "web", State: "running", Ready: true},
+	}
+	exposures := []workloadExposureStatus{{Service: "web", Scheme: "https", Host: "localhost", Port: 443, Ready: true, Detail: "HTTP 200"}}
+	status := repositoryWorkloadStatus{Found: true, Services: attachWorkloadExposures(services, exposures), Exposures: exposures}
+	if !status.Ready() || status.ReadyCount() != 2 || status.ExposureReadyCount() != 1 {
+		t.Fatalf("expected ready status: %#v", status)
+	}
+
+	failedExposures := []workloadExposureStatus{{Service: "web", Scheme: "https", Host: "localhost", Port: 443, Ready: false, Detail: "unreachable"}}
+	status = repositoryWorkloadStatus{
+		Found: true,
+		Services: attachWorkloadExposures([]workloadServiceStatus{
+			{Service: "api", State: "running", Ready: true},
+			{Service: "web", State: "running", Ready: true},
+		}, failedExposures),
+		Exposures: failedExposures,
+	}
+	if status.Ready() || status.ReadyCount() != 1 || status.ExposureReadyCount() != 0 {
+		t.Fatalf("expected exposure failure: %#v", status)
+	}
+	if err := workloadExposureReadinessError(status.Exposures); err == nil || !strings.Contains(err.Error(), "exposure readiness failed") {
+		t.Fatalf("expected classified exposure error, got %v", err)
+	}
+	if got := formatWorkloadServiceStatus(status.Services[1]); !strings.Contains(got, "exposure=https://localhost:443 unreachable") {
+		t.Fatalf("expected exposure detail in service status, got %q", got)
+	}
+}
+
+func TestRepositoryWorkloadStatusRunningUnverified(t *testing.T) {
+	status := repositoryWorkloadStatus{
+		Found: true,
+		Services: []workloadServiceStatus{{
+			Service:   "worker",
+			State:     "running",
+			Readiness: "unverified",
+			Ready:     false,
+		}},
+	}
+	if status.Ready() {
+		t.Fatalf("unverified worker must not be READY: %#v", status)
+	}
+	if !status.RunningUnverified() {
+		t.Fatalf("running worker without positive readiness evidence should be classified unverified: %#v", status)
+	}
+}
+
+func TestProbeTCPExposureRequiresListeningSocket(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	port := listener.Addr().(*net.TCPAddr).Port
+	ready, detail := probeTCPExposureTarget(context.Background(), "127.0.0.1", port)
+	if !ready || !strings.Contains(detail, "accepted") {
+		t.Fatalf("listening TCP readiness = %v %q", ready, detail)
+	}
+	if err := listener.Close(); err != nil {
+		t.Fatal(err)
+	}
+	ready, _ = probeTCPExposureTarget(context.Background(), "127.0.0.1", port)
+	if ready {
+		t.Fatal("closed TCP listener must not be ready")
+	}
+}
+
+func TestRepositoryWorkloadStatusConfigDriftIsNotReady(t *testing.T) {
+	status := repositoryWorkloadStatus{
+		Found:       true,
+		Services:    []workloadServiceStatus{{Service: "api", State: "running", Ready: true}},
+		ConfigDrift: []string{"api"},
+	}
+	if status.Ready() {
+		t.Fatalf("configuration drift must prevent READY: %#v", status)
+	}
+}
+
+func TestInspectWorkloadExposuresDeduplicatesIPv4IPv6Publishers(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) }))
+	defer server.Close()
+	_, port := testServerHostPort(t, server.URL)
+	states := []bhruntime.ServiceState{{
+		Service: "edge",
+		State:   "running",
+		Publishers: []bhruntime.PublishedPort{
+			{URL: "0.0.0.0", TargetPort: 80, PublishedPort: port, Protocol: "tcp"},
+			{URL: "::", TargetPort: 80, PublishedPort: port, Protocol: "tcp"},
+		},
+	}}
+	exposures := inspectWorkloadExposures(context.Background(), []string{"edge"}, states, "", nil)
+	if len(exposures) != 1 {
+		t.Fatalf("expected one deduplicated exposure, got %#v", exposures)
+	}
+	if exposures[0].Host != "localhost" || !exposures[0].Ready || exposures[0].Detail != "HTTP 200" {
+		t.Fatalf("unexpected exposure: %#v", exposures[0])
+	}
+}
+
+func TestInspectWorkloadExposuresUsesConfiguredHostnameForLoopbackProbe(t *testing.T) {
+	var requestHost string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestHost = r.Host
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+	_, port := testServerHostPort(t, server.URL)
+	states := []bhruntime.ServiceState{{
+		Service: "edge",
+		State:   "running",
+		Publishers: []bhruntime.PublishedPort{
+			{URL: "0.0.0.0", TargetPort: 80, PublishedPort: port, Protocol: "tcp"},
+		},
+	}}
+	exposures := inspectWorkloadExposures(context.Background(), []string{"edge"}, states, "mail.example.test", nil)
+	if len(exposures) != 1 {
+		t.Fatalf("expected one exposure, got %#v", exposures)
+	}
+	if exposures[0].Host != "mail.example.test" || !exposures[0].Ready {
+		t.Fatalf("unexpected configured-host exposure: %#v", exposures[0])
+	}
+	if requestHost != "mail.example.test:"+strconv.Itoa(port) {
+		t.Fatalf("request Host = %q", requestHost)
+	}
+}
+
+func TestWorkloadExposureScheme(t *testing.T) {
+	for _, test := range []struct {
+		target, published int
+		scheme            string
+		ok                bool
+	}{
+		{443, 443, "https", true},
+		{443, 18443, "https", true},
+		{8080, 18080, "http", true},
+		{3000, 3000, "http", true},
+		{5432, 15432, "", false},
+	} {
+		scheme, ok := workloadExposureScheme(test.target, test.published)
+		if scheme != test.scheme || ok != test.ok {
+			t.Fatalf("workloadExposureScheme(%d,%d) = %q,%v; want %q,%v", test.target, test.published, scheme, ok, test.scheme, test.ok)
+		}
+	}
+}
+
+func TestProbeHTTPExposureAcceptsHTTPRedirectAndSelfSignedTLS(t *testing.T) {
+	httpServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "https://example.invalid/", http.StatusPermanentRedirect)
+	}))
+	defer httpServer.Close()
+	host, port := testServerHostPort(t, httpServer.URL)
+	ready, detail := probeHTTPExposure(context.Background(), "http", host, port)
+	if !ready || detail != "HTTP 308" {
+		t.Fatalf("HTTP redirect readiness = %v %q", ready, detail)
+	}
+
+	tlsServer := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer tlsServer.Close()
+	host, port = testServerHostPort(t, tlsServer.URL)
+	ready, detail = probeHTTPExposureTarget(context.Background(), "https", host, "localhost", port)
+	if !ready || detail != "HTTP 200" {
+		t.Fatalf("TLS localhost readiness = %v %q", ready, detail)
+	}
+}
+
+func TestProbeHTTPExposureRejectsServerFailure(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer server.Close()
+	host, port := testServerHostPort(t, server.URL)
+	ready, detail := probeHTTPExposure(context.Background(), "http", host, port)
+	if ready || detail != "HTTP 503" {
+		t.Fatalf("server failure readiness = %v %q", ready, detail)
+	}
+}
+
+func testServerHostPort(t *testing.T, rawURL string) (string, int) {
+	t.Helper()
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	host, portText, err := net.SplitHostPort(parsed.Host)
+	if err != nil {
+		t.Fatal(err)
+	}
+	port, err := strconv.Atoi(portText)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return host, port
+}
+
+func TestFormatWorkloadServiceStatus(t *testing.T) {
+	if got := formatWorkloadServiceStatus(workloadServiceStatus{State: "running", Health: "healthy"}); got != "running health=healthy" {
+		t.Fatalf("got %q", got)
+	}
+	if got := formatWorkloadServiceStatus(workloadServiceStatus{State: "not running"}); got != "not running" {
+		t.Fatalf("got %q", got)
+	}
+}
+
+func TestWorkloadExposureSchemeForServiceHonorsExplicitHTTPSOnPort8080(t *testing.T) {
+	scheme, ok := workloadExposureSchemeForService("demo-app", map[string]string{"demo-app": "https"}, 8080, 8080)
+	if !ok || scheme != "https" {
+		t.Fatalf("scheme=%q ok=%v, want https,true", scheme, ok)
+	}
+}
+
+func TestWorkloadExposureSchemeForServiceFallsBackWhenUndeclared(t *testing.T) {
+	got, ok := workloadExposureSchemeForService("api", nil, 8080, 8080)
+	want, wantOK := workloadExposureScheme(8080, 8080)
+	if got != want || ok != wantOK {
+		t.Fatalf("scheme=%q ok=%v, want %q,%v", got, ok, want, wantOK)
+	}
+}
+
+func TestTerminalWorkloadServiceError(t *testing.T) {
+	if err := terminalWorkloadServiceError([]workloadServiceStatus{{Service: "api", State: "running", Ready: false}}); err != nil {
+		t.Fatalf("running service must remain retryable: %v", err)
+	}
+	err := terminalWorkloadServiceError([]workloadServiceStatus{{Service: "demo-app", State: "exited", Health: "unhealthy", Terminal: true}})
+	if err == nil || !strings.Contains(err.Error(), "demo-app exited health=unhealthy") {
+		t.Fatalf("expected terminal service detail, got %v", err)
+	}
+	err = terminalWorkloadServiceError([]workloadServiceStatus{
+		{Service: "demo-app", State: "created", Terminal: true, ExitCode: 128, RuntimeError: "failed to set up container networking: port is already allocated"},
+	})
+	if err == nil || !strings.Contains(err.Error(), "created") || !strings.Contains(err.Error(), "exit_code=128") || !strings.Contains(err.Error(), "port is already allocated") {
+		t.Fatalf("created start failure must be terminal with runtime evidence, got %v", err)
+	}
+}

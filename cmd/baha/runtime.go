@@ -1,0 +1,401 @@
+package main
+
+import (
+	"bufio"
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"net"
+	"os"
+	"strconv"
+	"strings"
+
+	"github.com/charmbracelet/x/term"
+
+	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/cli"
+	"github.com/mcpdev80/baseharbor/internal/coreinstallation"
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+)
+
+var runtimeInput io.Reader = os.Stdin
+var ensureCoreRuntimeImageForTarget = ensureCoreRuntimeImage
+
+type runtimeUpOptions struct {
+	Name                string
+	MachineRole         coreinstallation.MachineRole
+	HA                  bool
+	Yes                 bool
+	ControlPlaneOnly    bool
+	PostgresPort        int
+	OpenBaoPort         int
+	RecoveryFile        string
+	Environment         string
+	TrustHostCA         bool
+	SkipMemoryPreflight bool
+	CandidateConsent    string
+}
+
+func runtimeUpCommand(ctx context.Context, args []string, out, errOut io.Writer) error {
+	ctx = withApplicationInput(ctx, runtimeInput)
+	opts, err := parseRuntimeUpOptions(args)
+	if err != nil {
+		return err
+	}
+	restoreEnvironment := pushApplicationEnvironmentOverride(opts.Environment)
+	defer restoreEnvironment()
+	ctx = withMemoryPreflightOverride(ctx, opts.SkipMemoryPreflight)
+	ctx = withAssumeYes(ctx, opts.Yes)
+	if opts.ControlPlaneOnly {
+		selected, err := effectiveTarget(ctx)
+		if err != nil {
+			return err
+		}
+		if selected.AccessProvider != "" && selected.AccessProvider != "local" {
+			return usageError("remote control-plane bootstrap is not supported by baha up", "Bootstrap Core on its owning host and configure a verified remote management connection; no local Docker fallback is allowed.")
+		}
+	}
+	// `up` is an apply path: the repository-owned candidate submission is bound
+	// only on explicit operator/automation confirmation, exactly like `app apply`.
+	// Route the parsed --confirm-candidate override through the same leaf so a
+	// repository apply can clear the candidate gate in the normal up flow; the
+	// fail-closed candidate contract is unchanged (no new consent semantics, no
+	// second gate).
+	ctx = withCandidateConsentDigest(ctx, opts.CandidateConsent)
+	if handled, err := routeRepositoryRuntimeUp(ctx, applicationInput(ctx, runtimeInput), out, errOut, opts); handled {
+		return err
+	}
+	if err := runtimeUpGuided(ctx, applicationInput(ctx, runtimeInput), out, opts); err != nil {
+		return err
+	}
+	if opts.ControlPlaneOnly {
+		return maybeOfferManagedHostTrustWhenReady(ctx, applicationInput(ctx, runtimeInput), out, opts)
+	}
+	return repositoryApplicationUp(ctx, applicationInput(ctx, runtimeInput), out, errOut, opts)
+}
+
+func parseRuntimeUpOptions(args []string) (runtimeUpOptions, error) {
+	var opts runtimeUpOptions
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		switch {
+		case arg == "--yes" || arg == "-y":
+			opts.Yes = true
+		case arg == "--ha":
+			opts.HA = true
+		case arg == "--control-plane-only":
+			opts.ControlPlaneOnly = true
+		case arg == "--trust-host-ca":
+			opts.TrustHostCA = true
+		case arg == "--skip-memory-preflight":
+			opts.SkipMemoryPreflight = true
+		case arg == "--environment", arg == "-e":
+			if len(args) <= i+1 || strings.HasPrefix(args[i+1], "-") {
+				return opts, usageError("--environment requires ENV", "Example: baha up -e dev")
+			}
+			i++
+			opts.Environment = strings.TrimSpace(args[i])
+		case arg == "--postgres-port":
+			if len(args) <= i+1 {
+				return opts, usageError("--postgres-port requires PORT", "Example: baha up --postgres-port 15432")
+			}
+			i++
+			port, err := parsePort(args[i])
+			if err != nil {
+				return opts, err
+			}
+			opts.PostgresPort = port
+		case arg == "--openbao-port":
+			if len(args) <= i+1 {
+				return opts, usageError("--openbao-port requires PORT", "Example: baha up --openbao-port 18200")
+			}
+			i++
+			port, err := parsePort(args[i])
+			if err != nil {
+				return opts, err
+			}
+			opts.OpenBaoPort = port
+		case arg == "--recovery-file":
+			if len(args) <= i+1 || strings.HasPrefix(args[i+1], "-") {
+				return opts, usageError("--recovery-file requires PATH", "Example: baha up --recovery-file /secure/openbao-recovery.json")
+			}
+			i++
+			opts.RecoveryFile = args[i]
+		case arg == "--confirm-candidate":
+			if len(args) <= i+1 {
+				return opts, usageError("--confirm-candidate requires DIGEST", "Re-run with --confirm-candidate <the printed confirm-hash>.")
+			}
+			i++
+			opts.CandidateConsent = args[i]
+		case strings.HasPrefix(arg, "--environment="):
+			opts.Environment = strings.TrimSpace(strings.TrimPrefix(arg, "--environment="))
+			if opts.Environment == "" {
+				return opts, usageError("--environment requires ENV", "Example: baha up --environment dev")
+			}
+		case strings.HasPrefix(arg, "--recovery-file="):
+			opts.RecoveryFile = strings.TrimPrefix(arg, "--recovery-file=")
+			if strings.TrimSpace(opts.RecoveryFile) == "" {
+				return opts, usageError("--recovery-file requires PATH", "Example: baha up --recovery-file /secure/openbao-recovery.json")
+			}
+		case strings.HasPrefix(arg, "--confirm-candidate="):
+			opts.CandidateConsent = strings.TrimPrefix(arg, "--confirm-candidate=")
+		case strings.HasPrefix(arg, "-"):
+			return opts, unknownOptionUsage("baha up", arg, "--yes", "-y", "--control-plane-only", "--trust-host-ca", "--skip-memory-preflight", "--environment", "-e", "--postgres-port", "--openbao-port", "--recovery-file", "--confirm-candidate")
+		default:
+			if opts.Name != "" {
+				return opts, usageError("baha up accepts at most one NAME", "Run 'baha up --help' for usage.")
+			}
+			opts.Name = arg
+		}
+	}
+	return opts, nil
+}
+
+// upNameArgs converts an optional resolved NAME into the single-element args
+// slice that resolveApplication expects, or nil when no NAME was supplied so the
+// repository baseharbor.yaml is resolved by directory, exactly as 'app up'.
+func upNameArgs(name string) []string {
+	if name == "" {
+		return nil
+	}
+	return []string{name}
+}
+
+func parsePort(value string) (int, error) {
+	port, err := strconv.Atoi(value)
+	if err != nil || port < 1 || port > 65535 {
+		return 0, usageError("invalid port "+value, "Choose a TCP port between 1 and 65535.")
+	}
+	return port, nil
+}
+
+func runtimeUpGuided(parent context.Context, in io.Reader, out io.Writer, opts runtimeUpOptions) error {
+	if opts.PostgresPort != 0 && opts.PostgresPort == opts.OpenBaoPort {
+		return errors.New("PostgreSQL and OpenBao cannot use the same host port")
+	}
+	// Reject an unauthorized MCP request before probing or installing host tools.
+	// installCore repeats this check at the mutation boundary.
+	if err := authorizeCurrentMCPContext(parent, "control-plane.up", "", "", ""); err != nil {
+		return err
+	}
+	// This function is reached only after repository application routing declines
+	// the command, making it the unambiguous Core bootstrap boundary.
+	target, err := effectiveTarget(parent)
+	if err != nil {
+		return err
+	}
+	if target.AccessProvider == "" || target.AccessProvider == "local" {
+		fmt.Fprintln(out, "Checking ORAS for immutable OCI image verification.")
+		if err := ensureORASForCoreUp(parent, in, out, opts.Yes); err != nil {
+			return err
+		}
+		fmt.Fprintln(out, "[OK] ORAS is available.")
+		term := cli.NewTerminal(parent, out, out)
+		if err := progress(parent, term, "Verify and prepare the BaseHarbor runtime image", func(progressOut io.Writer) error {
+			return ensureCoreRuntimeImageForTarget(parent, target, progressOut)
+		}); err != nil {
+			return err
+		}
+	}
+	_, err = installCore(parent, in, out, opts)
+	return err
+}
+
+func runtimeUpGuidedProviders(parent context.Context, in io.Reader, out io.Writer, opts runtimeUpOptions) error {
+	if err := authorizeCurrentMCPContext(parent, "control-plane.up", "", "", ""); err != nil {
+		return err
+	}
+	return materializeControlPlaneProviders(parent, in, out, opts)
+}
+
+// The caller owns authorization: explicit management uses the wrapper above;
+// application apply invokes this only for its acknowledged real dependencies.
+func materializeControlPlaneProviders(parent context.Context, in io.Reader, out io.Writer, opts runtimeUpOptions) error {
+	if opts.PostgresPort != 0 && opts.OpenBaoPort != 0 && opts.PostgresPort == opts.OpenBaoPort {
+		return errors.New("PostgreSQL and OpenBao cannot use the same host port")
+	}
+	// Fail-closed second-target conflict gate (0427-163 / BF-05): two same-host
+	// Targets that bind one local engine share exactly one Core. If a Core
+	// belonging to a different owning target is already running on this engine,
+	// refuse instead of silently joining it.
+	if conflict, err := detectSharedCoreOwnerConflict(parent); err != nil {
+		return err
+	} else if conflict != nil {
+		return conflict
+	}
+	if existing, err := existingTargetRuntimeFiles(parent); err == nil {
+		if opts.HA && !existing.HA {
+			return fmt.Errorf("control-plane topology conflict: existing ha=%t, requested ha=%t", existing.HA, opts.HA)
+		}
+		if opts.PostgresPort != 0 || opts.OpenBaoPort != 0 {
+			return usageError("control-plane ports cannot be changed through 'baha up' after initialization", "Edit the existing runtime deliberately or recreate the control plane instead.")
+		}
+		return runtimeUpExistingSelection(parent, out, opts.RecoveryFile, opts.ControlPlaneOnly)
+	}
+
+	postgresPort, err := selectControlPlanePort(out, "PostgreSQL", "--postgres-port", opts.PostgresPort, bhruntime.DefaultPostgresPort, 15432)
+	if err != nil {
+		return err
+	}
+	openBaoPort, err := selectControlPlanePort(out, "OpenBao", "--openbao-port", opts.OpenBaoPort, bhruntime.DefaultOpenBaoPort, 18200)
+	if err != nil {
+		return err
+	}
+	if postgresPort == openBaoPort {
+		return errors.New("PostgreSQL and OpenBao cannot use the same host port")
+	}
+
+	interactive := !opts.Yes && !noInput(parent) && readerIsTerminal(in)
+	if interactive {
+		reader := bufio.NewReader(in)
+		fmt.Fprintln(out, "BaseHarbor control-plane setup")
+		fmt.Fprintln(out)
+		fmt.Fprintf(out, "PostgreSQL host port [%d]: ", postgresPort)
+		selected, err := readPortChoice(reader, postgresPort)
+		if err != nil {
+			return err
+		}
+		postgresPort = selected
+		fmt.Fprintf(out, "OpenBao host port [%d]: ", openBaoPort)
+		selected, err = readPortChoice(reader, openBaoPort)
+		if err != nil {
+			return err
+		}
+		openBaoPort = selected
+		if postgresPort == openBaoPort {
+			return errors.New("PostgreSQL and OpenBao cannot use the same host port")
+		}
+		if !portAvailable(postgresPort) {
+			return occupiedSelectedPortError("PostgreSQL", "--postgres-port", postgresPort, 15432)
+		}
+		if !portAvailable(openBaoPort) {
+			return occupiedSelectedPortError("OpenBao", "--openbao-port", openBaoPort, 18200)
+		}
+		fmt.Fprintln(out)
+		fmt.Fprintln(out, "Configuration:")
+		fmt.Fprintf(out, "  PostgreSQL  127.0.0.1:%d\n", postgresPort)
+		fmt.Fprintf(out, "  OpenBao     127.0.0.1:%d\n", openBaoPort)
+		fmt.Fprint(out, "Accept? [Y/n]: ")
+		answer, err := reader.ReadString('\n')
+		if err != nil && !errors.Is(err, io.EOF) {
+			return err
+		}
+		answer = strings.TrimSpace(strings.ToLower(answer))
+		if answer != "" && answer != "y" && answer != "yes" && answer != "j" && answer != "ja" {
+			return errors.New("control-plane setup cancelled")
+		}
+	} else {
+		fmt.Fprintln(out, "BaseHarbor control-plane ports:")
+		fmt.Fprintf(out, "  PostgreSQL  127.0.0.1:%d\n", postgresPort)
+		fmt.Fprintf(out, "  OpenBao     127.0.0.1:%d\n", openBaoPort)
+	}
+
+	if !opts.ControlPlaneOnly && repositoryApplicationDetectedForUp() {
+		if _, _, err := preflightNewTargetRecoveryFile(parent, opts.RecoveryFile); err != nil {
+			return err
+		}
+	}
+
+	term := cli.NewTerminal(parent, out, out)
+	return progress(parent, term, "Start PostgreSQL and OpenBao services", func(progressOut io.Writer) error {
+		return runtimeUpWithPortsSelection(parent, progressOut, bhruntime.Ports{Postgres: postgresPort, OpenBao: openBaoPort}, opts.HA, opts.ControlPlaneOnly)
+	})
+}
+
+// detectSharedCoreOwnerConflict runs the fail-closed second-target conflict gate
+// (0427-163 / BF-05): it resolves the effective target and its local engine,
+// then inspects the running containers. When a Core belonging to a *different*
+// owning target is already running on that engine, it returns a
+// *bhruntime.SharedCoreOwnerConflict so the caller fails closed instead of
+// silently joining the first target's Core.
+func detectSharedCoreOwnerConflict(parent context.Context) (*bhruntime.SharedCoreOwnerConflict, error) {
+	target, err := effectiveTarget(parent)
+	if err != nil {
+		return nil, err
+	}
+	provider, err := detectRuntimeForTarget(parent, target)
+	if err != nil {
+		// An unreadable engine is not proof of absence. Refuse fail-closed.
+		return nil, err
+	}
+	ownProject := bhruntime.SharedProjectName(target.Name)
+	return bhruntime.SharedCoreOwnerConflictForEngine(parent, provider, ownProject)
+}
+
+func repositoryApplicationDetectedForUp() bool {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return false
+	}
+	if found, err := application.HasRepositoryApplication(cwd); err == nil && found {
+		return true
+	}
+	detected, err := detectAppProject(cwd)
+	return err == nil && detectedApplicationProject(detected)
+}
+
+func selectControlPlanePort(out io.Writer, service, flag string, requested, defaultPort, fallbackStart int) (int, error) {
+	if requested != 0 {
+		if portAvailable(requested) {
+			return requested, nil
+		}
+		return 0, occupiedSelectedPortError(service, flag, requested, fallbackStart)
+	}
+	if portAvailable(defaultPort) {
+		return defaultPort, nil
+	}
+	fallback := firstAvailablePort(fallbackStart)
+	if fallback == 0 {
+		return 0, fmt.Errorf("%s default host port %d is already in use and no free fallback port was found", service, defaultPort)
+	}
+	fmt.Fprintf(out, "%s host port %d is already in use.\n", service, defaultPort)
+	fmt.Fprintf(out, "Found free loopback port %d; using it automatically.\n", fallback)
+	return fallback, nil
+}
+
+func occupiedSelectedPortError(service, flag string, port, fallbackStart int) error {
+	fallback := firstAvailablePort(fallbackStart)
+	if fallback == 0 {
+		return fmt.Errorf("%s host port %d is already in use; choose another free TCP port with 'baha up %s PORT'", service, port, flag)
+	}
+	return fmt.Errorf("%s host port %d is already in use; free port %d is available. Retry with 'baha up %s %d'", service, port, fallback, flag, fallback)
+}
+
+func readPortChoice(reader *bufio.Reader, fallback int) (int, error) {
+	value, err := reader.ReadString('\n')
+	if err != nil && !errors.Is(err, io.EOF) {
+		return 0, err
+	}
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return fallback, nil
+	}
+	return parsePort(value)
+}
+
+func readerIsTerminal(in io.Reader) bool {
+	file, ok := in.(*os.File)
+	if !ok {
+		return true
+	}
+	return term.IsTerminal(file.Fd())
+}
+
+func portAvailable(port int) bool {
+	listener, err := net.Listen("tcp4", fmt.Sprintf("127.0.0.1:%d", port))
+	if err != nil {
+		return false
+	}
+	_ = listener.Close()
+	return true
+}
+
+func firstAvailablePort(start int) int {
+	for port := start; port <= 65535; port++ {
+		if portAvailable(port) {
+			return port
+		}
+	}
+	return 0
+}

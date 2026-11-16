@@ -1,0 +1,72 @@
+# Use External / BYO providers
+
+External/BYO providers let BaseHarbor bind existing infrastructure without claiming ownership of it.
+
+## Ownership rule
+
+```text
+BaseHarbor owns the binding/reference
+BaseHarbor does not own the foreign service
+```
+
+Removing the BaseHarbor provider registration must not destroy the external database, broker, identity service or other foreign infrastructure.
+
+## Supported v0.4.19 direction
+
+External placement is supported across the provider model, including representative data-provider paths such as PostgreSQL, Valkey, RabbitMQ and MongoDB.
+
+TLS/trust configuration can use:
+
+- system trust;
+- custom CA/root bundles;
+- intermediate chains;
+- SAN/wildcard certificate validation;
+- mTLS client certificate/key references where required;
+- directory-based certificate discovery when unambiguous.
+
+Private-key material and trust paths remain operator/deployment state, not portable Application Intent.
+
+Use `baha provider --help` and the effective provider/organization configuration commands to inspect the exact current command surface.
+
+## Example: register an existing company SQL endpoint
+
+Prerequisites: the service already exists, your deployment can reach it, and its operator has supplied the endpoint, trust material and any required protected credential reference. The hostname below is illustrative; replace it with your actual service:
+
+```bash
+baha provider add company-db \
+  --provider-id company/postgresql \
+  --kind company-postgresql \
+  --capability database.sql \
+  --endpoint postgres://db.company.example:5432/orders \
+  --trust system
+baha provider inspect company-db
+baha provider verify company-db
+```
+
+Endpoints must be absolute URLs without user information, query parameters or fragments. Supply credentials and TLS material through protected credential/trust references. Credential references require a resource URI; trust references may also be file paths. References must not contain inline material, user information, query parameters or fragments. `--trust system` requires the endpoint's certificate to validate with system trust; it does not bypass TLS verification. Use the explicit trust/credential reference options from `baha provider add --help` when your company PKI or service authentication needs them.
+
+Registration records the external provider and verification checks endpoint/trust. It does not migrate application data or automatically select this provider for every SQL request: configure placement through your effective provider/organization configuration and inspect `baha plan` in the application repository.
+
+Registration metadata is public. Keep API/access keys, authorization headers, passwords, tokens and other credentials in protected credential references; credential-bearing metadata keys are rejected regardless of case or separators.
+
+To remove only this registration when it is no longer needed:
+
+```bash
+baha provider remove company-db --yes
+```
+
+The externally operated database remains owned by its operator.
+
+For external OIDC, preparation binds confidential input and trust material to their current files. Changing, replacing or redirecting an input before binding requires a fresh plan; existing delivery projections remain unchanged on that failure. HTTPS discovery and workload projection use the same captured trust bytes. Public CA certificates may remain readable, but group or other write permissions are rejected before discovery and delivery; confidential credentials remain owner-only. This verifies material consistency, not end-user login, session migration or a complete provider handoff.
+
+For external OTLP, select a registered reference with `BASEHARBOR_PROVIDER_EXTERNAL_OTLP_EXTERNAL_REFERENCE`. An alias resolves to the actual credential-free HTTPS endpoint; a conflicting `BASEHARBOR_OTLP_ENDPOINT` is rejected. A protected JSON credential reference supplies either a token or a username/password pair. Explicit headers must agree with that registration. Without a credential reference, explicit headers select authorization; an explicitly empty `BASEHARBOR_OTLP_HEADERS` selects anonymous access. Omitted headers can reuse protected delivery only for the same applied registration and receiver. A new registration never inherits another registration's credentials.
+
+Explicit CA and client certificate/key references supply the receiver's trust and optional mTLS identity. Credential and key sources remain private, stable and unchanged; certificate-only public trust cannot contain private keys. Certificate directories currently require explicit supported file references. The adapter checks prepared source ownership and bytes before delivery and before/after actual verification, compares protected runtime, host and workload delivery, and exports a real Protobuf trace using the selected authorization and TLS identity. Redirects cannot forward authorization. Managed collector identities remain retained for recovery and are not implicitly delivered to external receivers. These checks do not prove buffering, every signal, remote-host material delivery or end-to-end retention.
+
+Changing an existing external OTLP receiver or its selected authorization, trust or client identity enters the shared consequence plan even when the registered provider instance ID stays the same. Unverified delivery or retention effects show **Achtung** and require two current plan-bound confirmations. Changing the selected material invalidates earlier consent. Technical material/HTTPS checks follow that acknowledgement before mutation; they preserve the previous binding on failure. This consent does not authorize data deletion.
+
+External OIDC application delivery resolves the selected registered reference to its actual HTTPS issuer. Select the registration ID with `BASEHARBOR_PROVIDER_EXTERNAL_OIDC_EXTERNAL_REFERENCE`; it does not need to be an issuer URL. The existing global registration is projected read-only into the canonical Target registry and is persisted only by normal apply; unrelated or redirected Targets cannot borrow it. The registered `client-id` metadata, local `file://` credential reference and CA file reference supply the supported adapter. Conflicting ambient files, unsupported credential stores, mTLS or certificate-directory delivery fail technical admission after consequence acknowledgement. Registered references are revalidated before and after discovery. Discovery rejects embedded URL credentials and credential query parameters without echoing their values. Issuer/client/credential/trust changes and release of an external application reference require the current consequence acknowledgement; foreign infrastructure and original credential files remain owned. HTTPS source fixtures verify the delivered client against separate source/destination receivers, not browser login, OAuth session migration or native all-provider acceptance.
+
+The common external credential and trust reader accepts supported absolute local files and `file://` references. Credentials and private keys require an exclusively owned private file; public CA files may be readable but must not be group/world writable. Linked files/parents, oversized inputs and changed reads fail before use without exposing rejected values or changing source files. Certificate-directory discovery applies the same rules, and the mTLS verifier parses the captured protected certificate/key bytes. OIDC registration verification requires the exact issuer and valid HTTPS discovery endpoints, rejects credential-bearing endpoints, bounds the response and does not follow redirects. A successful discovery result does not prove client authentication or session continuity.
+
+Managed Keycloak placement changes and managed/external OIDC binding changes use existing delivery and retirement adapters after the current consequence acknowledgement. Original realms, users, database volumes and credential owners are retained; destination accounts and sessions are not automatically migrated. Retirement releases only identity routes attached to the old realization, preserving newly verified destination and unrelated workload routes. These source checks and bounded native fixtures do not establish all-provider handoff completion.

@@ -1,0 +1,429 @@
+{
+  "version": 1,
+  "qualification": "bounded-provider-handoff",
+  "complete_provider_package": false,
+  "source_qualification": {
+    "commit": "e53349729c58a8c9d3cf33cc67b9f3b503c5a3c4",
+    "tree": "40c77ed7153068778a849aa5547cea57fef6698f",
+    "go": "1.26.0",
+    "checks": "all-nine-pass",
+    "race_packages": [
+      "./cmd/baha",
+      "./internal/application",
+      "./internal/identityprovider",
+      "./internal/telemetry"
+    ],
+    "actionlint": "1.7.12 pass"
+  },
+  "native_oidc": {
+    "commit": "553d1dfafadfd0c8dbd2aeec81673f19842cbfe4",
+    "tree": "f0511bcbde47c728d3f018b5b02653c764e35629",
+    "run": 38550489196,
+    "go": "1.25.0",
+    "test": "TestRegisteredExternalOIDCNativeConsumerHandoff",
+    "result": "success",
+    "verification": [
+      "Actual ZIP files downloaded; SHA256 matches artifact metadata",
+      "Actual archive source SHA/tree and Go version inspected",
+      "Test PASS and fixed consumer/cleanup assertions inspected",
+      "Source and destination TLS with delivered workload CA",
+      "Client authentication with delivered client ID and credential",
+      "Actual JWT issuer/client/expiry and JWKS signature",
+      "Old issuer token rejected by destination JWKS",
+      "Original credential and global registration owner bytes unchanged",
+      "Foreign issuer token issuance succeeds after consumer-reference withdrawal",
+      "Owned producer cleanup returns verified success"
+    ],
+    "docker": {
+      "job": 115806972482,
+      "artifact": 11887020435,
+      "zip_sha256": "54414e9681ad54c9567041d762aa04621bab6b2a080a0259b03ccaf4d0a05161"
+    },
+    "podman": {
+      "job": 115806972597,
+      "artifact": 11886701006,
+      "zip_sha256": "9492885b88c89a81794ef6f120314431fe604ad48f7ff50c455a668075d04e53"
+    }
+  },
+  "failed_history": [
+    {
+      "run": 38549744124,
+      "commit": "e53349729c58a8c9d3cf33cc67b9f3b503c5a3c4",
+      "result": "both engines failed",
+      "cause": "Withdrawal fixture disabled services.identity but retained identity requirements; final foreign-after-withdrawal assertion was not reached",
+      "docker": {
+        "job": 115804515884,
+        "artifact": 11886570257,
+        "zip_sha256": "08f0ed76aae1108fa7c6d72e009145d846e1df73f96f131857c9ff2ed0b42475"
+      },
+      "podman": {
+        "job": 115804516219,
+        "artifact": 11886710084,
+        "zip_sha256": "5e473dd638fe6d0a6c9fae340fb5bdc11aff26a80f1253bc5e51fe82519267f1"
+      },
+      "owned_producer_cleanup": "success in both failed test logs"
+    },
+    {
+      "run": 38553470305,
+      "commit": "500c58f2f35befe2c1672c196c1e99ad64ad7842",
+      "result": "managed capability jobs failed on both engines",
+      "cause": "initial retained owner required current impact consent before mutation; fixture omitted it",
+      "bounded_positive_subtests": "RabbitMQ messaging and MongoDB document database actual authenticated add/remove/re-add pass in the same failed jobs; whole jobs are not green",
+      "evidence_reference": "PR881 comments and retained GitHub jobs/artifacts; current isolated rerun pending"
+    },
+    {
+      "run": 38554306181,
+      "commit": "9865590e21d4f95d16323ad4a224bdde9d18c2e5",
+      "result": "both managed placement jobs failed",
+      "cause": "successful Keycloak initializer exits were incorrectly treated as continuously running embedded SQL containers; source correction5ec"
+    },
+    {
+      "run": 38556997835,
+      "commit": "5ec1b38df90b290dc40fb6f26f18534cf19f0337",
+      "result": "both managed placement jobs failed",
+      "cause": "return shared fixture recreated retained user and got409; final cleanup aggregate also hashed displayed certificate countdowns",
+      "evidence_reference": "v0.4.25-installation-destruction-runtime-evidence.json retains exact failed ZIP hashes; successful40bfa retry does not erase these attempts"
+    },
+    {
+      "commit": "927bb5fccb2150aa9e1db44df252c338f00acd9b",
+      "run": 38561996491,
+      "result": "both observability jobs failed; other selected jobs succeeded",
+      "cause": "old Prometheus fixture omitted required HTTP scheme; actual Loki workload line and registered OTLP token/mTLS tests pass only as bounded subsets",
+      "artifacts": [
+        {
+          "id": 11892781631,
+          "zip_sha256": "bcf54b9e7d418897a2ede234372838e1173b62d84731aedc7d05a57688471a77"
+        },
+        {
+          "id": 11893081440,
+          "zip_sha256": "8d13729a533d583793f4ee5863835404683a65d55b87fdd7d71f13c0ae6090f7"
+        }
+      ]
+    },
+    {
+      "commit": "12fa40503c5ecb57f72b1e2b7bcfb5f4ad5c2a6e",
+      "run": 38562727121,
+      "result": "both metrics-only retries failed",
+      "cause": "old fixture expected legacy prometheus service; actual canonical members are prometheus-1 and prometheus-access",
+      "artifacts": [
+        {
+          "id": 11892622744,
+          "zip_sha256": "76bd8e08d1789bb00ce7ba6ab58e20174fa43b5ec5f6888e78c847aabbf91b8e"
+        },
+        {
+          "id": 11893546888,
+          "zip_sha256": "ac8f98cb08f4e971edae71305a218d903eaece482bf30e7adafa88778c267000"
+        }
+      ]
+    },
+    {
+      "source_tree": "e4bb4fad3ec40269f18459ae4f00f7e5701e2a44",
+      "qualification": "gfs7347g",
+      "result": "local compilation and script fixture failures",
+      "cause": "actual transient no-space-left-on-device during parallel Go builds and script git init; not a source pass; final local qualification uses two workers and Go package parallelism3"
+    }
+  ],
+  "managed_identity_handoff": {
+    "commit": "40bfa96268a57ca74853f22ba6f949ffd7ff057d",
+    "tree": "0c70bfa9771926f09608f605708b1fe3a4c48eb4",
+    "run": 38559693713,
+    "go": "1.25.0",
+    "test": "TestManagedIdentityNativePlacementHandoff",
+    "result": "both engines success",
+    "verification": [
+      "Actual ZIP archives downloaded and SHA256 checked against artifact metadata",
+      "Archive candidate SHA, Go version, all three phase results and overall PASS inspected",
+      "Actual authorization-code S256 PKCE login, bad verifier rejection, signed JWT and userinfo",
+      "Actual refresh in shared and application placements; former issuer unavailable after retirement",
+      "Return to original shared realm reuses original user, subject and retained OAuth session without reseeding",
+      "Original protected environment and data volume ownership retained",
+      "Approved full fixture cleanup succeeds with no remaining owned containers; no stale-impact-consent"
+    ],
+    "docker": {
+      "job": 115837420698,
+      "artifact": 11890954128,
+      "zip_sha256": "3e99b6305a8d216274ea0b43585585f7c1e628f209adb2888ccb2292d735f16a"
+    },
+    "podman": {
+      "job": 115837420109,
+      "artifact": 11891313583,
+      "zip_sha256": "4ed9212d8f3f4638f4f09ef191478a2f2a123e2b71ba8ce18e86e3a16d296922"
+    }
+  },
+  "material_reader": "Common credential/trust reader rejects redirected, unowned, writable or oversized sources; actual HTTPS mTLS and discovery-negative source tests pass. Not native all-provider delivery proof.",
+  "coordination": {
+    "restore_hook": "appendExternalIdentityChangeEffects with original resolved.Manifest; Session 2 owns restore production integration",
+    "restore_test_patch_approval": "PR881 comment6166505757",
+    "preserved": "foreign commits, failed runs, artifacts and prior receipts"
+  },
+  "limits": [
+    "Service-account fixture uses an explicit owned loopback mapping while retaining TLS hostname/CA validation",
+    "No browser OAuth/session migration or remote secret-material handoff claim from this OIDC fixture",
+    "No automatic user/account/data or signing-key transfer",
+    "All-provider verified consumer package remains open",
+    "No full pre-release, merge, tag or release launched"
+  ],
+  "additional_source_qualifications": [
+    {
+      "commit": "546278e3d02814f656ee244ea73faeb2c22095c2",
+      "tree": "b897b3930d57b84902525ae3bb6e0eac32015bb4",
+      "go": "1.26.0",
+      "all_nine_snapshot_tree": "cff93c2d0ff906bc65ef42b57350802752b9d394",
+      "checks": "all-nine-pass; only foreign recovery docs/receipts integrated afterward, strict EN/DE and canonical audit passed again",
+      "go_tests_seconds": 64.367,
+      "six_package_race_seconds": 52.289,
+      "race_packages": [
+        "./cmd/baha",
+        "./internal/application",
+        "./internal/identityprovider",
+        "./internal/telemetry",
+        "./internal/externalprovider",
+        "./internal/providertopology"
+      ]
+    },
+    {
+      "commit": "927bb5fccb2150aa9e1db44df252c338f00acd9b",
+      "tree": "5fa44bc0e082d1c4e819b4f60d6fe7d399e012d5",
+      "go": "1.26.0",
+      "all_nine_snapshot_tree": "4e31395fa7556dd1dd5cb30fc4a6f8055133f938",
+      "checks": "all-nine-pass; foreign6fce CI guard/docs integrated afterward, both-workflow actionlint1.7.12, strict EN/DE and canonical audit passed again",
+      "go_tests_seconds": 64.626,
+      "six_package_race_seconds": 52.887,
+      "race_packages": [
+        "./cmd/baha",
+        "./internal/application",
+        "./internal/telemetry",
+        "./internal/externalprovider",
+        "./internal/metrics",
+        "./internal/logs"
+      ],
+      "path_regression": "actual HTTPS token/mTLS export with bindings#owned?100% reproduced failure before encoded generated-file URIs and passed afterward"
+    }
+  ],
+  "registered_otlp_consumer": {
+    "commit": "546278e3d02814f656ee244ea73faeb2c22095c2",
+    "result": "actual local HTTPS/mTLS source tests pass; native workflow consumer source qualification pending",
+    "verification": [
+      "Canonical receiver alias, protected JSON token/basic credential reference and explicit trust/client identity",
+      "Receiver asserts token and client certificate identity and actual Protobuf trace span",
+      "Fresh application verifier uses actual canonical authorization/TLS delivery",
+      "Foreign registration and credential/key source bytes unchanged",
+      "Source drift before bind, before verify and during actual export rejected",
+      "Host/runtime divergence, unrelated or unprotected projection owner rejected",
+      "New registration cannot inherit another registration credential at the same endpoint",
+      "Private keys cannot enter public CA delivery",
+      "Same-ID credential material changes invalidate prior two-stage consent"
+    ],
+    "limits": [
+      "No remote-host material or all-signals/buffering/retention claim",
+      "Directory material needs explicit supported file references"
+    ],
+    "generated_path_follow_up": "927bb5fccb2150aa9e1db44df252c338f00acd9b"
+  },
+  "remaining_provider_consumers": [
+    "Prometheus exact current two-target gauge result after corrected canonical member checks",
+    "Required-mTLS Prometheus and Loki consumer access plus anonymous rejection",
+    "Managed collector/registered OTLP replacement actual consumer flow; current two-stage admission/source checks pass",
+    "Final combined toolchain/native/ecosystem qualification belongs to the later pre-release; not launched by this source handoff"
+  ],
+  "pending_targeted_runs": [],
+  "verified_consumer_archives": [
+    {
+      "artifact": 11893081440,
+      "name": "observability-consumers-podman-927bb5fccb2150aa9e1db44df252c338f00acd9b",
+      "source": "927bb5fccb2150aa9e1db44df252c338f00acd9b",
+      "sha256": "8d13729a533d583793f4ee5863835404683a65d55b87fdd7d71f13c0ae6090f7",
+      "result": "partial-pass-metrics-failed",
+      "go": "go version go1.25.0 linux/amd64",
+      "tests": [
+        "--- PASS: TestManagedLokiIngestsRealComposeWorkloadLogs (54.85s)",
+        "--- FAIL: TestManagedPrometheusScrapesTwoIsolatedApplications (0.07s)",
+        "--- PASS: TestRegisteredOTLPActualConsumerTokenTrustAndClientIdentity (0.01s)",
+        "--- PASS: TestRegisteredOTLPDriftBeforeAndDuringDeliveryNeverVerifies (0.01s)",
+        "--- PASS: TestRegisteredOTLPRebindingNeverInheritsAnotherRegistrationAuthorization (0.00s)",
+        "--- PASS: TestRegisteredOTLPPrivateOrInvalidPublicTrustNeverProjects (0.00s)"
+      ]
+    },
+    {
+      "artifact": 11893502310,
+      "name": "coreless-docker-38562327066-1",
+      "source": "4f7e9358c1cc53215e8d94602b0a8e46c9227a77",
+      "sha256": "4c762d9b75faf3948ec372fac946cba8313858d61056552eb599f9d87654eb36",
+      "result": "success",
+      "go": "go version go1.25.0 linux/amd64",
+      "tests": [
+        "--- PASS: TestSelectiveApplicationBackendRuntimeAddRemoveReAdd (177.27s)",
+        "--- PASS: TestSelectiveHTTPSRuntimeAddRemoveReAdd (67.56s)"
+      ]
+    },
+    {
+      "artifact": 11893457520,
+      "name": "coreless-docker-38561996491-1",
+      "source": "927bb5fccb2150aa9e1db44df252c338f00acd9b",
+      "sha256": "539549d1aca5f39e8bc72b6e4c3d9a99d4bdfea81f3374cdf3968c779e17b4b9",
+      "result": "success",
+      "go": "go version go1.25.0 linux/amd64",
+      "tests": [
+        "--- PASS: TestSharedSecretsRuntimePreservesSiblingAndRetiresLastConsumer (362.13s)"
+      ]
+    },
+    {
+      "artifact": 11893331241,
+      "name": "standalone-retirement-docker-927bb5fccb2150aa9e1db44df252c338f00acd9b",
+      "source": "927bb5fccb2150aa9e1db44df252c338f00acd9b",
+      "sha256": "d73d7ab05f438e4cdf59821bc113568bacd5c987f94a0095f5e81ba87da0f439",
+      "result": "success",
+      "go": "go version go1.25.0 linux/amd64",
+      "tests": [
+        "--- PASS: TestManagedTempoReceivesVerificationTraceThroughCollector (54.92s)"
+      ]
+    },
+    {
+      "artifact": 11893266112,
+      "name": "standalone-retirement-podman-927bb5fccb2150aa9e1db44df252c338f00acd9b",
+      "source": "927bb5fccb2150aa9e1db44df252c338f00acd9b",
+      "sha256": "bef18fd2d599e3e590868fd86c1fba94e96d4a98826d359387c2d3bdf3ed2f9e",
+      "result": "success",
+      "go": "go version go1.25.0 linux/amd64",
+      "tests": [
+        "--- PASS: TestManagedTempoReceivesVerificationTraceThroughCollector (40.98s)"
+      ]
+    },
+    {
+      "artifact": 11892781631,
+      "name": "observability-consumers-docker-927bb5fccb2150aa9e1db44df252c338f00acd9b",
+      "source": "927bb5fccb2150aa9e1db44df252c338f00acd9b",
+      "sha256": "bcf54b9e7d418897a2ede234372838e1173b62d84731aedc7d05a57688471a77",
+      "result": "partial-pass-metrics-failed",
+      "go": "go version go1.25.0 linux/amd64",
+      "tests": [
+        "--- FAIL: TestManagedPrometheusScrapesTwoIsolatedApplications (0.10s)",
+        "--- PASS: TestRegisteredOTLPActualConsumerTokenTrustAndClientIdentity (0.03s)",
+        "--- PASS: TestRegisteredOTLPDriftBeforeAndDuringDeliveryNeverVerifies (0.04s)",
+        "--- PASS: TestRegisteredOTLPRebindingNeverInheritsAnotherRegistrationAuthorization (0.01s)",
+        "--- PASS: TestRegisteredOTLPPrivateOrInvalidPublicTrustNeverProjects (0.00s)",
+        "--- PASS: TestManagedLokiIngestsRealComposeWorkloadLogs (49.36s)"
+      ]
+    },
+    {
+      "artifact": 11893457397,
+      "name": "coreless-podman-38562327066-1",
+      "source": "4f7e9358c1cc53215e8d94602b0a8e46c9227a77",
+      "sha256": "4934f08b125497ee80b22b1005f03967f68ceb3e94cb6b061f641794fe228130",
+      "result": "success",
+      "go": "go version go1.25.0 linux/amd64",
+      "tests": [
+        "--- PASS: TestSelectiveApplicationBackendRuntimeAddRemoveReAdd (183.47s)",
+        "--- PASS: TestSelectiveHTTPSRuntimeAddRemoveReAdd (63.31s)"
+      ]
+    },
+    {
+      "artifact": 11892183355,
+      "name": "coreless-podman-38561996491-1",
+      "source": "927bb5fccb2150aa9e1db44df252c338f00acd9b",
+      "sha256": "78065a7d909765a850fc4ac02db9bd49133bf99b05211c233ccc81fa92237a65",
+      "result": "success",
+      "go": "go version go1.25.0 linux/amd64",
+      "tests": [
+        "--- PASS: TestSharedSecretsRuntimePreservesSiblingAndRetiresLastConsumer (429.22s)"
+      ]
+    }
+  ],
+  "latest_user_execution_boundary": "2026-10-14 15:03 Europe/Berlin: close current source fixes and push; do not execute later pre-release work. No new runtime markers/dispatch from final handoff.",
+  "local_source_fixes": [
+    "OTLP destination directory and leaf ownership validated before environment mutation or chmod; redirected targets preserve old delivery and foreign permissions/bytes",
+    "Actual registered basic credential, token/mTLS and special-character path tests",
+    "Implemented shared managed collector and registered external receiver replacement admitted only after current two-stage consequences; foreign source bytes unchanged",
+    "Prometheus fixture uses declared HTTP scheme and canonical member/access names; existing fixture results are not upgraded",
+    "Test-profile Prometheus/Loki fixtures require mTLS and reject anonymous receiver access; actual native outcomes remain pending",
+    "Tempo HA file/material preparation error now returns before runtime config/start; deterministic red-before/green-after regression"
+  ],
+  "remote_boundary": {
+    "supported": "application-scoped SQL/Cache/KeyValue; existing separate authenticated Connector evidence only",
+    "unsupported": [
+      "HA/shared provider application lifecycle",
+      "identity",
+      "secrets and runtime permissions",
+      "object storage",
+      "messaging/document database",
+      "HTTP exposure",
+      "OTLP",
+      "metrics",
+      "logs"
+    ],
+    "admission": "Session2 commits4bfe and971 preserved: concrete current effects/two acknowledgements before technical unsupported denial; zero provider/material/bundle staging is not consumer success",
+    "non_sql_remote_consumer_pass": false
+  },
+  "final_local_source_qualification": {
+    "source_tree": "240a04a6b58230612e79f04322d210258fd22a44",
+    "go": "1.26.0",
+    "jobs": 2,
+    "go_package_parallelism": 3,
+    "race_packages": [
+      "./cmd/baha",
+      "./internal/application",
+      "./internal/telemetry",
+      "./internal/traces",
+      "./internal/metrics",
+      "./internal/logs"
+    ],
+    "checks": [
+      {
+        "name": "cli-build",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 6.642
+      },
+      {
+        "name": "docs-audit",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 0.303
+      },
+      {
+        "name": "docs-de",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 1.808
+      },
+      {
+        "name": "docs-en",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 1.905
+      },
+      {
+        "name": "go-race",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 77.066
+      },
+      {
+        "name": "go-tests",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 47.133
+      },
+      {
+        "name": "go-vet",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 6.833
+      },
+      {
+        "name": "readability",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 2.61
+      },
+      {
+        "name": "script-tests",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 2.913
+      }
+    ],
+    "qualification_limit": "All production/source test corrections included. Only final existing receipt/coverage documentation appended afterward; canonical documentation audit rechecked. No new native or pre-release run."
+  },
+  "source_work_status": "completed source corrections and local qualification; source handoff ready to publish, formal pending consumer/runtime qualification remains explicit"
+}

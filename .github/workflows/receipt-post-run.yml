@@ -1,0 +1,51 @@
+name: Receipt · Commit
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Merged develop PR whose missing receipt should be retried
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  receipt:
+    if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # This is the protected default-branch workflow, never PR-provided code.
+      - name: Checkout trusted source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Fetch develop history
+        run: git fetch --no-tags origin +refs/heads/develop:refs/remotes/origin/develop
+
+      - name: Checkout Planning
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: mcpdev80/baseharbor-plan
+          path: planning
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Configure receipt author
+        run: |
+          git -C planning config user.name "mcpdev80"
+          git -C planning config user.email "mcpdev80@users.noreply.github.com"
+
+      - name: Record authenticated merged commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ inputs.pr_number }}
+          PLANNING_RECEIPT_WRITE_TOKEN: ${{ secrets.PLANNING_RECEIPT_WRITE_TOKEN }}
+        run: python3 scripts/receipt_writer.py --planning planning --product . --commit-pr "$PR_NUMBER" --publish

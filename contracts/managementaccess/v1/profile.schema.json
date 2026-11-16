@@ -1,0 +1,187 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/mcpdev80/baseharbor/blob/HEAD/contracts/managementaccess/v1/profile.schema.json",
+  "title": "baseharbor.management-access/v1 (minimal portable profile/credential-source contract)",
+  "description": "Minimal, provider-neutral contract distinguishing a non-secret management profile, a sensitive one-use device enrollment and an explicitly encrypted local credential export. Import grants no rights, cannot run plugins and cannot redirect credentials.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "kind", "installation_id", "trust", "recipient", "scope", "not_before", "not_after", "import", "storage"],
+  "properties": {
+    "version": {
+      "const": "baseharbor.management-access/v1"
+    },
+    "kind": {
+      "enum": [
+        "management-profile",
+        "device-enrollment",
+        "credential-export"
+      ]
+    },
+    "installation_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "trust": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ca_pem", "sha256"],
+      "properties": {
+        "ca_pem": {
+          "type": "string",
+          "pattern": "^-----BEGIN CERTIFICATE-----"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "recipient": {
+      "type": "string",
+      "pattern": "^spiffe://baseharbor/platform/(core|connectors)/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/[^?#@\\s]+$"
+    },
+    "scope": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[a-z][a-z0-9.-]*$"
+    },
+    "not_before": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,9})?Z$"
+    },
+    "not_after": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,9})?Z$"
+    },
+    "import": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rights_granting", "plugin_execution", "credential_redirect"],
+      "properties": {
+        "rights_granting": {
+          "const": false
+        },
+        "plugin_execution": {
+          "const": false
+        },
+        "credential_redirect": {
+          "const": false
+        }
+      }
+    },
+    "storage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["class", "durable", "encrypted", "disaster_recovery"],
+      "properties": {
+        "class": {
+          "enum": ["session-only", "protected-durable"]
+        },
+        "durable": {
+          "type": "boolean"
+        },
+        "encrypted": {
+          "type": "boolean"
+        },
+        "disaster_recovery": {
+          "type": "boolean"
+        }
+      },
+      "if": {
+        "properties": {
+          "durable": { "const": true }
+        }
+      },
+      "then": {
+        "required": ["encrypted"],
+        "properties": {
+          "encrypted": { "const": true }
+        }
+      }
+    },
+    "export": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["algorithm", "encrypted", "nonce"],
+      "properties": {
+        "algorithm": {
+          "type": "string",
+          "enum": ["aes-256-gcm"]
+        },
+        "encrypted": {
+          "const": true
+        },
+        "nonce": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{16}$",
+          "description": "AES-256-GCM AEAD nonce: exactly 12 random bytes, canonically encoded as base64url without padding (16 characters). Any length other than 16 base64url characters fails closed (at 12 bytes all octets are significant, so every canonical 16-character value is a valid 12-byte nonce). chacha20-poly1305 is not accepted in v1."
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "allOf": [
+          { "properties": { "kind": { "const": "credential-export" } } },
+          { "required": ["kind"] }
+        ]
+      },
+      "then": {
+        "required": ["export"]
+      },
+      "description": "A credential-export record must carry an encrypted export descriptor."
+    },
+    {
+      "if": {
+        "allOf": [
+          { "properties": { "kind": { "const": "management-profile" } } },
+          { "required": ["kind"] }
+        ]
+      },
+      "then": {
+        "not": { "required": ["export"] }
+      },
+      "description": "An export descriptor is forbidden on a management-profile; export is credential-export-only."
+    },
+    {
+      "if": {
+        "allOf": [
+          { "properties": { "kind": { "const": "device-enrollment" } } },
+          { "required": ["kind"] }
+        ]
+      },
+      "then": {
+        "not": { "required": ["export"] }
+      },
+      "description": "An export descriptor is forbidden on a device-enrollment; export is credential-export-only."
+    },
+    {
+      "if": {
+        "properties": { "storage": { "properties": { "class": { "const": "session-only" } } } }
+      },
+      "then": {
+        "properties": {
+          "storage": {
+            "properties": { "durable": { "const": false } }
+          }
+        }
+      },
+      "description": "A session-only record must never be durable (durable=false); a session-only/durable contradiction fails closed."
+    },
+    {
+      "if": {
+        "properties": { "storage": { "properties": { "class": { "const": "protected-durable" } } } }
+      },
+      "then": {
+        "properties": {
+          "storage": {
+            "properties": { "encrypted": { "const": true } },
+            "required": ["encrypted"]
+          }
+        }
+      },
+      "description": "A durable record must be encrypted; plaintext durable storage fails closed."
+    }
+  ]
+}

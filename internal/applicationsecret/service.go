@@ -1,0 +1,261 @@
+package applicationsecret
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"sort"
+	"strings"
+	"time"
+
+	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/openbao"
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+	runtimeresolver "github.com/mcpdev80/baseharbor/internal/runtime/resolver"
+)
+
+type Metadata struct {
+	Name     string `json:"name"`
+	Required bool   `json:"required"`
+	Present  bool   `json:"present"`
+	Usable   bool   `json:"usable"`
+}
+
+const applicationSecretOperationTimeout = 60 * time.Second
+
+type Service struct {
+	store         application.Store
+	runtimeClient *openbao.ApplicationRuntimeClient
+	runtime       bhruntime.RuntimeProvider
+	platformFiles *bhruntime.Files
+	manifest      *application.Manifest
+	runtimeFiles  *application.RuntimeFiles
+}
+
+func New(store application.Store) *Service {
+	return &Service{store: store}
+}
+
+func NewForRuntime(store application.Store, compose bhruntime.RuntimeProvider, platformFiles bhruntime.Files) *Service {
+	return &Service{store: store, runtime: compose, platformFiles: &platformFiles}
+}
+
+func NewForApplicationRuntime(store application.Store, compose bhruntime.RuntimeProvider, platformFiles bhruntime.Files, manifest application.Manifest, runtimeFiles application.RuntimeFiles) *Service {
+	return &Service{
+		store:         store,
+		runtime:       compose,
+		platformFiles: &platformFiles,
+		manifest:      &manifest,
+		runtimeFiles:  &runtimeFiles,
+	}
+}
+
+// NewRuntime creates the narrow data-plane service used by the managed runtime
+// API. Dynamic secret operations use the application's own OpenBao AppRole over
+// the internal network and do not require Docker/Podman control or manager
+// credentials.
+func NewRuntime(store application.Store, client *openbao.ApplicationRuntimeClient) *Service {
+	return &Service{store: store, runtimeClient: client}
+}
+
+func (s *Service) List(ctx context.Context, name string) ([]Metadata, error) {
+	resolved, err := s.resolve(ctx, name)
+	if err != nil {
+		return nil, err
+	}
+	checkCtx, cancel := context.WithTimeout(ctx, applicationSecretOperationTimeout)
+	defer cancel()
+	keys, err := openbao.ListApplicationSecretKeys(checkCtx, resolved.compose, resolved.platformFiles, resolved.identity, resolved.credentialsPath)
+	if err != nil {
+		return nil, err
+	}
+
+	required := make(map[string]struct{}, len(resolved.manifest.Secrets.Required))
+	names := make(map[string]struct{}, len(keys)+len(resolved.manifest.Secrets.Required)+len(resolved.manifest.Secrets.Optional))
+	for _, key := range keys {
+		if strings.HasPrefix(key, dynamicKeyPrefix) {
+			continue
+		}
+		names[key] = struct{}{}
+	}
+	for _, requirement := range resolved.manifest.Secrets.Required {
+		required[requirement.Name] = struct{}{}
+		names[requirement.Name] = struct{}{}
+	}
+	for _, requirement := range resolved.manifest.Secrets.Optional {
+		names[requirement.Name] = struct{}{}
+	}
+	ordered := make([]string, 0, len(names))
+	for key := range names {
+		ordered = append(ordered, key)
+	}
+	sort.Strings(ordered)
+
+	statuses, err := openbao.InspectRequiredApplicationSecrets(checkCtx, resolved.compose, resolved.platformFiles, resolved.identity, resolved.credentialsPath, ordered)
+	if err != nil && len(ordered) > 0 {
+		return nil, err
+	}
+	statusByName := make(map[string]openbao.RequiredSecretStatus, len(statuses))
+	for _, status := range statuses {
+		statusByName[status.Name] = status
+	}
+
+	result := make([]Metadata, 0, len(ordered))
+	for _, key := range ordered {
+		_, isRequired := required[key]
+		status := statusByName[key]
+		result = append(result, Metadata{Name: key, Required: isRequired, Present: status.Present, Usable: status.Usable})
+	}
+	return result, nil
+}
+
+func (s *Service) Get(ctx context.Context, name, key string) ([]byte, error) {
+	if strings.HasPrefix(key, dynamicKeyPrefix) {
+		return nil, errors.New("dynamic application secrets must be resolved through a secret reference")
+	}
+	resolved, err := s.resolve(ctx, name)
+	if err != nil {
+		return nil, err
+	}
+	readCtx, cancel := context.WithTimeout(ctx, applicationSecretOperationTimeout)
+	defer cancel()
+	return openbao.GetApplicationSecret(readCtx, resolved.compose, resolved.platformFiles, resolved.identity, resolved.credentialsPath, key)
+}
+
+func (s *Service) GetMany(ctx context.Context, name string, keys []string) (map[string][]byte, error) {
+	for _, key := range keys {
+		if strings.HasPrefix(key, dynamicKeyPrefix) {
+			return nil, errors.New("dynamic application secrets must be resolved through a secret reference")
+		}
+	}
+	resolved, err := s.resolve(ctx, name)
+	if err != nil {
+		return nil, err
+	}
+	readCtx, cancel := context.WithTimeout(ctx, applicationSecretOperationTimeout)
+	defer cancel()
+	return openbao.GetApplicationSecrets(readCtx, resolved.compose, resolved.platformFiles, resolved.identity, resolved.credentialsPath, keys)
+}
+
+func (s *Service) Set(ctx context.Context, name, key string, value []byte) error {
+	if strings.HasPrefix(key, dynamicKeyPrefix) {
+		return errors.New("dynamic application secrets must be managed through a secret reference")
+	}
+	if len(value) == 0 {
+		return errors.New("application secret value is empty")
+	}
+	if len(value) > 1<<20 {
+		return errors.New("application secret value exceeds the 1048576-byte limit")
+	}
+	resolved, err := s.resolve(ctx, name)
+	if err != nil {
+		return err
+	}
+	mutationCtx, cancel := context.WithTimeout(ctx, applicationSecretOperationTimeout)
+	defer cancel()
+	return openbao.SetApplicationSecret(mutationCtx, resolved.compose, resolved.platformFiles, resolved.identity, resolved.credentialsPath, key, value)
+}
+
+func (s *Service) Delete(ctx context.Context, name, key string) error {
+	if strings.HasPrefix(key, dynamicKeyPrefix) {
+		return errors.New("dynamic application secrets must be managed through a secret reference")
+	}
+	resolved, err := s.resolve(ctx, name)
+	if err != nil {
+		return err
+	}
+	mutationCtx, cancel := context.WithTimeout(ctx, applicationSecretOperationTimeout)
+	defer cancel()
+	return openbao.DeleteApplicationSecret(mutationCtx, resolved.compose, resolved.platformFiles, resolved.identity, resolved.credentialsPath, key)
+}
+
+type resolvedApplication struct {
+	manifest        application.Manifest
+	compose         bhruntime.RuntimeProvider
+	platformFiles   bhruntime.Files
+	identity        openbao.ApplicationIdentity
+	credentialsPath string
+}
+
+type runtimeResolvedApplication struct {
+	manifest        application.Manifest
+	identity        openbao.ApplicationIdentity
+	credentialsPath string
+}
+
+func (s *Service) resolve(ctx context.Context, name string) (resolvedApplication, error) {
+	var (
+		m     application.Manifest
+		files application.RuntimeFiles
+		err   error
+	)
+	if s.manifest != nil && s.runtimeFiles != nil {
+		m = *s.manifest
+		files = *s.runtimeFiles
+		if strings.TrimSpace(name) != "" && name != m.Name {
+			return resolvedApplication{}, fmt.Errorf("application %q does not match resolved secret scope %q", name, m.Name)
+		}
+	} else {
+		m, _, err = s.store.Load(name)
+		if err != nil {
+			return resolvedApplication{}, err
+		}
+		files, err = application.ExistingRuntimeFiles(s.store, m)
+		if err != nil {
+			return resolvedApplication{}, err
+		}
+	}
+	if !m.Services.Secrets {
+		return resolvedApplication{}, errors.New("application does not enable managed secrets")
+	}
+	if err := application.CheckSupportedRuntimeServices(m); err != nil {
+		return resolvedApplication{}, err
+	}
+	if err := application.CheckRuntimePermissions(files); err != nil {
+		return resolvedApplication{}, err
+	}
+	var compose bhruntime.RuntimeProvider
+	if s.runtime != nil {
+		compose = s.runtime
+	} else {
+		compose, err = runtimeresolver.DefaultRuntimeProvider(ctx)
+		if err != nil {
+			return resolvedApplication{}, err
+		}
+	}
+	var platformFiles bhruntime.Files
+	if s.platformFiles != nil {
+		platformFiles = *s.platformFiles
+	} else {
+		platformFiles, err = bhruntime.ExistingFiles("")
+		if err != nil {
+			return resolvedApplication{}, errors.New("BaseHarbor OpenBao runtime is not materialized")
+		}
+	}
+	return resolvedApplication{manifest: m, compose: compose, platformFiles: platformFiles, identity: openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}, credentialsPath: openbao.ApplicationCredentialsPath(files.Dir)}, nil
+}
+
+func (s *Service) resolveRuntime(name string) (runtimeResolvedApplication, error) {
+	if s.runtimeClient == nil {
+		return runtimeResolvedApplication{}, errors.New("application runtime secret backend is not configured")
+	}
+	m, _, err := s.store.Load(name)
+	if err != nil {
+		return runtimeResolvedApplication{}, err
+	}
+	if !m.Services.Secrets {
+		return runtimeResolvedApplication{}, errors.New("application does not enable managed secrets")
+	}
+	files, err := application.ExistingRuntimeFiles(s.store, m)
+	if err != nil {
+		return runtimeResolvedApplication{}, err
+	}
+	if err := application.CheckRuntimePermissions(files); err != nil {
+		return runtimeResolvedApplication{}, err
+	}
+	return runtimeResolvedApplication{
+		manifest:        m,
+		identity:        openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment},
+		credentialsPath: openbao.ApplicationCredentialsPath(files.Dir),
+	}, nil
+}

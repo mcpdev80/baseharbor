@@ -1,0 +1,33 @@
+cases:
+  - {category: compose, repo: docker/awesome-compose, revision: 30f4b7f6a6c3b0c0ecf4d4efb0de203c48d11562, subpath: gitea-postgres, tags: [reference-quality, normal], proves: [compose-detection, sql-classification]}
+  - {category: compose, repo: immich-app/immich, revision: 02063972e82b1bfd17b6fc2e3b3ff39936229ea5, subpath: docker, tags: [monorepo, noisy], proves: [production-candidate-selection, e2e-noise-resistance]}
+  - {category: compose, repo: supabase/supabase, revision: da2d0c46d716643de1f0adce7c373d1cfd3bdab1, subpath: docker, tags: [monorepo, noisy, historically-grown], proves: [production-candidate-selection, test-sandbox-noise]}
+  - {category: compose, repo: appwrite/appwrite, revision: 07051422d3588c169b954a431a7016fc1e5572ba, subpath: ., tags: [large, normal], proves: [large-compose]}
+  - {category: compose, repo: outline/outline, revision: d410db1b24594d71b766212282804d79ca18e5c1, subpath: ., tags: [normal], proves: [root-compose]}
+  - {category: compose, repo: plausible/community-edition, revision: 434ed8129f04484f8381339cb3bb14b4082a4829, subpath: ., tags: [normal], proves: [root-compose]}
+  - {category: compose, repo: nextcloud/docker, revision: 43d4d20e97a0ca52a511d6dca5dc53bdeb87869a, subpath: .examples, tags: [examples, historically-grown], proves: [nested-compose]}
+  - {category: compose, repo: grafana/loki, revision: 5dac2a00799d58f25fae442e9e3775fc40916650, subpath: examples/getting-started, tags: [examples, multi-service], proves: [nested-compose, multi-service]}
+  - {category: compose, repo: When-To/whento, revision: afb052c43743a99e94b0428f3aba012c4968946b, subpath: ., tags: [normal], proves: [root-compose]}
+  - {category: compose, repo: open-webui/open-webui, revision: 8bd8b4fac5e059578ac0c74b3c18d11139f88b7d, subpath: ., tags: [large, normal], proves: [large-compose]}
+
+  - {category: quadlet, repo: MansiVisuals/ViTransfer, revision: 8b4cb555ff499fde05ea79455b6d8083862da619, subpath: quadlet, tags: [multi-source, historically-grown], proves: [quadlet-detection, mixed-repo-subpath]}
+  - {category: quadlet, repo: HyperionGray/opsechat, revision: 5c06dd12dbfcf9bb93fe7b5e6404de0c4303a015, subpath: quadlets, tags: [normal], proves: [quadlet-detection]}
+  - {category: quadlet, repo: linux-universe/immich-podman-quadlets, revision: a052517f2f509b24800406a3e605a8d8e15b4883, subpath: ., tags: [reference-quality, multi-unit], proves: [multi-unit, infra-classification]}
+  - {category: quadlet, repo: bluesky-social/deploy-recipes, revision: 468467451274f1ee10c43511bde6bb82415128f4, subpath: podman, tags: [normal, deployment], proves: [nested-quadlet]}
+  - {category: quadlet, repo: xyproto/algernon, revision: 05641d28c3bad6a0f0527a924ebc8ed2fba152d0, subpath: containers, tags: [normal], proves: [container-unit]}
+  - {category: quadlet, repo: moinwiki/moin, revision: 6017255f028ba99ea584bd111e6c17cfc765ae14, subpath: contrib/podman, tags: [historically-grown], proves: [nested-quadlet]}
+  - {category: quadlet, repo: DPDK/grout, revision: fd2adc63b5e3e528df67914be17cd103858c244d, subpath: docs/quadlets, tags: [docs, unusual-layout], proves: [nonstandard-location]}
+  - {category: quadlet, repo: virto-network/kreivo, revision: 3e0a5c3fc06afd8b4e2c6dcdb795410080fb62e3, subpath: ., tags: [normal], proves: [root-quadlet]}
+  - {category: quadlet, repo: herzenschein/herz-quadlet, revision: c114bece33261845d1fcb1cbb649312383f8e74c, subpath: wekan, tags: [multi-unit, normal], proves: [multi-unit]}
+  - {category: quadlet, repo: containers/ai-lab-recipes, revision: 25fca348b7d93adfbe4601d4fdac4655203bf3ac, subpath: recipes/natural_language_processing/chatbot/quadlet, tags: [monorepo, deeply-nested], proves: [deep-subpath, quadlet-detection]}
+
+  - {category: kubernetes, repo: GoogleCloudPlatform/microservices-demo, revision: 38e7348eb289eb5b87c0c6e8cb19ced0449dc389, subpath: kubernetes-manifests, tags: [reference-quality, multi-service], proves: [multi-service, services, probes]}
+  - {category: kubernetes, repo: GoogleCloudPlatform/bank-of-anthos, revision: db35fea9fd090150e2398106aadb475576f80d94, subpath: kubernetes-manifests, tags: [reference-quality, multi-service], proves: [multi-service]}
+  - {category: kubernetes, repo: kubernetes/examples, revision: d6b8cd27eacb51e651a1aa6f7c190a28713eff6e, subpath: web/guestbook/all-in-one, tags: [reference-quality, multidoc], proves: [multidoc]}
+  - {category: kubernetes, repo: twentyhq/twenty, revision: 46362ca1e86d1c3f2dc216fb336c14c451a80d1e, subpath: packages/twenty-docker/k8s/manifests, tags: [monorepo, nested], proves: [nested-kubernetes]}
+  - {category: kubernetes, repo: argoproj/argo-cd, revision: 7ee8de299c4f814e443689ad0267fdb37c4a9ee2, subpath: manifests, tags: [large, crd-heavy], proves: [opaque-crds, large-manifest-set]}
+  - {category: kubernetes, repo: prometheus-operator/kube-prometheus, revision: 799f3d73b5adf5758c3119c9201d9f417accb6d0, subpath: manifests, tags: [large, operator], proves: [large-manifest-set, opaque-resources]}
+  - {category: kubernetes, repo: kubernetes-sigs/metrics-server, revision: 0f521245532670bc649d498582679929fc600bae, subpath: manifests/base, tags: [normal], proves: [deployment-service]}
+  - {category: kubernetes, repo: kubernetes/ingress-nginx, revision: dbb11b92ddb77bee9c35e462479129354c84f939, subpath: deploy/static/provider/cloud, tags: [large, historically-grown], proves: [nested-manifests]}
+  - {category: kubernetes, repo: rook/rook, revision: 406ef13b7851a420746c9452dea4b2987d81694a, subpath: deploy/examples, tags: [crd-heavy, noisy], proves: [opaque-crds, examples]}
+  - {category: kubernetes, repo: Azure-Samples/aks-store-demo, revision: 3c3ba3bd999d0b2d78eece1adac84b712b7d9c4f, subpath: ., tags: [normal, sample], proves: [root-kubernetes]}

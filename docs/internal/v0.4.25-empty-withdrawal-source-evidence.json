@@ -1,0 +1,121 @@
+{
+  "schema_version": "v0.4.25-empty-withdrawal-source-evidence/v1",
+  "pre_release_ready": false,
+  "complete_native_gate_pass": false,
+  "qualified_source": {
+    "commit": "49754f9016e2cf08ffd2a5de5650e03d49c4fc70",
+    "tree": "de429faee55e39985c2b60a2941491250de99eb2",
+    "parent": "9c8fba1df046c58084d08d6688ef67b6f42af577",
+    "run_id": 38162055600,
+    "run_attempt": 1,
+    "source_job_id": 114536838358,
+    "workflow_policy_job_id": 114536838651,
+    "conclusion": "success",
+    "go_version": "1.25.0",
+    "url": "https://github.com/mcpdev80/baseharbor/actions/runs/38162055600"
+  },
+  "scope": [
+    "Validate all canonical native backend candidate intents before accepting matching protected definition",
+    "Validated non-executable empty withdrawal supplies no native renderer definition",
+    "Executable applied/previous/archived canonical candidate still must match existing protected file bytes",
+    "Retired canonical owner projection accepts valid portable empty intent and retains UUID/environment checks",
+    "Actual apply/executable validation unchanged"
+  ],
+  "regressions": [
+    "First empty candidate does not hide retained prior canonical native backend",
+    "Empty withdrawal alone cannot prove existing native ownership",
+    "Fabricated services:{} definition rejected",
+    "Malformed later candidate cannot be hidden behind earlier matching canonical definition",
+    "Archived runtime resource union retained alongside canonical retired intent",
+    "Read-only compose, ENV and deployment record remain unchanged",
+    "Existing foreign/symlink/modified-definition and retained-owner rejection regressions remain passing"
+  ],
+  "validation": [
+    "Existing Source Preflight formatting/readability/full package unit tests/vet",
+    "Existing enrollment/operator/Node-disconnect boundary races; new retirement tests ran as unit tests, not targeted race/native tests",
+    "EN/DE strict build/parity/audit, workflow/actionlint and Linux amd64/arm64 snapshot build"
+  ],
+  "native_boundary": {
+    "qualified": false,
+    "previous_failure": {
+      "commit": "5543a77888441bb603f175a40291e3b39d6929c3",
+      "run_id": 38158814751,
+      "docker_job_id": 114527246248,
+      "podman_job_id": 114527246069,
+      "result": "failed default runtime retirement; possible partial mutations; cleanup not proven",
+      "permanent_receipt": "v0.4.25-selective-secrets-runtime-evidence.json"
+    },
+    "remaining": [
+      "Re-run affected real shared Secrets/default destroy/re-add gate on Docker/rootless Podman",
+      "Actual interrupted native state and same-owner retry",
+      "End-user OAuth gate after production nondev origin ordering is implemented",
+      "Final ecosystem matrix and other mutation authorities"
+    ]
+  },
+  "integration": {
+    "parent": "bcd7c2b05b369b7e62fb05625d924a1962ff3f39",
+    "parent_tree": "4b15bd91c2929b65105a456fcc5df2cedfc1a5c9",
+    "note": "Canonical touched paths checked unchanged against qualified proposal base; existing Node integration and peer evidence preserved. Isolated proposal avoids writing or discarding peer local unpublished changes."
+  },
+  "native_attempts": [
+    {
+      "commit": "7e878139a84d21fd6a2704db9ce534871199250b",
+      "tree": "b52a4072d11e71d50923adfb7ce0bcb5a69179c7",
+      "run_id": 38162567193,
+      "run_attempt": 1,
+      "conclusion": "failure",
+      "url": "https://github.com/mcpdev80/baseharbor/actions/runs/38162567193",
+      "engines": [
+        {
+          "runtime": "docker",
+          "job_id": 114538369576,
+          "test_seconds": 187.3,
+          "selected_provider_counts": [
+            7,
+            0,
+            7
+          ],
+          "broker_counts": [
+            1,
+            0,
+            1
+          ],
+          "total_container_counts": [
+            9,
+            1,
+            9
+          ],
+          "retained_owned_volumes": 1,
+          "artifact_id": 11709914236,
+          "artifact_digest": "sha256:3fb2be4be4dbe5662ca3ff17b2bee5953eea969529481695acfd25f790fb9b81"
+        },
+        {
+          "runtime": "podman",
+          "job_id": 114538369359,
+          "test_seconds": 200.46,
+          "selected_provider_counts": [
+            6,
+            0,
+            6
+          ],
+          "broker_counts": [
+            1,
+            0,
+            1
+          ],
+          "total_container_counts": [
+            8,
+            1,
+            8
+          ],
+          "retained_owned_volumes": 1,
+          "artifact_id": 11711126217,
+          "artifact_digest": "sha256:f1dce31192229d5cc5e11fce92a648071c45d80f9a47c0766d4bbc76c04a272a"
+        }
+      ],
+      "observed": "Fresh zero-Core/zero-total state and isolated Secrets add/remove/re-add phases passed; helper then failed with provider_consumer_inventory_invalid at source callsite266. Cleanup also failed. Shared Secrets fixture was not executed because the preceding step failed.",
+      "limitations": "Intermediate helper assertions are not individually logged; no whole default destroy/re-add success, same-owner original secret after default reactivation, cleanup0 or exact failure-stage claim is made. Actual partial mutations may have occurred.",
+      "next_diagnosis": "Read-only broker/retained-native projections and pending retirement record still apply executable validation to valid canonical empty retired intents. ValidateIntent with existing owner checks is required; pending retries must preserve the archived live intent."
+    }
+  ]
+}

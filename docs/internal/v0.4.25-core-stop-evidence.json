@@ -1,0 +1,337 @@
+{
+  "version": "baseharbor.v0425.core-stop-evidence/v1",
+  "pre_release_ready": false,
+  "source_qualifications": [
+    {
+      "source": {
+        "commit": "dfb724a4d55bd554c283351ed57c39e0a1b6056b",
+        "tree": "7dcc4f7b5f546df55494698e20ea78114a1f3cf1",
+        "working_tree_changes": false
+      },
+      "jobs": 4,
+      "seconds": 65.302,
+      "race_packages": [
+        "./cmd/baha",
+        "./internal/runtime"
+      ],
+      "checks": [
+        {
+          "name": "cli-build",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 18.12,
+          "log": "cli-build.log"
+        },
+        {
+          "name": "docs-audit",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 0.303,
+          "log": "docs-audit.log"
+        },
+        {
+          "name": "docs-de",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 2.116,
+          "log": "docs-de.log"
+        },
+        {
+          "name": "docs-en",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 2.108,
+          "log": "docs-en.log"
+        },
+        {
+          "name": "go-race",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 48.409,
+          "log": "go-race.log"
+        },
+        {
+          "name": "go-tests",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 64.906,
+          "log": "go-tests.log"
+        },
+        {
+          "name": "go-vet",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 18.104,
+          "log": "go-vet.log"
+        },
+        {
+          "name": "readability",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 2.827,
+          "log": "readability.log"
+        },
+        {
+          "name": "script-tests",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 3.309,
+          "log": "script-tests.log"
+        }
+      ],
+      "native_runtime_qualified": false,
+      "pre_release_ready": false
+    },
+    {
+      "source": {
+        "commit": "cc1551fda4b1ca40f2c0b5c2cb8f7a8a99d9fa02",
+        "tree": "0e35d33af8a4db70c6c1d8642055cf64c73324ff",
+        "working_tree_changes": false
+      },
+      "jobs": 4,
+      "seconds": 66.388,
+      "race_packages": [
+        "./cmd/baha",
+        "./internal/runtime"
+      ],
+      "checks": [
+        {
+          "name": "cli-build",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 19.496,
+          "log": "cli-build.log"
+        },
+        {
+          "name": "docs-audit",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 0.301,
+          "log": "docs-audit.log"
+        },
+        {
+          "name": "docs-de",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 2.408,
+          "log": "docs-de.log"
+        },
+        {
+          "name": "docs-en",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 2.41,
+          "log": "docs-en.log"
+        },
+        {
+          "name": "go-race",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 49.538,
+          "log": "go-race.log"
+        },
+        {
+          "name": "go-tests",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 66.098,
+          "log": "go-tests.log"
+        },
+        {
+          "name": "go-vet",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 19.012,
+          "log": "go-vet.log"
+        },
+        {
+          "name": "readability",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 2.812,
+          "log": "readability.log"
+        },
+        {
+          "name": "script-tests",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 3.417,
+          "log": "script-tests.log"
+        }
+      ],
+      "native_runtime_qualified": false,
+      "pre_release_ready": false
+    },
+    {
+      "source": {
+        "commit": "8fa9a2b84a25faeb88e6e44892ac994ecce5097f",
+        "tree": "5d32ddae3a955e2071b8e174c288dd285e4d52a9",
+        "working_tree_changes": false
+      },
+      "go": "go1.26.0 linux/amd64",
+      "checks": [
+        {
+          "name": "full-go-tests",
+          "status": "pass",
+          "exit_code": 0
+        },
+        {
+          "name": "full-go-vet",
+          "status": "pass",
+          "exit_code": 0
+        },
+        {
+          "name": "cli-build",
+          "status": "pass",
+          "exit_code": 0
+        },
+        {
+          "name": "cmd-baha-application-coreinstallation-races",
+          "status": "pass",
+          "exit_code": 0
+        },
+        {
+          "name": "gofmt-diff",
+          "status": "pass",
+          "exit_code": 0
+        },
+        {
+          "name": "readability",
+          "status": "pass",
+          "exit_code": 0
+        },
+        {
+          "name": "documentation-audit",
+          "status": "pass",
+          "exit_code": 0
+        },
+        {
+          "name": "strict-mkdocs-en",
+          "status": "pass",
+          "exit_code": 0
+        },
+        {
+          "name": "strict-mkdocs-de",
+          "status": "pass",
+          "exit_code": 0
+        }
+      ],
+      "observed": [
+        "Two plan acknowledgements alone no longer grant data deletion; an independently affirmative third destructive answer is required. Missing, declined and EOF answers do not grant deletion.",
+        "Core stop authorizes each existing deployment, binding, unbound application resource owner and independently protected management installation before impact acknowledgement. Managed-authorization denial retains original credential bytes."
+      ],
+      "hugging_face_jobs": {
+        "outcome": "unavailable",
+        "reason": "McpServerError: MCP tool hf_jobs was not returned by tools/list",
+        "paid_job_submitted": false
+      },
+      "native_runtime_qualified": true,
+      "pre_release_ready": false,
+      "binary_sha256": "53f15b2bc05f68d5f0b2188af1f58a8e90ded6d2fbb6d671ce286e27624a87bb"
+    }
+  ],
+  "native_attempts": [
+    {
+      "commit": "dfb724a4d55bd554c283351ed57c39e0a1b6056b",
+      "tree": "7dcc4f7b5f546df55494698e20ea78114a1f3cf1",
+      "run_id": 38266937671,
+      "attempt": 1,
+      "outcome": "failure",
+      "jobs": [
+        {
+          "runtime": "docker",
+          "job_id": 114871358888,
+          "outcome": "failure",
+          "seconds": 40.09,
+          "artifact_id": 11755690433,
+          "artifact_sha256": "2e4cd4427ffe2847e5f07d07c8a4341c69372d0a30104d30dc8cc57d9d05f632"
+        },
+        {
+          "runtime": "podman",
+          "job_id": 114871358343,
+          "outcome": "failure",
+          "seconds": 55.14,
+          "artifact_id": 11754997851,
+          "artifact_sha256": "885d9d75bc504bdaea094885d9c1cd0af606536b04ea62c411f33e71b1777a24"
+        }
+      ],
+      "observed": "Native CLI without acknowledgement was refused. MCP selected stop returned control_plane_stop_partial with verified retained protected owners, but no verified stopped process result. Original-data resume acceptance was not reached. Both jobs failed and cleanup completed; process/resource discrepancy requires diagnosis."
+    },
+    {
+      "commit": "278fb159189b5dbf0fe14429f881cb28d4ec94c8",
+      "tree": "fd1142b72feaabfff67ce169be23d693be7571ce",
+      "run_id": 38268123269,
+      "attempt": 1,
+      "outcome": "failure",
+      "jobs": [
+        {
+          "runtime": "docker",
+          "job_id": 114875396156,
+          "outcome": "failure",
+          "seconds": 38.22,
+          "artifact_id": 11756101099,
+          "artifact_sha256": "dc8d79fe96fa16b6b1bd21bc1ab8f512e5cf9800d1fd2306a2e59f206aca9c8e"
+        }
+      ],
+      "observed": "Safe process diagnostics show canonical Core services present before stop and removed after the existing selected-stop adapter; running consolidated-project sibling remains. Verifier rejected selected container absence. Data/credential owner and sibling preservation are partial observations; original-data resume was not reached. Podman intentionally not repeated for this diagnostic."
+    },
+    {
+      "commit": "cc1551fda4b1ca40f2c0b5c2cb8f7a8a99d9fa02",
+      "tree": "0e35d33af8a4db70c6c1d8642055cf64c73324ff",
+      "run_id": 38270044907,
+      "attempt": 1,
+      "outcome": "success",
+      "scope": "Single explicit Core, native CLI refusal plus in-memory MCP confirmed selected stop, stale native-state acknowledgement refused, fresh stopped/removed retry, persistent data/networks and running consolidated-project sibling retained. Original SQL row read over verify-full TLS after normal resume and unchanged original OpenBao manager credentials authenticated. Real OpenBao bootstrap and shipped Core TLS reconciliation; no Core HTTP/OIDC browser, HA or universal consumer-function continuity acceptance.",
+      "jobs": [
+        {
+          "runtime": "docker",
+          "job_id": 114881769750,
+          "outcome": "success",
+          "seconds": 66.14,
+          "artifact_id": 11757290173,
+          "artifact_sha256": "6acfdd75ee830518aba1b1c63725afee92c34c0cfe36812839750222c76dc012"
+        },
+        {
+          "runtime": "podman",
+          "job_id": 114881770202,
+          "outcome": "success",
+          "seconds": 88.24,
+          "artifact_id": 11756382720,
+          "artifact_sha256": "f546cf03ed55cd664adf733842447c5a96fdad6ac34ebe3cc6c09a00707df034"
+        }
+      ],
+      "other_gates": "All unselected targeted gates skipped; not final ecosystem acceptance."
+    },
+    {
+      "commit": "8fa9a2b84a25faeb88e6e44892ac994ecce5097f",
+      "tree": "5d32ddae3a955e2071b8e174c288dd285e4d52a9",
+      "run_id": 38355708965,
+      "attempt": 1,
+      "outcome": "success",
+      "scope": "Changed Core-stop authority, original SQL/TLS row and credentials after stop/resume, retained OpenBao manager, native CLI refusal and acknowledged in-memory MCP stop, stale-plan rejection, running sibling preservation, Target definition detach and original restoration with original SQL data and protected material. Not universal consequence, Core HTTP, real Connector mTLS or Console browser acceptance.",
+      "jobs": [
+        {
+          "runtime": "docker",
+          "job_id": 115157981043,
+          "outcome": "success",
+          "seconds": 95.1,
+          "artifact_id": 11792723121,
+          "artifact_sha256": "5a3045b2153114389e45500f48aa478fc70997a8de24b612edfb980e2e8adb28"
+        },
+        {
+          "runtime": "podman",
+          "job_id": 115157980829,
+          "outcome": "success",
+          "seconds": 96.8,
+          "artifact_id": 11792128554,
+          "artifact_sha256": "e078ad8c951935408b607c9ceac51adc6021d3bce77548494139982af7398e50"
+        }
+      ],
+      "complete_job_logs_reviewed": true,
+      "other_gates": "Unselected jobs skipped; no complete pre-release."
+    }
+  ],
+  "boundary": "The recorded exact-source single Core stop/resume is qualified on both engines. Actual all-consumer dependencies/validity/continuity, Core destroy, Target detach, universal provider handoffs and final ecosystem acceptance remain mandatory. No final pre-release readiness.",
+  "correction_pending_native_proof": null,
+  "resolved_native_correction": "The existing selected-stop adapters retire stopped processes. Actual selected absence, data/network retention and unchanged sibling are now verified on both native engines; removed/stopped retry uses fresh native-state consent. The domain consequence receipt remains partial because all consumer behavior/validity/continuity is not proven."
+}

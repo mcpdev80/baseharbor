@@ -1,0 +1,159 @@
+{
+  "schema": "baseharbor.scoped-native-evidence/v1",
+  "release": "0.4.25",
+  "scope": "Owned PostgreSQL/Valkey shared/application placement round trip, independent retained original/destination data and credentials, selection persistence, repeated apply and two-app shared lifecycle.",
+  "source": {
+    "repository": "mcpdev80/baseharbor",
+    "commit": "5f4a919da5161cc0f061c3526f11b51e9af07497",
+    "tree": "ec7d5b8a5f000a587cf1093e904a556be45f8304"
+  },
+  "workflow": {
+    "run_id": 38428683830,
+    "attempt": 1,
+    "url": "https://github.com/mcpdev80/baseharbor/actions/runs/38428683830"
+  },
+  "result": "pass",
+  "pre_release_ready": false,
+  "jobs": [
+    {
+      "id": 115404790638,
+      "runtime": "podman",
+      "result": "success",
+      "logs_reviewed": true,
+      "artifacts": [
+        {
+          "id": 11829634458,
+          "name": "coreless-podman-38428683830-1",
+          "digest": "sha256:77fbd0299b8eed347accd5f07b7f07c39f6e6cae5069207c2f8844dfc3749a27",
+          "size_in_bytes": 2295
+        }
+      ]
+    },
+    {
+      "id": 115404790896,
+      "runtime": "docker",
+      "result": "success",
+      "logs_reviewed": true,
+      "artifacts": [
+        {
+          "id": 11830193596,
+          "name": "coreless-docker-38428683830-1",
+          "digest": "sha256:d5e0bf793e812696708332fa8b1f2c471a82fa066e72a5f6e9979416b98a34f2",
+          "size_in_bytes": 2504
+        }
+      ]
+    }
+  ],
+  "assertions": [
+    "Original shared authenticated TLS SQL/Valkey data survives disable/re-add.",
+    "shared -> application -> shared -> application -> shared verifies independently seeded destination data and original shared data without reseeding on return.",
+    "First destination has no original marker; no automatic content migration.",
+    "Both original/destination owned volumes and original protected provider credentials remain.",
+    "Applied provider selection survives unset one-shot override and repeated apply.",
+    "Two actual consumers preserve original authenticated data and each other's shared runtime; last-consumer removal converges owned runtime.",
+    "Native Docker/rootless Podman and fixture cleanup pass."
+  ],
+  "local_checks": {
+    "initial_full_snapshot": {
+      "parent": "163663bd5bc1bc033d29c3f4fd6e486dcec6baa6",
+      "tree": "7182d349145f6183ed5617bd6a66fe83aabebdf0",
+      "checks": [
+        "full Go tests",
+        "vet",
+        "CLI build",
+        "strict EN/DE builds",
+        "documentation audit",
+        "readability",
+        "script tests"
+      ],
+      "result": "pass",
+      "race_initial": "Invalid ./internal/domain/capability package path; actual CLI/application races passed.",
+      "race_corrected": {
+        "packages": [
+          "./cmd/baha",
+          "./internal/application",
+          "./internal/capability"
+        ],
+        "result": "pass"
+      }
+    },
+    "final_endpoint_changes": {
+      "files": [
+        {
+          "path": "cmd/baha/app_backend_retained_data_runtime_test.go",
+          "sha": "11bd65ee36ede818065e1e111e4e50f806387f49"
+        },
+        {
+          "path": "internal/application/runtime_native_binding_projection.go",
+          "sha": "5fbae8c9227c537fe0f18a7ecffc8ccfdae3cdd4"
+        },
+        {
+          "path": "internal/application/runtime_native_binding_projection_test.go",
+          "sha": "5b9e082b38171b107aa7fe808cb012cc0da864ec"
+        },
+        {
+          "path": "internal/application/runtime_postgres.go",
+          "sha": "f83c32bb9815ece1a0ceab79bd7f68cee7df559b"
+        }
+      ],
+      "application_and_cli_tests": "pass",
+      "application_and_cli_races": "pass",
+      "readability": "pass",
+      "isolated_exact_committed_tree_vet_build": "pass",
+      "local_worktree_build_failure": "Go VCS discovery selected /workspace, not the linked worktree. Clean isolated committed-tree clone vet/build passed."
+    },
+    "qualification_boundary": "Observed source checks and scoped native receipts; does not assert complete final ecosystem/static qualification on this source."
+  },
+  "failed_attempts": [
+    {
+      "source": "163663bd5bc1bc033d29c3f4fd6e486dcec6baa6",
+      "run_id": 38422045075,
+      "result": "failure",
+      "jobs": [
+        115381625129,
+        115381625486
+      ],
+      "cause": "Native PostgreSQL verifier assumed baseharbor role instead of retained container credentials. Cache round trip was not executed.",
+      "artifacts": [
+        {
+          "id": 11827550767,
+          "name": "coreless-podman-38422045075-1",
+          "digest": "sha256:52c6b44983c2bcd619c44ee8a1f43fcdf25913945227cbf67ff3668c64e6642f"
+        },
+        {
+          "id": 11826689503,
+          "name": "coreless-docker-38422045075-1",
+          "digest": "sha256:3fe85ee11be2f7f54f115c8ddb50258e01430348e1f168082a6a2a93ca88b0e8"
+        }
+      ]
+    },
+    {
+      "source": "2748cec1e629e56445ddda0667178c47483ea956",
+      "run_id": 38427165399,
+      "result": "failure",
+      "jobs": [
+        115399458250,
+        115399458731
+      ],
+      "cause": "Destination authenticated consumer data probe failed. Inspection identified stale shared container host projection and reused shared/native port; native endpoint projection and independent retained native port ownership were corrected.",
+      "artifacts": [
+        {
+          "id": 11830095973,
+          "name": "coreless-podman-38427165399-1",
+          "digest": "sha256:41ca6d4fc09bbaa57154dd66c47d0028f780e6527a167d48b2acfb3738c5896e"
+        },
+        {
+          "id": 11829950773,
+          "name": "coreless-docker-38427165399-1",
+          "digest": "sha256:29b2c3ba94b7d24a89c3a560a0fd762ab9f39ba5df302a95cbe021b86f3a924d"
+        }
+      ]
+    }
+  ],
+  "open_boundaries": [
+    "No database content migration, OpenBao/Identity handoff or unsupported provider adapter qualification.",
+    "Universal provider/consumer consequences and authenticated immutable Core/Demo/Console/Connector matrix remain incomplete.",
+    "Local App full-reset/remote destruction authority and default remote owner-retention fixes are unpublished; their final native qualification has not run.",
+    "No full pre-release, merge, tag, release or production Pages publication."
+  ]
+}

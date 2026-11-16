@@ -1,0 +1,134 @@
+package application
+
+import "github.com/mcpdev80/baseharbor/internal/capability"
+
+// CapabilityKind and CapabilityRequirement remain aliases in the application
+// package so existing v0.4 callers keep their source-compatible contract while
+// the reusable capability domain moves into the shared core.
+type CapabilityKind = capability.Kind
+
+const (
+	CapabilitySQL              CapabilityKind = capability.SQL
+	CapabilityKeyValue         CapabilityKind = capability.KeyValue
+	CapabilityDurableKeyValue  CapabilityKind = capability.DurableKeyValue
+	CapabilityDocumentDatabase CapabilityKind = capability.DocumentDatabase
+	CapabilityExposureHTTP     CapabilityKind = capability.ExposureHTTP
+	CapabilityObjectStorageS3  CapabilityKind = capability.ObjectStorageS3
+	CapabilityTelemetryOTLP    CapabilityKind = capability.TelemetryOTLP
+	CapabilityMetrics          CapabilityKind = capability.Metrics
+	CapabilityLogs             CapabilityKind = capability.Logs
+	CapabilityIdentity         CapabilityKind = capability.Identity
+	CapabilityMessagingQueue   CapabilityKind = capability.MessagingQueue
+	CapabilityMessagingPubSub  CapabilityKind = capability.MessagingPubSub
+	CapabilityMessagingStream  CapabilityKind = capability.MessagingStream
+)
+
+type CapabilityRequirement = capability.Requirement
+
+// SecretContract describes secret intent without selecting a concrete secret
+// backend or delivery mechanism. Required values remain names/generation intent
+// only; provider credentials and provider object identifiers never belong here.
+type SecretContract struct {
+	Managed  bool
+	Required []SecretRequirement
+}
+
+// PortableContract is the provider-neutral application requirement view used
+// as the seam between manifest compatibility and runtime/capability providers.
+//
+// Deployment context such as environment, Compose paths, host ports, TLS source
+// directories and provider object names must not be added here. Those belong to
+// deployment state or provider-specific configuration.
+type PortableContract struct {
+	Application  string
+	Capabilities []CapabilityRequirement
+	Secrets      SecretContract
+	Exposures    []HTTPExposureRequirement
+	Metrics      []MetricsSourceRequirement
+	Logs         []string
+	Identity     *IdentityRequirements
+}
+
+// PortableContractFromManifest translates the current manifest v1 compatibility
+// surface into provider-neutral requirements without changing manifest behavior.
+func PortableContractFromManifest(m Manifest) (PortableContract, error) {
+	if err := m.ValidateIntent(); err != nil {
+		return PortableContract{}, err
+	}
+
+	contract := PortableContract{
+		Application: m.Name,
+		Secrets: SecretContract{
+			Managed:  m.Services.Secrets,
+			Required: cloneSecretRequirements(m.Secrets.Required),
+		},
+		Exposures: append([]HTTPExposureRequirement(nil), m.Exposures...),
+		Metrics:   append([]MetricsSourceRequirement(nil), m.Metrics.Sources...),
+		Logs:      append([]string(nil), m.Logs.Collect...),
+	}
+	if m.Services.Identity {
+		identity := m.Identity
+		identity.CallbackPaths = append([]string(nil), m.Identity.CallbackPaths...)
+		identity.LogoutPaths = append([]string(nil), m.Identity.LogoutPaths...)
+		identity.Scopes = append([]string(nil), m.Identity.Scopes...)
+		identity.Claims = append([]string(nil), m.Identity.Claims...)
+		identity.Authentication.Methods = append([]string(nil), m.Identity.Authentication.Methods...)
+		contract.Identity = &identity
+		contract.Capabilities = append(contract.Capabilities, CapabilityRequirement{Kind: CapabilityIdentity, Name: "default"})
+	}
+	for _, name := range SQLInstanceNames(m) {
+		contract.Capabilities = append(contract.Capabilities, CapabilityRequirement{Kind: CapabilitySQL, Name: name})
+	}
+	for _, name := range CacheInstanceNames(m) {
+		contract.Capabilities = append(contract.Capabilities, CapabilityRequirement{Kind: CapabilityKeyValue, Name: name})
+	}
+	for _, name := range KeyValueInstanceNames(m) {
+		contract.Capabilities = append(contract.Capabilities, CapabilityRequirement{Kind: CapabilityDurableKeyValue, Name: name})
+	}
+	for _, name := range DocumentDatabaseInstanceNames(m) {
+		contract.Capabilities = append(contract.Capabilities, CapabilityRequirement{Kind: CapabilityDocumentDatabase, Name: name})
+	}
+	for _, name := range MessagingQueueInstanceNames(m) {
+		contract.Capabilities = append(contract.Capabilities, CapabilityRequirement{Kind: CapabilityMessagingQueue, Name: name})
+	}
+	for _, name := range MessagingPubSubInstanceNames(m) {
+		contract.Capabilities = append(contract.Capabilities, CapabilityRequirement{Kind: CapabilityMessagingPubSub, Name: name})
+	}
+	for _, name := range MessagingStreamInstanceNames(m) {
+		contract.Capabilities = append(contract.Capabilities, CapabilityRequirement{Kind: CapabilityMessagingStream, Name: name})
+	}
+	for _, name := range ObjectStorageBucketNames(m) {
+		contract.Capabilities = append(contract.Capabilities, CapabilityRequirement{Kind: CapabilityObjectStorageS3, Name: name})
+	}
+	for _, exposure := range m.Exposures {
+		contract.Capabilities = append(contract.Capabilities, CapabilityRequirement{Kind: CapabilityExposureHTTP, Name: exposure.Name})
+	}
+	if m.Telemetry.OTLP != nil {
+		contract.Capabilities = append(contract.Capabilities, CapabilityRequirement{Kind: CapabilityTelemetryOTLP, Name: "default"})
+	}
+	for _, source := range m.Metrics.Sources {
+		contract.Capabilities = append(contract.Capabilities, CapabilityRequirement{Kind: CapabilityMetrics, Name: source.Name})
+	}
+	if HasLogsCollection(m) {
+		for _, service := range WorkloadComponentNames(m) {
+			contract.Capabilities = append(contract.Capabilities, CapabilityRequirement{Kind: CapabilityLogs, Name: service})
+		}
+	}
+	return contract, nil
+}
+
+func cloneSecretRequirements(requirements []SecretRequirement) []SecretRequirement {
+	if len(requirements) == 0 {
+		return nil
+	}
+	cloned := make([]SecretRequirement, 0, len(requirements))
+	for _, requirement := range requirements {
+		copyRequirement := requirement
+		if requirement.Generate != nil {
+			generation := *requirement.Generate
+			copyRequirement.Generate = &generation
+		}
+		cloned = append(cloned, copyRequirement)
+	}
+	return cloned
+}

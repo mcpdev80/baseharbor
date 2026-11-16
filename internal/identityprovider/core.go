@@ -1,0 +1,186 @@
+package identityprovider
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"net/url"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+
+	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
+	"github.com/mcpdev80/baseharbor/internal/stableid"
+)
+
+// CoreIdentityDependency identifies the physical installation module without
+// registering an application capability or allocating runtime material.
+func CoreIdentityDependency(dataDir, namespace string) (capability.ProviderInstance, string, error) {
+	placement := capability.ProviderPlacement{Scope: capability.ScopeShared, Ownership: capability.OwnershipBaseHarbor, SharingBoundary: "core"}
+	dir, project, err := keycloakStateIdentity(application.Manifest{}, placement, dataDir, namespace)
+	return capability.ProviderInstance{ID: "runtime/" + project + "/keycloak", Provider: capability.Provider{Kind: capability.ProviderKeycloak}, Scope: placement.Scope, Ownership: placement.Ownership, SharingBoundary: placement.SharingBoundary}, dir, err
+}
+
+// ExistingCoreRuntimeFiles resolves the installation-owned Keycloak Compose and
+// backing SQL without regenerating secrets or changing provider topology.
+func ExistingCoreRuntimeFiles(dataDir, namespace string) (KeycloakFiles, error) {
+	spec := application.Manifest{Version: application.CurrentVersion, Name: "core", Environment: "prod", Services: application.Services{Identity: true}}
+	placement := capability.ProviderPlacement{Scope: capability.ScopeShared, Ownership: capability.OwnershipBaseHarbor, SharingBoundary: "core"}
+	dir, project, err := keycloakStateIdentity(spec, placement, dataDir, namespace)
+	if err != nil {
+		return KeycloakFiles{}, err
+	}
+	files, err := existingCoreKeycloakFiles(dir)
+	if err != nil {
+		return KeycloakFiles{}, err
+	}
+	compose := filepath.Join(dir, "compose.yaml")
+	info, err := os.Lstat(compose)
+	if err != nil {
+		return KeycloakFiles{}, err
+	}
+	if !info.Mode().IsRegular() || info.Mode().Perm()&0o077 != 0 {
+		return KeycloakFiles{}, errors.New("Core Identity Compose must be a protected regular non-symlink file")
+	}
+	consumer, err := application.IdentityProviderNetworkNameForPlacement(spec, namespace, placement)
+	if err != nil {
+		return KeycloakFiles{}, err
+	}
+	files.Project, files.Compose = project, compose
+	files.ConsumerNetwork, files.InternalNetwork = consumer, consumer+"-internal"
+	return files, nil
+}
+
+// EnsureCoreIdentity realizes installation Identity through the existing native
+// provider. No Application, repository, workload binding or login is required.
+// Application placement preferences do not redefine this installation scope.
+func EnsureCoreIdentity(ctx context.Context, runtime KeycloakRuntime, issuer serviceaccess.Issuer, dataDir, namespace, installationID string, ha ...bool) (string, error) {
+	if err := stableid.ValidateUUIDv4("installation", installationID); err != nil {
+		return "", err
+	}
+	spec := application.Manifest{Version: application.CurrentVersion, Name: "core", Environment: "prod", Services: application.Services{Identity: true}}
+	if len(ha) > 0 {
+		spec.HA = ha[0]
+	}
+	placement := capability.ProviderPlacement{Scope: capability.ScopeShared, Ownership: capability.OwnershipBaseHarbor, SharingBoundary: "core"}
+	files, err := ensureKeycloakFilesForPlacement(ctx, spec, issuer, dataDir, namespace, placement)
+	if err != nil {
+		return "", err
+	}
+	if err = setCoreKeycloakCanonicalURL(runtime, namespace, files); err != nil {
+		return "", err
+	}
+	if err = runtime.ConfigProject(ctx, files.Project, files.Compose, files.Env); err != nil {
+		return "", err
+	}
+	if err = NewKeycloakLifecycle(runtime).Apply(ctx, files); err != nil {
+		return "", err
+	}
+	admin, err := operatorKeycloakAdmin(ctx, files)
+	if err != nil {
+		return "", err
+	}
+	ownership := map[string]string{"baseharbor.owner": "baseharbor", "baseharbor.scope": "installation", "baseharbor.installation": installationID}
+	attributes := make(map[string]string, len(ownership)+1)
+	for key, value := range ownership {
+		attributes[key] = value
+	}
+	// The installation issuer stays bound to its protected native endpoint.
+	attributes["frontendUrl"] = files.PublicURL
+	realm := keycloakRealm{Realm: "baseharbor", Enabled: true, DisplayName: "BaseHarbor", SSLRequired: "all", BruteForceProtected: true, RegistrationAllowed: false, Attributes: attributes}
+	if err = admin.reconcileRealm(ctx, realm, ownership); err != nil {
+		return "", errors.New("Core identity realm reconciliation failed; inspect protected provider diagnostics")
+	}
+	client, err := keycloakPublicHTTPClient(files)
+	if err != nil {
+		return "", err
+	}
+	endpoint := files.PublicURL + "/realms/" + url.PathEscape(realm.Realm)
+	if _, err = FetchDiscoveryAt(ctx, client, endpoint, endpoint); err != nil {
+		return "", err
+	}
+	return endpoint, nil
+}
+
+func VerifyCoreIdentity(ctx context.Context, dataDir, namespace, installationID, expectedIssuer string) error {
+	if err := stableid.ValidateUUIDv4("installation", installationID); err != nil {
+		return err
+	}
+	spec := application.Manifest{Version: application.CurrentVersion, Name: "core", Environment: "prod", Services: application.Services{Identity: true}}
+	placement := capability.ProviderPlacement{Scope: capability.ScopeShared, Ownership: capability.OwnershipBaseHarbor, SharingBoundary: "core"}
+	dir, _, err := keycloakStateIdentity(spec, placement, dataDir, namespace)
+	if err != nil {
+		return err
+	}
+	// Read existing protected material only; probing readiness must not provision.
+	files, err := existingCoreKeycloakFiles(dir)
+	if err != nil {
+		return err
+	}
+	if files.PublicURL+"/realms/baseharbor" != expectedIssuer {
+		return errors.New("Core Identity destination differs from the owned installation")
+	}
+	admin, err := operatorKeycloakAdmin(ctx, files)
+	if err != nil {
+		return err
+	}
+	status, body, err := admin.do(ctx, "GET", "/admin/realms/baseharbor", nil)
+	if err != nil {
+		return err
+	}
+	var realm keycloakRealm
+	if status != 200 || json.Unmarshal([]byte(body), &realm) != nil || !realm.Enabled || !keycloakRealmOwnedBy(realm, map[string]string{"baseharbor.owner": "baseharbor", "baseharbor.scope": "installation", "baseharbor.installation": installationID}) {
+		return errors.New("Core Identity readiness or ownership verification failed")
+	}
+	client, err := keycloakPublicHTTPClient(files)
+	if err != nil {
+		return err
+	}
+	_, err = FetchDiscoveryAt(ctx, client, expectedIssuer, expectedIssuer)
+	return err
+}
+
+func existingCoreKeycloakFiles(dir string) (KeycloakFiles, error) {
+	values, err := readProtectedEnv(filepath.Join(dir, "runtime.env"))
+	if err != nil {
+		return KeycloakFiles{}, err
+	}
+	sharedSQL, err := existingKeycloakCoreSQL(values)
+	if err != nil {
+		return KeycloakFiles{}, err
+	}
+	port, err := parseIdentityPort(values["BASEHARBOR_KEYCLOAK_PUBLIC_PORT"])
+	if err != nil {
+		return KeycloakFiles{}, err
+	}
+	policy, err := serviceaccess.Resolve("prod", "keycloak-public", serviceaccess.AuthenticationNative)
+	if err != nil {
+		return KeycloakFiles{}, err
+	}
+	policy.ServerName = keycloakPublicHost
+	material, err := serviceaccess.ExistingTLSMaterial(policy, filepath.Join(dir, "native-tls", "pki"))
+	if err != nil {
+		return KeycloakFiles{}, err
+	}
+	return KeycloakFiles{SharedSQL: sharedSQL, Dir: dir, Env: filepath.Join(dir, "runtime.env"), PublicPort: port, AdminPort: port, PublicURL: "https://" + keycloakPublicHost + ":" + strconv.Itoa(port), AdminURL: "https://127.0.0.1:" + strconv.Itoa(port), PublicAccess: serviceaccess.HTTPGatewayFiles{Material: material}, AdminAccess: serviceaccess.HTTPGatewayFiles{Material: material}}, nil
+}
+
+// Only installation reconciliation may initialize or migrate the shared server's
+// browser authority. Keep an explicitly configured installation hostname.
+func setCoreKeycloakCanonicalURL(runtime KeycloakRuntime, namespace string, files KeycloakFiles) error {
+	values, err := readProtectedEnv(files.Env)
+	if err != nil {
+		return err
+	}
+	canonical := strings.TrimSpace(values["BASEHARBOR_KEYCLOAK_CANONICAL_URL"])
+	if canonical == "" || canonical == files.PublicURL {
+		canonical, err = managedOperatorCanonicalBaseURL(runtime, namespace)
+		if err != nil {
+			return err
+		}
+	}
+	return SetKeycloakCanonicalURL(files, canonical)
+}

@@ -1,0 +1,83 @@
+{
+  "pre_release_ready": false,
+  "complete_native_acceptance": false,
+  "gate": "runtime-explorer-bounded-consequence-authority",
+  "attempts": [
+    {
+      "candidate_sha": "bdd8efca6c1f76c4b61e1de796887f686ea8168d",
+      "candidate_tree": "b7801f9233ea03187e0d88d33ab8c1640150abd5",
+      "workflow_run_id": 38181166076,
+      "result": "FAIL",
+      "observed": "Basic fresh no-capability workload reaches actual readiness, stop/up and zero Core inventory. New Runtime Explorer mutation qualification does not pass. Docker missing consent is rejected as stale-impact-consent instead of ApprovalRequired; acknowledged stop/start/restart not reached. Podman full inventory fails on unsupported pod ps -a before mutation qualification. Native selected-operation success is not claimed.",
+      "runtime_jobs": [
+        {
+          "runtime": "docker",
+          "rootless": true,
+          "job_id": 114593839988,
+          "test_seconds": 29.25,
+          "artifact_id": 11717552337,
+          "artifact_digest": "sha256:924e4ac20265cb5553f3403d8d8817fe4b7cadf9c9787fcdd023409c8962adf9"
+        },
+        {
+          "runtime": "podman",
+          "rootless": true,
+          "job_id": 114593840159,
+          "test_seconds": 32.03,
+          "artifact_id": 11718316070,
+          "artifact_digest": "sha256:d9a239eb6a1b1855df52f8498da93592179a991d2b6bea3f9f08bb1a84da5981"
+        }
+      ]
+    },
+    {
+      "candidate_sha": "48cc8fd5442a7a72644c6660602800ff25569e26",
+      "candidate_tree": "f25b9f9cdf192a83ebcb0432a9b9e0b217b21782",
+      "workflow_run_id": 38182057134,
+      "result": "FAIL",
+      "observed": "Both runtimes reject stop without both acknowledgements. Docker acknowledged stop verifies retained recovery owner; start observes running with starting health and is incorrectly rejected. Podman raw container stop bypasses Quadlet supervision, fails rootless network cleanup, and loses the original native container ID. No complete native Explorer acceptance is claimed.",
+      "runtime_jobs": [
+        {
+          "runtime": "docker",
+          "rootless": true,
+          "job_id": 114596510585,
+          "test_seconds": 40.48,
+          "artifact_id": 11718326573,
+          "artifact_digest": "sha256:edba39637623a127580a457f4ce5ac1ba1954d51a2708f8b3a96542241d5a7d0"
+        },
+        {
+          "runtime": "podman",
+          "rootless": true,
+          "job_id": 114596510773,
+          "test_seconds": 32.2,
+          "artifact_id": 11718606838,
+          "artifact_digest": "sha256:ff68c845a0e95e08336adad2b22fd266b61205b022b310f0397bacd247a1811b"
+        }
+      ]
+    },
+    {
+      "candidate_sha": "594d60a9e13ead6dc19f82d15ea75d4547e576a2",
+      "candidate_tree": "3e77b611115a2fb6c0f9e4bddded13cdc6715ce2",
+      "workflow_run_id": 38183286006,
+      "result": "PASS",
+      "observed": "Both rootless runtimes run an actual fresh workload without Core/login, verify down/up and readiness, reject missing acknowledgement without runtime change, and execute acknowledged Explorer stop/start/restart through shared operation authority. Stable resource reference and protected deployment/provider recovery owners remain unchanged. Docker stop observes exited, Podman supervised stop observes stopped with retained Quadlet owner; start/restart observe running and the native workload subsequently regains readiness. Repeated default destroy leaves zero Core/total containers. Function/transient-state consequence receipts remain explicitly partial; this is bounded native acceptance, not universal consequence or ecosystem readiness.",
+      "runtime_jobs": [
+        {
+          "runtime": "docker",
+          "rootless": true,
+          "job_id": 114600196179,
+          "test_seconds": 55.78,
+          "artifact_id": 11718925569,
+          "artifact_digest": "sha256:66ecf3d0c00770fe7481b4b15b04fe91f0bdfe9e817e2463040c6b907c2e9cd3"
+        },
+        {
+          "runtime": "podman",
+          "rootless": true,
+          "job_id": 114600196376,
+          "test_seconds": 58.83,
+          "artifact_id": 11717509279,
+          "artifact_digest": "sha256:324707d0cc6b979736bad1c45e491012792a191ab60ca0c6810579311cb7251d"
+        }
+      ]
+    }
+  ],
+  "bounded_native_acceptance": true
+}

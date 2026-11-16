@@ -1,0 +1,209 @@
+# Runtime-Explorer-Vertrag v1
+
+## Gültigkeitsbereich
+
+Runtime Explorer ist der Anbieter-neutrale Inspektions- und begrenzter Low-Level-Betriebsvertrag für konkrete Laufzeitressourcen.
+
+Es sitzt unter BaseHarbor Application Intention:
+
+```text
+Application / Deployment / Component-or-Provider
+        -> runtime realization
+        -> Runtime Explorer resource
+```
+
+Portable Application Intent MUSS NICHT Docker, Podman, Kubernetes oder OpenShift Ressourcenobjekte enthalten.
+
+Vertragskennung:
+
+```text
+baseharbor.runtime-explorer/v1
+```
+
+## Stabile Ressourcenreferenz
+
+Jede Ressource MUSS eine stabile Referenz mit:
+
+- Identität des Laufzeitanbieters;
+- Basis-Harbor-Ziel;
+- Anbieterneutrale Ressourcenart;
+- stabile Laufzeit-Ressource-ID.
+
+Runtime-native Display-Namen sind Metadaten, nicht BaseHarbor logische Identität.
+
+Clients MÜSSEN Ressourcen-IDs als opake Referenzen behandeln. Lokale, durch
+Quadlet verwaltete Podman-Container verwenden die vorhandene geschützte
+Unit-Datei als stabile Referenz, da ein gesteuerter Stop den nativen Container
+entfernen kann. Start, Stop und Neustart laufen über den systemd-Supervisor;
+Logs, Exec und Terminal verwenden den aktuell nachgewiesenen nativen Container.
+Ein fehlender Container gilt nur dann als gestoppt, wenn die vorhandene Unit
+beobachtet inaktiv oder fehlgeschlagen ist. Laufender Container und Bereitschaft
+der Anwendung bleiben getrennte Beobachtungen.
+
+## Art der Ressourcen
+
+v1 definiert additive Ressourcenarten für:
+
+- `container`;
+- `image`;
+- `volume`;
+- `network`;
+- `pod`.
+
+Zukünftige Kubernetes/OpenShift-Arten MÜSSEN hinzugefügt werden, ohne die portable Anwendung zu ändern.
+
+## Eigentum
+
+Die Kunden MÜSSEN die von Core/Runtime-Evidenz zurückgegebenen maßgeblichen Eigentümer verwenden.
+
+```text
+managed
+external
+unmanaged
+platform
+```
+
+Mandanten MÜSSEN KEINE Besitztümer von Namen, Präfixen oder Etiketten allein ableiten.
+
+A `managed` Ressource MUSS eine BaseHarbor-Beziehung zu einer Anwendung, Bereitstellung, Komponente oder Anbieter tragen.
+
+## Beziehungen
+
+Wo bekannt, deckt Runtime Explorer stabile Beziehungen auf:
+
+```text
+Application
+  -> Deployment
+    -> Component / Provider
+      -> Runtime resource
+```
+
+Laufzeitspezifische Projekt-/Service-Etiketten MÜSSEN als Referenzen exponiert werden, MÜSSEN aber keine stabilen BaseHarbor-Identitäten ersetzen.
+
+## Zustand und Gesundheit
+
+Der gemeinsame Ressourcenzustand kann Folgendes umfassen:
+
+- gewünschter Zustand, in dem er sinnvoll ist;
+- beobachteter Zustand;
+- Gesundheit;
+- Bereitschaft;
+- creation/update timestamps wenn die Laufzeit sie freilegt.
+
+Anbieterspezifische Details gehören in das Erweiterungsfeld.
+
+## Fähigkeiten
+
+Clients MUSS Fähigkeiten verhandeln und MUSS NICHT Hardcode-Verhalten nach Provider-Namen.
+
+Das Fähigkeitsvokabular umfasst:
+
+```text
+resources.inspect
+resources.metrics
+logs
+container.lifecycle
+container.exec
+pod.inspect
+```
+
+Anbieter werben nur Fähigkeiten, die sie tatsächlich implementieren. Nicht unterstützte Fähigkeiten scheitern explizit.
+
+## Vorhaben
+
+Gebundene v1-Container-Betriebe sind:
+
+- `start`;
+- `stop`;
+- `restart`;
+- `exec`.
+
+Die Maschinenschnittstelle entlarvt `runtime.start`, ` runtime.stop `und` runtime.restart`als separate autorisierte semantische Operationen. Dies hält die Sicherheit/Politik-Metadaten stabil und verhindert, dass ein generischer Operationsstring nach der Autorisierung seine Bedeutung ändert.
+
+Exec benötigt einen expliziten Befehl und verwendet die geschützte Laufzeit-Exec-Stream-Grenze. Er impliziert keine Host-Shell und wird nicht als generischer Befehl übergeben.
+
+Runtime Explorer MUSS keinen generischen Provider-Befehl durchpassen.
+
+## Mutationssicherheit
+
+Direkte Low-Level-Mutation unterscheidet sich von der bevorzugten semantischen BaseHarbor-Operation.
+
+Managed resources entlarvt Abgleich Metadaten wie:
+
+- bevorzugter semantischer Betrieb;
+- ob direkte Mutation durch Versöhnung ersetzt werden kann;
+- Menschenlesbares Detail.
+
+Nicht verwaltete und externe Ressourcen MÜSSEN NICHT als BaseHarbor-eigene Mutation behandelt werden.
+
+Alle maschinenseitigen Mutationen unterliegen weiterhin der gemeinsamen Maschinenbediener-Genehmigungs-, Richtlinien-, Sicherheits- und Audit-Grenze.
+
+Vor direktem `start`, `stop` oder `restart` verlangt der konfigurierte Runtime
+Explorer die bestehende Folgen- und Bestätigungsautorität des Targets und
+Deployments. `runtime.operate` und die einzelnen Maschinenoperationen nehmen
+`provider_change_consent` mit der aktuellen Scope-`plan_id` und den zwei
+Bestätigungen `first` und `second` entgegen. Unbekannte Folgen für andere
+Verbraucher, flüchtige Daten, Zugriff, Erneuerung oder Recovery erfordern
+**Achtung** und beide Bestätigungen. Normale Operationsfreigabe ersetzt keine
+Stufe. Veränderte native Zustände, Target-Bindings oder Recovery-Owner machen
+den vorherigen Plan ungültig.
+
+Das Ergebnis enthält den gemeinsamen `provider_change_result` mit beobachtetem
+Runtime-Zustand und geprüftem erhaltenem Owner. Unbekannte Funktions- und
+Materialfolgen bleiben unvollständig. Auch nach einem fehlgeschlagenen nativen
+Befehl werden tatsächlicher Zustand und Teilergebnis ermittelt. Direkte
+Service-Aufrufe können die Autorität nicht umgehen. Ein Runtime-Stop beweist
+weder funktionierende Authentifizierung noch Recovery oder Verfügbarkeit;
+Restart garantiert keinen Erhalt laufender Arbeit.
+
+## Protokolle und Metriken
+
+Der Protokollzugriff verwendet eine stabile Laufzeit-Ressource-Referenz und optional gebundene Historien-Selektoren.
+
+Die geschützte Maschinen-HTTP-API aus dem Schwester-HTTP-Vertrag kann Runtime Explorer-Protokolle nach gemeinsamer Autorisierung streamen.
+
+Metrics werden bei der Unterstützung über einen Provider-neutralen Handle dargestellt. Fehlende Laufzeitmetriken sind explizit und nicht synthetisiert.
+
+Für einen zugelassenen Remote Connector werben Core `resources.metrics` nur wenn
+die Live-Session annonciert `runtime.metrics`. Core bestätigt das ausgewählte Ziel,
+Anbieter und beobachteten Container vor dem Versand. Eine erfolgreiche Antwort umfasst
+eine fakultative `sample` mit `resource_id`, Kerneingangszeit ` observed_at`, und die
+Einheimisch `cpu_percent`, ` memory_usage `und` network_io`Strings. Native Einheiten bleiben
+Diese Beobachtungen bestätigen keine normalisierte Leistungsfähigkeit oder Gesundheit.
+Fehlende native Sample-Returns `available: false`; Identitätsinkongruenzen und Misserfolge
+verlangt Rückgabefehler.
+
+## Docker und Podman Referenzrealisierung
+
+Docker und Podman verwenden die bestehenden BaseHarbor Runtime Provider-Implementierungen.
+
+Der Referenz-Explorer:
+
+- Vorräte an Docker-Containern, -Bildern, -Volumen und -Netzwerken;
+- Vorräte an Podman-Containern, Bildern, Volumen, Netzwerken und Pods;
+- verwendet stabile Laufzeit-IDs, bei denen der Motor sie ausgibt; Volumennamen sind die Laufzeit-native stabile Kennungen;
+- behält nicht verwaltete Ressourcen, anstatt sie fallen zu lassen;
+- stellt Zustand und Gesundheit dar, in denen die Laufzeit sie liefert;
+- Bild/Volumen/Netzwerk/Pod-Inventar wird nur in v1 gespeichert;
+- Delegierte begrenzter Containerprotokolle/Lebenszyklus/exec durch ressourcenskopierte Laufzeitbefehle;
+- fällt nie wieder auf eine Wirtsschale zurück.
+
+Managed Container Ownership wird von BaseHarbor Deployment Evidence über einen separaten Resolver geliefert, anstatt aus Displaynamen zu erraten. Inventarressourcen ohne maßgebliche Besitznachweise bleiben erhalten `unmanaged`; Der Entdecker fördert sie nicht dazu, auf der Grundlage von Namenskonventionen verwaltet zu werden.
+
+## Kubernetes/OpenShift-Kompatibilität
+
+v1 ist absichtlich offen für additive Ressourcenarten, einschließlich:
+
+- Namespaces;
+- Arbeitsbelastungen;
+- Hülsen,
+- Dienstleistungen;
+- Gateways/Einsteiger;
+- ConfigMaps;
+- geheime Metadaten;
+- PVCs,
+- Ereignisse;
+- Knoten;
+- OpenShift-spezifische Ressourcen.
+
+Hinzufügen dieser Projektionen MÜSSEN KEINE Änderungen des portablen Anwendungsvertrags erfordern.
