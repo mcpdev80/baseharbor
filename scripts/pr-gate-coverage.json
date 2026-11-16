@@ -875,6 +875,22 @@
       ]
     },
     {
+      "id": "source.internal.openbao.bootstrap.auth.go",
+      "path": "internal/openbao/bootstrap_auth.go",
+      "surfaces": [
+        "source.gate.atomic.docker.control.plane.recovery",
+        "source.gate.atomic.podman.control.plane.recovery"
+      ]
+    },
+    {
+      "id": "source.internal.openbao.bootstrap.auth.test.go",
+      "path": "internal/openbao/bootstrap_auth_test.go",
+      "surfaces": [
+        "source.gate.atomic.docker.control.plane.recovery",
+        "source.gate.atomic.podman.control.plane.recovery"
+      ]
+    },
+    {
       "id": "source.internal.openbao.service.issuer.go",
       "path": "internal/openbao/service_issuer.go",
       "surfaces": [
