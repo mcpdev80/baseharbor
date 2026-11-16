@@ -1266,6 +1266,15 @@
       "required_test_names": ["TestSelectiveBackendCleanupPreservesRuntimeBaseline"]
     },
     {
+      "id": "source.cmd.baha.app.backend.shared.runtime.test.go",
+      "path": "cmd/baha/app_backend_shared_runtime_test.go",
+      "runtime_specific": true,
+      "surfaces": [
+        "source.gate.integration.docker.coreless.lifecycle",
+        "source.gate.integration.podman.coreless.lifecycle"
+      ]
+    },
+    {
       "id": "source.cmd.baha.app.application.backend.runtime.test.go",
       "path": "cmd/baha/app_application_backend_runtime_test.go",
       "runtime_specific": true,
@@ -1346,6 +1355,36 @@
         "source.gate.atomic.docker.guided",
         "source.gate.atomic.podman.guided"
       ]
+},
+    {
+      "id": "source.cmd.baha.app.capability.runtime.test.go",
+      "path": "cmd/baha/app_capability_runtime_test.go",
+      "runtime_specific": true,
+      "surfaces": [
+        "source.gate.integration.docker.coreless.lifecycle",
+        "source.gate.integration.podman.coreless.lifecycle"
+      ],
+      "required_test_names": ["TestApplicationCapabilityLifecycleExistingCore"]
+    },
+    {
+      "id": "source.cmd.baha.app.https.selective.runtime.test.go",
+      "path": "cmd/baha/app_https_selective_runtime_test.go",
+      "runtime_specific": true,
+      "surfaces": [
+        "source.gate.integration.docker.coreless.lifecycle",
+        "source.gate.integration.podman.coreless.lifecycle"
+      ],
+      "required_test_names": ["TestSelectiveHTTPSRuntimeAddRemoveReAdd"]
+    },
+    {
+      "id": "source.cmd.baha.application.otlp.handoff.runtime.test.go",
+      "path": "cmd/baha/application_otlp_handoff_runtime_test.go",
+      "runtime_specific": true,
+      "surfaces": [
+        "source.gate.integration.docker.coreless.lifecycle",
+        "source.gate.integration.podman.coreless.lifecycle"
+      ],
+      "required_test_names": ["TestManagedRegisteredOTLPNativeConsumerHandoff"]
     }
   ],
   "gates": [

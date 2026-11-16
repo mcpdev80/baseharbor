@@ -194,6 +194,10 @@ class RuntimeReuseTests(unittest.TestCase):
                     "integration/podman/coreless-lifecycle"}
         for path in ("cmd/baha/app_backend_selective_runtime_test.go",
                      "cmd/baha/app_backend_shared_runtime_test.go",
+                     "cmd/baha/app_application_backend_runtime_test.go",
+                     "cmd/baha/app_capability_runtime_test.go",
+                     "cmd/baha/app_https_selective_runtime_test.go",
+                     "cmd/baha/application_otlp_handoff_runtime_test.go",
                      "cmd/baha/app_coreless_runtime_test.go",
                      "cmd/baha/app_identity_selective_runtime_test.go",
                      "cmd/baha/app_local_stdio_runtime_test.go"):
