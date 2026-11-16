@@ -104,10 +104,20 @@ func (e *applicationDestroyExecution) retireRuntimePreservingData(ctx context.Co
 	if err != nil {
 		return err
 	}
-	if len(plan.Impact.Impacts) > 0 {
-		if err := acknowledgeProviderImpact(ctx, applicationInput(ctx, nil), out, *plan.Impact, consent); err != nil {
+	if isApplicationStopMode(ctx) {
+		// `app down` stops the application workload even when there are no
+		// managed providers. Use the application-stop scope, which explicitly
+		// describes workload unavailability, as the consent authority. That
+		// scope is bound to this exact retirement plan below.
+		stopPlan, err := authorizeApplicationStop(ctx, e.resolved, out)
+		if err != nil {
 			return err
 		}
+		if stopPlan.retirementPlanID != plan.Impact.PlanID {
+			return applicationStopPlanError(stopPlan, &application.ProviderChangeError{Code: "stale-impact-consent"})
+		}
+	} else if err := acknowledgeProviderImpact(ctx, applicationInput(ctx, nil), out, *plan.Impact, consent); err != nil {
+		return err
 	}
 	if err := revalidateApplicationProviderIntent(ctx, e.resolved); err != nil {
 		return err
