@@ -21,7 +21,7 @@ run_acceptance() {
   local test_name="$5"
   local timeout="$6"
 
-  echo "::group::v0.4.21 HA · $group · $label · $runtime"
+  echo "::group::HA · $group · $label · $runtime"
   reset_runtime
   env "$env_name=$env_value" \
     go test -p 1 "$package" -run "^${test_name}$" -count=1 -timeout "$timeout" -v
@@ -94,9 +94,9 @@ case "$group" in
       ./internal/devgateway TestGatewayRuntimeContinuityAcceptanceInCI 10m
     ;;
   *)
-    echo "Unknown v0.4.21 HA group: $group" >&2
+    echo "Unknown HA group: $group" >&2
     exit 2
     ;;
 esac
 
-echo "v0.4.21 HA group PASS: $group ($runtime)"
+echo "HA group PASS: $group ($runtime)"

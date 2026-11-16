@@ -91,6 +91,38 @@ func configureTestTargetEmpty(t *testing.T) deployment.ResolvedTarget {
 	return target
 }
 
+func configureIsolatedEmptyRuntimeTarget(t *testing.T, name, runtimeProvider string) deployment.ResolvedTarget {
+	t.Helper()
+	t.Setenv("BASEHARBOR_TARGET", "")
+	t.Setenv("BASEHARBOR_STATE_DIR", "")
+	t.Setenv("BASEHARBOR_ENV", "")
+	dataHome := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dataHome)
+	t.Setenv("XDG_DATA_HOME", dataHome)
+	cfg := deployment.Config{
+		Version:       deployment.ConfigVersion,
+		DefaultTarget: name,
+		Access: map[string]deployment.AccessDefinition{
+			"local-runtime": {Provider: "local", Reference: "local"},
+		},
+		Targets: map[string]deployment.TargetDefinition{
+			name: {
+				Runtime: deployment.RuntimeDefinition{Provider: runtimeProvider},
+				Access:  deployment.TargetAccess{Reference: "local-runtime"},
+				Scope:   "local",
+			},
+		},
+	}
+	if err := cfg.Save(); err != nil {
+		t.Fatal(err)
+	}
+	target, err := cfg.ResolveTarget("", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return target
+}
+
 // configureTestTargetWithOwner is retained for callers that register the
 // authoritative Core installation explicitly; configureTestTarget now provisions
 // an owner by default, so it is equivalent but documented for clarity.

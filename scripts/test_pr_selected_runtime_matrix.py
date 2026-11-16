@@ -58,6 +58,12 @@ class RuntimeMatrix(unittest.TestCase):
         self.assertEqual([],result["unsupported"])
         self.assertIn("max-parallel: 2",workflow.split("  pr_runtime_selected:",1)[1].split("  pr_selected_final:",1)[0])
 
+    def test_workflow_dispatches_runtime_when_trusted_matrix_requires_it(self):
+        workflow=(Path(__file__).resolve().parent.parent/".github/workflows/ci.yml").read_text()
+        self.assertIn('json.load(open(sys.argv[1]))["required"]', workflow)
+        self.assertNotIn('echo "runtime_required=false"', workflow)
+        self.assertIn("needs.pr_plan.outputs.runtime_required == 'true'", workflow)
+
     def test_unsupported_not_marked_pass(self):
         result=module.select({"selected_gates":["integration/static/public-contracts"]},self.catalog)
         self.assertFalse(result["required"])
