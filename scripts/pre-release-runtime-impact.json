@@ -1,6 +1,7 @@
 {
   "schema": "baseharbor.pre-release-runtime-impact/v1",
   "safe_core_paths": [
+    "baseharbor-plan/evidence/**",
     "CHANGELOG.md",
     "README.md",
     "CONTRIBUTING.md",
