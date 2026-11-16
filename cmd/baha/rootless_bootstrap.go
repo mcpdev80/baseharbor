@@ -11,6 +11,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
@@ -167,7 +168,7 @@ func checkRootlessSubIDs() error {
 		if err != nil {
 			return fmt.Errorf("read Rootless Docker subordinate ID mappings /etc/%s: %w", name, err)
 		}
-		if !hasRootlessSubIDRange(string(contents), current.Username) {
+		if !hasRootlessSubIDRange(string(contents), current.Username) && !hasRootlessSubIDRange(string(contents), current.Uid) {
 			return fmt.Errorf("Rootless Docker requires a subordinate ID allocation for %s in /etc/%s (at least 65536 IDs); configure a non-overlapping allocation with your system administrator, then rerun baha up; no system changes made", current.Username, name)
 		}
 	}
@@ -193,7 +194,7 @@ func hasRootlessSubIDRange(contents, username string) bool {
 // runApprovedRootlessSetup executes only the exact steps disclosed in the
 // consent prompt. The subprocess and lookup seams allow verifying both
 // successful and partial-failure paths without mutating a CI worker's host.
-func runApprovedRootlessSetup(ctx context.Context, in io.Reader, out io.Writer, needsInstall, needUIDMap bool, run func(context.Context, io.Reader, io.Writer, string, ...string) error, lookup func(string) (string, error)) error {
+func runApprovedRootlessSetup(ctx context.Context, in io.Reader, out io.Writer, needsInstall, needUIDMap bool, run func(context.Context, io.Reader, io.Writer, string, ...string) error, lookup func(string) (string, error)) (resultErr error) {
 	if needUIDMap {
 		if err := run(ctx, in, out, "sudo", "apt-get", "install", "-y", "uidmap"); err != nil {
 			return fmt.Errorf("install required uidmap package: %w", err)
@@ -208,7 +209,11 @@ func runApprovedRootlessSetup(ctx context.Context, in io.Reader, out io.Writer, 
 		// Rootless setup may switch the CLI context. Preserve the caller's
 		// default context even if the setup tool exits with an error.
 		defer func() {
-			_ = run(context.Background(), in, io.Discard, "docker", "context", "use", "default")
+			restoreCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			if err := run(restoreCtx, in, io.Discard, "docker", "context", "use", "default"); err != nil {
+				resultErr = errors.Join(resultErr, fmt.Errorf("restore Docker context after setup: %w", err))
+			}
 		}()
 		if err := run(ctx, in, out, "dockerd-rootless-setuptool.sh", "install", "--force"); err != nil {
 			return fmt.Errorf("configure Rootless Docker: %w", err)
