@@ -4,6 +4,7 @@ import (
 	"context"
 	"github.com/mcpdev80/baseharbor/internal/applicationsecret"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
+	"github.com/mcpdev80/baseharbor/internal/operatorauth"
 )
 
 type secretMutationResult struct {
@@ -17,6 +18,20 @@ type secretMutationResult struct {
 
 func authorizeApplicationOperation(ctx context.Context, id string, resolved resolvedApplication) error {
 	return authorizeMCPOperation(ctx, id, resolved.Target.Name, resolved.Manifest.Environment, resolved.Manifest.ApplicationID, resolved.ManifestPath)
+}
+
+// authorizeHumanReveal gates any path that would return a managed secret value
+// to a human operator (CLI --reveal, app creds --reveal). It lives on the
+// separate human-authorization seam enforced by
+// operatorauth.RequireHumanOperator: a verified operator principal is mandatory,
+// and the local-runtime/workload authority and trusted-local fallback that cover
+// ordinary application operations can never satisfy it. Workload reads that do
+// not reveal keep using their existing operation (app.environment/app.connection)
+// and are unaffected. The distinct secret.reveal machine operation id in the
+// machine contract documents this seam; the runtime enforcement is the explicit,
+// fail-closed RequireHumanOperator gate (owner: mechanism B, 057).
+func authorizeHumanReveal(ctx context.Context, target, environment, application string) error {
+	return operatorauth.RequireHumanOperator(ctx)
 }
 func listApplicationSecrets(ctx context.Context, resolved resolvedApplication) ([]applicationsecret.Metadata, error) {
 	if err := authorizeApplicationOperation(ctx, "secret.list", resolved); err != nil {

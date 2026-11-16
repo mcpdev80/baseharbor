@@ -108,7 +108,7 @@ func appCredsCommand(store application.Store) *cli.Command {
 			if err != nil {
 				return err
 			}
-			_, binding, err := resolveAccessBinding(ctx, store, appName, kind, instance)
+			resolved, binding, err := resolveAccessBinding(ctx, store, appName, kind, instance)
 			if err != nil {
 				return err
 			}
@@ -126,6 +126,11 @@ func appCredsCommand(store application.Store) *cli.Command {
 				fmt.Fprintf(out, "USERNAME=%s\n", binding.Username)
 			}
 			if reveal {
+				// Revealing the password/URI is a human-only operation: require
+				// an authenticated operator on the separate secret.reveal seam.
+				if err := authorizeHumanReveal(ctx, resolved.Target.Name, resolved.Manifest.Environment, resolved.Manifest.Name); err != nil {
+					return err
+				}
 				fmt.Fprintf(out, "PASSWORD=%s\nURI=%s\n", binding.Password, binding.URI)
 			} else {
 				fmt.Fprintln(out, "PASSWORD=<masked>")

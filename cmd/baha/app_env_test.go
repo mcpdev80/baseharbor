@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,8 +13,48 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/cli"
+	"github.com/mcpdev80/baseharbor/internal/identity"
+	"github.com/mcpdev80/baseharbor/internal/operatorauth"
+	"github.com/mcpdev80/baseharbor/internal/tenancy"
 	"github.com/mcpdev80/baseharbor/internal/testsupport/serviceissuer"
 )
+
+// runWithIOAndOperator mirrors runWithIO but injects a verified operator
+// principal (and a read-granting membership provider), so human-only reveal
+// paths (which now require an authenticated operator) can be exercised in tests.
+func runWithIOAndOperator(ctx context.Context, args []string, out, errOut io.Writer, principal *identity.Principal) error {
+	_ = includeInstalledORASOnPath()
+	filtered, opts, _, target, err := extractGlobalOutputOptions(args)
+	if err != nil {
+		return err
+	}
+	ctx = withTargetOverride(ctx, target)
+	ctx = cli.WithOutputOptions(ctx, opts)
+	ctx = operatorauth.WithEnforcement(ctx)
+	ctx = operatorauth.WithVerifiedPrincipal(ctx, principal)
+	ctx = operatorauth.WithMembershipProvider(ctx, &readGrantingMembershipProvider{})
+	ctx = operatorauth.WithInteractive(ctx, os.Stdin, out, errOut)
+	ctx = localCLIProviderConsentContext(ctx, filtered)
+	ctx = withLocalInvocation(ctx, "cli")
+	if len(filtered) > 1 && filtered[0] == "app" {
+		ctx = localWorkloadScope(ctx, applicationBoundaryOperation(filtered[1]))
+	}
+	return rootCommand().Execute(ctx, filtered, out, errOut)
+}
+
+// readGrantingMembershipProvider resolves any verified principal to a tenant
+// membership carrying editor read/write roles, so the surrounding app.*
+// operations (which require claim-to-membership resolution once a verified
+// principal is present) authorize while the reveal gate is what we exercise.
+type readGrantingMembershipProvider struct{}
+
+func (readGrantingMembershipProvider) ResolveClaimMembership(_ context.Context, principal *identity.Principal) ([]tenancy.Membership, error) {
+	if principal == nil || !operatorauth.PrincipalsHaveVerifiedIdentity(principal) {
+		return nil, operatorauth.ErrClaimsNotVerified
+	}
+	return []tenancy.Membership{{TenantID: "tenant-local", Role: "editor"}}, nil
+}
 
 func TestAppEnvMasksSecretsByDefaultAndRevealsExplicitly(t *testing.T) {
 	target := configureTestTarget(t)
@@ -83,8 +124,19 @@ TLS_PRIVATE_KEY=NEVER_EXPOSE
 	}
 
 	out.Reset()
-	if err := runWithIO(context.Background(), []string{"app", "env", "demo", "--reveal", "--format", "json"}, &out, &out); err != nil {
-		t.Fatal(err)
+	// Without an authenticated operator the reveal must fail closed now (human-
+	// authorization seam): a bare runtime/trusted-local identity cannot reveal.
+	if err := runWithIO(context.Background(), []string{"app", "env", "demo", "--reveal", "--format", "json"}, &out, &out); err == nil {
+		t.Fatalf("reveal without an authenticated operator should fail closed: %s", out.String())
+	} else if !strings.Contains(err.Error(), "authenticated BaseHarbor operator") {
+		t.Fatalf("reveal denial was not the expected operator-authentication failure: %v", err)
+	}
+
+	// With a verified operator the reveal returns the native service URLs.
+	operator := &identity.Principal{Issuer: "https://issuer.example", Subject: "operator-reveal", IssuerVerified: true, Groups: []string{"editor"}}
+	out.Reset()
+	if err := runWithIOAndOperator(context.Background(), []string{"app", "env", "demo", "--reveal", "--format", "json"}, &out, &out, operator); err != nil {
+		t.Fatalf("explicit reveal with a verified operator failed: %v", err)
 	}
 	if !strings.Contains(out.String(), "postgresql://") || !strings.Contains(out.String(), "rediss://") {
 		t.Fatalf("explicit reveal did not return native service URLs: %s", out.String())
@@ -100,6 +152,63 @@ TLS_PRIVATE_KEY=NEVER_EXPOSE
 	}
 	if strings.TrimSpace(out.String()) != expectedPath {
 		t.Fatalf("unexpected application env path: %q want %q", strings.TrimSpace(out.String()), expectedPath)
+	}
+}
+
+// TestAppCredsRevealRequiresVerifiedOperator proves the second human-reveal seam:
+// `baha app creds --reveal` also fails closed without an authenticated operator
+// and succeeds with a verified operator, mirroring the app env path.
+func TestAppCredsRevealRequiresVerifiedOperator(t *testing.T) {
+	target := configureTestTarget(t)
+	t.Setenv(application.ProviderScopeEnv(capability.ProviderPostgreSQL), string(capability.ScopeApplication))
+	t.Setenv(application.ProviderScopeEnv(capability.ProviderValkey), string(capability.ScopeApplication))
+	dir := t.TempDir()
+	old, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(old)
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+
+	m := application.New("demo", "dev", true, true, false)
+	store := testDeploymentStore(t, target, m)
+	if _, err := store.Create(m); err != nil {
+		t.Fatal(err)
+	}
+	registerTestDeployment(t, target, m, "", "")
+	files, err := application.EnsureRuntime(context.Background(), serviceissuer.New(t), store, m)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Ensure a postgres binding with a password is present.
+	data, err := os.ReadFile(files.ApplicationEnv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "DATABASE_URL=") == false {
+		t.Skip("postgres binding not materialized in this runtime fixture")
+	}
+
+	operator := &identity.Principal{Issuer: "https://issuer.example", Subject: "operator-creds", IssuerVerified: true, Groups: []string{"editor"}}
+
+	out := bytes.Buffer{}
+	// Without an operator the creds reveal must fail closed.
+	if err := runWithIO(context.Background(), []string{"app", "creds", "postgres", "--app", "demo", "--reveal"}, &out, &out); err == nil {
+		t.Fatalf("creds reveal without an operator should fail closed: %s", out.String())
+	} else if !strings.Contains(err.Error(), "authenticated BaseHarbor operator") {
+		t.Fatalf("creds reveal denial was not the expected operator-authentication failure: %v", err)
+	}
+
+	// With a verified operator the creds reveal returns the password.
+	out.Reset()
+	if err := runWithIOAndOperator(context.Background(), []string{"app", "creds", "postgres", "--app", "demo", "--reveal"}, &out, &out, operator); err != nil {
+		t.Fatalf("creds reveal with a verified operator failed: %v", err)
+	}
+	if !strings.Contains(out.String(), "PASSWORD=") {
+		t.Fatalf("creds reveal with a verified operator did not return a password line: %s", out.String())
 	}
 }
 

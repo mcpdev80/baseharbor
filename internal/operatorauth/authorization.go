@@ -287,3 +287,48 @@ func machineOperationPermission(safety machine.SafetyClass) authorization.Permis
 		return ""
 	}
 }
+
+// RequireHumanOperator enforces the human-authorization seam that separates
+// operator secret reveal from runtime/workload access. A verified operator
+// principal is mandatory; anything else — no principal (the local-runtime or
+// trusted-local paths that authorize ordinary application operations), an
+// unverified principal, or a principal that is not issuer-verified — fails
+// closed. This gate is scope-minimal and environment-agnostic: it is the same
+// check in managed and local/dev, so a bare runtime/trusted-local identity can
+// never satisfy a reveal while a verified operator can. It records the decision
+// under the secret.reveal machine op id so the human-authorization call is
+// traceable in the audit trail.
+func RequireHumanOperator(ctx context.Context) error {
+	principal, ok := PrincipalFromContext(ctx)
+	if !ok || principal == nil || !PrincipalsHaveVerifiedIdentity(principal) {
+		decision := AuthorizationDecision{
+			ContractVersion: AuthorizationContractVersion,
+			Operation:       "secret.reveal",
+			ReasonCode:      "operator_authentication_required",
+			Reason:          "A human secret reveal requires an authenticated BaseHarbor operator; the runtime/workload identity cannot satisfy it.",
+		}
+		setAuthorizationDecision(ctx, decision)
+		return machine.NewError(
+			machine.ErrorAuthenticationFailed,
+			decision.Reason,
+			"Authenticate the operator for the selected Target and environment, then repeat the reveal.",
+			false,
+		)
+	}
+	decision := AuthorizationDecision{
+		ContractVersion:   AuthorizationContractVersion,
+		Operation:         "secret.reveal",
+		Allowed:           true,
+		Safety:            machine.SafetyReadOnly,
+		Actor:             MachineActorRef{Mode: "authenticated", Issuer: strings.TrimSpace(principal.Issuer), Subject: strings.TrimSpace(principal.Subject)},
+	}
+	setAuthorizationDecision(ctx, decision)
+	return nil
+}
+
+// PrincipalsHaveVerifiedIdentity reports whether the principal carries a
+// verified issuer signature. A workstation-mtls enrollment without a verified
+// issuer is not operator authentication for reveal.
+func PrincipalsHaveVerifiedIdentity(principal *identity.Principal) bool {
+	return principal != nil && principal.IssuerVerified
+}
