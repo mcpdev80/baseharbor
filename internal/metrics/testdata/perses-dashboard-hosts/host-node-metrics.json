@@ -3,5 +3,5 @@
   "key": "host-node-metrics",
   "backend": "prometheus",
   "unavailable": true,
-  "reason": "BaseHarbor host/metrics signal supported in this manifest is not the verified current supported native openmetrics signal; the host/dashboard is explicitly unavailable and no exporter is installed"
+  "reason": "BaseHarbor host/metrics signal supported in this manifest is not a verified current native openmetrics signal: there is no native host/container metrics signal for this view; the host/dashboard is explicitly unavailable and no exporter is installed"
 }

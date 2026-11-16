@@ -303,7 +303,8 @@ func identityUnavailableReasonHost(resolvedStatus capability.ObservabilitySuppor
 	if resolvedStatus == capability.ObservabilityRequiresAdapter {
 		return "BaseHarbor host metrics require an adapter in this manifest and have no verified current native metric signal; the host/dashboard is explicitly unavailable and no exporter is installed"
 	}
-	return "BaseHarbor host/metrics signal " + string(resolvedStatus) + " in this manifest is not the verified current supported native openmetrics signal; the host/dashboard is explicitly unavailable and no exporter is installed"
+	return "BaseHarbor host/metrics signal " + string(resolvedStatus) +
+		" in this manifest is not a verified current native openmetrics signal: there is no native host/container metrics signal for this view; the host/dashboard is explicitly unavailable and no exporter is installed"
 }
 
 // persesHostDashboardCatalog builds the shipped Perses host/container catalog
