@@ -185,6 +185,34 @@ func TestLoadConfigEndToEndXDGPath(t *testing.T) {
 	}
 }
 
+// TestLoadConfigDoubleAppendResolvedPathMissingFailsLoud covers the original
+// BF-05 reproduction end-to-end at the production LoadConfig(): the XDG
+// double-append where XDG_CONFIG_HOME itself already ends in /baseharbor. Here
+// ConfigPath() resolves to <root>/baseharbor/baseharbor/config.yaml (a nested,
+// absent path) while the user's intended config.yaml sits exactly one level up
+// at <root>/baseharbor/config.yaml. LoadConfig must surface ErrConfigMissing
+// (the nested root is populated by the sibling file, so the misconfiguration is
+// loud) rather than silently returning the implicit default. This is the case
+// Luna batch17 found missing: it exercises the real ConfigPath()/LoadConfig()
+// resolution, not only the helper predicate.
+func TestLoadConfigDoubleAppendResolvedPathMissingFailsLoud(t *testing.T) {
+	root := filepath.Join(t.TempDir(), ".config", "baseharbor")
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	// The intended config.yaml at the XDG root.
+	if err := os.WriteFile(filepath.Join(root, "config.yaml"),
+		[]byte("version: 1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("XDG_CONFIG_HOME", root)
+	// ConfigPath() resolves <root>/baseharbor/baseharbor/config.yaml, which is
+	// absent, but the sibling one level up marks the root populated.
+	if _, err := LoadConfig(); !errors.Is(err, ErrConfigMissing) {
+		t.Fatalf("double-append missing config must return ErrConfigMissing, got %v", err)
+	}
+}
+
 // TestDirExistsAndHasBaseharborState exercises the detection helper directly for
 // the two directions the fix depends on: a populated root and a config.yaml one
 // level up (the XDG double-append), plus the clean empty root.
