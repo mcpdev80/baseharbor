@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate declarative PR source-to-gate coverage against the release catalog."""
+"""Validate and resolve declarative PR source-to-gate coverage contracts."""
 from __future__ import annotations
 
 import argparse
@@ -13,6 +13,41 @@ SCHEMA = "baseharbor.pr-gate-coverage/v1"
 SURFACE_RE = re.compile(r"^[a-z][a-z0-9_.-]*$")
 
 
+def resolve_covered_gates(changed_paths: list[str], coverage: dict) -> tuple[list[str], list[str]]:
+    """Resolve changed repository paths to owning runtime gates.
+
+    Paths inherit coverage from their declared package/component root. Any path
+    without a declared owner is returned as unresolved for the caller's
+    conservative fallback; it is never silently treated as covered.
+    """
+    packages = coverage.get("packages", [])
+    gates = coverage.get("gates", [])
+    selected_surfaces: set[str] = set()
+    unresolved: list[str] = []
+    for changed in changed_paths:
+        owners = [
+            row for row in packages
+            if isinstance(row, dict)
+            and isinstance(row.get("path"), str)
+            and (changed == row["path"] or changed.startswith(row["path"].rstrip("/") + "/"))
+        ]
+        if not owners:
+            unresolved.append(changed)
+            continue
+        # Nested package roots are handled by the most specific owner. Multiple
+        # equally specific owners intentionally union their surface contracts.
+        longest = max(len(row["path"].rstrip("/")) for row in owners)
+        for row in owners:
+            if len(row["path"].rstrip("/")) == longest:
+                selected_surfaces.update(row.get("surfaces", []))
+    selected_gates = sorted({
+        row["id"] for row in gates if isinstance(row, dict)
+        and selected_surfaces.intersection(row.get("covers", []))
+        and isinstance(row.get("id"), str)
+    })
+    return selected_gates, unresolved
+
+
 def validate(coverage: dict, requirements: dict) -> list[str]:
     errors: list[str] = []
     if coverage.get("schema") != SCHEMA:
@@ -21,70 +56,76 @@ def validate(coverage: dict, requirements: dict) -> list[str]:
     if not isinstance(release, str) or release not in requirements.get("releases", []):
         errors.append(f"coverage release {release!r} is not in release requirements")
 
-    catalog = requirements.get("gates", [])
-    gate_ids = {row.get("id") for row in catalog if isinstance(row, dict)}
-    sources = coverage.get("sources")
+    catalog_ids = {
+        row.get("id") for row in requirements.get("gates", []) if isinstance(row, dict)
+    }
+    surfaces = coverage.get("surfaces")
+    packages = coverage.get("packages")
     gates = coverage.get("gates")
-    if not isinstance(sources, list) or not isinstance(gates, list):
-        return errors + ["coverage sources and gates must be arrays"]
+    if not isinstance(surfaces, list) or not isinstance(packages, list) or not isinstance(gates, list):
+        return errors + ["coverage surfaces, packages, and gates must be arrays"]
 
-    source_surfaces: set[str] = set()
-    source_paths: set[str] = set()
-    for index, source in enumerate(sources):
-        if not isinstance(source, dict):
-            errors.append(f"sources[{index}] must be an object")
-            continue
-        path = source.get("path")
-        if not isinstance(path, str) or not path or path.startswith("/") or ".." in Path(path).parts:
-            errors.append(f"sources[{index}].path must be a normalized repository-relative path")
-        elif path in source_paths:
-            errors.append(f"duplicate source path: {path}")
+    declared_surfaces: set[str] = set()
+    for index, surface in enumerate(surfaces):
+        if not isinstance(surface, str) or not SURFACE_RE.fullmatch(surface):
+            errors.append(f"surfaces[{index}] has invalid identifier {surface!r}")
+        elif surface in declared_surfaces:
+            errors.append(f"duplicate surface: {surface}")
         else:
-            source_paths.add(path)
-        surfaces = source.get("surfaces")
-        if not isinstance(surfaces, list) or not surfaces:
-            errors.append(f"sources[{index}].surfaces must be a non-empty array")
+            declared_surfaces.add(surface)
+
+    package_paths: set[str] = set()
+    package_surfaces: set[str] = set()
+    for index, package in enumerate(packages):
+        if not isinstance(package, dict):
+            errors.append(f"packages[{index}] must be an object")
             continue
-        for surface in surfaces:
-            if not isinstance(surface, str) or not SURFACE_RE.fullmatch(surface):
-                errors.append(f"sources[{index}] has invalid surface {surface!r}")
-            elif surface in source_surfaces:
-                # Multiple source paths may own the same surface.
-                continue
+        path = package.get("path")
+        if (not isinstance(path, str) or not path or path.startswith("/")
+                or "\\" in path or ".." in Path(path).parts
+                or path.rstrip("/") != path):
+            errors.append(f"packages[{index}].path must be a normalized repository-relative directory")
+        elif path in package_paths:
+            errors.append(f"duplicate package coverage: {path}")
+        else:
+            package_paths.add(path)
+        owners = package.get("surfaces")
+        if not isinstance(owners, list) or not owners:
+            errors.append(f"packages[{index}].surfaces must be a non-empty array")
+            continue
+        for surface in owners:
+            if surface not in declared_surfaces:
+                errors.append(f"package {path!r} references undeclared surface {surface!r}")
             else:
-                source_surfaces.add(surface)
+                package_surfaces.add(surface)
 
     seen_gates: set[str] = set()
-    covered_surfaces: set[str] = set()
+    gate_surfaces: set[str] = set()
     for index, gate in enumerate(gates):
         if not isinstance(gate, dict):
             errors.append(f"gates[{index}] must be an object")
             continue
         gate_id = gate.get("id")
-        if not isinstance(gate_id, str) or gate_id not in gate_ids:
+        if not isinstance(gate_id, str) or gate_id not in catalog_ids:
             errors.append(f"gates[{index}] references unknown release gate {gate_id!r}")
             continue
         if gate_id in seen_gates:
             errors.append(f"duplicate gate coverage: {gate_id}")
         seen_gates.add(gate_id)
         parts = gate_id.split("/")
-        if len(parts) == 3 and parts[0] == "atomic":
-            expected_runtime = parts[1]
-            if expected_runtime not in {"docker", "podman"}:
-                errors.append(f"gate {gate_id} has unsupported runtime {expected_runtime!r}")
+        if len(parts) != 3 or parts[0] != "atomic" or parts[1] not in {"docker", "podman"}:
+            errors.append(f"gate {gate_id} must be an atomic Docker or Podman gate")
         covers = gate.get("covers")
         if not isinstance(covers, list) or not covers:
             errors.append(f"gates[{index}].covers must be a non-empty array")
             continue
         for surface in covers:
-            if not isinstance(surface, str) or not SURFACE_RE.fullmatch(surface):
-                errors.append(f"gate {gate_id} has invalid surface {surface!r}")
-            elif surface not in source_surfaces:
-                errors.append(f"gate {gate_id} covers undeclared source surface {surface!r}")
+            if surface not in declared_surfaces:
+                errors.append(f"gate {gate_id} covers undeclared surface {surface!r}")
             else:
-                covered_surfaces.add(surface)
+                gate_surfaces.add(surface)
 
-    for surface in sorted(source_surfaces - covered_surfaces):
+    for surface in sorted(package_surfaces - gate_surfaces):
         errors.append(f"source surface {surface!r} has no release gate owner")
     return errors
 
@@ -102,7 +143,7 @@ def main() -> int:
         return 2
     errors = validate(coverage, requirements)
     if errors:
-        print("\n".join(errors), file=sys.stderr)
+        print("\\n".join(errors), file=sys.stderr)
         return 1
     print("PR gate coverage catalog is valid")
     return 0
