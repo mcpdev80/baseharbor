@@ -24,13 +24,21 @@ class PRStageBoundaryTests(unittest.TestCase):
     def test_defer_all_cross_repo_consumer_gates_without_claiming_success(self):
         original = copy.deepcopy(self.plan)
         result = stage.stage(self.plan)
-        self.assertEqual([], result["selected_gates"])
-        self.assertEqual(original["selected_gates"], result["deferred_integration_gates"])
+        self.assertEqual(["atomic/docker/lifecycle", "atomic/podman/lifecycle"],
+                         result["selected_gates"])
+        self.assertEqual(["integration/static/public-contracts"],
+                         result["deferred_integration_gates"])
         self.assertEqual(original["required_consumer_dependencies"],
                          result["deferred_consumer_dependencies"])
         self.assertEqual(original["required_validation_checks"], result["required_validation_checks"])
         self.assertNotIn("integration_result", result)
         self.assertEqual(original, self.plan)
+
+    def test_executed_guided_docker_gate_is_not_deferred(self):
+        self.plan["selected_gates"] = ["atomic/docker/guided"]
+        result = stage.stage(self.plan)
+        self.assertEqual(["atomic/docker/guided"], result["selected_gates"])
+        self.assertEqual([], result["deferred_integration_gates"])
 
     def test_local_only_retains_mandatory_validations(self):
         self.plan["selected_gates"] = []
