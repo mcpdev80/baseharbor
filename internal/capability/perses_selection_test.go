@@ -399,8 +399,8 @@ func TestIdentityKeycloakRequiresOwnBackendSignal(t *testing.T) {
 	if elig.Eligible {
 		t.Fatalf("keycloak-identity must not be eligible when its own keycloak signal is absent")
 	}
-	if !containsString(elig.Reason, "keycloak") {
-		t.Fatalf("reason must name the missing keycloak backend signal, got %q", elig.Reason)
+	if !containsString(elig.Reason, "identity") {
+		t.Fatalf("reason must name the missing identity backend signal, got %q", elig.Reason)
 	}
 }
 
