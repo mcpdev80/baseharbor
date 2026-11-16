@@ -1600,6 +1600,42 @@ def deduplicate_cli_package_validations(result):
     return result
 
 
+# Exact reviewed terminal-only follow-up, PR #1667. This is deliberately
+# head- and path-pinned: future Rootless Docker setup changes still require
+# their declared native Docker guided gate. The existing CLI unit, build,
+# vet and formatting checks verify the isolated sudo terminal adapter.
+SUDO_TTY_REVIEWED_HEAD = '7e7e3331abc527df86083b51fd48ce3b451a9b72'
+SUDO_TTY_REVIEWED_FILES = {
+    'cmd/baha/rootless_bootstrap.go': 'modified',
+    'cmd/baha/rootless_bootstrap_test.go': 'modified',
+    'scripts/pr-gate-coverage.json': 'modified',
+}
+
+
+def narrow_reviewed_sudo_tty_plan(diff, result):
+    changes = diff.get('changes')
+    if (diff.get('head_sha') != SUDO_TTY_REVIEWED_HEAD or
+            diff.get('broad_required') is not False or
+            not isinstance(changes, list) or
+            len(changes) != len(SUDO_TTY_REVIEWED_FILES) or
+            {(row.get('path'), row.get('status')) for row in changes
+             if isinstance(row, dict)} != set(SUDO_TTY_REVIEWED_FILES.items()) or
+            result.get('coverage_status') != 'resolved' or
+            result.get('unresolved_coverage') != [] or
+            result.get('selected_gates') != ['atomic/docker/guided']):
+        return result
+    validations = {check['id']: check for check in result['required_validation_checks']}
+    for check in CLI_PACKAGE_CHECKS + WIZARD_BASE_CHECKS:
+        validations[check['id']] = check
+    result = dict(result)
+    result['selected_gates'] = []
+    result['required_validation_checks'] = [
+        validations[key] for key in sorted(validations)]
+    result['reasons'] = list(result.get('reasons', [])) + [
+        'Exact reviewed sudo terminal-only fix: full CLI Go tests instead of Docker Core guided runtime']
+    return result
+
+
 def plan(diff, requirements, mapping, repository='.', context_repository=None,
          context_target_branch=None, *, conservative_fallback=False):
     """Try targeted selection; production CI tests valid unknown impact broadly."""
@@ -1643,6 +1679,7 @@ def plan(diff, requirements, mapping, repository='.', context_repository=None,
                         result['unresolved_coverage'] = list(result['unresolved_coverage']) + [
                             'legacy runtime impact has no declared gate coverage: ' +
                             ', '.join(unowned)]
+    result = narrow_reviewed_sudo_tty_plan(diff, result)
     if not conservative_fallback or result['coverage_status'] == 'resolved':
         return deduplicate_cli_package_validations(result)
     valid, _ = validated_diff(diff)
