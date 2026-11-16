@@ -17,6 +17,18 @@ class RuntimeMatrix(unittest.TestCase):
     def setUpClass(cls):
         cls.catalog=json.loads(Path(__file__).with_name("release-requirements.json").read_text())
 
+    def test_runtime_neutral_provider_choice_maps_to_docker_data_capabilities(self):
+        root=Path(__file__).resolve().parent
+        coverage_spec=importlib.util.spec_from_file_location(
+            "gate_coverage",root/"validate-pr-gate-coverage.py")
+        coverage_module=importlib.util.module_from_spec(coverage_spec)
+        coverage_spec.loader.exec_module(coverage_module)
+        coverage=json.loads((root/"pr-gate-coverage.json").read_text())
+        selected,unresolved=coverage_module.resolve_covered_gates(
+            ["cmd/baha/app_provider_choice.go","cmd/baha/app_provider_choice_test.go"],coverage)
+        self.assertEqual(["atomic/docker/data-capabilities"],selected)
+        self.assertEqual([],unresolved)
+
     def test_selected_backup_both_runtimes(self):
         result=module.select({"selected_gates":["atomic/podman/backup-restore","atomic/docker/backup-restore"]},self.catalog)
         self.assertEqual(["atomic/docker/backup-restore","atomic/podman/backup-restore"],

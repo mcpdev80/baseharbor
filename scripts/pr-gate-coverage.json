@@ -282,6 +282,20 @@
       ]
     },
     {
+      "id": "source.cmd.baha.app.provider.choice.go",
+      "path": "cmd/baha/app_provider_choice.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities"
+      ]
+    },
+    {
+      "id": "source.cmd.baha.app.provider.choice.test.go",
+      "path": "cmd/baha/app_provider_choice_test.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities"
+      ]
+    },
+    {
       "id": "source.cmd.baha.app.repository.integration.test.go",
       "path": "cmd/baha/app_repository_integration_test.go",
       "surfaces": [
