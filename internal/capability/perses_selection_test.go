@@ -90,21 +90,25 @@ func TestIdentitySelectionDerivedNotSupplied(t *testing.T) {
 	}
 }
 
-// TestIdentitySelectionDefaultUnpublishedIsUnavailable pins fail-closed: the
-// zero-value witness (an unconstructed / not-yet-resolved fan-in) is
-// unavailable and yields no eligible dashboard, even when Perses is selected.
+// TestIdentitySelectionDefaultUnpublishedIsUnavailable pins fail-closed for the
+// Keycloak identity dashboard: the zero-value witness (an unconstructed /
+// not-yet-resolved fan-in) is unavailable and yields an ineligible identity
+// dashboard, even when Perses is selected. Per batch13 this gates ONLY the
+// identity dashboard, not the data backends.
 func TestIdentitySelectionDefaultUnpublishedIsUnavailable(t *testing.T) {
 	var zero IdentitySelectionWitness
 	if zero.Available {
 		t.Fatalf("the zero-value witness must be unavailable (fail-closed)")
 	}
 	catalog := DefaultDashboardCatalog()
-	elig, err := catalog.EligibleFor("prometheus-targets", zero, allBackendSignals())
+	elig, err := catalog.EligibleFor("keycloak-identity", zero, map[DashboardBackend]bool{
+		DashboardBackendIdentity: true,
+	})
 	if err != nil {
 		t.Fatalf("eligibility must not error on an unconstructed witness: %v", err)
 	}
 	if elig.Eligible {
-		t.Fatalf("dashboard must not be eligible without an available witness: %+v", elig)
+		t.Fatalf("the identity dashboard must not be eligible without an available witness: %+v", elig)
 	}
 	if elig.Reason == "" {
 		t.Fatalf("an unavailable verdict must carry a concrete fail-closed reason")
@@ -115,10 +119,10 @@ func TestIdentitySelectionDefaultUnpublishedIsUnavailable(t *testing.T) {
 }
 
 // TestIdentitySelectionNeverForgeableDirectAvailable is the non-forgeability
-// regression: a caller cannot obtain a positive verdict by constructing the
-// struct literal with only Available: true and no evidence. The production
-// gate uses NonForgeableAvailable(), which requires the four real-evidence
-// flags, so the forged literal fails closed.
+// regression for the Keycloak identity dashboard: a caller cannot obtain a
+// positive verdict by constructing the struct literal with only Available: true
+// and no evidence. The production gate uses NonForgeableAvailable(), which
+// requires the four real-evidence flags, so the forged literal fails closed.
 func TestIdentitySelectionNeverForgeableDirectAvailable(t *testing.T) {
 	// The exact Luna request-changes case: a caller sets only the exported
 	// Available result, supplying no evidence at all.
@@ -127,57 +131,70 @@ func TestIdentitySelectionNeverForgeableDirectAvailable(t *testing.T) {
 		t.Fatalf("a forged literal with only Available: true must be non-forgeable")
 	}
 	catalog := DefaultDashboardCatalog()
-	elig, err := catalog.EligibleFor("prometheus-targets", forged, allBackendSignals())
+	elig, err := catalog.EligibleFor("keycloak-identity", forged, map[DashboardBackend]bool{
+		DashboardBackendIdentity: true,
+	})
 	if err != nil {
 		t.Fatalf("eligibility must not error on a forged witness: %v", err)
 	}
 	if elig.Eligible {
-		t.Fatalf("a forged Available:true literal must not make a dashboard available: %+v", elig)
+		t.Fatalf("a forged Available:true literal must not make the identity dashboard available: %+v", elig)
 	}
 	if elig.Reason == "" {
 		t.Fatalf("the forged witness must fail closed with a concrete reason")
 	}
 }
 
-// TestIdentitySelectionUnavailableWhenNoKeycloakMetricSignal fails closed when
-// no real Keycloak metric signal is present for this Target.
+// TestIdentitySelectionUnavailableWhenNoKeycloakMetricSignal fails closed for
+// the identity dashboard when no real Keycloak metric signal is present for
+// this Target.
 func TestIdentitySelectionUnavailableWhenNoKeycloakMetricSignal(t *testing.T) {
 	catalog := DefaultDashboardCatalog()
-	elig, err := catalog.EligibleFor("prometheus-targets", NewIdentitySelectionWitness(true, false, true, true), allBackendSignals())
+	elig, err := catalog.EligibleFor("keycloak-identity", NewIdentitySelectionWitness(true, false, true, true), map[DashboardBackend]bool{
+		DashboardBackendIdentity: true,
+	})
 	if err != nil {
 		t.Fatalf("eligibility must not error on a missing signal: %v", err)
 	}
 	if elig.Eligible {
-		t.Fatalf("dashboard must not be eligible without a real Keycloak metric signal")
+		t.Fatalf("identity dashboard must not be eligible without a real Keycloak metric signal")
 	}
 	if !containsString(elig.Reason, "Keycloak") {
 		t.Fatalf("reason must name the missing Keycloak signal, got %q", elig.Reason)
 	}
 }
 
-// TestIdentitySelectionUnavailableWhenMetricNotCurrentVersion fails closed when
-// the metric is not pinned to the current accepted release.
+// TestIdentitySelectionUnavailableWhenMetricNotCurrentVersion fails closed for
+// the identity dashboard when the metric is not pinned to the current accepted
+// release.
 func TestIdentitySelectionUnavailableWhenMetricNotCurrentVersion(t *testing.T) {
 	catalog := DefaultDashboardCatalog()
-	elig, err := catalog.EligibleFor("prometheus-targets", NewIdentitySelectionWitness(true, true, false, true), allBackendSignals())
+	elig, err := catalog.EligibleFor("keycloak-identity", NewIdentitySelectionWitness(true, true, false, true), map[DashboardBackend]bool{
+		DashboardBackendIdentity: true,
+	})
 	if err != nil {
 		t.Fatalf("eligibility must not error on an obsolete metric: %v", err)
 	}
 	if elig.Eligible {
-		t.Fatalf("dashboard must not be eligible when the metric is not the current version")
+		t.Fatalf("identity dashboard must not be eligible when the metric is not the current version")
 	}
 }
 
 // TestIdentitySelectionUnavailableWhenTargetNotAuthorized fails closed when the
 // provider is not authorized for this Target, even with a real signal present.
+// Per batch13 the global identity witness is the sole prerequisite of the
+// Keycloak identity dashboard, so this uses the identity dashboard as its
+// target.
 func TestIdentitySelectionUnavailableWhenTargetNotAuthorized(t *testing.T) {
 	catalog := DefaultDashboardCatalog()
-	elig, err := catalog.EligibleFor("prometheus-targets", NewIdentitySelectionWitness(true, true, true, false), allBackendSignals())
+	elig, err := catalog.EligibleFor("keycloak-identity", NewIdentitySelectionWitness(true, true, true, false), map[DashboardBackend]bool{
+		DashboardBackendIdentity: true,
+	})
 	if err != nil {
 		t.Fatalf("eligibility must not error on an unauthorized target: %v", err)
 	}
 	if elig.Eligible {
-		t.Fatalf("dashboard must not be eligible when the target is not authorized")
+		t.Fatalf("identity dashboard must not be eligible when the target is not authorized")
 	}
 }
 
@@ -225,16 +242,20 @@ func TestEligibleForPerBackendGate(t *testing.T) {
 }
 
 // TestEligibleForZeroValueWitnessFailsClosedPerBackend proves that the
-// zero-value witness (no evidence) fails closed for every backend independently
-// of any backend signal that may be present.
+// zero-value witness (no evidence) fails closed for the Keycloak identity
+// dashboard independently of any backend signal that may be present. Per
+// batch13 the zero-value witness gates ONLY the identity dashboard; Prometheus/
+// Loki/Tempo dashboards stay eligible on their own backend signal.
 func TestEligibleForZeroValueWitnessFailsClosedPerBackend(t *testing.T) {
 	catalog := DefaultDashboardCatalog()
-	elig, err := catalog.EligibleFor("prometheus-targets", IdentitySelectionWitness{}, allBackendSignals())
+	elig, err := catalog.EligibleFor("keycloak-identity", IdentitySelectionWitness{}, map[DashboardBackend]bool{
+		DashboardBackendIdentity: true,
+	})
 	if err != nil {
 		t.Fatalf("eligibility must not error on a zero-value witness: %v", err)
 	}
 	if elig.Eligible {
-		t.Fatalf("a zero-value witness must fail closed even with all backend signals present")
+		t.Fatalf("the identity dashboard must fail closed with a zero-value witness even with all backend signals present")
 	}
 }
 
@@ -414,4 +435,137 @@ func containsString(haystack, needle string) bool {
 		}
 		return false
 	})()
+}
+
+// TestEligibleForIdentityDashboardRequiresGlobalWitness gates the Keycloak
+// identity dashboard on the global identity-selection witness: without it the
+// identity dashboard fails closed with the batch13-named prerequisite. The
+// identity backend has no backend signal of its own (it realizes the Keycloak
+// identity provider, not a data backend), so the per-backend signal gate alone
+// would never enable it; the global witness is the sole prerequisite.
+func TestEligibleForIdentityDashboardRequiresGlobalWitness(t *testing.T) {
+	catalog := DefaultDashboardCatalog()
+	// No witness, no identity signal -> the identity dashboard is not
+	// eligible and the reason names the global identity prerequisite.
+	elig, err := catalog.EligibleFor("keycloak-identity", IdentitySelectionWitness{}, map[DashboardBackend]bool{})
+	if err != nil {
+		t.Fatalf("eligibility must not error on an unconstructed witness: %v", err)
+	}
+	if elig.Eligible {
+		t.Fatalf("the identity dashboard must not be eligible without a non-forgeable witness: %+v", elig)
+	}
+	if !containsString(elig.Reason, "Keycloak") {
+		t.Fatalf("the identity dashboard reason must name the Keycloak global prerequisite, got %q", elig.Reason)
+	}
+}
+
+// TestEligibleForPrometheusStaysEligibleWithoutKeycloakSignal is the batch13
+// positive regression: a Prometheus dashboard has its own real backend signal
+// and must be eligible even when there is NO real Keycloak metric signal in
+// this manifest. Only the identity dashboard depends on Keycloak; Prometheus,
+// Loki and Tempo do not (owner decision 2026-11-16 / Luna batch13 finding 4).
+func TestEligibleForPrometheusStaysEligibleWithoutKeycloakSignal(t *testing.T) {
+	catalog := DefaultDashboardCatalog()
+	// Zero-value witness = no real Keycloak signal at all; prometheus still
+	// has its own real backend signal.
+	elig, err := catalog.EligibleFor("prometheus-targets", IdentitySelectionWitness{}, map[DashboardBackend]bool{
+		DashboardBackendPrometheus: true,
+	})
+	if err != nil {
+		t.Fatalf("eligibility must not error on a real prometheus signal: %v", err)
+	}
+	if !elig.Eligible {
+		t.Fatalf("prometheus-targets must be eligible on its own backend signal, without any Keycloak signal: %+v", elig)
+	}
+}
+
+// TestEligibleForIdentityDashboardFailsClosedWithoutBackendSignal is the
+// batch13 negative regression: the identity dashboard with an available
+// witness still fails closed when there is no real backend signal backing it
+// (the identity dashboard has no own data backend signal; an absent identity
+// witness fails closed first). A caller cannot obtain a positive identity
+// verdict by asserting an available witness alone without the real signal.
+func TestEligibleForIdentityDashboardFailsClosedWithoutBackendSignal(t *testing.T) {
+	catalog := DefaultDashboardCatalog()
+	// Available witness (all evidence flags true) but no identity backend
+	// signal in the manifest: the identity dashboard still fails closed.
+	elig, err := catalog.EligibleFor("keycloak-identity", availableIdentityWitness(), map[DashboardBackend]bool{})
+	if err != nil {
+		t.Fatalf("eligibility must not error on an available witness: %v", err)
+	}
+	if elig.Eligible {
+		t.Fatalf("the identity dashboard must fail closed without a real backend signal, even with an available witness: %+v", elig)
+	}
+}
+
+// TestEligibleForLokiAndTempoEligibleWithoutKeycloakSignal pins that Loki and
+// Tempo dashboards are eligible on their own backend signal alone, with no
+// real Keycloak metric signal present in the manifest.
+func TestEligibleForLokiAndTempoEligibleWithoutKeycloakSignal(t *testing.T) {
+	catalog := DefaultDashboardCatalog()
+	for key, backend := range map[string]DashboardBackend{
+		"loki-logs":    DashboardBackendLoki,
+		"tempo-traces": DashboardBackendTempo,
+	} {
+		elig, err := catalog.EligibleFor(key, IdentitySelectionWitness{}, map[DashboardBackend]bool{backend: true})
+		if err != nil {
+			t.Fatalf("eligibility must not error: %v", err)
+		}
+		if !elig.Eligible {
+			t.Fatalf("%s must be eligible on its own backend signal, without any Keycloak signal: %+v", key, elig)
+		}
+	}
+}
+
+// TestEligibleForIdentityDashboardEligibleWithGlobalWitness pins the positive
+// identity path: a non-forgeable witness (real Keycloak signal + authorized
+// Target) makes the identity dashboard eligible.
+func TestEligibleForIdentityDashboardEligibleWithGlobalWitness(t *testing.T) {
+	catalog := DefaultDashboardCatalog()
+	elig, err := catalog.EligibleFor("keycloak-identity", availableIdentityWitness(), map[DashboardBackend]bool{
+		DashboardBackendIdentity: true,
+	})
+	if err != nil {
+		t.Fatalf("eligibility must not error: %v", err)
+	}
+	if !elig.Eligible {
+		t.Fatalf("the identity dashboard must be eligible with a non-forgeable witness: %+v", elig)
+	}
+}
+
+// TestFilterEligibleDashboardsBatch13Scoping pins the catalog-level batch13
+// behavior: with an available witness and all backend signals, the identity
+// dashboard plus its three data backends are all eligible; with NO Keycloak
+// signal (zero-value witness) the identity dashboard is suppressed but the
+// data backends that have their own signal remain eligible.
+func TestFilterEligibleDashboardsBatch13Scoping(t *testing.T) {
+	catalog := DefaultDashboardCatalog()
+	// All backends have a signal, but no Keycloak signal present.
+	allSignals := map[DashboardBackend]bool{
+		DashboardBackendPrometheus: true,
+		DashboardBackendLoki:       true,
+		DashboardBackendTempo:      true,
+		DashboardBackendIdentity:   true,
+	}
+	eligible, err := FilterEligibleDashboards(catalog, IdentitySelectionWitness{}, allSignals)
+	if err != nil {
+		t.Fatalf("filter must not error: %v", err)
+	}
+	for _, k := range eligible {
+		if k == "keycloak-identity" {
+			t.Fatalf("the identity dashboard must be suppressed without a real Keycloak signal, got eligible list %v", eligible)
+		}
+	}
+	// The three data backends remain eligible on their own signal.
+	if len(eligible) != 3 {
+		t.Fatalf("expected 3 eligible data dashboards without a Keycloak signal, got %v", eligible)
+	}
+	// With an available witness, all four are eligible.
+	eligibleAll, err := FilterEligibleDashboards(catalog, availableIdentityWitness(), allSignals)
+	if err != nil {
+		t.Fatalf("filter must not error with an available witness: %v", err)
+	}
+	if len(eligibleAll) != 4 {
+		t.Fatalf("expected 4 eligible dashboards with an available witness, got %v", eligibleAll)
+	}
 }

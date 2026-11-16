@@ -82,6 +82,12 @@ func NewIdentitySelectionWitness(selectionConfirmed, metricPresent, metricCurren
 		MetricPresent:      metricPresent,
 		MetricCurrent:      metricCurrent,
 		TargetAuthorized:   targetAuthorized,
+		// Available is intentionally NOT derived from a caller-supplied
+		// boolean: it is the AND of the four real-evidence flags below, so a
+		// caller cannot make availability true by setting it directly. This
+		// keeps the whole witness non-forgeable (batch13): only attesting a
+		// real Keycloak metric signal + real Target authorization yields true.
+		Available: selectionConfirmed && metricPresent && metricCurrent && targetAuthorized,
 	}
 	// The derived availability is the AND of all real-evidence flags. Any
 	// missing flag (no selection, no metric, obsolete metric, unauthorized
@@ -131,14 +137,12 @@ const (
 	DashboardBackendPrometheus DashboardBackend = "prometheus"
 	DashboardBackendLoki       DashboardBackend = "loki"
 	DashboardBackendTempo      DashboardBackend = "tempo"
-	// DashboardBackendKeycloak is the identity backend data owner the
-	// identity-keycloak dashboard realizes. It is a real BaseHarbor backend
-	// (Keycloak, per internal/capability/reference.go), never a Grafana
-	// assumption. Availability of this dashboard is NOT derived from this
-	// backend string alone: it must additionally pass the identity-selection
-	// witness (real Keycloak metric signal + real Target authorization), so
-	// the backend is a real signal owner and never a fabricated panel.
-	DashboardBackendKeycloak DashboardBackend = "keycloak"
+	// DashboardBackendIdentity is the Keycloak identity dashboard backend.
+	// It is a management realization of the Keycloak identity provider, not
+	// a data-observability backend: its dashboard is the ONLY one that must
+	// clear the global identity-selection witness, because only it realizes
+	// the Keycloak identity provider.
+	DashboardBackendIdentity DashboardBackend = "identity"
 )
 
 // DashboardStatus is the selection verdict a dashboard reports.
@@ -207,20 +211,14 @@ func DefaultDashboardCatalog() PersesDashboardCatalog {
 			Datasource:        "tempo",
 			SupportedVersions: []string{AcceptedPersesVersion},
 		},
-		// The identity-keycloak dashboard realizes the Keycloak identity
-		// backend. It is a real backend of the pinned release (the verified
-		// current Keycloak native openmetrics signal, reference.go), so it
-		// belongs in the shipped catalog alongside the observability backends.
-		// Eligibility still flows through EligibleFor and the identity-selection
-		// witness: an available witness (real Keycloak metric signal + real
-		// Target authorization, provider selected, current release) is required,
-		// so the dashboard is never fabricated when the signal or authorization
-		// is absent. The datasource is the pinned Prometheus datasource, never a
-		// fabricated Keycloak datasource.
-		"identity-keycloak": {
-			Key:               "identity-keycloak",
-			Backend:           DashboardBackendKeycloak,
-			Datasource:        "PrometheusDatasource",
+		// The Keycloak identity dashboard is the only non-data-observability
+		// template: it realizes the Keycloak identity provider, not a metrics/
+		// logs/traces backend, so its own backend is DashboardBackendIdentity
+		// and it alone requires the global identity-selection witness.
+		"keycloak-identity": {
+			Key:               "keycloak-identity",
+			Backend:           DashboardBackendIdentity,
+			Datasource:        "keycloak",
 			SupportedVersions: []string{AcceptedPersesVersion},
 		},
 	}
@@ -262,11 +260,14 @@ func (c PersesDashboardCatalog) HasTemplate(key string) bool {
 // the manifest (see the observability signal registry). Eligibility is scoped
 // to the dashboard's own backend: a dashboard is eligible only when its backend
 // actually produces the signal the dashboard queries (backendSignals[backend])
-// AND the identity-selection witness is non-forgeably available. This is
-// deliberately NOT a single cross-dashboard aggregate: a positive Keycloak
-// identity witness does not make an unrelated backend eligible, and an absent
-// identity witness does not suppress a dashboard whose backend has its own
-// real signal unless identity selection is a required prerequisite. Passing an
+// AND — for the Keycloak identity dashboard — the identity-selection witness is
+// non-forgeably available. This is deliberately NOT a single cross-dashboard
+// aggregate: a positive Keycloak identity witness does NOT make an unrelated
+// backend eligible, and an absent identity witness does NOT suppress a
+// Prometheus/Loki/Tempo dashboard whose backend has its own real signal. The
+// global identity witness is a prerequisite ONLY for the identity dashboard
+// (DashboardBackendIdentity), which realizes the Keycloak identity provider;
+// every other dashboard is gated on its own backend signal alone. Passing an
 // unconstructed / zero-value witness (or the struct literal with only
 // Available: true and no evidence) is not availability — NonForgeableAvailable
 // fails closed, never a false "configured" claim.
@@ -277,58 +278,69 @@ func (c PersesDashboardCatalog) EligibleFor(key string, witness IdentitySelectio
 			VersionPinned: c.release,
 		}, fmt.Errorf("no Perses-native dashboard template for %q", key)
 	}
-	// First line of defense: the identity-selection witness must be
-	// non-forgeably available. NonForgeableAvailable is the AND of the four
-	// real-evidence flags; Available alone is never trusted as gate input.
-	if !witness.NonForgeableAvailable() {
+	// First line of defense, scoped to the identity dashboard only: the
+	// Keycloak identity dashboard realizes the identity provider, so it MUST
+	// clear the global identity-selection witness. NonForgeableAvailable is
+	// the AND of the four real-evidence flags; Available alone is never
+	// trusted as gate input (a caller cannot forge availability true).
+	//
+	// Every other dashboard (Prometheus, Loki, Tempo) has NO Keycloak
+	// dependency and gates on its own backend signal alone (see the
+	// per-backend gate below); the global identity witness does not suppress
+	// them. This is the batch13 scoping: the identity witness is a global
+	// prerequisite ONLY for the identity dashboard, not for the whole catalog.
+	if witness.NonForgeableAvailable() || c.templates[key].Backend != DashboardBackendIdentity {
+		if err := ValidatePersesRelease(PersesDefaultRelease); err != nil {
+			return DashboardEligibility{
+				Dashboard:     key,
+				Eligible:      false,
+				Reason:        "perses release is not pinned or is invalid (fail-closed)",
+				Backend:       string(c.templates[key].Backend),
+				VersionPinned: c.release,
+			}, nil
+		}
+		if !containsVersion(c.templates[key].SupportedVersions, c.release) {
+			return DashboardEligibility{
+				Dashboard:     key,
+				Eligible:      false,
+				Reason:        fmt.Sprintf("perses release %s is not in the accepted version set %v", c.release, c.templates[key].SupportedVersions),
+				Backend:       string(c.templates[key].Backend),
+				VersionPinned: c.release,
+			}, nil
+		}
+		// Second line of defense, scoped to this dashboard's own backend: a
+		// real backend signal of the pinned release is required. The backend
+		// is a real template backend of this catalog (Prometheus, Loki, Tempo
+		// or the identity backend) — established by the template-existence
+		// check above. The catalog is populated only for backends that
+		// actually ship such a signal, so a missing template (e.g.
+		// PostgreSQL/Valkey requires-adapter) never enters here. This is the
+		// per-backend gate that prevents a single identity witness from
+		// globally enabling every dashboard backend.
+		backend := c.templates[key].Backend
+		if !backendSignals[backend] {
+			return DashboardEligibility{
+				Dashboard:     key,
+				Eligible:      false,
+				Reason:        fmt.Sprintf("no real %s signal of %s in this manifest", backend, c.release),
+				Backend:       string(backend),
+				VersionPinned: c.release,
+			}, nil
+		}
 		return DashboardEligibility{
 			Dashboard:     key,
-			Eligible:      false,
-			Reason:        "identity selection witness not available: a real Keycloak metric signal + real Target authorization is required (fail-closed), not a caller-supplied status",
-			Backend:       string(c.templates[key].Backend),
-			VersionPinned: c.release,
-		}, nil
-	}
-	if err := ValidatePersesRelease(PersesDefaultRelease); err != nil {
-		return DashboardEligibility{
-			Dashboard:     key,
-			Eligible:      false,
-			Reason:        "perses release is not pinned or is invalid (fail-closed)",
-			Backend:       string(c.templates[key].Backend),
-			VersionPinned: c.release,
-		}, nil
-	}
-	if !containsVersion(c.templates[key].SupportedVersions, c.release) {
-		return DashboardEligibility{
-			Dashboard:     key,
-			Eligible:      false,
-			Reason:        fmt.Sprintf("perses release %s is not in the accepted version set %v", c.release, c.templates[key].SupportedVersions),
-			Backend:       string(c.templates[key].Backend),
-			VersionPinned: c.release,
-		}, nil
-	}
-	// Second line of defense, scoped to this dashboard's own backend: a real
-	// backend signal of the pinned release is required. The backend is a real
-	// template backend of this catalog (Prometheus, Loki or Tempo) —
-	// established by the template-existence check above. The catalog is
-	// populated only for backends that actually ship such a signal, so a
-	// missing template (e.g. PostgreSQL/Valkey requires-adapter) never enters
-	// here. This is the per-backend gate that prevents a single identity
-	// witness from globally enabling every dashboard backend.
-	backend := c.templates[key].Backend
-	if !backendSignals[backend] {
-		return DashboardEligibility{
-			Dashboard:     key,
-			Eligible:      false,
-			Reason:        fmt.Sprintf("no real %s signal of %s in this manifest", backend, c.release),
+			Eligible:      true,
 			Backend:       string(backend),
 			VersionPinned: c.release,
 		}, nil
 	}
+	// The identity dashboard with a missing/unforgeable witness: fail closed
+	// with the global identity prerequisite named.
 	return DashboardEligibility{
 		Dashboard:     key,
-		Eligible:      true,
-		Backend:       string(backend),
+		Eligible:      false,
+		Reason:        "identity selection witness not available: a real Keycloak metric signal + real Target authorization is required (fail-closed), not a caller-supplied status",
+		Backend:       string(c.templates[key].Backend),
 		VersionPinned: c.release,
 	}, nil
 }
@@ -336,9 +348,11 @@ func (c PersesDashboardCatalog) EligibleFor(key string, witness IdentitySelectio
 // EligibleCount returns the number of eligible dashboards for the manifest
 // selection + release across the whole catalog. witness is the authoritative
 // identity-selection witness and backendSignals is the real, per-backend signal
-// inventory. A dashboard is eligible only when its own backend has a real
-// signal AND the identity-selection witness is non-forgeably available; an
-// unconstructed witness yields zero.
+// inventory. Only the Keycloak identity dashboard requires the identity
+// witness to be non-forgeably available; every other dashboard is eligible on
+// its own backend signal alone. An unconstructed witness still yields zero
+// only for the identity dashboard — Prometheus/Loki/Tempo remain eligible on
+// their own real signals.
 func (c PersesDashboardCatalog) EligibleCount(witness IdentitySelectionWitness, backendSignals map[DashboardBackend]bool) (int, error) {
 	count := 0
 	for key := range c.templates {
@@ -388,10 +402,12 @@ func VerifyPersesDashboardCatalogBuilds() error {
 // FilterEligibleDashboards returns the catalog keys that are eligible for the
 // manifest selection + release. Unknown keys are skipped (they are not part of
 // the shipped catalog). witness is the authoritative identity-selection
-// witness and backendSignals is the real, per-backend signal inventory. A
-// dashboard is eligible only when its own backend has a real signal AND the
-// identity-selection witness is non-forgeably available; an unconstructed
-// witness yields none, because no real signal/authorization exists.
+// witness and backendSignals is the real, per-backend signal inventory. Only
+// the Keycloak identity dashboard requires the witness to be non-forgeably
+// available; every other dashboard is eligible on its own backend signal
+// alone. An unconstructed witness yields no eligible dashboard only because
+// the identity dashboard is suppressed — Prometheus/Loki/Tempo remain eligible
+// on their own real signals.
 func FilterEligibleDashboards(catalog PersesDashboardCatalog, witness IdentitySelectionWitness, backendSignals map[DashboardBackend]bool) ([]string, error) {
 	var eligible []string
 	for key := range catalog.Templates() {
