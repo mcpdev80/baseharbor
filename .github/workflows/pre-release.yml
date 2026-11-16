@@ -14,6 +14,7 @@ jobs:
     outputs:
       tag: ${{ steps.release.outputs.tag }}
       candidate_sha: ${{ steps.release.outputs.candidate_sha }}
+      develop_sha: ${{ steps.release.outputs.develop_sha }}
       demo_ref: ${{ steps.release.outputs.demo_ref }}
       consumer_ref: ${{ steps.release.outputs.consumer_ref }}
       adoption: ${{ steps.selection.outputs.adoption }}
@@ -57,14 +58,22 @@ jobs:
         INPUT_DEMO_REF: ${{ inputs.demo_ref }}
         INPUT_CONSUMER_REF: ${{ inputs.consumer_ref }}
         INPUT_CONSOLE_REF: ${{ inputs.console_ref }}
+        INPUT_DEVELOP_SHA: ${{ inputs.develop_sha }}
+        RELEASE_MODE: ${{ inputs.release_mode }}
         GH_TOKEN: ${{ github.token }}
       run: |
         set -euo pipefail
         if [ "${{ inputs.develop_mode }}" = true ]; then
           test "$EVENT_NAME" = workflow_call
+          git fetch --no-tags origin develop
           core_sha="$(git rev-parse HEAD)"
+          develop_sha="$(git rev-parse origin/develop)"
           [[ "${{ inputs.ref }}" =~ ^[0-9a-f]{40}$ ]]
           test "$core_sha" = "${{ inputs.ref }}"
+          git merge-base --is-ancestor "$develop_sha" "$core_sha" || {
+            echo "REJECT: develop validation candidate does not contain fetched develop tip $develop_sha (drift)." >&2
+            exit 1
+          }
           [[ "$INPUT_DEMO_REF" =~ ^[0-9a-f]{40}$ ]]
           [[ "$INPUT_CONSOLE_REF" =~ ^[0-9a-f]{40}$ ]]
           [[ "$INPUT_CONSUMER_REF" =~ ^[0-9a-f]{40}$ ]]
@@ -74,6 +83,7 @@ jobs:
           {
             echo "tag=develop"
             echo "candidate_sha=$core_sha"
+            echo "develop_sha=$develop_sha"
             echo "demo_ref=$INPUT_DEMO_REF"
             echo "consumer_ref=$INPUT_CONSUMER_REF"
             echo "console_ref=$INPUT_CONSOLE_REF"
@@ -94,17 +104,59 @@ jobs:
         fi
 
         git fetch origin main develop
+        develop_sha="$(git rev-parse origin/develop)"
         release_ref="refs/remotes/origin/release/$tag"
         git fetch origin "refs/heads/release/$tag:$release_ref" || true
-        if git merge-base --is-ancestor origin/develop HEAD; then
-          echo "Candidate follows the current develop release line."
-        elif git merge-base --is-ancestor origin/main HEAD; then
-          echo "Candidate follows the current released main line."
-        elif git show-ref --verify --quiet "$release_ref" && [ "$(git rev-parse "$release_ref")" = "$(git rev-parse HEAD)" ]; then
-          echo "Candidate exactly matches the current release/$tag branch tip."
+        if [ "$RELEASE_MODE" = true ]; then
+          [[ "$INPUT_DEVELOP_SHA" =~ ^[0-9a-f]{40}$ ]] || {
+            echo "REJECT: Publish must provide the exact develop SHA checked by its tag job." >&2
+            exit 1
+          }
+          git merge-base --is-ancestor "$INPUT_DEVELOP_SHA" "$develop_sha" || {
+            echo "REJECT: Publish's checked develop SHA is no longer on the fetched develop line." >&2
+            exit 1
+          }
+          develop_sha="$INPUT_DEVELOP_SHA"
+          if [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            # Hotfix flow via main; develop integration follows after publish. See docs/reference/releases.md#hotfix-releases.
+            git merge-base --is-ancestor origin/main HEAD || {
+              echo "REJECT: hotfix candidate must descend from the released main line." >&2
+              exit 1
+            }
+            echo "Hotfix candidate follows the documented main-based hotfix path."
+          else
+            git merge-base --is-ancestor HEAD "$develop_sha" || {
+              echo "REJECT: release tag is not integrated into develop; refusing publication." >&2
+              exit 1
+            }
+            echo "Release candidate is integrated into develop."
+          fi
+        elif [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          # Hotfix flow via main; develop integration follows after publish. See docs/reference/releases.md#hotfix-releases.
+          git merge-base --is-ancestor origin/main HEAD || {
+            echo "REJECT: hotfix candidate must descend from the released main line." >&2
+            exit 1
+          }
+          echo "Hotfix candidate follows the documented main-based hotfix path."
         else
-          echo "Pre-release candidate must follow current develop/main or exactly match release/$tag." >&2
-          exit 1
+          if [ -n "$INPUT_DEVELOP_SHA" ]; then
+            [[ "$INPUT_DEVELOP_SHA" =~ ^[0-9a-f]{40}$ ]] || {
+              echo "develop_sha input must be an exact 40-character commit SHA." >&2
+              exit 1
+            }
+            test "$INPUT_DEVELOP_SHA" = "$develop_sha" || {
+              echo "REJECT: supplied develop SHA does not match the fetched develop tip." >&2
+              exit 1
+            }
+          fi
+        fi
+        if [ "$RELEASE_MODE" != true ] && [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          if git merge-base --is-ancestor "$develop_sha" HEAD; then
+            echo "Candidate contains the checked develop tip $develop_sha."
+          else
+            echo "REJECT: pre-release candidate does not contain develop tip $develop_sha (drift)." >&2
+            exit 1
+          fi
         fi
 
         version="${tag#v}"
@@ -144,7 +196,9 @@ jobs:
         fi
 
         echo "tag=$tag" >> "$GITHUB_OUTPUT"
-        echo "candidate_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+        candidate_sha="$(git rev-parse HEAD)"
+        echo "candidate_sha=$candidate_sha" >> "$GITHUB_OUTPUT"
+        echo "develop_sha=$develop_sha" >> "$GITHUB_OUTPUT"
         echo "demo_ref=$pinned_demo_ref" >> "$GITHUB_OUTPUT"
     - name: Select normal release checks
       id: selection
@@ -186,6 +240,29 @@ jobs:
           --only-gates "$ONLY_GATES" --token "$GH_TOKEN" \
           --temp-dir "$RUNNER_TEMP/pre-release-runtime-reuse" \
           --output "$GITHUB_OUTPUT"
+    - name: Record qualification source binding
+      id: qualification_binding
+      env:
+        TAG: ${{ steps.release.outputs.tag }}
+        CANDIDATE_SHA: ${{ steps.release.outputs.candidate_sha }}
+        DEVELOP_SHA: ${{ steps.release.outputs.develop_sha }}
+        DEMO_SHA: ${{ steps.release.outputs.demo_ref }}
+        ONLY_GATES: ${{ steps.selection.outputs.only_gates }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        [[ "$CANDIDATE_SHA" =~ ^[0-9a-f]{40}$ ]]
+        [[ "$DEVELOP_SHA" =~ ^[0-9a-f]{40}$ ]]
+        [[ "$DEMO_SHA" =~ ^[0-9a-f]{40}$ ]]
+        suite="$ONLY_GATES"
+        if [ -z "$suite" ]; then
+          suite="full:$TAG"
+        fi
+        printf 'Qualification binding: tag=%s candidate_sha=%s develop_tip_sha=%s demo_sha=%s suite=%s\n' \
+          "$TAG" "$CANDIDATE_SHA" "$DEVELOP_SHA" "$DEMO_SHA" "$suite" \
+          >> "$GITHUB_STEP_SUMMARY"
+        printf 'candidate_sha=%s\ndevelop_sha=%s\nsuite=%s\n' \
+          "$CANDIDATE_SHA" "$DEVELOP_SHA" "$suite" >> "$GITHUB_OUTPUT"
 
   source_format:
     name: Source · Format and Readability
@@ -456,6 +533,7 @@ jobs:
       integration: ${{ needs.source_prepare.outputs.integration }}
       integration_count: ${{ needs.source_prepare.outputs.integration_count }}
       console_ref: ${{ needs.source_prepare.outputs.console_ref }}
+      develop_sha: ${{ needs.source_prepare.outputs.develop_sha }}
     steps:
     - name: Require every source qualification job to pass
       env:
@@ -2028,6 +2106,11 @@ jobs:
         required: true
         default: develop
         type: string
+      develop_sha:
+        description: Optional expected develop tip SHA; if supplied, it must equal the fetched tip
+        required: false
+        default: ''
+        type: string
       demo_ref:
         description: Exact baseharbor-demo commit SHA to validate
         required: true
@@ -2076,3 +2159,20 @@ jobs:
         required: false
         default: ''
         type: string
+      release_mode:
+        description: Validate a promoted release tag rather than a pre-release candidate
+        required: false
+        default: false
+        type: boolean
+      develop_sha:
+        description: Exact develop tip captured by the release tag job
+        required: false
+        default: ''
+        type: string
+    outputs:
+      candidate_sha:
+        description: Exact BaseHarbor source SHA checked by this workflow
+        value: ${{ jobs.source_prepare.outputs.candidate_sha }}
+      develop_sha:
+        description: Exact develop SHA used by the ancestry guard
+        value: ${{ jobs.source_prepare.outputs.develop_sha }}
