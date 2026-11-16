@@ -17,9 +17,13 @@ The command creates a private, one-use device invitation. Transfer it securely a
 
 ```bash
 baha onboard --import /path/to/invitation.json
-baha use NAME
+baha target list
+baha use <workstation-target>
+baha target show <workstation-target>
+baha status
+baha doctor
 ```
 
-BaseHarbor verifies the Core and invitation, creates the device private key locally, and registers the connection. The invitation does not grant a human operator role. The connection alias is distinct from the Core Target. Select and inspect the deployment Target with `baha target list` and `baha target show`. See [security and trust commands](../cli/security-trust.md) for CA trust, revocation and offboarding details.
+The import output names the new Workstation Target; use that exact name with `baha use` and `baha target show`. `baha target list` shows configured Targets, while `baha status` and `baha doctor` verify the selected Core and its version relationship. BaseHarbor verifies the Core and invitation, creates the device private key locally, and registers the device connection. This does not grant a human operator role; when policy requires an operator session, use `baha login -e dev` as well. The Workstation Target is distinct from the Core Target. See [security and trust commands](../cli/security-trust.md) for CA trust, revocation and offboarding details.
 
 Continue from the application repository using [the canonical local, remote and team workflow](local-remote-team-workflow.md).

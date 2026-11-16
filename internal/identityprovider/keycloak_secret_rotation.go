@@ -53,30 +53,55 @@ func (a *keycloakAdmin) rotateClientSecret(ctx context.Context, realm, clientUUI
 		return "", "", fmt.Errorf("rotated Keycloak client secret is empty")
 	}
 
-	// In HA mode the regenerate response and the next request may traverse
-	// different members. Re-read the authoritative current credential from
-	// the admin API before publishing it to consumers.
-	current, err = a.currentClientSecret(ctx, realm, clientUUID)
-	if err != nil {
-		return "", "", fmt.Errorf("read regenerated Keycloak client secret: %w", err)
-	}
+	return a.waitForClientSecretRotationState(ctx, realm, clientUUID, current)
+}
 
-	status, body, err = a.do(ctx, http.MethodGet, keycloakAdminClientSecretPath(realm, clientUUID)+"/rotated", nil)
-	if err != nil {
-		return "", "", err
+// waitForClientSecretRotationState tolerates a successful but stale read from
+// another Keycloak member while client credentials converge after failover.
+// The POST response is the authoritative new secret; publishing credentials
+// only waits until the read API agrees and exposes a distinct overlap secret.
+func (a *keycloakAdmin) waitForClientSecretRotationState(ctx context.Context, realm, clientUUID, expectedCurrent string) (current, rotated string, err error) {
+	convergeCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
+
+	lastState := "no consistent secret pair was observed"
+	for {
+		observedCurrent, readErr := a.currentClientSecret(convergeCtx, realm, clientUUID)
+		if readErr != nil {
+			lastState = fmt.Sprintf("read regenerated Keycloak client secret: %v", readErr)
+		} else if observedCurrent == expectedCurrent {
+			status, body, readErr := a.do(convergeCtx, http.MethodGet, keycloakAdminClientSecretPath(realm, clientUUID)+"/rotated", nil)
+			if readErr != nil {
+				lastState = fmt.Sprintf("read Keycloak overlap secret: %v", readErr)
+			} else if status != http.StatusOK {
+				lastState = fmt.Sprintf("read Keycloak overlap secret: HTTP %d: %s", status, body)
+			} else {
+				var credential keycloakSecretCredential
+				if err := json.Unmarshal([]byte(body), &credential); err != nil {
+					lastState = fmt.Sprintf("decode Keycloak overlap secret: %v", err)
+				} else {
+					observedRotated := strings.TrimSpace(credential.Value)
+					if observedRotated != "" && observedRotated != expectedCurrent {
+						return expectedCurrent, observedRotated, nil
+					}
+					lastState = "Keycloak has not exposed a distinct overlap secret yet"
+				}
+			}
+		} else {
+			lastState = "Keycloak members have not converged on the regenerated client secret yet"
+		}
+
+		select {
+		case <-convergeCtx.Done():
+			if ctx.Err() != nil {
+				return "", "", ctx.Err()
+			}
+			return "", "", fmt.Errorf("Keycloak client-secret rotation did not converge within 30s: %s", lastState)
+		case <-ticker.C:
+		}
 	}
-	if status != http.StatusOK {
-		return "", "", fmt.Errorf("read Keycloak overlap secret: HTTP %d: %s", status, body)
-	}
-	var rotatedCredential keycloakSecretCredential
-	if err := json.Unmarshal([]byte(body), &rotatedCredential); err != nil {
-		return "", "", fmt.Errorf("decode Keycloak overlap secret: %w", err)
-	}
-	rotated = strings.TrimSpace(rotatedCredential.Value)
-	if rotated == "" || rotated == current {
-		return "", "", fmt.Errorf("Keycloak did not preserve a distinct rotated client secret")
-	}
-	return current, rotated, nil
 }
 
 func (a *keycloakAdmin) retireRotatedClientSecret(ctx context.Context, realm, clientUUID string) error {

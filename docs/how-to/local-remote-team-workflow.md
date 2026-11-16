@@ -13,7 +13,7 @@ baha up -e dev
 baha status -e dev
 ```
 
-Ordinary trusted-local development does not require `baha login`. `baha init` records the repository-owned application contract; `baha up` performs the lifecycle. Neither an environment name nor a Target name is a substitute for the other. See [application commands](../cli/applications.md) and [environment selection](environments.md).
+Ordinary trusted-local development does not require `baha login`. `baha init` records the repository-owned application contract; `baha up` performs the lifecycle. Neither an environment name nor a Target name is a substitute for the other. See [application commands](../cli/applications.md) and [environment selection](environments.md). The read-only `baha connections` command lists explicit cross-application connectivity rules; it is separate from the workstation's Management connection to Core.
 
 ## One remote Core
 
@@ -24,14 +24,15 @@ baha up
 baha onboard --invite
 ```
 
-Transfer the invitation securely. On the developer workstation, redeem it and select the resulting connection:
+Transfer the invitation securely. On the developer workstation, redeem it and select the resulting Workstation Target:
 
 ```bash
 baha onboard --import /path/to/invitation.json
-baha use <connection>
-baha connections
 baha target list
-baha target show
+baha use <workstation-target>
+baha target show <workstation-target>
+baha status
+baha doctor
 ```
 
 Then work from the application repository using the selected remote Target:
@@ -43,7 +44,7 @@ baha up -e dev
 baha status -e dev
 ```
 
-Enrollment attaches this workstation to the Core and creates a device identity. It does not grant a human operator role. The connection alias does not rename a Core Target, and a failed remote operation never falls back to a local runtime. Keep the local Core and remote connection distinct when selecting a Target. See the [workstation enrollment contract](../spec/zero-friction-workstation-onboarding-v0427.md) and [Target commands](../cli/targets.md).
+The import command prints the exact name of the new Workstation Target; use that name for `baha use` and `baha target show`. `baha target list` shows configured Targets. `baha status` and `baha doctor` verify the selected Core and its version relationship. Enrollment attaches this workstation to the Core and creates a device identity; it does not grant a human operator role. A policy that requires an operator session still uses `baha login -e dev`. The workstation Target is separate from the Core Target, and a failed remote operation never falls back to a local runtime. See the [workstation enrollment contract](../spec/zero-friction-workstation-onboarding-v0427.md) and [Target commands](../cli/targets.md).
 
 ## Shared team access
 
