@@ -111,13 +111,15 @@ func TestStatusResultIdentityGateVM(t *testing.T) {
 		t.Fatalf("list observability signals: %v", listErr)
 	}
 	if !realKeycloakNativeMetric(sources) {
-		var ids []string
+		var all []string
+		var kc []string
 		for _, s := range sources {
+			all = append(all, fmt.Sprintf("%s/id=%s/kind=%s/cls=%s/scope=%s/mode=%s", s.ID, s.ID, s.Kind, s.Class, s.Scope, s.Mode))
 			if s.Provider == capability.ProviderKeycloak {
-				ids = append(ids, fmt.Sprintf("%s/id=%s/kind=%s/mode=%s/verif=%s", s.ID, s.ID, s.Kind, s.Mode, s.Verification))
+				kc = append(kc, fmt.Sprintf("%s/id=%s/kind=%s/mode=%s", s.ID, s.ID, s.Kind, s.Mode))
 			}
 		}
-		t.Fatalf("no real keycloak-metrics native signal in registry; registered Keycloak signals: %v", ids)
+		t.Fatalf("no real keycloak-metrics native signal in registry; ALL signals (%d): %v; KEYCLOAK provider signals: %v", len(sources), all, kc)
 	}
 	result, resErr := collectApplicationStatusResult(ctx, resolved.Store, []string{"status"})
 	if resErr != nil {
