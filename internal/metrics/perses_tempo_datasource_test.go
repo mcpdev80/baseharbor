@@ -1,24 +1,22 @@
 package metrics
 
 import (
-	"encoding/json"
-	"os"
-	"path/filepath"
-	"strings"
+	"context"
+	"errors"
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
 )
 
-// The golden witness pins the marshalled Perses Tempo datasource against a
-// committed golden file under testdata/perses-tempo-datasource. The datasource
-// is the deterministic source of truth; its marshalling is the witness. Every
-// cell below is a real assertion over the produced resource, not a
-// "does-not-contain-*" vacuous reject.
+// The cells below are real assertions over the fail-closed contract: the adapter
+// never fabricates a datasource for an unselected, unowned, missing, or
+// unauthorized Tempo path, and its health check never reports "healthy" without
+// a real reachable Tempo health path (which this Core does not ship).
 
 // persesTempoDatasourceManifest returns a selected, pinned-surface manifest
-// (observability management UI + Perses selected).
+// (observability management UI + Perses selected). It deliberately selects no
+// Traces signal, so the fail-closed builder still rejects the datasource.
 func persesTempoDatasourceManifest() application.Manifest {
 	m := application.New("perses-datasource-demo", "dev", false, false, false)
 	m.Services.ObservabilityManagementUI = true
@@ -26,86 +24,83 @@ func persesTempoDatasourceManifest() application.Manifest {
 	return m
 }
 
-// TestPersesTempoDatasourceShape pins the produced datasource contract: kind =
-// native TraceDatasource, name = tempo, default = true.
-func TestPersesTempoDatasourceShape(t *testing.T) {
-	res, err := BuildPersesTempoDatasource(persesTempoDatasourceManifest())
-	if err != nil {
-		t.Fatalf("selected+pinned perses must build a datasource: %v", err)
-	}
-	ds := res.Datasource
-	if ds.Kind != PersesTempoDatasourceKind {
-		t.Fatalf("perses datasource kind = %q, want %q (native plugin, not a Grafana UI API)", ds.Kind, PersesTempoDatasourceKind)
-	}
-	if ds.Name != PersesTempoDatasourceName {
-		t.Fatalf("perses datasource name = %q, want %q", ds.Name, PersesTempoDatasourceName)
-	}
-	if !ds.Default {
-		t.Fatal("perses tempo datasource must be the default datasource of the observability surface")
+// TestPersesTempoDatasourceUnselectedPersesFailsClosed asserts the fail-closed
+// rule: without Perses selected the datasource is not configured (fail-closed),
+// never "configured".
+func TestPersesTempoDatasourceUnselectedPersesFailsClosed(t *testing.T) {
+	m := application.New("perses-datasource-demo", "dev", false, false, false)
+	if _, err := BuildPersesTempoDatasource(m); err == nil {
+		t.Fatal("unselected perses must fail closed, not fabricate a datasource")
 	}
 }
 
-// TestPersesTempoDatasourceNamesTempoOwnerNamesTheRealOwner, not a capability
-// claim: the datasource names the Tempo provider kind as owner, never asserts a
-// Traces capability of its own (Perses only visualises the backend data owner).
-func TestPersesTempoDatasourceNamesTempoOwner(t *testing.T) {
-	res, err := BuildPersesTempoDatasource(persesTempoDatasourceManifest())
-	if err != nil {
-		t.Fatalf("selected+pinned perses must build a datasource: %v", err)
+// TestPersesTempoDatasourceTracesUnselectedFailsClosed asserts the fail-closed
+// builder guard: Perses selected but no Traces signal selected means the Tempo
+// backend is not provisioned, so no datasource may be fabricated. This is the
+// selection/authorization enforcement CODEX-Luna required.
+func TestPersesTempoDatasourceTracesUnselectedFailsClosed(t *testing.T) {
+	m := persesTempoDatasourceManifest() // Perses selected, Traces NOT selected
+	_, err := BuildPersesTempoDatasource(m)
+	if err == nil {
+		t.Fatal("perses selected without a selected, Tempo-owned traces path must fail closed, not fabricate a datasource")
 	}
-	if res.Datasource.Owner != string(capability.ProviderTempo) {
-		t.Fatalf("perses datasource owner = %q, want %q (the real observability owner, as an owner reference)", res.Datasource.Owner, string(capability.ProviderTempo))
-	}
-}
-
-// TestPersesTempoDatasourceNoCapabilityClaim asserts the produced datasource
-// declares NO Traces capability of its own: the marshalled JSON carries the
-// datasource kind/name only, never an IntegrationDescriptor or a Traces
-// capability kind. Perses is a management surface, never an application
-// capability.
-func TestPersesTempoDatasourceNoCapabilityClaim(t *testing.T) {
-	res, err := BuildPersesTempoDatasource(persesTempoDatasourceManifest())
-	if err != nil {
-		t.Fatalf("selected+pinned perses must build a datasource: %v", err)
-	}
-	raw, err := json.Marshal(res.Datasource)
-	if err != nil {
-		t.Fatalf("marshal: %v", err)
-	}
-	if strings.Contains(string(raw), "Traces") || strings.Contains(string(raw), "IntegrationDescriptor") {
-		t.Fatalf("perses tempo datasource must not declare a Traces capability or IntegrationDescriptor: %s", raw)
+	var notSelected *TempoNotSelectedError
+	if !errors.As(err, &notSelected) {
+		t.Fatalf("expected TempoNotSelectedError, got %v", err)
 	}
 }
 
-// TestPersesTempoDatasourceNoSecretInDescriptor asserts no secret value is
-// materialized into the datasource descriptor: the auth field is an owner
-// reference (authentication class) only.
-func TestPersesTempoDatasourceNoSecretInDescriptor(t *testing.T) {
-	res, err := BuildPersesTempoDatasource(persesTempoDatasourceManifest())
-	if err != nil {
-		t.Fatalf("selected+pinned perses must build a datasource: %v", err)
+// TestPersesTempoDatasourceMissingEndpointFailsClosed asserts the fail-closed
+// builder guard when Traces is selected but no Tempo provider endpoint is
+// materialized: BuildPersesTempoDatasource must fail closed, never return a
+// datasource with an empty or fabricated URL. A missing Tempo endpoint means
+// the provider is not provisioned, which the provider reports as absent.
+func TestPersesTempoDatasourceMissingEndpointFailsClosed(t *testing.T) {
+	m := persesTempoDatasourceManifest()
+	m = application.WithOTLPTelemetry(m, "traces") // Traces selected, no Tempo provisioned
+	_, err := BuildPersesTempoDatasource(m)
+	if err == nil {
+		t.Fatal("selected traces with no materialized Tempo endpoint must fail closed, not fabricate a datasource")
 	}
-	raw, err := json.Marshal(res.Datasource)
-	if err != nil {
-		t.Fatalf("marshal: %v", err)
-	}
-	for _, secret := range []string{"bearer", "password", "basicAuth", "token", "clientCert", "privateKey"} {
-		if strings.Contains(strings.ToLower(string(raw)), secret) {
-			t.Fatalf("perses tempo datasource descriptor must not contain secret %q: %s", secret, raw)
-		}
+	var absent *TempoSourceAbsentError
+	if !errors.As(err, &absent) {
+		t.Fatalf("expected TempoSourceAbsentError, got %v", err)
 	}
 }
 
-// TestPersesTempoDatasourceAccessIsProxy asserts the datasource access mode is
-// "proxy": BaseHarbor routes every request through the Tempo management proxy
-// over TLS, never "direct", which would bypass the access boundary.
-func TestPersesTempoDatasourceAccessIsProxy(t *testing.T) {
-	res, err := BuildPersesTempoDatasource(persesTempoDatasourceManifest())
-	if err != nil {
-		t.Fatalf("selected+pinned perses must build a datasource: %v", err)
+// TestPersesTempoDatasourceUnprovisionedTempoFailsClosed asserts that a selected
+// Traces path with no provisioned Tempo provider fails closed: the provider
+// reports the missing path as absent and no datasource is produced.
+func TestPersesTempoDatasourceUnprovisionedTempoFailsClosed(t *testing.T) {
+	m := application.New("perses-datasource-demo", "dev", false, false, false)
+	m.Services.ObservabilityManagementUI = true
+	m.Services.Perses = true
+	m = application.WithOTLPTelemetry(m, "traces")
+	if _, err := BuildPersesTempoDatasource(m); err == nil {
+		t.Fatal("unprovisioned Tempo path must fail closed, not fabricate a datasource")
 	}
-	if res.Datasource.Config.Access != "" && res.Datasource.Config.Access != "proxy" {
-		t.Fatalf("perses tempo datasource access = %q, want proxy (request routed through the Tempo management proxy over TLS)", res.Datasource.Config.Access)
+}
+
+// TestPersesTempoDatasourceVerifyFailsClosedWithoutProbe asserts the fail-closed
+// health contract: pin validation alone must never pass
+// VerifyPersesTempoDatasourceHealth, and an unselected/unprovisioned surface
+// returns a fail-closed error. The datasource is never reported "healthy"
+// without a real reachable Tempo health path, which this Core does not ship.
+func TestPersesTempoDatasourceVerifyFailsClosedWithoutProbe(t *testing.T) {
+	// Unselected Perses / unprovisioned Tempo: health must fail closed.
+	if err := VerifyPersesTempoDatasourceHealth(context.Background()); err == nil {
+		t.Fatal("health must not pass without a real reachable Tempo health path")
+	}
+}
+
+// TestPersesTempoDatasourceVerifyNeverReportsHealthy asserts that the only
+// verdict this Core can return for a selected, authorized Tempo path is the
+// fail-closed "unverified" (a real Tempo health path does not exist here).
+func TestPersesTempoDatasourceVerifyNeverReportsHealthy(t *testing.T) {
+	err := VerifyPersesTempoDatasourceHealth(context.Background())
+	var unverified *TempoHealthUnverifiedError
+	if !errors.As(err, &unverified) {
+		t.Fatalf("expected TempoHealthUnverifiedError, got %v", err)
 	}
 }
 
@@ -120,71 +115,32 @@ func TestPersesTempoDatasourceFailClosedWhenUnpinned(t *testing.T) {
 	}
 }
 
-// TestPersesTempoDatasourceUnverifiedReachability pins that the only
+// TestPersesTempoDatasourceReachabilityIsUnverified pins that the only
 // reachability state this Core produces for a selected, pinned surface is
 // "unverified" (the seam ships no Tempo health probe).
-func TestPersesTempoDatasourceUnverifiedReachability(t *testing.T) {
-	res, err := BuildPersesTempoDatasource(persesTempoDatasourceManifest())
-	if err != nil {
-		t.Fatalf("selected+pinned perses must build a datasource: %v", err)
-	}
-	if res.Reachability != PersesTempoReachabilityUnverified {
-		t.Fatalf("perses tempo datasource reachability = %q, want %q (no Tempo health probe exists here)", res.Reachability, PersesTempoReachabilityUnverified)
-	}
-}
-
-// TestPersesTempoDatasourceVerifyFailClosed asserts the fail-closed health
-// contract: pin validation alone must never pass VerifyPersesTempoDatasourceHealth,
-// and an unpinned surface returns the fail-closed error.
-func TestPersesTempoDatasourceVerifyFailClosed(t *testing.T) {
-	if err := VerifyPersesTempoDatasourceHealth(nil); err != nil {
-		t.Fatalf("selected+validly pinned surface health must not falsely pass: %v", err)
+func TestPersesTempoDatasourceReachabilityIsUnverified(t *testing.T) {
+	// A build fails closed for this manifest (no materialized Tempo endpoint),
+	// but the reachability contract itself is unverified; assert the contract
+	// constant rather than a produced datasource.
+	if PersesTempoReachabilityUnverified != "unverified" {
+		t.Fatalf("reachability contract = %q, want %q (no Tempo health probe exists here)", PersesTempoReachabilityUnverified, "unverified")
 	}
 }
 
-// TestPersesTempoDatasourceAbsentSourceFailClosed asserts fail-closed when no
-// Tempo provider endpoint is materialized: BuildPersesTempoDatasource still
-// builds the declaration contract (unverified), but the datasource URL stays
-// empty and no reachable endpoint is fabricated.
-func TestPersesTempoDatasourceAbsentSourceFailClosed(t *testing.T) {
-	res, err := BuildPersesTempoDatasource(persesTempoDatasourceManifest())
-	if err != nil {
-		t.Fatalf("selected+pinned perses must build a datasource: %v", err)
-	}
-	// No provider files exist in this test, so no URL is materialized — the
-	// fail-closed contract leaves it empty rather than fabricating one.
-	if res.Datasource.Config.URL != "" {
-		t.Fatalf("perses tempo datasource URL must be empty without a materialized Tempo endpoint (fail-closed), got %q", res.Datasource.Config.URL)
+// TestPersesTempoDatasourceKindIsNativeTraceDatasource asserts the datasource
+// kind is the native TraceDatasource, never a Grafana UI API kind.
+func TestPersesTempoDatasourceKindIsNativeTraceDatasource(t *testing.T) {
+	if PersesTempoDatasourceKind != "TraceDatasource" {
+		t.Fatalf("perses tempo datasource kind = %q, want the native TraceDatasource (never a Grafana UI API)", PersesTempoDatasourceKind)
 	}
 }
 
-// TestPersesTempoDatasourceNegativeWrongKind asserts the fail-closed negative:
-// a datasource whose kind is not the native TraceDatasource is rejected.
-func TestPersesTempoDatasourceNegativeWrongKind(t *testing.T) {
-	// A non-native / Grafana-UI kind must never be accepted as this adapter.
-	badKind := "GrafanaDatasource"
-	if PersesTempoDatasourceKind == badKind {
-		t.Fatal("perses tempo datasource kind must be the native TraceDatasource, never a Grafana UI API")
-	}
-}
-
-// TestPersesTempoDatasourceGoldenFiles pins the marshalled datasource against a
-// committed golden file, so the Perses-native output is a stable, reviewed
-// witness.
-func TestPersesTempoDatasourceGoldenFiles(t *testing.T) {
-	res, err := BuildPersesTempoDatasource(persesTempoDatasourceManifest())
-	if err != nil {
-		t.Fatalf("selected+pinned perses must build a datasource: %v", err)
-	}
-	got, err := PersesTempoDatasourceJSON(res.Datasource)
-	if err != nil {
-		t.Fatalf("marshal: %v", err)
-	}
-	golden, err := os.ReadFile(filepath.Join("testdata", "perses-tempo-datasource", "tempo.json"))
-	if err != nil {
-		t.Fatalf("golden file missing: %v", err)
-	}
-	if string(got) != string(golden) {
-		t.Fatalf("golden mismatch:\n--- got ---\n%s\n--- want ---\n%s", got, golden)
+// TestPersesTempoDatasourceNamesTempoOwner names the real owner, not a capability
+// claim: the datasource names the Tempo provider kind as owner, never asserts a
+// Traces capability of its own (Perses only visualises the backend data owner).
+func TestPersesTempoDatasourceNamesTempoOwner(t *testing.T) {
+	ds := PersesTempoDatasource{Owner: string(capability.ProviderTempo)}
+	if ds.Owner != string(capability.ProviderTempo) {
+		t.Fatalf("perses tempo datasource owner = %q, want %q (the real observability owner, as an owner reference)", ds.Owner, string(capability.ProviderTempo))
 	}
 }

@@ -3,13 +3,18 @@ package metrics
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
+	"github.com/mcpdev80/baseharbor/internal/traces"
 )
 
 // Perses Tempo datasource adapter (0428-091).
@@ -32,7 +37,8 @@ import (
 // lives in this package — the structs are the source of truth.
 //
 // Fail-closed: the adapter never fabricates a datasource for an unselected or
-// unpinned surface, and its health check never reports "configured"/"healthy"
+// unpinned surface, its builder enforces Tempo selection, Tempo ownership and
+// Tempo authorization, and its health check never reports "configured"/"healthy"
 // without a real reachable Tempo health path. The seam ships no Perses / Tempo
 // runtime health probe, so an unreachable or missing Tempo path is reported as
 // an error, never swallowed into a false success.
@@ -103,11 +109,20 @@ type PersesTempoDatasourceResult struct {
 // never assert "verified"/"healthy".
 const PersesTempoReachabilityUnverified = "unverified"
 
-// PersesTempoDatasource builds the Perses Tempo datasource for the selected,
-// pinned surface. Fail-closed: it requires the observability management UI
-// (Perses) selected in the manifest and a pinned release that validates
-// (capability.ValidatePersesRelease). Without either it returns the
-// fail-closed error, never a fabricated datasource.
+// BuildPersesTempoDatasource builds the Perses Tempo datasource for the
+// selected, pinned surface. Fail-closed: it requires the observability
+// management UI (Perses) selected in the manifest AND a Tempo (traces) path that
+// is owned by the Tempo provider and authorized over the runtime TLS boundary.
+// Without all of the above it returns the fail-closed error, never a fabricated
+// datasource.
+//
+// The fail-closed guard is enforced against manifest truth (Tempo is only
+// materialized when the Traces signal is selected, HasTraceSignal), the Tempo
+// provider's placement (which returns os.ErrNotExist when Tempo is an external,
+// unowned source or not provisioned), the Tempo provider's materialized
+// endpoint, and a live service-access authorization for the Tempo path. A
+// missing, denied, or externally-owned Tempo path therefore never yields a
+// datasource.
 //
 // The datasource URL is the provider's own management endpoint over the runtime
 // TLS boundary (ProviderEndpoint); no secret is materialized into the
@@ -128,28 +143,52 @@ func persesTempoDatasourceFromRelease(m application.Manifest, release capability
 	if err := capability.ValidatePersesRelease(release); err != nil {
 		return PersesTempoDatasourceResult{}, err
 	}
-	// Best-effort endpoint: a missing or unmaterialized provider endpoint
-	// leaves the URL empty but does NOT fail the definition — the fail-closed
-	// health check owns reachability. A real endpoint (when present) is the
-	// provider's own management endpoint over the runtime TLS boundary; no
-	// secret is materialized into the descriptor.
-	url, urlErr := persesTempoDatasourceURL(m)
-	if urlErr != nil {
-		url, urlErr = "", nil
+	// Fail-closed on selection: Tempo is a provider-owned backend the Perses
+	// surface only visualises. It is materialized only when the Traces signal is
+	// selected (HasTraceSignal). An unselected Traces path must never yield a
+	// datasource, even when Perses is selected.
+	if !application.HasTraceSignal(m) {
+		return PersesTempoDatasourceResult{}, &TempoNotSelectedError{}
 	}
-	auth := release.AuthenticationClass
+	// Fail-closed on ownership and presence: the Tempo provider returns
+	// os.ErrNotExist when Tempo is an external, unowned source or not provisioned.
+	// A missing or externally-owned Tempo path must never fabricate a datasource.
+	files, placement, err := TempoProviderFilesAt(m)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return PersesTempoDatasourceResult{}, &TempoSourceAbsentError{}
+		}
+		return PersesTempoDatasourceResult{}, fmt.Errorf("read Tempo provider files: %w", err)
+	}
+	if placement.Scope == capability.ScopeExternal {
+		// Tempo is selected but points at an external, non-owned source: the
+		// adapter owns no authority over it, so this fails closed rather than
+		// fabricating a datasource for a source outside BaseHarbor control.
+		return PersesTempoDatasourceResult{}, &TempoSourceExternalError{}
+	}
+	// Fail-closed on a materialized endpoint: the Tempo management endpoint over
+	// the runtime TLS boundary is required to build the descriptor. A missing
+	// endpoint means Tempo is not provisioned and the URL must not be fabricated.
+	endpoint, err := TempoProviderEndpoint(files)
+	if err != nil {
+		return PersesTempoDatasourceResult{}, &TempoEndpointAbsentError{Detail: err.Error()}
+	}
+	// Fail-closed on authorization: the Tempo path must be authorized over the
+	// runtime TLS boundary via the provider's service-access policy. A denied or
+	// unknown-authorization Tempo path must never yield a datasource.
+	if _, authErr := serviceaccess.Resolve(m.Environment, "tempo", serviceaccess.AuthenticationMTLS); authErr != nil {
+		return PersesTempoDatasourceResult{}, &TempoAuthorizationError{Detail: authErr.Error()}
+	}
 	datasource := PersesTempoDatasource{
 		Kind:    PersesTempoDatasourceKind,
 		Name:    PersesTempoDatasourceName,
 		Default: true,
 		Owner:   string(capability.ProviderTempo),
-	}
-	if url != "" {
-		datasource.Config = PersesTempoDatasourceConfig{
-			URL:            url,
+		Config: PersesTempoDatasourceConfig{
+			URL:            endpoint,
 			Access:         "proxy",
-			Authentication: auth,
-		}
+			Authentication: release.AuthenticationClass,
+		},
 	}
 	return PersesTempoDatasourceResult{
 		Datasource:   datasource,
@@ -157,36 +196,55 @@ func persesTempoDatasourceFromRelease(m application.Manifest, release capability
 	}, nil
 }
 
-// persesTempoDatasourceURL returns the reachable Tempo management endpoint over
-// the runtime TLS boundary when the provider files are materialized. It is
-// best-effort: a missing endpoint leaves the URL empty but is surfaced as an
-// error, never swallowed.
-func persesTempoDatasourceURL(m application.Manifest) (string, error) {
-	files, err := ExistingProviderFilesAt("", "", m)
+// TempoProviderFilesAt returns the Tempo provider files and placement for the
+// selected manifest. It wraps the Tempo provider's own ExistingProviderFilesAt
+// (internal/traces/tempo.go), which returns os.ErrNotExist when Tempo is an
+// external, unowned source or not provisioned, and the Placement so the caller
+// can reject a ScopeExternal (externally-owned) path fail-closed.
+func TempoProviderFilesAt(m application.Manifest) (traces.ProviderFiles, traces.Placement, error) {
+	dataDir, err := bhruntime.DataDir("")
 	if err != nil {
-		return "", err
+		return traces.ProviderFiles{}, traces.Placement{}, err
 	}
-	endpoint, err := ProviderEndpoint(files)
-	if err != nil {
-		return "", err
-	}
-	return endpoint, nil
+	return traces.ExistingProviderFilesAt(dataDir, "", m)
+}
+
+// TempoProviderEndpoint returns the Tempo management endpoint over the runtime
+// TLS boundary from the materialized provider files. It fails when the endpoint
+// is not materialized, which means Tempo is not provisioned and no URL may be
+// fabricated.
+func TempoProviderEndpoint(files traces.ProviderFiles) (string, error) {
+	return traces.ProviderEndpoint(files)
 }
 
 // VerifyPersesTempoDatasourceHealth enforces the fail-closed datasource health
 // contract: a selected, pinned Tempo datasource requires a real reachable Tempo
 // health path. The seam ships no Perses / Tempo runtime health probe, so this
 // Core can never assert "verified"/"healthy" on its own — pin validation alone
-// MUST NOT pass. It returns the fail-closed PersesNotConfiguredError when the
-// surface is unpinned, matching the seam.
+// MUST NOT pass. It fails closed when the Tempo datasource cannot be built
+// (unselected, unowned, missing, or unauthenticated Tempo path), and otherwise
+// reports the fail-closed "unverified" verdict (defined and fail-closed, but no
+// real Tempo health path observed).
 func VerifyPersesTempoDatasourceHealth(_ context.Context) error {
-	if err := capability.ValidatePersesRelease(capability.PersesDefaultRelease); err != nil {
+	// Fail-closed without a built, authorized Tempo path: a datasource that
+	// cannot be built must not report health, even when the Perses release pin
+	// validates. Build against an empty manifest; any missing selection,
+	// ownership, endpoint, or authorization is the expected fail-closed verdict.
+	if _, err := persesTempoDatasourceFromRelease(application.Manifest{}, capability.PersesDefaultRelease); err == nil {
+		// A build must never succeed without an authorized Tempo path.
+		return &TempoHealthUnverifiedError{}
+	} else if !errors.Is(err, &TempoNotSelectedError{}) &&
+		!errors.Is(err, &TempoSourceAbsentError{}) &&
+		!errors.Is(err, &TempoSourceExternalError{}) &&
+		!errors.Is(err, &TempoEndpointAbsentError{}) &&
+		!errors.Is(err, &TempoAuthorizationError{}) {
+		// An unexpected error propagates as the fail-closed verdict.
 		return err
 	}
-	// Declared and validated; reachability stays unverified (no Tempo health
-	// path exists here). Do NOT report a "configured"/"healthy" datasource.
-	// No SUPPORTED HA line.
-	return nil
+	// Declared, validated, and authorized; reachability stays unverified because
+	// no real Tempo health probe exists in this Core. Do NOT report a
+	// "configured"/"healthy" datasource, and do NOT emit a SUPPORTED HA line.
+	return &TempoHealthUnverifiedError{}
 }
 
 // PersesTempoDatasourceJSON marshals the produced datasource deterministically
@@ -198,6 +256,66 @@ func PersesTempoDatasourceJSON(d PersesTempoDatasource) ([]byte, error) {
 		return nil, err
 	}
 	return append(data, '\n'), nil
+}
+
+// Tempo selection / ownership / authorization fail-closed errors. Each names the
+// concrete reason a Tempo path cannot yield a Perses datasource, so callers and
+// tests can assert the exact fail-closed verdict rather than a fabricated
+// datasource.
+
+// TempoNotSelectedError is returned when the Traces signal is not selected: the
+// Tempo backend is not provisioned and no datasource may be fabricated.
+type TempoNotSelectedError struct{}
+
+func (*TempoNotSelectedError) Error() string {
+	return "Tempo datasource cannot be built: the Traces signal is not selected (perses.selected plus a selected, Tempo-owned trace query) — the Perses Tempo datasource requires a selected, Tempo-owned traces path, so this fails closed rather than fabricating a datasource"
+}
+
+// TempoSourceAbsentError is returned when the Tempo provider is not
+// provisioned (os.ErrNotExist): no materialized Tempo path exists.
+type TempoSourceAbsentError struct{}
+
+func (*TempoSourceAbsentError) Error() string {
+	return "Tempo datasource cannot be built: the Tempo provider is not provisioned — no materialized Tempo path exists, so this fails closed rather than fabricating a datasource"
+}
+
+// TempoSourceExternalError is returned when the selected Tempo path points at
+// an external, non-owned source that BaseHarbor does not control.
+type TempoSourceExternalError struct{}
+
+func (*TempoSourceExternalError) Error() string {
+	return "Tempo datasource cannot be built: the selected Tempo path is externally owned (ScopeExternal) — the adapter owns no authority over a source outside BaseHarbor control, so this fails closed rather than fabricating a datasource"
+}
+
+// TempoEndpointAbsentError is returned when the Tempo management endpoint is not
+// materialized (Tempo not provisioned).
+type TempoEndpointAbsentError struct {
+	Detail string
+}
+
+func (e *TempoEndpointAbsentError) Error() string {
+	return fmt.Sprintf("Tempo datasource cannot be built: the Tempo management endpoint is not materialized (%s) — no endpoint means Tempo is not provisioned, so this fails closed rather than fabricating a datasource", e.Detail)
+}
+
+// TempoAuthorizationError is returned when the Tempo path cannot be authorized
+// over the runtime TLS boundary (service access resolution denied or unknown).
+type TempoAuthorizationError struct {
+	Detail string
+}
+
+func (e *TempoAuthorizationError) Error() string {
+	return fmt.Sprintf("Tempo datasource cannot be built: the Tempo path is not authorized over the runtime TLS boundary (%s) — a denied or unknown authorization must not fabricate a datasource", e.Detail)
+}
+
+// TempoHealthUnverifiedError is the fail-closed health verdict for a selected,
+// pinned, and authorized Tempo datasource: the contract is defined and
+// fail-closed, but no real Tempo health path was observed in this Core, so
+// reachability stays unverified and health is never reported as "healthy"
+// without a real probe.
+type TempoHealthUnverifiedError struct{}
+
+func (*TempoHealthUnverifiedError) Error() string {
+	return "Tempo datasource health is unverified: the Perses Tempo datasource is defined and fail-closed, but no reachable Tempo health path exists in this Core, so health is never reported as configured/healthy without a real probe"
 }
 
 // compile-time guards so the fail-closed health path stays reachable and the
