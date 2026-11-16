@@ -32,6 +32,9 @@ class ContractCheckTests(unittest.TestCase):
                     ['./cmd/baha', '-run', '^TestSelectiveBackendCleanupPreservesRuntimeBaseline$', '-timeout', '20m'],
                 ],
                                  integration.coreless_anchor_checks(gate, root))
+            (root / next(iter(anchors))).write_text('package main\n')
+            with self.assertRaisesRegex(ValueError, 'mandatory Coreless test anchor'):
+                integration.coreless_anchor_checks('integration/docker/coreless-lifecycle', root)
         self.assertEqual([], integration.coreless_anchor_checks('integration/static/public-contracts'))
 
     def test_public_contracts_require_aggregate_provider_transport_authority(self):
@@ -114,6 +117,7 @@ class ContractCheckTests(unittest.TestCase):
                 self.assertEqual(os.environ['BASEHARBOR_HTTPS_LIFECYCLE_ACCEPTANCE'], '1')
                 self.assertEqual(os.environ['BASEHARBOR_SECRETS_LIFECYCLE_ACCEPTANCE'], '1')
                 self.assertEqual(os.environ['BASEHARBOR_RENOVATE_RECOVERY_ACCEPTANCE'], '1')
+                self.assertEqual(os.environ['BASEHARBOR_APP_STOP_ACCEPTANCE'], '1')
             with patch.dict(os.environ, {}, clear=True):
                 with self.assertRaises(ValueError):
                     integration.configure_runtime_environment(gate)
@@ -125,7 +129,6 @@ class ContractCheckTests(unittest.TestCase):
                     '^TestSelectiveBackendRuntimeAddRemoveReAdd$',
                     '^TestSelectiveApplicationBackendRuntimeAddRemoveReAdd$',
                     '^TestSelectiveHTTPSRuntimeAddRemoveReAdd$',
-                    '^TestSelectiveSecretsRuntimeAddRemoveReAdd$',
                     '^TestManagedRegisteredOTLPNativeConsumerHandoff$',
                     '^TestRenovateVolumeRecoveryRuntimeAcceptance$',
                     '^TestApplicationCapabilityLifecycleExistingCore$'}
@@ -149,14 +152,12 @@ class ContractCheckTests(unittest.TestCase):
             'TestSelectiveBackendRuntimeAddRemoveReAdd',
             'TestSelectiveApplicationBackendRuntimeAddRemoveReAdd',
             'TestSelectiveHTTPSRuntimeAddRemoveReAdd',
-            'TestSelectiveSecretsRuntimeAddRemoveReAdd',
             'TestManagedRegisteredOTLPNativeConsumerHandoff',
             'TestRenovateVolumeRecoveryRuntimeAcceptance',
             'TestApplicationCapabilityLifecycleExistingCore',
         }
         backend_source = pathlib.Path(__file__).resolve().parents[1] / 'cmd/baha/app_backend_selective_runtime_test.go'
-        if 'func TestSelectiveBackendCleanupPreservesRuntimeBaseline(' in backend_source.read_text():
-            expected.add('TestSelectiveBackendCleanupPreservesRuntimeBaseline')
+        expected.add('TestSelectiveBackendCleanupPreservesRuntimeBaseline')
         for runtime in ['docker', 'podman']:
             gate = f'integration/{runtime}/coreless-lifecycle'
             integration.validate_coreless_shard_partition(gate)
@@ -172,6 +173,16 @@ class ContractCheckTests(unittest.TestCase):
                     assigned.append(command[command.index('-run') + 1][1:-1])
             self.assertEqual(len(assigned), len(set(assigned)))
             self.assertEqual(set(assigned), expected)
+
+    def test_registry_is_an_explicit_owned_resource_and_not_an_inventory_filter(self):
+        root = pathlib.Path(__file__).resolve().parents[1]
+        script = (root / 'scripts/ci-local-oci-registry.sh').read_text()
+        self.assertIn('name="baseharbor-pre-release-registry"', script)
+        self.assertIn('--label baseharbor.pre-release.registry=true', script)
+        self.assertIn('runtime_cmd rm --force "$name"', script)
+        runtime_tests = '\n'.join(path.read_text() for path in (root / 'cmd/baha').glob('*runtime_test.go'))
+        self.assertNotIn('baseharbor.pre-release.registry', runtime_tests)
+        self.assertIn('runtimeContainersNotInBaseline', runtime_tests)
 
     def test_coreless_shard_catalog_rejects_unknown_or_misapplied_shards(self):
         with self.assertRaises(ValueError):
@@ -192,7 +203,7 @@ class ContractCheckTests(unittest.TestCase):
             shard = workflow.split(f'  {shard_id}:\n', 1)[1].split('\n  integration_coreless_', 1)[0]
             aggregate = workflow.split(f'  {aggregate_id}:\n', 1)[1].split('\n  integration_coreless_', 1)[0]
             self.assertIn('fail-fast: false', shard)
-            self.assertIn('shard: [foundation, identity-backend, application]', shard)
+            self.assertIn('shard: [foundation, identity-backend, application, core-capability]', shard)
             self.assertIn('--shard "${{ matrix.shard }}"', shard)
             self.assertIn(f'needs: [source, {shard_id}]', aggregate)
             self.assertIn(f'needs.{shard_id}.result', aggregate)

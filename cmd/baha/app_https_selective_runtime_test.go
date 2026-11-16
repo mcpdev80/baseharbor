@@ -51,6 +51,7 @@ func TestSelectiveHTTPSRuntimeAddRemoveReAdd(t *testing.T) {
 		t.Fatal("inventory isolated HTTPS runtime baseline", err)
 	}
 	baselineIDs := runtimeContainerIDSet(baselineContainers)
+	baselineSnapshot := runtimeContainerSnapshotSet(baselineContainers)
 	t.Chdir(t.TempDir())
 	if err := os.WriteFile("compose.yaml", []byte(corelessHTTPWorkload), 0600); err != nil {
 		t.Fatal(err)
@@ -93,8 +94,8 @@ func TestSelectiveHTTPSRuntimeAddRemoveReAdd(t *testing.T) {
 		}
 		if containers, err := provider.ListRuntimeContainers(cleanup); err != nil {
 			t.Errorf("inspect isolated HTTPS cleanup: %v", err)
-		} else if created, missing := runtimeContainerBaselineDiff(containers, baselineIDs); len(created) != 0 || len(missing) != 0 {
-			t.Errorf("isolated HTTPS cleanup did not preserve the runtime baseline: test-created=%v baseline-removed=%v", created, missing)
+		} else if created, changed := runtimeContainerBaselineDiff(containers, baselineSnapshot); len(created) != 0 || len(changed) != 0 {
+			t.Errorf("isolated HTTPS cleanup did not preserve the runtime baseline: test-created=%v baseline-changed-or-removed=%v", created, changed)
 		}
 	})
 	for phase, enabled := range []bool{true, false, true} {
@@ -118,6 +119,10 @@ func TestSelectiveHTTPSRuntimeAddRemoveReAdd(t *testing.T) {
 		containers, err := provider.ListRuntimeContainers(ctx)
 		if err != nil {
 			t.Fatal(err)
+		}
+		_, changed := runtimeContainerBaselineDiff(containers, baselineSnapshot)
+		if len(changed) != 0 {
+			t.Fatalf("pre-existing runtime containers changed during HTTPS phase %d: %v", phase, changed)
 		}
 		selected := 0
 		for _, container := range runtimeContainersNotInBaseline(containers, baselineIDs) {

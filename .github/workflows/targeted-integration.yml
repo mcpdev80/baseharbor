@@ -1442,7 +1442,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [foundation, identity-backend, application]
+        shard: [foundation, identity-backend, application, core-capability]
     env:
       BASEHARBOR_TEST_RUNTIME: ${{ inputs.runtime }}
       BASEHARBOR_RUNTIME_IMAGE: localhost/baseharbor-runtime:coreless-lifecycle

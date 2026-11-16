@@ -76,6 +76,7 @@ func runSelectiveSecretsRuntimeLifecycle(t *testing.T, shared bool) {
 		}
 	}
 	baselineIDs := runtimeContainerIDSet(baselineContainers)
+	baselineSnapshot := runtimeContainerSnapshotSet(baselineContainers)
 	t.Chdir(t.TempDir())
 	if err := os.WriteFile("compose.yaml", []byte(corelessHTTPWorkload), 0600); err != nil {
 		t.Fatal(err)
@@ -132,8 +133,8 @@ func runSelectiveSecretsRuntimeLifecycle(t *testing.T, shared bool) {
 		}
 		if containers, err := provider.ListRuntimeContainers(cleanup); err != nil {
 			t.Errorf("inspect isolated Secrets cleanup: %v", err)
-		} else if created, missing := runtimeContainerBaselineDiff(containers, baselineIDs); len(created) != 0 || len(missing) != 0 {
-			t.Errorf("isolated Secrets cleanup did not preserve the runtime baseline: test-created=%v baseline-removed=%v", created, missing)
+		} else if created, changed := runtimeContainerBaselineDiff(containers, baselineSnapshot); len(created) != 0 || len(changed) != 0 {
+			t.Errorf("isolated Secrets cleanup did not preserve the runtime baseline: test-created=%v baseline-changed-or-removed=%v", created, changed)
 		}
 	})
 	var originalSecret, originalEnv [32]byte
@@ -210,6 +211,10 @@ func runSelectiveSecretsRuntimeLifecycle(t *testing.T, shared bool) {
 		containers, err := provider.ListRuntimeContainers(ctx)
 		if err != nil {
 			t.Fatal(err)
+		}
+		_, changed := runtimeContainerBaselineDiff(containers, baselineSnapshot)
+		if len(changed) != 0 {
+			t.Fatalf("pre-existing runtime containers changed during Secrets phase %d: %v", phase, changed)
 		}
 		providerCount, brokerCount := 0, 0
 		siblingBrokerCount, siblingWorkloadCount := 0, 0
