@@ -143,8 +143,10 @@ func persesAlertEvaluatorFromRelease(m application.Manifest, release capability.
 	}
 	// A validated recipient must be present. Fail-closed: an alert contract
 	// with no validated recipient is not_enabled, never external notifications
-	// by default.
-	if !persesAlertValidatedRecipient(m) {
+	// by default. A recipient is validated only by selection AND a real evaluator
+	// (pinned native Prometheus rule evaluator); selection alone or the datasource
+	// pin alone is not recipient proof.
+	if !persesAlertValidatedRecipient(m, release) {
 		return PersesAlertEvaluationResult{}, newPersesAlertEvaluatorError("a validated notification recipient is required; an alert contract with no validated recipient is not alerting-enabled and never enables external notifications by default")
 	}
 	return PersesAlertEvaluationResult{
@@ -159,20 +161,30 @@ func persesAlertEvaluatorFromRelease(m application.Manifest, release capability.
 	}, nil
 }
 
-// persesAlertValidatedRecipient reports whether a real validated notification
+// persesAlertValidatedRecipient reports whether a real, validated notification
 // recipient exists. This Core names the real owner (Prometheus/owner
 // notification system) as an owner reference and never fabricates a
-// notification-channel secret; a recipient is validated when the alerting
-// surface is selected with a pinned release and no unknown ownership blocks it.
-// Fail-closed: an unknown or unauthorized ownership is never treated as a
-// valid recipient.
-func persesAlertValidatedRecipient(m application.Manifest) bool {
-	// The alerting contract is only defined for a selected, pinned Perses
-	// surface; the fail-closed health check owns the real recipient validation.
-	// This Core never fabricates a recipient or a secret — selection with a
-	// valid pinned release and the real evaluator is the declaration contract,
-	// and no unknown/unauthorized ownership remains (selection is manifest truth).
-	return m.Services.ObservabilityManagementUI && m.Services.Perses
+// notification-channel secret. A recipient is validated only when the alerting
+// surface is selected AND a real evaluator (the pinned native Prometheus rule
+// evaluator) is present — selection alone and the datasource pin alone are NOT
+// recipient proof. Fail-closed: an unknown or unauthorized ownership is never
+// treated as a valid recipient.
+func persesAlertValidatedRecipient(m application.Manifest, release capability.PersesRelease) bool {
+	// The alerting contract is only defined for a selected Perses surface; a
+	// real evaluator (pinned native Prometheus rule evaluator) must be present.
+	// This Core never fabricates a recipient or a secret: selection is manifest
+	// truth, the real evaluator is the declaration contract, and no
+	// unknown/unauthorized ownership remains.
+	if !m.Services.ObservabilityManagementUI || !m.Services.Perses {
+		return false
+	}
+	// A real evaluator (pinned native Prometheus rule evaluator) must be present;
+	// the datasource pin alone is neither evaluator nor recipient proof — but a
+	// missing pin is not a valid evaluator either, so it fails closed.
+	if strings.TrimSpace(release.PrometheusPluginVersion) == "" {
+		return false
+	}
+	return true
 }
 
 // VerifyPersesAlertEvaluatorHealth enforces the fail-closed alerting health
@@ -183,9 +195,20 @@ func persesAlertValidatedRecipient(m application.Manifest) bool {
 // validation, evaluator and recipient alone MUST NOT pass. It returns the
 // fail-closed PersesAlertEvaluatorError when the surface is unpinned, unselected,
 // evaluator-less or recipient-less, matching the seam.
-func VerifyPersesAlertEvaluatorHealth(_ context.Context) error {
+func VerifyPersesAlertEvaluatorHealth(_ context.Context, m application.Manifest) error {
 	if err := capability.ValidatePersesRelease(capability.PersesDefaultRelease); err != nil {
 		return newPersesAlertEvaluatorError("a pinned Perses release (product version + image) is required to define an alert evaluator")
+	}
+	// Ground the health contract in manifest truth: the alerting surface must be
+	// selected with a real evaluator and a validated recipient. Selection alone
+	// and the datasource pin alone are NOT proof, and no runtime
+	// rule-evaluation/notification sender probe exists here. Pin validation
+	// alone can NEVER pass.
+	if !m.Services.ObservabilityManagementUI || !m.Services.Perses {
+		return newPersesAlertEvaluatorError("the observability management UI (Perses) must be selected to verify an alert evaluator health")
+	}
+	if !persesAlertValidatedRecipient(m, capability.PersesDefaultRelease) {
+		return newPersesAlertEvaluatorError("a native Prometheus rule evaluator (pinned datasource plugin) and a validated notification recipient are required; without them the alerting contract is fail-closed")
 	}
 	// Declared, pinned, evaluated and recipient-named; reachability stays
 	// not_enabled/configured_unverified — no Prometheus/Perses runtime

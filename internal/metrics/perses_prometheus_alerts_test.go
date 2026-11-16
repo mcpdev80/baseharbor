@@ -118,12 +118,70 @@ func TestPersesAlertEvaluatorNoSecretInContract(t *testing.T) {
 	}
 }
 
-// TestPersesAlertEvaluatorValidateHealthFailClosed asserts that pin validation
-// alone never passes the alerting health verify.
+// persesAlertEvaluatorSelectedManifest returns a selected, pinned surface
+// manifest (observability management UI + Perses selected).
+func persesAlertEvaluatorSelectedManifest() application.Manifest {
+	m := application.New("perses-alerts-selected", "dev", false, false, false)
+	m.Services.ObservabilityManagementUI = true
+	m.Services.Perses = true
+	return m
+}
+
+// TestPersesAlertEvaluatorValidateHealthFailClosed asserts that a fully-formed,
+// selected, pinned contract health verify returns nil (fail-closed on
+// reachability, never on pin).
 func TestPersesAlertEvaluatorValidateHealthFailClosed(t *testing.T) {
-	err := VerifyPersesAlertEvaluatorHealth(context.Background())
+	err := VerifyPersesAlertEvaluatorHealth(context.Background(), persesAlertEvaluatorSelectedManifest())
 	if err != nil {
-		t.Fatalf("a selected, pinned, fully-formed alerting contract health verify must return nil (fail-closed on reachability, never on pin): %v", err)
+		t.Fatalf("a selected, pinned, fully-formed alerting contract health verify must return nil: %v", err)
+	}
+}
+
+// TestPersesAlertEvaluatorValidateHealthRejectsPinOnly asserts the Luna-required
+// negative: the health verifier MUST NOT pass on datasource-pin validation
+// alone when the surface is unselected. Pin validation is neither evaluator nor
+// recipient proof.
+func TestPersesAlertEvaluatorValidateHealthRejectsPinOnly(t *testing.T) {
+	// Unselected surface (no ObservabilityManagementUI/Perses): must fail closed,
+	// never nil — pin validation alone does not pass.
+	err := VerifyPersesAlertEvaluatorHealth(context.Background(), application.New("perses-alerts-unselected", "dev", false, false, false))
+	if err == nil {
+		t.Fatal("health verify must NOT pass on datasource-pin validation alone when the surface is unselected; pin-only is not recipient/evaluator proof")
+	}
+	if _, ok := err.(*PersesAlertEvaluatorError); !ok {
+		t.Fatalf("error = %T, want *PersesAlertEvaluatorError", err)
+	}
+}
+
+// TestPersesAlertEvaluatorFailClosedWhenRecipientAbsent asserts fail-closed: a
+// selected, pinned, evaluator-present surface with no validated recipient is
+// not "alerting enabled".
+func TestPersesAlertEvaluatorFailClosedWhenRecipientAbsent(t *testing.T) {
+	// Unselected surface with a valid pinned evaluator: selection alone is not
+	// recipient proof.
+	m := application.New("perses-alerts-recipient-absent", "dev", false, false, false)
+	_, err := persesAlertEvaluatorFromRelease(m, capability.PersesDefaultRelease)
+	if err == nil {
+		t.Fatal("surface with a real evaluator but no validated recipient must fail closed, never define an alert evaluator")
+	}
+	if _, ok := err.(*PersesAlertEvaluatorError); !ok {
+		t.Fatalf("error = %T, want *PersesAlertEvaluatorError", err)
+	}
+}
+
+// TestPersesAlertEvaluatorNoRecipientValidatedWithoutConcreteEvidence asserts
+// that no produced result claims RecipientValidated without concrete validation
+// evidence (selection + real evaluator present).
+func TestPersesAlertEvaluatorNoRecipientValidatedWithoutConcreteEvidence(t *testing.T) {
+	// Unselected surface: must NOT produce a contract, and must never set
+	// RecipientValidated.
+	m := application.New("perses-alerts-no-concrete", "dev", false, false, false)
+	res, err := persesAlertEvaluatorFromRelease(m, capability.PersesDefaultRelease)
+	if err == nil {
+		t.Fatal("unselected surface must fail closed, never return a contract")
+	}
+	if res.Evaluator.RecipientValidated {
+		t.Fatalf("a result with no concrete recipient evidence must not set RecipientValidated; got %+v", res.Evaluator)
 	}
 }
 
