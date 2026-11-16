@@ -316,11 +316,11 @@ func RequireHumanOperator(ctx context.Context) error {
 		)
 	}
 	decision := AuthorizationDecision{
-		ContractVersion:   AuthorizationContractVersion,
-		Operation:         "secret.reveal",
-		Allowed:           true,
-		Safety:            machine.SafetyReadOnly,
-		Actor:             MachineActorRef{Mode: "authenticated", Issuer: strings.TrimSpace(principal.Issuer), Subject: strings.TrimSpace(principal.Subject)},
+		ContractVersion: AuthorizationContractVersion,
+		Operation:       "secret.reveal",
+		Allowed:         true,
+		Safety:          machine.SafetyReadOnly,
+		Actor:           MachineActorRef{Mode: "authenticated", Issuer: strings.TrimSpace(principal.Issuer), Subject: strings.TrimSpace(principal.Subject)},
 	}
 	setAuthorizationDecision(ctx, decision)
 	return nil
