@@ -1293,6 +1293,57 @@
       "surfaces": ["source.gate.integration.docker.coreless.lifecycle", "source.gate.integration.podman.coreless.lifecycle"],
       "runtime_specific": true
     }
+,
+    {
+      "id": "source.cmd.baha.oras.setup.go",
+      "path": "cmd/baha/oras_setup.go",
+      "surfaces": [
+        "source.gate.atomic.docker.guided",
+        "source.gate.atomic.podman.guided"
+      ]
+    },
+    {
+      "id": "source.cmd.baha.oras.setup.test.go",
+      "path": "cmd/baha/oras_setup_test.go",
+      "surfaces": [
+        "source.gate.atomic.docker.guided",
+        "source.gate.atomic.podman.guided"
+      ],
+      "required_test_names": [
+        "TestIncludeInstalledORASOnPath",
+        "TestEnsureORASForCoreUpRequiresExplicitInteractiveConsent"
+      ]
+    },
+    {
+      "id": "source.cmd.baha.rootless.bootstrap.go",
+      "path": "cmd/baha/rootless_bootstrap.go",
+      "surfaces": [
+        "source.gate.atomic.docker.guided"
+      ]
+    },
+    {
+      "id": "source.cmd.baha.rootless.bootstrap.test.go",
+      "path": "cmd/baha/rootless_bootstrap_test.go",
+      "surfaces": [
+        "source.gate.atomic.docker.guided"
+      ],
+      "required_test_names": [
+        "TestRootlessBootstrapEligibilityHonorsExplicitSelection",
+        "TestRootlessSetupConsentNeverAssumesYes",
+        "TestRootlessSubIDRangeValidation",
+        "TestApprovedRootlessSetupCommandSequence",
+        "TestRootlessSetupPartialFailuresNeverRunUnapprovedFallback",
+        "TestRootlessSetupMissingUIDMapAfterInstallFailsClosed"
+      ]
+    },
+    {
+      "id": "source.cmd.baha.runtime.go",
+      "path": "cmd/baha/runtime.go",
+      "surfaces": [
+        "source.gate.atomic.docker.guided",
+        "source.gate.atomic.podman.guided"
+      ]
+    }
   ],
   "gates": [
     {
