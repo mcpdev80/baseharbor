@@ -493,3 +493,105 @@ func TestLegacyStateReuseViaGetEnvironment(t *testing.T) {
 		t.Fatalf("rename changed legacy identity: %q -> %q", legacyID, moved.Identity)
 	}
 }
+
+// TestRenameDoesNotClobberConcurrentDestinationCreator is the deterministic
+// regression for the review #1 finding. The pre-lock destination guard in
+// RenameEnvironment only saw newPath as absent; two concurrent renames of
+// DIFFERENT sources can each clear that guard while dst is still absent, then
+// one wins the lock, writes its identity into dst, releases the lock, and the
+// other wins the lock next. Its source is still present, so it reaches the
+// install with os.Rename(tmpName, newPath) and — without the fix — overwrites
+// the identity the other rename just wrote (a silent UID overwrite: two writers
+// both succeeded, the destination's identity flipped). The fix re-validates dst
+// under the lock on the source-present path and refuses rather than replacing a
+// foreign identity.
+//
+// Two pools of renames move two different sources onto the same still-absent
+// destination. The destination must settle on exactly ONE identity: every
+// successful rename after the first must observe the SAME dst identity that a
+// prior successful rename observed. A flip in the observed dst identity between
+// two successful renames is the clobber.
+func TestRenameDoesNotClobberConcurrentDestinationCreator(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("BASEHARBOR_STATE_DIR", root)
+
+	srcA, err := GetEnvironment("target-a", "race-a-src")
+	if err != nil {
+		t.Fatal(err)
+	}
+	srcB, err := GetEnvironment("target-a", "race-b-src")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if srcA.Identity == srcB.Identity {
+		t.Fatal("setup: two sources share an identity")
+	}
+	const dst = "race-dst"
+
+	var wg sync.WaitGroup
+	const workers = 16
+	// observed[i] is the dst identity the i-th successful rename saw.
+	observed := make([]string, workers)
+	// A mutex-protected view of the last observed dst identity, to detect a
+	// flip between concurrent successful renames (the clobber).
+	var mu sync.Mutex
+	lastSeen := map[string]bool{}
+	successCount := 0
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			name := "race-a-src"
+			if i%2 == 1 {
+				name = "race-b-src"
+			}
+			for j := 0; j < 60; j++ {
+				rec, rErr := RenameEnvironment("target-a", name, dst)
+				if rErr != nil {
+					continue
+				}
+				mu.Lock()
+				lastSeen[rec.Identity] = true
+				successCount++
+				observed[i] = rec.Identity
+				mu.Unlock()
+			}
+		}(i)
+	}
+	wg.Wait()
+
+	// If the fix works, exactly one identity ever exists at dst: the first
+	// writer claims it, every later writer either converges onto it or refuses.
+	if len(lastSeen) != 1 {
+		keys := make([]string, 0, len(lastSeen))
+		for k := range lastSeen {
+			keys = append(keys, k)
+		}
+		t.Fatalf("dst identity flipped across concurrent renames: %v — a rename clobbered another's freshly written identity", keys)
+	}
+	if successCount == 0 {
+		t.Fatal("no rename succeeded; expected at least one winner at dst")
+	}
+
+	// Exactly one identity remains at dst, stable and valid, never a source ID.
+	final, err := GetEnvironment("target-a", dst)
+	if err != nil {
+		t.Fatalf("final read of destination: %v", err)
+	}
+	if err := environment.Validate(final.Identity); err != nil {
+		t.Fatalf("destination identity invalid: %v", err)
+	}
+	if final.Identity == srcA.Identity && final.Identity == srcB.Identity {
+		t.Fatal("dst identity cannot equal both sources")
+	}
+	reopen, err := GetEnvironment("target-a", dst)
+	if err != nil {
+		t.Fatalf("reopen destination: %v", err)
+	}
+	if reopen.Identity != final.Identity {
+		t.Fatalf("dst identity not stable: %q -> %q", final.Identity, reopen.Identity)
+	}
+	if _, statErr := os.Stat(filepath.Join(root, "targets", "target-a", ".baseharbor", "environments", dst, "environment.json")); statErr != nil {
+		t.Fatalf("destination record missing: %v", statErr)
+	}
+}

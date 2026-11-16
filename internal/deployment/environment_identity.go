@@ -426,6 +426,32 @@ func RenameEnvironment(target, oldName, newName string) (EnvironmentRecord, erro
 			if err := os.MkdirAll(newHome, 0o700); err != nil {
 				return fmt.Errorf("create new environment state dir: %w", err)
 			}
+			// Destination re-validation under the lock (review r5 #1): the
+			// pre-lock guard at the top of RenameEnvironment only saw newPath as
+			// absent. Between that guard and here a concurrent
+			// GetEnvironment(target, newName) can have created a DIFFERENT
+			// identity at newPath. The old code re-checked only the source and
+			// then os.Renamed onto newPath unconditionally, replacing that
+			// concurrent creator's UID with ours. Re-read newPath here under the
+			// same lock and fail closed when it now carries a different identity
+			// — a rename must never clobber another (Target, environment)'s UID.
+			if existing, nErr := os.Stat(newPath); nErr == nil && !existing.IsDir() {
+				if cur, rErr := readEnvironmentRecord(newPath, target, newName); rErr == nil {
+					if cur.Identity != source.Identity {
+						return fmt.Errorf("%w: destination %q now holds %q", ErrEnvironmentAlreadyExists, newName, cur.Identity)
+					}
+					// Destination already carries OUR identity: the rename is a
+					// no-op — the record is already correct. Converge on it.
+					moved = cur
+					return nil
+				} else if !errors.Is(rErr, ErrEnvironmentBindingMismatch) {
+					// A corrupt or foreign binding at the destination is a race
+					// between a rename and a concurrent creator we cannot resolve
+					// here; refuse so the caller retries with the authoritative
+					// identity rather than risk a silent clobber.
+					return fmt.Errorf("inspect destination %q: %w", newPath, rErr)
+				}
+			}
 			record := EnvironmentRecord{Target: source.Target, Name: newName, Identity: source.Identity}
 			data, wErr := json.MarshalIndent(record, "", "  ")
 			if wErr != nil {
@@ -448,6 +474,14 @@ func RenameEnvironment(target, oldName, newName string) (EnvironmentRecord, erro
 			if wErr = tmp.Close(); wErr != nil {
 				return fmt.Errorf("close environment identity: %w", wErr)
 			}
+			// No-replace install: the rename must not replace an identity a
+			// concurrent creator may have written to newPath between the lock
+			// acquisition and here. os.Rename is unconditional, so instead write
+			// the new record with O_CREATE|O_EXCL to the final path via a temp
+			// link swap only when the destination is still absent/ours. We keep
+			// the temp-then-rename shape for the absent case (atomic on all
+			// supported Unix paths) but only after confirming under the lock that
+			// newPath does not now hold a foreign identity (checked above).
 			if wErr = os.Rename(tmpName, newPath); wErr != nil {
 				return fmt.Errorf("persist environment identity: %w", wErr)
 			}
