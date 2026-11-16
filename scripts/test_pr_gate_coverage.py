@@ -104,6 +104,13 @@ class CoverageCatalogTests(unittest.TestCase):
         self.assertEqual([DOCKER], selected)
         self.assertEqual([], unresolved)
 
+    def test_selective_identity_runtime_test_has_executable_docker_lifecycle_gate(self):
+        current = json.loads((ROOT / "pr-gate-coverage.json").read_text())
+        selected, unresolved = coverage_module.resolve_covered_gates(
+            ["cmd/baha/app_identity_selective_runtime_test.go"], current)
+        self.assertEqual(["atomic/docker/lifecycle"], selected)
+        self.assertEqual([], unresolved)
+
     def test_unknown_package_is_returned_for_conservative_fallback(self):
         selected, unresolved = coverage_module.resolve_covered_gates(
             ["internal/unknown/new_surface.go"], catalog())

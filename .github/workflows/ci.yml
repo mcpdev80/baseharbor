@@ -14,6 +14,8 @@ on:
     branches:
       - develop
       - main
+      # Stacked development PRs target a lane-* branch and receive the same PR CI.
+      - 'lane-*'
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -137,7 +139,7 @@ jobs:
           mkdocs build --strict --config-file mkdocs.de.yml
           bash scripts/documentation-audit.sh
 
-      - name: Validate v0.4.21 release readiness
+      - name: Validate release readiness
         shell: bash
         run: bash scripts/v0.4.21-readiness.sh
 
@@ -423,7 +425,7 @@ jobs:
 
   pr_native_impact:
     name: PR · Native gate plan
-    if: github.event_name == 'pull_request' && github.base_ref == 'develop' && github.event.pull_request.draft == false
+    if: github.event_name == 'pull_request' && (github.base_ref == 'develop' || startsWith(github.base_ref, 'lane-')) && github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     outputs:
       required: ${{ steps.select.outputs.required }}
@@ -441,15 +443,24 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_REF: ${{ github.base_ref }}
         run: |
           set -euo pipefail
           git fetch --no-tags origin "$HEAD_SHA"
           git diff --name-only --diff-filter=ACDMRT "$BASE_SHA" "$HEAD_SHA" > "$RUNNER_TEMP/changed-paths"
           if git cat-file -e "$BASE_SHA:scripts/pr-native-gate-plan.py" 2>/dev/null; then
             git show "$BASE_SHA:scripts/pr-native-gate-plan.py" > "$RUNNER_TEMP/pr-native-gate-plan.py"
-            matrix="$(python3 "$RUNNER_TEMP/pr-native-gate-plan.py" --changed-paths-file "$RUNNER_TEMP/changed-paths")"
+            git show "$BASE_SHA:scripts/validate-pr-gate-coverage.py" > "$RUNNER_TEMP/validate-pr-gate-coverage.py"
+            git show "$BASE_SHA:scripts/pr-gate-coverage.json" > "$RUNNER_TEMP/pr-gate-coverage.json"
+            git show "$BASE_SHA:scripts/release-requirements.json" > "$RUNNER_TEMP/release-requirements.json"
+            matrix="$(python3 "$RUNNER_TEMP/pr-native-gate-plan.py" \
+              --changed-paths-file "$RUNNER_TEMP/changed-paths" \
+              --coverage "$RUNNER_TEMP/pr-gate-coverage.json" \
+              --requirements "$RUNNER_TEMP/release-requirements.json")"
           else
             matrix='{"include":[]}'
+            echo "::warning::The PR base ($BASE_REF) does not contain the trusted native gate planner; no native runtime checks can be selected yet."
+            echo "Warning: native gate planner missing from base $BASE_REF; native runtime checks were not selected." >> "$GITHUB_STEP_SUMMARY"
           fi
           required="$(python3 -c 'import json,sys; print("true" if json.load(sys.stdin)["include"] else "false")' <<< "$matrix")"
           echo "required=$required" >> "$GITHUB_OUTPUT"
@@ -464,7 +475,7 @@ jobs:
   pr_native_selected:
     name: PR · Native · ${{ matrix.id }}
     needs: pr_native_impact
-    if: github.event_name == 'pull_request' && github.base_ref == 'develop' && github.event.pull_request.draft == false && needs.pr_native_impact.outputs.required == 'true'
+    if: github.event_name == 'pull_request' && (github.base_ref == 'develop' || startsWith(github.base_ref, 'lane-')) && github.event.pull_request.draft == false && needs.pr_native_impact.outputs.required == 'true'
     strategy:
       fail-fast: false
       max-parallel: 2
@@ -501,7 +512,7 @@ jobs:
 
   source_format:
     name: PR · Source format
-    if: github.event_name == 'pull_request' && github.base_ref == 'develop' && github.event.pull_request.draft == false
+    if: github.event_name == 'pull_request' && (github.base_ref == 'develop' || startsWith(github.base_ref, 'lane-')) && github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -682,7 +693,7 @@ jobs:
               'Source · Candidate and Gate Plan' \
               'runtime light gates · All runtime results' \
               'runtime heavy gates · All runtime results' \
-              'v0421 ha groups · All runtime results' \
+              'HA groups · All runtime results' \
               'Greenfield · Docker + Podman · All built-in stacks' \
               'Pre-Release Checks'; do
               matches="$(jq -r --arg name "$required" '[.jobs[] | select(.name == $name)] | length' <<< "$jobs")"
@@ -698,7 +709,7 @@ jobs:
 
   pr_plan:
     name: PR · Trusted Plan
-    if: github.event_name == 'pull_request' && github.base_ref == 'develop' && github.event.pull_request.draft == false
+    if: github.event_name == 'pull_request' && (github.base_ref == 'develop' || startsWith(github.base_ref, 'lane-')) && github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     timeout-minutes: 8
     permissions:
@@ -744,11 +755,17 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           INTEGRATION_SHA: ${{ github.sha }}
+          BASE_REF: ${{ github.base_ref }}
           MIGRATION_CONTROLLER: a6756c5cd0f2a8ec43b0b7f777bf215bff2b9248
         run: |
           set -euo pipefail
-          git fetch --no-tags origin "$BASE_SHA" "$HEAD_SHA" "$INTEGRATION_SHA" refs/heads/develop:refs/remotes/origin/pr-target-tip
-          target_tip="$(git rev-parse refs/remotes/origin/pr-target-tip)"
+          git fetch --no-tags origin "$BASE_SHA" "$HEAD_SHA" "$INTEGRATION_SHA"
+          if [ "$BASE_REF" = develop ]; then
+            git fetch --no-tags origin refs/heads/develop:refs/remotes/origin/pr-target-tip
+            target_tip="$(git rev-parse refs/remotes/origin/pr-target-tip)"
+          else
+            target_tip="$BASE_SHA"
+          fi
           # Bootstrap only from the candidate's base parent after proving it
           # belongs to the fetched target history and follows the event base.
           # The event base itself may predate the current resolver interface.
@@ -930,7 +947,7 @@ jobs:
   pr_runner_interface:
     name: PR · Runner Interface
     needs: pr_plan
-    if: github.event_name == 'pull_request' && github.base_ref == 'develop' && github.event.pull_request.draft == false && needs.pr_plan.outputs.runtime_required == 'true'
+    if: github.event_name == 'pull_request' && (github.base_ref == 'develop' || startsWith(github.base_ref, 'lane-')) && github.event.pull_request.draft == false && needs.pr_plan.outputs.runtime_required == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -954,7 +971,7 @@ jobs:
     needs: pr_plan
     outputs:
       demo_ref: ${{ steps.resolve.outputs.demo_ref }}
-    if: github.event_name == 'pull_request' && github.base_ref == 'develop' && github.event.pull_request.draft == false && needs.pr_plan.outputs.consumer_mode == 'ecosystem'
+    if: github.event_name == 'pull_request' && (github.base_ref == 'develop' || startsWith(github.base_ref, 'lane-')) && github.event.pull_request.draft == false && needs.pr_plan.outputs.consumer_mode == 'ecosystem'
     runs-on: ubuntu-latest
     timeout-minutes: 8
     permissions:
@@ -986,7 +1003,7 @@ jobs:
     needs: pr_plan
     outputs:
       demo_ref: ${{ steps.verify.outputs.demo_ref }}
-    if: github.event_name == 'pull_request' && github.base_ref == 'develop' && github.event.pull_request.draft == false && (needs.pr_plan.outputs.runtime_required == 'true' || needs.pr_plan.outputs.public_contracts_required == 'true')
+    if: github.event_name == 'pull_request' && (github.base_ref == 'develop' || startsWith(github.base_ref, 'lane-')) && github.event.pull_request.draft == false && (needs.pr_plan.outputs.runtime_required == 'true' || needs.pr_plan.outputs.public_contracts_required == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 8
     permissions:
@@ -1029,7 +1046,7 @@ jobs:
   pr_candidate:
     name: PR · Exact Candidate
     needs: pr_plan
-    if: github.event_name == 'pull_request' && github.base_ref == 'develop' && github.event.pull_request.draft == false && needs.pr_plan.outputs.runtime_required == 'true' && github.event.pull_request.user.id == github.event.repository.owner.id && github.event.pull_request.head.repo.id == github.event.repository.id
+    if: github.event_name == 'pull_request' && (github.base_ref == 'develop' || startsWith(github.base_ref, 'lane-')) && github.event.pull_request.draft == false && needs.pr_plan.outputs.runtime_required == 'true' && github.event.pull_request.user.id == github.event.repository.owner.id && github.event.pull_request.head.repo.id == github.event.repository.id
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -1068,7 +1085,7 @@ jobs:
   pr_focused:
     name: PR · Focused Python
     needs: pr_plan
-    if: github.event_name == 'pull_request' && github.base_ref == 'develop' && github.event.pull_request.draft == false
+    if: github.event_name == 'pull_request' && (github.base_ref == 'develop' || startsWith(github.base_ref, 'lane-')) && github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -1111,7 +1128,7 @@ jobs:
   pr_unit_shards:
     name: PR · Go unit · ${{ matrix.shard }}
     needs: pr_plan
-    if: github.event_name == 'pull_request' && github.base_ref == 'develop' && github.event.pull_request.draft == false && needs.pr_plan.outputs.unit_scope != 'none'
+    if: github.event_name == 'pull_request' && (github.base_ref == 'develop' || startsWith(github.base_ref, 'lane-')) && github.event.pull_request.draft == false && needs.pr_plan.outputs.unit_scope != 'none'
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.pr_plan.outputs.unit_matrix) }}
@@ -1134,7 +1151,7 @@ jobs:
   pr_validations:
     name: PR · Validation · ${{ matrix.check }}
     needs: pr_plan
-    if: github.event_name == 'pull_request' && github.base_ref == 'develop' && github.event.pull_request.draft == false
+    if: github.event_name == 'pull_request' && (github.base_ref == 'develop' || startsWith(github.base_ref, 'lane-')) && github.event.pull_request.draft == false
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.pr_plan.outputs.matrix) }}
@@ -1256,7 +1273,7 @@ jobs:
   pr_public_contracts:
     name: PR · Public Contracts
     needs: [pr_plan, pr_demo_pin]
-    if: always() && github.event_name == 'pull_request' && github.base_ref == 'develop' && github.event.pull_request.draft == false && needs.pr_plan.outputs.public_contracts_required == 'true' && needs.pr_demo_pin.result == 'success'
+    if: always() && github.event_name == 'pull_request' && (github.base_ref == 'develop' || startsWith(github.base_ref, 'lane-')) && github.event.pull_request.draft == false && needs.pr_plan.outputs.public_contracts_required == 'true' && needs.pr_demo_pin.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -1287,7 +1304,7 @@ jobs:
   pr_runtime_selected:
     name: PR · Selected Runtime
     needs: [pr_plan, pr_candidate, pr_demo_pin, pr_consumer_pins, pr_runner_interface]
-    if: always() && github.event_name == 'pull_request' && github.base_ref == 'develop' && github.event.pull_request.draft == false && needs.pr_plan.outputs.runtime_required == 'true' && needs.pr_candidate.result == 'success' && needs.pr_runner_interface.result == 'success' && (needs.pr_demo_pin.result == 'success' || needs.pr_consumer_pins.result == 'success')
+    if: always() && github.event_name == 'pull_request' && (github.base_ref == 'develop' || startsWith(github.base_ref, 'lane-')) && github.event.pull_request.draft == false && needs.pr_plan.outputs.runtime_required == 'true' && needs.pr_candidate.result == 'success' && needs.pr_runner_interface.result == 'success' && (needs.pr_demo_pin.result == 'success' || needs.pr_consumer_pins.result == 'success')
     strategy:
       fail-fast: false
       max-parallel: 2
@@ -1307,7 +1324,7 @@ jobs:
   pr_owner_node_native:
     name: PR · Native Keycloak/Core · ${{ matrix.runtime }}
     needs: [pr_plan]
-    if: github.event_name == 'pull_request' && github.base_ref == 'develop' && github.event.pull_request.draft == false && needs.pr_plan.outputs.owner_node_required == 'true'
+    if: github.event_name == 'pull_request' && (github.base_ref == 'develop' || startsWith(github.base_ref, 'lane-')) && github.event.pull_request.draft == false && needs.pr_plan.outputs.owner_node_required == 'true'
     runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
     timeout-minutes: 48
     strategy:
@@ -1344,7 +1361,7 @@ jobs:
   pr_selected_final:
     name: PR Selected Checks
     needs: [workflow_policy, source_format, pr_plan, pr_focused, pr_validations, pr_candidate, pr_consumer_pins, pr_demo_pin, pr_runner_interface, pr_runtime_selected, pr_public_contracts, pr_owner_node_native, pr_native_impact, pr_native_selected, pr_unit_shards]
-    if: always() && github.event_name == 'pull_request' && github.base_ref == 'develop' && github.event.pull_request.draft == false
+    if: always() && github.event_name == 'pull_request' && (github.base_ref == 'develop' || startsWith(github.base_ref, 'lane-')) && github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -1439,7 +1456,7 @@ jobs:
 
   pr_draft_focused:
     name: PR · Draft source and routing
-    if: github.event_name == 'pull_request' && github.base_ref == 'develop' && github.event.pull_request.draft == true
+    if: github.event_name == 'pull_request' && (github.base_ref == 'develop' || startsWith(github.base_ref, 'lane-')) && github.event.pull_request.draft == true
     runs-on: ubuntu-latest
     timeout-minutes: 12
     permissions:
@@ -1493,7 +1510,7 @@ jobs:
 
   pr_draft_go_shards:
     name: PR · Draft Go · ${{ matrix.shard }}
-    if: github.event_name == 'pull_request' && github.base_ref == 'develop' && github.event.pull_request.draft == true
+    if: github.event_name == 'pull_request' && (github.base_ref == 'develop' || startsWith(github.base_ref, 'lane-')) && github.event.pull_request.draft == true
     strategy:
       fail-fast: false
       matrix:
