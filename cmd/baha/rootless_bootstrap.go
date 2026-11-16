@@ -29,15 +29,39 @@ func rootlessBootstrapEligible(target deployment.ResolvedTarget, uid int, getenv
 	return true
 }
 
-func runRootlessSetupStep(ctx context.Context, in io.Reader, out io.Writer, name string, args ...string) error {
-	cmd := exec.CommandContext(ctx, name, args...)
-	cmd.Stdin = in
+// sudo must use the controlling terminal, not the buffered CLI consent reader.
+// Passing a non-*os.File io.Reader to exec.Cmd.Stdin starts a background copy
+// goroutine which competes with sudo's own /dev/tty password reader.
+func runRootlessSetupStep(ctx context.Context, _ io.Reader, out io.Writer, name string, args ...string) error {
+	cmd, closeTTY, err := newRootlessSetupCommand(ctx, name, os.OpenFile, args...)
+	if err != nil {
+		return err
+	}
+	defer closeTTY()
 	cmd.Stdout = out
 	cmd.Stderr = out
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("%s %s: %w", name, strings.Join(args, " "), err)
 	}
 	return nil
+}
+
+// newRootlessSetupCommand keeps stdin as a real file descriptor, never a
+// bufio.Reader or other reader that exec would copy in a competing goroutine.
+// For privileged operations, require an actual controlling terminal; never
+// fall back to reading a password from a pipe or the CLI confirmation stream.
+func newRootlessSetupCommand(ctx context.Context, name string, openTTY func(string, int, os.FileMode) (*os.File, error), args ...string) (*exec.Cmd, func(), error) {
+	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.Stdin = os.Stdin
+	if name != "sudo" {
+		return cmd, func() {}, nil
+	}
+	tty, err := openTTY("/dev/tty", os.O_RDWR, 0)
+	if err != nil {
+		return nil, nil, fmt.Errorf("sudo requires an interactive controlling terminal (/dev/tty): %w", err)
+	}
+	cmd.Stdin = tty
+	return cmd, func() { _ = tty.Close() }, nil
 }
 
 func rootlessUbuntuOrDebian() bool {
