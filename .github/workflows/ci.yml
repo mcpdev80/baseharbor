@@ -828,9 +828,10 @@ jobs:
           fi
           git show "$stage_controller:scripts/pr-stage-boundary.py" > "$RUNNER_TEMP/pr-stage-boundary.py"
           python3 "$RUNNER_TEMP/pr-stage-boundary.py" --plan pr-plan.json
-          # PR results require all self-contained validations, not the
-          # cross-repo gates. Those remain visible as deferred integration.
-          echo "runtime_required=false" >> "$GITHUB_OUTPUT"
+          # Dispatch only the supported atomic runtime gates resolved by the
+          # trusted planner. Unsupported integration gates remain deferred.
+          runtime_required="$(python3 -c 'import json,sys; print("true" if json.load(open(sys.argv[1]))["required"] else "false")' "$RUNNER_TEMP/pr-runtime-matrix.json")"
+          echo "runtime_required=$runtime_required" >> "$GITHUB_OUTPUT"
           echo "public_contracts_required=false" >> "$GITHUB_OUTPUT"
       - name: Pin immutable Demo source for safe native result reuse
         id: demo_source
