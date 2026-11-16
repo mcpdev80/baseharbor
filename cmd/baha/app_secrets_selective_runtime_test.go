@@ -54,19 +54,24 @@ func runSelectiveSecretsRuntimeLifecycle(t *testing.T, shared bool) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Coreless here means no Core services are running on the runtime host.
-	// The managed Secrets provider still requires the Target's authoritative
-	// installation owner while its own services populate runtime state, so seed
-	// a matching metadata-only owner before asserting the host is Coreless.
-	seedProviderRuntimeOwner(t, ctx, target.Name, target.RuntimeProvider, false)
 	provider, err := detectRuntimeForTarget(ctx, target)
 	if err != nil {
 		t.Fatal(err)
 	}
 	assertCorelessHost(t, ctx, provider, target)
+	// The managed Secrets provider still requires an authoritative installation
+	// owner once it begins materializing its own runtime state. Register matching
+	// metadata without starting Core services, then assert the runtime inventory
+	// still contains no Core project containers.
+	seedProviderRuntimeOwner(t, ctx, target.Name, target.RuntimeProvider, false)
 	baselineContainers, err := provider.ListRuntimeContainers(ctx)
 	if err != nil {
 		t.Fatal("inventory isolated Secrets runtime baseline", err)
+	}
+	for _, container := range baselineContainers {
+		if container.Project == targetRuntimeProjectName(target) || container.Project == bhruntime.SharedProjectName(target.Name+"-core") {
+			t.Fatalf("Core owner registration started an unexpected Core container: %s (%s)", container.ID, container.Service)
+		}
 	}
 	baselineIDs := runtimeContainerIDSet(baselineContainers)
 	root, err := targetRuntimeStateRoot(target)
