@@ -65,22 +65,44 @@ func applicationLifecycleSnapshotContext(ctx context.Context, resolved resolvedA
 		requested[capability.Requirement{Kind: capability.Secrets, Name: "default"}] = true
 	}
 	var preferences []application.ProviderPreference
-	actualBindings := []capability.ProviderBinding{}
+	actualBindings := make([]capability.ProviderBinding, 0, len(planned.Bindings))
+	knownBindings := make(map[capability.ProviderBinding]bool, len(planned.Bindings))
 	for _, binding := range planned.Bindings {
 		if binding.ApplicationID != resolved.Manifest.ApplicationID || binding.Environment != resolved.Manifest.Environment {
 			actualBindings = append(actualBindings, binding)
+			knownBindings[binding] = true
 			continue
 		}
 		requirement := capability.Requirement{Kind: binding.Resource.Kind, Name: binding.Resource.Name}
 		if requested[requirement] {
 			preferences = append(preferences, application.ProviderPreference{Requirement: requirement, InstanceID: binding.ProviderInstanceID, ProviderKind: binding.Resource.Provider})
 		}
+		// Keep a binding only if the selected provider is already applied. A
+		// newly selected replacement remains a preference until the normal
+		// acknowledged apply publishes it; the old binding is handled by the
+		// replacement planners below.
 		for _, old := range registry.Bindings {
 			if old == binding {
 				actualBindings = append(actualBindings, binding)
+				knownBindings[binding] = true
 				break
 			}
 		}
+	}
+	// A removed capability may still have an applied binding in Target state.
+	// Preserve that binding as retained ownership without reviving it as desired
+	// intent. For still-requested capabilities, the projected provider above is
+	// the desired selection and the change planners compare it with actual state.
+	for _, binding := range registry.Bindings {
+		if binding.ApplicationID != resolved.Manifest.ApplicationID || binding.Environment != resolved.Manifest.Environment {
+			continue
+		}
+		requirement := capability.Requirement{Kind: binding.Resource.Kind, Name: binding.Resource.Name}
+		if requested[requirement] || knownBindings[binding] {
+			continue
+		}
+		actualBindings = append(actualBindings, binding)
+		knownBindings[binding] = true
 	}
 	planned.Bindings = actualBindings
 	snapshot := application.ResolutionSnapshot{DependencyRoots: []string{}, Target: resolved.Target.Name, Registry: planned, Facts: map[string]application.ProviderFact{}}
@@ -248,11 +270,17 @@ type applicationLifecyclePlan struct {
 }
 
 func buildResolvedApplicationPlan(ctx context.Context, resolved resolvedApplication) (applicationLifecyclePlan, error) {
+	return buildResolvedApplicationPlanWithFacts(ctx, resolved, observeApplicationProviderFacts(ctx, resolved))
+}
+
+// buildResolvedApplicationPlanWithFacts lets callers that already took a
+// provider observation use the same fresh facts for their snapshot and plan.
+func buildResolvedApplicationPlanWithFacts(ctx context.Context, resolved resolvedApplication, observations map[string]application.ProviderFact) (applicationLifecyclePlan, error) {
 	plan, err := application.BuildPlan(resolved.Manifest)
 	if err != nil {
 		return applicationLifecyclePlan{}, err
 	}
-	snapshot, preferences, err := applicationLifecycleSnapshotContext(ctx, resolved, observeApplicationProviderFacts(ctx, resolved))
+	snapshot, preferences, err := applicationLifecycleSnapshotContext(ctx, resolved, observations)
 	if err != nil {
 		return applicationLifecyclePlan{}, err
 	}

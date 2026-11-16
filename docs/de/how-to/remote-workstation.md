@@ -17,9 +17,13 @@ Der Befehl erstellt eine private Geräte-Einladung zur einmaligen Nutzung. Über
 
 ```bash
 baha onboard --import /path/to/invitation.json
-baha use NAME
+baha target list
+baha use <workstation-target>
+baha target show <workstation-target>
+baha status
+baha doctor
 ```
 
-BaseHarbor prüft Core und Einladung, erstellt den privaten Geräteschlüssel lokal und registriert die Verbindung. Die Einladung verleiht keine menschliche Operator-Rolle. Der Verbindungsalias ist vom Core-Target getrennt. Wähle und prüfe das Deployment-Target mit `baha target list` und `baha target show`. [Security- und Trust-Befehle](../cli/security-trust.md) erklären CA-Trust, Widerruf und Offboarding.
+Die Import-Ausgabe nennt das neue Workstation-Target. Verwende genau diesen Namen für `baha use` und `baha target show`. `baha target list` zeigt die konfigurierten Targets; `baha status` und `baha doctor` prüfen den ausgewählten Core und den Versionsabgleich. BaseHarbor prüft Core und Einladung, erstellt den privaten Geräteschlüssel lokal und registriert die Geräteverbindung. Das gewährt keine menschliche Operator-Rolle; wenn die Policy eine Operator-Sitzung verlangt, verwende zusätzlich `baha login -e dev`. Das Workstation-Target ist vom Core-Target getrennt. [Security- und Trust-Befehle](../cli/security-trust.md) erklären CA-Trust, Widerruf und Offboarding.
 
 Im Application-Repository setzt du den [kanonischen lokalen, Remote- und Team-Workflow](local-remote-team-workflow.md) fort.

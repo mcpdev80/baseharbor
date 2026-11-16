@@ -17,11 +17,12 @@ import (
 // Stopping preserves desired intent and bindings. It is not last-consumer
 // withdrawal: shared providers remain requested for a later application up.
 type applicationStopPlan struct {
-	Scope           application.ProviderImpactScope   `json:"scope"`
-	Functions       []application.FunctionConsequence `json:"functions"`
-	Materials       []application.MaterialConsequence `json:"materials"`
-	protected       map[string]string
-	appliedRevision string
+	Scope            application.ProviderImpactScope   `json:"scope"`
+	Functions        []application.FunctionConsequence `json:"functions"`
+	Materials        []application.MaterialConsequence `json:"materials"`
+	protected        map[string]string
+	appliedRevision  string
+	retirementPlanID string
 }
 
 func buildApplicationStopPlan(ctx context.Context, resolved resolvedApplication) (applicationStopPlan, error) {
@@ -61,6 +62,16 @@ func buildApplicationStopPlan(ctx context.Context, resolved resolvedApplication)
 	impact, err := resolveApplicationProviderImpact(ctx, applied, snapshot, union, requests)
 	if err != nil {
 		return p, err
+	}
+	if isApplicationDownMode(ctx) || isApplicationStopMode(ctx) {
+		_, retirement, err := buildApplicationRuntimeRetirementPlan(ctx, resolved)
+		if err != nil {
+			return p, err
+		}
+		if retirement.Impact == nil {
+			return p, runtimeMutationOwnerError()
+		}
+		p.retirementPlanID = retirement.Impact.PlanID
 	}
 	root, err := deployment.DeploymentRoot(resolved.DeploymentIdentity)
 	if err != nil {
@@ -103,9 +114,10 @@ func buildApplicationStopPlan(ctx context.Context, resolved resolvedApplication)
 	p.protected = owners
 	p.Functions = []application.FunctionConsequence{{Consumer: "application/" + prior.ApplicationID + "/" + prior.Environment, Function: "workload-availability", Outcome: "unavailable", Required: true, Via: []string{resolved.DeploymentIdentity.DeploymentID}, Behavior: "Application workload, its broker and the explicitly listed application-scoped provider realizations stop. Desired intent and bindings remain for explicit up. Shared and unselected standalone providers are retained. In-flight work, sessions, reconnection and transient-state effects are unverified; retained data does not prove continued application access.", Evidence: "existing applied deployment intent and resolved consumer union"}}
 	p.Scope, err = application.ComposeProviderImpactScope(application.ProviderScopeOwner{Owner: "application-deployment", Reference: filepath.Join(root, "deployment.json"), Subject: resolved.DeploymentIdentity.DeploymentID, Revision: runtimeMutationRevision(struct {
-		Owners map[string]string
-		Plan   applicationStopPlan
-	}{owners, p})}, []application.ProviderImpactPlan{impact}, false)
+		Owners           map[string]string
+		Plan             applicationStopPlan
+		RetirementPlanID string
+	}{Owners: owners, Plan: p, RetirementPlanID: p.retirementPlanID})}, []application.ProviderImpactPlan{impact}, false)
 	return p, err
 }
 
