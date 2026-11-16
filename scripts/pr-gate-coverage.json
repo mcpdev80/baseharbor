@@ -181,8 +181,10 @@
     {
       "id": "source.cmd.baha.app.identity.selective.runtime.test.go",
       "path": "cmd/baha/app_identity_selective_runtime_test.go",
+      "runtime_specific": true,
       "surfaces": [
-        "source.gate.atomic.docker.lifecycle"
+        "source.gate.atomic.docker.lifecycle",
+        "source.gate.atomic.podman.lifecycle"
       ]
     },
     {

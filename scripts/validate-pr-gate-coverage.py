@@ -47,9 +47,13 @@ def resolve_covered_gates(changed_paths: list[str], coverage: dict) -> tuple[lis
         # own contract and therefore keeps its exact Podman gate. Resolve each
         # source independently so a separate Podman-only source in the same
         # change set is not erased by a shared Docker source.
+        runtime_specific = any(
+            row.get("runtime_specific") is True and
+            len(row["path"].rstrip("/")) == longest
+            for row in owners)
         for gate_id in list(matching):
             parts = gate_id.split("/")
-            if len(parts) >= 3 and parts[1] == "podman":
+            if not runtime_specific and len(parts) >= 3 and parts[1] == "podman":
                 docker_sibling = "/".join((parts[0], "docker", *parts[2:]))
                 if docker_sibling in matching:
                     matching.remove(gate_id)
