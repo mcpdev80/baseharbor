@@ -1,20 +1,32 @@
 {
   "schema": "baseharbor.pr-gate-coverage/v1",
   "release": "v0.4.27",
-  "sources": [
+  "surfaces": [
+    "runtime.container-ownership",
+    "application.data-capabilities"
+  ],
+  "packages": [
     {
-      "path": "internal/runtime/container_identity.go",
-      "surfaces": ["runtime.container-ownership"]
+      "path": "internal/runtime",
+      "surfaces": [
+        "runtime.container-ownership"
+      ]
     }
   ],
   "gates": [
     {
       "id": "atomic/docker/data-capabilities",
-      "covers": ["runtime.container-ownership", "application.data-capabilities"]
+      "covers": [
+        "runtime.container-ownership",
+        "application.data-capabilities"
+      ]
     },
     {
       "id": "atomic/podman/data-capabilities",
-      "covers": ["runtime.container-ownership", "application.data-capabilities"]
+      "covers": [
+        "runtime.container-ownership",
+        "application.data-capabilities"
+      ]
     }
   ]
 }
