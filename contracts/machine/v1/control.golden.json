@@ -199,6 +199,30 @@
             "mcp_tool": "baseharbor.app.connection"
           },
           {
+            "id": "app.logs",
+            "description": "Read bounded application workload log output through the host CLI. Raw and follow streams can carry application secrets and require a streaming transport, so this category is intentionally excluded from the MCP tool boundary by design; status, doctor and evidence provide the bounded secret-safe machine observation.",
+            "safety": "read_only",
+            "confirmation_required": false,
+            "policy_required": false,
+            "contract_version": "v1"
+          },
+          {
+            "id": "app.exec",
+            "description": "Execute one command or a shell inside an owned application workload service through the host CLI. The id exists so the CLI operation category has a registered, fail-closed authorization identity; generic process execution is intentionally excluded from the MCP tool boundary by design (#787).",
+            "safety": "mutating",
+            "confirmation_required": false,
+            "policy_required": false,
+            "contract_version": "v1"
+          },
+          {
+            "id": "app.urls",
+            "description": "List verified application and bound-service GUI URLs through the status read view. Human presentation seam; machine clients use the status read model instead, so it is intentionally excluded from the MCP tool boundary by design.",
+            "safety": "read_only",
+            "confirmation_required": false,
+            "policy_required": false,
+            "contract_version": "v1"
+          },
+          {
             "id": "connectivity.list",
             "description": "List directional connectivity exceptions.",
             "safety": "read_only",
@@ -422,6 +446,14 @@
             "policy_required": false,
             "contract_version": "v1",
             "mcp_tool": "baseharbor.secret.tls-set"
+          },
+          {
+            "id": "secret.reveal",
+            "description": "Human-only authorization seam for managed-secret reveal via a verified operator. Workload/runtime identity never satisfies this; the CLI --reveal paths (app env/creds) route through it and it is excluded from the MCP tool boundary by design.",
+            "safety": "read_only",
+            "confirmation_required": false,
+            "policy_required": true,
+            "contract_version": "v1"
           },
           {
             "id": "node.add",

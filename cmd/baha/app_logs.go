@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -107,6 +108,36 @@ func prepareManagedLogs(ctx context.Context, compose bhruntime.RuntimeProvider, 
 	prepared.execution = execution
 	prepared.resources = resources
 	return prepared, nil
+}
+
+// readViewLogsSelection resolves the log source through the delivered
+// read-view/status logic used by `baha app status` (application.LogsPolicy
+// plus the contract's SelectedWorkloadServices over the repository compose
+// file). It is the single guidance truth for `baha app logs`: the same policy
+// and selection that status renders decides whether the Loki-backed managed
+// path applies and which components are streamable. A repository workload
+// selection always wins so the guidance list and the streamed source agree.
+func readViewLogsSelection(resolved resolvedApplication) (workload []string, managed bool, err error) {
+	policy, err := application.LogsPolicy(resolved.Manifest)
+	if err != nil {
+		return nil, false, err
+	}
+	if !policy.Enabled {
+		return nil, false, nil
+	}
+	if resolved.FromRepository {
+		services, _, found, err := application.SelectedWorkloadServices(resolved.repositoryRoot(), resolved.Manifest)
+		if err != nil {
+			return nil, false, err
+		}
+		if found && len(services) > 0 && policy.Collect[application.LogsSourceApplication] {
+			sorted := append([]string(nil), services...)
+			sort.Strings(sorted)
+			return sorted, false, nil
+		}
+	}
+	managed = policy.Collect[application.LogsSourceApplicationProvider] || policy.Collect[application.LogsSourcePlatformProvider]
+	return nil, managed, nil
 }
 
 func convergeManagedLogsBeforeWorkload(ctx context.Context, out io.Writer, files application.RuntimeFiles, prepared *managedLogsExecution) error {

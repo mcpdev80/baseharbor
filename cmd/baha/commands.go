@@ -249,6 +249,10 @@ func configuredApplicationCommand(store application.Store) *cli.Command {
 		appVersionsCommand(),
 		appPruneCommand(store),
 	)
+	// Card 0428-063 appends the guided urls surface here instead of editing
+	// the reserved child list above: the integration owner owns that block,
+	// an append after it is conflict-free for stacked candidates.
+	appCmd.Children = append(appCmd.Children, appURLsCommand(store))
 	applyRemainingApplicationRuntimeProviderGuards(store, appCmd)
 
 	return appCmd

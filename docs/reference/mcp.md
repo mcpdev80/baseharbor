@@ -44,6 +44,9 @@ The complete current registry is checked against actual MCP discovery by the sou
 | `baseharbor.dev.credentials` | `mutating` | false | false |
 | `baseharbor.app.environment` | `read_only` | false | false |
 | `baseharbor.app.connection` | `read_only` | false | false |
+| `` | `read_only` | false | false |
+| `` | `mutating` | false | false |
+| `` | `read_only` | false | false |
 | `baseharbor.connectivity.list` | `read_only` | false | false |
 | `baseharbor.connectivity.connect` | `mutating` | false | false |
 | `baseharbor.connectivity.disconnect` | `mutating` | false | false |

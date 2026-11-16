@@ -72,6 +72,7 @@ Application operations also include:
 - required application secrets;
 - logs;
 - shell / exec;
+- URL listing (`baha app urls`);
 - environment selection;
 - TLS;
 - evidence;
@@ -79,6 +80,34 @@ Application operations also include:
 - PostgreSQL and Valkey access helpers.
 
 Use the top-level `baha status`, `baha plan`, `baha doctor`, `baha up` forms for the normal repository-local workflow. Use `baha app ...` when the explicit application namespace is useful for administration or automation.
+
+## Guided observation and access
+
+`baha app logs`, `baha app exec`/`baha app shell` and `baha app urls` guide a
+missing choice from the same secret-safe read view that `baha app status`
+renders; they never consult a second parallel source of truth.
+
+- `baha app logs [COMPONENT] [--follow] [--tail N] [-c NAME]...` resolves the
+  streamable components from the deployment log policy and the application
+  contract. Without `COMPONENT`, a unique declared component is derived; in a
+  terminal the options are listed; with `--no-input` or in scripts the command
+  fails closed with the options instead of blocking. `--tail N` bounds the
+  output and finishes. JSON output never follows an unbounded stream;
+  `--tail` with `--json` is the bounded machine form. Managed (Loki) collection
+  is reported explicitly with its machine result instead of a silent reroute.
+- `baha app exec [COMPONENT] [COMMAND [ARG...]] [-c NAME] [--cmd CMD]` opens
+  the default shell when no command is given (same as `baha app shell`);
+  `--cmd` takes exactly one command string, delivered safely quoted as one
+  unit. The executed command's exit status is preserved.
+- `baha app urls [NAME] [-c NAME]... [--print] [--json]` lists only the
+  application's own URLs and the GUI URLs of its bound app/shared services,
+  each with its verified/unverified accessibility. Nothing is guessed, invented
+  or opened; opening the primary endpoint in a browser remains `baha open`.
+
+Every path authorizes its operation category (`app.logs`, `app.exec`,
+`app.urls`) fail-closed before any resolution or execution, following the
+`secret.reveal` seam precedent: an unauthenticated boundary denies instead of
+proceeding.
 
 The same repository workflow applies to a selected remote Core Target:
 `baha app init`, then `baha up`. Initialization registers the full repository

@@ -40,6 +40,9 @@ func humanOpenCommand(store application.Store) *cli.Command {
 			}
 			endpoint, err := verifiedApplicationOpenURL(resolved)
 			if err != nil {
+				if strings.Contains(err.Error(), "no declared HTTP exposure") || strings.Contains(err.Error(), "no verified HTTPS deployment endpoint") {
+					return usageError(err.Error(), "Run 'baha app urls' to list every verified application URL and bound service GUI.")
+				}
 				return err
 			}
 			if jsonOutput {

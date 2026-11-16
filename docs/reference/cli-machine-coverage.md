@@ -24,13 +24,13 @@ Inspect current data with `baha agent describe -o json` (`cli_coverage`). Update
 | `baha app edit` | semantic | Interactive CLI / typed two-phase MCP consent | baseharbor.app.edit |  |
 | `baha app env` | semantic | CLI --format json (masked) / typed MCP result | baseharbor.app.environment | MCP exposes masked values only. --reveal and loading the protected local dotenv file are execution-host credential access and are explicitly excluded modes. |
 | `baha app evidence` | semantic | CLI -o json / typed MCP result | baseharbor.evidence |  |
-| `baha app exec` | excluded |  |  | Arbitrary process execution is intentionally excluded: #787 forbids generic exec passthrough; use typed lifecycle and observation tools. |
+| `baha app exec` | excluded |  |  | Arbitrary process execution is intentionally excluded: #787 forbids generic exec passthrough; use typed lifecycle and observation tools. The CLI path is guided (component from the contract, --cmd one command, exit status preserved) but never becomes a machine tool. |
 | `baha app footprint` | presentation |  |  | Command group; invoke its supported subcommands. |
 | `baha app footprint show` | semantic | CLI -o json / typed MCP result | baseharbor.app.footprint.show |  |
 | `baha app init` | semantic | CLI -o json / typed MCP result | baseharbor.app.adopt | New repository intent uses app.adopt; an existing repository uses app.configure. Interactive suggestions are presentation only. |
 | `baha app inspect` | semantic | CLI -o json / typed MCP result | baseharbor.inspect |  |
 | `baha app list` | semantic | CLI -o json / typed MCP result | baseharbor.app.list |  |
-| `baha app logs` | excluded |  |  | Raw/follow runtime streams can include application secrets and require a streaming transport; status, doctor and evidence provide bounded secret-safe observation. |
+| `baha app logs` | excluded |  |  | Raw/follow runtime streams can include application secrets and require a streaming transport; status, doctor and evidence provide bounded secret-safe observation. The CLI read path is guided over the same read view (deployment log policy plus contract components); JSON output carries only bounded results, never a followed stream. |
 | `baha app new` | semantic | CLI -o json / typed MCP result | baseharbor.app.new |  |
 | `baha app plan` | semantic | CLI -o json / typed MCP result | baseharbor.plan |  |
 | `baha app preflight` | semantic | CLI -o json / typed MCP result | baseharbor.app.preflight |  |
@@ -46,7 +46,7 @@ Inspect current data with `baha agent describe -o json` (`cli_coverage`). Update
 | `baha app secret tls-set` | semantic | CLI -o json / typed MCP result | baseharbor.secret.tls-set |  |
 | `baha app secure-profile` | presentation |  |  | Command group; invoke its supported subcommands. |
 | `baha app secure-profile export` | presentation |  |  | Operator-local, password-locked file export of opt-in local credentials; no runtime mutation or machine tool. Ciphertext opens only with the export password. |
-| `baha app shell` | excluded |  |  | Interactive container terminal is host/TTY dependent and would grant arbitrary exec; use typed lifecycle and app.environment instead. |
+| `baha app shell` | excluded |  |  | Interactive container terminal is host/TTY dependent and would grant arbitrary exec; use typed lifecycle and app.environment instead. It is the shell default of the guided app.exec path. |
 | `baha app show` | semantic | CLI -o json / typed MCP result | baseharbor.app.show |  |
 | `baha app sql` | excluded |  |  | Interactive database terminal and raw SQL passthrough are excluded; app.connection supplies secret-safe connection metadata for an operator-owned client. |
 | `baha app status` | semantic | CLI -o json / typed MCP result | baseharbor.status |  |
@@ -55,6 +55,7 @@ Inspect current data with `baha agent describe -o json` (`cli_coverage`). Update
 | `baha app tls update` | semantic | CLI -o json / typed MCP result | baseharbor.tls.update |  |
 | `baha app up` | semantic | CLI -o json / typed MCP result | baseharbor.apply |  |
 | `baha app update` | semantic | CLI -o json / typed MCP result | baseharbor.update |  |
+| `baha app urls` | excluded |  |  | Lists only the verified URLs and bound-service GUI surfaces of the status read model; typed clients inspect app.status and TLS state instead. Opening a browser remains the excluded human seam 'baha open'. |
 | `baha app version` | presentation |  |  | Repository-bound presentation of the app.versions read model for the current deployment; machine clients invoke app.versions with explicit identity. |
 | `baha app versions` | semantic | CLI -o json / typed MCP result | baseharbor.app.versions |  |
 | `baha app workspace` | presentation |  |  | Interactive presentation combining workspace.init and workspace.map; clients invoke those typed operations explicitly. |
