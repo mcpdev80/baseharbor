@@ -36,12 +36,21 @@ class PRStageBoundaryTests(unittest.TestCase):
         self.plan["selected_gates"] = []
         self.assertEqual([], stage.stage(self.plan)["deferred_integration_gates"])
 
-    def test_coreless_integration_gates_are_explicitly_deferred(self):
+    def test_coreless_integration_gates_remain_selected_for_pr_executor(self):
         gates=["integration/docker/coreless-lifecycle", "integration/podman/coreless-lifecycle"]
         self.plan["selected_gates"] = gates
         result=stage.stage(self.plan)
-        self.assertEqual(gates,result["deferred_integration_gates"])
-        self.assertEqual([],result["selected_gates"])
+        self.assertEqual(gates, result["selected_gates"])
+        self.assertEqual([], result["deferred_integration_gates"])
+
+    def test_only_coreless_lifecycle_gates_stay_selected(self):
+        coreless = ["integration/docker/coreless-lifecycle",
+                    "integration/podman/coreless-lifecycle"]
+        deferred = ["integration/static/public-contracts"]
+        self.plan["selected_gates"] = coreless + deferred
+        result = stage.stage(self.plan)
+        self.assertEqual(coreless, result["selected_gates"])
+        self.assertEqual(deferred, result["deferred_integration_gates"])
 
     def test_unresolved_coverage_cannot_be_laundered(self):
         self.plan.update(coverage_status="unresolved",
@@ -51,7 +60,8 @@ class PRStageBoundaryTests(unittest.TestCase):
         self.assertEqual(["unknown changed path"], result["unresolved_coverage"])
 
     def test_failure_injection_rejects_unclassified_or_duplicate_gates(self):
-        for gates in [["integration/unknown"], ["atomic/docker/lifecycle", "atomic/docker/lifecycle"],
+        for gates in [["integration/unknown"], ["integration/docker/unknown"],
+                      ["atomic/docker/lifecycle", "atomic/docker/lifecycle"],
                       ["atomic/static/lifecycle"], [None], ["atomic/docker"], "atomic/docker/lifecycle"]:
             with self.subTest(gates=gates):
                 self.plan["selected_gates"] = gates

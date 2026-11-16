@@ -53,13 +53,22 @@ class FinalChecks(unittest.TestCase):
         self.assertEqual([], final.verify(self.plan, self.needs))
 
     def test_coreless_gates_require_selected_integration_executor(self):
+        self.plan['selected_gates'] = [
+            'integration/docker/coreless-lifecycle',
+            'integration/podman/coreless-lifecycle']
+        self.needs['pr_selected_integration'] = {'result': 'success'}
+        self.needs['pr_demo_pin'] = {'result': 'success'}
+        self.assertEqual([], final.verify(self.plan, self.needs))
+        self.needs['pr_selected_integration']['result'] = 'skipped'
+        self.assertTrue(final.verify(self.plan, self.needs))
+        self.needs['pr_selected_integration']['result'] = 'success'
+        self.needs['pr_demo_pin']['result'] = 'skipped'
+        self.assertTrue(final.verify(self.plan, self.needs))
+
+        self.plan['selected_gates'] = []
         self.plan['deferred_integration_gates'] = [
             'integration/docker/coreless-lifecycle',
             'integration/podman/coreless-lifecycle']
-        self.assertTrue(final.verify(self.plan, self.needs))
-        self.needs['pr_selected_integration'] = {'result': 'success'}
-        self.assertEqual([], final.verify(self.plan, self.needs))
-        self.needs['pr_selected_integration']['result'] = 'skipped'
         self.assertTrue(final.verify(self.plan, self.needs))
         self.plan['deferred_integration_gates'].append('integration/unknown')
         self.assertTrue(final.verify(self.plan, self.needs))
