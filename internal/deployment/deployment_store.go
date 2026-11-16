@@ -54,10 +54,14 @@ func verifyDeploymentOwnerAtSeam(targetName, deploymentID string) error {
 // The deployment record identity is intentionally untouched: a deployment is
 // keyed by its own UUID plus Target, so ownership is proven at the storage
 // path, not by embedding an installation reference. A missing installation
-// fails closed; a foreign installation preserves the existing record identity.
+// fails closed except for an explicitly local-scope, local-access Target whose
+// Core runtime root is absent or empty. That narrow local workload owner applies
+// only when no Core installation exists; an installed Core remains authoritative
+// and malformed, inaccessible, or foreign Core state never falls through to it.
+// A foreign installation preserves the existing record identity.
 // The deploy directory need not pre-exist (first-run init creates it under the
 // owner), so its absence is not a missing-owner condition. Durable
-// installation.ID binding lives in the authority contract, not this seam;
+// installation.ID binding lives in the authority contract, not this seam.
 // Coreless tenant targets are authorized only through the consumer-provided
 // TenantOwnerResolver, which defaults to fail-closed.
 var TenantOwnerResolver func(targetName string) (bool, error)
@@ -95,7 +99,18 @@ func VerifyDeploymentOwner(targetName, targetRoot, deploymentID string) error {
 	}
 	installation, err := resolveInstallationLoad(targetRoot)
 	loaned := false
-	if err != nil && errors.Is(err, os.ErrNotExist) && TargetLoanVerifier != nil {
+	localOwner := false
+	if errors.Is(err, os.ErrNotExist) {
+		var localErr error
+		localOwner, localErr = authorizeUnownedLocalTarget(targetName, targetRoot)
+		if localErr != nil {
+			return localErr
+		}
+		if localOwner {
+			err = nil
+		}
+	}
+	if errors.Is(err, os.ErrNotExist) && !localOwner && TargetLoanVerifier != nil {
 		// Owner loan seam (card t-20261106-r27-remote-up-podman-owner-missing,
 		// card 0427-117): resolve a genuinely ownerless Local-access Target
 		// against the one installation its boot Target owns. The loan verifier
@@ -115,6 +130,9 @@ func VerifyDeploymentOwner(targetName, targetRoot, deploymentID string) error {
 		}
 		installation = *loanedState
 		loaned = true
+		err = nil
+	} else if errors.Is(err, os.ErrNotExist) && !localOwner {
+		return ErrDeploymentOwnerMissing
 	} else if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return ErrDeploymentOwnerMissing
@@ -142,14 +160,16 @@ func VerifyDeploymentOwner(targetName, targetRoot, deploymentID string) error {
 		// is foreign; anything left here is the genuine foreign verdict.
 		return ErrDeploymentOwnerForeign
 	}
-	_ = installation
+	if !localOwner && strings.TrimSpace(installation.Spec.Target) != strings.TrimSpace(targetName) {
+		return ErrDeploymentOwnerForeign
+	}
 	// The deployment namespace is targets/<target>/deployments. The deployment
 	// directory's Target (the segment under targets/) must match the
 	// installation's own Target; a distinct Target is a foreign owner and is
 	// rejected before any deployment under it is read or written.
 	deploymentDir, dirErr := deploymentDirForTarget(targetName)
 	if dirErr == nil {
-		if deploymentTarget, found := deploymentTargetFromDir(deploymentDir); found && deploymentTarget != "" && strings.TrimSpace(deploymentTarget) != strings.TrimSpace(installation.Spec.Target) {
+		if deploymentTarget, found := deploymentTargetFromDir(deploymentDir); found && deploymentTarget != "" && strings.TrimSpace(deploymentTarget) != strings.TrimSpace(targetName) {
 			return ErrDeploymentOwnerForeign
 		}
 		// A pre-existing deployment directory must be a real, protected dir, not
@@ -173,28 +193,6 @@ func VerifyDeploymentOwner(targetName, targetRoot, deploymentID string) error {
 	}
 	_ = deploymentID
 	return nil
-}
-
-// deploymentDirForTarget resolves the deployments namespace of a Target
-// (targets/<target>/deployments) via the canonical layout.
-func deploymentDirForTarget(targetName string) (string, error) {
-	targetRoot, err := TargetStateRoot(targetName)
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(targetRoot, "deployments"), nil
-}
-
-// deploymentTargetFromDir extracts the Target segment (targets/<target>/...)
-// from a deployment directory path, if the conventional layout is present.
-func deploymentTargetFromDir(deploymentDir string) (string, bool) {
-	segments := strings.Split(filepath.Clean(deploymentDir), string(filepath.Separator))
-	for i := len(segments) - 1; i >= 0; i-- {
-		if segments[i] == "targets" && i+1 < len(segments) {
-			return segments[i+1], true
-		}
-	}
-	return "", false
 }
 
 // testHookAfterGuardRead is a package-internal test seam (production path keeps
@@ -459,8 +457,10 @@ func saveDeploymentRecord(record DeploymentRecord) error {
 	}
 	// Authoritative ownership is enforced on the production write seam before any
 	// directory is created or any record is written: a missing or foreign
-	// installation fails closed and nothing is mutated. A tenant target is
-	// admitted only through the consumer-provided tenantOwnerResolver hook.
+	// installation fails closed and nothing is mutated. Coreless tenant targets
+	// are admitted only through the consumer-provided tenantOwnerResolver hook;
+	// explicitly local-scope, local-access targets use the narrow local owner
+	// path documented by VerifyDeploymentOwner.
 	if err := verifyDeploymentOwnerAtSeam(record.Identity.Target, record.Identity.DeploymentID); err != nil {
 		return &DeploymentRecordStateError{Identity: record.Identity, Kind: "missing", Err: err}
 	}

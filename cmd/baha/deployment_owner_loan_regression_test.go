@@ -110,7 +110,9 @@ func loanIsolatedPodmanConfig(t *testing.T, boot, iso string) {
 	isoDef := deployment.TargetDefinition{
 		Runtime: deployment.RuntimeDefinition{Provider: "podman"},
 		Access:  deployment.TargetAccess{Reference: "local"},
-		Scope:   "local",
+		// This is an owner-loan fixture, not an explicitly local workload-only
+		// target. Keep Scope at its default so local-owner authorization cannot
+		// mask the loan guards these tests exercise.
 	}
 	cfg := deployment.Config{
 		Version:       deployment.ConfigVersion,
@@ -142,6 +144,10 @@ func loanIsolatedIdentity(t *testing.T, target, app string) deployment.Deploymen
 // (but protected) state root. Returns the boot installation identity.
 func isolatePodmanBootTarget(t *testing.T, boot, iso string) coreinstallation.State {
 	t.Helper()
+	// Each test owns an isolated temporary Core root; don't let the process-wide
+	// single-boot loan ledger make its result depend on earlier test order.
+	installationLoans.reset()
+	t.Cleanup(installationLoans.reset)
 	t.Setenv("BASEHARBOR_STATE_DIR", "")
 	t.Setenv("XDG_DATA_HOME", t.TempDir())
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
@@ -265,10 +271,11 @@ func TestPodmanOwnerLoanConnectorBoundStaysFailClosed(t *testing.T) {
 func TestPodmanOwnerLoanUnmarkedStaysFailClosed(t *testing.T) {
 	const boot, prod = "w427-podman-boot", "w427-podman-prod"
 	isolatePodmanBootTarget(t, boot, prod)
-	// Deliberately NO marker: a production-shaped ownerless Target must never
-	// receive a loan.
+	// Select the ownerless Target itself: a Core on another configured Target
+	// cannot be borrowed when the CLI's effective boot Target is this Target.
+	t.Setenv("BASEHARBOR_TARGET", prod)
 	if err := saveThroughApplySeam(t, prod, "podman-prod"); !errors.Is(err, deployment.ErrDeploymentOwnerMissing) {
-		t.Fatalf("unmarked isolated target must stay fail-closed owner-missing: %v", err)
+		t.Fatalf("same-target isolated request must stay fail-closed owner-missing: %v", err)
 	}
 }
 
@@ -319,6 +326,8 @@ func repoSourceForIsolatedApply(t *testing.T, name string) string {
 // loan must activate from a normal `baha` command context.
 func TestProductionOwnerLoanLocalIsolatedApplyPasses(t *testing.T) {
 	const boot, iso = "p427-podman-boot", "p427-podman-iso"
+	installationLoans.reset()
+	t.Cleanup(installationLoans.reset)
 
 	// Set up a boot Target owning a genuine podman installation. Only the boot
 	// Target is configured as the config default (DefaultTarget == boot); the
@@ -338,7 +347,7 @@ func TestProductionOwnerLoanLocalIsolatedApplyPasses(t *testing.T) {
 		Access:        access,
 		Targets: map[string]deployment.TargetDefinition{
 			boot: {Runtime: deployment.RuntimeDefinition{Provider: "podman"}, Access: deployment.TargetAccess{Reference: "local"}, Scope: "local"},
-			iso:  {Runtime: deployment.RuntimeDefinition{Provider: "podman"}, Access: deployment.TargetAccess{Reference: "local"}, Scope: "local"},
+			iso:  {Runtime: deployment.RuntimeDefinition{Provider: "podman"}, Access: deployment.TargetAccess{Reference: "local"}},
 		},
 	}
 	if err := cfg.Save(); err != nil {
@@ -458,8 +467,11 @@ func TestProductionOwnerLoanConnectorBoundStaysFailClosed(t *testing.T) {
 func TestProductionOwnerLoanUnmarkedLocalStaysFailClosed(t *testing.T) {
 	const boot, prod = "p427-podman-boot", "p427-podman-prod"
 	isolatePodmanBootTarget(t, boot, prod)
+	// The command-selected Target has no own Core installation, so the loan
+	// verifier must not borrow from a different configured Target.
+	t.Setenv("BASEHARBOR_TARGET", prod)
 	if err := saveThroughApplySeam(t, prod, "podman-prod"); !errors.Is(err, deployment.ErrDeploymentOwnerMissing) {
-		t.Fatalf("unmarked local isolated target must stay fail-closed owner-missing without test provenance: %v", err)
+		t.Fatalf("same-target isolated request must stay fail-closed owner-missing without test provenance: %v", err)
 	}
 }
 
