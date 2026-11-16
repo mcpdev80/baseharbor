@@ -52,6 +52,20 @@ class CheckRoutingTests(unittest.TestCase):
         cls.script = next(step['run'] for step in cls.ci['jobs']['pr_validations']['steps']
                           if step.get('name') == 'Execute existing validation owner without publication')
 
+    def test_stacked_lane_prs_trigger_the_full_pr_check_graph(self):
+        workflow = (ROOT / '.github/workflows/ci.yml').read_text()
+        self.assertIn("      - 'lane-*'", workflow)
+        self.assertIn("startsWith(github.base_ref, 'lane-')", workflow)
+        self.assertIn('BASE_REF: ${{ github.base_ref }}', workflow)
+        self.assertIn('target_tip="$BASE_SHA"', workflow)
+
+    def test_versionless_release_qualification_job_names(self):
+        workflow = (ROOT / '.github/workflows/pre-release.yml').read_text()
+        self.assertIn('name: Validate release readiness', workflow)
+        self.assertIn('name: HA groups · All runtime results', workflow)
+        self.assertNotIn('v0421_ha_groups', workflow)
+        self.assertNotIn('v0.4.21 HA ·', workflow)
+
     def test_every_declared_check_has_registry_and_workflow_executor(self):
         checks = declared_checks((ROOT / 'scripts/pr-gate-plan.py').read_text(), self.runner)
         self.assertEqual(checks, self.runner.VALIDATIONS)

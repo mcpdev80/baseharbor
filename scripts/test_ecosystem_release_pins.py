@@ -161,7 +161,7 @@ class ReleaseWorkflowPinsTests(unittest.TestCase):
         outputs['tag'] = 'v0.4.26'
         outputs['integration'] = '[]'
         required = {'source', 'runtime_candidate', 'runtime_light_gates', 'runtime_heavy_gates',
-                    'v0421_ha_groups', 'runtime_light_gates_docker'}
+                    'ha_groups', 'runtime_light_gates_docker'}
         jobs = {key: {'result': 'success' if key in required else 'skipped'}
                 for key in self.jobs['checks']['needs']}
         jobs['source']['outputs'] = outputs
@@ -244,7 +244,7 @@ class ReleaseWorkflowPinsTests(unittest.TestCase):
         outputs['integration'] = '[]'
         outputs['tag'] = 'v0.4.27'
         required = {'source', 'runtime_light_gates', 'runtime_heavy_gates',
-                    'v0421_ha_groups', 'greenfield_native'}
+                    'ha_groups', 'greenfield_native'}
         jobs = {key: {'result': 'success' if key in required else 'skipped'}
                 for key in self.jobs['checks']['needs']}
         jobs['source']['outputs'] = outputs

@@ -13,6 +13,15 @@ coverage = json.loads((ROOT / 'pr-gate-coverage.json').read_text())
 
 
 class NativeGatePlanTests(unittest.TestCase):
+    def test_workflow_loads_trusted_catalog_and_requirements_with_the_planner(self):
+        workflow = (ROOT.parent / '.github/workflows/ci.yml').read_text()
+        selector = workflow.split('      - name: Select exact PR native impact', 1)[1].split(
+            '\n  pr_native_selected:', 1)[0]
+        self.assertIn('git show "$BASE_SHA:scripts/pr-gate-coverage.json"', selector)
+        self.assertIn('git show "$BASE_SHA:scripts/release-requirements.json"', selector)
+        self.assertIn('--coverage "$RUNNER_TEMP/pr-gate-coverage.json"', selector)
+        self.assertIn('--requirements "$RUNNER_TEMP/release-requirements.json"', selector)
+
     def test_container_identity_does_not_select_native_destroy_or_greenfield(self):
         matrix = planner.resolve_matrix(
             ['internal/runtime/container_identity.go'], coverage)
