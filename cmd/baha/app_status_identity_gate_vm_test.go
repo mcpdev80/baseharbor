@@ -15,11 +15,6 @@ import (
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
-// dataDirForTest returns the runtime data dir the registry read uses.
-func registryDataDirForTest() (string, error) {
-	return bhruntimeDataDir()
-}
-
 // identityGateVmIntent is the authored intent that selects a managed Keycloak
 // identity provider with a public OAuth exposure so the identity provider is
 // actually realized in the runtime.
