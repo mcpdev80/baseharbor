@@ -2,14 +2,15 @@ name: Release · Pre-Release Validation
 run-name: Pre-Release · ${{ inputs.tag || github.ref_name }}
 permissions:
   contents: read
+  actions: read
 concurrency:
   group: ${{ inputs.develop_mode && format('baseharbor-develop-{0}', github.run_id) || 'baseharbor-release-qualification' }}
   cancel-in-progress: false
 jobs:
-  source:
-    name: Source · Contracts · Docs
+  source_prepare:
+    name: Source · Candidate and Gate Plan
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 20
     outputs:
       tag: ${{ steps.release.outputs.tag }}
       candidate_sha: ${{ steps.release.outputs.candidate_sha }}
@@ -17,16 +18,20 @@ jobs:
       consumer_ref: ${{ steps.release.outputs.consumer_ref }}
       adoption: ${{ steps.selection.outputs.adoption }}
       adoption_count: ${{ steps.selection.outputs.adoption_count }}
-      static: ${{ steps.selection.outputs.static }}
+      static: ${{ steps.runtime_reuse.outputs.static }}
       static_count: ${{ steps.selection.outputs.static_count }}
-      light_docker: ${{ steps.selection.outputs.light_docker }}
+      light_docker: ${{ steps.runtime_reuse.outputs.light_docker }}
       light_docker_count: ${{ steps.selection.outputs.light_docker_count }}
-      light_podman: ${{ steps.selection.outputs.light_podman }}
+      light_docker_execute_count: ${{ steps.runtime_reuse.outputs.light_docker_execute_count }}
+      light_podman: ${{ steps.runtime_reuse.outputs.light_podman }}
       light_podman_count: ${{ steps.selection.outputs.light_podman_count }}
-      heavy_docker: ${{ steps.selection.outputs.heavy_docker }}
+      light_podman_execute_count: ${{ steps.runtime_reuse.outputs.light_podman_execute_count }}
+      heavy_docker: ${{ steps.runtime_reuse.outputs.heavy_docker }}
       heavy_docker_count: ${{ steps.selection.outputs.heavy_docker_count }}
-      heavy_podman: ${{ steps.selection.outputs.heavy_podman }}
+      heavy_docker_execute_count: ${{ steps.runtime_reuse.outputs.heavy_docker_execute_count }}
+      heavy_podman: ${{ steps.runtime_reuse.outputs.heavy_podman }}
       heavy_podman_count: ${{ steps.selection.outputs.heavy_podman_count }}
+      heavy_podman_execute_count: ${{ steps.runtime_reuse.outputs.heavy_podman_execute_count }}
       ha_docker: ${{ steps.selection.outputs.ha_docker }}
       ha_docker_count: ${{ steps.selection.outputs.ha_docker_count }}
       ha_podman: ${{ steps.selection.outputs.ha_podman }}
@@ -43,9 +48,6 @@ jobs:
       with:
         ref: ${{ inputs.ref || github.sha }}
         fetch-depth: 0
-    - name: Enforce workflow policy
-      id: workflow_policy
-      run: bash scripts/ci-workflow-policy.sh
     - name: Resolve release candidate
       id: release
       shell: bash
@@ -144,110 +146,6 @@ jobs:
         echo "tag=$tag" >> "$GITHUB_OUTPUT"
         echo "candidate_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
         echo "demo_ref=$pinned_demo_ref" >> "$GITHUB_OUTPUT"
-    - name: Set up Go
-      id: setup_go
-      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
-      with:
-        go-version-file: go.mod
-        cache: false
-    - name: Set up Python
-      id: setup_python
-      uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
-      with:
-        python-version: '3.14'
-    - name: Install validation tooling
-      id: tooling
-      shell: bash
-      run: |
-        python -m pip install --disable-pip-version-check -r requirements-docs.txt
-        GOBIN="$RUNNER_TEMP/bin" go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
-    - name: Check Go formatting
-      id: formatting
-      shell: bash
-      run: |
-        set -euo pipefail
-        files="$(gofmt -l cmd internal spec contracts)"
-        test -z "$files" || {
-          echo "gofmt required:" >&2
-          echo "$files" >&2
-          exit 1
-        }
-    - name: Validate source readability
-      id: source_readability
-      run: bash scripts/source-readability-audit.sh
-    - name: Run release-source tests
-      id: source_tests
-      shell: bash
-      run: |
-        set -euo pipefail
-        logs="$RUNNER_TEMP/pre-release-source-logs"
-        mkdir -p "$logs"
-        go test ./contracts/... ./internal/... ./spec/... ./conformance/... 2>&1 | tee "$logs/go-test-internal-spec.log"
-        BASEHARBOR_LOGS_ENABLED=false go test ./cmd/baha 2>&1 | tee "$logs/go-test-cmd-baha.log"
-        go vet ./... 2>&1 | tee "$logs/go-vet.log"
-    - name: Validate documentation
-      id: docs
-      shell: bash
-      run: |
-        mkdocs build --strict --config-file mkdocs.yml
-        mkdocs build --strict --config-file mkdocs.de.yml
-        bash scripts/documentation-audit.sh
-    - name: Validate v0.4.20 release-note hygiene
-      id: v0420_hygiene
-      if: steps.release.outputs.tag == 'v0.4.20'
-      shell: bash
-      run: |
-        set -euo pipefail
-        release_internal="$(
-          grep -n -Ei 'corpus|unit test|conformance|schema_version|fingerprint|adapter v1|candidate sha|gofmt|go test|go vet|implementation evidence|validation|CI gate' docs/releases/v0.4.20.md || true
-        )"
-        test -z "$release_internal" || {
-          echo "Internal validation detail leaked into user-facing release notes:" >&2
-          echo "$release_internal" >&2
-          exit 1
-        }
-    - name: Validate v0.4.21 release readiness
-      id: v0421_readiness
-      if: steps.release.outputs.tag == 'v0.4.21'
-      shell: bash
-      run: bash scripts/v0.4.21-readiness.sh
-    - name: Validate workflow syntax
-      id: workflow_syntax
-      shell: bash
-      run: $RUNNER_TEMP/bin/actionlint -shellcheck=
-    - name: Build release snapshot
-      id: snapshot
-      uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94
-      with:
-        distribution: goreleaser
-        version: ~> v2
-        args: release --snapshot --clean
-    - name: Verify release snapshot
-      id: snapshot_verify
-      shell: bash
-      run: |
-        set -euo pipefail
-        test -f dist/checksums.txt
-        test "$(find dist -maxdepth 1 -type f -name 'baseharbor_linux_*.tar.gz' | wc -l)" -eq 2
-        grep -q 'baseharbor_linux_amd64.tar.gz' dist/checksums.txt
-        grep -q 'baseharbor_linux_arm64.tar.gz' dist/checksums.txt
-    - name: Build exact candidate binary
-      id: candidate_binary
-      shell: bash
-      run: |
-        set -euo pipefail
-        mkdir -p "$RUNNER_TEMP/pre-release-candidate"
-        CGO_ENABLED=0 go build -trimpath             -ldflags="-s -w -X main.version=${{ steps.release.outputs.tag }} -X main.commit=${{ steps.release.outputs.candidate_sha }} -X main.date=unknown"             -o "$RUNNER_TEMP/pre-release-candidate/baha" ./cmd/baha
-        "$RUNNER_TEMP/pre-release-candidate/baha" version | grep -F "${{ steps.release.outputs.candidate_sha }}"
-    - name: Upload source candidate
-      id: source_candidate
-      uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
-      with:
-        name: pre-release-source-candidate
-        path: ${{ runner.temp }}/pre-release-candidate
-        if-no-files-found: error
-        retention-days: 1
-        compression-level: 0
     - name: Select normal release checks
       id: selection
       env:
@@ -268,11 +166,322 @@ jobs:
           TAG=v0.4.26
         fi
         python3 scripts/pre-release-check-plan.py --tag "$TAG" --only-gates "$ONLY_GATES" >> "$GITHUB_OUTPUT"
+        echo "only_gates=$ONLY_GATES" >> "$GITHUB_OUTPUT"
+    - name: Plan fail-closed reuse for runtime matrix gates
+      id: runtime_reuse
+      env:
+        GH_TOKEN: ${{ github.token }}
+        REPO: ${{ github.repository }}
+        RUN_ID: ${{ github.run_id }}
+        TAG: ${{ steps.release.outputs.tag }}
+        CANDIDATE_SHA: ${{ steps.release.outputs.candidate_sha }}
+        DEMO_REF: ${{ steps.release.outputs.demo_ref }}
+        ONLY_GATES: ${{ steps.selection.outputs.only_gates }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        python3 scripts/pre-release-runtime-reuse.py \
+          --repo "$REPO" --run-id "$RUN_ID" --tag "$TAG" \
+          --candidate-sha "$CANDIDATE_SHA" --demo-ref "$DEMO_REF" \
+          --only-gates "$ONLY_GATES" --token "$GH_TOKEN" \
+          --temp-dir "$RUNNER_TEMP/pre-release-runtime-reuse" \
+          --output "$GITHUB_OUTPUT"
+
+  source_format:
+    name: Source · Format and Readability
+    needs: source_prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+    - name: Checkout candidate source
+      id: checkout
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        ref: ${{ needs.source_prepare.outputs.candidate_sha }}
+        fetch-depth: 0
+    - name: Set up Go
+      id: setup_go
+      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+      with:
+        go-version-file: go.mod
+        cache: false
+    - name: Check Go formatting
+      id: formatting
+      shell: bash
+      run: |
+        set -euo pipefail
+        files="$(gofmt -l cmd internal spec contracts)"
+        test -z "$files" || {
+          echo "gofmt required:" >&2
+          echo "$files" >&2
+          exit 1
+        }
+    - name: Validate source readability
+      id: source_readability
+      run: bash scripts/source-readability-audit.sh
+
+  source_tests:
+    name: Source · Go Tests · ${{ matrix.shard }}
+    needs: source_prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [cli-0, cli-1, cli-2, cli-3, packages]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_DB: baseharbor_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d baseharbor_test"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      BASEHARBOR_TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/baseharbor_test?sslmode=disable
+    steps:
+    - name: Checkout candidate source
+      id: checkout
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        ref: ${{ needs.source_prepare.outputs.candidate_sha }}
+        fetch-depth: 0
+    - name: Set up Go
+      id: setup_go
+      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+      with:
+        go-version-file: go.mod
+        cache: false
+    - name: Run discovered release-source test shard
+      id: source_tests
+      shell: bash
+      env:
+        SHARD: ${{ matrix.shard }}
+      run: |
+        set -euo pipefail
+        if [[ "$SHARD" == cli-* ]]; then
+          export BASEHARBOR_LOGS_ENABLED=false
+        fi
+        python3 scripts/pr-go-unit-shard.py --mode "$SHARD"
+
+  source_vet:
+    name: Source · Go Vet
+    needs: source_prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+    - name: Checkout candidate source
+      id: checkout
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        ref: ${{ needs.source_prepare.outputs.candidate_sha }}
+        fetch-depth: 0
+    - name: Set up Go
+      id: setup_go
+      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+      with:
+        go-version-file: go.mod
+        cache: false
+    - name: Vet all Go packages
+      id: source_vet
+      run: go vet ./...
+
+  source_docs:
+    name: Docs · Workflow and Release Validation
+    needs: source_prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+    - name: Checkout candidate source
+      id: checkout
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        ref: ${{ needs.source_prepare.outputs.candidate_sha }}
+        fetch-depth: 0
+    - name: Set up Python
+      id: setup_python
+      uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+      with:
+        python-version: '3.14'
+    - name: Install validation tooling
+      id: tooling
+      shell: bash
+      run: |
+        python -m pip install --disable-pip-version-check -r requirements-docs.txt
+        GOBIN="$RUNNER_TEMP/bin" go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+    - name: Enforce workflow policy
+      id: workflow_policy
+      run: bash scripts/ci-workflow-policy.sh
+    - name: Validate documentation
+      id: docs
+      shell: bash
+      run: |
+        mkdocs build --strict --config-file mkdocs.yml
+        mkdocs build --strict --config-file mkdocs.de.yml
+        bash scripts/documentation-audit.sh
+    - name: Validate v0.4.20 release-note hygiene
+      id: v0420_hygiene
+      if: needs.source_prepare.outputs.tag == 'v0.4.20'
+      shell: bash
+      run: |
+        set -euo pipefail
+        release_internal="$(
+          grep -n -Ei 'corpus|unit test|conformance|schema_version|fingerprint|adapter v1|candidate sha|gofmt|go test|go vet|implementation evidence|validation|CI gate' docs/releases/v0.4.20.md || true
+        )"
+        test -z "$release_internal" || {
+          echo "Internal validation detail leaked into user-facing release notes:" >&2
+          echo "$release_internal" >&2
+          exit 1
+        }
+    - name: Validate v0.4.21 release readiness
+      id: v0421_readiness
+      if: needs.source_prepare.outputs.tag == 'v0.4.21'
+      shell: bash
+      run: bash scripts/v0.4.21-readiness.sh
+    - name: Validate workflow syntax
+      id: workflow_syntax
+      shell: bash
+      run: $RUNNER_TEMP/bin/actionlint -shellcheck=
+
+  release_snapshot:
+    name: Release · Snapshot Build
+    needs: source_prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+    - name: Checkout candidate source
+      id: checkout
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        ref: ${{ needs.source_prepare.outputs.candidate_sha }}
+        fetch-depth: 0
+    - name: Set up Go
+      id: setup_go
+      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+      with:
+        go-version-file: go.mod
+        cache: false
+    - name: Build release snapshot
+      id: snapshot
+      uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94
+      with:
+        distribution: goreleaser
+        version: ~> v2
+        args: release --snapshot --clean
+    - name: Verify release snapshot
+      id: snapshot_verify
+      shell: bash
+      run: |
+        set -euo pipefail
+        test -f dist/checksums.txt
+        test "$(find dist -maxdepth 1 -type f -name 'baseharbor_linux_*.tar.gz' | wc -l)" -eq 2
+        grep -q 'baseharbor_linux_amd64.tar.gz' dist/checksums.txt
+        grep -q 'baseharbor_linux_arm64.tar.gz' dist/checksums.txt
+
+  release_candidate:
+    name: Release · Candidate Artifact
+    needs: source_prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+    - name: Checkout candidate source
+      id: checkout
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        ref: ${{ needs.source_prepare.outputs.candidate_sha }}
+        fetch-depth: 0
+    - name: Set up Go
+      id: setup_go
+      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+      with:
+        go-version-file: go.mod
+        cache: false
+    - name: Build exact candidate binary
+      id: candidate_binary
+      shell: bash
+      run: |
+        set -euo pipefail
+        mkdir -p "$RUNNER_TEMP/pre-release-candidate"
+        CGO_ENABLED=0 go build -trimpath             -ldflags="-s -w -X main.version=${{ needs.source_prepare.outputs.tag }} -X main.commit=${{ needs.source_prepare.outputs.candidate_sha }} -X main.date=unknown"             -o "$RUNNER_TEMP/pre-release-candidate/baha" ./cmd/baha
+        "$RUNNER_TEMP/pre-release-candidate/baha" version | grep -F "${{ needs.source_prepare.outputs.candidate_sha }}"
+    - name: Upload source candidate
+      id: source_candidate
+      uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+      with:
+        name: pre-release-source-candidate
+        path: ${{ runner.temp }}/pre-release-candidate
+        if-no-files-found: error
+        retention-days: 7
+        compression-level: 0
+
+  source:
+    name: Source · Qualified
+    needs: [source_prepare, source_format, source_tests, source_vet, source_docs, release_snapshot, release_candidate]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      tag: ${{ needs.source_prepare.outputs.tag }}
+      candidate_sha: ${{ needs.source_prepare.outputs.candidate_sha }}
+      demo_ref: ${{ needs.source_prepare.outputs.demo_ref }}
+      consumer_ref: ${{ needs.source_prepare.outputs.consumer_ref }}
+      adoption: ${{ needs.source_prepare.outputs.adoption }}
+      adoption_count: ${{ needs.source_prepare.outputs.adoption_count }}
+      static: ${{ needs.source_prepare.outputs.static }}
+      static_count: ${{ needs.source_prepare.outputs.static_count }}
+      light_docker: ${{ needs.source_prepare.outputs.light_docker }}
+      light_docker_count: ${{ needs.source_prepare.outputs.light_docker_count }}
+      light_docker_execute_count: ${{ needs.source_prepare.outputs.light_docker_execute_count }}
+      light_podman: ${{ needs.source_prepare.outputs.light_podman }}
+      light_podman_count: ${{ needs.source_prepare.outputs.light_podman_count }}
+      light_podman_execute_count: ${{ needs.source_prepare.outputs.light_podman_execute_count }}
+      heavy_docker: ${{ needs.source_prepare.outputs.heavy_docker }}
+      heavy_docker_count: ${{ needs.source_prepare.outputs.heavy_docker_count }}
+      heavy_docker_execute_count: ${{ needs.source_prepare.outputs.heavy_docker_execute_count }}
+      heavy_podman: ${{ needs.source_prepare.outputs.heavy_podman }}
+      heavy_podman_count: ${{ needs.source_prepare.outputs.heavy_podman_count }}
+      heavy_podman_execute_count: ${{ needs.source_prepare.outputs.heavy_podman_execute_count }}
+      ha_docker: ${{ needs.source_prepare.outputs.ha_docker }}
+      ha_docker_count: ${{ needs.source_prepare.outputs.ha_docker_count }}
+      ha_podman: ${{ needs.source_prepare.outputs.ha_podman }}
+      ha_podman_count: ${{ needs.source_prepare.outputs.ha_podman_count }}
+      journey: ${{ needs.source_prepare.outputs.journey }}
+      journey_count: ${{ needs.source_prepare.outputs.journey_count }}
+      integration: ${{ needs.source_prepare.outputs.integration }}
+      integration_count: ${{ needs.source_prepare.outputs.integration_count }}
+      console_ref: ${{ needs.source_prepare.outputs.console_ref }}
+    steps:
+    - name: Require every source qualification job to pass
+      env:
+        PREPARE_RESULT: ${{ needs.source_prepare.result }}
+        FORMAT_RESULT: ${{ needs.source_format.result }}
+        TEST_RESULT: ${{ needs.source_tests.result }}
+        VET_RESULT: ${{ needs.source_vet.result }}
+        DOCS_RESULT: ${{ needs.source_docs.result }}
+        SNAPSHOT_RESULT: ${{ needs.release_snapshot.result }}
+        CANDIDATE_RESULT: ${{ needs.release_candidate.result }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        for result in "$PREPARE_RESULT" "$FORMAT_RESULT" "$TEST_RESULT" "$VET_RESULT" "$DOCS_RESULT" "$SNAPSHOT_RESULT" "$CANDIDATE_RESULT"; do
+          if [ "$result" != success ]; then
+            echo "Source qualification did not pass: $result" >&2
+            exit 1
+          fi
+        done
+        echo "All source test shards, vet, docs, workflow, snapshot, and candidate-artifact jobs passed."
+
   runtime_candidate:
     name: Candidate · Runtime Image
     needs: source
-    if: needs.source.outputs.light_docker_count != '0' || needs.source.outputs.light_podman_count != '0' || needs.source.outputs.heavy_docker_count
-      != '0' || needs.source.outputs.heavy_podman_count != '0' || needs.source.outputs.journey_count != '0'
+    if: needs.source.outputs.light_docker_execute_count != '0' || needs.source.outputs.light_podman_execute_count != '0' || needs.source.outputs.heavy_docker_execute_count
+      != '0' || needs.source.outputs.heavy_podman_execute_count != '0' || needs.source.outputs.journey_count != '0'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -315,7 +524,7 @@ jobs:
         name: pre-release-runtime-candidate
         path: ${{ runner.temp }}/pre-release-candidate
         if-no-files-found: error
-        retention-days: 1
+        retention-days: 7
         compression-level: 0
     - name: Cleanup Docker runner state
       if: always()
@@ -381,7 +590,7 @@ jobs:
       fail-fast: false
       max-parallel: 5
       matrix:
-        gate: ${{ fromJSON(needs.source.outputs.static) }}
+        include: ${{ fromJSON(needs.source.outputs.static) }}
     uses: ./.github/workflows/pre-release-runtime-suite.yml
     with:
       ref: ${{ needs.source.outputs.candidate_sha }}
@@ -389,20 +598,29 @@ jobs:
       runtime: static
       gate: ${{ matrix.gate }}
       candidate_artifact: pre-release-source-candidate
+      tag: ${{ needs.source.outputs.tag }}
+      input_fingerprint: ${{ matrix.input_fingerprint }}
+      workflow_version: ${{ matrix.workflow_version }}
+      catalog_version: ${{ matrix.catalog_version }}
+      reuse_from: ${{ matrix.reuse_from }}
+      evidence_reuse: ${{ matrix.evidence_reuse }}
+      evidence_artifact_id: ${{ matrix.evidence_artifact_id }}
+      evidence_created_at: ${{ matrix.evidence_created_at }}
+      evidence_run_created_at: ${{ matrix.evidence_run_created_at }}
+      current_run_created_at: ${{ matrix.current_run_created_at }}
   runtime_light_gates_docker:
     name: Light · ${{ matrix.runtime }} · ${{ matrix.gate }}
     needs:
     - source
     - runtime_candidate
-    if: ${{ always() && !cancelled() && needs.source.result == 'success' && needs.runtime_candidate.result == 'success'
+    if: ${{ always() && !cancelled() && needs.source.result == 'success'
+      && (needs.runtime_candidate.result == 'success' || (needs.runtime_candidate.result == 'skipped' && needs.source.outputs.light_docker_execute_count == '0'))
       && needs.source.outputs.light_docker_count != '0' }}
     strategy:
       fail-fast: false
       max-parallel: 2
       matrix:
-        runtime:
-        - docker
-        gate: ${{ fromJSON(needs.source.outputs.light_docker) }}
+        include: ${{ fromJSON(needs.source.outputs.light_docker) }}
     uses: ./.github/workflows/pre-release-runtime-suite.yml
     with:
       ref: ${{ needs.source.outputs.candidate_sha }}
@@ -410,20 +628,29 @@ jobs:
       runtime: ${{ matrix.runtime }}
       gate: ${{ matrix.gate }}
       candidate_artifact: pre-release-runtime-candidate
+      tag: ${{ needs.source.outputs.tag }}
+      input_fingerprint: ${{ matrix.input_fingerprint }}
+      workflow_version: ${{ matrix.workflow_version }}
+      catalog_version: ${{ matrix.catalog_version }}
+      reuse_from: ${{ matrix.reuse_from }}
+      evidence_reuse: ${{ matrix.evidence_reuse }}
+      evidence_artifact_id: ${{ matrix.evidence_artifact_id }}
+      evidence_created_at: ${{ matrix.evidence_created_at }}
+      evidence_run_created_at: ${{ matrix.evidence_run_created_at }}
+      current_run_created_at: ${{ matrix.current_run_created_at }}
   runtime_light_gates_podman:
     name: Light · ${{ matrix.runtime }} · ${{ matrix.gate }}
     needs:
     - source
     - runtime_candidate
-    if: ${{ always() && !cancelled() && needs.source.result == 'success' && needs.runtime_candidate.result == 'success'
+    if: ${{ always() && !cancelled() && needs.source.result == 'success'
+      && (needs.runtime_candidate.result == 'success' || (needs.runtime_candidate.result == 'skipped' && needs.source.outputs.light_podman_execute_count == '0'))
       && needs.source.outputs.light_podman_count != '0' }}
     strategy:
       fail-fast: false
       max-parallel: 2
       matrix:
-        runtime:
-        - podman
-        gate: ${{ fromJSON(needs.source.outputs.light_podman) }}
+        include: ${{ fromJSON(needs.source.outputs.light_podman) }}
     uses: ./.github/workflows/pre-release-runtime-suite.yml
     with:
       ref: ${{ needs.source.outputs.candidate_sha }}
@@ -431,6 +658,16 @@ jobs:
       runtime: ${{ matrix.runtime }}
       gate: ${{ matrix.gate }}
       candidate_artifact: pre-release-runtime-candidate
+      tag: ${{ needs.source.outputs.tag }}
+      input_fingerprint: ${{ matrix.input_fingerprint }}
+      workflow_version: ${{ matrix.workflow_version }}
+      catalog_version: ${{ matrix.catalog_version }}
+      reuse_from: ${{ matrix.reuse_from }}
+      evidence_reuse: ${{ matrix.evidence_reuse }}
+      evidence_artifact_id: ${{ matrix.evidence_artifact_id }}
+      evidence_created_at: ${{ matrix.evidence_created_at }}
+      evidence_run_created_at: ${{ matrix.evidence_run_created_at }}
+      current_run_created_at: ${{ matrix.current_run_created_at }}
   runtime_light_gates:
     name: runtime light gates · All runtime results
     needs:
@@ -456,15 +693,14 @@ jobs:
     needs:
     - source
     - runtime_candidate
-    if: ${{ always() && !cancelled() && needs.source.result == 'success' && needs.runtime_candidate.result == 'success'
+    if: ${{ always() && !cancelled() && needs.source.result == 'success'
+      && (needs.runtime_candidate.result == 'success' || (needs.runtime_candidate.result == 'skipped' && needs.source.outputs.heavy_docker_execute_count == '0'))
       && needs.source.outputs.heavy_docker_count != '0' }}
     strategy:
       fail-fast: false
       max-parallel: 2
       matrix:
-        runtime:
-        - docker
-        gate: ${{ fromJSON(needs.source.outputs.heavy_docker) }}
+        include: ${{ fromJSON(needs.source.outputs.heavy_docker) }}
     uses: ./.github/workflows/pre-release-runtime-suite.yml
     with:
       ref: ${{ needs.source.outputs.candidate_sha }}
@@ -472,20 +708,29 @@ jobs:
       runtime: ${{ matrix.runtime }}
       gate: ${{ matrix.gate }}
       candidate_artifact: pre-release-runtime-candidate
+      tag: ${{ needs.source.outputs.tag }}
+      input_fingerprint: ${{ matrix.input_fingerprint }}
+      workflow_version: ${{ matrix.workflow_version }}
+      catalog_version: ${{ matrix.catalog_version }}
+      reuse_from: ${{ matrix.reuse_from }}
+      evidence_reuse: ${{ matrix.evidence_reuse }}
+      evidence_artifact_id: ${{ matrix.evidence_artifact_id }}
+      evidence_created_at: ${{ matrix.evidence_created_at }}
+      evidence_run_created_at: ${{ matrix.evidence_run_created_at }}
+      current_run_created_at: ${{ matrix.current_run_created_at }}
   runtime_heavy_gates_podman:
     name: Heavy · ${{ matrix.runtime }} · ${{ matrix.gate }}
     needs:
     - source
     - runtime_candidate
-    if: ${{ always() && !cancelled() && needs.source.result == 'success' && needs.runtime_candidate.result == 'success'
+    if: ${{ always() && !cancelled() && needs.source.result == 'success'
+      && (needs.runtime_candidate.result == 'success' || (needs.runtime_candidate.result == 'skipped' && needs.source.outputs.heavy_podman_execute_count == '0'))
       && needs.source.outputs.heavy_podman_count != '0' }}
     strategy:
       fail-fast: false
       max-parallel: 2
       matrix:
-        runtime:
-        - podman
-        gate: ${{ fromJSON(needs.source.outputs.heavy_podman) }}
+        include: ${{ fromJSON(needs.source.outputs.heavy_podman) }}
     uses: ./.github/workflows/pre-release-runtime-suite.yml
     with:
       ref: ${{ needs.source.outputs.candidate_sha }}
@@ -493,6 +738,16 @@ jobs:
       runtime: ${{ matrix.runtime }}
       gate: ${{ matrix.gate }}
       candidate_artifact: pre-release-runtime-candidate
+      tag: ${{ needs.source.outputs.tag }}
+      input_fingerprint: ${{ matrix.input_fingerprint }}
+      workflow_version: ${{ matrix.workflow_version }}
+      catalog_version: ${{ matrix.catalog_version }}
+      reuse_from: ${{ matrix.reuse_from }}
+      evidence_reuse: ${{ matrix.evidence_reuse }}
+      evidence_artifact_id: ${{ matrix.evidence_artifact_id }}
+      evidence_created_at: ${{ matrix.evidence_created_at }}
+      evidence_run_created_at: ${{ matrix.evidence_run_created_at }}
+      current_run_created_at: ${{ matrix.current_run_created_at }}
   runtime_heavy_gates:
     name: runtime heavy gates · All runtime results
     needs:
@@ -537,6 +792,8 @@ jobs:
         ref: ${{ needs.source.outputs.candidate_sha }}
     - name: Prepare verified rootless runtime
       run: bash scripts/ci-core-rootless-runtime.sh
+    - name: Install verified ORAS for Core bootstrap
+      run: bash scripts/ci-install-oras.sh
     - name: Set up Go
       uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
       with:
@@ -588,6 +845,8 @@ jobs:
         ref: ${{ needs.source.outputs.candidate_sha }}
     - name: Prepare verified rootless runtime
       run: bash scripts/ci-core-rootless-runtime.sh
+    - name: Install verified ORAS for Core bootstrap
+      run: bash scripts/ci-install-oras.sh
     - name: Set up Go
       uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
       with:
@@ -659,6 +918,8 @@ jobs:
         ref: ${{ needs.source.outputs.candidate_sha }}
     - name: Prepare verified rootless runtime
       run: bash scripts/ci-core-rootless-runtime.sh
+    - name: Install verified ORAS for Core bootstrap
+      run: bash scripts/ci-install-oras.sh
     - name: Verify Podman Quadlet runtime
       id: quadlet
       if: matrix.runtime == 'podman'
@@ -705,6 +966,8 @@ jobs:
         "${{ matrix.runtime }}" load -i "$archive"
         "${{ matrix.runtime }}" image inspect "$BASEHARBOR_RUNTIME_IMAGE" >/dev/null
         "$RUNNER_TEMP/pre-release-candidate/baha" version | grep -F "${{ needs.source.outputs.candidate_sha }}"
+    - name: Publish exact candidate image for ORAS verification
+      run: bash scripts/ci-local-oci-registry.sh publish "$BASEHARBOR_RUNTIME_IMAGE" localhost:5000/baseharbor-runtime:pre-release
     - name: Checkout exact demo revision
       id: demo
       shell: bash
@@ -886,6 +1149,8 @@ jobs:
         fetch-depth: 0
     - name: Prepare verified rootless runtime
       run: bash scripts/ci-core-rootless-runtime.sh
+    - name: Install verified ORAS for Core bootstrap
+      run: bash scripts/ci-install-oras.sh
     - name: Set up Go
       uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
       with:
@@ -893,6 +1158,8 @@ jobs:
         cache: false
     - name: Build exact Core runtime image
       run: docker build --pull -t "$BASEHARBOR_RUNTIME_IMAGE" -f deploy/control-plane/Dockerfile .
+    - name: Publish Core runtime image for ORAS verification
+      run: bash scripts/ci-local-oci-registry.sh publish "$BASEHARBOR_RUNTIME_IMAGE" localhost:5000/baseharbor-runtime:core-bootstrap
     - name: Verify Core-only bootstrap and ownership-safe retry
       env:
         CANDIDATE_SHA: ${{ needs.source.outputs.candidate_sha }}
@@ -919,6 +1186,8 @@ jobs:
         fetch-depth: 0
     - name: Prepare verified rootless runtime
       run: bash scripts/ci-core-rootless-runtime.sh
+    - name: Install verified ORAS for Core bootstrap
+      run: bash scripts/ci-install-oras.sh
     - name: Set up Go
       uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
       with:
@@ -926,6 +1195,8 @@ jobs:
         cache: false
     - name: Build exact Core runtime image
       run: podman build --pull -t "$BASEHARBOR_RUNTIME_IMAGE" -f deploy/control-plane/Dockerfile .
+    - name: Publish Core runtime image for ORAS verification
+      run: bash scripts/ci-local-oci-registry.sh publish "$BASEHARBOR_RUNTIME_IMAGE" localhost:5000/baseharbor-runtime:core-bootstrap
     - name: Verify Core-only bootstrap and ownership-safe retry
       env:
         CANDIDATE_SHA: ${{ needs.source.outputs.candidate_sha }}
@@ -952,6 +1223,8 @@ jobs:
         fetch-depth: 0
     - name: Prepare verified rootless runtime
       run: bash scripts/ci-core-rootless-runtime.sh
+    - name: Install verified ORAS for Core bootstrap
+      run: bash scripts/ci-install-oras.sh
     - name: Set up Go
       uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
       with:
@@ -966,6 +1239,7 @@ jobs:
         CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.version=dev -X main.commit=${{ needs.source.outputs.candidate_sha }} -X main.date=unknown" -o "$out/baha" ./cmd/baha
         cp deploy/control-plane/Dockerfile.binary "$out/Dockerfile"
         docker build --pull -t "$BASEHARBOR_RUNTIME_IMAGE" "$out"
+        bash scripts/ci-local-oci-registry.sh publish "$BASEHARBOR_RUNTIME_IMAGE" localhost:5000/baseharbor-runtime:coreless-lifecycle
     - name: Verify fresh Core-less lifecycle, ownership-safe recovery and managed reuse
       env:
         CANDIDATE_SHA: ${{ needs.source.outputs.candidate_sha }}
@@ -992,6 +1266,8 @@ jobs:
         fetch-depth: 0
     - name: Prepare verified rootless runtime
       run: bash scripts/ci-core-rootless-runtime.sh
+    - name: Install verified ORAS for Core bootstrap
+      run: bash scripts/ci-install-oras.sh
     - name: Set up Go
       uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
       with:
@@ -1006,6 +1282,7 @@ jobs:
         CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.version=dev -X main.commit=${{ needs.source.outputs.candidate_sha }} -X main.date=unknown" -o "$out/baha" ./cmd/baha
         cp deploy/control-plane/Dockerfile.binary "$out/Dockerfile"
         podman build --pull -t "$BASEHARBOR_RUNTIME_IMAGE" "$out"
+        bash scripts/ci-local-oci-registry.sh publish "$BASEHARBOR_RUNTIME_IMAGE" localhost:5000/baseharbor-runtime:coreless-lifecycle
     - name: Verify fresh Core-less lifecycle, ownership-safe recovery and managed reuse
       env:
         CANDIDATE_SHA: ${{ needs.source.outputs.candidate_sha }}
@@ -1118,13 +1395,15 @@ jobs:
       env:
         BASEHARBOR_TEST_RUNTIME: docker
       run: bash .browser-core-source/scripts/ci-core-rootless-runtime.sh
+    - name: Install verified ORAS for Core bootstrap
+      run: bash .browser-core-source/scripts/ci-install-oras.sh
     - name: Build exact Core runtime and warm its declared provider images
       shell: bash
       run: |
         set -euo pipefail
         image="localhost/baseharbor-runtime:browser-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
         docker build -f .browser-core-source/deploy/control-plane/Dockerfile -t "$image" .browser-core-source
-        echo "BASEHARBOR_RUNTIME_IMAGE=$image" >> "$GITHUB_ENV"
+        bash .browser-core-source/scripts/ci-local-oci-registry.sh publish "$image" localhost:5000/baseharbor-runtime:browser
         awk '/^[[:space:]]+image:/ {print $2}' .browser-core-source/internal/runtime/assets/compose-single.yaml | sort -u | while read -r provider; do docker pull "$provider"; done
     - name: Pin the repository's native Keycloak image
       shell: bash
@@ -1333,13 +1612,15 @@ jobs:
       run: bash .browser-core-source/scripts/ci-core-rootless-runtime.sh
       env:
         BASEHARBOR_TEST_RUNTIME: podman
+    - name: Install verified ORAS for Core bootstrap
+      run: bash .browser-core-source/scripts/ci-install-oras.sh
     - name: Build exact Core runtime and warm its declared provider images
       shell: bash
       run: |
         set -euo pipefail
         image="localhost/baseharbor-runtime:browser-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
         docker build -f .browser-core-source/deploy/control-plane/Dockerfile -t "$image" .browser-core-source
-        echo "BASEHARBOR_RUNTIME_IMAGE=$image" >> "$GITHUB_ENV"
+        bash .browser-core-source/scripts/ci-local-oci-registry.sh publish "$image" localhost:5000/baseharbor-runtime:browser
         awk '/^[[:space:]]+image:/ {print $2}' .browser-core-source/internal/runtime/assets/compose-single.yaml | sort -u | while read -r provider; do docker pull "$provider"; done
     - name: Pin the repository's native Keycloak image
       shell: bash
@@ -1554,7 +1835,7 @@ jobs:
         set -euo pipefail
         image="localhost/baseharbor-runtime:browser-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
         docker build -f .browser-core-source/deploy/control-plane/Dockerfile -t "$image" .browser-core-source
-        echo "BASEHARBOR_RUNTIME_IMAGE=$image" >> "$GITHUB_ENV"
+        bash .browser-core-source/scripts/ci-local-oci-registry.sh publish "$image" localhost:5000/baseharbor-runtime:browser
         awk '/^[[:space:]]+image:/ {print $2}' .browser-core-source/internal/runtime/assets/compose-single.yaml | sort -u | while read -r provider; do docker pull "$provider"; done
     - name: Pin the repository's native Keycloak image
       shell: bash
@@ -1723,7 +2004,7 @@ jobs:
             value = int(out[count])
             assert value >= 0, 'invalid selected count'
             if value: required.add(key)
-        if any(int(out[key]) for key in ['light_docker_count','light_podman_count','heavy_docker_count','heavy_podman_count','journey_count']):
+        if any(int(out[key]) for key in ['light_docker_execute_count','light_podman_execute_count','heavy_docker_execute_count','heavy_podman_execute_count','journey_count']):
             required.add('runtime_candidate')
         for gate in json.loads(out['integration']):
             _, runtime, name = gate.split('/')
@@ -1764,6 +2045,7 @@ jobs:
   push:
     branches:
     - release-candidate/**
+    - release/v*
     - validation/pre-release/**
   workflow_call:
     inputs:

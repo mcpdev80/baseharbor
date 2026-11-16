@@ -22,7 +22,7 @@ type runtimeDestroyImpact struct {
 	All           bool                                 `json:"all"`
 	Resources     []ownedDestroyResource               `json:"resources"`
 	Preserved     []fullDestroyResult                  `json:"preserved"`
-	RecoveryFiles []fullDestroyResult                  `json:"recovery_files_selected_for_deletion,omitempty"`
+	RecoveryFiles []fullDestroyResult                  `json:"recovery_files_preserved,omitempty"`
 	Core          []runtimeDestroyCoreImpact           `json:"core"`
 	Effects       []application.OperationalConsequence `json:"effects"`
 	LocalState    []application.ResourceLocation       `json:"local_state_selected_for_deletion"`
@@ -47,7 +47,7 @@ func buildRuntimeDestroyImpact(ctx context.Context, plans []targetDestroyInvento
 	p.Resources = report.Resources
 	p.Preserved = report.Preserved
 	for _, item := range preserved {
-		if item.Status == "DELETE" {
+		if item.Resource == "external recovery file" && item.Status == "PRESERVED" {
 			p.RecoveryFiles = append(p.RecoveryFiles, item)
 		}
 	}
@@ -157,7 +157,7 @@ func buildRuntimeDestroyImpact(ctx context.Context, plans []targetDestroyInvento
 			return p, runtimeMutationOwnerError()
 		}
 	}
-	p.Effects = []application.OperationalConsequence{{Aspect: "permanent-destruction", Before: "Existing owned resources, registered consumers and retained protected state.", After: "Permanently delete the displayed owned resources and selected local runtime state; --all also selects application deployments, installation configuration and displayed OpenBao recovery files. Source repositories and external application-owned data are preserved. No working secret delivery, login, leases, certificates, renewal or consumer reconfiguration is guaranteed.", Evidence: "existing native ownership inventory; complete consumer transitions remain unverified"}}
+	p.Effects = []application.OperationalConsequence{{Aspect: "permanent-destruction", Before: "Existing owned resources, registered consumers and retained protected state.", After: "Permanently delete the displayed owned resources and selected local runtime state; --all also selects application deployments and installation configuration. Displayed OpenBao recovery files, source repositories and external application-owned data are preserved. No working secret delivery, login, leases, certificates, renewal or consumer reconfiguration is guaranteed.", Evidence: "existing native ownership inventory; complete consumer transitions remain unverified"}}
 	p.Scope, err = application.ComposeProviderImpactScope(application.ProviderScopeOwner{Owner: operation, Reference: config, Subject: operation, Destructive: true, Revision: runtimeDestroyImpactRevision(p, owners, destroyImpactTargets(plans))}, nil, false)
 	return p, err
 }

@@ -18,6 +18,9 @@ func TestRetainedLokiInventoryPreservesOwnersAndExternalStorage(t *testing.T) {
 		for _, mode := range []bhruntime.LogCollectionMode{bhruntime.LogCollectionSyslog, bhruntime.LogCollectionJournald} {
 			for _, ha := range []bool{false, true} {
 				t.Run(string(scope)+"/"+string(mode)+map[bool]string{false: "/single", true: "/ha"}[ha], func(t *testing.T) {
+					if mode == bhruntime.LogCollectionJournald {
+						t.Setenv("BASEHARBOR_SYSTEMD_JOURNAL_GID", "999")
+					}
 					root := t.TempDir()
 					t.Setenv(application.ProviderScopeEnv(capability.ProviderLoki), string(scope))
 					issuer := serviceissuer.New(t)

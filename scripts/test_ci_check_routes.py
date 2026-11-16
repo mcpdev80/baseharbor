@@ -60,6 +60,10 @@ class CheckRoutingTests(unittest.TestCase):
                                    if not any(fnmatch.fnmatchcase(check, pattern) for pattern in patterns)))
         self.assertTrue(any('exit 2' in line for line in self.script.splitlines()))
 
+    def test_planner_validation_executes_runtime_reuse_regressions(self):
+        self.assertIn('pr-planner-tests)', self.script)
+        self.assertIn('scripts/test_pre_release_runtime_reuse.py', self.script)
+
     def test_named_go_profiles_match_real_test_functions(self):
         names = test_functions('./cmd/baha')
         for check, patterns in self.runner.WIZARD_TEST_FAMILIES.items():

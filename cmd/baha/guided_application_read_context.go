@@ -59,6 +59,10 @@ func guidedRevision(value any) (string, error) {
 }
 
 func readGuidedApplicationContext(ctx context.Context, resolved resolvedApplication) (GuidedReadContext, error) {
+	return readGuidedApplicationContextWithFacts(ctx, resolved, observeApplicationProviderFacts(ctx, resolved))
+}
+
+func readGuidedApplicationContextWithFacts(ctx context.Context, resolved resolvedApplication, observations map[string]application.ProviderFact) (GuidedReadContext, error) {
 	if resolved.Target.Name == "" || resolved.Manifest.Name == "" {
 		return GuidedReadContext{}, &GuidedReadError{Kind: "missing", Cause: errors.New("Target and application intent are required")}
 	}
@@ -73,7 +77,7 @@ func readGuidedApplicationContext(ctx context.Context, resolved resolvedApplicat
 	if err != nil {
 		return GuidedReadContext{}, guidedReadAuthorityError(err, "incompatible")
 	}
-	snapshot, preferences, err := applicationLifecycleSnapshotContext(ctx, resolved, observeApplicationProviderFacts(ctx, resolved))
+	snapshot, preferences, err := applicationLifecycleSnapshotContext(ctx, resolved, observations)
 	if err != nil {
 		return GuidedReadContext{}, guidedReadAuthorityError(err, "unverifiable")
 	}
@@ -83,7 +87,7 @@ func readGuidedApplicationContext(ctx context.Context, resolved resolvedApplicat
 	}
 	// The lifecycle preview is the existing owner of provider consequences and
 	// the authoritative consent PlanID; a bare union has no impact PlanID.
-	lifecycle, err := buildResolvedApplicationPlan(ctx, resolved)
+	lifecycle, err := buildResolvedApplicationPlanWithFacts(ctx, resolved, observations)
 	if err != nil {
 		return GuidedReadContext{}, &GuidedReadError{Kind: "unverifiable", Cause: err}
 	}

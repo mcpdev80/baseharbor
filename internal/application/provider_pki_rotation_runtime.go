@@ -25,7 +25,7 @@ func reloadManagedProviderPKI(ctx context.Context, runtime bhruntime.RuntimeProv
 func reloadMongoDBCertificates(ctx context.Context, runtime bhruntime.RuntimeProvider, m Manifest, files RuntimeFiles, instance string) error {
 	for ordinal := 0; ordinal < mongodbMemberCount(m, instance); ordinal++ {
 		service := mongodbMemberServiceName(instance, ordinal)
-		script := "mongosh --quiet --host localhost --tls --tlsCAFile /run/baseharbor/tls/ca.pem --username \"$MONGO_INITDB_ROOT_USERNAME\" --password \"$MONGO_INITDB_ROOT_PASSWORD\" --authenticationDatabase admin --eval 'const r=db.adminCommand({rotateCertificates:1}); if (!r.ok) throw new Error(JSON.stringify(r));'"
+		script := "mongosh --quiet --host localhost --tls --tlsCAFile /run/baseharbor/tls/ca.pem --username=\"$MONGO_INITDB_ROOT_USERNAME\" --password=\"$MONGO_INITDB_ROOT_PASSWORD\" --authenticationDatabase admin --eval 'const r=db.adminCommand({rotateCertificates:1}); if (!r.ok) throw new Error(JSON.stringify(r));'"
 		if _, err := runtime.ExecProject(ctx, files.Project, files.Compose, files.Env, service, "sh", "-ec", script); err != nil {
 			return fmt.Errorf("rotate MongoDB certificates on %s: %w", service, err)
 		}

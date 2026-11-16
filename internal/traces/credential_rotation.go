@@ -4,14 +4,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/mcpdev80/baseharbor/internal/application"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/objectstorage"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
+	"github.com/mcpdev80/baseharbor/internal/telemetry"
 )
 
 // RotateStorageCredentials rotates Tempo's provider-owned S3 identity using the
@@ -26,6 +28,10 @@ func (d *Driver) RotateStorageCredentials(ctx context.Context) error {
 	storageRuntime, ok := d.runtime.(objectstorage.Runtime)
 	if !ok {
 		return errors.New("Tempo platform-storage credential rotation requires runtime object-storage administration support")
+	}
+	telemetryRuntime, ok := d.runtime.(telemetry.Runtime)
+	if !ok || application.TelemetryProviderForDeployment().Kind != capability.ProviderOTelCollector {
+		return errors.New("Tempo platform-storage credential rotation requires the managed OpenTelemetry Collector")
 	}
 	dataDir := strings.TrimSpace(d.dataDir)
 	if dataDir == "" || dataDir == "." {
@@ -65,6 +71,20 @@ func (d *Driver) RotateStorageCredentials(ctx context.Context) error {
 		}
 		if err := waitReady(ctx, client, endpoint); err != nil {
 			return fmt.Errorf("verify Tempo after platform credential rotation: %w", err)
+		}
+		collector := telemetry.NewDriverAt(telemetryRuntime, d.app, application.RuntimeFiles{}, d.issuer, dataDir, d.namespace)
+		collector.SetTraceBackend(NetworkEndpoint(placement), placement.Network)
+		traceID, err := collector.VerifyFreshTrace(ctx, capability.Resource{
+			Application: d.app.Name,
+			Kind:        capability.TelemetryOTLP,
+			Name:        "default",
+			Provider:    capability.ProviderOTelCollector,
+		})
+		if err != nil {
+			return fmt.Errorf("export fresh Tempo storage-rotation verification trace: %w", err)
+		}
+		if err := VerifyTraceAt(ctx, d.app, traceID, dataDir, d.namespace); err != nil {
+			return fmt.Errorf("query fresh Tempo storage-rotation verification trace %s: %w", traceID, err)
 		}
 		return nil
 	}
