@@ -182,8 +182,7 @@
       "id": "source.cmd.baha.app.identity.selective.runtime.test.go",
       "path": "cmd/baha/app_identity_selective_runtime_test.go",
       "surfaces": [
-        "source.gate.atomic.docker.lifecycle",
-        "source.gate.atomic.podman.lifecycle"
+        "source.gate.atomic.docker.lifecycle"
       ]
     },
     {
@@ -1189,14 +1188,21 @@
       "id": "runtime.container-identity",
       "path": "internal/runtime/container_identity.go",
       "surfaces": [
-        "gate.data-capabilities"
+        "source.gate.atomic.podman.data.capabilities"
       ]
     },
     {
       "id": "runtime.container-identity-tests",
       "path": "internal/runtime/container_identity_test.go",
       "surfaces": [
-        "gate.data-capabilities"
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
+      "id": "runtime.service-retirement-tests",
+      "path": "internal/runtime/service_retirement_test.go",
+      "surfaces": [
+        "source.gate.atomic.podman.data.capabilities"
       ]
     }
   ],
