@@ -72,12 +72,11 @@ const identityKeycloakBackend = "keycloak"
 // identityDashboardKey is the stable catalog key of the identity dashboard.
 const identityDashboardKey = "identity-keycloak"
 
-// Perses identity dashboard/panel resource kinds.
+// Perses identity dashboard/panel resource kinds. The identity dashboard uses
+// the single pinned REST/DaC Perses form: `kind: Dashboard` + metadata + spec,
+// NO apiVersion (the apiVersion envelope belongs to the separate Operator CRD
+// form and mixing the two is not valid against either contract).
 const (
-	// PersesIdentityDashboardAPIVersion is the pinned native Perses API
-	// version every realized identity dashboard resource carries. It is part
-	// of the Perses-native schema, never optional.
-	PersesIdentityDashboardAPIVersion = "perses.dev/v1alpha1"
 	// PersesIdentityDashboardKind is the Perses Dashboard resource kind.
 	PersesIdentityDashboardKind = "Dashboard"
 	// PersesIdentityPanelKind is the Perses Panel resource kind.
@@ -166,14 +165,21 @@ type PersesIdentityPanel struct {
 	Spec PersesIdentityPanelSpec `json:"spec"`
 }
 
-// PersesIdentityDashboardResource is a Perses-native dashboard resource. The
-// apiVersion/kind pair is the pinned Perses resource envelope; metadata is the
-// Perses dashboard metadata.
+// PersesIdentityDashboardResource is a Perses-native dashboard resource in the
+// single pinned REST/DaC form (the form the integration path actually emits):
+// `kind: Dashboard` + metadata + spec, exactly as the Perses REST Dashboard API
+// (/api/v1/projects/<project>/dashboards) and dashboard-as-code SDK expect. It
+// deliberately carries NO `apiVersion`: that field belongs to the separate
+// Perses Operator CRD form (`apiVersion: perses.dev/v1alpha1` +
+// `kind: PersesDashboard`), and mixing the two into one resource is not valid
+// against either contract. This matches BaseHarbor's host-dashboards precedent
+// (perses_dashboards_hosts.go: PersesHostDashboard{Kind, Metadata, Spec}, no
+// APIVersion), which emits the same `kind: Dashboard` + metadata + spec
+// envelope.
 type PersesIdentityDashboardResource struct {
-	APIVersion string                          `json:"apiVersion"`
-	Kind       string                          `json:"kind"`
-	Metadata   PersesIdentityDashboardMetadata `json:"metadata"`
-	Spec       PersesIdentityDashboardSpec     `json:"spec"`
+	Kind     string                          `json:"kind"`
+	Metadata PersesIdentityDashboardMetadata `json:"metadata"`
+	Spec     PersesIdentityDashboardSpec     `json:"spec"`
 }
 
 // PersesIdentityDashboardMetadata is the metadata section of the dashboard.
@@ -313,13 +319,12 @@ func persesIdentityPanelUsers() PersesIdentityPanel {
 // identityKeycloakDashboard builds the BaseHarbor identity dashboard resource
 // for the verified current Keycloak signal. It ships exactly one panel per
 // verified metric and no fabricated panel. Every panel queries through the
-// pinned supported Prometheus datasource, and the resource carries the pinned
-// Perses apiVersion.
+// pinned supported Prometheus datasource, and the resource is the single pinned
+// REST/DaC Perses form: `kind: Dashboard` + metadata + spec, NO apiVersion.
 func identityKeycloakDashboard() PersesIdentityDashboardResource {
 	return PersesIdentityDashboardResource{
-		APIVersion: PersesIdentityDashboardAPIVersion,
-		Kind:       PersesIdentityDashboardKind,
-		Metadata:   PersesIdentityDashboardMetadata{Name: identityDashboardKey, Version: 0},
+		Kind:     PersesIdentityDashboardKind,
+		Metadata: PersesIdentityDashboardMetadata{Name: identityDashboardKey, Version: 0},
 		Spec: PersesIdentityDashboardSpec{
 			Display: PersesIdentityDisplay{
 				Name:        "BaseHarbor Keycloak identity",

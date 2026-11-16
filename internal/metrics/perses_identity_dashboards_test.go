@@ -74,9 +74,12 @@ func TestIdentityDashboardAvailableMatchesGoldenFile(t *testing.T) {
 }
 
 // TestIdentityDashboardAvailablePersesNativeJSON validates the realized
-// identity dashboard is Perses-native JSON: the pinned apiVersion and kind, a
-// grid layout referencing a panel, and a panel carrying a query with the
-// supported Prometheus datasource. It must never be a Grafana dashboard.
+// identity dashboard is Perses-native JSON in the single pinned REST/DaC form:
+// `kind: Dashboard` + metadata + spec, with NO apiVersion (the apiVersion
+// envelope belongs to the separate Operator CRD form; the current form is the
+// REST Dashboard API + dashboard-as-code path BaseHarbor actually uses). A grid
+// layout references a panel, and a panel carries a query with the supported
+// Prometheus datasource. It must never be a Grafana dashboard.
 func TestIdentityDashboardAvailablePersesNativeJSON(t *testing.T) {
 	entry := identityDashboardCatalog(capability.ObservabilitySupported)[identityDashboardKey]
 	raw, err := identityDashboardJSON(entry)
@@ -90,9 +93,11 @@ func TestIdentityDashboardAvailablePersesNativeJSON(t *testing.T) {
 	if err := json.Unmarshal(raw, &dashboard); err != nil {
 		t.Fatalf("output is not a Perses dashboard: %v", err)
 	}
-	// The pinned native Perses schema requires the apiVersion on the resource.
-	if dashboard.APIVersion != PersesIdentityDashboardAPIVersion {
-		t.Fatalf("apiVersion = %q, want %q (pinned native Perses schema)", dashboard.APIVersion, PersesIdentityDashboardAPIVersion)
+	// The realized resource is the single REST/DaC form: `kind: Dashboard` with
+	// NO apiVersion. An apiVersion here would be the Operator CRD form mixed in,
+	// which is not valid against either Perses contract.
+	if dashboard.APIVersion != "" {
+		t.Fatalf("apiVersion = %q, want \"\" (REST/DaC `kind: Dashboard` form carries NO apiVersion)", dashboard.APIVersion)
 	}
 	if dashboard.Kind != PersesIdentityDashboardKind {
 		t.Fatalf("kind = %q, want %q (Perses-native, never a Grafana dashboard)", dashboard.Kind, PersesIdentityDashboardKind)
@@ -118,8 +123,9 @@ func TestIdentityDashboardAvailablePersesNativeJSON(t *testing.T) {
 }
 
 // TestIdentityDashboardAvailablePersesNativeSchema pins the full native
-// Perses schema: the datasource kind is the supported Prometheus datasource
-// and every panel query is the native PromQL query type.
+// Perses schema in the single REST/DaC form: the datasource kind is the
+// supported Prometheus datasource and every panel query is the native PromQL
+// query type. The resource carries `kind: Dashboard` with NO apiVersion.
 func TestIdentityDashboardAvailablePersesNativeSchema(t *testing.T) {
 	entry := identityDashboardCatalog(capability.ObservabilitySupported)[identityDashboardKey]
 	// The dashboard datasources map carries the supported Prometheus
@@ -339,5 +345,32 @@ func TestIdentityAvailabilityIsAuthoritativeNotCallerBool(t *testing.T) {
 	}
 	if w := PersesIdentityDashboardAvailability(capability.ObservabilitySupported); w[identityDashboardKey].Available != PersesIdentityDashboardAvailable {
 		t.Fatal("a resolved supported signal must make the dashboard available")
+	}
+}
+
+// TestIdentityAvailabilityCannotBeForgedWithoutResolvedSignal pins the Luna r2
+// witness-strength fix: a caller that does not hold the authoritative resolved
+// keycloak-metrics signal verdict cannot forge availability. Passing an
+// absent/empty resolved status, or a non-supported resolved status, must keep
+// the identity dashboard unavailable. This is the non-forgeability witness:
+// any caller-provided ObservabilitySupported without the real resolved signal
+// cannot flip the verdict to available.
+func TestIdentityAvailabilityCanBeForgedOnlyWithResolvedSupportedSignal(t *testing.T) {
+	for _, status := range []capability.ObservabilitySupportStatus{
+		"", // absent / unresolved signal
+		capability.ObservabilityUnsupported,
+		capability.ObservabilityRequiresAdapter,
+		capability.ObservabilityNotApplicable,
+	} {
+		w := PersesIdentityDashboardAvailability(status)
+		if w[identityDashboardKey].Available != PersesIdentityDashboardUnavailable {
+			t.Fatalf("resolved status %q (absent/unsupported) must not be forgeable into availability; got %q", status, w[identityDashboardKey].Available)
+		}
+		if w[identityDashboardKey].Reason == "" {
+			t.Fatalf("unavailable verdict for resolved status %q must carry a concrete reason", status)
+		}
+		if w[identityDashboardKey].Datasource != "" {
+			t.Fatalf("unavailable verdict must not carry a datasource; got %q", w[identityDashboardKey].Datasource)
+		}
 	}
 }
