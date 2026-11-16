@@ -721,6 +721,8 @@ jobs:
       consumer_mode: ${{ steps.plan.outputs.consumer_mode }}
       runtime_matrix: ${{ steps.incremental.outputs.runtime_matrix || steps.plan.outputs.runtime_matrix }}
       runtime_required: ${{ steps.plan.outputs.runtime_required }}
+      integration_matrix: ${{ steps.plan.outputs.integration_matrix }}
+      integration_required: ${{ steps.plan.outputs.integration_required }}
       owner_node_required: ${{ steps.owner_node.outputs.required }}
       demo_ref: ${{ steps.demo_source.outputs.sha }}
       public_contracts_required: ${{ steps.plan.outputs.public_contracts_required }}
@@ -816,10 +818,12 @@ jobs:
           # Cross-repository dependencies remain recorded in pr-plan.json, but
           # cannot gate independent PR merges. develop/release owns integration.
           echo "consumer_mode=none" >> "$GITHUB_OUTPUT"
-          git fetch --no-tags origin 088f6ef41144a0aeecbcff2586ba57cff9597608
-          git show 088f6ef41144a0aeecbcff2586ba57cff9597608:scripts/pr-selected-runtime-matrix.py > "$RUNNER_TEMP/pr-selected-runtime-matrix.py"
+          git show "$controller:scripts/pr-selected-runtime-matrix.py" > "$RUNNER_TEMP/pr-selected-runtime-matrix.py"
           python3 "$RUNNER_TEMP/pr-selected-runtime-matrix.py" --plan pr-plan.json --requirements scripts/release-requirements.json > "$RUNNER_TEMP/pr-runtime-matrix.json"
           echo "runtime_matrix=$(python3 -c 'import json,sys; print(json.dumps({"include":json.load(open(sys.argv[1]))["include"]},separators=(",",":")))' "$RUNNER_TEMP/pr-runtime-matrix.json")" >> "$GITHUB_OUTPUT"
+          echo "integration_matrix=$(python3 -c 'import json,sys; p=json.load(open(sys.argv[1])); print(json.dumps({"include":p.get("integration_include",[{"id":"not-required","runtime":"static","gate":"not-required"}])},separators=(",",":")))' "$RUNNER_TEMP/pr-runtime-matrix.json")" >> "$GITHUB_OUTPUT"
+          integration_required="$(python3 -c 'import json,sys; print("true" if json.load(open(sys.argv[1])).get("integration_required",False) else "false")' "$RUNNER_TEMP/pr-runtime-matrix.json")"
+          echo "integration_required=$integration_required" >> "$GITHUB_OUTPUT"
           # Bootstrap only from this immutable Maintainer-authored commit until
           # pr-stage-boundary.py is in trusted develop. Never execute a PR copy.
           stage_controller="$controller"
@@ -842,7 +846,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [ "${{ steps.plan.outputs.runtime_required }}" != true ] && [ "${{ steps.plan.outputs.public_contracts_required }}" != true ]; then
+          if [ "${{ steps.plan.outputs.runtime_required }}" != true ] && [ "${{ steps.plan.outputs.integration_required }}" != true ] && [ "${{ steps.plan.outputs.public_contracts_required }}" != true ]; then
             echo "sha=" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -1322,6 +1326,23 @@ jobs:
       candidate_artifact: pr-exact-candidate-${{ github.event.pull_request.head.sha }}
       reuse_from: ${{ matrix.reuse_from || '' }}
 
+  pr_selected_integration:
+    name: PR · Selected Core-less · ${{ matrix.runtime }}
+    needs: [pr_plan, pr_demo_pin]
+    if: always() && github.event_name == 'pull_request' && (github.base_ref == 'develop' || startsWith(github.base_ref, 'lane-')) && github.event.pull_request.draft == false && needs.pr_plan.outputs.integration_required == 'true' && needs.pr_plan.result == 'success' && needs.pr_demo_pin.result == 'success'
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.pr_plan.outputs.integration_matrix) }}
+    uses: ./.github/workflows/targeted-integration.yml
+    permissions:
+      contents: read
+    with:
+      gate: ${{ matrix.id }}
+      ref: ${{ github.sha }}
+      runtime: ${{ matrix.runtime }}
+      demo_ref: ${{ needs.pr_demo_pin.outputs.demo_ref }}
+      tag: pr-${{ github.event.pull_request.number }}
+
   pr_owner_node_native:
     name: PR · Native Keycloak/Core · ${{ matrix.runtime }}
     needs: [pr_plan]
@@ -1361,7 +1382,7 @@ jobs:
 
   pr_selected_final:
     name: PR Selected Checks
-    needs: [workflow_policy, source_format, pr_plan, pr_focused, pr_validations, pr_candidate, pr_consumer_pins, pr_demo_pin, pr_runner_interface, pr_runtime_selected, pr_public_contracts, pr_owner_node_native, pr_native_impact, pr_native_selected, pr_unit_shards]
+    needs: [workflow_policy, source_format, pr_plan, pr_focused, pr_validations, pr_candidate, pr_consumer_pins, pr_demo_pin, pr_runner_interface, pr_runtime_selected, pr_selected_integration, pr_public_contracts, pr_owner_node_native, pr_native_impact, pr_native_selected, pr_unit_shards]
     if: always() && github.event_name == 'pull_request' && (github.base_ref == 'develop' || startsWith(github.base_ref, 'lane-')) && github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     timeout-minutes: 5

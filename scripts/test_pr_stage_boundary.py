@@ -36,6 +36,13 @@ class PRStageBoundaryTests(unittest.TestCase):
         self.plan["selected_gates"] = []
         self.assertEqual([], stage.stage(self.plan)["deferred_integration_gates"])
 
+    def test_coreless_integration_gates_are_explicitly_deferred(self):
+        gates=["integration/docker/coreless-lifecycle", "integration/podman/coreless-lifecycle"]
+        self.plan["selected_gates"] = gates
+        result=stage.stage(self.plan)
+        self.assertEqual(gates,result["deferred_integration_gates"])
+        self.assertEqual([],result["selected_gates"])
+
     def test_unresolved_coverage_cannot_be_laundered(self):
         self.plan.update(coverage_status="unresolved",
                          unresolved_coverage=["unknown changed path"])

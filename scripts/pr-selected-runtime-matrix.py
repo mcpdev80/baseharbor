@@ -4,6 +4,11 @@ import argparse
 import json
 from pathlib import Path
 
+CORELESS_LIFECYCLE_GATES = {
+    "integration/docker/coreless-lifecycle",
+    "integration/podman/coreless-lifecycle",
+}
+
 
 def select(plan, requirements):
     selected = plan.get("selected_gates")
@@ -13,15 +18,25 @@ def select(plan, requirements):
     if not set(selected) <= set(catalog):
         raise ValueError("unknown selected release gate")
     supported = []
+    integration = []
     for gate in selected:
         parts = gate.split("/")
         if len(parts) == 3 and parts[0] == "atomic" and parts[1] in ("docker", "podman"):
             supported.append({"id":gate,"runtime":parts[1],"gate":parts[2]})
+        elif gate in CORELESS_LIFECYCLE_GATES:
+            integration.append({"id":gate,"runtime":parts[1],"gate":"coreless-lifecycle"})
     # Schedule all supported gates together. Unsupported selected gates remain
     # blocking in final acceptance.
     included = sorted(supported, key=lambda item: item["id"])
-    return {"include": included or [{"id":"not-required","runtime":"static","gate":"not-required"}],
-            "required": bool(supported), "unsupported": sorted(set(selected) - {x["id"] for x in supported} - {"integration/static/public-contracts"})}
+    integration_included = sorted(integration, key=lambda item: item["id"])
+    supported_ids = {x["id"] for x in supported} | {x["id"] for x in integration}
+    return {
+        "include": included or [{"id":"not-required","runtime":"static","gate":"not-required"}],
+        "required": bool(supported),
+        "integration_include": integration_included or [{"id":"not-required","runtime":"static","gate":"not-required"}],
+        "integration_required": bool(integration_included),
+        "unsupported": sorted(set(selected) - supported_ids - {"integration/static/public-contracts"}),
+    }
 
 
 def main():

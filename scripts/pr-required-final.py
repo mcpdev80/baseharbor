@@ -29,6 +29,20 @@ def verify(plan, needs, *, head=None, integration=None):
     if not gates and not checks:
         errors.append('no selected checks')
     required = set(BASE_JOBS)
+    deferred = plan.get('deferred_integration_gates')
+    if deferred is not None:
+        if not isinstance(deferred, list) or not all(isinstance(gate, str) for gate in deferred):
+            errors.append('invalid deferred integration gates')
+            deferred = []
+        allowed_deferred = {'integration/static/public-contracts',
+                            'integration/docker/coreless-lifecycle',
+                            'integration/podman/coreless-lifecycle'}
+        unknown_deferred = set(deferred) - allowed_deferred
+        if unknown_deferred:
+            errors.append('deferred gate has no workflow executor: ' + ', '.join(sorted(unknown_deferred)))
+        if set(deferred) & {'integration/docker/coreless-lifecycle',
+                            'integration/podman/coreless-lifecycle'}:
+            required.add('pr_selected_integration')
     if any(check['id'] in ('go-unit-tests', 'cli-package-tests') for check in checks):
         required.add('pr_unit_shards')
     for gate in gates:

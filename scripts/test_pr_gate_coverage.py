@@ -134,6 +134,68 @@ class CoverageCatalogTests(unittest.TestCase):
         self.assertEqual(["source.gate.atomic.docker.lifecycle",
                           "source.gate.atomic.podman.lifecycle"], component["surfaces"])
 
+    def test_coreless_backend_baseline_has_both_integration_gate_owners_and_test_anchor(self):
+        current = json.loads((ROOT / "pr-gate-coverage.json").read_text())
+        path = "cmd/baha/app_backend_selective_runtime_test.go"
+        selected, unresolved = coverage_module.resolve_covered_gates([path], current)
+        self.assertEqual(["integration/docker/coreless-lifecycle",
+                          "integration/podman/coreless-lifecycle"], selected)
+        self.assertEqual([], unresolved)
+        component = next(row for row in current["components"] if row["path"] == path)
+        self.assertEqual(["TestSelectiveBackendCleanupPreservesRuntimeBaseline"],
+                         component["required_test_names"])
+        executor = importlib.util.spec_from_file_location(
+            "pre_release_integration", ROOT / "pre-release-integration.py")
+        integration = importlib.util.module_from_spec(executor)
+        executor.loader.exec_module(integration)
+        with tempfile.TemporaryDirectory() as temporary:
+            source = Path(temporary) / path
+            source.parent.mkdir(parents=True)
+            source.write_text("func TestSelectiveBackendCleanupPreservesRuntimeBaseline(t *testing.T) {}\n")
+            for gate in selected:
+                self.assertEqual(
+                    [["./cmd/baha", "-run", "^TestSelectiveBackendCleanupPreservesRuntimeBaseline$",
+                      "-timeout", "20m"]],
+                    integration.coreless_anchor_checks(gate, temporary))
+
+    def test_service_stop_maps_to_podman_lifecycle_and_executor_runs_test_anchor(self):
+        current = json.loads((ROOT / "pr-gate-coverage.json").read_text())
+        for path in ("internal/runtime/service_stop.go", "internal/runtime/service_stop_test.go"):
+            with self.subTest(path=path):
+                selected, unresolved = coverage_module.resolve_covered_gates([path], current)
+                self.assertEqual([LIFECYCLE], selected)
+                self.assertEqual([], unresolved)
+                component = next(row for row in current["components"] if row["path"] == path)
+                self.assertEqual(["TestSelectedStopAcceptsPinnedContainerName"],
+                                 component["required_test_names"])
+        workflow = (ROOT.parent / ".github/workflows/pre-release-runtime-suite.yml").read_text()
+        self.assertIn("run_native_test ./internal/runtime TestSelectedStopAcceptsPinnedContainerName",
+                      workflow)
+
+    def test_trusted_pr_plan_simulates_both_coreless_and_podman_lifecycle_routes(self):
+        requirements = json.loads((ROOT / "release-requirements.json").read_text())
+        mapping = json.loads((ROOT / "pr-gate-map-v1.json").read_text())
+        for path, expected in (
+            ("cmd/baha/app_backend_selective_runtime_test.go",
+             ["integration/docker/coreless-lifecycle", "integration/podman/coreless-lifecycle"]),
+            ("internal/runtime/service_stop.go", ["atomic/podman/lifecycle"]),
+            ("internal/runtime/service_stop_test.go", ["atomic/podman/lifecycle"]),
+        ):
+            with self.subTest(path=path):
+                diff = {
+                    "target_base_sha": "a" * 40,
+                    "head_sha": "b" * 40,
+                    "merge_base_sha": "c" * 40,
+                    "integration_sha": "d" * 40,
+                    "broad_required": False,
+                    "reasons": [],
+                    "changes": [{"status": "modified", "path": path}],
+                }
+                result = planner.plan(diff, requirements, mapping)
+                self.assertEqual("resolved", result["coverage_status"])
+                self.assertEqual([], result["unresolved_coverage"])
+                self.assertEqual(expected, result["selected_gates"])
+
     def test_unknown_package_is_returned_for_conservative_fallback(self):
         selected, unresolved = coverage_module.resolve_covered_gates(
             ["internal/unknown/new_surface.go"], catalog())
