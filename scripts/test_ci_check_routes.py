@@ -52,6 +52,20 @@ class CheckRoutingTests(unittest.TestCase):
         cls.script = next(step['run'] for step in cls.ci['jobs']['pr_validations']['steps']
                           if step.get('name') == 'Execute existing validation owner without publication')
 
+    def test_stacked_lane_prs_trigger_the_full_pr_check_graph(self):
+        workflow = (ROOT / '.github/workflows/ci.yml').read_text()
+        self.assertIn("      - 'lane-*'", workflow)
+        self.assertIn("startsWith(github.base_ref, 'lane-')", workflow)
+        self.assertIn('BASE_REF: ${{ github.base_ref }}', workflow)
+        self.assertIn('target_tip="$BASE_SHA"', workflow)
+
+    def test_versionless_release_qualification_job_names(self):
+        workflow = (ROOT / '.github/workflows/pre-release.yml').read_text()
+        self.assertIn('name: Validate release readiness', workflow)
+        self.assertIn('name: HA groups · All runtime results', workflow)
+        self.assertNotIn('v0421_ha_groups', workflow)
+        self.assertNotIn('v0.4.21 HA ·', workflow)
+
     def test_every_declared_check_has_registry_and_workflow_executor(self):
         checks = declared_checks((ROOT / 'scripts/pr-gate-plan.py').read_text(), self.runner)
         self.assertEqual(checks, self.runner.VALIDATIONS)
@@ -59,6 +73,10 @@ class CheckRoutingTests(unittest.TestCase):
         self.assertEqual([], sorted(check for check in checks
                                    if not any(fnmatch.fnmatchcase(check, pattern) for pattern in patterns)))
         self.assertTrue(any('exit 2' in line for line in self.script.splitlines()))
+
+    def test_planner_validation_executes_runtime_reuse_regressions(self):
+        self.assertIn('pr-planner-tests)', self.script)
+        self.assertIn('scripts/test_pre_release_runtime_reuse.py', self.script)
 
     def test_named_go_profiles_match_real_test_functions(self):
         names = test_functions('./cmd/baha')
@@ -94,6 +112,16 @@ class CheckRoutingTests(unittest.TestCase):
                     with self.subTest(packages=packages, pattern=pattern):
                         self.assertTrue(any(re.search(pattern, name) for package in packages
                                             for name in test_functions(package)))
+
+    def test_selective_identity_source_routes_to_exact_pr_runtime_test(self):
+        runtime = yaml.safe_load((ROOT / '.github/workflows/pre-release-runtime-suite.yml').read_text())
+        script = next(step['run'] for step in runtime['jobs']['gate']['steps']
+                      if step.get('id') == 'runtime_gate')
+        self.assertIn('cmd/baha/app_identity_selective_runtime_test.go', script)
+        self.assertIn('BASEHARBOR_IDENTITY_LIFECYCLE_ACCEPTANCE=1', script)
+        self.assertIn('run_native_test ./cmd/baha TestSelectiveIdentityRuntimeAddRemoveReAdd', script)
+        self.assertIn('=== RUN', script)
+        self.assertIn('--- PASS:', script)
 
     def test_pr_selected_gates_have_native_or_contract_jobs(self):
         source = ast.parse((ROOT / 'scripts/pr-gate-plan.py').read_text())

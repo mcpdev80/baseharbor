@@ -61,6 +61,28 @@ PY
     ;;
   podman)
     sudo apt-get install -y podman
+    journal_gid="$(getent group systemd-journal | cut -d: -f3)"
+    [[ "$journal_gid" =~ ^[0-9]+$ ]]
+    runner_user="$(id -un)"
+    # Rootless Podman needs the host journal GID explicitly available as a
+    # subordinate GID before the Alloy Quadlet can map that one group into its
+    # container namespace. Keep the grant to this single GID.
+    set +e
+    sudo awk -F: -v gid="$journal_gid" -v user="$runner_user" '
+      $2 ~ /^[0-9]+$/ && $3 ~ /^[0-9]+$/ && gid >= $2 && gid < $2 + $3 {
+        if ($1 == user) found = 1; else conflict = 1
+      }
+      END { if (conflict) exit 2; if (found) exit 0; exit 1 }
+    ' /etc/subgid
+    subgid_status=$?
+    set -e
+    if [ "$subgid_status" -eq 1 ]; then
+      printf '%s:%s:1\n' "$runner_user" "$journal_gid" | sudo tee -a /etc/subgid >/dev/null
+    elif [ "$subgid_status" -ne 0 ]; then
+      echo "systemd-journal GID $journal_gid is delegated to another user in /etc/subgid" >&2
+      exit 1
+    fi
+    printf 'BASEHARBOR_SYSTEMD_JOURNAL_GID=%s\n' "$journal_gid" >> "$GITHUB_ENV"
     mkdir -p "$HOME/.config/containers/registries.conf.d"
     cache_location="${BASEHARBOR_CI_PUBLIC_IMAGE_CACHE#http://}"
     cat > "$HOME/.config/containers/registries.conf.d/99-baseharbor-ci-public-cache.conf" <<EOF

@@ -96,7 +96,12 @@ func UnregisterApplicationAt(ctx context.Context, runtime Runtime, issuer servic
 			return err
 		}
 	}
-	if err := os.WriteFile(files.AlloyConfig, []byte(alloyConfigForModeSources(registrations, providerSources, logCollectionMode(runtime), platformSyslogPort)), 0o644); err != nil {
+	mode := logCollectionMode(runtime)
+	journalMapping, err := journalGroupMappingForMode(string(mode))
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(files.AlloyConfig, []byte(alloyConfigForModeSources(registrations, providerSources, mode, platformSyslogPort)), 0o644); err != nil {
 		return err
 	}
 	if err := os.Chmod(files.AlloyConfig, 0o644); err != nil {
@@ -110,7 +115,7 @@ func UnregisterApplicationAt(ctx context.Context, runtime Runtime, issuer servic
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(files.Compose, []byte(providerComposeYAMLForModeAndAccess(p, registrations, logCollectionMode(runtime), accessFiles, platformSyslogPort)), 0o600); err != nil {
+	if err := os.WriteFile(files.Compose, []byte(providerComposeYAMLForModeAndAccess(p, registrations, mode, accessFiles, platformSyslogPort, journalMapping)), 0o600); err != nil {
 		return err
 	}
 	if err := runtime.ConfigProject(ctx, p.Project, files.Compose, files.Env); err != nil {
