@@ -91,11 +91,18 @@ func authorizeConfirmedApplicationEdit(ctx context.Context, resolved resolvedApp
 	if err != nil {
 		return err
 	}
-	if current.ProviderPlan.Impact == nil || !sameAppEditAuthorizationSurface(approved, *current.ProviderPlan.Impact) {
-		if current.ProviderPlan.Impact != nil && out != nil {
+	if current.ProviderPlan.Impact == nil {
+		return classifyProviderChangeConsent(&application.ProviderChangeError{Code: "stale-impact-consent"})
+	}
+	if !sameAppEditAuthorizationSurface(approved, *current.ProviderPlan.Impact) {
+		if out != nil {
 			fmt.Fprintf(out, "authorization surface differs at %s\n", firstAppEditAuthorizationSurfaceDifference(approved, *current.ProviderPlan.Impact))
 		}
-		return classifyProviderChangeConsent(&application.ProviderChangeError{Code: "stale-impact-consent"})
+		// The accepted plan no longer describes the current consequences. Do
+		// not reuse its consent or weaken the surface comparison: require fresh
+		// acknowledgement of the current plan. Non-interactive callers remain
+		// fail-closed through authorizeApplicationProviderChanges.
+		return authorizeApplicationProviderChanges(withProviderChangeConsent(ctx, nil), resolved, in, out)
 	}
 	forwarded := *consent
 	forwarded.PlanID = current.ProviderPlan.Impact.PlanID
