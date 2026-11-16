@@ -47,12 +47,6 @@ func TestValkeyHARuntimeFailoverAcceptanceInCI(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := runtime.ConfigProject(ctx, files.Project, files.Compose, files.Env); err != nil {
-		t.Fatal(err)
-	}
-	if err := runtime.UpProject(ctx, files.Project, files.Compose, files.Env); err != nil {
-		t.Fatal(err)
-	}
 	defer func() {
 		if t.Failed() {
 			t.Logf("Valkey HA diagnostics:\n%s", runtime.DiagnosticsProject(context.Background(), files.Project, files.Compose, files.Env))
@@ -66,6 +60,13 @@ func TestValkeyHARuntimeFailoverAcceptanceInCI(t *testing.T) {
 			t.Errorf("destroy Valkey HA runtime: %v", err)
 		}
 	}()
+
+	if err := runtime.ConfigProject(ctx, files.Project, files.Compose, files.Env); err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.UpProject(ctx, files.Project, files.Compose, files.Env); err != nil {
+		t.Fatal(err)
+	}
 
 	op := provideroperation.New(runtime, files.Project, files.Compose, files.Env)
 	waitValkeyHAReady(t, ctx, runtime, op, m, files)

@@ -13,7 +13,7 @@ baha up -e dev
 baha status -e dev
 ```
 
-Normale vertrauenswürdige lokale Entwicklung benötigt kein `baha login`. `baha init` erfasst den Repository-eigenen Application-Vertrag; `baha up` führt den Lifecycle aus. Ein Umgebungsname ersetzt weder ein Target noch umgekehrt. Siehe [Application-Befehle](../cli/applications.md) und [Umgebung auswählen](environments.md).
+Normale vertrauenswürdige lokale Entwicklung benötigt kein `baha login`. `baha init` erfasst den Repository-eigenen Application-Vertrag; `baha up` führt den Lifecycle aus. Ein Umgebungsname ersetzt weder ein Target noch umgekehrt. Siehe [Application-Befehle](../cli/applications.md) und [Umgebung auswählen](environments.md). Der nur lesende Befehl `baha connections` zeigt explizite Verbindungsregeln zwischen Applications. Er ist von der Management-Verbindung der Workstation zum Core getrennt.
 
 ## Ein entfernter Core
 
@@ -24,14 +24,15 @@ baha up
 baha onboard --invite
 ```
 
-Übertrage die Einladung geschützt. Löse sie auf der Entwickler-Workstation ein und wähle anschließend die erzeugte Verbindung:
+Übertrage die Einladung geschützt. Löse sie auf der Entwickler-Workstation ein und wähle anschließend das erzeugte Workstation-Target:
 
 ```bash
 baha onboard --import /path/to/invitation.json
-baha use <connection>
-baha connections
 baha target list
-baha target show
+baha use <workstation-target>
+baha target show <workstation-target>
+baha status
+baha doctor
 ```
 
 Arbeite danach im Application-Repository mit dem ausgewählten entfernten Target:
@@ -43,7 +44,7 @@ baha up -e dev
 baha status -e dev
 ```
 
-Das Enrollment verbindet diese Workstation mit dem Core und erstellt eine Geräteidentität. Es verleiht keine Operator-Rolle. Der Verbindungsalias benennt kein Core-Target um, und bei einem Fehler des Remote-Zugriffs wechselt BaseHarbor nicht auf eine lokale Runtime. Halte den lokalen Core und die entfernte Verbindung bei der Target-Auswahl auseinander. Siehe den [Workstation-Enrollment-Vertrag](../spec/zero-friction-workstation-onboarding-v0427.md) und [Target-Befehle](../cli/targets.md).
+Der Import-Befehl gibt den exakten Namen des neuen Workstation-Targets aus. Verwende diesen Namen für `baha use` und `baha target show`; `baha target list` zeigt die konfigurierten Targets. `baha status` und `baha doctor` prüfen den ausgewählten Core und den Versionsabgleich. Das Enrollment verbindet diese Workstation mit dem Core und erstellt eine Geräteidentität; es verleiht keine Operator-Rolle. Wenn die Policy eine Operator-Sitzung verlangt, verwendest du zusätzlich `baha login -e dev`. Das Workstation-Target ist vom Core-Target getrennt, und bei einem Fehler des Remote-Zugriffs wechselt BaseHarbor nicht auf eine lokale Runtime. Siehe den [Workstation-Enrollment-Vertrag](../spec/zero-friction-workstation-onboarding-v0427.md) und [Target-Befehle](../cli/targets.md).
 
 ## Gemeinsamer Teamzugriff
 
