@@ -191,9 +191,6 @@ func runtimeUpGuided(parent context.Context, in io.Reader, out io.Writer, opts r
 			return err
 		}
 		fmt.Fprintln(out, "[OK] ORAS is available.")
-		if err := maybeRepairRootlessDocker(parent, in, out, target); err != nil {
-			return err
-		}
 		term := cli.NewTerminal(parent, out, out)
 		if err := progress(parent, term, "Verify and prepare the BaseHarbor runtime image", func(progressOut io.Writer) error {
 			return ensureCoreRuntimeImageForTarget(parent, target, progressOut)
