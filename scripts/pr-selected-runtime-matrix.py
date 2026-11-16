@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Bounded selected PR runtime gate dispatch; never suppresses required coverage."""
+"""Dispatch every selected PR runtime gate as a concurrent matrix job."""
 import argparse
 import json
 from pathlib import Path
@@ -17,8 +17,8 @@ def select(plan, requirements):
         parts = gate.split("/")
         if len(parts) == 3 and parts[0] == "atomic" and parts[1] in ("docker", "podman"):
             supported.append({"id":gate,"runtime":parts[1],"gate":parts[2]})
-    # Schedule ALL supported gates. Workflow matrix max-parallel caps concurrency,
-    # not coverage. Unsupported selected gates remain blocking in final acceptance.
+    # Schedule all supported gates together. Unsupported selected gates remain
+    # blocking in final acceptance.
     included = sorted(supported, key=lambda item: item["id"])
     return {"include": included or [{"id":"not-required","runtime":"static","gate":"not-required"}],
             "required": bool(supported), "unsupported": sorted(set(selected) - {x["id"] for x in supported} - {"integration/static/public-contracts"})}

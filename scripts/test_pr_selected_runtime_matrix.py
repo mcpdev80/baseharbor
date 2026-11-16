@@ -23,14 +23,26 @@ class RuntimeMatrix(unittest.TestCase):
                          [r["id"] for r in result["include"]])
         self.assertEqual([],result["unsupported"])
 
-    def test_three_native_gates_all_scheduled_with_bounded_parallelism(self):
+    def test_three_native_gates_all_scheduled_without_parallel_cap(self):
         gates=["atomic/docker/backup-restore","atomic/podman/backup-restore","atomic/docker/lifecycle"]
         result=module.select({"selected_gates":gates},self.catalog)
         self.assertEqual(set(gates),{r["id"] for r in result["include"]})
         self.assertEqual([],result["unsupported"])
         workflow=(Path(__file__).resolve().parent.parent/".github/workflows/ci.yml").read_text()
         selected=workflow.split("  pr_runtime_selected:",1)[1].split("  pr_selected_final:",1)[0]
-        self.assertIn("max-parallel: 2",selected)
+        self.assertNotIn("max-parallel:",selected)
+
+    def test_release_runtime_matrices_have_no_concurrency_cap(self):
+        root=Path(__file__).resolve().parent.parent
+        release=(root/".github/workflows/pre-release.yml").read_text()
+        jobs=("runtime_light_gates_docker", "runtime_light_gates_podman",
+              "runtime_heavy_gates_docker", "runtime_heavy_gates_podman",
+              "ha_groups_docker", "ha_groups_podman", "reference_journey")
+        for job in jobs:
+            with self.subTest(job=job):
+                match=re.search(rf"(?ms)^  {job}:\n.*?(?=^  [^ \n]|\Z)",release)
+                self.assertIsNotNone(match)
+                self.assertNotIn("max-parallel:",match.group())
 
     def test_executor_job_fetches_the_source_used_by_runtime_regressions(self):
         workflow=(Path(__file__).resolve().parent.parent/".github/workflows/ci.yml").read_text()
@@ -56,7 +68,7 @@ class RuntimeMatrix(unittest.TestCase):
         result=json.loads(output)
         self.assertEqual(set(gates),{row["id"] for row in result["include"]})
         self.assertEqual([],result["unsupported"])
-        self.assertIn("max-parallel: 2",workflow.split("  pr_runtime_selected:",1)[1].split("  pr_selected_final:",1)[0])
+        self.assertNotIn("max-parallel:",workflow.split("  pr_runtime_selected:",1)[1].split("  pr_selected_final:",1)[0])
 
     def test_workflow_dispatches_runtime_when_trusted_matrix_requires_it(self):
         workflow=(Path(__file__).resolve().parent.parent/".github/workflows/ci.yml").read_text()
