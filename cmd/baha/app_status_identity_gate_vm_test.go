@@ -142,10 +142,14 @@ func TestStatusResultIdentityGateFailClosedWithoutRealSignal(t *testing.T) {
 		t.Fatalf("initialize managed-Identity workload: %v", err)
 	}
 	// No apply: no managed Keycloak container was realized, so no real signal
-	// is registered. The gate must fail closed.
+	// is registered. The gate must fail closed. A "no registered deployment"
+	// error is the same fail-closed default (nothing applied).
 	result, resErr := collectApplicationStatusResult(ctx, application.Store{}, []string{"status"})
-	if resErr != nil && !strings.Contains(resErr.Error(), "file") && !strings.Contains(resErr.Error(), "exist") {
-		t.Fatalf("collectApplicationStatusResult without a real signal: %v", resErr)
+	if resErr != nil {
+		lower := strings.ToLower(resErr.Error())
+		if !strings.Contains(lower, "file") && !strings.Contains(lower, "exist") && !strings.Contains(lower, "no registered deployment") {
+			t.Fatalf("collectApplicationStatusResult without a real signal: %v", resErr)
+		}
 	}
 	if result.IdentityDashboardEligible {
 		t.Fatalf("identity_dashboard_eligible must be false without a real Keycloak metric signal (fail-closed)")
