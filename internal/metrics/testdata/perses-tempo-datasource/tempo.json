@@ -1,0 +1,6 @@
+{
+  "kind": "TraceDatasource",
+  "name": "tempo",
+  "default": true,
+  "config": {}
+}
