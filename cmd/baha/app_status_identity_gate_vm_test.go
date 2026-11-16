@@ -77,7 +77,9 @@ func TestStatusResultIdentityGateVM(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Managed Keycloak requires a Core installation to govern the Target, so
-	// this smoke test does NOT assert a coreless host.
+	// this smoke test does NOT assert a coreless host. The provider is used
+	// by the runtime apply below.
+	_ = provider
 	t.Chdir(t.TempDir())
 	if err := os.WriteFile("compose.yaml", []byte(corelessHTTPWorkload), 0600); err != nil {
 		t.Fatal(err)
