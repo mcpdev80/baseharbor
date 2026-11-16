@@ -2,6 +2,8 @@
 import importlib.util
 import json
 from pathlib import Path
+import subprocess
+import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parent
@@ -245,6 +247,40 @@ class CoverageCatalogTests(unittest.TestCase):
         result = planner.plan(diff, requirements, mapping)
         self.assertEqual("resolved", result["coverage_status"])
         self.assertEqual(["atomic/podman/data-capabilities"], result["selected_gates"])
+
+    def test_trusted_workflow_copies_gate_coverage_beside_planner(self):
+        workflow = (ROOT.parent / ".github/workflows/ci.yml").read_text()
+        step = workflow.split('          for policy_file in ', 1)[1].split(
+            '          done', 1)[0]
+        for policy_file in ("pr-gate-plan.py", "validate-pr-gate-coverage.py",
+                            "pr-gate-coverage.json"):
+            self.assertIn(policy_file, step)
+            self.assertIn('git show "$controller:scripts/$policy_file"', step)
+
+    def test_copied_trusted_planner_keeps_runtime_coverage(self):
+        with tempfile.TemporaryDirectory() as folder:
+            temp = Path(folder)
+            for name in ("pr-gate-plan.py", "validate-pr-gate-coverage.py",
+                         "pr-gate-coverage.json"):
+                (temp / name).write_bytes((ROOT / name).read_bytes())
+            diff = {
+                "target_base_sha": "a" * 40, "head_sha": "b" * 40,
+                "merge_base_sha": "c" * 40, "integration_sha": "d" * 40,
+                "broad_required": False, "reasons": [],
+                "changes": [{"status": "modified",
+                             "path": "cmd/baha/app_identity_selective_runtime_test.go"}],
+            }
+            diff_path = temp / "diff.json"
+            diff_path.write_text(json.dumps(diff))
+            result = subprocess.check_output([
+                "python3", str(temp / "pr-gate-plan.py"), "--diff", str(diff_path),
+                "--requirements", str(ROOT / "release-requirements.json"),
+                "--mapping", str(ROOT / "pr-gate-map-v1.json"),
+            ], cwd=ROOT.parent, env={**__import__("os").environ,
+                                    "GITHUB_REPOSITORY": "mcpdev80/baseharbor",
+                                    "GITHUB_BASE_REF": "develop"}, text=True)
+            plan_result = json.loads(result)
+            self.assertEqual(["atomic/docker/lifecycle"], plan_result["selected_gates"])
 
     def test_legacy_app_core_requirement_keeps_only_declared_narrow_gates(self):
         requirements = json.loads((ROOT / "release-requirements.json").read_text())
