@@ -263,14 +263,14 @@ func TestGuidedExecShellDefaultAndNoCommand(t *testing.T) {
 }
 
 func TestGuidedExecExitStatusIsPreserved(t *testing.T) {
-	if err := preserveWorkloadExitStatus(context.Background(), nil); err != nil {
+	if err := preserveWorkloadExitStatus(nil); err != nil {
 		t.Fatalf("success must stay success: %v", err)
 	}
-	failure := preserveWorkloadExitStatus(context.Background(), &exec.ExitError{ProcessState: exitedProcessStateForTest(t, 7)})
+	failure := preserveWorkloadExitStatus(&exec.ExitError{ProcessState: exitedProcessStateForTest(t, 7)})
 	if failure == nil {
 		t.Fatal("a failing command must fail the invocation")
 	}
-	if cli.ExitCode(preserveWorkloadExitStatus(context.Background(), errors.New("compose is unavailable"))) != 1 {
+	if cli.ExitCode(preserveWorkloadExitStatus(errors.New("compose is unavailable"))) != 1 {
 		t.Fatal("a plain runtime failure must keep the runtime exit code 1")
 	}
 	var text string

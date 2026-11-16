@@ -402,7 +402,7 @@ func runGuidedWorkloadExec(ctx context.Context, store application.Store, args []
 		cmdArgs = append(cmdArgs, invocation.argv...)
 	}
 	runErr := compose.RunProjectFilesEnv(ctx, workload.Project, workload.RepositoryRoot, environment, os.Stdin, out, errOut, composeFiles, cmdArgs...)
-	return preserveWorkloadExitStatus(ctx, runErr)
+	return preserveWorkloadExitStatus(runErr)
 }
 
 // parseWorkloadExecArgs splits app exec / app shell arguments into the shared
@@ -502,8 +502,10 @@ func parseWorkloadExecArgs(args []string, commandName string) (selectorArgs []st
 // preserveWorkloadExitStatus keeps the executed command's exit status: a
 // non-zero child exit fails the invocation without losing the code, and the
 // command tree reports the failure as already presented so main does not
-// append a second generic error block.
-func preserveWorkloadExitStatus(ctx context.Context, runErr error) error {
+// append a second generic error block. The presented failure is a runtime
+// error, never a usage error, so a rejected child command never maps to the
+// usage exit code.
+func preserveWorkloadExitStatus(runErr error) error {
 	if runErr == nil {
 		return nil
 	}
