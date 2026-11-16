@@ -1264,6 +1264,16 @@
         "source.gate.integration.podman.coreless.lifecycle"
       ],
       "required_test_names": ["TestSelectiveBackendCleanupPreservesRuntimeBaseline"]
+    },
+    {
+      "id": "source.cmd.baha.app.application.backend.runtime.test.go",
+      "path": "cmd/baha/app_application_backend_runtime_test.go",
+      "runtime_specific": true,
+      "surfaces": [
+        "source.gate.integration.docker.coreless.lifecycle",
+        "source.gate.integration.podman.coreless.lifecycle"
+      ],
+      "required_test_names": ["TestSelectiveApplicationBackendRuntimeAddRemoveReAdd"]
     }
   ],
   "gates": [
