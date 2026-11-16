@@ -1276,13 +1276,17 @@ jobs:
         BASEHARBOR_CONSUMER_REF: ${{ needs.source.outputs.consumer_ref }}
       run: python scripts/pre-release-integration.py --gate integration/podman/core-bootstrap --candidate "$CANDIDATE_SHA"
         --demo "$DEMO_REF" --tag "$TAG" --output "$RUNNER_TEMP/core-bootstrap-podman"
-  integration_coreless_docker:
-    name: Integration · integration/docker/coreless-lifecycle
+  integration_coreless_docker_shards:
+    name: Integration · Docker Coreless · ${{ matrix.shard }}
     needs: source
     if: ${{ needs.source.result == 'success' && contains(fromJSON(needs.source.outputs.integration), 'integration/docker/coreless-lifecycle')
       }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [foundation, identity-backend, application, core-capability]
     env:
       BASEHARBOR_TEST_RUNTIME: docker
       BASEHARBOR_RUNTIME_IMAGE: localhost/baseharbor-runtime:coreless-lifecycle
@@ -1318,14 +1322,31 @@ jobs:
         TAG: ${{ needs.source.outputs.tag }}
         BASEHARBOR_CONSUMER_REF: ${{ needs.source.outputs.consumer_ref }}
       run: python scripts/pre-release-integration.py --gate integration/docker/coreless-lifecycle --candidate "$CANDIDATE_SHA"
-        --demo "$DEMO_REF" --tag "$TAG" --output "$RUNNER_TEMP/coreless-lifecycle-docker"
-  integration_coreless_podman:
-    name: Integration · integration/podman/coreless-lifecycle
+        --demo "$DEMO_REF" --tag "$TAG" --output "$RUNNER_TEMP/coreless-lifecycle-docker" --shard "${{ matrix.shard }}"
+    - name: Reset the isolated runtime after this shard
+      if: always()
+      run: bash scripts/ci-runtime-reset.sh docker
+  integration_coreless_docker:
+    name: Integration · integration/docker/coreless-lifecycle
+    needs: [source, integration_coreless_docker_shards]
+    if: ${{ always() && !cancelled() && needs.source.result == 'success' && contains(fromJSON(needs.source.outputs.integration), 'integration/docker/coreless-lifecycle') }}
+    runs-on: ubuntu-latest
+    steps:
+    - name: Require every Docker Coreless shard to pass
+      env:
+        SHARDS_RESULT: ${{ needs.integration_coreless_docker_shards.result }}
+      run: test "$SHARDS_RESULT" = success
+  integration_coreless_podman_shards:
+    name: Integration · Podman Coreless · ${{ matrix.shard }}
     needs: source
     if: ${{ needs.source.result == 'success' && contains(fromJSON(needs.source.outputs.integration), 'integration/podman/coreless-lifecycle')
       }}
     runs-on: ubuntu-26.04
     timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [foundation, identity-backend, application, core-capability]
     env:
       BASEHARBOR_TEST_RUNTIME: podman
       BASEHARBOR_RUNTIME_IMAGE: localhost/baseharbor-runtime:coreless-lifecycle
@@ -1361,7 +1382,20 @@ jobs:
         TAG: ${{ needs.source.outputs.tag }}
         BASEHARBOR_CONSUMER_REF: ${{ needs.source.outputs.consumer_ref }}
       run: python scripts/pre-release-integration.py --gate integration/podman/coreless-lifecycle --candidate "$CANDIDATE_SHA"
-        --demo "$DEMO_REF" --tag "$TAG" --output "$RUNNER_TEMP/coreless-lifecycle-podman"
+        --demo "$DEMO_REF" --tag "$TAG" --output "$RUNNER_TEMP/coreless-lifecycle-podman" --shard "${{ matrix.shard }}"
+    - name: Reset the isolated runtime after this shard
+      if: always()
+      run: bash scripts/ci-runtime-reset.sh podman
+  integration_coreless_podman:
+    name: Integration · integration/podman/coreless-lifecycle
+    needs: [source, integration_coreless_podman_shards]
+    if: ${{ always() && !cancelled() && needs.source.result == 'success' && contains(fromJSON(needs.source.outputs.integration), 'integration/podman/coreless-lifecycle') }}
+    runs-on: ubuntu-26.04
+    steps:
+    - name: Require every Podman Coreless shard to pass
+      env:
+        SHARDS_RESULT: ${{ needs.integration_coreless_podman_shards.result }}
+      run: test "$SHARDS_RESULT" = success
   integration_remote_target_docker:
     runs-on: ubuntu-latest
     timeout-minutes: 60

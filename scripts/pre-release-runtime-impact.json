@@ -8,6 +8,10 @@
     ".github/workflows/ci.yml",
     "scripts/pre-release-runtime-impact.json",
     "scripts/pre-release-runtime-reuse.py",
+    "scripts/pre-release-integration.py",
+    "scripts/test_pre_release_integration.py",
+    "scripts/test_pr_selected_runtime_matrix.py",
+    "scripts/test_pr_gate_coverage.py",
     "scripts/test_ci_docker_runtime_doctor.py",
     "scripts/test_ecosystem_release_pins.py",
     "scripts/test_pr_unit_database_route.py",
@@ -41,6 +45,18 @@
       "integration/docker/coreless-lifecycle", "integration/podman/coreless-lifecycle"
     ],
     "cmd/baha/app_backend_shared_runtime_test.go": [
+      "integration/docker/coreless-lifecycle", "integration/podman/coreless-lifecycle"
+    ],
+    "cmd/baha/app_application_backend_runtime_test.go": [
+      "integration/docker/coreless-lifecycle", "integration/podman/coreless-lifecycle"
+    ],
+    "cmd/baha/app_capability_runtime_test.go": [
+      "integration/docker/coreless-lifecycle", "integration/podman/coreless-lifecycle"
+    ],
+    "cmd/baha/app_https_selective_runtime_test.go": [
+      "integration/docker/coreless-lifecycle", "integration/podman/coreless-lifecycle"
+    ],
+    "cmd/baha/application_otlp_handoff_runtime_test.go": [
       "integration/docker/coreless-lifecycle", "integration/podman/coreless-lifecycle"
     ],
     "cmd/baha/core_installation_runtime_test.go": [],

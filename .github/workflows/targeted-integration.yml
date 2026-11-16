@@ -1434,11 +1434,15 @@ jobs:
           "$BASEHARBOR_TEST_RUNTIME" version > "$RUNNER_TEMP/external-provider-handoff/runtime-version.txt"
           go test -race -json ./internal/identityprovider -run '^TestRegisteredExternalOIDCNativeConsumerHandoff$' -count=1 -timeout 18m 2>&1 | tee "$RUNNER_TEMP/external-provider-handoff/tests.jsonl"
 
-  pr_selected_coreless_lifecycle:
-    name: PR selected · ${{ inputs.gate }}
+  pr_selected_coreless_lifecycle_shards:
+    name: PR selected · ${{ inputs.gate }} · ${{ matrix.shard }}
     if: ${{ (inputs.gate == 'integration/docker/coreless-lifecycle' || inputs.gate == 'integration/podman/coreless-lifecycle') && (inputs.runtime == 'docker' || inputs.runtime == 'podman') }}
     runs-on: ${{ inputs.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
     timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [foundation, identity-backend, application, core-capability]
     env:
       BASEHARBOR_TEST_RUNTIME: ${{ inputs.runtime }}
       BASEHARBOR_RUNTIME_IMAGE: localhost/baseharbor-runtime:coreless-lifecycle
@@ -1491,10 +1495,21 @@ jobs:
           GATE: ${{ inputs.gate }}
         run: >-
           python scripts/pre-release-integration.py --gate "$GATE" --candidate "$CANDIDATE_SHA"
-          --demo "$DEMO_REF" --tag "$TAG" --output "$RUNNER_TEMP/coreless-lifecycle-${{ inputs.runtime }}"
+          --demo "$DEMO_REF" --tag "$TAG" --output "$RUNNER_TEMP/coreless-lifecycle-${{ inputs.runtime }}" --shard "${{ matrix.shard }}"
       - name: Clean owned runtime and local registry
         if: always()
         shell: bash
         run: |
           bash scripts/ci-local-oci-registry.sh cleanup || true
           bash scripts/ci-runtime-reset.sh "${{ inputs.runtime }}"
+
+  pr_selected_coreless_lifecycle:
+    name: PR selected · ${{ inputs.gate }}
+    needs: pr_selected_coreless_lifecycle_shards
+    if: ${{ always() && !cancelled() && (inputs.gate == 'integration/docker/coreless-lifecycle' || inputs.gate == 'integration/podman/coreless-lifecycle') && (inputs.runtime == 'docker' || inputs.runtime == 'podman') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every selected Coreless shard to pass
+        env:
+          SHARDS_RESULT: ${{ needs.pr_selected_coreless_lifecycle_shards.result }}
+        run: test "$SHARDS_RESULT" = success
