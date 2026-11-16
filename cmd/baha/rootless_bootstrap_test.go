@@ -142,7 +142,7 @@ func TestApprovedRootlessSetupCommandSequence(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			var commands []string
 			run := func(_ context.Context, _ io.Reader, _ io.Writer, name string, args ...string) error {
-				commands = append(commands, name+" "+strings.Join(args, " "))
+				commands = append(commands, name + " " + strings.Join(args, " "))
 				return nil
 			}
 			lookup := func(name string) (string, error) { return "/usr/bin/" + name, nil }
@@ -175,7 +175,7 @@ func TestRootlessSetupPartialFailuresNeverRunUnapprovedFallback(t *testing.T) {
 				}
 				return nil
 			}
-			lookup := func(name string) (string, error) { return "/usr/bin/"+name, nil }
+			lookup := func(name string) (string, error) { return "/usr/bin/" + name, nil }
 			if err := runApprovedRootlessSetup(context.Background(), strings.NewReader(""), io.Discard, true, true, run, lookup); err == nil {
 				t.Fatal("failure must abort setup")
 			}
