@@ -450,6 +450,7 @@ jobs:
           git diff --name-only --diff-filter=ACDMRT "$BASE_SHA" "$HEAD_SHA" > "$RUNNER_TEMP/changed-paths"
           if git cat-file -e "$BASE_SHA:scripts/pr-native-gate-plan.py" 2>/dev/null; then
             git show "$BASE_SHA:scripts/pr-native-gate-plan.py" > "$RUNNER_TEMP/pr-native-gate-plan.py"
+            git show "$BASE_SHA:scripts/validate-pr-gate-coverage.py" > "$RUNNER_TEMP/validate-pr-gate-coverage.py"
             git show "$BASE_SHA:scripts/pr-gate-coverage.json" > "$RUNNER_TEMP/pr-gate-coverage.json"
             git show "$BASE_SHA:scripts/release-requirements.json" > "$RUNNER_TEMP/release-requirements.json"
             matrix="$(python3 "$RUNNER_TEMP/pr-native-gate-plan.py" \

@@ -18,6 +18,7 @@ class NativeGatePlanTests(unittest.TestCase):
         selector = workflow.split('      - name: Select exact PR native impact', 1)[1].split(
             '\n  pr_native_selected:', 1)[0]
         self.assertIn('git show "$BASE_SHA:scripts/pr-gate-coverage.json"', selector)
+        self.assertIn('git show "$BASE_SHA:scripts/validate-pr-gate-coverage.py"', selector)
         self.assertIn('git show "$BASE_SHA:scripts/release-requirements.json"', selector)
         self.assertIn('--coverage "$RUNNER_TEMP/pr-gate-coverage.json"', selector)
         self.assertIn('--requirements "$RUNNER_TEMP/release-requirements.json"', selector)
