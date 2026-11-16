@@ -192,7 +192,9 @@ class RuntimeReuseTests(unittest.TestCase):
         impact = json.loads(Path(__file__).with_name("pre-release-runtime-impact.json").read_text())
         expected = {"integration/docker/coreless-lifecycle",
                     "integration/podman/coreless-lifecycle"}
-        for path in ("cmd/baha/app_coreless_runtime_test.go",
+        for path in ("cmd/baha/app_backend_selective_runtime_test.go",
+                     "cmd/baha/app_backend_shared_runtime_test.go",
+                     "cmd/baha/app_coreless_runtime_test.go",
                      "cmd/baha/app_identity_selective_runtime_test.go",
                      "cmd/baha/app_local_stdio_runtime_test.go"):
             self.assertEqual(expected, set(impact["core"][path]))
