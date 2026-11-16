@@ -1333,7 +1333,8 @@
         "TestRootlessSubIDRangeValidation",
         "TestApprovedRootlessSetupCommandSequence",
         "TestRootlessSetupPartialFailuresNeverRunUnapprovedFallback",
-        "TestRootlessSetupMissingUIDMapAfterInstallFailsClosed"
+        "TestRootlessSetupMissingUIDMapAfterInstallFailsClosed",
+        "TestRootlessSetupContextRestoreFailureIsReported"
       ]
     },
     {
