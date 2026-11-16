@@ -1274,6 +1274,24 @@
         "source.gate.integration.podman.coreless.lifecycle"
       ],
       "required_test_names": ["TestSelectiveApplicationBackendRuntimeAddRemoveReAdd"]
+    },
+    {
+      "id": "source.scripts.pre.release.integration",
+      "path": "scripts/pre-release-integration.py",
+      "surfaces": ["source.gate.integration.docker.coreless.lifecycle", "source.gate.integration.podman.coreless.lifecycle"],
+      "runtime_specific": true
+    },
+    {
+      "id": "source.workflow.pre.release",
+      "path": ".github/workflows/pre-release.yml",
+      "surfaces": ["source.gate.integration.docker.coreless.lifecycle", "source.gate.integration.podman.coreless.lifecycle"],
+      "runtime_specific": true
+    },
+    {
+      "id": "source.workflow.targeted.integration",
+      "path": ".github/workflows/targeted-integration.yml",
+      "surfaces": ["source.gate.integration.docker.coreless.lifecycle", "source.gate.integration.podman.coreless.lifecycle"],
+      "runtime_specific": true
     }
   ],
   "gates": [
