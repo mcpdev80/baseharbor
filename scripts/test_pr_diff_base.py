@@ -307,12 +307,12 @@ class GitFixture(unittest.TestCase):
         self.git('checkout', '-q', '--detach', event_base)
         workflow = (Path(__file__).resolve().parent.parent /
                     '.github/workflows/ci.yml').read_text()
-        begin = workflow.index('          git fetch --no-tags origin "$BASE_SHA" "$HEAD_SHA" "$INTEGRATION_SHA" refs/heads/develop:refs/remotes/origin/pr-target-tip')
+        begin = workflow.index('          git fetch --no-tags origin "$BASE_SHA" "$HEAD_SHA" "$INTEGRATION_SHA"')
         end = workflow.index('          # One immutable, locally checked controller', begin)
         shell = '\n'.join(line.removeprefix('          ') for line in
                           workflow[begin:end].splitlines())
         with tempfile.TemporaryDirectory() as runner_temp:
-            env = dict(os.environ, BASE_SHA=event_base, HEAD_SHA=head,
+            env = dict(os.environ, BASE_SHA=event_base, HEAD_SHA=head, BASE_REF='develop',
                        INTEGRATION_SHA=candidate, RUNNER_TEMP=runner_temp)
             result = subprocess.run(['bash', '-euo', 'pipefail', '-c', shell],
                                     cwd=self.root, env=env, text=True,
