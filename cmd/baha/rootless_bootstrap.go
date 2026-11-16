@@ -151,7 +151,6 @@ func requireRootlessSetupConsent(ctx context.Context, in io.Reader, out io.Write
 	return nil
 }
 
-
 // Refuse to allocate UID/GID ranges automatically: guessing a free range
 // could overlap an existing account. Docker's rootless setup requires both
 // mappings to be configured for the current user beforehand.
