@@ -91,6 +91,29 @@ class RuntimeMatrix(unittest.TestCase):
                 self.assertIsNotNone(match)
                 self.assertNotIn("max-parallel:",match.group())
 
+    def test_targeted_integration_concurrency_isolated_by_gate_and_runtime(self):
+        workflow=(Path(__file__).resolve().parent.parent/
+                  ".github/workflows/targeted-integration.yml").read_text()
+        match=re.search(r"(?m)^  group: (.+)$",workflow)
+        self.assertIsNotNone(match)
+        group=match.group(1)
+        self.assertIn("${{ inputs.gate || 'default' }}",group)
+        self.assertIn("${{ inputs.runtime || 'default' }}",group)
+        self.assertIn("cancel-in-progress:",workflow)
+
+        def concurrency_key(ref, sha, gate, runtime):
+            return (f"targeted-integration-{ref}-{sha}-"
+                    f"{gate or 'default'}-{runtime or 'default'}")
+
+        docker=concurrency_key("refs/pull/1649/merge","candidate-sha",
+                               "integration/docker/coreless-lifecycle","docker")
+        podman=concurrency_key("refs/pull/1649/merge","candidate-sha",
+                               "integration/podman/coreless-lifecycle","podman")
+        self.assertNotEqual(docker,podman)
+        self.assertEqual(docker,concurrency_key(
+            "refs/pull/1649/merge","candidate-sha",
+            "integration/docker/coreless-lifecycle","docker"))
+
     def test_executor_job_fetches_the_source_used_by_runtime_regressions(self):
         workflow=(Path(__file__).resolve().parent.parent/".github/workflows/ci.yml").read_text()
         block=workflow.split('          git show "$controller:scripts/pr-selected-runtime-matrix.py"',1)[0]
