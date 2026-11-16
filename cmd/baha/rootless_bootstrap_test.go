@@ -15,7 +15,7 @@ func TestRootlessBootstrapEligibilityHonorsExplicitSelection(t *testing.T) {
 	cases := []struct {
 		name string
 		edit func(*deployment.ResolvedTarget)
-		env func(string) string
+		env  func(string) string
 		want bool
 	}{
 		{"unconfigured local docker", func(*deployment.ResolvedTarget) {}, env, true},
@@ -24,8 +24,18 @@ func TestRootlessBootstrapEligibilityHonorsExplicitSelection(t *testing.T) {
 		{"explicit docker context", func(x *deployment.ResolvedTarget) { x.DockerContext = "rootless" }, env, false},
 		{"podman", func(x *deployment.ResolvedTarget) { x.RuntimeProvider = "podman" }, env, false},
 		{"remote target", func(x *deployment.ResolvedTarget) { x.AccessProvider = "ssh" }, env, false},
-		{"docker host env", func(*deployment.ResolvedTarget) {}, func(k string) string { if k == "DOCKER_HOST" { return "unix:///tmp/docker.sock" }; return "" }, false},
-		{"docker context env", func(*deployment.ResolvedTarget) {}, func(k string) string { if k == "DOCKER_CONTEXT" { return "custom" }; return "" }, false},
+		{"docker host env", func(*deployment.ResolvedTarget) {}, func(k string) string {
+			if k == "DOCKER_HOST" {
+				return "unix:///tmp/docker.sock"
+			}
+			return ""
+		}, false},
+		{"docker context env", func(*deployment.ResolvedTarget) {}, func(k string) string {
+			if k == "DOCKER_CONTEXT" {
+				return "custom"
+			}
+			return ""
+		}, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -51,10 +61,10 @@ func TestRootlessBootstrapExplicitTargetNeverTouchesHost(t *testing.T) {
 
 func TestRootlessSetupConsentNeverAssumesYes(t *testing.T) {
 	for _, tc := range []struct {
-		name string
-		input string
+		name        string
+		input       string
 		interactive bool
-		wantOK bool
+		wantOK      bool
 	}{
 		{"accept explicitly", "y\n", true, true},
 		{"decline explicitly", "n\n", true, false},
