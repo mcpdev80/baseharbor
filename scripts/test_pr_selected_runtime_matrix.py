@@ -71,7 +71,10 @@ class RuntimeMatrix(unittest.TestCase):
         )
         self.assertIsNotNone(coreless_shards)
         shard_block = coreless_shards.group(1)
-        self.assertIn("shard: [foundation, identity-backend, application]", shard_block)
+        self.assertIn(
+            "shard: [foundation, identity-backend, application, core-capability]",
+            shard_block,
+        )
         self.assertIn("fail-fast: false", shard_block)
         self.assertIn(
             "uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e",
