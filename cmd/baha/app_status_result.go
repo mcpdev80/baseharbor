@@ -36,6 +36,13 @@ type applicationStatusResult struct {
 	OperatorAuth    operatorAuthObservation                      `json:"operator_auth"`
 	Availability    []availability.NegotiationResult             `json:"availability,omitempty"`
 	Perses          *capability.PersesStatus                     `json:"perses,omitempty"`
+	// IdentityDashboardEligible is the non-forgeable availability of the
+	// Keycloak identity dashboard: eligible ONLY when a real Keycloak native
+	// metrics signal exists for this Target, the identity provider is actually
+	// selected, and the Keycloak placement is a valid, BaseHarbor-owned
+	// authorization (fail-closed). Derived from IdentitySelectionWitness via
+	// NonForgeableAvailable() — never a caller-supplied status boolean.
+	IdentityDashboardEligible bool `json:"identity_dashboard_eligible,omitempty"`
 
 	tlsStatus     *applicationTLSStatus
 	tlsErr        error
@@ -141,11 +148,24 @@ func collectApplicationStatusResult(ctx context.Context, store application.Store
 	// verified — only a real Perses health probe could. Computed before the
 	// remote-target early return below so remote-status --json also carries it.
 	persesStatus := capability.PersesStatusNow(resolved.Manifest.Services.ObservabilityManagementUI && resolved.Manifest.Services.Perses)
+	// The Keycloak identity dashboard realizes the identity provider, so its
+	// availability is a non-forgeable decision: it is eligible ONLY when a real
+	// Keycloak native metrics signal exists for this Target, the identity
+	// provider is actually selected, and the Keycloak placement is a valid,
+	// BaseHarbor-owned authorization for this Target (fail-closed). Resolve the
+	// witness from real primitives before the remote-target early return so the
+	// gate is evaluated on both local and remote-target faces.
+	identityBackendAvailable := false
+	if keycloakPlacement, keycloakErr := application.ResolveProviderPlacement(resolved.Manifest, capability.ProviderKeycloak); keycloakErr == nil {
+		identityWitness := metricsprovider.IdentitySelectionWitnessAt(resolved.Manifest, keycloakPlacement, resolved.TargetStateRoot, resolved.Target.Name)
+		identityBackendAvailable = identityWitness.NonForgeableAvailable()
+	}
 	if hasRemoteApplicationTarget(resolved) {
 		return applicationStatusResult{StatusResult: result, ApplicationID: resolved.Manifest.ApplicationID,
-			DeploymentID: resolved.DeploymentIdentity.DeploymentID,
-			OperatorAuth: collectOperatorAuthObservation(ctx, resolved.Target.Name, resolved.Manifest.Environment),
-			Perses:       persesStatus}, nil
+			DeploymentID:              resolved.DeploymentIdentity.DeploymentID,
+			OperatorAuth:              collectOperatorAuthObservation(ctx, resolved.Target.Name, resolved.Manifest.Environment),
+			Perses:                    persesStatus,
+			IdentityDashboardEligible: identityBackendAvailable}, nil
 	}
 	tlsStatus, tlsObservation, tlsErr := collectApplicationTLSObservation(resolved)
 	if tlsErr != nil || (tlsObservation != nil && !tlsObservation.Healthy) {
@@ -235,20 +255,21 @@ func collectApplicationStatusResult(ctx context.Context, store application.Store
 		}
 	}
 	return applicationStatusResult{
-		StatusResult:    result,
-		ApplicationID:   resolved.Manifest.ApplicationID,
-		DeploymentID:    resolved.DeploymentIdentity.DeploymentID,
-		OperatorAuth:    collectOperatorAuthObservation(ctx, resolved.Target.Name, resolved.Manifest.Environment),
-		Availability:    availabilityResults,
-		TLS:             tlsObservation,
-		ServiceTLS:      serviceTLS,
-		RuntimeArtifact: runtimeArtifact,
-		RuntimeDocsURL:  runtimeDocsURL,
-		ApplicationURLs: applicationAccessURLs(resolved, result.Ready),
-		ManagementUI:    managementUI,
-		Perses:          persesStatus,
-		tlsStatus:       tlsStatus,
-		tlsErr:          tlsErr,
-		serviceTLSErr:   serviceTLSErr,
+		StatusResult:              result,
+		ApplicationID:             resolved.Manifest.ApplicationID,
+		DeploymentID:              resolved.DeploymentIdentity.DeploymentID,
+		OperatorAuth:              collectOperatorAuthObservation(ctx, resolved.Target.Name, resolved.Manifest.Environment),
+		Availability:              availabilityResults,
+		TLS:                       tlsObservation,
+		ServiceTLS:                serviceTLS,
+		RuntimeArtifact:           runtimeArtifact,
+		RuntimeDocsURL:            runtimeDocsURL,
+		ApplicationURLs:           applicationAccessURLs(resolved, result.Ready),
+		ManagementUI:              managementUI,
+		Perses:                    persesStatus,
+		IdentityDashboardEligible: identityBackendAvailable,
+		tlsStatus:                 tlsStatus,
+		tlsErr:                    tlsErr,
+		serviceTLSErr:             serviceTLSErr,
 	}, nil
 }
