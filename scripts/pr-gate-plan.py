@@ -1548,7 +1548,8 @@ def targeted_plan(diff, requirements, mapping, repository='.',
               path.startswith('scripts/verify-') or
               (path.startswith('scripts/') and path.endswith(('.py', '.sh', '.json', '.md'))) or
               path in ('AGENTS.md', '.github/copilot-instructions.md') or
-              path.startswith('evidence-r27/') or path.startswith('evidence/')):
+              path.startswith('evidence-r27/') or path.startswith('evidence/') or
+              path.startswith('baseharbor-plan/evidence/')):
             area = 'ci-executor'
             require(CI_CHECKS)
         else:
