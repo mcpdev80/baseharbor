@@ -14,8 +14,10 @@ import (
 )
 
 type servicePKIFake struct {
-	inputs []string
-	args   []string
+	inputs        []string
+	args          []string
+	loginFailures []error
+	loginCalls    int
 }
 
 func (f *servicePKIFake) ExecProject(_ context.Context, _, _, _, _ string, args ...string) (string, error) {
@@ -29,6 +31,10 @@ func (f *servicePKIFake) ExecProjectInput(_ context.Context, _, _, _ string, inp
 	f.inputs = append(f.inputs, string(input))
 	switch {
 	case strings.Contains(joined, "auth/approle/login"):
+		f.loginCalls++
+		if index := f.loginCalls - 1; index < len(f.loginFailures) && f.loginFailures[index] != nil {
+			return "", f.loginFailures[index]
+		}
 		return `{"auth":{"client_token":"manager-token"}}`, nil
 	case strings.Contains(joined, "sys/leader"):
 		return "true\n", nil
@@ -40,6 +46,44 @@ func (f *servicePKIFake) ExecProjectInput(_ context.Context, _, _, _ string, inp
 		return `{"data":{}}`, nil
 	default:
 		return "", nil
+	}
+}
+
+func TestServiceIssuerTrustBundleRetriesTransientAppRoleTransportErrors(t *testing.T) {
+	for _, transient := range []string{
+		"Error writing data to auth/approle/login: EOF",
+		"write: connection reset by peer",
+	} {
+		t.Run(transient, func(t *testing.T) {
+			files := servicePKITestFiles(t)
+			fake := &servicePKIFake{loginFailures: []error{
+				errors.New(transient), errors.New(transient), errors.New(transient), errors.New(transient),
+			}}
+			trust, err := NewServiceIssuer(fake, files).TrustBundle(context.Background())
+			if err != nil {
+				t.Fatalf("TrustBundle() after transient AppRole transport errors: %v", err)
+			}
+			if trust.IssuerReference != serviceIssuerReference || len(trust.PEM) == 0 {
+				t.Fatalf("TrustBundle() = %+v, want active OpenBao CA", trust)
+			}
+			if fake.loginCalls != 5 {
+				t.Fatalf("AppRole login calls = %d, want 5 (four transient failures then success)", fake.loginCalls)
+			}
+		})
+	}
+}
+
+func TestServiceIssuerTrustBundleDoesNotRetryAuthenticationFailure(t *testing.T) {
+	files := servicePKITestFiles(t)
+	fake := &servicePKIFake{loginFailures: []error{
+		errors.New("Error writing data to auth/approle/login: Code: 400, invalid role_id or secret_id"),
+	}}
+	_, err := NewServiceIssuer(fake, files).TrustBundle(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "Code: 400") {
+		t.Fatalf("TrustBundle() error = %v, want original authentication failure", err)
+	}
+	if fake.loginCalls != 1 {
+		t.Fatalf("AppRole login calls = %d, want fail-fast after 1", fake.loginCalls)
 	}
 }
 

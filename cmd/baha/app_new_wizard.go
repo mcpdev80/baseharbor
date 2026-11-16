@@ -30,7 +30,18 @@ type guidedStackSelection struct {
 	Created    bool
 }
 
-var appNewLifecycleExecutor = executeApplicationApplyLifecycle
+func appNewLifecycleArgs(ctx context.Context, args []string) (context.Context, []string) {
+	confirm, remaining := stripConfirmCandidateOverride(args)
+	if confirm != "" {
+		ctx = withCandidateConsentDigest(ctx, confirm)
+	}
+	return ctx, remaining
+}
+
+var appNewLifecycleExecutor = func(ctx context.Context, store application.Store, args []string, out, errOut io.Writer) error {
+	ctx, remaining := appNewLifecycleArgs(ctx, args)
+	return executeApplicationApplyLifecycle(ctx, store, remaining, out, errOut)
+}
 
 func runAppNewWizard(ctx context.Context, out, errOut io.Writer) error {
 	reader := bufio.NewReader(appNewInput)
@@ -108,11 +119,15 @@ func runAppNewWizard(ctx context.Context, out, errOut io.Writer) error {
 			if err != nil {
 				return nil, nil, err
 			}
-			guided, err := readGuidedApplicationContext(refreshCtx, projected)
+			// One fresh native-provider observation must back both the displayed
+			// guided read and its consent plan. Re-observing during a single
+			// refresh needlessly serializes expensive Podman inspections.
+			observations := observeApplicationProviderFacts(refreshCtx, projected)
+			guided, err := readGuidedApplicationContextWithFacts(refreshCtx, projected, observations)
 			if err != nil {
 				return nil, nil, err
 			}
-			plan, err := buildResolvedApplicationPlan(refreshCtx, projected)
+			plan, err := buildResolvedApplicationPlanWithFacts(refreshCtx, projected, observations)
 			if err != nil {
 				return nil, nil, err
 			}

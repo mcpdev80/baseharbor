@@ -73,6 +73,17 @@ class ContractCheckTests(unittest.TestCase):
             self.assertFalse(integration.configure_runtime_environment('integration/static/public-contracts'))
             self.assertEqual(dict(os.environ), {})
 
+    def test_core_bootstrap_gate_keeps_both_machine_roles_on_both_runtimes(self):
+        source = pathlib.Path(__file__).resolve().parents[1] / 'cmd/baha/core_installation_runtime_test.go'
+        text = source.read_text()
+        self.assertIn('roles := []coreinstallation.MachineRole{coreinstallation.Development, coreinstallation.Deployment}', text)
+        self.assertIn('approvedNativeFixtureCleanup(t, cleanupCtx, io.Discard)', text)
+        for runtime in ['docker', 'podman']:
+            gate = 'integration/' + runtime + '/core-bootstrap'
+            selections = integration.CHECKS[gate]
+            acceptance = [args for args in selections if '^TestCoreOnlyBootstrapRuntimeAcceptance$' in args]
+            self.assertEqual(acceptance, [['./cmd/baha', '-run', '^TestCoreOnlyBootstrapRuntimeAcceptance$', '-timeout', '28m']])
+
     def test_coreless_gates_require_selected_runtime_and_enable_real_tests(self):
         for runtime in ['docker', 'podman']:
             gate = 'integration/' + runtime + '/coreless-lifecycle'

@@ -23,14 +23,19 @@ class RuntimeWorkflowRoutingTests(unittest.TestCase):
     def test_reused_path_is_only_a_report_step(self):
         text = WORKFLOW.read_text()
         self.assertIn("if: inputs.reuse_from != ''", text)
-        self.assertIn("This step does not execute native tests", text)
+        self.assertIn("Reused native gate", text)
+        self.assertIn("if: inputs.evidence_reuse && inputs.reuse_from != ''", text)
 
     def test_all_execution_steps_require_no_reuse(self):
         text = WORKFLOW.read_text().split("jobs:\n", 1)[1].split("\n'on':", 1)[0]
         blocks = re.split(r"(?m)^    - (?:name|uses): ", text)[1:]
         self.assertGreaterEqual(len(blocks), 15)
-        self.assertIn("if: inputs.reuse_from != ''", blocks[0])
-        for index, block in enumerate(blocks[1:], 1):
+        executable = [block for block in blocks
+                      if not any(label in block for label in (
+                          "Download prior gate evidence", "Validate prior gate evidence",
+                          "Report previously qualified", "Upload passed gate evidence",
+                          "Upload propagated gate evidence", "Create passed gate evidence"))]
+        for index, block in enumerate(executable):
             with self.subTest(step=index):
                 # Multiline conditions still begin with the same safe predicate.
                 self.assertRegex(block, r"(?m)^      if: inputs.reuse_from == ''(?: && .+)?$")
