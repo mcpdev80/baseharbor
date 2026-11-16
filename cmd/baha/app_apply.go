@@ -49,6 +49,13 @@ func appApplyCommand(store application.Store) *cli.Command {
 			if target.AccessProvider != "" && target.AccessProvider != "local" {
 				return remoteApplicationApplyCLI(ctx, target, args, out, errOut)
 			}
+			args, format, err := parseReadOutputArgs(args, "app apply")
+			if err != nil {
+				return err
+			}
+			if format == outputJSON {
+				ctx = machineNoninteractiveContext(ctx)
+			}
 			filtered, skip := stripMemoryPreflightOverride(args)
 			ctx = withMemoryPreflightOverride(ctx, skip)
 			confirm, rest := stripConfirmCandidateOverride(filtered)
