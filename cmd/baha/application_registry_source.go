@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"os/exec"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/orgconfig"
@@ -481,8 +483,7 @@ type localRuntimeImageInspector interface {
 }
 
 func localRuntimeImagePresent(ctx context.Context, compose bhruntime.RuntimeProvider, reference string) bool {
-	repository, _ := splitReference(reference)
-	if repository != "localhost" && !strings.HasPrefix(repository, "localhost/") {
+	if !isLocalRuntimeImageReference(reference) {
 		return false
 	}
 	inspector, ok := compose.(localRuntimeImageInspector)
@@ -491,6 +492,29 @@ func localRuntimeImagePresent(ctx context.Context, compose bhruntime.RuntimeProv
 	}
 	imageID, err := inspector.DirectOutput(ctx, "image", "inspect", "--format", "{{.Id}}", reference)
 	return err == nil && strings.TrimSpace(imageID) != ""
+}
+
+// isLocalRuntimeImageReference recognizes localhost image references with or
+// without a registry port, such as localhost/team/app:tag and
+// localhost:5000/team/app:tag. Other loopback and registry hosts remain remote.
+func isLocalRuntimeImageReference(reference string) bool {
+	repository, _ := splitReference(reference)
+	if repository == "localhost" {
+		return true
+	}
+	authority, _, ok := strings.Cut(repository, "/")
+	if !ok {
+		return false
+	}
+	if authority == "localhost" {
+		return true
+	}
+	host, port, err := net.SplitHostPort(authority)
+	if err != nil || host != "localhost" {
+		return false
+	}
+	portNumber, err := strconv.Atoi(port)
+	return err == nil && portNumber > 0 && portNumber <= 65535
 }
 
 // canonicalArtifactRepository normalizes a resolved reference to the canonical

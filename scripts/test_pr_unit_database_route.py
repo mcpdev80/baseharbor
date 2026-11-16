@@ -10,8 +10,9 @@ class PRUnitDatabaseRouteTests(unittest.TestCase):
     def test_go_unit_check_uses_ephemeral_db_only_in_selected_check(self):
         workflow = (ROOT / ".github/workflows/ci.yml").read_text()
         self.assertIn("go-unit-tests) bash scripts/pr-unit-database.sh ;;", workflow)
-        self.assertEqual(2, workflow.count("bash scripts/pr-unit-database.sh"))
+        self.assertEqual(3, workflow.count("bash scripts/pr-unit-database.sh"))
         self.assertIn("pr_unit_shards:", workflow)
+        self.assertIn("main_release_go_shards:", workflow)
         self.assertIn("unit_scope:", workflow)
         self.assertIn("cli-0', 'cli-1', 'cli-2', 'cli-3", workflow)
         self.assertIn("Require complete selected Go shard coverage", workflow)
