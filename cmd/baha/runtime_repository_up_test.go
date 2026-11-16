@@ -55,3 +55,16 @@ func TestRepositoryUpCoreOptionsCannotInitializeApplicationSource(t *testing.T) 
 		t.Fatalf("rejected management option initialized authored source: %v", err)
 	}
 }
+
+func TestRootUpCandidateConsentIsAvailableToRepositoryApply(t *testing.T) {
+	const digest = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+	opts, err := parseRuntimeUpOptions([]string{"--confirm-candidate", digest})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctx := withRuntimeUpCandidateConsent(context.Background(), opts)
+	if got := candidateConsentOverride(ctx); got != digest {
+		t.Fatalf("repository apply received candidate consent %q, want %q", got, digest)
+	}
+}

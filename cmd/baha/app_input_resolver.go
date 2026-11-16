@@ -533,6 +533,10 @@ func runtimeUpCommandWithInputResolver(ctx context.Context, args []string, out, 
 	if err != nil {
 		return err
 	}
+	// Preserve an explicit candidate confirmation across the root `up`
+	// orchestration path. Repository apply may happen later, after guided Core
+	// setup, and must receive this same operator-approved digest.
+	ctx = withRuntimeUpCandidateConsent(ctx, opts)
 	restoreEnvironment := pushApplicationEnvironmentOverride(opts.Environment)
 	defer restoreEnvironment()
 	ctx = withMemoryPreflightOverride(ctx, opts.SkipMemoryPreflight)
@@ -668,4 +672,11 @@ func runtimeUpCommandWithInputResolver(ctx context.Context, args []string, out, 
 		return writeJSON(destination, status)
 	}
 	return nil
+}
+
+// withRuntimeUpCandidateConsent carries the root `up` confirmation through
+// guided Core setup to the later repository apply. appApplyCommand reads this
+// value from the context when it is invoked in-process with no CLI arguments.
+func withRuntimeUpCandidateConsent(ctx context.Context, opts runtimeUpOptions) context.Context {
+	return withCandidateConsentDigest(ctx, opts.CandidateConsent)
 }
