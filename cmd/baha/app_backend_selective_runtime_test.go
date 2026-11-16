@@ -181,7 +181,7 @@ func qualifySelectiveBackendLifecycle(t *testing.T, service string) {
 			if os.Getenv("BASEHARBOR_BACKEND_PLACEMENT_ACCEPTANCE") == "1" {
 				qualifyBackendPlacementRoundTrip(t, ctx, provider, resolved, inventory, service, originalEnv, originalConsumer, volumes)
 			}
-			qualifySharedBackendConsumers(t, ctx, provider, resolved, inventory, service, originalEnv, originalConsumer, volumes)
+			qualifySharedBackendConsumers(t, ctx, provider, resolved, inventory, service, originalEnv, originalConsumer, volumes, baselineIDs)
 		}
 		if data, err := os.ReadFile("baseharbor.yaml"); err != nil || strings.Contains(string(data), initialized.Manifest.ApplicationID) {
 			t.Fatal("backend lifecycle wrote a developer-supplied ID into authored intent")
