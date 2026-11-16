@@ -150,15 +150,14 @@ class V0427PrGateDedupRegression(unittest.TestCase):
             context_target_branch='develop',
             conservative_fallback=True,
         )
-        # The reviewed openbao candidate resolves with the mandatory OpenBao
-        # bootstrap checks plus the conservative Go unit/vet/build fallback; the
-        # reviewed exact-path gates (atomic/docker|podman/lifecycle) are live.
+        # The reviewed OpenBao candidate resolves with the mandatory package
+        # check plus broad Go fallback. Its legacy lifecycle hint is not a
+        # declared gate owner, so no runtime gate is guessed.
         self.assertEqual('resolved', result['coverage_status'])
         ids = {row['id'] for row in result['required_validation_checks']}
         self.assertIn('openbao-package-tests', ids)
         self.assertIn('go-unit-tests', ids)
-        self.assertEqual({'atomic/docker/lifecycle', 'atomic/podman/lifecycle'},
-                         set(result['selected_gates']))
+        self.assertEqual([], result['selected_gates'])
 
     def test_unknown_path_selects_conservative_fallback_under_v0427(self):
         diff = self._valid_diff(

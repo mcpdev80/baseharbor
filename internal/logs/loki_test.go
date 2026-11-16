@@ -157,12 +157,12 @@ func TestLokiProviderRuntimeDoesNotMountContainerSocket(t *testing.T) {
 		t.Fatal(err)
 	}
 	compose := string(data)
-	for _, forbidden := range []string{"docker.sock", "podman.sock", "privileged: true", "network_mode: host", "user:", "provider-volume-init:"} {
+	for _, forbidden := range []string{"docker.sock", "podman.sock", "privileged: true", "network_mode: host", "provider-volume-init:"} {
 		if strings.Contains(compose, forbidden) {
 			t.Fatalf("provider runtime contains forbidden isolation bypass %q:\n%s", forbidden, compose)
 		}
 	}
-	for _, required := range []string{"read_only: true", "cap_drop:", "no-new-privileges:true", "127.0.0.1:"} {
+	for _, required := range []string{"user: \"473:473\"", "read_only: true", "cap_drop:", "no-new-privileges:true", "127.0.0.1:"} {
 		if !strings.Contains(compose, required) {
 			t.Fatalf("provider runtime missing hardening %q:\n%s", required, compose)
 		}
@@ -311,6 +311,7 @@ func TestLokiConfigBindsIPv4ForLoopbackPublishing(t *testing.T) {
 
 func TestPodmanJournalConfigAcceptsComposeAndQuadletWorkloadNames(t *testing.T) {
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
+	t.Setenv("BASEHARBOR_SYSTEMD_JOURNAL_GID", "999")
 	m := application.New("demo", "dev", false, false, false)
 	files, err := logs.EnsureProviderFilesForMode(context.Background(), serviceissuer.New(t), m, bhruntime.LogCollectionJournald)
 	if err != nil {
@@ -327,6 +328,20 @@ func TestPodmanJournalConfigAcceptsComposeAndQuadletWorkloadNames(t *testing.T) 
 	} {
 		if !strings.Contains(config, want) {
 			t.Fatalf("Podman Alloy journal config missing %q:\n%s", want, config)
+		}
+	}
+	compose, err := os.ReadFile(files.Compose)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		`user: "473:473"`,
+		`- /var/log/journal:/var/log/journal:ro`,
+		`group_add: ["470"]`,
+		`x-baseharbor-podman-gid-map: "+g470:@999:1"`,
+	} {
+		if !strings.Contains(string(compose), want) {
+			t.Fatalf("Podman journal Compose missing %q:\n%s", want, compose)
 		}
 	}
 }
