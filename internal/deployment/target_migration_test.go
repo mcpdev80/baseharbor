@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -150,6 +151,100 @@ func TestUIDSurvivesConfigRoundTripPreservesRoleSeparation(t *testing.T) {
 	}
 	if raw.TargetUID() != uid {
 		t.Fatalf("recovery lost the UID: %q", raw.TargetUID())
+	}
+}
+
+// TestMigrateLegacyTargetUIDsNoMutationOnSuccess proves the no-mutation
+// contract Luna required: after a successful migration the caller's in-memory
+// config (its Targets map) is byte/value-identical, while the returned
+// configuration carries the full migration. This closes the aliasing
+// side-effect where the prior shallow copy `migrated = cfg` mutated the
+// caller's Targets map as each generated UID was written back.
+func TestMigrateLegacyTargetUIDsNoMutationOnSuccess(t *testing.T) {
+	uid, _, err := MigrateTargetUID(TargetDefinition{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := Config{
+		Version: ConfigVersion,
+		Access:  map[string]AccessDefinition{"local": {Provider: "docker", Reference: "local"}},
+		Targets: map[string]TargetDefinition{
+			"alpha": {Runtime: RuntimeDefinition{Provider: "docker"}, Access: TargetAccess{Reference: "local"}},
+			"beta":  {TargetUID: uid, Runtime: RuntimeDefinition{Provider: "docker"}, Access: TargetAccess{Reference: "local"}},
+		},
+	}
+	// Snapshot the caller's definition values (and the map itself) before.
+	alphaBefore := cfg.Targets["alpha"]
+	cloneBefore := map[string]TargetDefinition{}
+	for name, def := range cfg.Targets {
+		cloneBefore[name] = def
+	}
+	returned, changed, err := MigrateLegacyTargetUIDs(cfg)
+	if err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	if len(changed) != 1 || changed[0] != "alpha" {
+		t.Fatalf("expected exactly [alpha] changed, got %v", changed)
+	}
+	// The caller's config must be untouched (reflect.DeepEqual because the
+	// struct holds a map field and cannot be compared with ==).
+	if !reflect.DeepEqual(cfg.Targets["alpha"], alphaBefore) {
+		t.Fatal("caller's alpha definition was mutated by migration")
+	}
+	for name, def := range cfg.Targets {
+		if !reflect.DeepEqual(def, cloneBefore[name]) {
+			t.Fatalf("caller's Targets map entry %q was mutated by migration", name)
+		}
+	}
+	// The returned config carries the migration for alpha and is idempotent on beta.
+	gotAlpha := returned.Targets["alpha"]
+	if gotAlpha.TargetUID == "" {
+		t.Fatal("returned config did not fill alpha's UID")
+	}
+	gotBeta := returned.Targets["beta"]
+	if gotBeta.TargetUID != uid {
+		t.Fatalf("returned config lost beta's pre-existing UID: got %q want %q", gotBeta.TargetUID, uid)
+	}
+	// The returned map must be a distinct map object (no aliasing of the
+	// caller's). A deep copy of the caller's map would still be the same
+	// map reference; the fix builds a fresh map, so identity differs.
+	if &returned.Targets == &cfg.Targets {
+		t.Fatal("returned Targets map aliases the caller's map")
+	}
+}
+
+// TestMigrateLegacyTargetUIDsNoMutationOnFailure proves that a validation
+// failure returns an error AND changes nothing: the caller's config is
+// byte/value-identical after a failed migration, so a poisoned legacy
+// configuration is never partially mutated in place. A pre-existing invalid
+// TenantID makes Validate() fail closed after alpha migrates.
+func TestMigrateLegacyTargetUIDsNoMutationOnFailure(t *testing.T) {
+	uid, _, err := MigrateTargetUID(TargetDefinition{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := Config{
+		Version: ConfigVersion,
+		Access:  map[string]AccessDefinition{"local": {Provider: "docker", Reference: "local"}},
+		Targets: map[string]TargetDefinition{
+			// alpha has no UID and migrates cleanly; beta carries an invalid
+			// TenantID so Config.Validate() fails closed after the migration.
+			"alpha": {Runtime: RuntimeDefinition{Provider: "docker"}, Access: TargetAccess{Reference: "local"}},
+			"beta":  {TargetUID: uid, TenantID: "not-a-uuid", Runtime: RuntimeDefinition{Provider: "docker"}, Access: TargetAccess{Reference: "local"}},
+		},
+	}
+	before := map[string]TargetDefinition{}
+	for name, def := range cfg.Targets {
+		before[name] = def
+	}
+	_, _, err = MigrateLegacyTargetUIDs(cfg)
+	if err == nil {
+		t.Fatal("config with an invalid UID/TenantID must fail closed")
+	}
+	for name, def := range cfg.Targets {
+		if !reflect.DeepEqual(def, before[name]) {
+			t.Fatalf("caller's Targets map entry %q was mutated on failure", name)
+		}
 	}
 }
 
