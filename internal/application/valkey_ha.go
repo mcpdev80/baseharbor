@@ -198,7 +198,6 @@ func writeValkeyHAComposeServices(b *strings.Builder, m Manifest, instance strin
 		b.WriteString("    environment:\n")
 		fmt.Fprintf(b, "      VALKEY_PASSWORD: ${%s}\n", passwordKey)
 		b.WriteString("    command:\n      - sh\n      - -ec\n      - |\n")
-		writeValkeyDataPermissionPrelude(b)
 		writeValkeyPrimaryAddressBootstrap(b, primary)
 		b.WriteString("        {\n")
 		b.WriteString("          printf 'port 26379\\n'\n")
