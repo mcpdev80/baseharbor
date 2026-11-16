@@ -37,6 +37,9 @@
     "cmd/baha/app_identity_selective_runtime_test.go": [
       "integration/docker/coreless-lifecycle", "integration/podman/coreless-lifecycle"
     ],
+    "cmd/baha/app_backend_selective_runtime_test.go": [
+      "integration/docker/coreless-lifecycle", "integration/podman/coreless-lifecycle"
+    ],
     "cmd/baha/core_installation_runtime_test.go": [],
     "cmd/baha/target_test_helpers_test.go": [],
     "cmd/baha/guided_application_read_context.go": [
