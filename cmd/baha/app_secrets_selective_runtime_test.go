@@ -59,6 +59,11 @@ func runSelectiveSecretsRuntimeLifecycle(t *testing.T, shared bool) {
 		t.Fatal(err)
 	}
 	assertCorelessHost(t, ctx, provider, target)
+	baselineContainers, err := provider.ListRuntimeContainers(ctx)
+	if err != nil {
+		t.Fatal("inventory isolated Secrets runtime baseline", err)
+	}
+	baselineIDs := runtimeContainerIDSet(baselineContainers)
 	root, err := targetRuntimeStateRoot(target)
 	if err != nil {
 		t.Fatal(err)
@@ -117,8 +122,10 @@ func runSelectiveSecretsRuntimeLifecycle(t *testing.T, shared bool) {
 				t.Errorf("isolated Secrets module cleanup: %v", err)
 			}
 		}
-		if containers, err := provider.ListRuntimeContainers(cleanup); err != nil || len(containers) != 0 {
-			t.Errorf("isolated Secrets cleanup leaves containers=%d inspection=%v", len(containers), err)
+		if containers, err := provider.ListRuntimeContainers(cleanup); err != nil {
+			t.Errorf("inspect isolated Secrets cleanup: %v", err)
+		} else if created, missing := runtimeContainerBaselineDiff(containers, baselineIDs); len(created) != 0 || len(missing) != 0 {
+			t.Errorf("isolated Secrets cleanup did not preserve the runtime baseline: test-created=%v baseline-removed=%v", created, missing)
 		}
 	})
 	var originalSecret, originalEnv [32]byte
@@ -197,7 +204,7 @@ func runSelectiveSecretsRuntimeLifecycle(t *testing.T, shared bool) {
 		}
 		providerCount, brokerCount := 0, 0
 		siblingBrokerCount, siblingWorkloadCount := 0, 0
-		for _, container := range containers {
+		for _, container := range runtimeContainersNotInBaseline(containers, baselineIDs) {
 			matched := false
 			if sibling != nil {
 				files := application.RuntimeFilesFor(sibling.resolved.Store, sibling.resolved.Manifest)
