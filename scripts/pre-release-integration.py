@@ -54,9 +54,32 @@ CHECKS = {
 CORELESS_TEST_ANCHORS = {
     'cmd/baha/app_backend_selective_runtime_test.go':
         'TestSelectiveBackendCleanupPreservesRuntimeBaseline',
-    'cmd/baha/app_application_backend_runtime_test.go':
-        'TestSelectiveApplicationBackendRuntimeAddRemoveReAdd',
 }
+OPTIONAL_CORELESS_TESTS = frozenset(CORELESS_TEST_ANCHORS.values())
+
+# Each shard runs on its own CI runner and therefore its own isolated runtime
+# daemon. Keep the test list explicit so changes cannot silently omit coverage.
+CORELESS_SHARD_TESTS = {
+    'foundation': (
+        'TestCorelessFreshWorkloadRuntimeLifecycle',
+        'TestCorelessLocalProdRuntimeLifecycle',
+        'TestRenovateVolumeRecoveryRuntimeAcceptance',
+    ),
+    'identity-backend': (
+        'TestSelectiveIdentityRuntimeAddRemoveReAdd',
+        'TestSelectiveBackendRuntimeAddRemoveReAdd',
+        'TestSelectiveBackendCleanupPreservesRuntimeBaseline',
+    ),
+    'application': (
+        'TestSelectiveApplicationBackendRuntimeAddRemoveReAdd',
+        'TestSelectiveHTTPSRuntimeAddRemoveReAdd',
+        'TestSelectiveSecretsRuntimeAddRemoveReAdd',
+        'TestManagedRegisteredOTLPNativeConsumerHandoff',
+        'TestApplicationCapabilityLifecycleExistingCore',
+    ),
+}
+
+CORELESS_SHARD_NAMES = tuple(CORELESS_SHARD_TESTS)
 
 
 def coreless_anchor_checks(gate, repository=None):
@@ -71,6 +94,55 @@ def coreless_anchor_checks(gate, repository=None):
         if re.search(rf'^func {re.escape(test_name)}\(', content, re.MULTILINE):
             checks.append(['./cmd/baha', '-run', '^' + test_name + '$', '-timeout', '20m'])
     return checks
+
+
+def coreless_shard_checks(gate, shard, repository=None):
+    """Return the exact Coreless test selections owned by one runner shard."""
+    if not gate.endswith('/coreless-lifecycle'):
+        raise ValueError('shards are only supported for Coreless lifecycle gates')
+    if shard not in CORELESS_SHARD_TESTS:
+        raise ValueError('unknown Coreless lifecycle shard')
+    root = pathlib.Path('.') if repository is None else pathlib.Path(repository)
+    selections = CHECKS[gate]
+    by_test = {}
+    for selection in selections:
+        expression = selection[selection.index('-run') + 1]
+        if not (expression.startswith('^') and expression.endswith('$')):
+            raise ValueError('Coreless test catalog requires exact test names')
+        by_test[expression[1:-1]] = selection
+    for command in coreless_anchor_checks(gate, root):
+        name = command[command.index('-run') + 1][1:-1]
+        by_test[name] = command
+    selected = []
+    for test_name in CORELESS_SHARD_TESTS[shard]:
+        command = by_test.get(test_name)
+        if command is None:
+            if test_name in OPTIONAL_CORELESS_TESTS:
+                continue
+            raise ValueError(f'Coreless shard {shard} references unregistered test {test_name}')
+        selected.append(command)
+    if not selected:
+        raise ValueError(f'Coreless lifecycle shard {shard} is empty')
+    return selected
+
+
+def validate_coreless_shard_partition(gate, repository=None):
+    """Fail when a registered Coreless test is omitted or assigned twice."""
+    if not gate.endswith('/coreless-lifecycle'):
+        return
+    root = pathlib.Path('.') if repository is None else pathlib.Path(repository)
+    expected = set()
+    for selection in CHECKS[gate]:
+        expression = selection[selection.index('-run') + 1]
+        if not (expression.startswith('^') and expression.endswith('$')):
+            raise ValueError('Coreless test catalog requires exact test names')
+        expected.add(expression[1:-1])
+    for command in coreless_anchor_checks(gate, root):
+        expected.add(command[command.index('-run') + 1][1:-1])
+    assigned = [name for names in CORELESS_SHARD_TESTS.values() for name in names
+                if name in expected or name not in OPTIONAL_CORELESS_TESTS]
+    if len(assigned) != len(set(assigned)) or set(assigned) != expected:
+        raise ValueError('Coreless lifecycle shards must partition every registered test exactly once')
 
 
 def checked_tests(command, output, timeout=900):
@@ -94,6 +166,11 @@ def checked_tests(command, output, timeout=900):
         print(output.read_text(), end='')
         raise ValueError(f'contract checks failed, empty or skipped; inspect {output.name}')
     return {'command': command, 'passed': passed, 'log': output.name}
+
+
+def go_test_command(selection):
+    """Keep every native acceptance invocation race-enabled and uncached."""
+    return ['go', 'test', '-race', '-count=1', '-json', *selection]
 
 
 def configure_runtime_environment(gate):
@@ -136,14 +213,23 @@ def main():
     parser.add_argument('--demo', required=True)
     parser.add_argument('--tag', required=True)
     parser.add_argument('--output', required=True, type=pathlib.Path)
+    parser.add_argument('--shard', choices=CORELESS_SHARD_NAMES)
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
     if any(not re.fullmatch('[0-9a-f]{40}', sha) for sha in [args.candidate, args.demo]):
         raise ValueError('candidate and demo must be exact commit SHAs')
     verify_candidate_source(args.candidate)
     runtime_bootstrap = configure_runtime_environment(args.gate)
-    selections = CHECKS[args.gate] + coreless_anchor_checks(args.gate)
-    checks = [checked_tests(['go', 'test', '-race', '-count=1', '-json', *selection],
+    if args.gate.endswith('/coreless-lifecycle'):
+        if not args.shard:
+            raise ValueError('Coreless lifecycle gates require an explicit --shard')
+        validate_coreless_shard_partition(args.gate)
+        selections = coreless_shard_checks(args.gate, args.shard)
+    else:
+        if args.shard:
+            raise ValueError('--shard is only valid for Coreless lifecycle gates')
+        selections = CHECKS[args.gate]
+    checks = [checked_tests(go_test_command(selection),
                             args.output / f'check-{index}.jsonl', 1800 if runtime_bootstrap else 900)
               for index, selection in enumerate(selections)]
     verify_candidate_source(args.candidate)

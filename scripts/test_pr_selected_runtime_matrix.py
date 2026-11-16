@@ -65,16 +65,29 @@ class RuntimeMatrix(unittest.TestCase):
         self.assertIn('gate: ${{ matrix.id }}',ci)
         self.assertIn("inputs.gate == 'integration/docker/coreless-lifecycle'",targeted)
         self.assertIn("inputs.gate == 'integration/podman/coreless-lifecycle'",targeted)
+        coreless_shards=re.search(
+            r"(?ms)^  pr_selected_coreless_lifecycle_shards:\n(.*?)(?=^  [a-z0-9_]+:\n|\Z)",
+            targeted,
+        )
+        self.assertIsNotNone(coreless_shards)
+        shard_block = coreless_shards.group(1)
+        self.assertIn("shard: [foundation, identity-backend, application]", shard_block)
+        self.assertIn("fail-fast: false", shard_block)
+        self.assertIn(
+            "uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e",
+            shard_block,
+        )
+        self.assertIn('python scripts/pre-release-integration.py --gate "$GATE"', shard_block)
+        self.assertIn('--shard "${{ matrix.shard }}"', shard_block)
+        self.assertIn('bash scripts/ci-runtime-reset.sh "${{ inputs.runtime }}"', shard_block)
         coreless_job=re.search(
             r"(?ms)^  pr_selected_coreless_lifecycle:\n(.*?)(?=^  [a-z0-9_]+:\n|\Z)",
             targeted,
         )
         self.assertIsNotNone(coreless_job)
-        self.assertIn(
-            "uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e",
-            coreless_job.group(1),
-        )
-        self.assertIn('python scripts/pre-release-integration.py --gate "$GATE"',targeted)
+        self.assertIn('needs: pr_selected_coreless_lifecycle_shards', coreless_job.group(1))
+        self.assertIn('SHARDS_RESULT: ${{ needs.pr_selected_coreless_lifecycle_shards.result }}',
+                      coreless_job.group(1))
         self.assertIn('git show "$controller:scripts/pr-selected-runtime-matrix.py"',ci)
         self.assertIn('.get("integration_include",[{"id":"not-required"',ci)
         self.assertIn('.get("integration_required",False)',ci)
@@ -219,6 +232,8 @@ class PodmanBackupWorkflowRoute(unittest.TestCase):
             expression = expression.replace('&&', ' and ').replace('||', ' or ')
             expression = re.sub(r'!(?!=)', 'not ', expression)
             if eval(expression, {'__builtins__': {},
+                                 'always': lambda: True,
+                                 'cancelled': lambda: False,
                                  'startsWith': lambda value, prefix: value.startswith(prefix),
                                  'contains': lambda value, part: part in value}):
                 selected.append(name)

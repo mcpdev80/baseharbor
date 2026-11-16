@@ -158,8 +158,6 @@ class CoverageCatalogTests(unittest.TestCase):
             for gate in selected:
                 self.assertEqual(
                     [["./cmd/baha", "-run", "^TestSelectiveBackendCleanupPreservesRuntimeBaseline$",
-                      "-timeout", "20m"],
-                     ["./cmd/baha", "-run", "^TestSelectiveApplicationBackendRuntimeAddRemoveReAdd$",
                       "-timeout", "20m"]],
                     integration.coreless_anchor_checks(gate, temporary))
 
