@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/delivery"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -31,8 +32,21 @@ func qualifyActualLocalStdioWorkloadAuthority(t *testing.T, ctx context.Context,
 		t.Fatal("actual local stdio transport did not initialize")
 	}
 	defer session.Close()
+	resolved, err := resolveApplication(ctx, application.Store{}, nil, "plan")
+	if err != nil {
+		t.Fatal(err)
+	}
+	submission, _ := candidateSubmissionForResolvedApp(ctx, resolved)
+	confirmCandidate := delivery.CandidateConsentDigest(submission)
+	if confirmCandidate == "" {
+		t.Fatal("actual local stdio apply lacks an exact candidate consent digest")
+	}
 	for _, tool := range []string{"baseharbor.plan", "baseharbor.apply", "baseharbor.status", "baseharbor.doctor"} {
-		callMCPAcceptanceTool(t, ctx, session, tool, map[string]any{"target": target.Name, "environment": manifest.Environment, "name": manifest.Name})
+		arguments := map[string]any{"target": target.Name, "environment": manifest.Environment, "name": manifest.Name}
+		if tool == "baseharbor.apply" {
+			arguments["confirm_candidate"] = confirmCandidate
+		}
+		callMCPAcceptanceTool(t, ctx, session, tool, arguments)
 	}
 	t.Log("actual local stdio prod plan/apply/status/doctor succeeded on the owned rootless Target without an OIDC login or management bootstrap")
 }
