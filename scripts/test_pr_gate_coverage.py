@@ -115,15 +115,16 @@ class CoverageCatalogTests(unittest.TestCase):
         self.assertEqual(["atomic/podman/data-capabilities"], selected)
         self.assertEqual([], unresolved)
 
-    def test_selective_identity_runtime_test_has_executable_docker_lifecycle_gate(self):
+    def test_selective_identity_runtime_test_has_both_executable_lifecycle_gates(self):
         current = json.loads((ROOT / "pr-gate-coverage.json").read_text())
         selected, unresolved = coverage_module.resolve_covered_gates(
             ["cmd/baha/app_identity_selective_runtime_test.go"], current)
-        self.assertEqual(["atomic/docker/lifecycle"], selected)
+        self.assertEqual(["atomic/docker/lifecycle", "atomic/podman/lifecycle"], selected)
         self.assertEqual([], unresolved)
         component = next(row for row in current["components"]
                          if row["path"] == "cmd/baha/app_identity_selective_runtime_test.go")
-        self.assertEqual(["source.gate.atomic.docker.lifecycle"], component["surfaces"])
+        self.assertEqual(["source.gate.atomic.docker.lifecycle",
+                          "source.gate.atomic.podman.lifecycle"], component["surfaces"])
 
     def test_unknown_package_is_returned_for_conservative_fallback(self):
         selected, unresolved = coverage_module.resolve_covered_gates(
@@ -189,6 +190,12 @@ class CoverageCatalogTests(unittest.TestCase):
             with self.subTest(path=path):
                 selected, _ = coverage_module.resolve_covered_gates([path], current)
                 expected = set(expected)
+                # The full-release impact map names the two coreless integration
+                # jobs, while PR CI executes this changed acceptance test through
+                # the corresponding native lifecycle gates.
+                if path == "cmd/baha/app_identity_selective_runtime_test.go":
+                    expected = {gate.replace("integration/", "atomic/").replace(
+                        "/coreless-lifecycle", "/lifecycle") for gate in expected}
                 expected = {gate for gate in expected
                             if not (gate.startswith(("atomic/podman/", "integration/podman/")) and
                                     gate.replace("/podman/", "/docker/") in expected)}
@@ -280,7 +287,8 @@ class CoverageCatalogTests(unittest.TestCase):
                                     "GITHUB_REPOSITORY": "mcpdev80/baseharbor",
                                     "GITHUB_BASE_REF": "develop"}, text=True)
             plan_result = json.loads(result)
-            self.assertEqual(["atomic/docker/lifecycle"], plan_result["selected_gates"])
+            self.assertEqual(["atomic/docker/lifecycle", "atomic/podman/lifecycle"],
+                             plan_result["selected_gates"])
 
     def test_legacy_app_core_requirement_keeps_only_declared_narrow_gates(self):
         requirements = json.loads((ROOT / "release-requirements.json").read_text())
