@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"os"
 	"strings"
 	"testing"
 
@@ -218,5 +219,56 @@ func TestRootlessSetupContextRestoreFailureIsReported(t *testing.T) {
 	}
 	if len(called) < 2 || called[len(called)-1] != "docker context use default" {
 		t.Fatalf("context was not restored on error: %v", called)
+	}
+}
+
+func TestRootlessSudoUsesControllingTTYNotBufferedInput(t *testing.T) {
+	readTTY, writeTTY, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer writeTTY.Close()
+	opened := false
+	cmd, closeTTY, err := newRootlessSetupCommand(context.Background(), "sudo",
+		func(path string, flags int, mode os.FileMode) (*os.File, error) {
+			opened = true
+			if path != "/dev/tty" || flags != os.O_RDWR {
+				t.Fatalf("unexpected terminal open: %q %d", path, flags)
+			}
+			return readTTY, nil
+		}, "apt-get", "install", "-y", "uidmap")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !opened || cmd.Stdin != readTTY {
+		t.Fatalf("sudo must use the controlling TTY file, not an io.Reader copy: %T", cmd.Stdin)
+	}
+	closeTTY()
+	if _, err := readTTY.Stat(); !errors.Is(err, os.ErrClosed) {
+		t.Fatalf("sudo controlling terminal was not closed: %v", err)
+	}
+}
+
+func TestRootlessSudoWithoutControllingTTYFailsClosed(t *testing.T) {
+	cmd, closeTTY, err := newRootlessSetupCommand(context.Background(), "sudo",
+		func(string, int, os.FileMode) (*os.File, error) { return nil, os.ErrNotExist }, "apt-get", "install", "-y", "uidmap")
+	if err == nil || cmd != nil || closeTTY != nil || !strings.Contains(err.Error(), "/dev/tty") {
+		t.Fatalf("missing controlling TTY must fail before sudo: cmd=%v err=%v", cmd, err)
+	}
+}
+
+func TestRootlessUserCommandsUseDirectStdinNoExtraReader(t *testing.T) {
+	opened := false
+	cmd, done, err := newRootlessSetupCommand(context.Background(), "systemctl",
+		func(string, int, os.FileMode) (*os.File, error) {
+			opened = true
+			return nil, errors.New("unexpected privileged terminal access")
+		}, "--user", "start", "docker")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer done()
+	if opened || cmd.Stdin != os.Stdin {
+		t.Fatalf("unprivileged command should inherit original stdin file; got %T", cmd.Stdin)
 	}
 }
