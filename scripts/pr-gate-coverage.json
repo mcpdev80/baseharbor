@@ -1333,7 +1333,10 @@
         "TestApprovedRootlessSetupCommandSequence",
         "TestRootlessSetupPartialFailuresNeverRunUnapprovedFallback",
         "TestRootlessSetupMissingUIDMapAfterInstallFailsClosed",
-        "TestRootlessSetupContextRestoreFailureIsReported"
+        "TestRootlessSetupContextRestoreFailureIsReported",
+        "TestRootlessSudoUsesControllingTTYNotBufferedInput",
+        "TestRootlessSudoWithoutControllingTTYFailsClosed",
+        "TestRootlessUserCommandsUseDirectStdinNoExtraReader"
       ]
     },
     {
