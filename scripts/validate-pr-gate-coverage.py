@@ -11,6 +11,7 @@ import sys
 ROOT = Path(__file__).resolve().parent
 SCHEMA = "baseharbor.pr-gate-coverage/v1"
 SURFACE_RE = re.compile(r"^[a-z][a-z0-9_.-]*$")
+TEST_NAME_RE = re.compile(r"^Test[A-Za-z0-9_]+$")
 
 
 def resolve_covered_gates(changed_paths: list[str], coverage: dict) -> tuple[list[str], list[str]]:
@@ -173,6 +174,14 @@ def validate(coverage: dict, requirements: dict) -> list[str]:
                 errors.append(f"component {component_id!r} references undeclared surface {surface!r}")
             else:
                 component_surfaces.add(surface)
+        if "runtime_specific" in component and type(component["runtime_specific"]) is not bool:
+            errors.append(f"component {component_id!r} runtime_specific must be boolean")
+        if "required_test_names" in component:
+            names = component["required_test_names"]
+            if (not isinstance(names, list) or not names or
+                    any(not isinstance(name, str) or not TEST_NAME_RE.fullmatch(name)
+                        for name in names) or len(names) != len(set(names))):
+                errors.append(f"component {component_id!r} required_test_names must be unique Go test names")
 
     seen_gates: set[str] = set()
     gate_surfaces: set[str] = set()

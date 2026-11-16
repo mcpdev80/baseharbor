@@ -1243,7 +1243,8 @@
       "surfaces": [
         "source.gate.atomic.podman.lifecycle"
       ],
-      "runtime_specific": true
+      "runtime_specific": true,
+      "required_test_names": ["TestSelectedStopAcceptsPinnedContainerName"]
     },
     {
       "id": "runtime.podman-service-stop-tests",
@@ -1251,7 +1252,18 @@
       "surfaces": [
         "source.gate.atomic.podman.lifecycle"
       ],
-      "runtime_specific": true
+      "runtime_specific": true,
+      "required_test_names": ["TestSelectedStopAcceptsPinnedContainerName"]
+    },
+    {
+      "id": "source.cmd.baha.app.backend.selective.runtime.test.go",
+      "path": "cmd/baha/app_backend_selective_runtime_test.go",
+      "runtime_specific": true,
+      "surfaces": [
+        "source.gate.integration.docker.coreless.lifecycle",
+        "source.gate.integration.podman.coreless.lifecycle"
+      ],
+      "required_test_names": ["TestSelectiveBackendCleanupPreservesRuntimeBaseline"]
     }
   ],
   "gates": [

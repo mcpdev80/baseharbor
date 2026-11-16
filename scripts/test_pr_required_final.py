@@ -52,6 +52,18 @@ class FinalChecks(unittest.TestCase):
         self.needs['pr_consumer_pins'] = {'result': 'success'}
         self.assertEqual([], final.verify(self.plan, self.needs))
 
+    def test_coreless_gates_require_selected_integration_executor(self):
+        self.plan['deferred_integration_gates'] = [
+            'integration/docker/coreless-lifecycle',
+            'integration/podman/coreless-lifecycle']
+        self.assertTrue(final.verify(self.plan, self.needs))
+        self.needs['pr_selected_integration'] = {'result': 'success'}
+        self.assertEqual([], final.verify(self.plan, self.needs))
+        self.needs['pr_selected_integration']['result'] = 'skipped'
+        self.assertTrue(final.verify(self.plan, self.needs))
+        self.plan['deferred_integration_gates'].append('integration/unknown')
+        self.assertTrue(final.verify(self.plan, self.needs))
+
     def test_unknown_empty_unresolved_and_stale_are_not_success(self):
         for change in ({'selected_gates': ['ha/docker/data']},
                        {'required_validation_checks': []},

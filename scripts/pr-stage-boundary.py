@@ -10,6 +10,10 @@ import json
 from pathlib import Path
 
 CROSS_REPO_STATIC = "integration/static/public-contracts"
+CORELESS_LIFECYCLE_GATES = {
+    "integration/docker/coreless-lifecycle",
+    "integration/podman/coreless-lifecycle",
+}
 
 
 def stage(plan):
@@ -29,7 +33,7 @@ def stage(plan):
         raise ValueError("no independently executable PR validation checks")
     for gate in gates:
         parts = gate.split("/")
-        if gate != CROSS_REPO_STATIC and not (
+        if gate not in (CROSS_REPO_STATIC, *CORELESS_LIFECYCLE_GATES) and not (
             len(parts) == 3 and parts[0] == "atomic" and parts[1] in ("docker", "podman")
         ):
             raise ValueError("unclassified gate cannot be deferred: " + gate)

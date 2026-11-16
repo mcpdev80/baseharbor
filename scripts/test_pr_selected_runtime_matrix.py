@@ -35,6 +35,29 @@ class RuntimeMatrix(unittest.TestCase):
                          [r["id"] for r in result["include"]])
         self.assertEqual([],result["unsupported"])
 
+    def test_coreless_integration_gates_dispatch_exact_runtime_jobs(self):
+        gates=["integration/docker/coreless-lifecycle", "integration/podman/coreless-lifecycle"]
+        result=module.select({"selected_gates":gates},self.catalog)
+        self.assertEqual(gates,[row["id"] for row in result["integration_include"]])
+        self.assertEqual(["docker", "podman"],
+                         [row["runtime"] for row in result["integration_include"]])
+        self.assertTrue(result["integration_required"])
+        self.assertFalse(result["required"])
+        self.assertEqual([],result["unsupported"])
+        root=Path(__file__).resolve().parent.parent
+        ci=(root/".github/workflows/ci.yml").read_text()
+        targeted=(root/".github/workflows/targeted-integration.yml").read_text()
+        self.assertIn("matrix: ${{ fromJSON(needs.pr_plan.outputs.integration_matrix) }}",ci)
+        self.assertIn("uses: ./.github/workflows/targeted-integration.yml",ci)
+        self.assertIn('ref: ${{ github.sha }}',ci)
+        self.assertIn('gate: ${{ matrix.id }}',ci)
+        self.assertIn("inputs.gate == 'integration/docker/coreless-lifecycle'",targeted)
+        self.assertIn("inputs.gate == 'integration/podman/coreless-lifecycle'",targeted)
+        self.assertIn('python scripts/pre-release-integration.py --gate "$GATE"',targeted)
+        self.assertIn('git show "$controller:scripts/pr-selected-runtime-matrix.py"',ci)
+        self.assertIn('.get("integration_include",[{"id":"not-required"',ci)
+        self.assertIn('.get("integration_required",False)',ci)
+
     def test_three_native_gates_all_scheduled_without_parallel_cap(self):
         gates=["atomic/docker/backup-restore","atomic/podman/backup-restore","atomic/docker/lifecycle"]
         result=module.select({"selected_gates":gates},self.catalog)
@@ -58,18 +81,14 @@ class RuntimeMatrix(unittest.TestCase):
 
     def test_executor_job_fetches_the_source_used_by_runtime_regressions(self):
         workflow=(Path(__file__).resolve().parent.parent/".github/workflows/ci.yml").read_text()
-        match=re.search(r'git show ([0-9a-f]{40}):scripts/pr-selected-runtime-matrix\.py',workflow)
-        block=workflow.split('            ci-executor-tests|',1)[1].split('              ;;',1)[0]
-        self.assertIsNotNone(match)
-        self.assertIn('git fetch --no-tags origin ' + match.group(1), block)
-        self.assertLess(block.index('git fetch --no-tags origin ' + match.group(1)),
-                        block.index('execute --check "$VALIDATION"'))
+        block=workflow.split('          git show "$controller:scripts/pr-selected-runtime-matrix.py"',1)[0]
+        self.assertIn('controller="$effective_base"',block)
+        self.assertIn('git show "$controller:scripts/pr-selected-runtime-matrix.py"',workflow)
 
     def test_actual_workflow_pinned_helper_schedules_all_three(self):
         workflow=(Path(__file__).resolve().parent.parent/".github/workflows/ci.yml").read_text()
-        match=re.search(r'git show ([0-9a-f]{40}):scripts/pr-selected-runtime-matrix\.py',workflow)
-        self.assertIsNotNone(match,"workflow must pin exact runtime helper")
-        source=subprocess.check_output(["git","show",match.group(1)+":scripts/pr-selected-runtime-matrix.py"],text=True)
+        self.assertIn('git show "$controller:scripts/pr-selected-runtime-matrix.py"',workflow)
+        source=Path(__file__).with_name("pr-selected-runtime-matrix.py").read_text()
         gates=["atomic/docker/backup-restore","atomic/podman/backup-restore","atomic/docker/lifecycle"]
         with tempfile.TemporaryDirectory() as folder:
             root=Path(folder)

@@ -51,6 +51,25 @@ CHECKS = {
         ['./internal/machinehttp'], ['./contracts', '-run', '^(TestGeneratedTerminal|TestTargetAccessWire)']],
 }
 
+CORELESS_TEST_ANCHORS = {
+    'cmd/baha/app_backend_selective_runtime_test.go':
+        'TestSelectiveBackendCleanupPreservesRuntimeBaseline',
+}
+
+
+def coreless_anchor_checks(gate, repository=None):
+    """Run a mapped Go test anchor when it exists in this candidate."""
+    if not gate.endswith('/coreless-lifecycle'):
+        return []
+    root = pathlib.Path('.') if repository is None else pathlib.Path(repository)
+    checks = []
+    for source, test_name in CORELESS_TEST_ANCHORS.items():
+        path = root / source
+        content = path.read_text() if path.is_file() else ''
+        if re.search(rf'^func {re.escape(test_name)}\(', content, re.MULTILINE):
+            checks.append(['./cmd/baha', '-run', '^' + test_name + '$', '-timeout', '20m'])
+    return checks
+
 
 def checked_tests(command, output, timeout=900):
     """Reject empty or skipped selections even when go test exits successfully."""
@@ -121,9 +140,10 @@ def main():
         raise ValueError('candidate and demo must be exact commit SHAs')
     verify_candidate_source(args.candidate)
     runtime_bootstrap = configure_runtime_environment(args.gate)
+    selections = CHECKS[args.gate] + coreless_anchor_checks(args.gate)
     checks = [checked_tests(['go', 'test', '-race', '-count=1', '-json', *selection],
                             args.output / f'check-{index}.jsonl', 1800 if runtime_bootstrap else 900)
-              for index, selection in enumerate(CHECKS[args.gate])]
+              for index, selection in enumerate(selections)]
     verify_candidate_source(args.candidate)
     for check in checks:
         print('Passed ' + str(len(check['passed'])) + ' checks: ' + ' '.join(check['command']))
