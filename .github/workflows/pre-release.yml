@@ -696,7 +696,6 @@ jobs:
       && needs.source.outputs.light_docker_count != '0' }}
     strategy:
       fail-fast: false
-      max-parallel: 2
       matrix:
         include: ${{ fromJSON(needs.source.outputs.light_docker) }}
     uses: ./.github/workflows/pre-release-runtime-suite.yml
@@ -726,7 +725,6 @@ jobs:
       && needs.source.outputs.light_podman_count != '0' }}
     strategy:
       fail-fast: false
-      max-parallel: 2
       matrix:
         include: ${{ fromJSON(needs.source.outputs.light_podman) }}
     uses: ./.github/workflows/pre-release-runtime-suite.yml
@@ -776,7 +774,6 @@ jobs:
       && needs.source.outputs.heavy_docker_count != '0' }}
     strategy:
       fail-fast: false
-      max-parallel: 2
       matrix:
         include: ${{ fromJSON(needs.source.outputs.heavy_docker) }}
     uses: ./.github/workflows/pre-release-runtime-suite.yml
@@ -806,7 +803,6 @@ jobs:
       && needs.source.outputs.heavy_podman_count != '0' }}
     strategy:
       fail-fast: false
-      max-parallel: 2
       matrix:
         include: ${{ fromJSON(needs.source.outputs.heavy_podman) }}
     uses: ./.github/workflows/pre-release-runtime-suite.yml
@@ -855,7 +851,6 @@ jobs:
     timeout-minutes: 90
     strategy:
       fail-fast: false
-      max-parallel: 2
       matrix:
         runtime:
         - docker
@@ -908,7 +903,6 @@ jobs:
     timeout-minutes: 90
     strategy:
       fail-fast: false
-      max-parallel: 2
       matrix:
         runtime:
         - podman
@@ -981,7 +975,6 @@ jobs:
     - runtime_candidate
     strategy:
       fail-fast: false
-      max-parallel: 2
       matrix:
         runtime: ${{ fromJSON(needs.source.outputs.journey) }}
     runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
