@@ -32,7 +32,6 @@ func TestDashboardCatalogBuildsWithRealBackends(t *testing.T) {
 		DashboardBackendPrometheus: "prometheus-targets",
 		DashboardBackendLoki:       "loki-logs",
 		DashboardBackendTempo:      "tempo-traces",
-		DashboardBackendKeycloak:   "identity-keycloak",
 	}
 	for backend, key := range want {
 		if !catalog.HasTemplate(key) {
@@ -324,13 +323,13 @@ func TestDashboardCatalogVersionMatchesSeamPin(t *testing.T) {
 }
 
 // TestIdentityKeycloakEligibleOnlyWithRealEvidence pins the positive case for
-// the identity-keycloak dashboard: it is eligible only when the identity-
+// the keycloak-identity dashboard: it is eligible only when the identity-
 // selection witness attests a real Keycloak metric signal for an authorized
 // Target with the provider selected and the pinned release current.
 func TestIdentityKeycloakEligibleOnlyWithRealEvidence(t *testing.T) {
 	catalog := DefaultDashboardCatalog()
-	if !catalog.HasTemplate("identity-keycloak") {
-		t.Fatalf("identity-keycloak must be a shipped catalog template")
+	if !catalog.HasTemplate("keycloak-identity") {
+		t.Fatalf("keycloak-identity must be a shipped catalog template")
 	}
 	// Positive: an available witness AND the keycloak backend actually
 	// producing a real signal of the pinned release -> eligible.
@@ -338,17 +337,17 @@ func TestIdentityKeycloakEligibleOnlyWithRealEvidence(t *testing.T) {
 		DashboardBackendPrometheus: true,
 		DashboardBackendLoki:       true,
 		DashboardBackendTempo:      true,
-		DashboardBackendKeycloak:   true,
+		DashboardBackendIdentity:   true,
 	}
-	elig, err := catalog.EligibleFor("identity-keycloak", availableIdentityWitness(), SignalsWithKeycloak)
+	elig, err := catalog.EligibleFor("keycloak-identity", availableIdentityWitness(), SignalsWithKeycloak)
 	if err != nil {
 		t.Fatalf("eligibility must not error on real evidence: %v", err)
 	}
 	if !elig.Eligible {
-		t.Fatalf("identity-keycloak must be eligible with a real witness and keycloak signal: %+v", elig)
+		t.Fatalf("keycloak-identity must be eligible with a real witness and keycloak signal: %+v", elig)
 	}
-	if elig.Backend != string(DashboardBackendKeycloak) {
-		t.Fatalf("eligibility backend = %q, want %q", elig.Backend, DashboardBackendKeycloak)
+	if elig.Backend != string(DashboardBackendIdentity) {
+		t.Fatalf("eligibility backend = %q, want %q", elig.Backend, DashboardBackendIdentity)
 	}
 }
 
@@ -365,24 +364,24 @@ func TestIdentityKeycloakFailClosedWithoutRealEvidence(t *testing.T) {
 		"unauthorized":    NewIdentitySelectionWitness(true, true, true, false),
 	}
 	for name, witness := range cases {
-		elig, err := catalog.EligibleFor("identity-keycloak", witness, allBackendSignals())
+		elig, err := catalog.EligibleFor("keycloak-identity", witness, allBackendSignals())
 		if err != nil {
 			t.Fatalf("%s: eligibility must not error: %v", name, err)
 		}
 		if elig.Eligible {
-			t.Fatalf("%s: identity-keycloak must not be eligible without full real evidence: %+v", name, elig)
+			t.Fatalf("%s: keycloak-identity must not be eligible without full real evidence: %+v", name, elig)
 		}
 		if elig.Reason == "" {
-			t.Fatalf("%s: an unavailable identity-keycloak verdict must carry a concrete reason", name)
+			t.Fatalf("%s: an unavailable keycloak-identity verdict must carry a concrete reason", name)
 		}
 	}
 }
 
 // TestIdentityKeycloakRequiresOwnBackendSignal pins the per-backend gate: the
-// identity-keycloak dashboard is eligible only when its own backend (keycloak)
+// keycloak-identity dashboard is eligible only when its own backend (keycloak)
 // actually produces a real signal of the pinned release. An available identity
 // witness plus the other backends' signals but NOT the keycloak signal must
-// fail closed. This is the STOP-risk guard: identity-keycloak is a real
+// fail closed. This is the STOP-risk guard: keycloak-identity is a real
 // backend owner, never a fabricated panel.
 func TestIdentityKeycloakRequiresOwnBackendSignal(t *testing.T) {
 	catalog := DefaultDashboardCatalog()
@@ -393,12 +392,12 @@ func TestIdentityKeycloakRequiresOwnBackendSignal(t *testing.T) {
 		DashboardBackendLoki:       true,
 		DashboardBackendTempo:      true,
 	}
-	elig, err := catalog.EligibleFor("identity-keycloak", witness, signals)
+	elig, err := catalog.EligibleFor("keycloak-identity", witness, signals)
 	if err != nil {
 		t.Fatalf("eligibility must not error: %v", err)
 	}
 	if elig.Eligible {
-		t.Fatalf("identity-keycloak must not be eligible when its own keycloak signal is absent")
+		t.Fatalf("keycloak-identity must not be eligible when its own keycloak signal is absent")
 	}
 	if !containsString(elig.Reason, "keycloak") {
 		t.Fatalf("reason must name the missing keycloak backend signal, got %q", elig.Reason)
@@ -407,19 +406,19 @@ func TestIdentityKeycloakRequiresOwnBackendSignal(t *testing.T) {
 
 // TestIdentityKeycloakCannotBeForgedFromCallerStatusBoolean pins the Luna r3
 // non-forgeability witness for the identity dashboard: a caller cannot make
-// identity-keycloak available by supplying a status boolean alone. Only the
+// keycloak-identity available by supplying a status boolean alone. Only the
 // four real-evidence flags in an available witness derive a positive verdict.
 func TestIdentityKeycloakCannotBeForgedFromCallerStatusBoolean(t *testing.T) {
 	catalog := DefaultDashboardCatalog()
 	// The zero-value witness (unconstructed / not-yet-resolved fan-in) is
 	// unavailable and yields no eligible dashboard.
 	zero := IdentitySelectionWitness{}
-	elig, err := catalog.EligibleFor("identity-keycloak", zero, allBackendSignals())
+	elig, err := catalog.EligibleFor("keycloak-identity", zero, allBackendSignals())
 	if err != nil {
 		t.Fatalf("eligibility must not error on an unconstructed witness: %v", err)
 	}
 	if elig.Eligible {
-		t.Fatalf("identity-keycloak must not be available from an unconstructed witness")
+		t.Fatalf("keycloak-identity must not be available from an unconstructed witness")
 	}
 	if !containsString(elig.Reason, "caller-supplied status") {
 		t.Fatalf("the fail-closed reason must name the caller-supplied-status prohibition, got %q", elig.Reason)
