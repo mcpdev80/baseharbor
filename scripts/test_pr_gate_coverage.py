@@ -2,6 +2,8 @@
 import importlib.util
 import json
 from pathlib import Path
+import subprocess
+import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parent
@@ -104,12 +106,24 @@ class CoverageCatalogTests(unittest.TestCase):
         self.assertEqual([DOCKER], selected)
         self.assertEqual([], unresolved)
 
+    def test_podman_container_identity_changes_select_only_podman_data_gate(self):
+        current = json.loads((ROOT / "pr-gate-coverage.json").read_text())
+        selected, unresolved = coverage_module.resolve_covered_gates(
+            ["internal/runtime/container_identity.go",
+             "internal/runtime/container_identity_test.go",
+             "internal/runtime/service_retirement_test.go"], current)
+        self.assertEqual(["atomic/podman/data-capabilities"], selected)
+        self.assertEqual([], unresolved)
+
     def test_selective_identity_runtime_test_has_executable_docker_lifecycle_gate(self):
         current = json.loads((ROOT / "pr-gate-coverage.json").read_text())
         selected, unresolved = coverage_module.resolve_covered_gates(
             ["cmd/baha/app_identity_selective_runtime_test.go"], current)
         self.assertEqual(["atomic/docker/lifecycle"], selected)
         self.assertEqual([], unresolved)
+        component = next(row for row in current["components"]
+                         if row["path"] == "cmd/baha/app_identity_selective_runtime_test.go")
+        self.assertEqual(["source.gate.atomic.docker.lifecycle"], component["surfaces"])
 
     def test_unknown_package_is_returned_for_conservative_fallback(self):
         selected, unresolved = coverage_module.resolve_covered_gates(
@@ -195,7 +209,7 @@ class CoverageCatalogTests(unittest.TestCase):
         self.assertTrue(any("normalized repository-relative directory" in error for error in errors))
         self.assertTrue(any("unknown release gate" in error for error in errors))
 
-    def test_pr_plan_includes_declared_data_capabilities_gates_for_runtime_component(self):
+    def test_pr_plan_routes_podman_identity_to_its_runtime_gate(self):
         requirements = json.loads((ROOT / "release-requirements.json").read_text())
         mapping = json.loads((ROOT / "pr-gate-map-v1.json").read_text())
         changes = [{"status": "modified", "path": "internal/runtime/container_identity.go"}]
@@ -210,12 +224,63 @@ class CoverageCatalogTests(unittest.TestCase):
         }
         result = planner.plan(diff, requirements, mapping)
         self.assertEqual("resolved", result["coverage_status"])
-        self.assertIn(DOCKER, result["selected_gates"])
-        self.assertNotIn(PODMAN, result["selected_gates"])
+        self.assertNotIn(DOCKER, result["selected_gates"])
+        self.assertIn(PODMAN, result["selected_gates"])
         self.assertNotIn("atomic/podman/control-plane-recovery", result["selected_gates"])
         self.assertNotIn("atomic/podman/backup-restore", result["selected_gates"])
         self.assertNotIn("journey/podman", result["selected_gates"])
-        self.assertEqual([DOCKER], result["selected_gates"])
+        self.assertEqual([PODMAN], result["selected_gates"])
+
+    def test_pr_plan_routes_podman_container_identity_to_podman_gate(self):
+        requirements = json.loads((ROOT / "release-requirements.json").read_text())
+        mapping = json.loads((ROOT / "pr-gate-map-v1.json").read_text())
+        diff = {
+            "target_base_sha": "a" * 40, "head_sha": "b" * 40,
+            "merge_base_sha": "c" * 40, "integration_sha": "d" * 40,
+            "broad_required": False, "reasons": [],
+            "changes": [
+                {"status": "modified", "path": "internal/runtime/container_identity.go"},
+                {"status": "modified", "path": "internal/runtime/container_identity_test.go"},
+                {"status": "modified", "path": "internal/runtime/service_retirement_test.go"},
+            ],
+        }
+        result = planner.plan(diff, requirements, mapping)
+        self.assertEqual("resolved", result["coverage_status"])
+        self.assertEqual(["atomic/podman/data-capabilities"], result["selected_gates"])
+
+    def test_trusted_workflow_copies_gate_coverage_beside_planner(self):
+        workflow = (ROOT.parent / ".github/workflows/ci.yml").read_text()
+        step = workflow.split('          for policy_file in ', 1)[1].split(
+            '          done', 1)[0]
+        for policy_file in ("pr-gate-plan.py", "validate-pr-gate-coverage.py",
+                            "pr-gate-coverage.json"):
+            self.assertIn(policy_file, step)
+            self.assertIn('git show "$controller:scripts/$policy_file"', step)
+
+    def test_copied_trusted_planner_keeps_runtime_coverage(self):
+        with tempfile.TemporaryDirectory() as folder:
+            temp = Path(folder)
+            for name in ("pr-gate-plan.py", "validate-pr-gate-coverage.py",
+                         "pr-gate-coverage.json"):
+                (temp / name).write_bytes((ROOT / name).read_bytes())
+            diff = {
+                "target_base_sha": "a" * 40, "head_sha": "b" * 40,
+                "merge_base_sha": "c" * 40, "integration_sha": "d" * 40,
+                "broad_required": False, "reasons": [],
+                "changes": [{"status": "modified",
+                             "path": "cmd/baha/app_identity_selective_runtime_test.go"}],
+            }
+            diff_path = temp / "diff.json"
+            diff_path.write_text(json.dumps(diff))
+            result = subprocess.check_output([
+                "python3", str(temp / "pr-gate-plan.py"), "--diff", str(diff_path),
+                "--requirements", str(ROOT / "release-requirements.json"),
+                "--mapping", str(ROOT / "pr-gate-map-v1.json"),
+            ], cwd=ROOT.parent, env={**__import__("os").environ,
+                                    "GITHUB_REPOSITORY": "mcpdev80/baseharbor",
+                                    "GITHUB_BASE_REF": "develop"}, text=True)
+            plan_result = json.loads(result)
+            self.assertEqual(["atomic/docker/lifecycle"], plan_result["selected_gates"])
 
     def test_legacy_app_core_requirement_keeps_only_declared_narrow_gates(self):
         requirements = json.loads((ROOT / "release-requirements.json").read_text())
