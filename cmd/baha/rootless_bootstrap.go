@@ -101,15 +101,8 @@ func maybeRepairRootlessDocker(ctx context.Context, in io.Reader, out io.Writer,
 	fmt.Fprintln(out, "  - Run dockerd-rootless-setuptool.sh install --force for your user; --force allows the existing System Docker to keep running.")
 	fmt.Fprintln(out, "  - Enable and start the user-owned Docker service with systemctl --user.")
 	fmt.Fprintln(out, "  - Restore the original Docker CLI context and verify the rootless engine. Existing System Docker stays unchanged.")
-	if noInput(ctx) || !readerIsTerminal(in) {
-		return errors.New("Rootless Docker setup requires an interactive terminal and explicit approval; no system changes made")
-	}
-	approved, err := promptYesNo(orasPromptReader(in), out, "Apply these Rootless Docker setup changes?", false)
-	if err != nil {
-		return fmt.Errorf("Rootless Docker setup not approved: %w", err)
-	}
-	if !approved {
-		return errors.New("Rootless Docker setup declined; no system changes made")
+	if err := requireRootlessSetupConsent(ctx, in, out, !noInput(ctx) && readerIsTerminal(in)); err != nil {
+		return err
 	}
 	if needUIDMap {
 		if err := runRootlessSetupStep(ctx, in, out, "sudo", "apt-get", "install", "-y", "uidmap"); err != nil {
@@ -145,5 +138,22 @@ func maybeRepairRootlessDocker(ctx context.Context, in io.Reader, out io.Writer,
 		return fmt.Errorf("Rootless Docker verification returned unexpected mode/endpoint: mode=%s endpoint=%s", engine.Mode, engine.Endpoint)
 	}
 	fmt.Fprintln(out, "[OK] Rootless Docker is ready; continuing Core setup.")
+	return nil
+}
+
+
+// Approval is deliberately independent of --yes: neither unattended calls
+// nor generic CLI confirmations grant permission to modify the host.
+func requireRootlessSetupConsent(ctx context.Context, in io.Reader, out io.Writer, interactive bool) error {
+	if !interactive {
+		return errors.New("Rootless Docker setup requires an interactive terminal and explicit approval; no system changes made")
+	}
+	approved, err := promptYesNo(orasPromptReader(in), out, "Apply these Rootless Docker setup changes?", false)
+	if err != nil {
+		return fmt.Errorf("Rootless Docker setup not approved: %w", err)
+	}
+	if !approved {
+		return errors.New("Rootless Docker setup declined; no system changes made")
+	}
 	return nil
 }
