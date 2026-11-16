@@ -12,7 +12,18 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/observability"
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
+
+// dataDirForTest returns the runtime data dir the registry read uses.
+func dataDirForTest() (string, error) {
+	return bhruntime.DataDir("")
+}
+
+// dataDirForTest returns the runtime data dir the registry read uses.
+func dataDirForTest() (string, error) {
+	return bhruntimeDataDir()
+}
 
 // identityGateVmIntent is the authored intent that selects a managed Keycloak
 // identity provider with a public OAuth exposure so the identity provider is
@@ -111,15 +122,15 @@ func TestStatusResultIdentityGateVM(t *testing.T) {
 		t.Fatalf("list observability signals: %v", listErr)
 	}
 	if !realKeycloakNativeMetric(sources) {
-		var all []string
-		var kc []string
-		for _, s := range sources {
-			all = append(all, fmt.Sprintf("%s/id=%s/kind=%s/cls=%s/scope=%s/mode=%s", s.ID, s.ID, s.Kind, s.Class, s.Scope, s.Mode))
-			if s.Provider == capability.ProviderKeycloak {
-				kc = append(kc, fmt.Sprintf("%s/id=%s/kind=%s/mode=%s", s.ID, s.ID, s.Kind, s.Mode))
+		// Diagnostic: read the raw registry file to see what is actually
+		// registered for this Target.
+		var raw string
+		if dir, dErr := dataDirForTest(); dErr == nil {
+			if b, rErr := os.ReadFile(filepath.Join(dir, "observability", "signals.json")); rErr == nil {
+				raw = string(b)
 			}
 		}
-		t.Fatalf("no real keycloak-metrics native signal in registry; ALL signals (%d): %v; KEYCLOAK provider signals: %v", len(sources), all, kc)
+		t.Fatalf("no real keycloak-metrics native signal in registry; ALL signals (0 in memory): %v; RAW signals.json=%q", sources, raw)
 	}
 	result, resErr := collectApplicationStatusResult(ctx, resolved.Store, []string{"status"})
 	if resErr != nil {
