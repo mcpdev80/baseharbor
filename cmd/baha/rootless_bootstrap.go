@@ -65,7 +65,7 @@ func maybeRepairRootlessDocker(ctx context.Context, in io.Reader, out io.Writer,
 	// may legitimately resolve the active/default engine as rootful; they
 	// must never be forced through rootless repair.
 	observation, resolveErr := bhruntime.ResolveDockerEngine(targetDockerEngineContext(ctx, target), "docker")
-	if resolveErr == nil || observation.Endpoint != "unix://"+socket {
+	if resolveErr == nil || observation.Endpoint != "unix://" + socket {
 		return nil
 	}
 	socketInfo, socketErr := os.Stat(socket)
@@ -107,7 +107,7 @@ func maybeRepairRootlessDocker(ctx context.Context, in io.Reader, out io.Writer,
 			}
 		}
 	}
-	fmt.Fprintln(out, "Rootless Docker is not running at "+socket+".")
+	fmt.Fprintln(out, "Rootless Docker is not running at " + socket + ".")
 	fmt.Fprintln(out, "The selected local Docker Target requires an isolated user daemon; System Docker will not be used as a fallback.")
 	fmt.Fprintln(out, "Proposed changes (only after your separate approval):")
 	if needUIDMap {
@@ -132,7 +132,7 @@ func maybeRepairRootlessDocker(ctx context.Context, in io.Reader, out io.Writer,
 	if err != nil {
 		return fmt.Errorf("Rootless Docker setup finished but engine verification failed: %w", err)
 	}
-	if !engine.Verified || engine.Mode != "rootless" || engine.Endpoint != "unix://"+socket {
+	if !engine.Verified || engine.Mode != "rootless" || engine.Endpoint != "unix://" + socket {
 		return fmt.Errorf("Rootless Docker verification returned unexpected mode/endpoint: mode=%s endpoint=%s", engine.Mode, engine.Endpoint)
 	}
 	fmt.Fprintln(out, "[OK] Rootless Docker is ready; continuing Core setup.")
