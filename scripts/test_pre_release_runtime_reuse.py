@@ -97,6 +97,26 @@ class RuntimeReuseTests(unittest.TestCase):
         self.assertFalse(self.decide(manifest=None))
         self.assertFalse(self.decide(manifest={**MANIFEST, "status": "failure"}))
 
+    def test_release_push_is_eligible_only_for_exact_tag_branch(self):
+        self.assertTrue(reuse.run_event_eligible(
+            {"event": "push", "head_branch": "release/v0.4.27-current"}, "v0.4.27"))
+        self.assertFalse(reuse.run_event_eligible(
+            {"event": "push", "head_branch": "release/v0.4.26-current"}, "v0.4.27"))
+        self.assertFalse(reuse.run_event_eligible(
+            {"event": "push", "head_branch": "release/v0.4.27"}, "v0.4.27"))
+        self.assertFalse(reuse.run_event_eligible(
+            {"event": "push", "head_branch": "release/develop-current"}, "develop"))
+        self.assertTrue(reuse.run_event_eligible(
+            {"event": "workflow_dispatch", "head_branch": "main"}, "v0.4.27"))
+
+    def test_unavailable_or_missing_catalog_evidence_is_never_reused(self):
+        self.assertFalse(self.decide(
+            manifest={**MANIFEST, "catalog_version": "unavailable"},
+            catalog_version="unavailable"))
+        self.assertFalse(self.decide(
+            manifest={key: value for key, value in MANIFEST.items()
+                      if key != "catalog_version"}))
+
     def test_exact_gate_input_fingerprint_is_required(self):
         self.assertFalse(self.decide(fingerprint="other"))
 
