@@ -183,7 +183,7 @@ func hasRootlessSubIDRange(contents, username string) bool {
 		}
 		start, startErr := strconv.ParseUint(fields[1], 10, 32)
 		count, countErr := strconv.ParseUint(fields[2], 10, 32)
-		if startErr == nil && countErr == nil && start > 0 && count >= 65536 && start+count <= 4294967296 {
+		if startErr == nil && countErr == nil && start > 0 && count >= 65536 && start + count <= 4294967296 {
 			return true
 		}
 	}
