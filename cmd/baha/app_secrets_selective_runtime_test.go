@@ -35,7 +35,7 @@ func runSelectiveSecretsRuntimeLifecycle(t *testing.T, shared bool) {
 	ctx, cancel := context.WithTimeout(machineNoninteractiveContext(context.Background()), 15*time.Minute)
 	defer cancel()
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
-	target := configureTestTarget(t)
+	target := configureTestTargetEmpty(t)
 	cfg, err := deployment.LoadConfig()
 	if err != nil {
 		t.Fatal(err)
