@@ -121,37 +121,8 @@ func maybeRepairRootlessDocker(ctx context.Context, in io.Reader, out io.Writer,
 	if err := requireRootlessSetupConsent(ctx, in, out, !noInput(ctx) && readerIsTerminal(in)); err != nil {
 		return err
 	}
-	if needUIDMap {
-		if err := runRootlessSetupStep(ctx, in, out, "sudo", "apt-get", "install", "-y", "uidmap"); err != nil {
-			return fmt.Errorf("install required uidmap package: %w", err)
-		}
-		for _, binary := range []string{"newuidmap", "newgidmap"} {
-			if _, err := exec.LookPath(binary); err != nil {
-				return fmt.Errorf("%s remains unavailable after approved installation: %w", binary, err)
-			}
-		}
-	}
-	if needsInstall {
-		// Rootless setup changes the CLI context; restore it before verifying
-		// the originally selected Target, including when installation fails.
-		defer func() {
-			_ = runRootlessSetupStep(context.Background(), in, io.Discard, "docker", "context", "use", "default")
-		}()
-		if err := runRootlessSetupStep(ctx, in, out, "dockerd-rootless-setuptool.sh", "install", "--force"); err != nil {
-			return fmt.Errorf("configure Rootless Docker: %w", err)
-		}
-		if err := runRootlessSetupStep(ctx, in, out, "systemctl", "--user", "enable", "--now", "docker"); err != nil {
-			return fmt.Errorf("start Rootless Docker user service: %w", err)
-		}
-	} else {
-		if err := runRootlessSetupStep(ctx, in, out, "systemctl", "--user", "enable", "--now", "docker"); err != nil {
-			return fmt.Errorf("start existing Rootless Docker user service: %w", err)
-		}
-	}
-	// The setup tool switches contexts; verify the original/default Target
-	// after restoring it, never mistake the new context for Target intent.
-	if err := runRootlessSetupStep(ctx, in, io.Discard, "docker", "context", "use", "default"); err != nil {
-		return fmt.Errorf("restore Docker default context: %w", err)
+	if err := runApprovedRootlessSetup(ctx, in, out, needsInstall, needUIDMap, runRootlessSetupStep, exec.LookPath); err != nil {
+		return err
 	}
 	engine, err := bhruntime.ResolveDockerEngine(ctx, "docker")
 	if err != nil {
@@ -214,4 +185,38 @@ func hasRootlessSubIDRange(contents, username string) bool {
 		}
 	}
 	return false
+}
+
+
+// runApprovedRootlessSetup executes only the exact steps disclosed in the
+// consent prompt. The subprocess and lookup seams allow verifying both
+// successful and partial-failure paths without mutating a CI worker's host.
+func runApprovedRootlessSetup(ctx context.Context, in io.Reader, out io.Writer, needsInstall, needUIDMap bool, run func(context.Context, io.Reader, io.Writer, string, ...string) error, lookup func(string) (string, error)) error {
+	if needUIDMap {
+		if err := run(ctx, in, out, "sudo", "apt-get", "install", "-y", "uidmap"); err != nil {
+			return fmt.Errorf("install required uidmap package: %w", err)
+		}
+		for _, binary := range []string{"newuidmap", "newgidmap"} {
+			if _, err := lookup(binary); err != nil {
+				return fmt.Errorf("%s remains unavailable after approved installation: %w", binary, err)
+			}
+		}
+	}
+	if needsInstall {
+		// Rootless setup may switch the CLI context. Preserve the caller's
+		// default context even if the setup tool exits with an error.
+		defer func() {
+			_ = run(context.Background(), in, io.Discard, "docker", "context", "use", "default")
+		}()
+		if err := run(ctx, in, out, "dockerd-rootless-setuptool.sh", "install", "--force"); err != nil {
+			return fmt.Errorf("configure Rootless Docker: %w", err)
+		}
+	}
+	if err := run(ctx, in, out, "systemctl", "--user", "enable", "--now", "docker"); err != nil {
+		return fmt.Errorf("start Rootless Docker user service: %w", err)
+	}
+	if err := run(ctx, in, io.Discard, "docker", "context", "use", "default"); err != nil {
+		return fmt.Errorf("restore Docker default context: %w", err)
+	}
+	return nil
 }
