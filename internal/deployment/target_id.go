@@ -78,17 +78,30 @@ func ApplyTargetUID(def *TargetDefinition, uid string) {
 // ownership TenantID are left untouched — only the missing TargetUID fields are
 // filled.
 func MigrateLegacyTargetUIDs(cfg Config) (migrated Config, changed []string, err error) {
+	// Start from an empty Targets map so the returned config is a fresh copy
+	// and no generated UID assignment mutates the caller's in-memory config.
+	// The shallow copy `migrated = cfg` in the prior implementation aliased
+	// cfg.Targets: assigning def.TargetUID = uid and writing it back into
+	// migrated.Targets[name] therefore also changed cfg.Targets for every
+	// migrated Target. Copying the non-migrated definitions verbatim and the
+	// migrated ones into a new map preserves the input exactly.
 	migrated = cfg
+	migrated.Targets = make(map[string]TargetDefinition, len(cfg.Targets))
 	for name, def := range cfg.Targets {
 		if strings.TrimSpace(def.TargetUID) != "" {
+			migrated.Targets[name] = def
 			continue
 		}
 		uid, _, merr := MigrateTargetUID(def)
 		if merr != nil {
 			return Config{}, nil, merr
 		}
-		def.TargetUID = uid
-		migrated.Targets[name] = def
+		// Clone the definition before filling the UID so the caller's copy is
+		// left untouched (TargetDefinition carries a pointer field, so the
+		// value copy above would still alias its DeploymentPolicy).
+		cloned := def
+		cloned.TargetUID = uid
+		migrated.Targets[name] = cloned
 		changed = append(changed, name)
 	}
 	// Validate the full post-migration config so a collision between two newly
