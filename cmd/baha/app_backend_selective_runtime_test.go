@@ -60,6 +60,11 @@ func qualifySelectiveBackendLifecycle(t *testing.T, service string) {
 		t.Fatal(err)
 	}
 	assertCorelessHost(t, ctx, provider, target)
+	baselineContainers, err := provider.ListRuntimeContainers(ctx)
+	if err != nil {
+		t.Fatal("inventory isolated runtime baseline", err)
+	}
+	baselineIDs := runtimeContainerIDSet(baselineContainers)
 	t.Chdir(t.TempDir())
 	if err := os.WriteFile("compose.yaml", []byte(corelessHTTPWorkload), 0600); err != nil {
 		t.Fatal(err)
@@ -111,8 +116,12 @@ func qualifySelectiveBackendLifecycle(t *testing.T, service string) {
 				t.Errorf("isolated backend runtime cleanup: %v", err)
 			}
 		}
-		if containers, err := provider.ListRuntimeContainers(cleanupCtx); err != nil || len(containers) != 0 {
-			t.Errorf("isolated backend cleanup leaves containers=%d inspection=%v", len(containers), err)
+		if containers, err := provider.ListRuntimeContainers(cleanupCtx); err != nil {
+			t.Errorf("inspect isolated backend cleanup: %v", err)
+		} else {
+			if created, missing := runtimeContainerBaselineDiff(containers, baselineIDs); len(created) != 0 || len(missing) != 0 {
+				t.Errorf("isolated backend cleanup did not preserve the pre-existing runtime baseline: test-created=%v baseline-removed=%v", created, missing)
+			}
 		}
 	})
 	var originalEnv, originalConsumer [32]byte
@@ -167,7 +176,7 @@ func qualifySelectiveBackendLifecycle(t *testing.T, service string) {
 		if enabled {
 			qualifySelectedBackendData(t, ctx, provider, resolved, inventory, service, phase, &originalConsumer)
 		}
-		assertSelectedBackendNativeInventory(t, ctx, provider, resolved, inventory, service, phase, enabled, len(volumes))
+		assertSelectedBackendNativeInventoryWithBaseline(t, ctx, provider, resolved, inventory, service, phase, enabled, len(volumes), baselineIDs)
 		if phase == 2 {
 			if os.Getenv("BASEHARBOR_BACKEND_PLACEMENT_ACCEPTANCE") == "1" {
 				qualifyBackendPlacementRoundTrip(t, ctx, provider, resolved, inventory, service, originalEnv, originalConsumer, volumes)
@@ -181,6 +190,10 @@ func qualifySelectiveBackendLifecycle(t *testing.T, service string) {
 }
 
 func assertSelectedBackendNativeInventory(t *testing.T, ctx context.Context, provider bhruntime.RuntimeProvider, resolved resolvedApplication, inventory application.SharedBackendInventory, service string, phase int, enabled bool, retainedVolumes int, siblings ...resolvedApplication) {
+	assertSelectedBackendNativeInventoryWithBaseline(t, ctx, provider, resolved, inventory, service, phase, enabled, retainedVolumes, nil, siblings...)
+}
+
+func assertSelectedBackendNativeInventoryWithBaseline(t *testing.T, ctx context.Context, provider bhruntime.RuntimeProvider, resolved resolvedApplication, inventory application.SharedBackendInventory, service string, phase int, enabled bool, retainedVolumes int, baselineIDs map[string]struct{}, siblings ...resolvedApplication) {
 	t.Helper()
 	kind := capability.ProviderPostgreSQL
 	if service == "cache" {
@@ -216,7 +229,9 @@ func assertSelectedBackendNativeInventory(t *testing.T, ctx context.Context, pro
 			matched = matched || bhruntime.ContainerMatchesProjectResource(provider.Kind(), container, files.Project, resource)
 		}
 		if !matched {
-			t.Fatalf("unrequested runtime realization: project=%s service=%s", container.Project, container.Service)
+			if _, existedBeforeTest := baselineIDs[container.ID]; !existedBeforeTest {
+				t.Fatalf("unrequested runtime realization: project=%s service=%s", container.Project, container.Service)
+			}
 		}
 	}
 	if (enabled && running == 0) || (!enabled && running != 0) {
@@ -239,4 +254,41 @@ func assertSelectedBackendNativeInventory(t *testing.T, ctx context.Context, pro
 		t.Logf("rootless Podman backend=%s phase=%d actual container boot definitions match selected need=%t", service, phase, enabled)
 	}
 	t.Logf("runtime=%s backend=%s phase=%d required=%t selected running=%d actual total=%d retained owned data volumes=%d", provider.Kind(), service, phase, enabled, running, len(containers), retainedVolumes)
+}
+
+func runtimeContainerBaselineDiff(current []bhruntime.RuntimeContainer, baseline map[string]struct{}) (created, missing []string) {
+	for _, container := range runtimeContainersNotInBaseline(current, baseline) {
+		created = append(created, container.ID)
+	}
+	currentIDs := runtimeContainerIDSet(current)
+	for id := range baseline {
+		if _, exists := currentIDs[id]; !exists {
+			missing = append(missing, id)
+		}
+	}
+	return created, missing
+}
+
+func TestSelectiveBackendCleanupPreservesRuntimeBaseline(t *testing.T) {
+	baseline := runtimeContainerIDSet([]bhruntime.RuntimeContainer{{ID: "pre-release-registry"}})
+
+	created, missing := runtimeContainerBaselineDiff([]bhruntime.RuntimeContainer{
+		{ID: "pre-release-registry"},
+	}, baseline)
+	if len(created) != 0 || len(missing) != 0 {
+		t.Fatalf("valid cleanup changed the runtime baseline: test-created=%v baseline-removed=%v", created, missing)
+	}
+
+	created, missing = runtimeContainerBaselineDiff([]bhruntime.RuntimeContainer{
+		{ID: "pre-release-registry"},
+		{ID: "test-app"},
+	}, baseline)
+	if len(created) != 1 || created[0] != "test-app" || len(missing) != 0 {
+		t.Fatalf("cleanup failed to isolate test-created containers: test-created=%v baseline-removed=%v", created, missing)
+	}
+
+	created, missing = runtimeContainerBaselineDiff(nil, baseline)
+	if len(created) != 0 || len(missing) != 1 || missing[0] != "pre-release-registry" {
+		t.Fatalf("cleanup failed to detect removal of a pre-existing container: test-created=%v baseline-removed=%v", created, missing)
+	}
 }
