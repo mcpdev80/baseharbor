@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -35,7 +34,10 @@ func runSelectiveSecretsRuntimeLifecycle(t *testing.T, shared bool) {
 	ctx, cancel := context.WithTimeout(machineNoninteractiveContext(context.Background()), 15*time.Minute)
 	defer cancel()
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
-	target := configureTestTargetEmpty(t)
+	// Secrets uses the managed provider registry, which requires a durable
+	// installation owner. Keep the synthetic owner fixture, but run no Core
+	// services on the runtime so this still exercises the Coreless workload path.
+	target := configureTestTarget(t)
 	cfg, err := deployment.LoadConfig()
 	if err != nil {
 		t.Fatal(err)
@@ -44,9 +46,8 @@ func runSelectiveSecretsRuntimeLifecycle(t *testing.T, shared bool) {
 	if os.Getenv("BASEHARBOR_TEST_RUNTIME") == "podman" {
 		definition.Runtime.Provider = "podman"
 	}
-	// Keep the configured Target name: the Coreless test fixture already owns
-	// this name, and renaming it leaves installation/deployment owner records
-	// bound to the old Target.
+	// Keep the configured Target name so the installation owner remains bound
+	// to the Target used by the managed provider registry.
 	cfg.Targets[target.Name] = definition
 	if err := cfg.Save(); err != nil {
 		t.Fatal(err)
@@ -59,16 +60,24 @@ func runSelectiveSecretsRuntimeLifecycle(t *testing.T, shared bool) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertCorelessHost(t, ctx, provider, target)
-	baselineContainers, err := provider.ListRuntimeContainers(ctx)
-	if err != nil {
-		t.Fatal("inventory isolated Secrets runtime baseline", err)
-	}
-	baselineIDs := runtimeContainerIDSet(baselineContainers)
 	root, err := targetRuntimeStateRoot(target)
 	if err != nil {
 		t.Fatal(err)
 	}
+	initialOwner, err := coreinstallation.Load(root)
+	if err != nil || !initialOwner.Ready || initialOwner.Spec.Target != target.Name {
+		t.Fatalf("load synthetic provider-registry owner: %+v %v", initialOwner, err)
+	}
+	baselineContainers, err := provider.ListRuntimeContainers(ctx)
+	if err != nil {
+		t.Fatal("inventory isolated Secrets runtime baseline", err)
+	}
+	for _, container := range baselineContainers {
+		if container.Project == targetRuntimeProjectName(target) || container.Project == bhruntime.SharedProjectName(target.Name+"-core") {
+			t.Fatalf("unexpected Core runtime container before Secrets lifecycle: %s (%s)", container.ID, container.Service)
+		}
+	}
+	baselineIDs := runtimeContainerIDSet(baselineContainers)
 	t.Chdir(t.TempDir())
 	if err := os.WriteFile("compose.yaml", []byte(corelessHTTPWorkload), 0600); err != nil {
 		t.Fatal(err)
@@ -153,8 +162,9 @@ func runSelectiveSecretsRuntimeLifecycle(t *testing.T, shared bool) {
 		// an earlier read's unpersisted deployment proposal for secret access,
 		// native inventory or cleanup.
 		appFiles := application.RuntimeFilesFor(current.Store, current.Manifest)
-		if _, err := coreinstallation.Load(root); !errors.Is(err, os.ErrNotExist) {
-			t.Fatalf("Secrets capability allocated independent management installation: %v", err)
+		owner, err := coreinstallation.Load(root)
+		if err != nil || owner.ID != initialOwner.ID || owner.Spec != initialOwner.Spec {
+			t.Fatalf("Secrets capability changed its authoritative installation owner: before=%+v after=%+v err=%v", initialOwner, owner, err)
 		}
 		inventory, err := bhruntime.ExistingControlPlaneRuntimeInventory(root, bhruntime.SharedProjectName(target.Name))
 		if err != nil {
