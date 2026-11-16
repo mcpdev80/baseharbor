@@ -13,7 +13,7 @@ required=(
 
 for file in "${required[@]}"; do
   test -s "$file" || {
-    echo "v0.4.21 readiness: missing required artifact: $file" >&2
+    echo "release readiness: missing required artifact: $file" >&2
     exit 1
   }
 done
@@ -28,7 +28,7 @@ grep -Fq 'AvailabilitySupportForProvider' internal/capability/availability.go
 grep -Fq 'ResolveAvailability' internal/application/availability_resolution.go
 grep -Fq 'application secret confirmation does not match; no changes were made' cmd/baha/app_secret.go
 
-grep -Fq 'v0421_ha_groups:' .github/workflows/pre-release.yml
+grep -Fq 'ha_groups:' .github/workflows/pre-release.yml
 # The reference journey is a real Docker/Podman matrix; a literal Docker
 # job title was retired when the workflow stopped duplicating runtime jobs.
 grep -Fq 'name: Reference Journey · ${{ matrix.runtime }} · Full E2E' .github/workflows/pre-release.yml
@@ -59,7 +59,7 @@ required_ha_tests=(
 
 for test_name in "${required_ha_tests[@]}"; do
   grep -Fq "$test_name" scripts/v0.4.21-ha-acceptance.sh || {
-    echo "v0.4.21 readiness: HA acceptance is not wired: $test_name" >&2
+    echo "release readiness: HA acceptance is not wired: $test_name" >&2
     exit 1
   }
 done
@@ -68,7 +68,7 @@ release_internal="$(
   grep -n -Ei 'unit test|conformance|candidate sha|gofmt|go test|go vet|implementation evidence|validation|CI gate' docs/releases/v0.4.21.md || true
 )"
 if [ -n "$release_internal" ]; then
-  echo "v0.4.21 readiness: internal validation detail leaked into release notes:" >&2
+  echo "release readiness: internal validation detail leaked into release notes:" >&2
   echo "$release_internal" >&2
   exit 1
 fi

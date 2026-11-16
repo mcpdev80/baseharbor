@@ -195,3 +195,22 @@ func TestResolveAllFailsClosedWithoutConcreteOperation(t *testing.T) {
 		t.Fatalf("no active organization must fold Deny, got %v", got)
 	}
 }
+
+func TestResolveAllFindingsIncludesFailClosedProfileFinding(t *testing.T) {
+	findings := ResolveAllFindings(nil,
+		func(Finding) (orgconfig.Operation, error) { return "", ErrNoActiveOrganization },
+		func() (orgconfig.ActiveState, error) {
+			t.Fatal("load must not run without active organization")
+			return orgconfig.ActiveState{}, nil
+		},
+	)
+	if len(findings) != 1 {
+		t.Fatalf("findings = %#v, want one fail-closed profile finding", findings)
+	}
+	if finding := findings[0]; finding.Decision != Deny || finding.Code != "access-profile" || finding.Scope != "profile" || finding.Message != "no active organization: cannot resolve owned profile" {
+		t.Fatalf("finding = %#v, want access-profile Deny evidence", finding)
+	}
+	if got := Aggregate(findings); got != Deny {
+		t.Fatalf("aggregate = %v, want Deny", got)
+	}
+}

@@ -904,7 +904,7 @@
       "id": "ha/docker/data",
       "schema": "baseharbor.pre-release.v0.4.21-ha-evidence/v1",
       "jobs": [
-        "v0421_ha_groups_docker"
+        "ha_groups_docker"
       ],
       "required_for": [
         "v0.4.22",
@@ -923,7 +923,7 @@
       "id": "ha/docker/identity",
       "schema": "baseharbor.pre-release.v0.4.21-ha-evidence/v1",
       "jobs": [
-        "v0421_ha_groups_docker"
+        "ha_groups_docker"
       ],
       "required_for": [
         "v0.4.22",
@@ -942,7 +942,7 @@
       "id": "ha/docker/observability",
       "schema": "baseharbor.pre-release.v0.4.21-ha-evidence/v1",
       "jobs": [
-        "v0421_ha_groups_docker"
+        "ha_groups_docker"
       ],
       "required_for": [
         "v0.4.22",
@@ -961,7 +961,7 @@
       "id": "ha/docker/routing",
       "schema": "baseharbor.pre-release.v0.4.21-ha-evidence/v1",
       "jobs": [
-        "v0421_ha_groups_docker"
+        "ha_groups_docker"
       ],
       "required_for": [
         "v0.4.22",
@@ -980,7 +980,7 @@
       "id": "ha/podman/data",
       "schema": "baseharbor.pre-release.v0.4.21-ha-evidence/v1",
       "jobs": [
-        "v0421_ha_groups_podman"
+        "ha_groups_podman"
       ],
       "required_for": [
         "v0.4.22",
@@ -999,7 +999,7 @@
       "id": "ha/podman/identity",
       "schema": "baseharbor.pre-release.v0.4.21-ha-evidence/v1",
       "jobs": [
-        "v0421_ha_groups_podman"
+        "ha_groups_podman"
       ],
       "required_for": [
         "v0.4.22",
@@ -1018,7 +1018,7 @@
       "id": "ha/podman/observability",
       "schema": "baseharbor.pre-release.v0.4.21-ha-evidence/v1",
       "jobs": [
-        "v0421_ha_groups_podman"
+        "ha_groups_podman"
       ],
       "required_for": [
         "v0.4.22",
@@ -1037,7 +1037,7 @@
       "id": "ha/podman/routing",
       "schema": "baseharbor.pre-release.v0.4.21-ha-evidence/v1",
       "jobs": [
-        "v0421_ha_groups_podman"
+        "ha_groups_podman"
       ],
       "required_for": [
         "v0.4.22",

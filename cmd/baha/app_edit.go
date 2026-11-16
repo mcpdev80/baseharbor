@@ -268,7 +268,11 @@ func driveAppEditWizard(ctx context.Context, session appEditSession, reader *buf
 func driveAppEditNeeds(ctx context.Context, session appEditSession, key string, out io.Writer) appEditSession {
 	switch key {
 	case "", "next", "enter":
-		next, _ := session.Controller.Step(ctx, appWizardNext)
+		next, err := session.Controller.Step(ctx, appWizardNext)
+		if err != nil {
+			fmt.Fprintf(out, "could not build read-only decision preview: %v\n", err)
+			return session
+		}
 		session.Controller = next
 		return session
 	case "c", "cancel", "q", "quit":

@@ -1,9 +1,36 @@
 package podman
 
 import (
+	"context"
 	"errors"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 )
+
+func TestPodmanExecProjectAsPlacesUserBeforeContainer(t *testing.T) {
+	bin := t.TempDir()
+	log := filepath.Join(bin, "calls")
+	command := filepath.Join(bin, "podman")
+	if err := os.WriteFile(command, []byte("#!/bin/sh\nprintf '%s\\n' \"$*\" > \"$EXEC_TEST_LOG\"\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("EXEC_TEST_LOG", log)
+	if _, err := quadletExecAs(context.Background(), command, "keycloak-db-member-1", "postgres", nil, "psql", "-h", "/var/run/postgresql"); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "exec --user postgres keycloak-db-member-1 psql -h /var/run/postgresql\n"; string(got) != want {
+		t.Fatalf("podman exec arguments = %q, want %q", got, want)
+	}
+	if strings.Contains(string(got), "keycloak-db-member-1 --user") {
+		t.Fatal("Podman interpreted the user option as the executable")
+	}
+}
 
 func TestPodmanNetworkHasActiveConsumers(t *testing.T) {
 	cases := []struct {
