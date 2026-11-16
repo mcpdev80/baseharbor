@@ -187,13 +187,16 @@ class WorkflowWiring(unittest.TestCase):
         description = triggers['workflow_dispatch']['inputs']['ref']['description']
         self.assertIn('short SHAs are resolved', description)
 
-    def test_suite_validates_ref_before_checkout_without_evidence_uploads(self):
+    def test_suite_validates_ref_before_checkout_and_gates_evidence_uploads(self):
         steps = self.suite['jobs']['gate']['steps']
         names = [s.get('name') for s in steps]
         self.assertLess(names.index('Validate candidate ref before checkout'),
                         names.index('Checkout BaseHarbor candidate'))
-        self.assertFalse(any('evidence' in str(s.get('with', {}).get('name', '')).lower()
-                             for s in steps if s.get('uses', '').startswith('actions/upload-artifact@')))
+        evidence_uploads = [s for s in steps if s.get('uses', '').startswith('actions/upload-artifact@')
+                            and 'evidence' in str(s.get('with', {}).get('name', '')).lower()]
+        self.assertEqual(2, len(evidence_uploads))
+        for upload in evidence_uploads:
+            self.assertIn('inputs.evidence_reuse', upload.get('if', ''))
 
     def test_observability_gate_executes_fullstack_and_rejects_skip_or_failure(self):
         steps = self.suite['jobs']['gate']['steps']
@@ -207,6 +210,7 @@ class WorkflowWiring(unittest.TestCase):
         self.assertIn("inputs.gate == 'observability'", setup['if'])
         gate = next(s for s in steps if s.get('id') == 'runtime_gate')
         self.assertIn("inputs.gate == 'observability' && 25", gate['timeout-minutes'])
+        self.assertIn("inputs.gate == 'guided' && 12", gate['timeout-minutes'])
         condition = 'if [ "$GATE" = observability ] && [ "$GITHUB_EVENT_NAME" = pull_request ]; then'
         block = 'set -euo pipefail\n' + condition + gate['run'].split(condition, 1)[1]
         with tempfile.TemporaryDirectory() as tmp:
