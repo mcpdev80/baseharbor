@@ -65,6 +65,15 @@ class RuntimeMatrix(unittest.TestCase):
         self.assertIn('gate: ${{ matrix.id }}',ci)
         self.assertIn("inputs.gate == 'integration/docker/coreless-lifecycle'",targeted)
         self.assertIn("inputs.gate == 'integration/podman/coreless-lifecycle'",targeted)
+        coreless_job=re.search(
+            r"(?ms)^  pr_selected_coreless_lifecycle:\n(.*?)(?=^  [a-z0-9_]+:\n|\Z)",
+            targeted,
+        )
+        self.assertIsNotNone(coreless_job)
+        self.assertIn(
+            "uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e",
+            coreless_job.group(1),
+        )
         self.assertIn('python scripts/pre-release-integration.py --gate "$GATE"',targeted)
         self.assertIn('git show "$controller:scripts/pr-selected-runtime-matrix.py"',ci)
         self.assertIn('.get("integration_include",[{"id":"not-required"',ci)
