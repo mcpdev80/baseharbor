@@ -162,6 +162,16 @@ func EnvironmentRecordAssociations(target, environmentName string) ([]Associatio
 	if strings.TrimSpace(record.Name) != strings.TrimSpace(environmentName) {
 		return nil, fmt.Errorf("%w at %q: stored name %q != %q", ErrEnvironmentBindingMismatch, path, record.Name, environmentName)
 	}
+	// Fail closed on a corrupt or foreign binding in the persisted member list:
+	// this is the authoritative read of who belongs to the environment, so every
+	// decoded entry must validate before it can surface to a caller.
+	// validateAssociations enforces validateAssociationSubjectKind /
+	// validateAssociationSubjectID per entry; normalizeAssociations only
+	// deduplicates and must never be trusted alone (luna-r1: an unvalidated read
+	// exposed a malformed persisted entry as an authoritative member).
+	if err := validateAssociations(record.Associations); err != nil {
+		return nil, fmt.Errorf("environment identity at %q carries an invalid association: %w", path, err)
+	}
 	return normalizeAssociations(record.Associations), nil
 }
 
@@ -201,6 +211,14 @@ func RegisterEnvironmentAssociation(target, environmentName string, kind Associa
 	record, err := GetEnvironment(target, environmentName)
 	if err != nil {
 		return AssociationBinding{}, err
+	}
+
+	// Fail closed on a corrupt or foreign persisted member list before the
+	// mutation treats any entry as trusted. registerUnderLock re-reads inside
+	// the lock, but a poisoned list read here must never be adopted or carried
+	// forward (luna-r1): validate the persisted entries at mutation entry.
+	if err := validateAssociations(record.Associations); err != nil {
+		return AssociationBinding{}, fmt.Errorf("environment identity carries an invalid association: %w", err)
 	}
 
 	// Idempotent no-op: the subject is already a member. Return the existing
@@ -302,6 +320,18 @@ func DeregistrationEnvironmentAssociation(target, environmentName string, kind A
 		return err
 	}
 
+	// Fail closed on a corrupt or foreign persisted member list before the
+	// removal treats any entry as trusted. deregisterUnderLock re-reads inside
+	// the lock, but a poisoned list read here must never be adopted or carried
+	// forward (luna-r1): validate the persisted entries at mutation entry.
+	refreshed, rErr := readEnvironmentRecord(path, target, environmentNameForPath(path))
+	if rErr != nil {
+		return rErr
+	}
+	if err := validateAssociations(refreshed.Associations); err != nil {
+		return fmt.Errorf("environment identity carries an invalid association: %w", err)
+	}
+
 	for attempt := 0; attempt < 4096; attempt++ {
 		if _, err := deregisterUnderLock(target, home, path, kind, trimmed); err == nil {
 			return nil
@@ -354,6 +384,25 @@ func ListEnvironmentAssociations(target, environmentName string) ([]AssociationB
 		return nil, err
 	}
 	return sortAssociations(associations), nil
+}
+
+// validateAssociations fails closed on the first persisted binding whose kind
+// is unknown/empty or whose id is empty or path-bearing, so a corrupted or
+// foreign environment.json can never surface a non-authoritative member. It
+// mirrors the write-path guard validateAssociationSubjectKind /
+// validateAssociationSubjectID applied per entry at the read load and at
+// register/deregister entry (luna-r1). An empty list is valid and returns nil.
+func validateAssociations(in []AssociationBinding) error {
+	for i := range in {
+		b := in[i]
+		if err := validateAssociationSubjectKind(b.SubjectKind); err != nil {
+			return err
+		}
+		if err := validateAssociationSubjectID(b.SubjectKind, b.SubjectID); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // normalizeAssociations de-duplicates (keeping the first occurrence) and returns
