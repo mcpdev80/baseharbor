@@ -11,6 +11,8 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/cli"
+	"github.com/mcpdev80/baseharbor/internal/evidence"
+	"github.com/mcpdev80/baseharbor/internal/operatorauth"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
@@ -108,7 +110,7 @@ func appCredsCommand(store application.Store) *cli.Command {
 			if err != nil {
 				return err
 			}
-			_, binding, err := resolveAccessBinding(ctx, store, appName, kind, instance)
+			resolved, binding, err := resolveAccessBinding(ctx, store, appName, kind, instance)
 			if err != nil {
 				return err
 			}
@@ -126,6 +128,18 @@ func appCredsCommand(store application.Store) *cli.Command {
 				fmt.Fprintf(out, "USERNAME=%s\n", binding.Username)
 			}
 			if reveal {
+				// Fail-closed audit (access-wizard slice): the human --reveal
+				// path is the single clearest secret-exposure deviation in the
+				// identity/access surface (audit-access F1 / contract v1 §9).
+				// The value was already authorized by resolveAccessBinding
+				// (app.connection); the per-reveal audit records WHO revealed
+				// WHAT for accountability without leaking the secret into the
+				// event. A recording failure is carried on errOut but does not
+				// hide an already-authorized value — audit is not a second
+				// authorization gate here.
+				if err := recordConnectionRevealAudit(ctx, resolved, kind, binding.Instance); err != nil {
+					fmt.Fprintln(errOut, err)
+				}
 				fmt.Fprintf(out, "PASSWORD=%s\nURI=%s\n", binding.Password, binding.URI)
 			} else {
 				fmt.Fprintln(out, "PASSWORD=<masked>")
@@ -210,6 +224,44 @@ func appExecCommand(store application.Store) *cli.Command {
 			return compose.RunProjectFilesEnv(ctx, workload.Project, workload.RepositoryRoot, environment, os.Stdin, out, errOut, composeFiles, cmdArgs...)
 		},
 	}
+}
+
+// recordConnectionRevealAudit appends a per-reveal audit event for the human
+// `baha app creds --reveal` path. It mirrors recordApplicationAudit for the
+// identity/access slice: the value was already authorized by
+// resolveAccessBinding (app.connection), so this records accountability
+// (who revealed what, on which target/app/environment/capability) without
+// writing the secret into the event. Best-effort — a recording failure is
+// returned so the caller can surface it, but it is not a second authorization.
+func recordConnectionRevealAudit(ctx context.Context, resolved resolvedApplication, kind, instance string) error {
+	event := evidence.NewAuditEvent(
+		ctx,
+		resolved.Target.Name,
+		resolved.Manifest.Name,
+		resolved.Manifest.Environment,
+		"connection-reveal",
+		"allow",
+	)
+	event.Capability = "app.connection"
+	event.Resource = kind + "/" + instance
+	event.ApplicationID = resolved.Manifest.ApplicationID
+	event.DeploymentID = resolved.DeploymentIdentity.DeploymentID
+	if decision, ok := operatorauth.AuthorizationDecisionFromContext(ctx); ok && decision.Allowed {
+		event.Actor.Identity = decision.Actor.Subject
+		event.Actor.Issuer = decision.Actor.Issuer
+		event.Actor.Subject = decision.Actor.Subject
+		event.Actor.Assurance = decision.Actor.Assurance
+		event.Actor.Methods = append([]string(nil), decision.Actor.Methods...)
+		event.AuthorizationResult = "allow"
+	} else if principal, ok := operatorauth.PrincipalFromContext(ctx); ok {
+		event.Actor.Identity = principal.Subject
+		event.Actor.Issuer = principal.Issuer
+		event.Actor.Subject = principal.Subject
+		event.Actor.Assurance = principal.Assurance
+		event.Actor.Methods = append([]string(nil), principal.Methods...)
+		event.AuthorizationResult = "allow"
+	}
+	return evidence.Append(resolved.TargetStateRoot, event)
 }
 
 func resolveAccessBinding(ctx context.Context, store application.Store, appName, kind, instance string) (resolvedApplication, application.ServiceBinding, error) {
