@@ -44,13 +44,14 @@ func runSelectiveSecretsRuntimeLifecycle(t *testing.T, shared bool) {
 	if os.Getenv("BASEHARBOR_TEST_RUNTIME") == "podman" {
 		definition.Runtime.Provider = "podman"
 	}
-	delete(cfg.Targets, target.Name)
-	cfg.DefaultTarget = "selected-secrets"
-	cfg.Targets[cfg.DefaultTarget] = definition
+	// Keep the configured Target name: the Coreless test fixture already owns
+	// this name, and renaming it leaves installation/deployment owner records
+	// bound to the old Target.
+	cfg.Targets[target.Name] = definition
 	if err := cfg.Save(); err != nil {
 		t.Fatal(err)
 	}
-	target, err = cfg.ResolveTarget("", "")
+	target, err = cfg.ResolveTarget(target.Name, "")
 	if err != nil {
 		t.Fatal(err)
 	}
