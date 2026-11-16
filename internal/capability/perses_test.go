@@ -162,3 +162,24 @@ func TestPersesCatalogValidationBehaviorPreserved(t *testing.T) {
 		}
 	}
 }
+
+// TestResolveHostDashboardSignalStatusFailClosed pins the fail-closed resolver
+// the Perses host dashboards consume: the host dashboard is realized as
+// "supported" ONLY when the observability backend AND the Perses surface are
+// selected and the pinned release validates; any other declaration resolves to
+// the empty (unavailable-preserving) status. This is the Luna-r1 stop: no
+// positive runtime availability without authoritative manifest selection.
+func TestResolveHostDashboardSignalStatusFailClosed(t *testing.T) {
+	if got := ResolveHostDashboardSignalStatus(false, false); got != "" {
+		t.Fatalf("no observability backend + Perses selected must fail closed to empty status, got %q", got)
+	}
+	if got := ResolveHostDashboardSignalStatus(true, false); got != "" {
+		t.Fatalf("Perses not selected must fail closed to empty status, got %q", got)
+	}
+	if got := ResolveHostDashboardSignalStatus(false, true); got != "" {
+		t.Fatalf("observability backend not selected must fail closed to empty status, got %q", got)
+	}
+	if got := ResolveHostDashboardSignalStatus(true, true); got != ObservabilitySupported {
+		t.Fatalf("observability + Perses selected with valid pinned release must resolve to ObservabilitySupported, got %q", got)
+	}
+}

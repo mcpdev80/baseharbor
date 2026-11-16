@@ -142,11 +142,15 @@ func collectApplicationStatusResult(ctx context.Context, store application.Store
 	// verified — only a real Perses health probe could. Computed before the
 	// remote-target early return below so remote-status --json also carries it.
 	persesStatus := capability.PersesStatusNow(resolved.Manifest.Services.ObservabilityManagementUI && resolved.Manifest.Services.Perses)
+	resolvedHostSignalStatus := capability.ResolveHostDashboardSignalStatus(
+		resolved.Manifest.Services.ObservabilityManagementUI, resolved.Manifest.Services.Perses)
 	if hasRemoteApplicationTarget(resolved) {
 		return applicationStatusResult{StatusResult: result, ApplicationID: resolved.Manifest.ApplicationID,
 			DeploymentID: resolved.DeploymentIdentity.DeploymentID,
 			OperatorAuth: collectOperatorAuthObservation(ctx, resolved.Target.Name, resolved.Manifest.Environment),
-			Perses:       persesStatus}, nil
+			Perses:       persesStatus,
+			HostContainersDashboards: metricsprovider.PersesHostDashboardAvailability(
+				resolvedHostSignalStatus)}, nil
 	}
 	tlsStatus, tlsObservation, tlsErr := collectApplicationTLSObservation(resolved)
 	if tlsErr != nil || (tlsObservation != nil && !tlsObservation.Healthy) {
@@ -248,7 +252,7 @@ func collectApplicationStatusResult(ctx context.Context, store application.Store
 		ApplicationURLs:          applicationAccessURLs(resolved, result.Ready),
 		ManagementUI:             managementUI,
 		Perses:                   persesStatus,
-		HostContainersDashboards: metricsprovider.PersesHostDashboardAvailability(),
+		HostContainersDashboards: metricsprovider.PersesHostDashboardAvailability(resolvedHostSignalStatus),
 		tlsStatus:                tlsStatus,
 		tlsErr:                   tlsErr,
 		serviceTLSErr:            serviceTLSErr,

@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"github.com/mcpdev80/baseharbor/internal/capability"
 )
 
 // Perses-native host and container dashboards for BaseHarbor.
@@ -37,6 +39,13 @@ import (
 // This satisfies the card contract "deliver host/container panels only for
 // actually available matching metrics, without adding privileged exporters;
 // show actionable no-data, not fabricated healthy CPU/RAM."
+
+// PersesHostDashboardAPIVersion is the pinned native Perses API schema version
+// on the host dashboard resource envelope. The pinned Perses release
+// (capability.AcceptedPersesVersion, v0.55.1) ships the Dashboard resource
+// under the perses.dev/v1alpha1 API group; the apiVersion/kind pair is the
+// native resource envelope, not a flattened or Grafana-shaped document.
+const PersesHostDashboardAPIVersion = "perses.dev/v1alpha1"
 
 // PersesHostDashboardKind is the Perses resource kind for a host dashboard.
 const PersesHostDashboardKind = "Dashboard"
@@ -154,11 +163,14 @@ type PersesHostGridContent struct {
 }
 
 // PersesHostDashboard is the minimal Perses dashboard resource BaseHarbor ships
-// for a real host/container backend.
+// for a real host/container backend. The apiVersion/kind pair is the pinned
+// native Perses resource envelope (perses.dev/v1alpha1); metadata is the
+// Perses dashboard metadata.
 type PersesHostDashboard struct {
-	Kind     string                      `json:"kind"`
-	Metadata PersesHostDashboardMetadata `json:"metadata"`
-	Spec     PersesHostDashboardSpec     `json:"spec"`
+	APIVersion string                      `json:"apiVersion"`
+	Kind       string                      `json:"kind"`
+	Metadata   PersesHostDashboardMetadata `json:"metadata"`
+	Spec       PersesHostDashboardSpec     `json:"spec"`
 }
 
 // PersesHostDashboardMetadata is the metadata section of a host dashboard.
@@ -280,15 +292,99 @@ func persesHostUnavailableEntry(key, backend, reason string) PersesHostPanelCata
 	}
 }
 
+// identityUnavailableReasonHost maps a resolved, non-supported host/provider
+// metrics observability signal status to the reason string reported on the
+// UNAVAILABLE host/container entries. It names the missing verified signal so
+// the reason is authoritative, not fabricated.
+func identityUnavailableReasonHost(resolvedStatus capability.ObservabilitySupportStatus) string {
+	if resolvedStatus == "" {
+		return "BaseHarbor has no verified current provider-metrics signal in this manifest (the native openmetrics /metrics endpoint is not a verified current signal); the host/dashboard is explicitly unavailable and no exporter is installed"
+	}
+	if resolvedStatus == capability.ObservabilityRequiresAdapter {
+		return "BaseHarbor host metrics require an adapter in this manifest and have no verified current native metric signal; the host/dashboard is explicitly unavailable and no exporter is installed"
+	}
+	return "BaseHarbor host/metrics signal " + string(resolvedStatus) + " in this manifest is not the verified current supported native openmetrics signal; the host/dashboard is explicitly unavailable and no exporter is installed"
+}
+
 // persesHostDashboardCatalog builds the shipped Perses host/container catalog
-// for the pinned release. It contains one entry per real backend (prometheus,
-// loki, tempo) and one explicit UNAVAILABLE entry per host/container view with
-// no native signal (raw host node metrics, cAdvisor per-container stats). No
-// entry ships a fabricated panel or installs an exporter.
-func persesHostDashboardCatalog() map[string]PersesHostPanelCatalogEntry {
-	prometheus := PersesHostDashboard{
-		Kind:     PersesHostDashboardKind,
-		Metadata: PersesHostDashboardMetadata{Name: "prometheus-host-container", Version: 0},
+// for the pinned release, keyed on the AUTHORITATIVE, resolved
+// host-metrics observability signal status (never a caller-supplied bool). A
+// signal resolved to ObservabilitySupported realizes the real backend panels;
+// every other resolved status (including the empty/absent status) is reported
+// as explicitly UNAVAILABLE with a concrete reason. The catalog additionally
+// carries the two host/container views with no native signal (raw host node
+// metrics, cAdvisor per-container stats) as UNAVAILABLE entries. No entry ships
+// a fabricated panel or installs an exporter.
+func persesHostDashboardCatalog(resolvedHostSignalStatus capability.ObservabilitySupportStatus) map[string]PersesHostPanelCatalogEntry {
+	// The two host/container views with no native signal (raw host node metrics,
+	// cAdvisor per-container stats) are always present as UNAVAILABLE entries;
+	// there is no native exporter for them in BaseHarbor, so no panel is ever
+	// generated for them regardless of the resolved signal.
+	out := map[string]PersesHostPanelCatalogEntry{
+		"host-node-metrics": persesHostUnavailableEntry("host-node-metrics", "prometheus",
+			identityUnavailableReasonHost(resolvedHostSignalStatus)),
+		"container-stats": persesHostUnavailableEntry("container-stats", "prometheus",
+			identityUnavailableReasonHost(resolvedHostSignalStatus)),
+	}
+	// A signal resolved to ObservabilitySupported realizes the three real
+	// backend panels; any other resolved status (including the empty/absent
+	// status) reports them as unavailable with a concrete reason naming the
+	// missing verified signal. Catalog presence never becomes a fabricated
+	// panel.
+	if resolvedHostSignalStatus != capability.ObservabilitySupported {
+		for _, key := range []string{"prometheus-host-container", "loki-host-container", "tempo-host-container"} {
+			out[key] = persesHostUnavailableEntry(key, backendForHostKey(key),
+				identityUnavailableReasonHost(resolvedHostSignalStatus))
+		}
+		return out
+	}
+	out["prometheus-host-container"] = PersesHostPanelCatalogEntry{
+		Key:            "prometheus-host-container",
+		Backend:        "prometheus",
+		Datasource:     "prometheus",
+		DatasourceName: "prometheus",
+		Dashboard:      persesHostPrometheusDashboard(),
+	}
+	out["loki-host-container"] = PersesHostPanelCatalogEntry{
+		Key:            "loki-host-container",
+		Backend:        "loki",
+		Datasource:     "loki",
+		DatasourceName: "loki",
+		Dashboard:      persesHostLokiDashboard(),
+	}
+	out["tempo-host-container"] = PersesHostPanelCatalogEntry{
+		Key:            "tempo-host-container",
+		Backend:        "tempo",
+		Datasource:     "tempo",
+		DatasourceName: "tempo",
+		Dashboard:      persesHostTempoDashboard(),
+	}
+	return out
+}
+
+// backendForHostKey maps a real host dashboard catalog key to its backend data
+// owner (prometheus, loki, tempo).
+func backendForHostKey(key string) string {
+	switch key {
+	case "loki-host-container":
+		return "loki"
+	case "tempo-host-container":
+		return "tempo"
+	default:
+		return "prometheus"
+	}
+}
+
+// persesHostPrometheusDashboard builds the BaseHarbor Prometheus host/container
+// dashboard resource for the verified current signal. It ships exactly one
+// panel per verified metric and no fabricated panel. Every panel queries
+// through the pinned supported Prometheus datasource, and the resource carries
+// the pinned Perses apiVersion.
+func persesHostPrometheusDashboard() PersesHostDashboard {
+	return PersesHostDashboard{
+		APIVersion: PersesHostDashboardAPIVersion,
+		Kind:       PersesHostDashboardKind,
+		Metadata:   PersesHostDashboardMetadata{Name: "prometheus-host-container", Version: 0},
 		Spec: PersesHostDashboardSpec{
 			Display:     PersesHostDisplay{Name: "BaseHarbor host & container targets", Description: "Provider container up-signal scraped by BaseHarbor Prometheus."},
 			Datasources: map[string]PersesHostDatasource{"prometheus": {Kind: PersesHostDatasourcePrometheus, Name: "prometheus", Default: true}},
@@ -301,9 +397,18 @@ func persesHostDashboardCatalog() map[string]PersesHostPanelCatalogEntry {
 			Duration: "5m",
 		},
 	}
-	loki := PersesHostDashboard{
-		Kind:     PersesHostDashboardKind,
-		Metadata: PersesHostDashboardMetadata{Name: "loki-host-container", Version: 0},
+}
+
+// persesHostLokiDashboard builds the BaseHarbor Loki host/container dashboard
+// resource for the verified current signal. It ships exactly one panel per
+// verified metric and no fabricated panel. Every panel queries through the
+// pinned supported Loki datasource, and the resource carries the pinned Perses
+// apiVersion.
+func persesHostLokiDashboard() PersesHostDashboard {
+	return PersesHostDashboard{
+		APIVersion: PersesHostDashboardAPIVersion,
+		Kind:       PersesHostDashboardKind,
+		Metadata:   PersesHostDashboardMetadata{Name: "loki-host-container", Version: 0},
 		Spec: PersesHostDashboardSpec{
 			Display:     PersesHostDisplay{Name: "BaseHarbor host & container logs", Description: "Provider container error log stream from BaseHarbor Loki."},
 			Datasources: map[string]PersesHostDatasource{"loki": {Kind: PersesHostDatasourceLoki, Name: "loki", Default: true}},
@@ -315,9 +420,18 @@ func persesHostDashboardCatalog() map[string]PersesHostPanelCatalogEntry {
 			}}}},
 		},
 	}
-	tempo := PersesHostDashboard{
-		Kind:     PersesHostDashboardKind,
-		Metadata: PersesHostDashboardMetadata{Name: "tempo-host-container", Version: 0},
+}
+
+// persesHostTempoDashboard builds the BaseHarbor Tempo host/container dashboard
+// resource for the verified current signal. It ships exactly one panel per
+// verified metric and no fabricated panel. Every panel queries through the
+// pinned supported Tempo datasource, and the resource carries the pinned Perses
+// apiVersion.
+func persesHostTempoDashboard() PersesHostDashboard {
+	return PersesHostDashboard{
+		APIVersion: PersesHostDashboardAPIVersion,
+		Kind:       PersesHostDashboardKind,
+		Metadata:   PersesHostDashboardMetadata{Name: "tempo-host-container", Version: 0},
 		Spec: PersesHostDashboardSpec{
 			Display:     PersesHostDisplay{Name: "BaseHarbor host & container traces", Description: "Provider container traces from BaseHarbor Tempo."},
 			Datasources: map[string]PersesHostDatasource{"tempo": {Kind: PersesHostDatasourceTempo, Name: "tempo", Default: true}},
@@ -329,37 +443,6 @@ func persesHostDashboardCatalog() map[string]PersesHostPanelCatalogEntry {
 			}}}},
 		},
 	}
-	return map[string]PersesHostPanelCatalogEntry{
-		"prometheus-host-container": {
-			Key:            "prometheus-host-container",
-			Backend:        "prometheus",
-			Datasource:     "prometheus",
-			DatasourceName: "prometheus",
-			Dashboard:      prometheus,
-		},
-		"loki-host-container": {
-			Key:            "loki-host-container",
-			Backend:        "loki",
-			Datasource:     "loki",
-			DatasourceName: "loki",
-			Dashboard:      loki,
-		},
-		"tempo-host-container": {
-			Key:            "tempo-host-container",
-			Backend:        "tempo",
-			Datasource:     "tempo",
-			DatasourceName: "tempo",
-			Dashboard:      tempo,
-		},
-		// Raw host node metrics (node CPU/RAM via node_exporter) have no native
-		// signal in BaseHarbor. Explicitly UNAVAILABLE; no panel, no exporter.
-		"host-node-metrics": persesHostUnavailableEntry("host-node-metrics", "prometheus",
-			"BaseHarbor ships no native node_exporter signal for host node CPU/RAM metrics; the dashboard is explicitly unavailable and no exporter is installed"),
-		// cAdvisor per-container stats have no native signal in BaseHarbor.
-		// Explicitly UNAVAILABLE; no panel, no exporter.
-		"container-stats": persesHostUnavailableEntry("container-stats", "prometheus",
-			"BaseHarbor ships no native cAdvisor per-container metrics; the dashboard is explicitly unavailable and no exporter is installed"),
-	}
 }
 
 // persesHostDashboardCatalogJSON marshals the catalog to deterministic Perses-native
@@ -368,7 +451,7 @@ func persesHostDashboardCatalog() map[string]PersesHostPanelCatalogEntry {
 func persesHostDashboardCatalogJSON() ([]byte, error) {
 	var b strings.Builder
 	b.WriteString("{\n")
-	for key, entry := range persesHostDashboardCatalog() {
+	for key, entry := range persesHostDashboardCatalog("") {
 		encoded, err := marshalIndentNoEscape(entry)
 		if err != nil {
 			return nil, err
@@ -416,11 +499,20 @@ func marshalIndentNoEscape(v any) ([]byte, error) {
 
 // PersesHostDashboardAvailability returns the availability verdict of every
 // catalog entry, keyed by catalog key, for the pinned release. A real backend
-// returns "available" with its Perses datasource kind; a host/container view
-// with no native signal returns "unavailable" with the reason naming the
-// missing signal. This is the deterministic CLI witness.
-func PersesHostDashboardAvailability() map[string]PersesHostDashboardAvailabilityEntry {
-	catalog := persesHostDashboardCatalog()
+// returns "available" with its Perses datasource kind; any other resolved
+// status returns "unavailable" with a reason naming the missing verified
+// signal; a host/container view with no native signal is reported as
+// "unavailable" too. This is the deterministic CLI witness that the host
+// dashboard remains explicitly unavailable rather than silently reported as
+// available when its verified provider-metrics signal is absent.
+//
+// resolvedHostSignalStatus is the authoritative resolved-signal witness of the
+// manifest (internal/capability/reference.go host/provider-metrics observability
+// signal). The host dashboard is realized only when that signal resolves to
+// ObservabilitySupported; every other resolved status (including the empty /
+// absent status) stays unavailable-preserving.
+func PersesHostDashboardAvailability(resolvedHostSignalStatus capability.ObservabilitySupportStatus) map[string]PersesHostDashboardAvailabilityEntry {
+	catalog := persesHostDashboardCatalog(resolvedHostSignalStatus)
 	out := make(map[string]PersesHostDashboardAvailabilityEntry, len(catalog))
 	for key, entry := range catalog {
 		avail := PersesHostDashboardAvailable

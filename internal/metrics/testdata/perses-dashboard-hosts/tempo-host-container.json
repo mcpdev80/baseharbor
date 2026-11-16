@@ -1,4 +1,5 @@
 {
+  "apiVersion": "perses.dev/v1alpha1",
   "kind": "Dashboard",
   "metadata": {
     "name": "tempo-host-container",

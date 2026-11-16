@@ -16,7 +16,7 @@ import (
 // native signal (raw host node metrics, cAdvisor per-container stats). No
 // fabricated panel ships for a view with no real signal.
 func TestPersesHostDashboardCatalogHasRealBackendsOnly(t *testing.T) {
-	catalog := persesHostDashboardCatalog()
+	catalog := persesHostDashboardCatalog(capability.ObservabilitySupported)
 	for _, key := range []string{"prometheus-host-container", "loki-host-container", "tempo-host-container"} {
 		entry, ok := catalog[key]
 		if !ok {
@@ -50,7 +50,7 @@ func TestPersesHostDashboardCatalogHasRealBackendsOnly(t *testing.T) {
 // marshals to Perses-native JSON: kind "Dashboard", one layout referencing a
 // panel, and a panel carrying a query with the matching backend datasource.
 func TestPersesHostDashboardPersesNativeJSON(t *testing.T) {
-	catalog := persesHostDashboardCatalog()
+	catalog := persesHostDashboardCatalog(capability.ObservabilitySupported)
 	for _, key := range []string{"prometheus-host-container", "loki-host-container", "tempo-host-container"} {
 		entry := catalog[key]
 		raw, err := persesHostPanelJSON(entry)
@@ -103,7 +103,7 @@ func TestPersesHostDashboardPersesNativeJSON(t *testing.T) {
 // TestPersesHostDashboardQueriesAreRealSignals pins that every real panel query
 // references a real BaseHarbor backend job, never a fabricated target.
 func TestPersesHostDashboardQueriesAreRealSignals(t *testing.T) {
-	catalog := persesHostDashboardCatalog()
+	catalog := persesHostDashboardCatalog(capability.ObservabilitySupported)
 	for key, entry := range catalog {
 		if entry.Unavailable {
 			continue
@@ -136,7 +136,7 @@ func TestPersesHostDashboardQueriesAreRealSignals(t *testing.T) {
 // entry marshals to the same bytes on every call, so the golden witness is
 // stable.
 func TestPersesHostDashboardJSONIsDeterministic(t *testing.T) {
-	catalog := persesHostDashboardCatalog()
+	catalog := persesHostDashboardCatalog(capability.ObservabilitySupported)
 	first, err := persesHostPanelJSON(catalog["prometheus-host-container"])
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
@@ -153,7 +153,7 @@ func TestPersesHostDashboardJSONIsDeterministic(t *testing.T) {
 // TestPersesHostUnavailableEntryMarshalsReason pins the negative witness: an
 // unavailable entry emits a reason document (not a fabricated panel).
 func TestPersesHostUnavailableEntryMarshalsReason(t *testing.T) {
-	catalog := persesHostDashboardCatalog()
+	catalog := persesHostDashboardCatalog("")
 	for _, key := range []string{"host-node-metrics", "container-stats"} {
 		raw, err := persesHostPanelJSON(catalog[key])
 		if err != nil {
@@ -173,7 +173,7 @@ func TestPersesHostUnavailableEntryMarshalsReason(t *testing.T) {
 		if !doc.Unavailable {
 			t.Fatalf("%s: unavailable entry must report unavailable=true", key)
 		}
-		if !strings.Contains(doc.Reason, "no native") {
+		if !strings.Contains(doc.Reason, "unavailable") {
 			t.Fatalf("%s: reason must name the missing native signal, got: %s", key, doc.Reason)
 		}
 	}
@@ -201,7 +201,7 @@ func TestPersesHostDashboardKeysDistinctFromDatabaseDashboards(t *testing.T) {
 // be one of the three real backends the selection catalog knows (prometheus,
 // loki, tempo).
 func TestPersesHostDashboardKeysMatchSelectionCatalogKeys(t *testing.T) {
-	catalog := persesHostDashboardCatalog()
+	catalog := persesHostDashboardCatalog(capability.ObservabilitySupported)
 	for _, entry := range catalog {
 		if entry.Unavailable {
 			continue
@@ -221,7 +221,7 @@ func TestPersesHostDashboardKeysMatchSelectionCatalogKeys(t *testing.T) {
 // entry (real dashboard + unavailable reason document) must match its golden
 // file byte-for-byte, so the Perses-native output is a stable, reviewed witness.
 func TestPersesHostDashboardGoldenFiles(t *testing.T) {
-	entries := persesHostDashboardCatalog()
+	entries := persesHostDashboardCatalog(capability.ObservabilitySupported)
 	for key, entry := range entries {
 		golden, err := os.ReadFile(filepath.Join("testdata", "perses-dashboard-hosts", key+".json"))
 		if err != nil {
@@ -233,6 +233,132 @@ func TestPersesHostDashboardGoldenFiles(t *testing.T) {
 		}
 		if string(got) != string(golden) {
 			t.Fatalf("%s: golden mismatch:\n--- got ---\n%s\n--- want ---\n%s", key, got, golden)
+		}
+	}
+}
+
+// TestPersesHostDashboardPersesNativeSchema validates that every real host
+// dashboard emits the pinned native Perses schema envelope: the apiVersion is
+// the pinned perses.dev/v1alpha1 group/version and the kind is Dashboard, and
+// the query type is the supported native plugin kind for its backend. This is
+// the Luna-r1 acceptance: the pinned native Perses schema, never a flattened
+// or Grafana-shaped document.
+func TestPersesHostDashboardPersesNativeSchema(t *testing.T) {
+	catalog := persesHostDashboardCatalog(capability.ObservabilitySupported)
+	for _, key := range []string{"prometheus-host-container", "loki-host-container", "tempo-host-container"} {
+		entry := catalog[key]
+		raw, err := persesHostPanelJSON(entry)
+		if err != nil {
+			t.Fatalf("%s: marshal: %v", key, err)
+		}
+		var resource struct {
+			APIVersion string `json:"apiVersion"`
+			Kind       string `json:"kind"`
+		}
+		if err := json.Unmarshal(raw, &resource); err != nil {
+			t.Fatalf("%s: output is not a Perses dashboard: %v", key, err)
+		}
+		if resource.APIVersion != PersesHostDashboardAPIVersion {
+			t.Fatalf("%s: apiVersion = %q, want %q (pinned native Perses schema v0.55.1)", key, resource.APIVersion, PersesHostDashboardAPIVersion)
+		}
+		if resource.Kind != PersesHostDashboardKind {
+			t.Fatalf("%s: kind = %q, want %q", key, resource.Kind, PersesHostDashboardKind)
+		}
+		// The query plugin kind must be the supported native Perses query kind
+		// for the backend, not a flattened query field.
+		for panelName, panel := range entry.Dashboard.Spec.Panels {
+			for _, q := range panel.Spec.Queries {
+				if q.Spec.Kind != backendQueryKind(entry.Backend) {
+					t.Fatalf("%s/%s: query kind = %q, want %q for backend %q", key, panelName, q.Spec.Kind, backendQueryKind(entry.Backend), entry.Backend)
+				}
+			}
+		}
+	}
+}
+
+// TestPersesHostDashboardUnavailableWithoutVerifiedSignal pins that a host
+// dashboard with an absent/unverified resolved signal is reported explicitly
+// UNAVAILABLE with a concrete reason naming the missing verified signal, never
+// as a fabricated panel. This is the Luna-r1 stop: no positive runtime status
+// without authoritative input.
+func TestPersesHostDashboardUnavailableWithoutVerifiedSignal(t *testing.T) {
+	catalog := persesHostDashboardCatalog("")
+	for _, key := range []string{"host-node-metrics", "container-stats"} {
+		entry := catalog[key]
+		if !entry.Unavailable {
+			t.Fatalf("%s: absent signal must be reported unavailable", key)
+		}
+		if entry.Reason == "" {
+			t.Fatalf("%s: unavailable entry must name the missing verified signal", key)
+		}
+		if !strings.Contains(entry.Reason, "unavailable") {
+			t.Fatalf("%s: reason must state unavailability, got %q", key, entry.Reason)
+		}
+		raw, err := persesHostPanelJSON(entry)
+		if err != nil {
+			t.Fatalf("%s: marshal: %v", key, err)
+		}
+		var doc struct {
+			Kind        string `json:"kind"`
+			Unavailable bool   `json:"unavailable"`
+		}
+		if err := json.Unmarshal(raw, &doc); err != nil {
+			t.Fatalf("%s: unavailable output is not the reason document: %v", key, err)
+		}
+		if doc.Kind != PersesHostUnavailableKind || !doc.Unavailable {
+			t.Fatalf("%s: unavailable entry must be %q/unavailable, got kind=%q unavailable=%v", key, PersesHostUnavailableKind, doc.Kind, doc.Unavailable)
+		}
+	}
+}
+
+// TestPersesHostDashboardAvailabilityConsumesAuthoritativeSignal pins that
+// PersesHostDashboardAvailability returns "available" ONLY for a signal resolved
+// to ObservabilitySupported, and "unavailable" for every other resolved status
+// (empty/absent, requires-adapter, other). Availability is authoritative, never
+// a caller-supplied static positive.
+func TestPersesHostDashboardAvailabilityConsumesAuthoritativeSignal(t *testing.T) {
+	supported := PersesHostDashboardAvailability(capability.ObservabilitySupported)
+	for _, key := range []string{"prometheus-host-container", "loki-host-container", "tempo-host-container"} {
+		if supported[key].Available != PersesHostDashboardAvailable {
+			t.Fatalf("%s: resolved ObservabilitySupported must be available, got %q", key, supported[key].Available)
+		}
+	}
+	for _, status := range []capability.ObservabilitySupportStatus{"", capability.ObservabilityRequiresAdapter, capability.ObservabilityUnsupported} {
+		verdict := PersesHostDashboardAvailability(status)
+		for _, key := range []string{"host-node-metrics", "container-stats"} {
+			if verdict[key].Available != PersesHostDashboardUnavailable {
+				t.Fatalf("status %q: %s must be unavailable, got %q", status, key, verdict[key].Available)
+			}
+		}
+	}
+}
+
+// TestPersesHostDashboardAvailableAvailabilityWitness pins the availability
+// witness shape on the CLI status entry: key + backend + verdict + reason.
+func TestPersesHostDashboardAvailableAvailabilityWitness(t *testing.T) {
+	witness := PersesHostDashboardAvailability(capability.ObservabilitySupported)
+	entry, ok := witness["prometheus-host-container"]
+	if !ok {
+		t.Fatal("prometheus-host-container must be present in the availability witness")
+	}
+	if entry.Key != "prometheus-host-container" || entry.Backend != "prometheus" {
+		t.Fatalf("availability witness shape mismatch: key=%q backend=%q", entry.Key, entry.Backend)
+	}
+	if entry.Datasource != "prometheus" {
+		t.Fatalf("availability witness datasource = %q, want %q", entry.Datasource, "prometheus")
+	}
+}
+
+// TestPersesHostDashboardUnavailableAvailabilityWitness pins the unavailable
+// witness carries a non-empty reason naming the missing verified signal.
+func TestPersesHostDashboardUnavailableAvailabilityWitness(t *testing.T) {
+	witness := PersesHostDashboardAvailability("")
+	for _, key := range []string{"host-node-metrics", "container-stats"} {
+		if witness[key].Available != PersesHostDashboardUnavailable {
+			t.Fatalf("%s must be unavailable", key)
+		}
+		if strings.TrimSpace(witness[key].Reason) == "" {
+			t.Fatalf("%s: unavailable witness must carry a reason", key)
 		}
 	}
 }
@@ -249,6 +375,22 @@ func backendsDatasource(backend string) string {
 		return "LokiDatasource"
 	case "tempo":
 		return "TempoDatasource"
+	default:
+		return ""
+	}
+}
+
+// backendQueryKind maps a real BaseHarbor backend to the Perses native query
+// plugin kind its host/dashboard panels select (e.g.
+// "PrometheusTimeSeriesQuery"), distinct from the query wrapper kind.
+func backendQueryKind(backend string) string {
+	switch backend {
+	case "prometheus":
+		return PersesHostQueryPrometheus
+	case "loki":
+		return PersesHostQueryLoki
+	case "tempo":
+		return PersesHostQueryTempo
 	default:
 		return ""
 	}

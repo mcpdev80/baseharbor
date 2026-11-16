@@ -300,3 +300,35 @@ func PersesManagementSurfaceUnprovisioned() PersesManagementSurface {
 		Reachability:            PersesReachabilityUnverified,
 	}
 }
+
+// ResolveHostDashboardSignalStatus maps the manifest truth to the authoritative
+// resolved observability-signal verdict the Perses host/container dashboards
+// consume. It is a read-only resolver: it never runs a backend probe and never
+// builds the enable-path resolver (that is a parallel owner task, 0428-080).
+//
+// Fail closed: the host dashboard is realized as "supported" only when the
+// manifest authoritatively declares the observability backend selected AND the
+// Perses surface pinned (observabilityManagementUI && persesSelected and the
+// pinned Perses release validates). Any other manifest state resolves to the
+// empty status, which the dashboard reports as unavailable-preserving (no
+// fabricated panel, no silent availability claim), exactly like the valkey and
+// identity-r2 precedents. This keeps runtime availability bound to
+// authoritative manifest selection and the pinned Perses release, never to a
+// static catalog.
+//
+// The manifest fields are passed explicitly to avoid the capability/application
+// import cycle; the caller (app_status_result.go) resolves them from the
+// manifest in its own package.
+func ResolveHostDashboardSignalStatus(observabilityManagementUI bool, persesSelected bool) ObservabilitySupportStatus {
+	if !observabilityManagementUI || !persesSelected {
+		// No selected observability backend + Perses surface: fail closed. The
+		// empty status maps to unavailable-preserving in the dashboard.
+		return ""
+	}
+	if ValidatePersesRelease(PersesDefaultRelease) != nil {
+		// Selected but the pinned release contract does not validate: fail
+		// closed.
+		return ""
+	}
+	return ObservabilitySupported
+}
