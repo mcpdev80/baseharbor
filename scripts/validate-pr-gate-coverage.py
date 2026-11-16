@@ -21,31 +21,67 @@ def resolve_covered_gates(changed_paths: list[str], coverage: dict) -> tuple[lis
     conservative fallback; it is never silently treated as covered.
     """
     packages = coverage.get("packages", [])
+    components = coverage.get("components", [])
     gates = coverage.get("gates", [])
-    selected_surfaces: set[str] = set()
     unresolved: list[str] = []
+    selected_gates: set[str] = set()
     for changed in changed_paths:
-        owners = [
-            row for row in packages
-            if isinstance(row, dict)
-            and isinstance(row.get("path"), str)
-            and (changed == row["path"] or changed.startswith(row["path"].rstrip("/") + "/"))
-        ]
+        owners = [row for row in components if isinstance(row, dict)
+                  and row.get("path") == changed]
+        if not owners:
+            owners = [row for row in packages if isinstance(row, dict)
+                      and isinstance(row.get("path"), str)
+                      and (changed == row["path"] or changed.startswith(row["path"].rstrip("/") + "/"))]
         if not owners:
             unresolved.append(changed)
             continue
-        # Nested package roots are handled by the most specific owner. Multiple
-        # equally specific owners intentionally union their surface contracts.
         longest = max(len(row["path"].rstrip("/")) for row in owners)
-        for row in owners:
-            if len(row["path"].rstrip("/")) == longest:
-                selected_surfaces.update(row.get("surfaces", []))
-    selected_gates = sorted({
-        row["id"] for row in gates if isinstance(row, dict)
-        and selected_surfaces.intersection(row.get("covers", []))
-        and isinstance(row.get("id"), str)
-    })
+        source_surfaces = set().union(*(set(row.get("surfaces", [])) for row in owners
+                                        if len(row["path"].rstrip("/")) == longest))
+        matching = {row["id"] for row in gates if isinstance(row, dict)
+                    and row.get("selection_scope", "focused") == "focused"
+                    and source_surfaces.intersection(row.get("covers", []))
+                    and isinstance(row.get("id"), str)}
+        # Shared/runtime-neutral source changes run one representative runtime
+        # gate (Docker). A Podman-specific source has no Docker sibling in its
+        # own contract and therefore keeps its exact Podman gate. Resolve each
+        # source independently so a separate Podman-only source in the same
+        # change set is not erased by a shared Docker source.
+        for gate_id in list(matching):
+            parts = gate_id.split("/")
+            if len(parts) >= 3 and parts[1] == "podman":
+                docker_sibling = "/".join((parts[0], "docker", *parts[2:]))
+                if docker_sibling in matching:
+                    matching.remove(gate_id)
+        selected_gates.update(matching)
+    selected_gates = sorted(selected_gates)
     return selected_gates, unresolved
+
+
+def resolve_native_checks(changed_paths: list[str], coverage: dict) -> list[str]:
+    """Resolve source components to exact runtime-specific native checks."""
+    components = {row.get("id"): row for row in coverage.get("components", [])
+                  if isinstance(row, dict) and isinstance(row.get("id"), str)}
+    changed_ids = {component_id for component_id, component in components.items()
+                   if component.get("path") in changed_paths}
+    selected: set[str] = set()
+    checks = [row for row in coverage.get("native_checks", [])
+              if isinstance(row, dict)
+              and row.get("selection_scope", "focused") == "focused"
+              and isinstance(row.get("id"), str)]
+    # Resolve per changed component. A shared component uses Docker as its
+    # representative when both runtime variants cover that same component;
+    # a separate Podman-only component in the same PR still selects Podman.
+    for component_id in changed_ids:
+        matching = {check["id"] for check in checks
+                    if component_id in check.get("source_components", [])}
+        for check_id in list(matching):
+            parts = check_id.split("/")
+            if len(parts) == 3 and parts[0] == "native" and parts[1] == "podman":
+                if f"native/docker/{parts[2]}" in matching:
+                    matching.remove(check_id)
+        selected.update(matching)
+    return sorted(selected)
 
 
 def validate(coverage: dict, requirements: dict) -> list[str]:
@@ -60,10 +96,14 @@ def validate(coverage: dict, requirements: dict) -> list[str]:
         row.get("id") for row in requirements.get("gates", []) if isinstance(row, dict)
     }
     surfaces = coverage.get("surfaces")
-    packages = coverage.get("packages")
+    packages = coverage.get("packages", [])
+    components = coverage.get("components")
     gates = coverage.get("gates")
-    if not isinstance(surfaces, list) or not isinstance(packages, list) or not isinstance(gates, list):
-        return errors + ["coverage surfaces, packages, and gates must be arrays"]
+    native_checks = coverage.get("native_checks")
+    if (not isinstance(surfaces, list) or not isinstance(packages, list)
+            or not isinstance(components, list) or not isinstance(gates, list)
+            or not isinstance(native_checks, list)):
+        return errors + ["coverage surfaces, packages, components, gates, and native_checks must be arrays"]
 
     declared_surfaces: set[str] = set()
     for index, surface in enumerate(surfaces):
@@ -99,6 +139,37 @@ def validate(coverage: dict, requirements: dict) -> list[str]:
             else:
                 package_surfaces.add(surface)
 
+    component_ids: set[str] = set()
+    component_paths: set[str] = set()
+    component_surfaces: set[str] = set()
+    for index, component in enumerate(components):
+        if not isinstance(component, dict):
+            errors.append(f"components[{index}] must be an object")
+            continue
+        component_id, path = component.get("id"), component.get("path")
+        if not isinstance(component_id, str) or not SURFACE_RE.fullmatch(component_id):
+            errors.append(f"components[{index}].id is invalid")
+        elif component_id in component_ids:
+            errors.append(f"duplicate source component: {component_id}")
+        else:
+            component_ids.add(component_id)
+        if (not isinstance(path, str) or not path or path.startswith("/")
+                or "\\" in path or ".." in Path(path).parts):
+            errors.append(f"components[{index}].path must be a normalized repository-relative file path")
+        elif path in component_paths:
+            errors.append(f"duplicate component path: {path}")
+        else:
+            component_paths.add(path)
+        owners = component.get("surfaces")
+        if not isinstance(owners, list) or not owners:
+            errors.append(f"components[{index}].surfaces must be a non-empty array")
+            continue
+        for surface in owners:
+            if surface not in declared_surfaces:
+                errors.append(f"component {component_id!r} references undeclared surface {surface!r}")
+            else:
+                component_surfaces.add(surface)
+
     seen_gates: set[str] = set()
     gate_surfaces: set[str] = set()
     for index, gate in enumerate(gates):
@@ -113,8 +184,13 @@ def validate(coverage: dict, requirements: dict) -> list[str]:
             errors.append(f"duplicate gate coverage: {gate_id}")
         seen_gates.add(gate_id)
         parts = gate_id.split("/")
-        if len(parts) != 3 or parts[0] != "atomic" or parts[1] not in {"docker", "podman"}:
-            errors.append(f"gate {gate_id} must be an atomic Docker or Podman gate")
+        if gate.get("selection_scope") not in {"focused", "release-only"}:
+            errors.append(f"gate {gate_id} has invalid selection_scope")
+        if len(parts) >= 3 and parts[0] in {"atomic", "ha", "integration", "journey"}:
+            if gate.get("runtime") != parts[1]:
+                errors.append(f"gate {gate_id} runtime does not match its ID")
+        if parts[0] == "journey" and gate.get("selection_scope") != "release-only":
+            errors.append(f"journey gate {gate_id} must be release-only for PR selection")
         covers = gate.get("covers")
         if not isinstance(covers, list) or not covers:
             errors.append(f"gates[{index}].covers must be a non-empty array")
@@ -127,6 +203,46 @@ def validate(coverage: dict, requirements: dict) -> list[str]:
 
     for surface in sorted(package_surfaces - gate_surfaces):
         errors.append(f"source surface {surface!r} has no release gate owner")
+
+    native_surfaces = {surface for check in native_checks if isinstance(check, dict)
+                       for surface in check.get("covers", []) if isinstance(surface, str)}
+    for surface in sorted(component_surfaces - gate_surfaces - native_surfaces):
+        errors.append(f"source component surface {surface!r} has no release gate owner")
+    required_ids = {row.get("id") for row in requirements.get("gates", [])
+                    if isinstance(row, dict) and release in row.get("required_for", [])}
+    missing = sorted(required_ids - seen_gates)
+    extra = sorted(seen_gates - required_ids)
+    if missing:
+        errors.append("coverage catalog omits active release gates: " + ", ".join(missing))
+    if extra:
+        errors.append("coverage catalog includes gates outside active release catalog: " + ", ".join(extra))
+
+    seen_native: set[str] = set()
+    for index, check in enumerate(native_checks):
+        if not isinstance(check, dict):
+            errors.append(f"native_checks[{index}] must be an object")
+            continue
+        check_id = check.get("id")
+        runtime = check.get("runtime")
+        if not isinstance(check_id, str) or not check_id.startswith(f"native/{runtime}/"):
+            errors.append(f"native_checks[{index}] ID must include its runtime")
+        if runtime not in {"docker", "podman"}:
+            errors.append(f"native_checks[{index}] has unsupported runtime {runtime!r}")
+        if check_id in seen_native:
+            errors.append(f"duplicate native check: {check_id}")
+        seen_native.add(check_id)
+        if check.get("selection_scope") not in {"focused", "release-only"}:
+            errors.append(f"native check {check_id} has invalid selection_scope")
+        covers = check.get("covers")
+        if not isinstance(covers, list) or not covers:
+            errors.append(f"native check {check_id} covers must be non-empty")
+        elif any(surface not in declared_surfaces for surface in covers):
+            errors.append(f"native check {check_id} covers an undeclared surface")
+        owners = check.get("source_components")
+        if not isinstance(owners, list) or not owners:
+            errors.append(f"native check {check_id} source_components must be non-empty")
+        elif any(owner not in component_ids for owner in owners):
+            errors.append(f"native check {check_id} references an unknown source component")
     return errors
 
 
@@ -143,7 +259,7 @@ def main() -> int:
         return 2
     errors = validate(coverage, requirements)
     if errors:
-        print("\\n".join(errors), file=sys.stderr)
+        print("\n".join(errors), file=sys.stderr)
         return 1
     print("PR gate coverage catalog is valid")
     return 0
