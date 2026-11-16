@@ -39,20 +39,43 @@ func TestPersesManagementSurfaceFailClosedWhenUnprovisioned(t *testing.T) {
 // Perses product version never leaks into the provider implementation version
 // or a capability specification version (Provider Contract v1).
 func TestPersesReleaseVersionIsRealizationMetadataNotProviderVersion(t *testing.T) {
-	if capability.PersesDefaultRelease.Version == capability.PersesManagement.Version {
+	if capability.PersesDefaultRelease.Version == capability.PersesManagementSurfaceContract.Version {
 		t.Fatal("perses product version must not equal the provider implementation version; they are independent version axes")
 	}
 }
 
-// TestPersesIsNotAnApplicationCapability asserts Perses has no portable
-// application capability (it is a management surface, never an application
-// capability) and its validation is fail-closed.
+// TestPersesIsNotAnApplicationCapability asserts Perses is a management
+// surface, never an application-capability provider. r2 (wrongly) moved the
+// exported representation onto a valid IntegrationDescriptor that reused the
+// single observability capability owner (Metrics + the versioned MetricsV1
+// specification); Luna REQUEST_CHANGES rejected that because it supplied a fake
+// Metrics capability claim. r4 replaced the representation with a distinct
+// management-tool/surface contract that declares NO capability kind and names
+// only the real observability owner (Prometheus) as an owner reference. The
+// intent is unchanged and now asserted in its positive form: the contract
+// carries the observability management-ui interface and the real owner, has no
+// fake capability claim, and never appears in the shipped reference provider
+// catalog.
 func TestPersesIsNotAnApplicationCapability(t *testing.T) {
-	desc := capability.PersesManagement
-	if len(desc.Capabilities) != 0 {
-		t.Fatalf("perses must not declare application capabilities, got %d", len(desc.Capabilities))
+	contract := capability.PersesManagementSurfaceContract
+	// It declares no capability kind at all: it is a management surface, never
+	// an application-capability provider.
+	if contract.Kind != capability.PersesProviderKind {
+		t.Fatalf("perses contract kind = %q, want %q (no capability claim)", contract.Kind, capability.PersesProviderKind)
 	}
-	if err := desc.Validate(); err == nil {
-		t.Fatal("perses descriptor must fail validation when it has no versioned capability specifications")
+	// The observability management-ui interface is reused from the backend data
+	// owner, and the real owner (Prometheus) is named as an owner reference.
+	if contract.Interface.Class != capability.InterfaceObservability || contract.Interface.Name != "management-ui" {
+		t.Fatalf("perses contract interface = %+v, want the observability management-ui", contract.Interface)
+	}
+	if contract.OwnerName() != string(capability.ProviderPrometheus) {
+		t.Fatalf("perses contract owner = %q, want prometheus", contract.OwnerName())
+	}
+	// Fail-closed against false catalog membership: a management surface is
+	// never a shipped application-capability provider.
+	for _, descriptor := range capability.ReferenceIntegrations() {
+		if descriptor.Provider.Kind == capability.PersesProviderKind {
+			t.Fatalf("perses management surface must not appear in the reference provider catalog (%s)", descriptor.ID)
+		}
 	}
 }

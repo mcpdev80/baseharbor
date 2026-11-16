@@ -39,19 +39,78 @@ var PersesManagementUIInterface = ProviderInterface{
 	Optional: true,
 }
 
-// PersesManagement is the optional Perses management-provider descriptor.
+// PersesManagementSurfaceContractValue is the Perses management-provider value
+// type. It is a purpose-specific management-tool/surface representation,
+// deliberately NOT an IntegrationDescriptor and therefore declaring no
+// application capability kind (Metrics, Logs, Traces, ...).
 //
-// Its product version and image digest are realization metadata (Provider
-// Contract v1: "Provider identity and versioning"); they MUST NOT replace the
-// provider implementation version or the capability specification version.
-var PersesManagement = IntegrationDescriptor{
-	ID:              "baseharbor/perses",
-	Version:         "0.1.0",
-	Protocol:        ProviderProtocolV1,
-	Provider:        Provider{Kind: PersesProviderKind, Capabilities: []Kind{}},
-	Services:        []ServiceKind{ServiceObservability},
-	SupportedScopes: []ProviderScope{ScopeShared, ScopeApplication},
-	Interfaces:      []ProviderInterface{PersesManagementUIInterface},
+// Luna REQUEST_CHANGES (act-luna-1575-r1.md, PR #1575) rejected the r2
+// IntegrationDescriptor because binding Perses to the Metrics capability kind
+// supplied a fake capability claim the task forbids: Perses never IMPLEMENTS a
+// metrics/logs/traces capability on its own, it only visualises the surface the
+// backend data owner already ships. A valid IntegrationDescriptor must declare a
+// real capability, so a genuine capability claim is impossible without lying.
+//
+// Instead this contract carries only what is genuinely true:
+//
+//   - the Perses management provider kind (PersesProviderKind),
+//   - the product version axis, which is DISTINCT from any provider
+//     implementation version and any capability specification version
+//     (Provider Contract v1: versioning axes). Its value is a realization
+//     metadata version, not a capability spec version,
+//   - the optional observability management-ui interface that the backend data
+//     owner (Prometheus, where the pinned Perses release actually ships the
+//     Prometheus plugin) already declares (reuse PersesManagementUIInterface),
+//   - the real observability capability owner that Perses visualises: the
+//     Prometheus provider kind ("prometheus"), named as an owner reference, NOT
+//     as a Perses-declared capability,
+//   - the shared placement scope and the optional lifecycle support.
+//
+// Perses is a provider-owned management/visualization surface, never an
+// application capability, so it is never added to ReferenceIntegrations() and
+// never appears in the shipped reference provider catalog or in any
+// validatable-capability list. It declares NO fake metrics/logs/traces
+// application capability of its own.
+type PersesManagementSurfaceContractValue struct {
+	// Kind is the Perses management provider kind. It is a management surface,
+	// never a capability implementation.
+	Kind ProviderKind
+	// Version is the Perses product realization-version axis. It MUST be a
+	// distinct value from the pinned Perses release version (PersesDefaultRelease)
+	// and from any capability specification version (Provider Contract v1).
+	Version string
+	// Owner is the real observability capability owner Perses visualises. It is
+	// the Prometheus provider kind, named as an owner reference, NOT as a Perses
+	// capability claim.
+	Owner ProviderKind
+	// Interface is the optional observability management-ui surface Perses
+	// realizes, reusing the backend data owner's existing interface.
+	Interface ProviderInterface
+	// Scope is the shared placement scope of the optional management surface.
+	Scope ProviderScope
+	// OptionalLifecycle marks the optional status/update/destroy lifecycle this
+	// surface exposes.
+	OptionalLifecycle bool
+}
+
+// PersesManagementSurfaceContract is the exported, package-level Perses
+// management-tool/surface contract. It is self-describing and declares no
+// application capability kind. It is intentionally NOT an IntegrationDescriptor
+// and NOT part of ReferenceIntegrations().
+var PersesManagementSurfaceContract = PersesManagementSurfaceContractValue{
+	Kind:              PersesProviderKind,
+	Version:           "0.1.0",
+	Owner:             ProviderPrometheus,
+	Interface:         PersesManagementUIInterface,
+	Scope:             ScopeShared,
+	OptionalLifecycle: true,
+}
+
+// OwnerName renders the real observability capability owner Perses visualises as
+// a human-readable reference (Prometheus). It exists so consumers can report the
+// ownership without asserting a Perses-declared capability.
+func (c PersesManagementSurfaceContractValue) OwnerName() string {
+	return string(c.Owner)
 }
 
 // PersesRelease is the pinned Perses release this Core references as the
