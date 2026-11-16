@@ -99,6 +99,16 @@ class CheckRoutingTests(unittest.TestCase):
                         self.assertTrue(any(re.search(pattern, name) for package in packages
                                             for name in test_functions(package)))
 
+    def test_selective_identity_source_routes_to_exact_pr_runtime_test(self):
+        runtime = yaml.safe_load((ROOT / '.github/workflows/pre-release-runtime-suite.yml').read_text())
+        script = next(step['run'] for step in runtime['jobs']['gate']['steps']
+                      if step.get('id') == 'runtime_gate')
+        self.assertIn('cmd/baha/app_identity_selective_runtime_test.go', script)
+        self.assertIn('BASEHARBOR_IDENTITY_LIFECYCLE_ACCEPTANCE=1', script)
+        self.assertIn('run_native_test ./cmd/baha TestSelectiveIdentityRuntimeAddRemoveReAdd', script)
+        self.assertIn('=== RUN', script)
+        self.assertIn('--- PASS:', script)
+
     def test_pr_selected_gates_have_native_or_contract_jobs(self):
         source = ast.parse((ROOT / 'scripts/pr-gate-plan.py').read_text())
         gates = {node.value for node in ast.walk(source)
