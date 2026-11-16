@@ -131,6 +131,14 @@ const (
 	DashboardBackendPrometheus DashboardBackend = "prometheus"
 	DashboardBackendLoki       DashboardBackend = "loki"
 	DashboardBackendTempo      DashboardBackend = "tempo"
+	// DashboardBackendKeycloak is the identity backend data owner the
+	// identity-keycloak dashboard realizes. It is a real BaseHarbor backend
+	// (Keycloak, per internal/capability/reference.go), never a Grafana
+	// assumption. Availability of this dashboard is NOT derived from this
+	// backend string alone: it must additionally pass the identity-selection
+	// witness (real Keycloak metric signal + real Target authorization), so
+	// the backend is a real signal owner and never a fabricated panel.
+	DashboardBackendKeycloak DashboardBackend = "keycloak"
 )
 
 // DashboardStatus is the selection verdict a dashboard reports.
@@ -197,6 +205,22 @@ func DefaultDashboardCatalog() PersesDashboardCatalog {
 			Key:               "tempo-traces",
 			Backend:           DashboardBackendTempo,
 			Datasource:        "tempo",
+			SupportedVersions: []string{AcceptedPersesVersion},
+		},
+		// The identity-keycloak dashboard realizes the Keycloak identity
+		// backend. It is a real backend of the pinned release (the verified
+		// current Keycloak native openmetrics signal, reference.go), so it
+		// belongs in the shipped catalog alongside the observability backends.
+		// Eligibility still flows through EligibleFor and the identity-selection
+		// witness: an available witness (real Keycloak metric signal + real
+		// Target authorization, provider selected, current release) is required,
+		// so the dashboard is never fabricated when the signal or authorization
+		// is absent. The datasource is the pinned Prometheus datasource, never a
+		// fabricated Keycloak datasource.
+		"identity-keycloak": {
+			Key:               "identity-keycloak",
+			Backend:           DashboardBackendKeycloak,
+			Datasource:        "PrometheusDatasource",
 			SupportedVersions: []string{AcceptedPersesVersion},
 		},
 	}

@@ -32,6 +32,7 @@ func TestDashboardCatalogBuildsWithRealBackends(t *testing.T) {
 		DashboardBackendPrometheus: "prometheus-targets",
 		DashboardBackendLoki:       "loki-logs",
 		DashboardBackendTempo:      "tempo-traces",
+		DashboardBackendKeycloak:   "identity-keycloak",
 	}
 	for backend, key := range want {
 		if !catalog.HasTemplate(key) {
@@ -298,6 +299,109 @@ func TestDashboardCatalogVersionMatchesSeamPin(t *testing.T) {
 	}
 	if err := ValidatePersesRelease(PersesDefaultRelease); err != nil {
 		t.Fatalf("the pinned release must validate: %v", err)
+	}
+}
+
+// TestIdentityKeycloakEligibleOnlyWithRealEvidence pins the positive case for
+// the identity-keycloak dashboard: it is eligible only when the identity-
+// selection witness attests a real Keycloak metric signal for an authorized
+// Target with the provider selected and the pinned release current.
+func TestIdentityKeycloakEligibleOnlyWithRealEvidence(t *testing.T) {
+	catalog := DefaultDashboardCatalog()
+	if !catalog.HasTemplate("identity-keycloak") {
+		t.Fatalf("identity-keycloak must be a shipped catalog template")
+	}
+	// Positive: an available witness AND the keycloak backend actually
+	// producing a real signal of the pinned release -> eligible.
+	SignalsWithKeycloak := map[DashboardBackend]bool{
+		DashboardBackendPrometheus: true,
+		DashboardBackendLoki:       true,
+		DashboardBackendTempo:      true,
+		DashboardBackendKeycloak:   true,
+	}
+	elig, err := catalog.EligibleFor("identity-keycloak", availableIdentityWitness(), SignalsWithKeycloak)
+	if err != nil {
+		t.Fatalf("eligibility must not error on real evidence: %v", err)
+	}
+	if !elig.Eligible {
+		t.Fatalf("identity-keycloak must be eligible with a real witness and keycloak signal: %+v", elig)
+	}
+	if elig.Backend != string(DashboardBackendKeycloak) {
+		t.Fatalf("eligibility backend = %q, want %q", elig.Backend, DashboardBackendKeycloak)
+	}
+}
+
+// TestIdentityKeycloakFailClosedWithoutRealEvidence pins that the identity-
+// keycloak dashboard fails closed to not-eligible when any of the four real-
+// evidence flags is missing: no selection, no metric, obsolete metric or
+// unauthorized target. None of these may make the dashboard available.
+func TestIdentityKeycloakFailClosedWithoutRealEvidence(t *testing.T) {
+	catalog := DefaultDashboardCatalog()
+	cases := map[string]IdentitySelectionWitness{
+		"not-selected":    NewIdentitySelectionWitness(false, true, true, true),
+		"no-metric":       NewIdentitySelectionWitness(true, false, true, true),
+		"metric-not-curr": NewIdentitySelectionWitness(true, true, false, true),
+		"unauthorized":    NewIdentitySelectionWitness(true, true, true, false),
+	}
+	for name, witness := range cases {
+		elig, err := catalog.EligibleFor("identity-keycloak", witness, allBackendSignals())
+		if err != nil {
+			t.Fatalf("%s: eligibility must not error: %v", name, err)
+		}
+		if elig.Eligible {
+			t.Fatalf("%s: identity-keycloak must not be eligible without full real evidence: %+v", name, elig)
+		}
+		if elig.Reason == "" {
+			t.Fatalf("%s: an unavailable identity-keycloak verdict must carry a concrete reason", name)
+		}
+	}
+}
+
+// TestIdentityKeycloakRequiresOwnBackendSignal pins the per-backend gate: the
+// identity-keycloak dashboard is eligible only when its own backend (keycloak)
+// actually produces a real signal of the pinned release. An available identity
+// witness plus the other backends' signals but NOT the keycloak signal must
+// fail closed. This is the STOP-risk guard: identity-keycloak is a real
+// backend owner, never a fabricated panel.
+func TestIdentityKeycloakRequiresOwnBackendSignal(t *testing.T) {
+	catalog := DefaultDashboardCatalog()
+	witness := availableIdentityWitness()
+	// All backends except keycloak have a real signal.
+	signals := map[DashboardBackend]bool{
+		DashboardBackendPrometheus: true,
+		DashboardBackendLoki:       true,
+		DashboardBackendTempo:      true,
+	}
+	elig, err := catalog.EligibleFor("identity-keycloak", witness, signals)
+	if err != nil {
+		t.Fatalf("eligibility must not error: %v", err)
+	}
+	if elig.Eligible {
+		t.Fatalf("identity-keycloak must not be eligible when its own keycloak signal is absent")
+	}
+	if !containsString(elig.Reason, "keycloak") {
+		t.Fatalf("reason must name the missing keycloak backend signal, got %q", elig.Reason)
+	}
+}
+
+// TestIdentityKeycloakCannotBeForgedFromCallerStatusBoolean pins the Luna r3
+// non-forgeability witness for the identity dashboard: a caller cannot make
+// identity-keycloak available by supplying a status boolean alone. Only the
+// four real-evidence flags in an available witness derive a positive verdict.
+func TestIdentityKeycloakCannotBeForgedFromCallerStatusBoolean(t *testing.T) {
+	catalog := DefaultDashboardCatalog()
+	// The zero-value witness (unconstructed / not-yet-resolved fan-in) is
+	// unavailable and yields no eligible dashboard.
+	zero := IdentitySelectionWitness{}
+	elig, err := catalog.EligibleFor("identity-keycloak", zero, allBackendSignals())
+	if err != nil {
+		t.Fatalf("eligibility must not error on an unconstructed witness: %v", err)
+	}
+	if elig.Eligible {
+		t.Fatalf("identity-keycloak must not be available from an unconstructed witness")
+	}
+	if !containsString(elig.Reason, "caller-supplied status") {
+		t.Fatalf("the fail-closed reason must name the caller-supplied-status prohibition, got %q", elig.Reason)
 	}
 }
 
