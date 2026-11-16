@@ -21,8 +21,19 @@ const ConfigVersion = 1
 // populated (other BaseHarbor state files are present) but the authoritative
 // config.yaml is absent. This is a misconfiguration the user must fix, never
 // a silent empty default — a missing config under an active config root would
-// otherwise make the daemon fall through to its implicit defaults.
+// otherwise make the daemon fall through to its implicit defaults. It belongs
+// to the same "configured but unusable" family as ErrConfigEmpty (an existing
+// but empty file).
 var ErrConfigMissing = errors.New("BaseHarbor config root is configured but the config.yaml is missing")
+
+// ErrConfigEmpty is returned when an existing config.yaml resolves but carries
+// no loadable content (zero bytes or whitespace only). An existing file is a
+// malformed configuration, never a clean absent-config default: the user
+// pointed BaseHarbor at this path on purpose, so an emptied or untouched file
+// must surface as an actionable error rather than silently falling through to
+// the implicit defaults. It belongs to the ErrConfigMissing family so callers
+// can treat "configured but unusable" the same way.
+var ErrConfigEmpty = errors.New("BaseHarbor config root is configured but the config.yaml is empty")
 
 var targetTenantID = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
 
@@ -171,12 +182,13 @@ func LoadConfig() (Config, error) {
 		return Config{}, fmt.Errorf("read BaseHarbor config: %w", err)
 	}
 	if len(bytes.TrimSpace(data)) == 0 {
-		// A zero-byte or whitespace-only config carries no user intent and no
-		// damage signal: treat it as a clean no-config rather than a parse
-		// error (an empty file decodes to version 0, which would otherwise
-		// surface as an obscure "unsupported BaseHarbor config version 0").
-		// This keeps a deliberately emptied config from failing the daemon.
-		return Config{Version: ConfigVersion, Access: map[string]AccessDefinition{}, Targets: map[string]TargetDefinition{}}, nil
+		// An EXISTING but empty/whitespace-only config.yaml is a malformed
+		// configuration, not a clean absent-config default. The user pointed
+		// BaseHarbor at this path on purpose, so an emptied or untouched file
+		// must fail loud with an actionable error rather than silently falling
+		// through to the implicit defaults (BF-05). Only a genuinely absent
+		// file may keep the clean default below.
+		return Config{}, fmt.Errorf("%w: %s", ErrConfigEmpty, path)
 	}
 	return decodeConfig(data)
 }

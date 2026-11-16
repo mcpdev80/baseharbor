@@ -53,8 +53,9 @@ func TestLoadConfigMissingUnderPopulatedRootFailsLoud(t *testing.T) {
 }
 
 // TestLoadConfigMissingUnderEmptyRootSucceeds guards the regression that the
-// BF-05 fix must NOT break: a genuinely empty config root (fresh install, no
-// config.yaml yet) stays a clean no-config with the implicit default.
+// BF-05 fix must NOT break: a genuinely absent config file under a clean,
+// empty config root (fresh install, no config.yaml yet) stays a clean no-config
+// with the implicit default.
 func TestLoadConfigMissingUnderEmptyRootSucceeds(t *testing.T) {
 	state := t.TempDir()
 	t.Setenv("BASEHARBOR_STATE_DIR", state)
@@ -68,25 +69,38 @@ func TestLoadConfigMissingUnderEmptyRootSucceeds(t *testing.T) {
 	}
 }
 
-// TestLoadConfigEmptyFileSucceeds guards: a deliberately empty config.yaml
-// carries no user intent and must stay a clean no-config (not a parse error
-// on version 0), so the daemon never fails on an emptied config.
-func TestLoadConfigEmptyFileSucceeds(t *testing.T) {
-	state := t.TempDir()
-	t.Setenv("BASEHARBOR_STATE_DIR", state)
-	cfgPath := filepath.Join(state, "config", "config.yaml")
-	if err := os.MkdirAll(filepath.Dir(cfgPath), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(cfgPath, []byte{}, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	cfg, err := LoadConfig()
-	if err != nil {
-		t.Fatalf("empty config file must not error, got %v", err)
-	}
-	if len(cfg.Targets) != 0 {
-		t.Fatalf("empty config file must yield the empty default, got %+v", cfg)
+// TestLoadConfigExistingEmptyFileFailsLoud is the round-2 guard (Luna batch17,
+// Object 2): an EXISTING but empty/whitespace-only config.yaml is a malformed
+// configuration, not a clean absent-config default. The user pointed BaseHarbor
+// at this path on purpose, so it must surface an actionable error from the
+// ErrConfigMissing family rather than silently falling through to the implicit
+// defaults.
+func TestLoadConfigExistingEmptyFileFailsLoud(t *testing.T) {
+	for _, name := range []string{"empty", "whitespace"} {
+		t.Run(name, func(t *testing.T) {
+			state := t.TempDir()
+			t.Setenv("BASEHARBOR_STATE_DIR", state)
+			cfgPath := filepath.Join(state, "config", "config.yaml")
+			if err := os.MkdirAll(filepath.Dir(cfgPath), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			var content []byte
+			if name == "empty" {
+				content = []byte{}
+			} else {
+				content = []byte("   \n\t \n")
+			}
+			if err := os.WriteFile(cfgPath, content, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			cfg, err := LoadConfig()
+			if err == nil {
+				t.Fatalf("%s config must fail loud, got empty config %+v", name, cfg)
+			}
+			if !errors.Is(err, ErrConfigEmpty) {
+				t.Fatalf("%s config must return ErrConfigEmpty, got %+v (err=%v)", name, cfg, err)
+			}
+		})
 	}
 }
 
@@ -105,6 +119,69 @@ func TestLoadConfigValidStillLoads(t *testing.T) {
 	}
 	if len(loaded.Targets) != 1 {
 		t.Fatalf("valid config did not load its target: %+v", loaded.Targets)
+	}
+}
+
+// TestLoadConfigEndToEndXDGPath exercises LoadConfig over the real XDG config
+// home with the four cases that matter for BF-05, resolving the path exactly as
+// the production ConfigPath()/LoadConfig() do (XDG_CONFIG_HOME/<app>/config.yaml):
+//
+//   - exists + empty        -> fail loud (ErrConfigEmpty), not the implicit default
+//   - missing               -> clean default (genuinely empty root)
+//   - corrupt               -> fail loud (unparseable)
+//   - valid                 -> loads the configured target
+//
+// This is the end-to-end witness Luna batch17 requested: the helper predicate
+// alone never ran LoadConfig against the XDG double-append setup.
+func TestLoadConfigEndToEndXDGPath(t *testing.T) {
+	xdg := filepath.Join(t.TempDir(), ".config")
+	t.Setenv("XDG_CONFIG_HOME", xdg)
+	// ConfigPath() resolves to XDG_CONFIG_HOME/baseharbor/config.yaml.
+	cfgPath := filepath.Join(xdg, "baseharbor", "config.yaml")
+	if err := os.MkdirAll(filepath.Dir(cfgPath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	// Case 1: exists + empty.
+	if err := os.WriteFile(cfgPath, []byte{}, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadConfig(); !errors.Is(err, ErrConfigEmpty) {
+		t.Fatalf("empty XDG config must return ErrConfigEmpty, got %v", err)
+	}
+
+	// Case 2: missing.
+	if err := os.Remove(cfgPath); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("missing XDG config under empty root must not error, got %v", err)
+	}
+	if len(cfg.Targets) != 0 || len(cfg.Access) != 0 {
+		t.Fatalf("missing XDG config must yield the empty default, got %+v", cfg)
+	}
+
+	// Case 3: corrupt.
+	corrupt := []byte("version: 1\n\tBAD INDENT {{{\n")
+	if err := os.WriteFile(cfgPath, corrupt, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadConfig(); err == nil {
+		t.Fatal("corrupt XDG config must fail loud")
+	}
+
+	// Case 4: valid.
+	valid := []byte("version: 1\naccess:\n  local:\n    provider: local\n    reference: local\ntargets:\n  first:\n    runtime:\n      provider: docker\n    access:\n      reference: local\n")
+	if err := os.WriteFile(cfgPath, valid, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("valid XDG config must load, got %v", err)
+	}
+	if len(loaded.Targets) != 1 {
+		t.Fatalf("valid XDG config did not load its target: %+v", loaded.Targets)
 	}
 }
 
