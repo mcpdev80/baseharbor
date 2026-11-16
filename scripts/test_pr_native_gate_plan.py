@@ -18,11 +18,10 @@ class NativeGatePlanTests(unittest.TestCase):
             ['internal/runtime/container_identity.go'], coverage)
         self.assertEqual(matrix, {'include': []})
 
-    def test_destroy_source_selects_only_docker_and_podman_destroy_gates(self):
+    def test_destroy_source_selects_only_its_podman_gate(self):
         matrix = planner.resolve_matrix(
             ['cmd/baha/management_remote_installation_destroy.go'], coverage)
         self.assertEqual(matrix, {'include': [
-            {'id': 'native/docker/installation-destroy', 'runtime': 'docker'},
             {'id': 'native/podman/installation-destroy', 'runtime': 'podman'},
         ]})
 
@@ -31,14 +30,12 @@ class NativeGatePlanTests(unittest.TestCase):
             ['cmd/baha/greenfield_isolated_core_native_test.go'], coverage)
         self.assertEqual(matrix, {'include': [
             {'id': 'native/docker/greenfield', 'runtime': 'docker'},
-            {'id': 'native/podman/greenfield', 'runtime': 'podman'},
         ]})
 
     def test_second_target_conflict_is_independent_of_destroy(self):
         matrix = planner.resolve_matrix(
             ['cmd/baha/second_target_conflict_native_test.go'], coverage)
         self.assertEqual(matrix, {'include': [
-            {'id': 'native/docker/second-target-conflict', 'runtime': 'docker'},
             {'id': 'native/podman/second-target-conflict', 'runtime': 'podman'},
         ]})
 
