@@ -424,6 +424,14 @@
             "mcp_tool": "baseharbor.secret.tls-set"
           },
           {
+            "id": "secret.reveal",
+            "description": "Human-only authorization seam for managed-secret reveal via a verified operator. Workload/runtime identity never satisfies this; the CLI --reveal paths (app env/creds) route through it and it is excluded from the MCP tool boundary by design.",
+            "safety": "read_only",
+            "confirmation_required": false,
+            "policy_required": true,
+            "contract_version": "v1"
+          },
+          {
             "id": "node.add",
             "description": "Create a remote node Target and write a protected one-use enrollment bundle without returning credential material.",
             "safety": "mutating",
