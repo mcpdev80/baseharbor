@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Conservative v0.4.26 PR area-to-existing-gate selection (#892)."""
 import argparse
+import importlib.util
 import json
 import os
 import re
@@ -8,6 +9,16 @@ import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
+
+
+def _coverage_module():
+    spec = importlib.util.spec_from_file_location(
+        'pr_gate_coverage_validator', ROOT / 'validate-pr-gate-coverage.py')
+    if spec is None or spec.loader is None:
+        raise RuntimeError('cannot load declarative PR gate coverage resolver')
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 DOC_CHECKS = [
     {'id': 'documentation-audit', 'owner': 'scripts/documentation-audit.sh',
@@ -675,7 +686,8 @@ RECEIPT_CONTROL_PLANE_WORKFLOWS = frozenset({'.github/workflows/receipt-post-run
 
 CI_CHECKS = [
     {'id': 'pr-planner-tests', 'owner': 'scripts/test_pr_gate_plan.py',
-     'command': 'python3 -m unittest scripts/test_pr_gate_plan.py'},
+     'command': ('python3 -m unittest scripts/test_pr_gate_plan.py '
+                 'scripts/test_pre_release_runtime_reuse.py')},
     {'id': 'ci-policy', 'owner': 'scripts/ci-workflow-policy.sh',
      'command': 'bash scripts/ci-workflow-policy.sh'},
     {'id': 'ci-executor-tests', 'owner': 'normal selected CI regressions',
@@ -1577,6 +1589,44 @@ def plan(diff, requirements, mapping, repository='.', context_repository=None,
     """Try targeted selection; production CI tests valid unknown impact broadly."""
     result = targeted_plan(diff, requirements, mapping, repository,
                            context_repository, context_target_branch)
+    coverage_path = ROOT / 'pr-gate-coverage.json'
+    if coverage_path.is_file():
+        coverage = json.loads(coverage_path.read_text())
+        if coverage.get('release') == result['release']:
+            coverage_errors = _coverage_module().validate(coverage, requirements)
+            if coverage_errors:
+                raise ValueError('invalid trusted PR gate coverage catalog: ' + '; '.join(coverage_errors))
+            paths = [change[key] for change in diff.get('changes', [])
+                     for key in ('path', 'old_path', 'new_path') if key in change]
+            covered, unowned = _coverage_module().resolve_covered_gates(paths, coverage)
+            legacy_selected = set(result['selected_gates'])
+            required = {gate['id'] for gate in requirements.get('gates', [])
+                        if result['release'] in gate.get('required_for', [])}
+            missing = sorted(set(covered) - required)
+            if missing:
+                result = dict(result)
+                result['coverage_status'] = 'unresolved'
+                result['broad_required'] = True
+                result['unresolved_coverage'] = list(result['unresolved_coverage']) + [
+                    'declared coverage gates absent from trusted release catalog: ' + ', '.join(missing)]
+            else:
+                result = dict(result)
+                # The catalog is the sole authority for runtime gate selection.
+                # Legacy path heuristics below still choose package validations,
+                # but must not add lifecycle, journey, or other runtime gates.
+                result['selected_gates'] = sorted(covered)
+                if covered:
+                    result['reasons'] = list(result['reasons']) + [
+                        'Declared coverage selected gates: ' + ', '.join(covered)]
+                if unowned:
+                    result['reasons'] = list(result['reasons']) + [
+                        'No declared runtime gate owner for: ' + ', '.join(unowned)]
+                    if legacy_selected:
+                        result['coverage_status'] = 'unresolved'
+                        result['broad_required'] = True
+                        result['unresolved_coverage'] = list(result['unresolved_coverage']) + [
+                            'legacy runtime impact has no declared gate coverage: ' +
+                            ', '.join(unowned)]
     if not conservative_fallback or result['coverage_status'] == 'resolved':
         return deduplicate_cli_package_validations(result)
     valid, _ = validated_diff(diff)
@@ -1610,20 +1660,16 @@ def plan(diff, requirements, mapping, repository='.', context_repository=None,
     if any(path.startswith('internal/openbao/') for path in paths):
         for row in OPENBAO_CHECKS:
             checks[row['id']] = row
+    # Conservative unknown-source fallback runs broad unit/vet/build checks.
+    # Runtime gates are never guessed here; they require a declared coverage
+    # contract in the catalog, which prevents unrelated Podman gates from being
+    # selected as a side effect of an unknown Go path.
     gates = set(result['selected_gates'])
-    if any(path.startswith(('cmd/', 'internal/', 'deploy/', 'contracts/', 'spec/', 'sdk/'))
-           or path in ('go.mod', 'go.sum') for path in paths):
-        gates.update(('atomic/docker/lifecycle', 'atomic/podman/lifecycle'))
-    available = {gate['id'] for gate in requirements['gates']
-                 if result['release'] in gate['required_for']}
-    if gates - available:
-        result['unresolved_coverage'].append('fallback requires unavailable runtime checks')
-        return deduplicate_cli_package_validations(result)
     result.update(coverage_status='resolved', unresolved_coverage=[], broad_required=False,
                   fallback_used=True, fallback_reasons=reasons,
                   selected_gates=sorted(gates),
                   required_validation_checks=[checks[key] for key in sorted(checks)])
-    result['reasons'].append('Unknown narrow coverage selects normal broad unit/vet/build checks and applicable runtime lifecycles.')
+    result['reasons'].append('Unknown narrow coverage selects normal broad unit/vet/build checks; runtime gates require declared coverage.')
     return deduplicate_cli_package_validations(result)
 
 

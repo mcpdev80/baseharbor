@@ -7,10 +7,12 @@ import (
 	"errors"
 	"go/format"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/machine"
 )
 
 func appMachineFixture() GuidedReadContext {
@@ -254,6 +256,75 @@ func TestAppMachineAdaptersDesiredNamedSQL(t *testing.T) {
 	_, err = appMachinePropose(context.Background(), want, read, choiceRead, planner)
 	if !errors.As(err, &typed) || typed.Code != "conflict" {
 		t.Fatalf("foreign target allowed: %v", err)
+	}
+}
+
+func TestAppMachineProposeReportsSafeAuthorityStage(t *testing.T) {
+	for _, stage := range []string{"read", "choices", "plan"} {
+		t.Run(stage, func(t *testing.T) {
+			fail := func(at string) error {
+				if at == stage {
+					return errors.New("private authority detail")
+				}
+				return nil
+			}
+			read := func(context.Context, string) (GuidedReadContext, error) {
+				if err := fail("read"); err != nil {
+					return GuidedReadContext{}, err
+				}
+				return appMachineFixture(), nil
+			}
+			choices := func(context.Context, string, []capability.Requirement) ([]appProviderChoice, error) {
+				return nil, fail("choices")
+			}
+			plan := func(context.Context, string, []capability.Requirement, []application.ProviderPreference) (application.ProviderImpactPlan, error) {
+				return application.ProviderImpactPlan{}, fail("plan")
+			}
+			_, err := appMachinePropose(context.Background(), appMachineDesiredRequest{
+				Target: "dev", SnapshotRevision: "snapshot-1",
+			}, read, choices, plan)
+			var authorityErr *appMachineProposalAuthorityError
+			var machineErr *appMachineError
+			if !errors.As(err, &authorityErr) || authorityErr.Stage != stage ||
+				!errors.As(err, &machineErr) || machineErr.Code != "denied" ||
+				bytes.Contains([]byte(err.Error()), []byte("private authority detail")) {
+				t.Fatalf("missing safe authority stage or leaked detail: %v", err)
+			}
+		})
+	}
+}
+
+func TestAppMachineProposePreservesSafeAuthorityClassification(t *testing.T) {
+	private := errors.New("private filesystem detail")
+	authority := &machine.Error{
+		Code: machine.ErrorOwnershipAmbiguous, CauseCode: "provider_consumer_inventory_invalid",
+		Message: "private filesystem detail", Cause: private,
+	}
+	err := appMachineProposalAuthorityFailure("plan", authority)
+	var proposalErr *appMachineProposalAuthorityError
+	var machineErr *appMachineError
+	if !errors.As(err, &proposalErr) || proposalErr.AuthorityCode != string(machine.ErrorOwnershipAmbiguous) ||
+		proposalErr.AuthorityCauseCode != "provider_consumer_inventory_invalid" ||
+		!errors.As(err, &machineErr) || machineErr.Code != "denied" {
+		t.Fatalf("safe authority classification was lost: %#v (%v)", proposalErr, err)
+	}
+	if strings.Contains(err.Error(), "private filesystem detail") {
+		t.Fatalf("private authority detail leaked: %v", err)
+	}
+}
+
+func TestAppMachineProposalAuthorityFailurePreservesStaticPlannerStage(t *testing.T) {
+	err := appMachineProposalAuthorityFailure("plan", appMachineProposalStage("resolve-provider-plan",
+		appMachineProposalStage("retained-backend-placement-projection", errors.New("private filesystem detail")),
+	))
+	var proposalErr *appMachineProposalAuthorityError
+	var machineErr *appMachineError
+	if !errors.As(err, &proposalErr) || proposalErr.Stage != "plan/resolve-provider-plan/retained-backend-placement-projection" ||
+		!errors.As(err, &machineErr) || machineErr.Code != "denied" {
+		t.Fatalf("safe planner stage was lost: %#v (%v)", proposalErr, err)
+	}
+	if strings.Contains(err.Error(), "private filesystem detail") {
+		t.Fatalf("private planner detail leaked: %v", err)
 	}
 }
 
