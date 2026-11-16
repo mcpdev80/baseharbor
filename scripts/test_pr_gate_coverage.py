@@ -104,12 +104,24 @@ class CoverageCatalogTests(unittest.TestCase):
         self.assertEqual([DOCKER], selected)
         self.assertEqual([], unresolved)
 
+    def test_podman_container_identity_changes_select_only_podman_data_gate(self):
+        current = json.loads((ROOT / "pr-gate-coverage.json").read_text())
+        selected, unresolved = coverage_module.resolve_covered_gates(
+            ["internal/runtime/container_identity.go",
+             "internal/runtime/container_identity_test.go",
+             "internal/runtime/service_retirement_test.go"], current)
+        self.assertEqual(["atomic/podman/data-capabilities"], selected)
+        self.assertEqual([], unresolved)
+
     def test_selective_identity_runtime_test_has_executable_docker_lifecycle_gate(self):
         current = json.loads((ROOT / "pr-gate-coverage.json").read_text())
         selected, unresolved = coverage_module.resolve_covered_gates(
             ["cmd/baha/app_identity_selective_runtime_test.go"], current)
         self.assertEqual(["atomic/docker/lifecycle"], selected)
         self.assertEqual([], unresolved)
+        component = next(row for row in current["components"]
+                         if row["path"] == "cmd/baha/app_identity_selective_runtime_test.go")
+        self.assertEqual(["source.gate.atomic.docker.lifecycle"], component["surfaces"])
 
     def test_unknown_package_is_returned_for_conservative_fallback(self):
         selected, unresolved = coverage_module.resolve_covered_gates(
@@ -195,7 +207,7 @@ class CoverageCatalogTests(unittest.TestCase):
         self.assertTrue(any("normalized repository-relative directory" in error for error in errors))
         self.assertTrue(any("unknown release gate" in error for error in errors))
 
-    def test_pr_plan_includes_declared_data_capabilities_gates_for_runtime_component(self):
+    def test_pr_plan_routes_podman_identity_to_its_runtime_gate(self):
         requirements = json.loads((ROOT / "release-requirements.json").read_text())
         mapping = json.loads((ROOT / "pr-gate-map-v1.json").read_text())
         changes = [{"status": "modified", "path": "internal/runtime/container_identity.go"}]
@@ -210,12 +222,29 @@ class CoverageCatalogTests(unittest.TestCase):
         }
         result = planner.plan(diff, requirements, mapping)
         self.assertEqual("resolved", result["coverage_status"])
-        self.assertIn(DOCKER, result["selected_gates"])
-        self.assertNotIn(PODMAN, result["selected_gates"])
+        self.assertNotIn(DOCKER, result["selected_gates"])
+        self.assertIn(PODMAN, result["selected_gates"])
         self.assertNotIn("atomic/podman/control-plane-recovery", result["selected_gates"])
         self.assertNotIn("atomic/podman/backup-restore", result["selected_gates"])
         self.assertNotIn("journey/podman", result["selected_gates"])
-        self.assertEqual([DOCKER], result["selected_gates"])
+        self.assertEqual([PODMAN], result["selected_gates"])
+
+    def test_pr_plan_routes_podman_container_identity_to_podman_gate(self):
+        requirements = json.loads((ROOT / "release-requirements.json").read_text())
+        mapping = json.loads((ROOT / "pr-gate-map-v1.json").read_text())
+        diff = {
+            "target_base_sha": "a" * 40, "head_sha": "b" * 40,
+            "merge_base_sha": "c" * 40, "integration_sha": "d" * 40,
+            "broad_required": False, "reasons": [],
+            "changes": [
+                {"status": "modified", "path": "internal/runtime/container_identity.go"},
+                {"status": "modified", "path": "internal/runtime/container_identity_test.go"},
+                {"status": "modified", "path": "internal/runtime/service_retirement_test.go"},
+            ],
+        }
+        result = planner.plan(diff, requirements, mapping)
+        self.assertEqual("resolved", result["coverage_status"])
+        self.assertEqual(["atomic/podman/data-capabilities"], result["selected_gates"])
 
     def test_legacy_app_core_requirement_keeps_only_declared_narrow_gates(self):
         requirements = json.loads((ROOT / "release-requirements.json").read_text())
