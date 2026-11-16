@@ -43,6 +43,8 @@ if ! command -v "$engine" >/dev/null 2>&1; then
   exit 0
 fi
 
+BASEHARBOR_TEST_RUNTIME="$engine" bash "$(dirname "${BASH_SOURCE[0]}")/ci-local-oci-registry.sh" cleanup
+
 is_baseharbor_resource() {
   local project="${1:-}" name="${2:-}"
   case "$project:$name" in

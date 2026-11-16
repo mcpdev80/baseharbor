@@ -41,7 +41,7 @@ func resolveApplicationProviderPlanFromSnapshot(resolved resolvedApplication, sn
 		}
 		m, err = retainedBackendPlacementProjection(resolved, m, record.Applied.GeneratedState["backend_placements"])
 		if err != nil {
-			return application.ProviderPlan{}, err
+			return application.ProviderPlan{}, appMachineProposalStage("retained-backend-placement-projection", err)
 		}
 		consumers = append(consumers, application.ConsumerIntent{Key: "deployment/" + id.DeploymentID, Active: true, Manifest: m, DependencyRoots: []string{}})
 		// Another application's interrupted apply has not verified release of
@@ -54,14 +54,14 @@ func resolveApplicationProviderPlanFromSnapshot(resolved resolvedApplication, sn
 			}
 			prior, err = retainedBackendPlacementProjection(resolved, prior, record.Applied.GeneratedState["previous_backend_placements"])
 			if err != nil {
-				return application.ProviderPlan{}, err
+				return application.ProviderPlan{}, appMachineProposalStage("previous-backend-placement-projection", err)
 			}
 			consumers[len(consumers)-1].RetainedIntents = []application.Manifest{prior}
 		}
 	}
 	root, err := targetRuntimeStateRoot(resolved.Target)
 	if err != nil {
-		return application.ProviderPlan{}, err
+		return application.ProviderPlan{}, appMachineProposalStage("target-runtime-state-root", err)
 	}
 	state, err := coreinstallation.Load(root)
 	if err == nil {
@@ -73,7 +73,7 @@ func resolveApplicationProviderPlanFromSnapshot(resolved resolvedApplication, sn
 		// connection inventory, which fails conservatively).
 		roots, err := managementProviderDependencyRoots(resolved, snapshot)
 		if err != nil {
-			return application.ProviderPlan{}, err
+			return application.ProviderPlan{}, appMachineProposalStage("management-provider-dependency-roots", err)
 		}
 		if snapshot.ProtectCoreForConnection {
 			m := application.Manifest{Version: application.CurrentVersion, ApplicationID: state.ID, Name: "management", Environment: "prod"}
@@ -93,7 +93,7 @@ func resolveApplicationProviderPlanFromSnapshot(resolved resolvedApplication, sn
 			if consumers[index].Key != "application/"+resolved.Manifest.ApplicationID+"/"+resolved.Manifest.Environment && (intent.Services.SQL || intent.Services.Cache || intent.Services.KeyValue) {
 				projection, projectionErr := application.PreviewReferenceProviderRegistryAt(resolved.TargetStateRoot, intent)
 				if projectionErr != nil {
-					return application.ProviderPlan{}, invalidProviderConsumerInventory(projectionErr)
+					return application.ProviderPlan{}, appMachineProposalStage("sibling-reference-provider-registry", invalidProviderConsumerInventory(projectionErr))
 				}
 				for _, binding := range projection.Bindings {
 					if binding.ApplicationID == intent.ApplicationID && binding.Environment == intent.Environment && (binding.Resource.Provider == "postgresql" || binding.Resource.Provider == "valkey") {
@@ -103,7 +103,7 @@ func resolveApplicationProviderPlanFromSnapshot(resolved resolvedApplication, sn
 			}
 			roots, rootErr := application.RuntimeDependencyRoots(intent, snapshot.Registry)
 			if rootErr != nil {
-				return application.ProviderPlan{}, invalidProviderConsumerInventory(rootErr)
+				return application.ProviderPlan{}, appMachineProposalStage("runtime-dependency-roots", invalidProviderConsumerInventory(rootErr))
 			}
 			if roots == nil {
 				// Unknown consumption dependencies stay unknown for the common
@@ -118,10 +118,13 @@ func resolveApplicationProviderPlanFromSnapshot(resolved resolvedApplication, sn
 		}
 	}
 	plan, err := application.ResolveProviderPlan(snapshot, consumers, true)
-	if err == nil {
-		err = appendReleasedAppliedBindings(resolved, &plan)
+	if err != nil {
+		return application.ProviderPlan{}, appMachineProposalStage("resolve-provider-plan", classifyApplicationResolutionError(err))
 	}
-	return plan, classifyApplicationResolutionError(err)
+	if err := appendReleasedAppliedBindings(resolved, &plan); err != nil {
+		return application.ProviderPlan{}, appMachineProposalStage("append-released-applied-bindings", err)
+	}
+	return plan, nil
 }
 
 // invalidProviderConsumerInventory classifies one inventory damage.

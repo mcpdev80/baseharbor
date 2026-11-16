@@ -125,7 +125,7 @@ log_count="$(find "$out_dir/containers" -name '*.log' | wc -l)"
   runtime_cmd ps -a --format '{{.Names}}  {{.Status}}  {{.Image}}' 2>/dev/null | grep -E '^(baseharbor-|bh-)' | head -n 40 || true
   echo '```'
   echo
-  echo "Detailed evidence is attached to this CI evidence artifact and is removed automatically by Artifact GC after about 2 hours."
+  echo "Detailed evidence is attached to this CI evidence artifact and is removed automatically by Artifact GC after about 7 days."
 } >"$out_dir/summary.md"
 
 if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
