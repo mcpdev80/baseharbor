@@ -134,7 +134,8 @@ func TestApprovedRootlessSetupCommandSequence(t *testing.T) {
 			"docker context use default",
 		}},
 		{"existing service", false, false, []string{
-			"systemctl --user enable --now docker",
+			"systemctl --user enable docker",
+			"systemctl --user restart docker",
 			"docker context use default",
 		}},
 	} {
