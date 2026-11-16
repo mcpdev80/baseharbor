@@ -53,12 +53,14 @@ class EphemeralReuseTests(unittest.TestCase):
         matrix = reuse.strategy_runtime_matrix(rows)
         self.assertEqual("1234", matrix["include"][0]["reuse_from"])
 
-    def test_24_hour_window_and_missing_timestamps(self):
-        self.assertTrue(reuse.within_24_hours(self.previous, self.current))
-        self.previous["created_at"] = "2026-11-02T16:59:59Z"
-        self.assertFalse(reuse.within_24_hours(self.previous, self.current))
+    def test_seven_day_window_and_missing_timestamps(self):
+        exact = {"created_at": "2026-10-27T17:00:00Z"}
+        stale = {"created_at": "2026-10-27T16:59:59Z"}
+        self.assertTrue(reuse.within_7_days(exact, self.current))
+        self.assertFalse(reuse.within_7_days(stale, self.current))
+        self.assertTrue(reuse.within_7_days(self.previous, self.current))
         self.previous.pop("created_at")
-        self.assertFalse(reuse.within_24_hours(self.previous, self.current))
+        self.assertFalse(reuse.within_7_days(self.previous, self.current))
 
     def test_previous_only_same_pr_and_workflow(self):
         with mock.patch.object(reuse, "request_json", return_value={"workflow_runs": [

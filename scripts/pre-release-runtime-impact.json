@@ -1,0 +1,81 @@
+{
+  "schema": "baseharbor.pre-release-runtime-impact/v1",
+  "safe_core_paths": [
+    "CHANGELOG.md",
+    "README.md",
+    "CONTRIBUTING.md",
+    "docs/**",
+    ".github/workflows/ci.yml",
+    "scripts/pre-release-runtime-impact.json",
+    "scripts/pre-release-runtime-reuse.py",
+    "scripts/test_ci_docker_runtime_doctor.py",
+    "scripts/test_ecosystem_release_pins.py",
+    "scripts/test_pr_unit_database_route.py",
+    "scripts/test_targeted_gate_ref.py"
+  ],
+  "safe_demo_paths": [
+    "CHANGELOG.md",
+    "README.md",
+    "CONTRIBUTING.md",
+    "docs/**"
+  ],
+  "core": {
+    "cmd/baha/app_machine_adapters.go": ["atomic/docker/data-capabilities", "atomic/podman/data-capabilities"],
+    "cmd/baha/app_machine_adapters_test.go": ["atomic/docker/data-capabilities", "atomic/podman/data-capabilities"],
+    "cmd/baha/app_core_requirement.go": [
+      "atomic/docker/guided", "atomic/podman/guided",
+      "atomic/docker/data-capabilities", "atomic/podman/data-capabilities"
+    ],
+    "cmd/baha/app_edit_apply_test.go": [],
+    "cmd/baha/app_local_stdio_runtime_test.go": [
+      "integration/docker/coreless-lifecycle", "integration/podman/coreless-lifecycle"
+    ],
+    "cmd/baha/app_new_wizard.go": ["atomic/docker/guided", "atomic/podman/guided"],
+    "cmd/baha/app_coreless_runtime_test.go": [
+      "integration/docker/coreless-lifecycle", "integration/podman/coreless-lifecycle"
+    ],
+    "cmd/baha/core_installation_runtime_test.go": [],
+    "cmd/baha/target_test_helpers_test.go": [],
+    "cmd/baha/guided_application_read_context.go": [
+      "atomic/docker/guided", "atomic/podman/guided",
+      "atomic/docker/data-capabilities", "atomic/podman/data-capabilities"
+    ],
+    "internal/identityprovider/keycloak_ha_runtime_integration_test.go": [],
+    "internal/openbao/service_issuer.go": ["atomic/docker/control-plane-recovery", "atomic/podman/control-plane-recovery"],
+    "internal/openbao/service_pki_test.go": ["atomic/docker/control-plane-recovery", "atomic/podman/control-plane-recovery"]
+  },
+  "demo": {
+    "tests/data-capabilities/new_edit_helpers_test.py": ["atomic/docker/data-capabilities", "atomic/podman/data-capabilities"],
+    "tests/guided/drive.py": [
+      "atomic/docker/guided", "atomic/podman/guided",
+      "atomic/docker/data-capabilities", "atomic/podman/data-capabilities"
+    ],
+    "tests/guided/new_edit.py": [
+      "atomic/docker/guided", "atomic/podman/guided",
+      "atomic/docker/data-capabilities", "atomic/podman/data-capabilities"
+    ],
+    "tests/guided/new_edit_helpers_test.py": [],
+    "tests/native-default-topology.py": ["*"],
+    "tests/native_default_topology_test.py": ["*"],
+    "tests/gate-resources.json": ["*"],
+    "tests/pre-release-suites.json": ["*"],
+    "tests/lib.sh": ["*"],
+    "scripts/acceptance.sh": ["*"]
+  },
+  "demo_gate_directories": {
+    "atomic/static/": "tests/",
+    "atomic/docker/": "tests/",
+    "atomic/podman/": "tests/"
+  },
+  "execution_inputs": [
+    ".github/workflows/pre-release.yml",
+    ".github/workflows/pre-release-runtime-suite.yml",
+    "scripts/pre-release-check-plan.py",
+    "scripts/release-requirements.json"
+  ],
+  "demo_catalog_inputs": [
+    "tests/gate-resources.json",
+    "tests/pre-release-suites.json",
+    "scripts/acceptance.sh"
+  ]
+}
