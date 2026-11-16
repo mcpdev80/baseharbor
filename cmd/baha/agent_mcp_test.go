@@ -43,7 +43,10 @@ func TestAgentDescribeJSON(t *testing.T) {
 		t.Fatalf("destroy safety metadata = %#v", destroy)
 	}
 	for _, operation := range got.Operations {
-		if operation.MCPTool == "" {
+		// Human-only authorization seams (secret.reveal, 0428-057) and host-
+		// only execution categories (app.exec, 0428-063; #787) carry no MCP
+		// tool by design and say so in the operation description.
+		if operation.MCPTool == "" && !strings.Contains(operation.Description, "MCP tool boundary by design") {
 			t.Fatalf("operation missing MCP tool: %#v", operation)
 		}
 	}
