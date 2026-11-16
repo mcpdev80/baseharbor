@@ -77,16 +77,17 @@ func TestTenantOwnerResolverCLIFallsThroughProvesNoBypass(t *testing.T) {
 		}
 	})
 
-	// A non-tenant Core target with no Core installation must also be refused:
-	// the hook returns (false, nil) and the fall-through missing-owner check
-	// rejects, proving the hook never admits a Core target without an owner.
+	// A non-tenant target without the explicit local workload scope remains
+	// fail-closed: the hook returns (false, nil), and no implicit owner is
+	// inferred from a local access provider alone.
 	t.Run("non-tenant-no-owner-refused", func(t *testing.T) {
 		cfg := deployment.Config{
 			Version:       deployment.ConfigVersion,
 			DefaultTarget: "local",
 			Access:        map[string]deployment.AccessDefinition{"local": {Provider: "local", Reference: "local"}},
 			Targets: map[string]deployment.TargetDefinition{
-				"local": {Runtime: deployment.RuntimeDefinition{Provider: "docker"}, Access: deployment.TargetAccess{Reference: "local"}},
+				"local":        {Runtime: deployment.RuntimeDefinition{Provider: "docker"}, Access: deployment.TargetAccess{Reference: "local"}},
+				"remote-scope": {Runtime: deployment.RuntimeDefinition{Provider: "docker"}, Access: deployment.TargetAccess{Reference: "local"}, Scope: "remote"},
 			},
 		}
 		if err := cfg.Save(); err != nil {
@@ -102,6 +103,47 @@ func TestTenantOwnerResolverCLIFallsThroughProvesNoBypass(t *testing.T) {
 		}
 		if err := deployment.SaveDeploymentRecord(record); err == nil {
 			t.Fatal("non-tenant target without an installation was admitted: hook bypassed the Core check")
+		}
+		remoteID := localID
+		remoteID.Target = "remote-scope"
+		record.Identity = remoteID
+		if err := deployment.SaveDeploymentRecord(record); err == nil {
+			t.Fatal("non-local scope was admitted from local access alone")
+		}
+	})
+
+	// Explicit local scope plus local access is the narrow owner path for a
+	// Core-less workload-only Target. Tenant targets continue through the
+	// enrolled-scope resolver below; local authorization never accepts a tenant.
+	t.Run("explicit-local-workload-scope-admitted", func(t *testing.T) {
+		cfg := deployment.Config{
+			Version:       deployment.ConfigVersion,
+			DefaultTarget: "local-workload",
+			Access:        map[string]deployment.AccessDefinition{"local": {Provider: "local", Reference: "local"}},
+			Targets: map[string]deployment.TargetDefinition{
+				"local-workload": {
+					Runtime: deployment.RuntimeDefinition{Provider: "docker"},
+					Access:  deployment.TargetAccess{Reference: "local"},
+					Scope:   "local",
+				},
+			},
+		}
+		if err := cfg.Save(); err != nil {
+			t.Fatal(err)
+		}
+		localID := identity
+		localID.Target = "local-workload"
+		record := deployment.DeploymentRecord{
+			Version:  deployment.DeploymentRecordVersion,
+			Identity: localID,
+			Source:   deployment.DeploymentSource{Kind: "repository"},
+			Applied:  deployment.AppliedDeployment{RuntimeProvider: "docker"},
+		}
+		if err := deployment.SaveDeploymentRecord(record); err != nil {
+			t.Fatalf("explicit local workload Target was refused: %v", err)
+		}
+		if _, err := deployment.LoadDeploymentRecord(localID); err != nil {
+			t.Fatalf("explicit local workload deployment did not round-trip: %v", err)
 		}
 	})
 

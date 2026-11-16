@@ -151,7 +151,8 @@ func collectApplicationPolicy(ctx context.Context, store application.Store, appA
 			Source:   source,
 		})
 	}
-	result.Decision = policyAggregateWithProfiles(result.Findings)
+	result.Findings = policyAggregateWithProfiles(result.Findings)
+	result.Decision = policy.Aggregate(result.Findings)
 	return result, nil
 }
 
@@ -163,12 +164,10 @@ func collectApplicationPolicy(ctx context.Context, store application.Store, appA
 // resolution the adapter cannot positively make.
 //
 // The adapter never decides alone — a foreign tenant, revoked profile or
-// unassigned operation forces the aggregate to Deny. It returns the pure
-// workload aggregate when no active organization source is configured, or when
-// no concrete machine operation is bound for the call. An adapter error is
-// surfaced as a Deny finding, never silently dropped.
-func policyAggregateWithProfiles(findings []policy.Finding) policy.Decision {
-	return policy.ResolveAll(findings, resolveProductionOperation, loadActiveForPolicy)
+// unassigned operation forces the aggregate to Deny. Its findings are retained
+// in the result so rendered evidence agrees with the aggregate decision.
+func policyAggregateWithProfiles(findings []policy.Finding) []policy.Finding {
+	return policy.ResolveAllFindings(findings, resolveProductionOperation, loadActiveForPolicy)
 }
 
 // resolveProductionOperation maps the policy-check call to the concrete machine
