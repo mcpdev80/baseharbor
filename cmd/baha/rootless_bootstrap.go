@@ -141,7 +141,6 @@ func maybeRepairRootlessDocker(ctx context.Context, in io.Reader, out io.Writer,
 	return nil
 }
 
-
 // Approval is deliberately independent of --yes: neither unattended calls
 // nor generic CLI confirmations grant permission to modify the host.
 func requireRootlessSetupConsent(ctx context.Context, in io.Reader, out io.Writer, interactive bool) error {
