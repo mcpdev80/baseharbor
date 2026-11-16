@@ -1,6 +1,9 @@
 package main
 
 import (
+	"bytes"
+	"context"
+	"strings"
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/deployment"
@@ -43,5 +46,34 @@ func TestRootlessBootstrapExplicitTargetNeverTouchesHost(t *testing.T) {
 	target := deployment.ResolvedTarget{Name: "remote", RuntimeProvider: "docker", AccessProvider: "ssh"}
 	if err := maybeRepairRootlessDocker(t.Context(), nil, nil, target); err != nil {
 		t.Fatalf("remote Target must not trigger local Docker setup: %v", err)
+	}
+}
+
+func TestRootlessSetupConsentNeverAssumesYes(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		input string
+		interactive bool
+		wantOK bool
+	}{
+		{"accept explicitly", "y\n", true, true},
+		{"decline explicitly", "n\n", true, false},
+		{"default no", "\n", true, false},
+		{"unattended yes is not consent", "y\n", false, false},
+		{"end of input", "", true, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var output bytes.Buffer
+			err := requireRootlessSetupConsent(context.Background(), strings.NewReader(tc.input), &output, tc.interactive)
+			if (err == nil) != tc.wantOK {
+				t.Fatalf("consent err=%v wantOK=%t", err, tc.wantOK)
+			}
+			if tc.interactive && !strings.Contains(output.String(), "Apply these Rootless Docker setup changes?") {
+				t.Fatalf("explicit prompt missing: %q", output.String())
+			}
+			if !tc.interactive && output.Len() != 0 {
+				t.Fatalf("noninteractive prompt leaked: %q", output.String())
+			}
+		})
 	}
 }
