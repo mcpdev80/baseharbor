@@ -71,9 +71,10 @@ func maybeRepairRootlessDocker(ctx context.Context, in io.Reader, out io.Writer,
 	if socketErr != nil && !errors.Is(socketErr, os.ErrNotExist) {
 		return fmt.Errorf("inspect selected Rootless Docker socket %s: %w", socket, socketErr)
 	}
-	// An existing but unreachable socket is treated as a stopped/unhealthy
-	// daemon: restart its user service after consent, never reinstall it.
-	needsInstall := errors.Is(socketErr, os.ErrNotExist)
+	// A stopped user service can have no socket. Do not attempt to
+	// reinstall it: enabling an existing service is the idempotent repair.
+	hasUserUnit := exec.CommandContext(ctx, "systemctl", "--user", "cat", "docker").Run() == nil
+	needsInstall := errors.Is(socketErr, os.ErrNotExist) && !hasUserUnit
 	// Only the default Docker context qualifies: a named context is user
 	// intent even when the Target did not specify one.
 	current, err := exec.CommandContext(ctx, "docker", "context", "show").Output()
@@ -111,9 +112,11 @@ func maybeRepairRootlessDocker(ctx context.Context, in io.Reader, out io.Writer,
 	if needsInstall {
 		fmt.Fprintln(out, "  - Run dockerd-rootless-setuptool.sh install --force for your user; --force permits the existing System Docker to keep running.")
 	} else {
-		fmt.Fprintln(out, "  - Restart the existing Rootless Docker user service; do not reinstall Docker.")
+		fmt.Fprintln(out, "  - Start or restart the existing Rootless Docker user service; do not reinstall Docker.")
 	}
-	fmt.Fprintln(out, "  - Enable and start the user-owned Docker service with systemctl --user.")
+	if needsInstall {
+		fmt.Fprintln(out, "  - Enable and start the user-owned Docker service with systemctl --user.")
+	}
 	fmt.Fprintln(out, "  - Restore the original Docker CLI context and verify the rootless engine. Existing System Docker stays unchanged.")
 	if err := requireRootlessSetupConsent(ctx, in, out, !noInput(ctx) && readerIsTerminal(in)); err != nil {
 		return err
@@ -140,8 +143,10 @@ func maybeRepairRootlessDocker(ctx context.Context, in io.Reader, out io.Writer,
 		if err := runRootlessSetupStep(ctx, in, out, "systemctl", "--user", "enable", "--now", "docker"); err != nil {
 			return fmt.Errorf("start Rootless Docker user service: %w", err)
 		}
-	} else if err := runRootlessSetupStep(ctx, in, out, "systemctl", "--user", "restart", "docker"); err != nil {
-		return fmt.Errorf("restart existing Rootless Docker user service: %w", err)
+	} else {
+		if err := runRootlessSetupStep(ctx, in, out, "systemctl", "--user", "enable", "--now", "docker"); err != nil {
+			return fmt.Errorf("start existing Rootless Docker user service: %w", err)
+		}
 	}
 	// The setup tool switches contexts; verify the original/default Target
 	// after restoring it, never mistake the new context for Target intent.
