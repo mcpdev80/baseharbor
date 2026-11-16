@@ -93,6 +93,27 @@ func TestKeycloakHAPostgresHAProxyUsesRuntimeDNS(t *testing.T) {
 	}
 }
 
+func TestKeycloakPostgresHAClusterRequiresOnePrimaryAndTwoReadyReplicas(t *testing.T) {
+	tests := []struct {
+		name  string
+		roles []string
+		want  bool
+	}{
+		{name: "healthy cluster", roles: []string{"replica", "primary", "replica"}, want: true},
+		{name: "primary not recovered", roles: []string{"primary", "unknown", "replica"}},
+		{name: "two primaries", roles: []string{"primary", "primary", "replica"}},
+		{name: "missing member", roles: []string{"primary", "replica"}},
+		{name: "unknown role", roles: []string{"primary", "replica", "starting"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := keycloakPostgresHAClusterRolesReady(tt.roles); got != tt.want {
+				t.Fatalf("cluster roles %v ready = %t, want %t", tt.roles, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestKeycloakSingleComposeHasNoHAResources(t *testing.T) {
 	app := application.New("demo", "prod", false, false, false)
 	files := KeycloakFiles{Project: "test", ConsumerNetwork: "test-identity", InternalNetwork: "test-identity-internal"}

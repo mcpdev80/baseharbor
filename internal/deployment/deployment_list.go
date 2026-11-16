@@ -187,8 +187,11 @@ func CollectableOrphans(target string) ([]DeploymentRecord, error) {
 			continue
 		}
 		deploymentID := entry.Name()
-		verr := VerifyDeploymentOwner(target, filepath.Join(root, "runtime"), deploymentID)
-		if errors.Is(verr, ErrDeploymentOwnerMissing) {
+		missing, ownerErr := deploymentOwnerMissingForDetach(target, filepath.Join(root, "runtime"), deploymentID)
+		if ownerErr != nil {
+			return nil, ownerErr
+		}
+		if missing {
 			ownerMissing[deploymentID] = struct{}{}
 		}
 	}
@@ -234,6 +237,34 @@ func CollectableOrphans(target string) ([]DeploymentRecord, error) {
 	}
 	sortDeploymentRecords(orphans)
 	return orphans, nil
+}
+
+// deploymentOwnerMissingForDetach checks for authorities that survive a
+// configuration detach. A valid enrolled tenant scope and the verified owner
+// loan both provide an external owner. The local Coreless exception does not:
+// it derives authority from the Target definition being detached.
+func deploymentOwnerMissingForDetach(target, targetRoot, deploymentID string) (bool, error) {
+	if TenantOwnerResolver != nil {
+		granted, err := TenantOwnerResolver(target)
+		if err != nil {
+			return false, err
+		}
+		if granted {
+			return false, nil
+		}
+	}
+	if err := VerifyDeploymentOwnerAgainstOwner(target, targetRoot, deploymentID); !errors.Is(err, ErrDeploymentOwnerMissing) {
+		return false, nil
+	}
+	if TargetLoanVerifier != nil {
+		if owner, err := TargetLoanVerifier(target); err == nil && owner != nil {
+			if err := verifyLoanOwnerGuarantees(target, targetRoot); err != nil {
+				return false, err
+			}
+			return false, nil
+		}
+	}
+	return true, nil
 }
 
 // ci-checkout-forcing-bumper

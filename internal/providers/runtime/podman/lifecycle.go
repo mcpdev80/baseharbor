@@ -193,6 +193,23 @@ func (p PodmanProvider) ExecProject(ctx context.Context, project, composeFile, e
 	return quadletExec(ctx, p.CommandPath(), container, nil, args...)
 }
 
+// ExecProjectAs runs a command in the generated container as a named user.
+// Passing the user to podman exec avoids shell-based privilege switching.
+func (p PodmanProvider) ExecProjectAs(ctx context.Context, project, composeFile, envFile, service, user string, args ...string) (string, error) {
+	if strings.TrimSpace(user) == "" {
+		return "", errors.New("Podman exec user is required")
+	}
+	q, err := quadletRenderProject(composeFile, envFile, project)
+	if err != nil {
+		return "", err
+	}
+	container, ok := q.Containers[service]
+	if !ok {
+		return "", fmt.Errorf("Quadlet service %q is not part of project %s", service, project)
+	}
+	return quadletExecAs(ctx, p.CommandPath(), container, user, nil, args...)
+}
+
 func (p PodmanProvider) ExecProjectInput(ctx context.Context, project, composeFile, envFile string, input []byte, service string, args ...string) (string, error) {
 	q, err := quadletRenderProject(composeFile, envFile, project)
 	if err != nil {

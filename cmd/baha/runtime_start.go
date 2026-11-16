@@ -511,6 +511,9 @@ func verifyExistingControlPlaneAfterStart(ctx context.Context, compose bhruntime
 			)
 		}
 		fmt.Fprintln(out, "OpenBao is sealed; unsealing from the operator recovery file...")
+		if err := waitForOpenBaoPostgresStorage(ctx, compose, files); err != nil {
+			return fmt.Errorf("verify OpenBao PostgreSQL storage before unseal: %w", err)
+		}
 		if err := platformopenbao.Unseal(ctx, compose, files, recoveryFile); err != nil {
 			return fmt.Errorf("unseal OpenBao after control-plane start: %w", err)
 		}
@@ -545,4 +548,22 @@ func verifyExistingControlPlaneAfterStart(ctx context.Context, compose bhruntime
 		case <-time.After(250 * time.Millisecond):
 		}
 	}
+}
+
+func waitForOpenBaoPostgresStorage(ctx context.Context, compose bhruntime.RuntimeProvider, files bhruntime.Files) error {
+	credentials, err := bhruntime.LoadControlPlaneCredentials(files)
+	if err != nil {
+		return fmt.Errorf("load OpenBao PostgreSQL credentials: %w", err)
+	}
+	if err := waitForControlPlanePostgresCredential(
+		ctx,
+		compose,
+		files,
+		credentials.OpenBaoDBUser,
+		credentials.OpenBaoDBPassword,
+		"openbao",
+	); err != nil {
+		return fmt.Errorf("wait for authenticated PostgreSQL TLS storage connection: %w", err)
+	}
+	return nil
 }

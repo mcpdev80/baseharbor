@@ -49,8 +49,12 @@ func VerificationTracePayload(m application.Manifest) []byte {
 }
 
 func probeTracePayload(m application.Manifest) []byte {
-	now := uint64(time.Now().UnixNano())
 	traceID := []byte{0x42, 0x61, 0x73, 0x65, 0x48, 0x61, 0x72, 0x62, 0x6f, 0x72, 0x30, 0x34, 0x30, 0x37, 0x00, 0x01}
+	return verificationTracePayload(m, traceID)
+}
+
+func verificationTracePayload(m application.Manifest, traceID []byte) []byte {
+	now := uint64(time.Now().UnixNano())
 	spanID := []byte{0x42, 0x48, 0x30, 0x34, 0x30, 0x37, 0x00, 0x01}
 	span := appendBytes(nil, 1, traceID)
 	span = appendBytes(span, 2, spanID)
