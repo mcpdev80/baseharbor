@@ -44,6 +44,8 @@
       "atomic/docker/data-capabilities", "atomic/podman/data-capabilities"
     ],
     "internal/identityprovider/keycloak_ha_runtime_integration_test.go": [],
+    "internal/openbao/bootstrap_auth.go": ["atomic/docker/control-plane-recovery", "atomic/podman/control-plane-recovery"],
+    "internal/openbao/bootstrap_auth_test.go": ["atomic/docker/control-plane-recovery", "atomic/podman/control-plane-recovery"],
     "internal/openbao/service_issuer.go": ["atomic/docker/control-plane-recovery", "atomic/podman/control-plane-recovery"],
     "internal/openbao/service_pki_test.go": ["atomic/docker/control-plane-recovery", "atomic/podman/control-plane-recovery"]
   },

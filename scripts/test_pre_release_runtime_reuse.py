@@ -177,6 +177,14 @@ class RuntimeReuseTests(unittest.TestCase):
                      "cmd/baha/app_local_stdio_runtime_test.go"):
             self.assertEqual(expected, set(impact["core"][path]))
 
+    def test_openbao_manager_login_changes_invalidate_recovery_on_both_engines(self):
+        impact = json.loads(Path(__file__).with_name("pre-release-runtime-impact.json").read_text())
+        expected = {"atomic/docker/control-plane-recovery",
+                    "atomic/podman/control-plane-recovery"}
+        for path in ("internal/openbao/bootstrap_auth.go",
+                     "internal/openbao/bootstrap_auth_test.go"):
+            self.assertEqual(expected, set(impact["core"][path]))
+
     def test_demo_consent_fix_invalidates_affected_gate_families_only(self):
         impact = json.loads(Path(__file__).with_name("pre-release-runtime-impact.json").read_text())
         for path in ("tests/guided/drive.py", "tests/guided/new_edit.py"):
