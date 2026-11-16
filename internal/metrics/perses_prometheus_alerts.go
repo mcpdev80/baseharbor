@@ -149,10 +149,10 @@ func persesAlertEvaluatorFromRelease(m application.Manifest, release capability.
 	}
 	return PersesAlertEvaluationResult{
 		Evaluator: PersesAlertEvaluator{
-			Kind:             PersesAlertEvaluatorKind,
-			Name:             "baseharbor-observability-alerts",
-			Evaluator:        PersesAlertEvaluatorKind,
-			Owner:            string(capability.ProviderPrometheus),
+			Kind:               PersesAlertEvaluatorKind,
+			Name:               "baseharbor-observability-alerts",
+			Evaluator:          PersesAlertEvaluatorKind,
+			Owner:              string(capability.ProviderPrometheus),
 			RecipientValidated: true,
 		},
 		Reachability: PersesAlertReachabilityConfiguredUnverified,
