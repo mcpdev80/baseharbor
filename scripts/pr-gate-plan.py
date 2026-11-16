@@ -1612,9 +1612,36 @@ SUDO_TTY_REVIEWED_FILES = {
 }
 
 
-def narrow_reviewed_sudo_tty_plan(diff, result):
+def reviewed_sudo_tty_tree_matches(head, repository):
+    if head == SUDO_TTY_REVIEWED_HEAD:
+        return True
+    if not isinstance(head, str) or not re.fullmatch(r'[0-9a-f]{40}', head):
+        return False
+    try:
+        ancestor = subprocess.run(
+            ['git', '-C', str(repository), 'merge-base', '--is-ancestor',
+             SUDO_TTY_REVIEWED_HEAD, head], capture_output=True, check=False)
+        if ancestor.returncode:
+            return False
+        for path in SUDO_TTY_REVIEWED_FILES:
+            blobs = []
+            for commit in (SUDO_TTY_REVIEWED_HEAD, head):
+                result = subprocess.run(
+                    ['git', '-C', str(repository), 'rev-parse', commit + ':' + path],
+                    capture_output=True, text=True, check=False)
+                if result.returncode:
+                    return False
+                blobs.append(result.stdout.strip())
+            if blobs[0] != blobs[1]:
+                return False
+    except OSError:
+        return False
+    return True
+
+
+def narrow_reviewed_sudo_tty_plan(diff, result, repository='.'):
     changes = diff.get('changes')
-    if (diff.get('head_sha') != SUDO_TTY_REVIEWED_HEAD or
+    if (not reviewed_sudo_tty_tree_matches(diff.get('head_sha'), repository) or
             diff.get('broad_required') is not False or
             not isinstance(changes, list) or
             len(changes) != len(SUDO_TTY_REVIEWED_FILES) or
@@ -1679,7 +1706,7 @@ def plan(diff, requirements, mapping, repository='.', context_repository=None,
                         result['unresolved_coverage'] = list(result['unresolved_coverage']) + [
                             'legacy runtime impact has no declared gate coverage: ' +
                             ', '.join(unowned)]
-    result = narrow_reviewed_sudo_tty_plan(diff, result)
+    result = narrow_reviewed_sudo_tty_plan(diff, result, repository)
     if not conservative_fallback or result['coverage_status'] == 'resolved':
         return deduplicate_cli_package_validations(result)
     valid, _ = validated_diff(diff)
