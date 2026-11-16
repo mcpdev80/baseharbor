@@ -174,6 +174,19 @@ class CoverageCatalogTests(unittest.TestCase):
         self.assertEqual(["TestSelectiveApplicationBackendRuntimeAddRemoveReAdd"],
                          component["required_test_names"])
 
+    def test_coreless_executor_and_workflows_select_both_runtime_gates(self):
+        current = json.loads((ROOT / "pr-gate-coverage.json").read_text())
+        expected = ["integration/docker/coreless-lifecycle",
+                    "integration/podman/coreless-lifecycle"]
+        paths = ["scripts/pre-release-integration.py",
+                 ".github/workflows/pre-release.yml",
+                 ".github/workflows/targeted-integration.yml"]
+        for path in paths:
+            with self.subTest(path=path):
+                selected, unresolved = coverage_module.resolve_covered_gates([path], current)
+                self.assertEqual(expected, selected)
+                self.assertEqual([], unresolved)
+
     def test_service_stop_maps_to_podman_lifecycle_and_executor_runs_test_anchor(self):
         current = json.loads((ROOT / "pr-gate-coverage.json").read_text())
         for path in ("internal/runtime/service_stop.go", "internal/runtime/service_stop_test.go"):
