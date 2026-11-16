@@ -110,7 +110,13 @@ func TestStatusResultIdentityGateVM(t *testing.T) {
 		t.Fatalf("list observability signals: %v", listErr)
 	}
 	if !realKeycloakNativeMetric(sources) {
-		t.Fatalf("the managed Keycloak did not register a real keycloak-metrics native signal in the registry; the positive gate cannot be proven without a real signal (fail-closed stays unavailable)")
+		var ids []string
+		for _, s := range sources {
+			if s.Provider == capability.ProviderKeycloak {
+				ids = append(ids, fmt.Sprintf("%s/id=%s/kind=%s/mode=%s/verif=%s", s.ID, s.ID, s.Kind, s.Mode, s.Verification))
+			}
+		}
+		t.Fatalf("no real keycloak-metrics native signal in registry; registered Keycloak signals: %v", ids)
 	}
 	result, resErr := collectApplicationStatusResult(ctx, resolved.Store, []string{"status"})
 	if resErr != nil {
