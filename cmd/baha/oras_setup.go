@@ -26,9 +26,6 @@ const orasSetupVersion = "1.3.6"
 var orasSetupHTTPClient = &http.Client{Timeout: 2 * time.Minute}
 
 func ensureORASForCoreUp(ctx context.Context, in io.Reader, out io.Writer, assumeYes bool) error {
-	if err := includeInstalledORASOnPath(); err != nil {
-		return fmt.Errorf("locate previously approved user-local ORAS: %w", err)
-	}
 	return ensureORASForCoreUpWith(ctx, in, out, assumeYes, !noInput(ctx) && !assumeYes && readerIsTerminal(in), exec.LookPath, installORAS)
 }
 
@@ -138,17 +135,13 @@ func includeInstalledORASOnPath() error {
 		return err
 	}
 	path := os.Getenv("PATH")
-	parts := filepath.SplitList(path)
-	if len(parts) > 0 && parts[0] == binDir {
+	if pathHasDirectory(path, binDir) {
 		return nil
 	}
-	remaining := make([]string, 0, len(parts))
-	for _, part := range parts {
-		if part != "" && part != binDir {
-			remaining = append(remaining, part)
-		}
+	if path == "" {
+		return os.Setenv("PATH", binDir)
 	}
-	return os.Setenv("PATH", strings.Join(append([]string{binDir}, remaining...), string(os.PathListSeparator)))
+	return os.Setenv("PATH", path+string(os.PathListSeparator)+binDir)
 }
 
 func orasReleasePlatform(goos, goarch string) (string, string, error) {
