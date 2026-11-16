@@ -2796,6 +2796,27 @@ class ReviewedSudoTTYGateSelectionTests(unittest.TestCase):
         self.assertTrue({'cli-package-tests', 'cli-gofmt', 'cli-vet', 'cli-build'} <= ids)
         self.assertEqual(['atomic/docker/guided'], self.plan['selected_gates'])
 
+    def test_reviewed_descendant_with_unchanged_blobs_avoids_duplicate_docker_run(self):
+        descendant = {**self.source, 'head_sha': 'c' * 40}
+        ok = subprocess.CompletedProcess([], 0, stdout='same-blob\\n')
+        with patch.object(planner.subprocess, 'run', return_value=ok) as run:
+            narrowed = planner.narrow_reviewed_sudo_tty_plan(descendant, self.plan)
+        self.assertEqual([], narrowed['selected_gates'])
+        self.assertEqual(7, run.call_count)
+
+    def test_descendant_with_changed_blob_or_missing_ancestry_stays_native(self):
+        descendant = {**self.source, 'head_sha': 'c' * 40}
+        ok = subprocess.CompletedProcess([], 0, stdout='same-blob\\n')
+        modified = subprocess.CompletedProcess([], 0, stdout='new-blob\\n')
+        missing = subprocess.CompletedProcess([], 1, stdout='')
+        with patch.object(planner.subprocess, 'run',
+                          side_effect=[ok, ok, ok, ok, ok, ok, modified]):
+            self.assertIs(self.plan,
+                          planner.narrow_reviewed_sudo_tty_plan(descendant, self.plan))
+        with patch.object(planner.subprocess, 'run', return_value=missing):
+            self.assertIs(self.plan,
+                          planner.narrow_reviewed_sudo_tty_plan(descendant, self.plan))
+
     def test_other_heads_and_other_source_changes_keep_real_runtime_gate(self):
         variants = [
             {**self.source, 'head_sha': 'c' * 40},
