@@ -33,6 +33,13 @@ type retirementRenderProvider struct {
 	renderErr  error
 }
 
+type providerKindRetirementWrapper struct {
+	*retirementRenderProvider
+	kind ProviderKind
+}
+
+func (r providerKindRetirementWrapper) Kind() ProviderKind { return r.kind }
+
 func (r *retirementRenderProvider) ListRuntimeContainers(context.Context) ([]RuntimeContainer, error) {
 	return r.containers, nil
 }
@@ -70,6 +77,23 @@ func TestRetireOwnedServicesNeverAcceptsDataDeletionOrUnknownReplica(t *testing.
 	r := &serviceRetirementRuntime{retirementRuntime: retirementRuntime{before: []ProjectResource{container, volume}}, containers: []RuntimeContainer{{Name: "owned-sql-2", Project: "owned", Service: "sql"}}}
 	if _, err := RetireOwnedServices(context.Background(), r, "owned", r.before, []ProjectResource{container}); err == nil || r.mutations != 0 {
 		t.Fatal("unplanned replica accepted")
+	}
+}
+
+func TestRetireOwnedServicesAcceptsPodmanNativeSingleReplicaName(t *testing.T) {
+	container := ProjectResource{Kind: "container", Name: "owned-sql-1"}
+	volume := ProjectResource{Kind: "volume", Name: "sql-data"}
+	r := &retirementRenderProvider{
+		retirementRuntime: retirementRuntime{before: []ProjectResource{container, volume}, after: []ProjectResource{volume}},
+		containers: []RuntimeContainer{{
+			Name: "owned-sql", Project: "owned", Service: "sql",
+		}},
+		rendered: `{"services":{"sql":{}}}`,
+	}
+	provider := providerKindRetirementWrapper{retirementRenderProvider: r, kind: ProviderPodman}
+	result, err := RetireOwnedServices(context.Background(), provider, "owned", []ProjectResource{container, volume}, []ProjectResource{container})
+	if err != nil || !reflect.DeepEqual(r.selected, []ProjectResource{container}) || !reflect.DeepEqual(result.Removed, []ProjectResource{container}) {
+		t.Fatalf("Podman singleton retirement: selected=%+v result=%+v err=%v", r.selected, result, err)
 	}
 }
 

@@ -505,6 +505,14 @@ func validateManagementUIPreferences(services Services) error {
 }
 
 func validateObservabilityUIPreference(m Manifest) error {
+	if m.Services.Perses && !m.Services.ObservabilityManagementUI {
+		// Fail closed: the Perses surface is only an optional realization of the
+		// observability management-ui surface. Selecting perses without enabling
+		// observability.management_ui is a dangling selection — there is no surface
+		// to realise, so the manifest is rejected rather than accepted with a
+		// silent nil (which would also drop the selection on serialization).
+		return errors.New("services.observability.perses requires services.observability.management_ui: perses is only an optional realization of the management-ui surface")
+	}
 	if !m.Services.ObservabilityManagementUI {
 		return nil
 	}
