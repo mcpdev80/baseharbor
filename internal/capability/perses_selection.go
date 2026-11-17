@@ -137,6 +137,7 @@ const (
 	DashboardBackendPrometheus DashboardBackend = "prometheus"
 	DashboardBackendLoki       DashboardBackend = "loki"
 	DashboardBackendTempo      DashboardBackend = "tempo"
+
 	// DashboardBackendIdentity is the Keycloak identity dashboard backend.
 	// It is a management realization of the Keycloak identity provider, not
 	// a data-observability backend: its dashboard is the ONLY one that must
@@ -211,6 +212,7 @@ func DefaultDashboardCatalog() PersesDashboardCatalog {
 			Datasource:        "tempo",
 			SupportedVersions: []string{AcceptedPersesVersion},
 		},
+
 		// The Keycloak identity dashboard is the only non-data-observability
 		// template: it realizes the Keycloak identity provider, not a metrics/
 		// logs/traces backend, so its own backend is DashboardBackendIdentity
