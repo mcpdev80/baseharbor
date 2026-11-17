@@ -1,6 +1,25 @@
 package apierror
 
-import "net/http"
+import (
+	"errors"
+	"net/http"
+)
+
+// Config sentinels. These are matched by internal/deployment and recognized by
+// the classify layer (internal/machine). Declaring them here keeps the classify
+// layer able to recognize the family without importing the higher-level
+// deployment package. internal/deployment re-exports the identical sentinel
+// values so callers that match them via errors.Is against the deployment
+// package keep working.
+var (
+	// ErrConfigMissing is returned when the config root is populated but the
+	// authoritative config.yaml is absent.
+	ErrConfigMissing = errors.New("BaseHarbor config root is configured but the config.yaml is missing")
+	// ErrConfigEmpty is returned when an existing config.yaml carries no
+	// loadable content (zero bytes or whitespace only). It belongs to the
+	// ErrConfigMissing family.
+	ErrConfigEmpty = errors.New("BaseHarbor config root is configured but the config.yaml is empty")
+)
 
 // Code is a stable machine-readable API error code.
 type Code string
