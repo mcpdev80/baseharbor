@@ -169,8 +169,12 @@ func verifyProviderSourcesAt(ctx context.Context, m application.Manifest, dataDi
 	if err != nil {
 		return err
 	}
+	applicationSourcePrefix := observability.ApplicationMetricsSourceID(m.Name, m.Environment, "")
 	for _, source := range applicationSources {
-		name := strings.TrimPrefix(source.ID, observability.ApplicationMetricsSourceID(m.Name, m.Environment, ""))
+		if !strings.HasPrefix(source.ID, applicationSourcePrefix) {
+			continue
+		}
+		name := strings.TrimPrefix(source.ID, applicationSourcePrefix)
 		query := fmt.Sprintf("up{job=\"baseharbor-applications\",baseharbor_application=%q,baseharbor_environment=%q,baseharbor_source=%q}", m.Name, m.Environment, name)
 		if err := waitForMetricsSource(ctx, client, endpoint, query, source.ID, "application", queryProvider); err != nil {
 			return err

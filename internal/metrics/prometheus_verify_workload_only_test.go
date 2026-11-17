@@ -54,6 +54,20 @@ func TestVerifyProviderAndApplicationSourcesSkipsOnlySnapshotMetadata(t *testing
 	}); err != nil {
 		t.Fatalf("register application metrics source: %v", err)
 	}
+	otherEnvironmentSourceID := observability.ApplicationMetricsSourceID(m.Name, "prod", "declared")
+	if err := observability.Update(observability.MetricsSource{
+		ID:               otherEnvironmentSourceID,
+		Provider:         capability.ProviderPrometheus,
+		Class:            observability.SourceApplication,
+		Scope:            capability.ScopeApplication,
+		OwnerApplication: m.Name,
+		Network:          application.MetricsProviderNetworkNameForNamespace(m, ""),
+		Target:           application.MetricsTargetAliasFor(m.Name, "prod", "api") + ":8080",
+		Path:             "/metrics",
+		Verification:     capability.ObservabilityVerifyBackend,
+	}); err != nil {
+		t.Fatalf("register other-environment application metrics source: %v", err)
+	}
 	if _, err := EnsureProviderFiles(context.Background(), issuer, m); err != nil {
 		t.Fatalf("EnsureProviderFiles: %v", err)
 	}
@@ -75,6 +89,9 @@ func TestVerifyProviderAndApplicationSourcesSkipsOnlySnapshotMetadata(t *testing
 	}
 	if !strings.Contains(joined, "baseharbor_source=\"declared\"") || !strings.Contains(joined, "job=\"baseharbor-applications\"") {
 		t.Fatalf("queries %q do not verify application source %q through the application job", joined, applicationSourceID)
+	}
+	if strings.Contains(joined, otherEnvironmentSourceID) || strings.Contains(joined, "baseharbor_environment=\"prod\"") {
+		t.Fatalf("queries %q include application metrics from another environment %q", joined, otherEnvironmentSourceID)
 	}
 	if strings.Contains(joined, logicalID) {
 		t.Fatalf("queries %q include snapshot-only workload source %q", joined, logicalID)
