@@ -175,8 +175,8 @@ func TestResolveIntegrationOnHead(t *testing.T) {
 	if observed.Identity == "" {
 		t.Fatal("resolver must supply a live connection identity")
 	}
-	if err := installauthority.Fresh(context.Background(), issuer, observed, observed.Identity, observed.ObservedAt, serviceaccess.DefaultObservationMaxAge); err != serviceaccess.ErrForeignAuthority {
-		t.Fatalf("matching identity must pass the identity gate (foreign-err only from revocation), got %v", err)
+	if err := installauthority.Fresh(context.Background(), issuer, observed, observed.Identity, observed.ObservedAt, serviceaccess.DefaultObservationMaxAge); err != nil {
+		t.Fatalf("matching identity with valid local revocation state must pass, got %v", err)
 	}
 	err = installauthority.Fresh(context.Background(), issuer, observed, "spiffe://foreign/", observed.ObservedAt, serviceaccess.DefaultObservationMaxAge)
 	if err != serviceaccess.ErrForeignAuthority {

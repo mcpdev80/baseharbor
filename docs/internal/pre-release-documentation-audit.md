@@ -174,6 +174,7 @@ The external demo is part of release validation and must be reviewed before pinn
 - [ ] Confirm `docs/releases/vX.Y.Z.md` is suitable as the actual human-facing GitHub Release message.
 - [ ] Confirm the versioned `docs/releases/vX.Y.Z.demo-ref` resolves the exact final Demo commit.
 - [ ] Identify one exact final `develop` candidate SHA.
+- [ ] Preserve the workflow's qualification binding line with candidate SHA, the exact checked `develop` tip SHA, Demo SHA and selected suite in the release dossier.
 - [ ] Do not add feature changes after the candidate is selected.
 - [ ] Verify the candidate is contained in `develop`.
 - [ ] Review `develop` versus `main`, including any `main`-only hotfix/release commits.
@@ -201,6 +202,7 @@ The final gate must prove:
 - [ ] Changelog release section exists.
 - [ ] Release notes exist.
 - [ ] Exact BaseHarbor candidate SHA and exact external `baseharbor-demo` SHA are pinned.
+- [ ] Candidate and `develop` SHAs in the workflow summary match the ancestry guard's immutable inputs; for a four-part hotfix, record the main-based exception and required post-publication forward-port.
 - [ ] Go formatting.
 - [ ] Source/package tests.
 - [ ] `go vet`.

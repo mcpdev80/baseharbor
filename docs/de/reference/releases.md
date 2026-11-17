@@ -83,6 +83,17 @@ Quellregel: Die Release-Ausgabe und Release-Notes müssen den genauen BaseHarbor
 
 Normale Releases werden auf `develop` vorbereitet und erst nach Prüfung des unveränderlichen Kandidaten nach `main` übernommen. Hotfixes beginnen auf `main`. Der [vollständige Release-Audit](https://github.com/mcpdev80/baseharbor/blob/develop/docs/internal/pre-release-documentation-audit.md) umfasst Implementierung, Ökosystem, EN/DE-Dokumentation, Pages-Kandidatenbuild, Changelog und verständliche Release Notes.
 
+Der Pre-Release-Workflow protokolliert den exakten Kandidaten-SHA und den
+abgerufenen `develop`-Tip-SHA, den seine Abstammungsprüfung verwendet. Ein
+normaler Kandidat muss diesen `develop`-Tip enthalten. Publish erfasst bei der
+Tag-Prüfung einen `develop`-SHA und übergibt genau diesen unveränderlichen Wert
+an den wiederverwendeten Pre-Release-Workflow; der Tag muss in derselben
+`develop`-Historie integriert sein. Die Workflow-Zusammenfassung schreibt eine
+Qualifikationszeile mit Kandidaten-, `develop`- und Demo-SHA sowie der gewählten
+Suite, damit das Release-Dossier die genaue Quellpaarung belegen kann. Vierteilige
+Hotfixes verwenden den dokumentierten Pfad über `main`; ihre Änderungen werden
+nach der Veröffentlichung nach `develop` übernommen.
+
 1. Implementierung, Verträge, Dokumentation und Release Notes fertigstellen.
 2. Exakte Core-, Demo-, Console- und Connector-Commits festlegen, soweit sie zum Release gehören.
 3. Betroffene Tests während der Entwicklung gezielt ausführen und Fehler beheben.
