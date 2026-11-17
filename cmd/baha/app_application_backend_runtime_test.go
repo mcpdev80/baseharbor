@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
@@ -127,6 +128,9 @@ func qualifyApplicationBackendLifecycle(t *testing.T, service string) {
 	var appID string
 	for phase, enabled := range []bool{true, false, true} {
 		writeApplicationBackendIntent(t, service, enabled)
+		if phase == 1 && service == "document_database" {
+			logNativeBackendProviderObservation(t, ctx)
+		}
 		applySelectiveIdentityIntent(t, ctx)
 		current, err := resolveApplication(ctx, application.Store{}, nil, "status")
 		if err != nil {
@@ -218,5 +222,51 @@ func qualifyApplicationBackendLifecycle(t *testing.T, service string) {
 			}
 		}
 		t.Logf("application backend=%s phase=%d needed=%t selected containers=%d retained volumes=%d", service, phase, enabled, containers, volumes)
+	}
+}
+
+// Log each read-only native-backend observation boundary immediately before
+// withdrawing MongoDB. This keeps a fail-closed provider refusal diagnosable
+// without changing the planner's safety decision or hiding host containers.
+func logNativeBackendProviderObservation(t *testing.T, ctx context.Context) {
+	t.Helper()
+	resolved, err := resolveApplication(ctx, application.Store{}, nil, "status")
+	if err != nil {
+		t.Logf("native backend observation diagnostic: resolve application: %v", err)
+		return
+	}
+	files, _, expected, inventoryErr := nativeBackendInventory(resolved)
+	t.Logf("native backend observation diagnostic: inventory err=%v project=%s expected=%v", inventoryErr, files.Project, expected)
+	provider, runtimeErr := detectRuntimeForTarget(ctx, resolved.Target)
+	t.Logf("native backend observation diagnostic: runtime err=%v", runtimeErr)
+	if runtimeErr == nil {
+		observed, inspectErr := provider.InspectProjectResources(ctx, files.Project, expected)
+		t.Logf("native backend observation diagnostic: expected-resource inspection err=%v observed=%v", inspectErr, observed)
+		containers, listErr := provider.ListRuntimeContainers(ctx)
+		t.Logf("native backend observation diagnostic: full runtime inventory err=%v count=%d", listErr, len(containers))
+		registry, registryErr := (capability.RegistryStore{Path: filepath.Join(resolved.TargetStateRoot, "provider-registry.json")}).Load()
+		t.Logf("native backend observation diagnostic: registry err=%v instances=%d bindings=%d", registryErr, len(registry.Instances), len(registry.Bindings))
+		intents, ownerErr := nativeBackendOwnerIntents(resolved)
+		t.Logf("native backend observation diagnostic: owner intents err=%v count=%d", ownerErr, len(intents))
+		if registryErr == nil && ownerErr == nil && listErr == nil {
+			for _, instance := range registry.Instances {
+				if instance.Provider.Kind != capability.ProviderMongoDB || instance.OwnerApplicationID != resolved.Manifest.ApplicationID || instance.OwnerEnvironment != resolved.Manifest.Environment {
+					continue
+				}
+				resources, resourceErr := nativeBackendOwnedResourceUnion(intents, files, &instance)
+				var instanceInspectionErr error
+				var instanceObserved []bhruntime.ProjectResource
+				if resourceErr == nil {
+					instanceObserved, instanceInspectionErr = provider.InspectProjectResources(ctx, files.Project, resources)
+				}
+				count, state := observeCanonicalProviderContainers(provider.Kind(), files.Project, resources, containers)
+				t.Logf("native backend observation diagnostic: mongo id=%s resources=%v resource_err=%v inspection_err=%v observed=%v containers=%d state=%s", instance.ID, resources, resourceErr, instanceInspectionErr, instanceObserved, count, state)
+			}
+		}
+	}
+	facts := map[string]application.ProviderFact{}
+	observeNativeBackendProviderFacts(ctx, resolved, facts)
+	for id, fact := range facts {
+		t.Logf("native backend observation diagnostic: observed provider fact id=%s target=%s state=%s", id, fact.Target, fact.State)
 	}
 }
