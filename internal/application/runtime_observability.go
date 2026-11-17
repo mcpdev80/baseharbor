@@ -52,7 +52,80 @@ func reconcileManagedRuntimeObservability(m Manifest, project string) error {
 	if err := reconcileRuntimeProviderObservability(m, project, "postgres", capability.ProviderPostgreSQL, capability.PostgreSQLIntegration, postgresInstances, logsEnabled, tracesEnabled); err != nil {
 		return err
 	}
-	return reconcileRuntimeProviderObservability(m, project, "valkey", capability.ProviderValkey, capability.ValkeyIntegration, valkeyInstances, logsEnabled, tracesEnabled)
+	if err := reconcileRuntimeProviderObservability(m, project, "valkey", capability.ProviderValkey, capability.ValkeyIntegration, valkeyInstances, logsEnabled, tracesEnabled); err != nil {
+		return err
+	}
+	return reconcileApplicationMetricsSource(m, project, logsEnabled, tracesEnabled)
+}
+
+// reconcileApplicationMetricsSource records the workload's runtime identity in
+// the shared provider snapshot even when the app has no declared metrics
+// endpoint. Its runtime target is symbolic, so it must not become a Prometheus
+// file_sd scrape target or require a provider network connection.
+func reconcileApplicationMetricsSource(
+	m Manifest,
+	project string,
+	logsEnabled bool,
+	tracesEnabled bool,
+) error {
+	metricsPolicy, err := MetricsPolicy(m)
+	if err != nil {
+		return err
+	}
+	if !metricsPolicy.Enabled || !metricsPolicy.Collect[MetricsSourceApplicationProvider] {
+		return nil
+	}
+	id := fmt.Sprintf("%s:%s", capability.ProviderPrometheus, strings.TrimSpace(project))
+	desired := []observability.SignalSource{
+		{
+			ID:               id,
+			Kind:             observability.SignalMetrics,
+			Provider:         capability.ProviderPrometheus,
+			Class:            observability.SourceApplicationProvider,
+			Scope:            capability.ScopeApplication,
+			OwnerApplication: m.Name,
+			Network:          MetricsProviderNetworkNameForNamespace(m, ""),
+			Target:           observability.RuntimeTarget(project, "workload"),
+			Protocol:         "openmetrics",
+			Path:             "/metrics",
+			Mode:             capability.ObservabilityRuntime,
+			Verification:     capability.ObservabilityVerifyNone,
+		},
+	}
+	if logsEnabled {
+		desired = append(desired, observability.SignalSource{
+			ID:                 id,
+			Kind:               observability.SignalLogs,
+			Provider:           capability.ProviderPrometheus,
+			Class:              observability.SourceApplicationProvider,
+			Scope:              capability.ScopeApplication,
+			OwnerApplication:   m.Name,
+			Target:             observability.RuntimeTarget(project, "workload"),
+			Protocol:           "stdout-stderr",
+			Mode:               capability.ObservabilityRuntime,
+			SemanticConvention: "baseharbor.runtime.logs",
+			Verification:       capability.ObservabilityVerifyBackend,
+		})
+	}
+	if tracesEnabled {
+		desired = append(desired, observability.SignalSource{
+			ID:                 id,
+			Kind:               observability.SignalTraces,
+			Provider:           capability.ProviderPrometheus,
+			Class:              observability.SourceApplicationProvider,
+			Scope:              capability.ScopeApplication,
+			OwnerApplication:   m.Name,
+			Target:             observability.RuntimeTarget(project, "workload"),
+			Protocol:           "otlp",
+			Mode:               capability.ObservabilityNative,
+			SemanticConvention: "http",
+			Verification:       capability.ObservabilityVerifySpan,
+		})
+	}
+	if len(desired) == 0 {
+		return nil
+	}
+	return observability.ReconcileSignals(id, desired)
 }
 
 func reconcileRuntimeProviderObservability(
