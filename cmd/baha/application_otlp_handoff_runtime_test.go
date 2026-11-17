@@ -70,7 +70,7 @@ func TestManagedRegisteredOTLPNativeConsumerHandoff(t *testing.T) {
 	if err := os.Unsetenv(telemetry.ExternalHeadersEnv); err != nil {
 		t.Fatal(err)
 	}
-	target := configureTestTarget(t)
+	target := configureTestTargetEmpty(t)
 	if os.Getenv("BASEHARBOR_TEST_RUNTIME") == "podman" {
 		cfg, err := deployment.LoadConfig()
 		if err != nil {

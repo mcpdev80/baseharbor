@@ -158,10 +158,16 @@ class CoverageCatalogTests(unittest.TestCase):
             for gate in selected:
                 self.assertEqual(
                     [["./cmd/baha", "-run", "^TestSelectiveBackendCleanupPreservesRuntimeBaseline$",
-                      "-timeout", "20m"],
-                     ["./cmd/baha", "-run", "^TestSelectiveApplicationBackendRuntimeAddRemoveReAdd$",
                       "-timeout", "20m"]],
                     integration.coreless_anchor_checks(gate, temporary))
+
+    def test_shared_backend_helper_maps_to_both_coreless_integration_gates(self):
+        current = json.loads((ROOT / "pr-gate-coverage.json").read_text())
+        path = "cmd/baha/app_backend_shared_runtime_test.go"
+        selected, unresolved = coverage_module.resolve_covered_gates([path], current)
+        self.assertEqual(["integration/docker/coreless-lifecycle",
+                          "integration/podman/coreless-lifecycle"], selected)
+        self.assertEqual([], unresolved)
 
     def test_application_backend_coreless_acceptance_is_anchored_to_both_integration_gates(self):
         current = json.loads((ROOT / "pr-gate-coverage.json").read_text())
@@ -186,6 +192,22 @@ class CoverageCatalogTests(unittest.TestCase):
                 selected, unresolved = coverage_module.resolve_covered_gates([path], current)
                 self.assertEqual(expected, selected)
                 self.assertEqual([], unresolved)
+
+    def test_coreless_fixture_acceptance_files_are_anchored_to_both_integration_gates(self):
+        current = json.loads((ROOT / "pr-gate-coverage.json").read_text())
+        expected = ["integration/docker/coreless-lifecycle",
+                    "integration/podman/coreless-lifecycle"]
+        for path, test_name in (
+            ("cmd/baha/app_capability_runtime_test.go", "TestApplicationCapabilityLifecycleExistingCore"),
+            ("cmd/baha/app_https_selective_runtime_test.go", "TestSelectiveHTTPSRuntimeAddRemoveReAdd"),
+            ("cmd/baha/application_otlp_handoff_runtime_test.go", "TestManagedRegisteredOTLPNativeConsumerHandoff"),
+        ):
+            with self.subTest(path=path):
+                selected, unresolved = coverage_module.resolve_covered_gates([path], current)
+                self.assertEqual(expected, selected)
+                self.assertEqual([], unresolved)
+                component = next(row for row in current["components"] if row["path"] == path)
+                self.assertEqual([test_name], component["required_test_names"])
 
     def test_service_stop_maps_to_podman_lifecycle_and_executor_runs_test_anchor(self):
         current = json.loads((ROOT / "pr-gate-coverage.json").read_text())

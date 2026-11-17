@@ -179,6 +179,14 @@ The first owned lifecycle operation records a protected `runtime/docker-engine.j
 
 Existing rootful installations remain intact. Maintaining one requires explicit Target configuration with `docker-endpoint: unix:///var/run/docker.sock` and `docker-mode: rootful`; these values also have `--docker-endpoint` and `--docker-mode` Target-create options and `docker_endpoint`/`docker_mode` machine/MCP fields. This is explicit maintenance intent, not a migration. Do not remove protected state or switch a recorded Target's socket to move existing data. For an independent Core installation, use a separate host with its own Target and authenticated Connector access; another local Target name shares this host's Core.
 
+## Guided first-run Rootless Docker repair
+
+For a new, unconfigured local Docker Target, `baha up` checks the selected daemon before preparing the Core image. If the rootless socket is unavailable, an interactive session explains the detected problem and the exact repair plan. The plan may install Ubuntu/Debian `uidmap` using `sudo`, configure the user-scoped Rootless Docker daemon with `dockerd-rootless-setuptool.sh install --force`, and start or re-enable its systemd user service. Every host-changing step requires **separate affirmative approval** (default No); `--yes` does not authorize privilege escalation or Docker setup.
+
+System Docker is not stopped, changed or silently substituted. After setup BaseHarbor restores the default Docker CLI context and verifies the original selected rootless endpoint. Existing user services are started rather than reinstalled. Explicit Docker contexts/endpoints, remote Targets and Podman are excluded.
+
+The guided repair currently requires Linux on Ubuntu/Debian with a user systemd session, Docker rootless setup tools and existing non-overlapping subordinate UID/GID mappings of at least 65536 IDs in `/etc/subuid` and `/etc/subgid`. If those mappings or setup tools are missing, BaseHarbor reports actionable prerequisites without changing the host. Noninteractive runs stop without sudo or installation and require manual provisioning. A failed step does not fall back to rootful Docker; rerun after resolving the reported failure.
+
 ## Editable deployment policies
 
 New Targets can select editable best-practice defaults with `baha target create NAME ... --deployment-preset development|test|staging|production|custom`. In the guided Target wizard, `development` is suggested; overrides are explicit. No policy is silently imposed on existing Targets.
