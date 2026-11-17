@@ -139,10 +139,15 @@ func reconcileApplicationMetricsSource(
 // policy the OTLP transport selection uses, so registry and exporter agree
 // before, during and after a managed/external receiver transition.
 func reconcileApplicationTraceSource(m Manifest, project string, tracesEnabled bool) error {
-	if !HasOTLPTelemetry(m) {
-		return nil
-	}
 	project = strings.TrimSpace(project)
+	if !HasOTLPTelemetry(m) {
+		// The authored intent no longer requests OTLP delivery. Reclaim this
+		// workload's receiver-owned trace signals before returning: the earlier
+		// managed deployment registered them, and no other cleanup path sees
+		// this identity. Metrics and log signals stay registered because their
+		// providers still ingest them.
+		return pruneWorkloadTraceSignals(project, workloadReceiverKinds)
+	}
 	if !tracesEnabled {
 		if TelemetryProviderForDeployment().Kind == capability.ProviderExternalOTLP {
 			// An external receiver delivers its spans without managed trace
