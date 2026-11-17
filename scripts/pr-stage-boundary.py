@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Keep supported Coreless PR integrations selected and defer remaining debt.
+"""Keep executable native PR gates selected and defer only cross-repo debt.
 
 The trusted PR planner still discovers every required release gate.  Only the
 PR execution stage is changed: cross-repo gates are recorded, never reported
@@ -40,11 +40,11 @@ def stage(plan):
     deps = plan.get("required_consumer_dependencies")
     if not isinstance(deps, list) or any(x not in ("core", "demo", "console", "connector") for x in deps):
         raise ValueError("invalid consumer dependency graph")
-    # The coreless lifecycle gates run against the exact Core candidate through
-    # the PR's selected integration executor. Keep only those executable gates
-    # selected; other integration work remains deferred to develop/release.
-    selected = [gate for gate in gates if gate in CORELESS_LIFECYCLE_GATES]
-    deferred = [gate for gate in gates if gate not in CORELESS_LIFECYCLE_GATES]
+    # Atomic runtime and Coreless gates have real PR executors. Deferring them
+    # would conceal successful native evidence and contradict the final verifier.
+    # Only the cross-repository static integration remains deferred.
+    selected = [gate for gate in gates if gate != CROSS_REPO_STATIC]
+    deferred = [gate for gate in gates if gate == CROSS_REPO_STATIC]
     output = dict(plan)
     output["deferred_integration_gates"] = deferred
     output["deferred_consumer_dependencies"] = list(deps)
