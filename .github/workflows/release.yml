@@ -1,6 +1,7 @@
 name: Release · Publish
 run-name: Release · ${{ inputs.tag || github.ref_name }}
 permissions:
+  actions: read
   contents: write
   packages: write
   id-token: write
