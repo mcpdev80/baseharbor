@@ -58,20 +58,10 @@ func reconcileManagedRuntimeObservability(m Manifest, project string) error {
 	return reconcileApplicationMetricsSource(m, project, logsEnabled, tracesEnabled)
 }
 
-// reconcileApplicationMetricsSource registers the application's own runtime
-// metrics source so that even a workload-only app (no SQL/Valkey backend, no
-// runtime broker, no runtime metrics permission) declares an application-scoped
-// metrics source in the shared provider registry. This keeps the shared
-// runtime-sources.json snapshot non-empty for the owning app and lets metrics
-// verification resolve the app's presence through the real deploy path instead
-// of an empty snapshot.
-//
-// The source is registered only when the metrics policy enables collection and
-// collects application-provider sources; a disabled policy stays a no-op and
-// never fabricates a scrape target. It uses the same direct SignalSource
-// construction as ReconcileRuntimeComponentObservability so it satisfies the
-// metrics-source contract (openmetrics, absolute path, network) without a
-// backend to scrape.
+// reconcileApplicationMetricsSource records the workload's runtime identity in
+// the shared provider snapshot even when the app has no declared metrics
+// endpoint. Its runtime target is symbolic, so it must not become a Prometheus
+// file_sd scrape target or require a provider network connection.
 func reconcileApplicationMetricsSource(
 	m Manifest,
 	project string,
@@ -98,8 +88,8 @@ func reconcileApplicationMetricsSource(
 			Target:           observability.RuntimeTarget(project, "workload"),
 			Protocol:         "openmetrics",
 			Path:             "/metrics",
-			Mode:             capability.ObservabilityNative,
-			Verification:     capability.ObservabilityVerifyBackend,
+			Mode:             capability.ObservabilityRuntime,
+			Verification:     capability.ObservabilityVerifyNone,
 		},
 	}
 	if logsEnabled {

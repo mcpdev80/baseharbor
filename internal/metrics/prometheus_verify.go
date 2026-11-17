@@ -134,14 +134,6 @@ func VerifyProviderSourcesAt(ctx context.Context, m application.Manifest, dataDi
 			}
 		}
 	}
-	// A workload-only app (no declared metrics sources and no runtime metrics
-	// permission) registers no provider source in the shared placement. There is
-	// nothing to verify, so an empty source set is a valid success, never a
-	// fail-closed. The strict guard below still rejects apps that request
-	// application metrics sources yet materialize none.
-	if len(m.Metrics.Sources) == 0 && !application.HasRuntimeMetricsPermissions(m) {
-		return nil
-	}
 	sources, err := observability.ListMetrics(
 		placement,
 		allowedApplications,
@@ -164,6 +156,9 @@ func VerifyProviderSourcesAt(ctx context.Context, m application.Manifest, dataDi
 		return err
 	}
 	for _, source := range sources {
+		if source.Verification == capability.ObservabilityVerifyNone {
+			continue
+		}
 		sourceCtx, cancel := context.WithTimeout(ctx, 90*time.Second)
 		query := fmt.Sprintf(
 			`up{baseharbor_provider=%q,baseharbor_source=%q}`,
