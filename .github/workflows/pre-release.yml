@@ -125,11 +125,16 @@ jobs:
             }
             echo "Hotfix candidate follows the documented main-based hotfix path."
           else
-            git merge-base --is-ancestor HEAD "$develop_sha" || {
-              echo "REJECT: release tag is not integrated into develop; refusing publication." >&2
-              exit 1
-            }
-            echo "Release candidate is integrated into develop."
+            if ! git merge-base --is-ancestor HEAD "$develop_sha"; then
+              # Squash merges can preserve exact source content without commit ancestry.
+              git diff --quiet HEAD "$develop_sha" -- || {
+                echo "REJECT: release tag is not integrated into develop; refusing publication." >&2
+                exit 1
+              }
+              echo "Release tag source matches the exact develop tree despite squash-merge ancestry."
+            else
+              echo "Release candidate is integrated into develop."
+            fi
           fi
         elif [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
           # Hotfix flow via main; develop integration follows after publish. See docs/reference/releases.md#hotfix-releases.
