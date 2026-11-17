@@ -3,12 +3,18 @@
 The binding complete checklist is the [canonical release audit](https://github.com/mcpdev80/baseharbor/blob/develop/docs/internal/pre-release-documentation-audit.md).
 
 **Pre-release-ready** means all preparation and targeted acceptance for the
-release's active scope are complete. For v0.4.27 this means Core and Demo,
-workstation-to-Core journeys on supported Docker and Podman runtimes, current
+release's active scope are complete. For v0.4.28 this means Core, Demo, the
+delivered CLI and the optional Perses provider surface: workstation-to-Core
+journeys on supported Docker and Podman runtimes, current
 CLI/JSON/MCP/HTTP compatibility, EN/DE documentation, Pages candidate
 build/navigation, changelog, release notes, immutable Core/Demo SHAs and the
-versioned test plan. Console and Node Connector are archived and excluded from
-this release. Core-only green does not qualify. Missing, failed, skipped or
+versioned test plan. The optional Perses surface is not part of the required
+Core bundle; when it is not selected, `not configured` is the normal state and
+is not an error or readiness failure, and no release proof may assert that a
+Perses instance is implemented or provisioned. Console and Node Connector are
+archived snapshots and are excluded from this release's public scope as active
+consumers; this makes no claim about their archived source, tests or historical
+records. Core-only green does not qualify. Missing, failed, skipped or
 unverified required proofs block this status.
 
 **Release-ready** additionally requires successful complete pre-release validation.

@@ -85,6 +85,9 @@ networks:
 	}
 
 	db := got.Files["baseharbor-demo-db.container"]
+	if !strings.Contains(db, "ContainerName=baseharbor-demo-db\n") || got.Containers["db"] != "baseharbor-demo-db" {
+		t.Fatalf("default container identity changed:\n%s", db)
+	}
 	for _, want := range []string{
 		"Image=docker.io/library/postgres:18-alpine",
 		"User=postgres",
@@ -143,6 +146,29 @@ networks:
 		if !strings.Contains(worker, want) {
 			t.Fatalf("worker Quadlet missing %q:\n%s", want, worker)
 		}
+	}
+}
+
+func TestRenderComposeProjectQuadletsPreservesPinnedContainerName(t *testing.T) {
+	compose := filepath.Join(t.TempDir(), "compose.yaml")
+	if err := os.WriteFile(compose, []byte(`services:
+  web:
+    image: docker.io/library/alpine:3.22
+    container_name: linkding-pinned-web
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := RenderComposeProjectQuadlets(compose, "", "baseharbor-pinned")
+	if err != nil {
+		t.Fatal(err)
+	}
+	unit := got.Files["baseharbor-pinned-web.container"]
+	if !strings.Contains(unit, "ContainerName=linkding-pinned-web\n") {
+		t.Fatalf("Quadlet did not preserve Compose container_name:\n%s", unit)
+	}
+	if got.Containers["web"] != "linkding-pinned-web" {
+		t.Fatalf("rendered container identity = %q, want pinned Compose name", got.Containers["web"])
 	}
 }
 

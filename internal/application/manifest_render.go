@@ -105,7 +105,7 @@ func (m Manifest) YAML() string {
 		}
 		if m.Services.ObservabilityManagementUI {
 			b.WriteString("  observability:\n")
-			writeManagementUIYAML(&b, true)
+			writeManagementUIYAML(&b, m.Services.ObservabilityManagementUI)
 			if m.Services.Perses {
 				b.WriteString("    perses: true\n")
 			}

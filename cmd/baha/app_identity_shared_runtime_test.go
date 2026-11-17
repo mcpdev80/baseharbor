@@ -108,11 +108,15 @@ func applySelectiveIdentityIntent(t *testing.T, ctx context.Context) resolvedApp
 	if err != nil {
 		t.Fatal(err)
 	}
+	applyCtx, candidateDigest := withConfirmCandidateDigestForResolved(ctx, resolved)
+	if resolved.FromRepository && candidateDigest == "" {
+		t.Fatal("repository candidate has no verifiable confirmation digest")
+	}
 	if impact := plan.ProviderPlan.Impact; impact != nil {
-		ctx = withProviderChangeConsent(ctx, &application.ProviderChangeConsent{PlanID: impact.PlanID, First: true, Second: true})
+		applyCtx = withProviderChangeConsent(applyCtx, &application.ProviderChangeConsent{PlanID: impact.PlanID, First: true, Second: true})
 	}
 	var output bytes.Buffer
-	if err := runWithIO(ctx, []string{"app", "apply", "--skip-memory-preflight"}, &output, &output); err != nil {
+	if err := runWithIO(applyCtx, []string{"app", "apply", "--skip-memory-preflight"}, &output, &output); err != nil {
 		t.Logf("shared Identity failed common union: complete=%t changes=%+v", plan.ProviderPlan.Complete, plan.ProviderPlan.Changes)
 		t.Fatalf("shared Identity apply: %v\n%s", err, output.String())
 	}

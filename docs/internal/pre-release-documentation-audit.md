@@ -13,13 +13,18 @@ After planning activation, references below to roadmap issues and release-scoped
 
 **Pre-release-ready** means the complete release preparation is finished and
 all required atomic/targeted acceptance is green on one immutable ecosystem
-matrix for the release's active consumers. For v0.4.27 that scope is Core and
-Demo, including the developer-workstation-to-Core journey on supported Docker
-and Podman runtimes. It also includes current CLI/JSON/MCP compatibility,
+matrix for the release's active consumers. For the current active release
+v0.4.28 that scope is Core, Demo, the delivered CLI and the optional Perses
+provider surface, including the developer-workstation-to-Core journey on
+supported Docker and Podman runtimes. It also includes current CLI/JSON/MCP compatibility,
 general EN/DE documentation, Pages candidate build/navigation/workflow,
 changelog, human release notes, release-specific gates and immutable source
-pins. Console and Node Connector are archived and excluded from v0.4.27; this
-release makes no compatibility claim for them. Core-only green is not this
+pins. Perses is optional: when it is not selected, `not configured` is the
+normal state with no error or readiness failure, and no gate may assert that
+a Perses instance is implemented or provisioned. Console and Node Connector
+are archived snapshots and are excluded from v0.4.28 as active release
+consumers; this release makes no compatibility claim for them and does not
+weaken their archived provenance. Core-only green is not this
 status.
 
 **Release-ready** adds successful complete pre-release validation. Promotion,
@@ -169,6 +174,7 @@ The external demo is part of release validation and must be reviewed before pinn
 - [ ] Confirm `docs/releases/vX.Y.Z.md` is suitable as the actual human-facing GitHub Release message.
 - [ ] Confirm the versioned `docs/releases/vX.Y.Z.demo-ref` resolves the exact final Demo commit.
 - [ ] Identify one exact final `develop` candidate SHA.
+- [ ] Preserve the workflow's qualification binding line with candidate SHA, the exact checked `develop` tip SHA, Demo SHA and selected suite in the release dossier.
 - [ ] Do not add feature changes after the candidate is selected.
 - [ ] Verify the candidate is contained in `develop`.
 - [ ] Review `develop` versus `main`, including any `main`-only hotfix/release commits.
@@ -196,6 +202,7 @@ The final gate must prove:
 - [ ] Changelog release section exists.
 - [ ] Release notes exist.
 - [ ] Exact BaseHarbor candidate SHA and exact external `baseharbor-demo` SHA are pinned.
+- [ ] Candidate and `develop` SHAs in the workflow summary match the ancestry guard's immutable inputs; for a four-part hotfix, record the main-based exception and required post-publication forward-port.
 - [ ] Go formatting.
 - [ ] Source/package tests.
 - [ ] `go vet`.
