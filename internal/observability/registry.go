@@ -131,6 +131,7 @@ type MetricsSource struct {
 	Path             string
 	Scheme           string
 	Security         Security
+	Verification     capability.ObservabilityVerificationMode `json:"-"`
 }
 
 func (s MetricsSource) Validate() error {
@@ -149,7 +150,8 @@ func (s MetricsSource) signal() SignalSource {
 	return SignalSource{
 		ID: s.ID, Kind: SignalMetrics, Provider: s.Provider, Class: s.Class,
 		Scope: s.Scope, SharingBoundary: s.SharingBoundary, OwnerApplication: s.OwnerApplication,
-		Network: s.Network, Target: s.Target, Protocol: "openmetrics", Path: s.Path, Security: security,
+		Network: s.Network, Target: s.Target, Protocol: "openmetrics", Path: s.Path,
+		Verification: s.Verification, Security: security,
 	}
 }
 
@@ -463,7 +465,8 @@ func ListMetrics(placement capability.ProviderPlacement, applications []string, 
 		out = append(out, MetricsSource{
 			ID: source.ID, Provider: source.Provider, Class: source.Class, Scope: source.Scope,
 			SharingBoundary: source.SharingBoundary, OwnerApplication: source.OwnerApplication,
-			Network: source.Network, Target: source.Target, Path: source.Path, Scheme: scheme, Security: source.Security,
+			Network: source.Network, Target: source.Target, Path: source.Path, Scheme: scheme,
+			Security: source.Security, Verification: source.Verification,
 		})
 	}
 	return out, nil
