@@ -44,10 +44,16 @@ jobs:
           # Hotfix flow via main; develop integration follows after publish. See docs/reference/releases.md#hotfix-releases.
           echo "Four-part hotfix: main ancestry is the release-line check; forward-port to develop remains required by the hotfix process."
         else
-          git merge-base --is-ancestor "$sha" "$develop_sha" || {
-            echo "REJECT: release tag is not integrated into develop; refusing publication." >&2
-            exit 1
-          }
+          if ! git merge-base --is-ancestor "$sha" "$develop_sha"; then
+            # A squash merge can leave main and develop with identical source trees
+            # but different commit ancestry. Accept that exact-content integration;
+            # reject any tag whose source differs from current develop.
+            git diff --quiet "$sha" "$develop_sha" -- || {
+              echo "REJECT: release tag is not integrated into develop; refusing publication." >&2
+              exit 1
+            }
+            echo "Release tag source matches the exact develop tree despite squash-merge ancestry."
+          fi
         fi
         git show "$sha:CHANGELOG.md" | grep -Fq "## [${tag#v}]"
         git cat-file -e "$sha:docs/releases/$tag.md"
