@@ -273,6 +273,52 @@ func ParseRuntimeTarget(target string) (project, service string, ok bool) {
 	return project, service, true
 }
 
+// PruneSignals removes the named signal kinds of one source identity without
+// touching its other signals. Registry entries are read-modify-written as a
+// whole file, so this is the mechanism a caller uses when exactly one signal of
+// an identity is no longer valid while the rest of the registration stands.
+//
+// PruneOwnedProviderSignals is the additive counterpart of
+// PruneOwnedProviderInstances: instead of dropping whole identities of a
+// provider class, it removes only the named signal kinds from the identities
+// this caller owns. Ownership is decided by the exact class, scope and owner
+// application match that PruneOwnedProviderInstances already applies, so a
+// shared or foreign registration with the same ID keeps its signals. This is
+// how a workload reclaims its own trace signals without disturbing the metrics
+// and log signals other components registered under the same identity.
+func PruneSignals(id string, kinds ...SignalKind) error {
+	return pruneSignals(func(source SignalSource) bool { return source.ID == id }, kinds)
+}
+
+func PruneOwnedProviderSignals(provider capability.ProviderKind, class SourceClass, scope capability.ProviderScope, ownerApplication string, kinds ...SignalKind) error {
+	return pruneSignals(func(source SignalSource) bool {
+		return source.Provider == provider && source.Class == class && source.Scope == scope && source.OwnerApplication == ownerApplication
+	}, kinds)
+}
+
+func pruneSignals(owned func(SignalSource) bool, kinds []SignalKind) error {
+	path, err := registryPath()
+	if err != nil {
+		return err
+	}
+	drop := map[SignalKind]struct{}{}
+	for _, kind := range kinds {
+		drop[kind] = struct{}{}
+	}
+	return mutate(path, func(sources []SignalSource) ([]SignalSource, error) {
+		out := sources[:0]
+		for _, source := range sources {
+			if owned(source) {
+				if _, unwanted := drop[source.Kind]; unwanted {
+					continue
+				}
+			}
+			out = append(out, source)
+		}
+		return out, nil
+	})
+}
+
 func PruneOwnedProviderInstances(provider capability.ProviderKind, class SourceClass, scope capability.ProviderScope, ownerApplication string, keepIDs map[string]struct{}) error {
 	path, err := registryPath()
 	if err != nil {
