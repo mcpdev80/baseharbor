@@ -65,7 +65,7 @@ func TestRegisterProviderSignalsUsesDescriptorAndRuntimeRealization(t *testing.T
 		t.Fatal(err)
 	}
 
-	got, err := List(SignalMetrics, capability.ProviderPlacement{Scope: capability.ScopeShared}, nil, true, true)
+	got, err := List(SignalMetrics, capability.ProviderPlacement{Scope: capability.ScopeShared}, nil, false, true, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -148,7 +148,7 @@ func TestRegisterProviderSignalsRemovesDisabledStaleSignal(t *testing.T) {
 	if err := RegisterProviderSignals(registration); err != nil {
 		t.Fatal(err)
 	}
-	got, err := List(SignalMetrics, capability.ProviderPlacement{Scope: capability.ScopeShared}, nil, true, true)
+	got, err := List(SignalMetrics, capability.ProviderPlacement{Scope: capability.ScopeShared}, nil, false, true, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -285,5 +285,52 @@ func TestRegisterProviderSignalsRetainsRealizationMetadata(t *testing.T) {
 		got[0].Verification != capability.ObservabilityVerifySpan ||
 		got[0].SemanticConvention != "database" {
 		t.Fatalf("trace metadata = %#v", got[0])
+	}
+}
+
+func TestListApplicationMetricsRequiresExplicitClassAndApplicationScope(t *testing.T) {
+	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
+	app := MetricsSource{
+		ID:               ApplicationMetricsSourceID("demo", "dev", "api"),
+		Provider:         capability.ProviderPrometheus,
+		Class:            SourceApplication,
+		Scope:            capability.ScopeApplication,
+		OwnerApplication: "demo",
+		Network:          "baseharbor-metrics",
+		Target:           "api:8080",
+		Path:             "/metrics",
+		Verification:     capability.ObservabilityVerifyBackend,
+	}
+	if err := Update(app); err != nil {
+		t.Fatal(err)
+	}
+	placement := capability.ProviderPlacement{Scope: capability.ScopeApplication}
+	got, err := List(SignalMetrics, placement, []string{"demo"}, false, false, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("application sources leaked into provider listing: %#v", got)
+	}
+	got, err = List(SignalMetrics, placement, []string{"other"}, true, false, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("application source crossed its owner scope: %#v", got)
+	}
+	listed, err := ListApplicationMetrics(placement, []string{"demo"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(listed) != 1 || listed[0].ID != app.ID || listed[0].Target != app.Target {
+		t.Fatalf("application metrics = %#v", listed)
+	}
+	if err := PruneApplicationMetrics("demo", "dev", nil); err != nil {
+		t.Fatal(err)
+	}
+	listed, err = ListApplicationMetrics(placement, []string{"demo"})
+	if err != nil || len(listed) != 0 {
+		t.Fatalf("pruned application metrics = %#v, err=%v", listed, err)
 	}
 }

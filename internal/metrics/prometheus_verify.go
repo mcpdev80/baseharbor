@@ -144,8 +144,18 @@ func verifyProviderSourcesAt(ctx context.Context, m application.Manifest, dataDi
 		policy.Collect[application.MetricsSourceApplicationProvider],
 		policy.Collect[application.MetricsSourcePlatformProvider],
 	)
-	if err != nil || len(sources) == 0 {
+	if err != nil {
 		return err
+	}
+	var applicationSources []observability.MetricsSource
+	if policy.Collect[application.MetricsSourceApplication] {
+		applicationSources, err = observability.ListApplicationMetrics(placement, allowedApplications)
+		if err != nil {
+			return err
+		}
+	}
+	if len(sources) == 0 && len(applicationSources) == 0 {
+		return nil
 	}
 	files, err := ExistingProviderFilesAt(dataDir, namespace, m)
 	if err != nil {
@@ -159,39 +169,47 @@ func verifyProviderSourcesAt(ctx context.Context, m application.Manifest, dataDi
 	if err != nil {
 		return err
 	}
+	for _, source := range applicationSources {
+		name := strings.TrimPrefix(source.ID, observability.ApplicationMetricsSourceID(m.Name, m.Environment, ""))
+		query := fmt.Sprintf("up{job=\"baseharbor-applications\",baseharbor_application=%q,baseharbor_environment=%q,baseharbor_source=%q}", m.Name, m.Environment, name)
+		if err := waitForMetricsSource(ctx, client, endpoint, query, source.ID, "application", queryProvider); err != nil {
+			return err
+		}
+	}
 	for _, source := range sources {
 		if source.Verification == capability.ObservabilityVerifyNone {
 			continue
 		}
-		sourceCtx, cancel := context.WithTimeout(ctx, 90*time.Second)
-		query := fmt.Sprintf(
-			`up{baseharbor_provider=%q,baseharbor_source=%q}`,
-			string(source.Provider), source.ID,
-		)
-		ticker := time.NewTicker(time.Second)
-		var last error
-		for {
-			ok, err := queryProvider(sourceCtx, client, endpoint, query)
-			if err == nil && ok {
-				ticker.Stop()
-				cancel()
-				break
-			}
-			if err != nil {
-				last = err
-			} else {
-				last = errors.New("provider target has not produced an up=1 sample yet")
-			}
-			select {
-			case <-sourceCtx.Done():
-				ticker.Stop()
-				cancel()
-				return fmt.Errorf("verify provider metrics %s: %w", source.ID, last)
-			case <-ticker.C:
-			}
+		query := fmt.Sprintf("up{baseharbor_provider=%q,baseharbor_source=%q}", string(source.Provider), source.ID)
+		if err := waitForMetricsSource(ctx, client, endpoint, query, source.ID, "provider", queryProvider); err != nil {
+			return err
 		}
 	}
 	return nil
+}
+
+func waitForMetricsSource(ctx context.Context, client *http.Client, endpoint, query, sourceID, sourceKind string, queryProvider func(context.Context, *http.Client, string, string) (bool, error)) error {
+	sourceCtx, cancel := context.WithTimeout(ctx, 90*time.Second)
+	defer cancel()
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	var last error
+	for {
+		ok, err := queryProvider(sourceCtx, client, endpoint, query)
+		if err == nil && ok {
+			return nil
+		}
+		if err != nil {
+			last = err
+		} else {
+			last = errors.New(sourceKind + " target has not produced an up=1 sample yet")
+		}
+		select {
+		case <-sourceCtx.Done():
+			return fmt.Errorf("verify %s metrics %s: %w", sourceKind, sourceID, last)
+		case <-ticker.C:
+		}
+	}
 }
 
 func prometheusAccessEnvironment(m application.Manifest, registrations []sourceRegistration) string {

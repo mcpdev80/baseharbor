@@ -13,7 +13,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/testsupport/serviceissuer"
 )
 
-func TestVerifyProviderSourcesSkipsOnlySnapshotMetadata(t *testing.T) {
+func TestVerifyProviderAndApplicationSourcesSkipsOnlySnapshotMetadata(t *testing.T) {
 	stateDir := t.TempDir()
 	t.Setenv("BASEHARBOR_STATE_DIR", stateDir)
 	t.Setenv(application.MetricsEnabledEnv, "true")
@@ -40,6 +40,20 @@ func TestVerifyProviderSourcesSkipsOnlySnapshotMetadata(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("register endpoint-backed verifier fixture: %v", err)
 	}
+	applicationSourceID := observability.ApplicationMetricsSourceID(m.Name, m.Environment, "declared")
+	if err := observability.Update(observability.MetricsSource{
+		ID:               applicationSourceID,
+		Provider:         capability.ProviderPrometheus,
+		Class:            observability.SourceApplication,
+		Scope:            capability.ScopeApplication,
+		OwnerApplication: m.Name,
+		Network:          application.MetricsProviderNetworkNameForNamespace(m, ""),
+		Target:           application.MetricsTargetAliasFor(m.Name, m.Environment, "api") + ":8080",
+		Path:             "/metrics",
+		Verification:     capability.ObservabilityVerifyBackend,
+	}); err != nil {
+		t.Fatalf("register application metrics source: %v", err)
+	}
 	if _, err := EnsureProviderFiles(context.Background(), issuer, m); err != nil {
 		t.Fatalf("EnsureProviderFiles: %v", err)
 	}
@@ -52,13 +66,17 @@ func TestVerifyProviderSourcesSkipsOnlySnapshotMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatalf("verify provider sources: %v", err)
 	}
-	if len(queries) != 1 {
-		t.Fatalf("provider queries = %d, want exactly the real endpoint-backed source query: %v", len(queries), queries)
+	if len(queries) != 2 {
+		t.Fatalf("source queries = %d, want one application and one endpoint-backed provider query: %v", len(queries), queries)
 	}
-	if !strings.Contains(queries[0], realSourceID) {
-		t.Fatalf("query %q does not cover real source %q", queries[0], realSourceID)
+	joined := strings.Join(queries, "\n")
+	if !strings.Contains(joined, realSourceID) {
+		t.Fatalf("queries %q do not cover provider source %q", joined, realSourceID)
 	}
-	if strings.Contains(queries[0], logicalID) {
-		t.Fatalf("query %q includes snapshot-only workload source %q", queries[0], logicalID)
+	if !strings.Contains(joined, "baseharbor_source=\"declared\"") || !strings.Contains(joined, "job=\"baseharbor-applications\"") {
+		t.Fatalf("queries %q do not verify application source %q through the application job", joined, applicationSourceID)
+	}
+	if strings.Contains(joined, logicalID) {
+		t.Fatalf("queries %q include snapshot-only workload source %q", joined, logicalID)
 	}
 }
