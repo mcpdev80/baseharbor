@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/mcpdev80/baseharbor/internal/apierror"
 	"github.com/mcpdev80/baseharbor/internal/coreinstallation"
 	"github.com/mcpdev80/baseharbor/internal/targetaccess"
 	"go.yaml.in/yaml/v3"
@@ -17,23 +18,30 @@ import (
 
 const ConfigVersion = 1
 
-// ErrConfigMissing is returned when the configured BaseHarbor config root is
-// populated (other BaseHarbor state files are present) but the authoritative
-// config.yaml is absent. This is a misconfiguration the user must fix, never
-// a silent empty default — a missing config under an active config root would
-// otherwise make the daemon fall through to its implicit defaults. It belongs
-// to the same "configured but unusable" family as ErrConfigEmpty (an existing
-// but empty file).
-var ErrConfigMissing = errors.New("BaseHarbor config root is configured but the config.yaml is missing")
+// Config sentinels. Re-exported from internal/apierror so callers that already
+// match them via errors.Is against the apierror package keep working; the
+// classify layer (internal/machine) recognizes the family from internal/apierror
+// without importing this higher-level package. The values are identical to the
+// apierror sentinels.
+var (
+	// ErrConfigMissing is returned when the configured BaseHarbor config root is
+	// populated (other BaseHarbor state files are present) but the authoritative
+	// config.yaml is absent. This is a misconfiguration the user must fix, never
+	// a silent empty default — a missing config under an active config root would
+	// otherwise make the daemon fall through to its implicit defaults. It belongs
+	// to the same "configured but unusable" family as ErrConfigEmpty (an existing
+	// but empty file).
+	ErrConfigMissing = apierror.ErrConfigMissing
 
-// ErrConfigEmpty is returned when an existing config.yaml resolves but carries
-// no loadable content (zero bytes or whitespace only). An existing file is a
-// malformed configuration, never a clean absent-config default: the user
-// pointed BaseHarbor at this path on purpose, so an emptied or untouched file
-// must surface as an actionable error rather than silently falling through to
-// the implicit defaults. It belongs to the ErrConfigMissing family so callers
-// can treat "configured but unusable" the same way.
-var ErrConfigEmpty = errors.New("BaseHarbor config root is configured but the config.yaml is empty")
+	// ErrConfigEmpty is returned when an existing config.yaml resolves but carries
+	// no loadable content (zero bytes or whitespace only). An existing file is a
+	// malformed configuration, never a clean absent-config default: the user
+	// pointed BaseHarbor at this path on purpose, so an emptied or untouched file
+	// must surface as an actionable error rather than silently falling through to
+	// the implicit defaults. It belongs to the ErrConfigMissing family so callers
+	// can treat "configured but unusable" the same way.
+	ErrConfigEmpty = apierror.ErrConfigEmpty
+)
 
 var targetTenantID = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
 
