@@ -41,7 +41,8 @@ func TestProviderComposeYAMLIsValidYAML(t *testing.T) {
 
 func TestProviderFilesUsePinnedPrometheusAndHardenedSharedNetwork(t *testing.T) {
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
-	files, err := EnsureProviderFiles(context.Background(), serviceissuer.New(t), application.Manifest{Name: "demo", Environment: "dev"})
+	m := application.WithMetricsSource(application.New("demo", "dev", true, false, false), "default", "api", 5432, "/metrics")
+	files, err := EnsureProviderFiles(context.Background(), serviceissuer.New(t), m)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,7 +69,7 @@ func TestProviderFilesUsePinnedPrometheusAndHardenedSharedNetwork(t *testing.T) 
 		"cap_drop:",
 		"- ALL",
 		"no-new-privileges:true",
-		"name: " + strconv.Quote(application.MetricsProviderNetworkName(application.Manifest{Name: "demo", Environment: "dev"})),
+		"name: " + strconv.Quote(application.MetricsProviderNetworkName(m)),
 		"name: " + strconv.Quote("baseharbor-prometheus-data"),
 	} {
 		if !strings.Contains(text, want) {

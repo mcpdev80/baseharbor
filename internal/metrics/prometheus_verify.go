@@ -115,6 +115,10 @@ func VerifyProviderSources(ctx context.Context, m application.Manifest) error {
 }
 
 func VerifyProviderSourcesAt(ctx context.Context, m application.Manifest, dataDir, namespace string) error {
+	return verifyProviderSourcesAt(ctx, m, dataDir, namespace, queryUp)
+}
+
+func verifyProviderSourcesAt(ctx context.Context, m application.Manifest, dataDir, namespace string, queryProvider func(context.Context, *http.Client, string, string) (bool, error)) error {
 	policy, err := application.MetricsPolicy(m)
 	if err != nil {
 		return err
@@ -156,6 +160,9 @@ func VerifyProviderSourcesAt(ctx context.Context, m application.Manifest, dataDi
 		return err
 	}
 	for _, source := range sources {
+		if source.Verification == capability.ObservabilityVerifyNone {
+			continue
+		}
 		sourceCtx, cancel := context.WithTimeout(ctx, 90*time.Second)
 		query := fmt.Sprintf(
 			`up{baseharbor_provider=%q,baseharbor_source=%q}`,
@@ -164,7 +171,7 @@ func VerifyProviderSourcesAt(ctx context.Context, m application.Manifest, dataDi
 		ticker := time.NewTicker(time.Second)
 		var last error
 		for {
-			ok, err := queryUp(sourceCtx, client, endpoint, query)
+			ok, err := queryProvider(sourceCtx, client, endpoint, query)
 			if err == nil && ok {
 				ticker.Stop()
 				cancel()
