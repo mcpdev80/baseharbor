@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
+	"sort"
+	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
@@ -14,17 +16,20 @@ import (
 )
 
 type applicationDestructionPlan struct {
-	Scope     application.ProviderImpactScope      `json:"scope"`
-	Providers application.ProviderPlan             `json:"providers"`
-	Materials []application.ProviderMaterial       `json:"materials"`
-	Effects   []application.OperationalConsequence `json:"effects"`
+	Scope               application.ProviderImpactScope      `json:"scope"`
+	Providers           application.ProviderPlan             `json:"providers"`
+	Materials           []application.ProviderMaterial       `json:"materials"`
+	Effects             []application.OperationalConsequence `json:"effects"`
+	IncompleteInventory bool                                 `json:"incomplete_inventory,omitempty"`
 }
 
 // Full reset and remote teardown use the same consequence authority as local
 // retirement. Unknown remote material stays unknown; consent grants no ownership.
 func buildApplicationDestructionPlan(ctx context.Context, resolved resolvedApplication, reset bool) (applicationDestructionPlan, error) {
 	operation := "destroy"
-	if proof, ok := ctx.Value(installationApplicationScopeKey{}).(installationApplicationScope); ok && proof.Children[resolved.DeploymentIdentity.DeploymentID] != "" {
+	if isApplicationStopMode(ctx) {
+		operation = "app.stop"
+	} else if proof, ok := ctx.Value(installationApplicationScopeKey{}).(installationApplicationScope); ok && proof.Children[resolved.DeploymentIdentity.DeploymentID] != "" {
 		if err := application.ValidateProviderImpactScopeConsent(proof.Scope, proof.Consent); err != nil {
 			return applicationDestructionPlan{}, classifyProviderChangeConsent(err)
 		}
@@ -47,7 +52,10 @@ func buildApplicationDestructionPlanForOperation(ctx context.Context, resolved r
 	}
 	_, p.Providers, err = buildApplicationRuntimeRetirementPlan(ctx, resolved)
 	if err != nil {
-		return p, err
+		if !reset || !isProviderConsumerInventoryError(err) {
+			return p, err
+		}
+		return buildIncompleteInventoryDestructionPlan(resolved, record, operation)
 	}
 	root, err := deployment.DeploymentRoot(resolved.DeploymentIdentity)
 	if err != nil {
@@ -68,9 +76,13 @@ func buildApplicationDestructionPlanForOperation(ctx context.Context, resolved r
 	defer zeroBytes(configuration)
 	after := "Remove selected owned remote runtime containers; retain persistent data, protected publication, credentials and the deployment owner for retry/reactivation. Node data/access and recovery usability remain unverified."
 	if reset {
-		after = "Permanently delete the selected application-owned runtime data and protected deployment state where the existing executor supports it. Authored source, repository Compose data, foreign resources and other consumers remain outside this reset. No data handoff or continued application access is claimed; partial cleanup retains the existing owner for retry."
+		after = "Permanently delete exclusively app-owned runtime data and protected deployment state. Authored source, shared infrastructure, foreign resources and data with ambiguous ownership remain. No data handoff or continued application access is claimed; partial cleanup retains the existing owner for retry."
 	}
-	p.Effects = []application.OperationalConsequence{{Aspect: "application-destruction", Before: "Selected deployment, actual provider bindings and protected recovery references.", After: after, Evidence: "canonical deployment owner and existing consumer union; complete material/access consequences remain unverified"}}
+	aspect := "application-destruction"
+	if isApplicationStopMode(ctx) {
+		aspect = "application-runtime-stop"
+	}
+	p.Effects = []application.OperationalConsequence{{Aspect: aspect, Before: "Selected deployment, actual provider bindings and protected recovery references.", After: after, Evidence: "canonical deployment owner and existing consumer union; complete material/access consequences remain unverified"}}
 	leaves := []application.ProviderImpactPlan{}
 	if p.Providers.Impact != nil {
 		leaves = append(leaves, *p.Providers.Impact)
@@ -99,6 +111,39 @@ func buildApplicationDestructionPlanForOperation(ctx context.Context, resolved r
 	return p, err
 }
 
+// buildIncompleteInventoryDestructionPlan authorizes deletion of the exact
+// selected application owner even if unrelated Target consumers are damaged.
+// Its incomplete scope requires the strongest acknowledgement; shared provider
+// retirement is deliberately omitted because the consumer set cannot be proven.
+func buildIncompleteInventoryDestructionPlan(resolved resolvedApplication, record deployment.DeploymentRecord, operation string) (applicationDestructionPlan, error) {
+	root, err := deployment.DeploymentRoot(resolved.DeploymentIdentity)
+	if err != nil {
+		return applicationDestructionPlan{}, err
+	}
+	p := applicationDestructionPlan{IncompleteInventory: true}
+	p.Effects = []application.OperationalConsequence{{
+		Aspect:   "application-destruction",
+		Before:   "Selected deployment and its directly verifiable application-owned resources.",
+		After:    "Delete the selected application and directly verifiable resources. Preserve shared, foreign and unclassifiable provider resources; those may need manual cleanup.",
+		Evidence: "selected canonical deployment owner; Target-wide provider consumer inventory is incomplete",
+	}}
+	p.Scope, err = application.ComposeProviderImpactScope(application.ProviderScopeOwner{
+		Owner: "application-deployment", Subject: record.Identity.DeploymentID,
+		Reference: filepath.Join(root, "deployment.json"), Destructive: true,
+		Revision: runtimeMutationRevision(struct {
+			Record    deployment.DeploymentRecord
+			Manifest  application.Manifest
+			Operation string
+		}{record, resolved.Manifest, operation}),
+	}, nil, false)
+	return p, err
+}
+
+func isProviderConsumerInventoryError(err error) bool {
+	var classified *machine.Error
+	return errors.As(err, &classified) && classified.CauseCode == "provider_consumer_inventory_invalid"
+}
+
 func authorizeApplicationDestruction(ctx context.Context, resolved resolvedApplication, reset bool, out io.Writer) (applicationDestructionPlan, error) {
 	p, err := buildApplicationDestructionPlan(ctx, resolved, reset)
 	if err != nil {
@@ -107,8 +152,7 @@ func authorizeApplicationDestruction(ctx context.Context, resolved resolvedAppli
 	if out == nil {
 		out = io.Discard
 	}
-	fmt.Fprintln(out, "Achtung: review selected application destruction, affected consumers and material locations; ordinary --yes grants neither acknowledgement nor data deletion.")
-	if err := writeJSON(out, p); err != nil {
+	if err := printApplicationDestructionSummary(out, resolved, p, reset); err != nil {
 		return p, err
 	}
 	consent, err := invocationProviderChangeConsent(ctx)
@@ -117,13 +161,13 @@ func authorizeApplicationDestruction(ctx context.Context, resolved resolvedAppli
 	}
 	if delegated, present, err := delegatedInstallationApplicationConsent(ctx, p, reset); present {
 		if err != nil {
-			return p, applicationDestructionPlanError(p, err)
+			return p, applicationDestructionAuthorizationError(p, err)
 		}
 		consent = delegated
 	}
 	in := applicationInput(ctx, nil)
 	if consent == nil && !noInput(ctx) && in != nil && readerIsTerminal(in) {
-		ack, err := readProviderImpactAcknowledgements(bufio.NewReader(in), out, application.ProviderImpactPlan{PlanID: p.Scope.PlanID, ConfirmationsRequired: p.Scope.ConfirmationsRequired, Destructive: p.Scope.Destructive})
+		ack, err := readProviderApplyAcknowledgement(bufio.NewReader(in), out, application.ProviderImpactPlan{PlanID: p.Scope.PlanID, ConfirmationsRequired: p.Scope.ConfirmationsRequired, Destructive: p.Scope.Destructive})
 		if err != nil {
 			return p, err
 		}
@@ -134,16 +178,75 @@ func authorizeApplicationDestruction(ctx context.Context, resolved resolvedAppli
 		ack = *consent
 	}
 	if err := application.ValidateProviderImpactScopeConsent(p.Scope, ack); err != nil {
-		return p, applicationDestructionPlanError(p, err)
+		return p, applicationDestructionAuthorizationError(p, err)
 	}
 	current, err := buildApplicationDestructionPlan(ctx, resolved, reset)
 	if err != nil {
 		return p, err
 	}
 	if current.Scope.PlanID != p.Scope.PlanID {
-		return current, applicationDestructionPlanError(current, &application.ProviderChangeError{Code: "stale-impact-consent"})
+		return current, applicationDestructionAuthorizationError(current, &application.ProviderChangeError{Code: "stale-impact-consent"})
 	}
 	return p, nil
+}
+
+func printApplicationDestructionSummary(out io.Writer, resolved resolvedApplication, plan applicationDestructionPlan, reset bool) error {
+	operation := "Stop"
+	if reset {
+		operation = "Destroy"
+	}
+	fmt.Fprintf(out, "\n%s application %s on Target %s\n", operation, resolved.Manifest.Name, resolved.Target.Name)
+	if plan.IncompleteInventory {
+		fmt.Fprintln(out, "  WARNING: Target provider inventory is damaged. Only directly verifiable application resources will be removed; shared or unclear resources will be retained.")
+	}
+	if plan.Providers.Impact != nil {
+		groups := map[string]map[string]bool{}
+		for _, impact := range plan.Providers.Impact.Impacts {
+			action := providerActionLabel(impact.Operation)
+			if groups[action] == nil {
+				groups[action] = map[string]bool{}
+			}
+			if len(impact.Functions) == 0 {
+				groups[action][impact.InstanceID] = true
+				continue
+			}
+			for _, function := range impact.Functions {
+				groups[action][providerFunctionLabel(function.Function)] = true
+			}
+		}
+		actions := make([]string, 0, len(groups))
+		for action := range groups {
+			actions = append(actions, action)
+		}
+		sort.Strings(actions)
+		for _, action := range actions {
+			services := make([]string, 0, len(groups[action]))
+			for service := range groups[action] {
+				services = append(services, service)
+			}
+			sort.Strings(services)
+			fmt.Fprintf(out, "  %s providers: %s\n", action, strings.Join(services, ", "))
+		}
+	}
+	if reset {
+		fmt.Fprintln(out, "  App-owned data: permanently deleted when ownership is verified")
+		fmt.Fprintln(out, "  Shared, foreign or unknown data: kept")
+	} else {
+		fmt.Fprintln(out, "  App data: preserved for reactivation")
+	}
+	if !plan.Scope.Complete {
+		fmt.Fprintln(out, "  Inventory: incomplete; unverified resources are left untouched")
+	}
+	return nil
+}
+
+func applicationDestructionAuthorizationError(plan applicationDestructionPlan, err error) error {
+	classified := applicationDestructionPlanError(plan, err)
+	var failure *machine.Error
+	if errors.As(classified, &failure) && failure.CauseCode == "impact-confirmation-required" {
+		failure.Next = "No changes were made. Run baha app destroy NAME --yes in an interactive terminal, review the short plan and confirm once."
+	}
+	return classified
 }
 
 func applicationDestructionPlanError(p applicationDestructionPlan, err error) error {

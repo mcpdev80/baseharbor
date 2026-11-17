@@ -25,6 +25,49 @@ func TestManifestRoundTrip(t *testing.T) {
 	}
 }
 
+func TestTargetDevelopmentSecretSourcesRoundTripAndValidate(t *testing.T) {
+	m := WithRequiredSecrets(New("demo", "dev", false, false, true), "MANAGEMENT_PASSWORD", "MANAGEMENT_USERNAME")
+	m.Secrets.Required[0].Source = SecretSourceTargetDevelopmentPassword
+	m.Secrets.Required[1].Source = SecretSourceTargetDevelopmentUsername
+	got, err := ParseCanonicalYAML(m.YAML())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got.Secrets.Required, m.Secrets.Required) {
+		t.Fatalf("secret source round trip mismatch: got %#v want %#v", got.Secrets.Required, m.Secrets.Required)
+	}
+	if err := got.Validate(); err != nil {
+		t.Fatalf("valid dev secret source rejected: %v", err)
+	}
+	if !strings.Contains(m.YAML(), "source: target-development-username") || !strings.Contains(m.YAML(), "source: target-development-password") {
+		t.Fatalf("secret source missing from canonical YAML:\n%s", m.YAML())
+	}
+}
+
+func TestTargetDevelopmentSecretSourcesAreDevOnlyAndRequired(t *testing.T) {
+	for _, manifest := range []Manifest{
+		func() Manifest {
+			m := WithRequiredSecrets(New("demo", "prod", false, false, true), "PASSWORD")
+			m.Secrets.Required[0].Source = SecretSourceTargetDevelopmentPassword
+			return m
+		}(),
+		func() Manifest {
+			m := New("demo", "dev", false, false, true)
+			m.Secrets.Optional = []SecretRequirement{{Name: "PASSWORD", Source: SecretSourceTargetDevelopmentPassword}}
+			return m
+		}(),
+		func() Manifest {
+			m := WithRequiredSecrets(New("demo", "dev", false, false, true), "PASSWORD")
+			m.Secrets.Required[0].Source = "unknown"
+			return m
+		}(),
+	} {
+		if err := manifest.Validate(); err == nil {
+			t.Fatalf("invalid secret source accepted: %#v", manifest.Secrets)
+		}
+	}
+}
+
 func TestManifestNamedServiceInstancesRoundTrip(t *testing.T) {
 	want := New("mailflow", "prod", false, false, false)
 	want.Services.SQL = false
@@ -448,5 +491,25 @@ func TestApplicationIDRejectsNonV4Identity(t *testing.T) {
 	m.ApplicationID = "00000000-0000-0000-0000-000000000000"
 	if err := m.Validate(); err == nil {
 		t.Fatal("expected invalid application ID to fail")
+	}
+}
+
+func TestSQLInstancePhantomPathCannotEnterCanonicalIntent(t *testing.T) {
+	m := New("app-b", "dev", false, false, false)
+	m.Services.SQLInstances = map[string]ServiceInstance{"/": {}}
+	if err := m.ValidateIntent(); err == nil {
+		t.Fatal("a filesystem-root SQL instance key entered portable intent")
+	}
+	m.Services.SQLInstances = map[string]ServiceInstance{"primary": {}}
+	if err := m.ValidateIntent(); err != nil {
+		t.Fatalf("valid named SQL instance rejected: %v", err)
+	}
+	roundtrip, err := ParseCanonicalYAML(m.YAML())
+	if err != nil {
+		t.Fatal(err)
+	}
+	names := SQLInstanceNames(roundtrip)
+	if len(names) != 1 || names[0] != "primary" {
+		t.Fatalf("canonical intent changed SQL instance keys: %v", names)
 	}
 }

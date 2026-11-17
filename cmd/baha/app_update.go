@@ -14,6 +14,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/cli"
+	"github.com/mcpdev80/baseharbor/internal/credential/native"
 )
 
 type gitDirtyEntry struct {
@@ -47,6 +48,13 @@ func appUpdateCommand(store application.Store) *cli.Command {
 		Usage:   "baha app update [--check] [--backup-password-file FILE | --no-backup]",
 		Long:    "Fetches only the configured upstream remote and verifies repository, branch, revision and working-tree state before any mutation. --check reports the update plan without changing source. For applications with durable managed PostgreSQL or secrets, mutation requires either an encrypted pre-update recovery point through --backup-password-file FILE or an explicit --no-backup acknowledgement. The source update is strict fast-forward-only to the exact fetched target revision, followed by the normal application apply/readiness lifecycle. BaseHarbor never resets, stashes, discards local changes, switches branches, merges divergent history or rebases implicitly.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
+			target, err := effectiveTarget(ctx)
+			if err != nil {
+				return err
+			}
+			if target.AccessProvider != "" && target.AccessProvider != "local" {
+				return remoteApplicationMutation(ctx, target, "update", args, out)
+			}
 			return executeApplicationUpdateLifecycle(ctx, store, args, out, errOut)
 		},
 	}
@@ -249,7 +257,15 @@ func inspectGitApplicationUpdate(ctx context.Context, repositoryRoot string, fet
 	}
 
 	if fetch {
-		if _, err := gitOutput(ctx, root, "fetch", "--prune", "--", remote); err != nil {
+		if nativeHost := native.HostFromURL(remote); nativeHost != "" {
+			if nativeHit, _ := native.PreInteractiveNoPrompt(ctx, nativeHost); nativeHit {
+				if _, err := gitOutputDisabledPrompt(ctx, root, "fetch", "--prune", "--", remote); err != nil {
+					return gitUpdateState{}, fmt.Errorf("fetch Git remote %s: %w", remote, err)
+				}
+			} else if _, err := gitOutput(ctx, root, "fetch", "--prune", "--", remote); err != nil {
+				return gitUpdateState{}, fmt.Errorf("fetch Git remote %s: %w", remote, err)
+			}
+		} else if _, err := gitOutput(ctx, root, "fetch", "--prune", "--", remote); err != nil {
 			return gitUpdateState{}, fmt.Errorf("fetch Git remote %s: %w", remote, err)
 		}
 	}
@@ -437,6 +453,43 @@ func gitOutput(ctx context.Context, dir string, args ...string) (string, error) 
 	}
 	cmd := exec.CommandContext(ctx, path, args...)
 	cmd.Dir = dir
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		detail := strings.TrimSpace(stderr.String())
+		if detail == "" {
+			detail = err.Error()
+		}
+		return "", errors.New(detail)
+	}
+	return strings.TrimSpace(stdout.String()), nil
+}
+
+// withGitPromptDisabled returns a copy of env with GIT_TERMINAL_PROMPT=0 so the
+// git credential helper cannot trigger an interactive prompt. When a native
+// source services the host, git handles authentication; this only guarantees no
+// prompt is possible.
+func withGitPromptDisabled(env []string) []string {
+	clone := make([]string, len(env))
+	copy(clone, env)
+	clone = append(clone, "GIT_TERMINAL_PROMPT=0")
+	return clone
+}
+
+// gitOutputDisabledPrompt runs the git command with GIT_TERMINAL_PROMPT=0 set so
+// no interactive credential prompt is possible when a native source can service
+// the upstream host. It is a found-only gate: a native hit (or any error
+// querying the native source) leaves git's own authentication decision intact.
+func gitOutputDisabledPrompt(ctx context.Context, dir string, args ...string) (string, error) {
+	path, err := exec.LookPath("git")
+	if err != nil {
+		return "", errors.New("git executable not found")
+	}
+	cmd := exec.CommandContext(ctx, path, args...)
+	cmd.Dir = dir
+	cmd.Env = withGitPromptDisabled(os.Environ())
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	cmd.Stdout = &stdout

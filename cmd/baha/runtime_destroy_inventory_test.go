@@ -5,14 +5,53 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/deployment"
+	"github.com/mcpdev80/baseharbor/internal/machine"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
+
+func TestFullDestroyInventoryMissingRuntimeExplainsSafeNextStep(t *testing.T) {
+	err := fullDestroyInventoryError(deployment.ResolvedTarget{Name: "podman-test", RuntimeProvider: "podman"}, fmt.Errorf("detect provider: %w", bhruntime.ErrRuntimeNotFound))
+	var detail *machine.Error
+	if !errors.As(err, &detail) || detail.Code != machine.ErrorCapabilityMissing {
+		t.Fatalf("missing runtime was not reported as a capability issue: %v", err)
+	}
+	if !strings.Contains(detail.Message, "podman-test") || !strings.Contains(detail.Next, "install the podman runtime") || !strings.Contains(detail.Next, "No resources were removed") {
+		t.Fatalf("missing runtime error lacks a safe, actionable next step: %+v", detail)
+	}
+}
+
+func TestFullDestroyInventoryKeepsReachableTargetsWhenPeerRuntimeIsUnavailable(t *testing.T) {
+	targets := []deployment.ResolvedTarget{{Name: "local", RuntimeProvider: "docker"}, {Name: "podman-peer", RuntimeProvider: "podman"}}
+	runtime := &inventoryTestRuntime{resources: map[string][]bhruntime.ProjectResource{"bh-local-shared": {{Kind: "container", Name: "owned"}}}}
+	plans, err := collectFullDestroyInventoryUsing(t.Context(), targets, func(_ context.Context, target deployment.ResolvedTarget, _ bool) (targetDestroyInventory, error) {
+		if target.Name == "podman-peer" {
+			return targetDestroyInventory{Target: target}, fmt.Errorf("detect provider: %w", bhruntime.ErrRuntimeNotFound)
+		}
+		return collectTargetDestroyInventoryWithRuntime(t.Context(), target, runtime, false)
+	})
+	if err != nil {
+		t.Fatalf("one unavailable Target aborted the independent inventory: %v", err)
+	}
+	if len(plans) != 2 || plans[0].InventoryError != "" || plans[0].Runtime == nil || plans[1].InventoryError == "" || plans[1].Runtime != nil {
+		t.Fatalf("unexpected partial inventory: %+v", plans)
+	}
+	var out bytes.Buffer
+	plans[0].render(&out)
+	plans[1].render(&out)
+	if !strings.Contains(out.String(), "owned resource: target=local") || !strings.Contains(out.String(), "PRESERVED target=podman-peer") {
+		t.Fatalf("plan does not show reachable and preserved Targets: %s", out.String())
+	}
+	if len(runtime.deleted) != 0 {
+		t.Fatal("inventory preview mutated reachable runtime")
+	}
+}
 
 type inventoryTestRuntime struct {
 	bhruntime.RuntimeProvider
@@ -145,7 +184,7 @@ func TestDestroyInventoryFailureAndResidualResourcesBlockCompletion(t *testing.T
 	}
 }
 
-func TestFullDestroyJSONReportsPreservedRecoveryWithoutReadingContents(t *testing.T) {
+func TestFullDestroyPreservesOperatorRecoveryFileWithoutReadingContents(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("XDG_DATA_HOME", t.TempDir())
 	root, err := deployment.TargetStateRoot("orphan")
@@ -173,13 +212,60 @@ func TestFullDestroyJSONReportsPreservedRecoveryWithoutReadingContents(t *testin
 	if err := json.Unmarshal(out.Bytes(), &report); err != nil {
 		t.Fatal(err)
 	}
-	if !report.Destroyed || report.Preview || !report.All || len(report.Preserved) != 1 || report.Preserved[0].Status != "PRESERVED" {
+	if !report.Destroyed || report.Preview || !report.All || len(report.Preserved) != 1 || report.Preserved[0].Resource != "external recovery file" {
 		t.Fatalf("incorrect structured cleanup report: %#v", report)
 	}
-	if strings.Contains(out.String(), "private-recovery-material") {
+	if report.Impact == nil || len(report.Impact.RecoveryFiles) != 1 || report.Impact.RecoveryFiles[0].Status != "PRESERVED" {
+		t.Fatalf("recovery-file impact was not reported as preserved: %#v", report.Impact)
+	}
+	if strings.Contains(out.String(), "private-recovery-material") || !strings.Contains(out.String(), "external recovery file") {
 		t.Fatal("recovery secret leaked into cleanup inventory")
 	}
-	if raw, err := os.ReadFile(recovery); err != nil || string(raw) != "private-recovery-material" {
-		t.Fatal("external recovery file was changed")
+	if data, err := os.ReadFile(recovery); err != nil || string(data) != "private-recovery-material" {
+		t.Fatalf("operator recovery material was not preserved: %q %v", data, err)
+	}
+}
+
+func TestDestroyInventoryIncludesOwnedCoreIdentityWithoutRunningContainers(t *testing.T) {
+	identityProject := bhruntime.SharedProjectName("local-core")
+	coreProject := bhruntime.SharedProjectName("local")
+	foreignProject := bhruntime.SharedProjectName("other-core")
+	runtime := &inventoryTestRuntime{resources: map[string][]bhruntime.ProjectResource{
+		identityProject: {{Kind: "container", Name: "keycloak"}, {Kind: "container", Name: "keycloak-access"}},
+		coreProject:     {{Kind: "container", Name: "postgres"}},
+		foreignProject:  {{Kind: "container", Name: "other-keycloak"}},
+	}}
+	for _, sharedOnly := range []bool{false, true} {
+		t.Run(fmt.Sprintf("sharedOnly=%t", sharedOnly), func(t *testing.T) {
+			plan, err := collectTargetDestroyInventoryWithRuntime(context.Background(),
+				deployment.ResolvedTarget{Name: "local"}, runtime, sharedOnly)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(plan.Projects[identityProject]) != 2 {
+				t.Fatalf("stopped Keycloak project missing from destroy inventory: %+v", plan.Projects)
+			}
+			if _, foreign := plan.Projects[foreignProject]; foreign {
+				t.Fatal("destroy inventory included foreign target identity")
+			}
+			var output bytes.Buffer
+			plan.render(&output)
+			if !strings.Contains(output.String(), "keycloak-access") || strings.Contains(output.String(), "other-keycloak") {
+				t.Fatalf("destroy preview lacks Core identity or includes foreign identity: %s", output.String())
+			}
+		})
+	}
+	plan, err := collectTargetDestroyInventoryWithRuntime(context.Background(),
+		deployment.ResolvedTarget{Name: "local"}, runtime, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var results []fullDestroyResult
+	plan.cleanup(context.Background(), &results)
+	if countFullDestroyBlockers(results) != 0 || len(runtime.resources[identityProject]) != 0 {
+		t.Fatalf("owned stopped Keycloak not destroyed safely: results=%+v remaining=%+v", results, runtime.resources[identityProject])
+	}
+	if len(runtime.resources[foreignProject]) != 1 {
+		t.Fatal("cleanup affected foreign target identity resources")
 	}
 }

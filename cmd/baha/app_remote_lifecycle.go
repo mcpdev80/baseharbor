@@ -13,7 +13,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/hostresource"
 	"github.com/mcpdev80/baseharbor/internal/machine"
-	"github.com/mcpdev80/baseharbor/internal/openbao"
+	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 	"github.com/mcpdev80/baseharbor/internal/targetsession"
 )
 
@@ -81,7 +81,10 @@ func restoreRemoteApplication(ctx context.Context, resolved resolvedApplication)
 }
 
 func executeRemoteApplicationApply(ctx context.Context, resolved resolvedApplication, out io.Writer) error {
-	unlock, err := lockApplicationTargetLifecycle(resolved)
+	if err := deployment.EvaluateDeploymentAdmission(resolved.Target.DeploymentPolicy, nil); err != nil {
+		return err
+	}
+	unlock, err := lockApplicationTargetLifecycle(resolved, false)
 	if err != nil {
 		return err
 	}
@@ -102,38 +105,62 @@ func executeRemoteApplicationApply(ctx context.Context, resolved resolvedApplica
 	if err != nil {
 		return err
 	}
+	var previousRuntime *application.RemoteManagedRuntime
+	var previousIntent application.Manifest
+	var previousRecord *deployment.DeploymentRecord
 	if previous != nil {
-		runtime, intent, err := restoreRemoteApplication(ctx, resolved)
+		previousRuntime, previousIntent, err = restoreRemoteApplication(ctx, resolved)
 		if err != nil {
 			return err
 		}
-		if !reflect.DeepEqual(intent, resolved.Manifest) {
-			return errors.New("remote Application desired state differs from retained publication; inspect before changing its lifecycle")
+		old, loadErr := deployment.LoadDeploymentRecord(resolved.DeploymentIdentity)
+		if loadErr != nil {
+			return loadErr
 		}
-		if err := runtime.ApplyApplication(ctx, intent, true); err != nil {
+		desiredDigest, fingerprintErr := repositoryDesiredStateFingerprint(ctx, resolved)
+		if fingerprintErr != nil {
+			return fingerprintErr
+		}
+		if reflect.DeepEqual(previousIntent, resolved.Manifest) && old.Source.Digest == desiredDigest {
+			if err := previousRuntime.ApplyApplication(ctx, previousIntent, true); err != nil {
+				return err
+			}
+			return recordVerifiedRemoteReactivation(resolved, previousIntent)
+		}
+		// An altered source needs a new immutable remote publication. Reusing
+		// the old project would falsely claim READY for bytes never delivered.
+		previousRecord = &old
+	}
+	// A pure-client remote Application never bootstraps or binds a local Core.
+	// Only an intent that needs a managed runtime broker (secrets, identity,
+	// object storage or telemetry) requires the startup-bound Core's PKI; for
+	// such an intent the issuer is reached through the connector route of the
+	// bound target (the transport/scope bound at the head gate). A broker-less
+	// workload never enters a local Core, so no issuer is taken and no Core
+	// bootstrap is touched. This is the Dev-Remote pure-client boundary: the
+	// bound target's connector route is the only Core handle this path may use.
+	if err := runApplicationMemoryPreflight(ctx, applicationInput(ctx, runtimeInput), out, resolved, hostresource.EstimateApplication(resolved.Manifest), true); err != nil {
+		return err
+	}
+	var issuer serviceaccess.Issuer
+	if requiresManagedServiceIssuer(resolved.Manifest) {
+		brokerIssuer, err := resolveApplicationServiceIssuer(ctx, resolved, nil)
+		if err != nil {
 			return err
 		}
-		return recordVerifiedRemoteReactivation(resolved, intent)
+		status, err := brokerIssuer.Status(ctx)
+		if err != nil {
+			return err
+		}
+		if !status.Ready {
+			return errors.New("bound Core service PKI is not ready")
+		}
+		issuer = brokerIssuer
 	}
-	if err := applicationCorePrerequisite(withTargetOverride(ctx, resolved.Target.Name), applicationInput(ctx, runtimeInput), out); err != nil {
-		return err
-	}
-	if err := runApplicationMemoryPreflight(ctx, runtimeInput, out, resolved, hostresource.EstimateApplication(resolved.Manifest), true); err != nil {
-		return err
-	}
-	coreRuntime, coreFiles, err := resolveApplicationCoreRuntime(ctx, resolved, nil)
-	if err != nil {
-		return err
-	}
-	issuer := openbao.NewServiceIssuer(coreRuntime, coreFiles)
-	status, err := issuer.Status(ctx)
-	if err != nil {
-		return err
-	}
-	if !status.Ready {
-		return errors.New("bound Core service PKI is not ready")
-	}
-	pending, err := recordDeploymentBeforeMutation(ctx, resolved, "applying")
+	// Operator confirmation before any candidate submission is persisted (same
+	// fail-closed choke point as the local apply path).
+	promptConfirmCandidateSubmission(ctx, resolved, out)
+	pending, err := recordDeploymentBeforeMutation(ctx, resolved, "applying", candidateConsentOverride(ctx))
 	if err != nil {
 		return err
 	}
@@ -165,7 +192,11 @@ func executeRemoteApplicationApply(ctx context.Context, resolved resolvedApplica
 		return err
 	}
 	if err := runtime.Publish(ctx, func(project targetsession.ProjectRecord) error {
-		if err := runtime.SaveSnapshot(resolved.stateRoot(), project); err != nil {
+		if previousRecord != nil {
+			if err := runtime.SaveSnapshotRevision(resolved.stateRoot(), project); err != nil {
+				return err
+			}
+		} else if err := runtime.SaveSnapshot(resolved.stateRoot(), project); err != nil {
 			return err
 		}
 		pending.Applied.RemoteProject = &project
@@ -174,6 +205,17 @@ func executeRemoteApplicationApply(ctx context.Context, resolved resolvedApplica
 		return err
 	}
 	if err := runtime.ApplyApplication(ctx, resolved.Manifest, false); err != nil {
+		if previousRecord != nil {
+			// The old publication is immutable and still retained. Attempt a
+			// bounded, verified restoration before recovering the old receipt.
+			if restoreErr := previousRuntime.ApplyApplication(ctx, previousIntent, true); restoreErr != nil {
+				return errors.Join(err, fmt.Errorf("previous remote publication rollback failed: %w", restoreErr))
+			}
+			if recordErr := deployment.SaveDeploymentRecord(*previousRecord); recordErr != nil {
+				return errors.Join(err, fmt.Errorf("restore previous Core deployment receipt: %w", recordErr))
+			}
+			return fmt.Errorf("new remote publication failed, previous deployment restored: %w", err)
+		}
 		return errors.Join(err, recordObservedDeployment(resolved, "failed", false))
 	}
 	if err := application.ReconcileReferenceProviderRegistryAt(resolved.TargetStateRoot, resolved.Manifest); err != nil {

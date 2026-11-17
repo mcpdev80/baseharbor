@@ -65,6 +65,9 @@ func (f *restoreBrokerStopFixture) InspectProjectResources(context.Context, stri
 func (f *restoreBrokerStopFixture) ListRuntimeContainers(context.Context) ([]bhruntime.RuntimeContainer, error) {
 	return f.containers, nil
 }
+func (f *restoreBrokerStopFixture) ConfigJSONProjectFilesEnv(context.Context, string, string, map[string]string, ...string) (string, error) {
+	return "", nil
+}
 func (f *restoreBrokerStopFixture) StopProjectFilesSelected(_ context.Context, _ string, _ string, _ map[string]string, selected []string, _ ...string) error {
 	f.selected = append(f.selected, selected...)
 	if f.stopErr != nil {

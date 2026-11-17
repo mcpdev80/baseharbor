@@ -41,7 +41,7 @@ func resolveApplicationProviderPlanFromSnapshot(resolved resolvedApplication, sn
 		}
 		m, err = retainedBackendPlacementProjection(resolved, m, record.Applied.GeneratedState["backend_placements"])
 		if err != nil {
-			return application.ProviderPlan{}, err
+			return application.ProviderPlan{}, appMachineProposalStage("retained-backend-placement-projection", err)
 		}
 		consumers = append(consumers, application.ConsumerIntent{Key: "deployment/" + id.DeploymentID, Active: true, Manifest: m, DependencyRoots: []string{}})
 		// Another application's interrupted apply has not verified release of
@@ -54,37 +54,37 @@ func resolveApplicationProviderPlanFromSnapshot(resolved resolvedApplication, sn
 			}
 			prior, err = retainedBackendPlacementProjection(resolved, prior, record.Applied.GeneratedState["previous_backend_placements"])
 			if err != nil {
-				return application.ProviderPlan{}, err
+				return application.ProviderPlan{}, appMachineProposalStage("previous-backend-placement-projection", err)
 			}
 			consumers[len(consumers)-1].RetainedIntents = []application.Manifest{prior}
 		}
 	}
 	root, err := targetRuntimeStateRoot(resolved.Target)
 	if err != nil {
-		return application.ProviderPlan{}, err
+		return application.ProviderPlan{}, appMachineProposalStage("target-runtime-state-root", err)
 	}
 	state, err := coreinstallation.Load(root)
 	if err == nil {
 		if state.Spec.Target != resolved.Target.Name || state.Spec.Runtime != resolved.Target.RuntimeProvider {
 			return application.ProviderPlan{}, invalidProviderConsumerInventory(errors.New("installation binding differs from selected Target"))
 		}
-		// The installation remains a consumer even while partially installed.
-		// Protect its actual selected modules, including Console dependencies.
+		// Installation ownership keeps recovery state durable. Runtime modules
+		// are retained only for a verified live Core connection (or an unknown
+		// connection inventory, which fails conservatively).
 		roots, err := managementProviderDependencyRoots(resolved, snapshot)
 		if err != nil {
-			return application.ProviderPlan{}, err
+			return application.ProviderPlan{}, appMachineProposalStage("management-provider-dependency-roots", err)
 		}
-		m := application.Manifest{Version: application.CurrentVersion, ApplicationID: state.ID, Name: "management", Environment: "prod"}
-		consumers = append(consumers, application.ConsumerIntent{Key: "installation/" + state.ID, Active: true, Manifest: m, DependencyRoots: roots})
+		if snapshot.ProtectCoreForConnection {
+			m := application.Manifest{Version: application.CurrentVersion, ApplicationID: state.ID, Name: "management", Environment: "prod"}
+			consumers = append(consumers, application.ConsumerIntent{Key: "installation/" + state.ID, Active: true, Manifest: m, DependencyRoots: roots})
+		}
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return application.ProviderPlan{}, invalidProviderConsumerInventory(err)
 	} else if _, statErr := os.Lstat(filepath.Join(root, "installation.json")); statErr == nil {
 		return application.ProviderPlan{}, invalidProviderConsumerInventory(err)
 	}
 	for index := range consumers {
-		if consumers[index].Key == "installation/"+state.ID {
-			continue
-		}
 		intents := append([]application.Manifest{consumers[index].Manifest}, consumers[index].RetainedIntents...)
 		for _, intent := range intents {
 			// A pending sibling may already own both destination and original
@@ -93,7 +93,7 @@ func resolveApplicationProviderPlanFromSnapshot(resolved resolvedApplication, sn
 			if consumers[index].Key != "application/"+resolved.Manifest.ApplicationID+"/"+resolved.Manifest.Environment && (intent.Services.SQL || intent.Services.Cache || intent.Services.KeyValue) {
 				projection, projectionErr := application.PreviewReferenceProviderRegistryAt(resolved.TargetStateRoot, intent)
 				if projectionErr != nil {
-					return application.ProviderPlan{}, invalidProviderConsumerInventory(projectionErr)
+					return application.ProviderPlan{}, appMachineProposalStage("sibling-reference-provider-registry", invalidProviderConsumerInventory(projectionErr))
 				}
 				for _, binding := range projection.Bindings {
 					if binding.ApplicationID == intent.ApplicationID && binding.Environment == intent.Environment && (binding.Resource.Provider == "postgresql" || binding.Resource.Provider == "valkey") {
@@ -103,7 +103,7 @@ func resolveApplicationProviderPlanFromSnapshot(resolved resolvedApplication, sn
 			}
 			roots, rootErr := application.RuntimeDependencyRoots(intent, snapshot.Registry)
 			if rootErr != nil {
-				return application.ProviderPlan{}, invalidProviderConsumerInventory(rootErr)
+				return application.ProviderPlan{}, appMachineProposalStage("runtime-dependency-roots", invalidProviderConsumerInventory(rootErr))
 			}
 			if roots == nil {
 				// Unknown consumption dependencies stay unknown for the common
@@ -118,12 +118,67 @@ func resolveApplicationProviderPlanFromSnapshot(resolved resolvedApplication, sn
 		}
 	}
 	plan, err := application.ResolveProviderPlan(snapshot, consumers, true)
-	if err == nil {
-		err = appendReleasedAppliedBindings(resolved, &plan)
+	if err != nil {
+		return application.ProviderPlan{}, appMachineProposalStage("resolve-provider-plan", classifyApplicationResolutionError(err))
 	}
-	return plan, classifyApplicationResolutionError(err)
+	if err := appendReleasedAppliedBindings(resolved, &plan); err != nil {
+		return application.ProviderPlan{}, appMachineProposalStage("append-released-applied-bindings", err)
+	}
+	return plan, nil
 }
 
+// invalidProviderConsumerInventory classifies one inventory damage.
 func invalidProviderConsumerInventory(err error) error {
-	return &machine.Error{Code: machine.ErrorOwnershipAmbiguous, CauseCode: "provider_consumer_inventory_invalid", Message: "Provider consumer inventory is incomplete or damaged.", Next: "Recover the existing deployment/installation state before retrying; ownership records and runtime are preserved.", Details: map[string]string{"inventory_stage": providerConsumerInventoryStage(err)}, Cause: err}
+	next := "Recover the existing deployment/installation state before retrying; ownership records and runtime are preserved."
+	details := map[string]string{"inventory_stage": providerConsumerInventoryStage(err)}
+	if conflict, isConflict := registryConflictOf(err); isConflict {
+		// A poisoned registry (two records claiming one application_id) is
+		// the one inventory damage with a VERIFIED repair (0427-175, lesson
+		// 162): the generic "recover the state" hint led operators into a
+		// dead end. The refusal names both colliding deployment uuids and
+		// the exact uuid-addressed destroy that works on a poisoned Target,
+		// in the Message and Next — not only in the Cause, which the public
+		// error boundary deliberately does not print.
+		return &machine.Error{
+			Code:        machine.ErrorOwnershipAmbiguous,
+			CauseCode:   "provider_consumer_inventory_invalid",
+			Message:     conflict.Error(),
+			Remediation: "retire the duplicate application_id registrations on the Target",
+			Next:        "Retire every colliding deployment by uuid, then verify the Target with 'baha app list': " + conflict.Error(),
+			Details:     details,
+			Cause:       err,
+		}
+	}
+	return &machine.Error{Code: machine.ErrorOwnershipAmbiguous, CauseCode: "provider_consumer_inventory_invalid", Message: "Provider consumer inventory is incomplete or damaged.", Next: next, Details: details, Cause: err}
+}
+
+// registryConflictOf finds the structured registry-conflict error anywhere in
+// the cause chain, tolerating plain wraps of its sentinel message.
+func registryConflictOf(err error) (*deployment.RegistryConflictError, bool) {
+	var conflict *deployment.RegistryConflictError
+	if errors.As(err, &conflict) {
+		return conflict, true
+	}
+	if deployment.IsRegistryConflict(err) {
+		return &deployment.RegistryConflictError{DeploymentIDs: deployment.RegistryConflictIDs(err)}, true
+	}
+	return nil, false
+}
+
+// classifyInventoryConflict gives a registry-conflict error its structured
+// machine shape wherever a bare wrap (e.g. the "multiple deployments claim
+// application_id ..." text from findDeploymentMatches) reaches a planning
+// surface. Everything else passes through unchanged (0427-175).
+func classifyInventoryConflict(err error) error {
+	if err == nil {
+		return nil
+	}
+	var existing *machine.Error
+	if errors.As(err, &existing) {
+		return err
+	}
+	if conflict, isConflict := registryConflictOf(err); isConflict {
+		return invalidProviderConsumerInventory(conflict)
+	}
+	return err
 }

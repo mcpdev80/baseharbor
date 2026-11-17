@@ -86,6 +86,32 @@ func TestTerminalActivityPlainFallbackIsLineOriented(t *testing.T) {
 	}
 }
 
+func TestTerminalProgressAlwaysReportsOrderedPhasesAsLines(t *testing.T) {
+	var out bytes.Buffer
+	term := NewTerminal(context.Background(), &out, &out)
+	err := term.Progress(context.Background(), "Start Core", func(w io.Writer) error {
+		ReportActivityDetail(w, "starting PostgreSQL")
+		ReportActivityDetail(w, "waiting for OpenBao readiness")
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := out.String()
+	want := []string{"[START] Start Core", "[INFO] Start Core - starting PostgreSQL", "[INFO] Start Core - waiting for OpenBao readiness", "[OK] Start Core"}
+	last := -1
+	for _, line := range want {
+		idx := strings.Index(got, line)
+		if idx <= last {
+			t.Fatalf("progress output missing or out of order %q: %q", line, got)
+		}
+		last = idx
+	}
+	if strings.Contains(got, "\r") || strings.Contains(got, "\x1b[") {
+		t.Fatalf("line-oriented progress emitted terminal control sequences: %q", got)
+	}
+}
+
 func TestTerminalQuietPreservesFailureDiagnostics(t *testing.T) {
 	ctx := WithOutputOptions(context.Background(), OutputOptions{Quiet: true})
 	var out bytes.Buffer
@@ -213,5 +239,22 @@ func TestActivityReturnsPromptlyWhenContextIsCanceled(t *testing.T) {
 		}
 	case <-time.After(500 * time.Millisecond):
 		t.Fatal("Activity did not return promptly after context cancellation")
+	}
+}
+
+func TestRemotePhaseProgressSuppressesHeartbeatWithoutHidingServiceDetails(t *testing.T) {
+	ctx := WithOutputOptions(context.Background(), OutputOptions{ProgressHeartbeat: -1})
+	var out bytes.Buffer
+	term := NewTerminal(ctx, &out, &out)
+	if err := term.Progress(ctx, "Deploy application", func(w io.Writer) error {
+		ReportActivityDetail(w, "Deploying object storage")
+		<-time.After(10050 * time.Millisecond)
+		ReportActivityDetail(w, "Deploying messaging")
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out.String(), "[WAIT]") || !strings.Contains(out.String(), "Deploying object storage") || !strings.Contains(out.String(), "Deploying messaging") {
+		t.Fatal(out.String())
 	}
 }

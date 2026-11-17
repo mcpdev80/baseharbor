@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/testsupport/serviceissuer"
@@ -95,7 +96,8 @@ func TestEnsureRuntimePostgresAndValkey(t *testing.T) {
 	text := string(compose)
 	for _, wanted := range []string{
 		"docker.io/library/postgres:18-alpine",
-		"docker.io/valkey/valkey:9.1.2-alpine",
+		valkeyProviderImage,
+		"context: ./valkey-image",
 		"./providers/postgresql/default/runtime/server-cert.pem:/run/baseharbor/tls-source/server-cert.pem:ro",
 		"./providers/postgresql/default/runtime/server-key.pem:/run/baseharbor/tls-source/server-key.pem:ro",
 		"./providers/postgresql/default/runtime/pg_hba.conf:/run/baseharbor/tls-source/pg_hba.conf:ro",
@@ -137,6 +139,9 @@ func TestRuntimeComposeIncludesRequestedManagementUIs(t *testing.T) {
 		"  postgres-ui:\n",
 		PostgresUIImage,
 		"PGADMIN_CUSTOM_CONFIG_DISTRO_FILE: /var/lib/pgadmin/config_distro.py",
+		"PGADMIN_CONFIG_SHARED_STORAGE:",
+		"entrypoint: [\"/bin/sh\", \"/run/baseharbor/pgadmin-entrypoint.sh\"]",
+		"pgadmin-entrypoint.sh:/run/baseharbor/pgadmin-entrypoint.sh:ro",
 		`127.0.0.1:${BASEHARBOR_POSTGRES_UI_HOST_PORT}:8443`,
 		"  cache-ui:\n",
 		"  cache-ui-access:\n",
@@ -269,12 +274,30 @@ func TestEnsureRuntimeCreatesWorkloadServiceBindingProjection(t *testing.T) {
 	useApplicationScopedDataProviders(t)
 	store := Store{Root: filepath.Join(t.TempDir(), "apps")}
 	m := New("demo", "dev", true, true, false)
-	files, err := EnsureRuntime(context.Background(), serviceissuer.New(t), store, m)
+	var files RuntimeFiles
+	var err error
+	func() {
+		old := syscall.Umask(0o077)
+		defer syscall.Umask(old)
+		files, err = EnsureRuntime(context.Background(), serviceissuer.New(t), store, m)
+	}()
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	root := workloadServiceBindingProjectionDir(files)
+	if err := VerifyWorkloadServiceBindings(m, files); err != nil {
+		t.Fatalf("consumer cannot read workload service bindings under restrictive umask: %v", err)
+	}
+	for _, dir := range []string{root, filepath.Join(root, "postgres"), filepath.Join(root, "valkey")} {
+		info, err := os.Stat(dir)
+		if err != nil {
+			t.Fatalf("projected binding directory %s: %v", dir, err)
+		}
+		if info.Mode().Perm() != 0o755 {
+			t.Fatalf("projected binding directory %s mode = %04o, want 0755", dir, info.Mode().Perm())
+		}
+	}
 	for _, path := range []string{
 		filepath.Join(root, "postgres", "type"),
 		filepath.Join(root, "postgres", "uri"),
@@ -479,8 +502,15 @@ func TestEnsureRuntimeValkeyOnly(t *testing.T) {
 	if strings.Contains(string(compose), "postgres:") {
 		t.Fatal("Valkey-only runtime unexpectedly contains PostgreSQL")
 	}
-	if !strings.Contains(string(compose), "docker.io/valkey/valkey:9.1.2-alpine") {
+	if !strings.Contains(string(compose), valkeyProviderImage) || strings.Contains(string(compose), "user:") || !strings.Contains(string(compose), "data_uid=\"$(stat -c '%u' /data/appendonlydir)\"") || !strings.Contains(string(compose), "chmod -R g=u /data/appendonlydir") {
 		t.Fatal("Valkey-only runtime is missing Valkey")
+	}
+	dockerfile, err := os.ReadFile(filepath.Join(files.Dir, valkeyProviderBuildDir, "Dockerfile"))
+	if err != nil {
+		t.Fatalf("read Valkey image build context: %v", err)
+	}
+	if !strings.Contains(string(dockerfile), "USER valkey:0") || !strings.Contains(string(dockerfile), "chgrp -R 0 /data") || !strings.Contains(string(dockerfile), "chmod -R g=u /data") {
+		t.Fatalf("Valkey image does not support an arbitrary non-root UID: %s", dockerfile)
 	}
 }
 
@@ -526,12 +556,12 @@ func TestManagedDatabaseAndCacheComposeAreUnprivileged(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, want := range []string{
-		"user: \"70:70\"",
-		"user: \"999:1000\"",
 		"read_only: true",
 		"cap_drop: [\"ALL\"]",
+		"cap_add: [\"CHOWN\", \"DAC_READ_SEARCH\", \"FOWNER\", \"SETGID\", \"SETUID\"]",
 		"no-new-privileges:true",
 		"/var/run/postgresql:rw,noexec,nosuid,nodev",
+		"if [ \"$$(id -u)\" = 0 ]; then chown postgres:postgres /tmp/server-key.pem; fi",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("managed runtime compose missing %q:\n%s", want, got)

@@ -27,14 +27,48 @@ import (
 )
 
 func runRepositoryFixtureApply(ctx context.Context, args []string, out *bytes.Buffer) error {
-	return runRepositoryFixtureApplyCall(ctx, args, func(callCtx context.Context) error {
+	err := runRepositoryFixtureApplyCall(ctx, args, func(callCtx context.Context) error {
 		out.Reset()
 		return runWithIO(callCtx, args, out, out)
 	})
+	if err != nil {
+		// The plain fixture apply/app up binds a repository-owned candidate. The
+		// production fail-closed choke prints the canonical confirm-hash before
+		// it refuses, so re-run once with that exact digest bound: the apply
+		// computes it from its own resolved source, so re-binding it is exact.
+		// No other caller is affected — a fixture that fails for another reason
+		// (no printed digest) returns the original err.
+		if digest := extractCandidateConfirmDigest(out.String()); digest != "" {
+			return runRepositoryFixtureApplyCall(ctx, args, func(callCtx context.Context) error {
+				out.Reset()
+				return runWithIO(withCandidateConsentDigest(callCtx, digest), args, out, out)
+			})
+		}
+	}
+	return err
 }
 
 // Like the backup fixture, obtain the actual invocation's typed refusal first.
 // Only its current non-destructive plan authorizes one retry; no stale refresh.
+// extractCandidateConfirmDigest pulls the canonical confirm-hash the apply
+// prints (to its output buffer) before it fails closed at the candidate choke,
+// so a fixture apply/app up can bind that exact digest on retry. It reads only
+// the fixed "  confirm-hash <digest>" line the production consumer prints, so
+// it never surfaces plan material, paths, credentials, or the rejected
+// observation itself.
+func extractCandidateConfirmDigest(out string) string {
+	for _, line := range strings.Split(out, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "confirm-hash ") {
+			digest := strings.TrimSpace(strings.TrimPrefix(trimmed, "confirm-hash "))
+			if digest != "" && strings.Count(digest, " ") == 0 {
+				return digest
+			}
+		}
+	}
+	return ""
+}
+
 func runRepositoryFixtureApplyCall(ctx context.Context, args []string, run func(context.Context) error) error {
 	switch strings.Join(args, " ") {
 	case "app apply", "--verbose app apply", "app up":

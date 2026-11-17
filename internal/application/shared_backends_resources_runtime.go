@@ -430,7 +430,11 @@ func ReleaseSharedBackendApplication(ctx context.Context, compose bhruntime.Runt
 	key := sharedBackendApplicationKey(m)
 	app, ok := state.Applications[key]
 	if !ok {
-		return fmt.Errorf("refuse shared backend destroy: registered shared provider application %q is missing from protected provider state", key)
+		// The protected consumer record is the only source of the exact database,
+		// role, cache namespace, and credential references that may be removed.
+		// If it is already absent, leave shared provider data untouched and let
+		// application destroy continue with independently verified resources.
+		return nil
 	}
 	if len(app.SQL) > 0 {
 		placement, found, err := RegisteredProviderPlacementAt(dataDir, m, capability.ProviderPostgreSQL)

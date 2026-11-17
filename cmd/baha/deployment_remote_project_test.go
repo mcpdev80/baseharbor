@@ -58,7 +58,8 @@ func TestDeploymentTransitionsRetainSelectedRemoteProject(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Resolution predates the binding: the transition must reload protected state.
-	pending, err := recordDeploymentBeforeMutation(context.Background(), resolved, "applying")
+	confirmCtx, confirm := withConfirmCandidateDigestForResolved(context.Background(), resolved)
+	pending, err := recordDeploymentBeforeMutation(confirmCtx, resolved, "applying", confirm)
 	if err != nil || !reflect.DeepEqual(pending.Applied.RemoteProject, project) {
 		t.Fatal("pending transition discarded remote realization", err)
 	}

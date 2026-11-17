@@ -108,6 +108,9 @@ func MaterializeIdentityBindingWithWorkloadDiscoveryMaterial(m Manifest, files R
 	if err := os.MkdirAll(workload, 0o755); err != nil {
 		return fmt.Errorf("create workload identity binding: %w", err)
 	}
+	if err := os.Chmod(workload, 0o755); err != nil {
+		return fmt.Errorf("set workload identity binding permissions: %w", err)
+	}
 	for name, value := range workloadEntries {
 		path := filepath.Join(workload, name)
 		if err := writeReadOnlyProjectionFile(path, []byte(value+"\n")); err != nil {
@@ -159,6 +162,9 @@ func MaterializeIdentityBindingWithWorkloadDiscoveryMaterial(m Manifest, files R
 func writeReadOnlyProjectionFile(path string, data []byte) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	if err := os.Chmod(dir, 0o755); err != nil {
 		return err
 	}
 	tmp, err := os.CreateTemp(dir, "."+filepath.Base(path)+".tmp-*")

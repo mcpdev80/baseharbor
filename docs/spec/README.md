@@ -23,6 +23,7 @@ Prefer machine-readable authority where practical:
 - [Runtime Provider Contract v1](runtime-provider-contract-v1.md)
 - [Runtime Provider Conformance v1](runtime-provider-conformance-v1.md)
 - [Delivery Provider Contract v1](delivery-provider-contract-v1.md)
+- [Candidate Contract v1](candidate-contract-v1.md)
 - [Development Extension v1](development-extension-v1.md)
 - [Reconciliation v1](reconciliation-v1.md)
 - [Machine Interface v1](machine-interface-v1.md)

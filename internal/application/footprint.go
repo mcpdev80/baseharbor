@@ -78,6 +78,10 @@ type ResolutionSnapshot struct {
 	Target          string                  `json:"target"`
 	Registry        capability.Registry     `json:"registry"`
 	Facts           map[string]ProviderFact `json:"facts"`
+	// ProtectCoreForConnection retains only the independently consumed Core
+	// management modules when a valid enrolled client exists or its inventory
+	// cannot be verified. It is an ephemeral projection, never persisted intent.
+	ProtectCoreForConnection bool `json:"-"`
 }
 
 type ProviderPreference struct {
@@ -121,6 +125,10 @@ type Footprint struct {
 }
 
 type ResolutionError struct {
+	// Consumer is the authoritative consumer key that references the failed
+	// edge. The union resolver fills it after the pure footprint resolver
+	// returns, so an unqualified resolver error keeps it empty.
+	Consumer    string
 	Code        string
 	InstanceID  string
 	Requirement capability.Requirement

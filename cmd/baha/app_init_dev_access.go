@@ -38,7 +38,14 @@ func collectGuidedDevAccess(ctx context.Context, reader *bufio.Reader, out io.Wr
 	case err == nil:
 		setup.domain = domain
 	case errors.Is(err, os.ErrNotExist):
-		value, promptErr := promptLine(reader, out, "Development domain", devaccess.DefaultDomain)
+		defaultDomain := devaccess.DefaultDomain
+		if target.AccessProvider != "" && target.AccessProvider != "local" {
+			defaultDomain, err = remoteDevelopmentDomain(ctx, target, "")
+			if err != nil {
+				return setup, err
+			}
+		}
+		value, promptErr := promptLine(reader, out, "Development domain", defaultDomain)
 		if promptErr != nil {
 			return setup, promptErr
 		}
@@ -84,7 +91,7 @@ func printGuidedDevAccessSummary(out io.Writer, setup guidedDevAccessSetup) {
 	if setup.target == "" {
 		return
 	}
-	fmt.Fprintln(out, "\nLocal development")
+	fmt.Fprintln(out, "\nDevelopment access")
 	fmt.Fprintf(out, "  Target        %s\n", setup.target)
 	fmt.Fprintf(out, "  Domain        %s\n", setup.domain)
 	if setup.configureCredentials {
@@ -100,23 +107,53 @@ func printGuidedDevAccessSummary(out io.Writer, setup guidedDevAccessSetup) {
 	}
 }
 
-func applyGuidedDevAccess(setup guidedDevAccessSetup) error {
+var guidedRemoteCredentialReconcile = reconcileRemoteDevelopmentCredentials
+var guidedDevelopmentDomainConfigure = configureDevelopmentDomain
+
+func applyGuidedDevAccess(ctx context.Context, setup guidedDevAccessSetup) error {
+	defer zeroBytes(setup.password)
 	if setup.target == "" {
 		return nil
 	}
+	target, err := effectiveTarget(ctx)
+	if err != nil {
+		return err
+	}
+	if target.Name != setup.target {
+		return errors.New("development access Target changed; credentials were not applied")
+	}
 	if setup.configureDomain {
-		if _, err := devaccess.ConfigureDomain(setup.target, setup.domain); err != nil {
+		if _, err := guidedDevelopmentDomainConfigure(ctx, setup.domain); err != nil {
 			return err
 		}
 	}
 	if !setup.configureCredentials {
 		return nil
 	}
+	previous, previousErr := devaccess.Load(setup.target, "dev")
+	if previousErr != nil && !errors.Is(previousErr, os.ErrNotExist) {
+		return previousErr
+	}
+	var credentials devaccess.Credentials
 	if setup.generatePassword {
-		_, err := devaccess.Reset(setup.target, "dev", setup.username)
+		credentials, err = devaccess.Reset(setup.target, "dev", setup.username)
+	} else {
+		credentials, err = devaccess.Configure(setup.target, "dev", setup.username, string(setup.password))
+	}
+	if err != nil {
 		return err
 	}
-	defer zeroBytes(setup.password)
-	_, err := devaccess.Configure(setup.target, "dev", setup.username, string(setup.password))
-	return err
+	if target.AccessProvider != "" && target.AccessProvider != "local" {
+		// Choosing a login in the wizard is explicit credential configuration,
+		// including replacement of an existing default on the selected Core.
+		if err := guidedRemoteCredentialReconcile(ctx, target, credentials.Username, credentials.Password, true); err != nil {
+			if previousErr == nil {
+				_, _ = devaccess.Configure(setup.target, "dev", previous.Username, previous.Password)
+			} else if path, pathErr := devaccess.Path(setup.target, "dev"); pathErr == nil {
+				_ = os.Remove(path)
+			}
+			return fmt.Errorf("configure selected remote Core development access: %w", err)
+		}
+	}
+	return nil
 }

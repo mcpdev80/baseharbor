@@ -1,5 +1,7 @@
 # Release notes
 
+[v0.4.27](v0.4.27.md) — remote workstation onboarding, environment policies and safer application operations.
+
 [v0.4.26](v0.4.26.md) — application needs wizard, Edit, Footprint and targeted development checks.
 
 [v0.4.25](v0.4.25.md) — Core-less application path and minimal authoring.

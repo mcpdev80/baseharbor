@@ -75,6 +75,16 @@ type Config struct {
 	Policies     map[string]Reference           `yaml:"policies,omitempty" json:"policies,omitempty"`
 	Constraints  []Constraint                   `yaml:"constraints,omitempty" json:"constraints,omitempty"`
 	Team         *TeamConfiguration             `yaml:"team,omitempty" json:"team,omitempty"`
+	// Operation is the single machine operation the active organization binds to
+	// for the production policy path. It is optional; an empty value means the
+	// configuration declares no operation and the production path fails closed
+	// (see orgconfig.ResolveOperation).
+	Operation string `yaml:"operation,omitempty" json:"operation,omitempty"`
+	// Profiles holds the owned team access profiles keyed by name. It is
+	// optional and absent in a fresh configuration; the production path only
+	// folds a profile decision into the aggregate when at least one owned
+	// profile exists (see orgconfig.LoadProfiles).
+	Profiles map[string]Profile `yaml:"profiles,omitempty" json:"profiles,omitempty"`
 }
 
 var (

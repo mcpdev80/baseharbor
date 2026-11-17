@@ -1,35 +1,53 @@
 package coreinstallation
 
-import (
-	"errors"
-	"os"
-)
+import "github.com/mcpdev80/baseharbor/internal/stableid"
 
-// AcquireLifecycleLock serializes bootstrap and provider upgrades of one
-// installation, across releases. The kernel releases the lock on process exit;
-// durable update receipts still govern recovery after an interrupted mutation.
-// The caller must release the returned lock after all verification completes.
+// This file previously contained the lifecycle-lock primitives. They have been
+// extracted to internal/stableid (a stdlib-only leaf) so that coreinstallation
+// can import serviceaccess without creating an import cycle: serviceaccess
+// imports stableid (not coreinstallation) and coreinstallation imports
+// serviceaccess. The lock contract, error messages and behaviour are unchanged.
+
+// AcquireLifecycleLock re-exports the stableid lifecycle lock with the same
+// signature callers across the product expect. See internal/stableid for the
+// authoritative implementation and the reason for the move.
 func AcquireLifecycleLock(root string) (func(), error) {
-	info, err := os.Lstat(root)
-	if err != nil {
-		return nil, err
-	}
-	if !info.IsDir() || info.Mode().Perm()&0077 != 0 {
-		return nil, errors.New("Core lifecycle lock requires a private state directory")
-	}
-	return lock(root)
+	return stableid.AcquireLifecycleLock(root)
 }
 
-// AcquireStateFileLock reuses the existing kernel lock for another existing
-// state owner. The caller proves directory/file ownership and protection using
-// its native metadata authority before entering this serialization boundary.
+// AcquireStateFileLock re-exports the stableid state-file lock with the same
+// signature callers across the product expect.
 func AcquireStateFileLock(root string) (func(), error) {
-	info, err := os.Lstat(root)
-	if err != nil {
-		return nil, err
-	}
-	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-		return nil, errors.New("state lock requires its existing directory")
-	}
-	return lock(root)
+	return stableid.AcquireStateFileLock(root)
+}
+
+// AcquireBootstrapLock re-exports the stableid bootstrap lock — a SEPARATE
+// kernel lock from the lifecycle lock — so bootstrap of a fresh durable state
+// root is serialised and exactly one process ever owns the new authority before
+// the management host binds.
+func AcquireBootstrapLock(root string) (func(), error) {
+	return stableid.AcquireBootstrapLock(root)
+}
+
+// AcquireAppLifecycleLock re-exports the stableid per-app lifecycle lock with
+// the same signature callers across the product expect. See internal/stableid
+// for the authoritative implementation: the lock is keyed by the application's
+// OWN deployments directory (root/deployments/<scope>) so two independent
+// applications that share a host Target do not serialize each other, while two
+// writers to the same application still do. The Target as a whole is protected
+// by an independent owner lock (AcquireTargetWideLifecycleLock), not by this
+// per-app lock.
+func AcquireAppLifecycleLock(root string, scope string) (func(), error) {
+	return stableid.AcquireAppLifecycleLock(root, scope)
+}
+
+// AcquireTargetWideLifecycleLock re-exports the stableid target-wide lifecycle
+// acquire path with the same signature production callers expect. See
+// internal/stableid for the authoritative implementation: it holds the shared
+// .installation.lock exclusively for the whole whole-Target lifecycle mutation
+// and scans for held per-app dotfiles, failing closed on an active app lifecycle
+// or a scan error, so a target-wide mutation can never overlap a local app while
+// unrelated apps still converge in parallel.
+func AcquireTargetWideLifecycleLock(root string) (func(), error) {
+	return stableid.AcquireTargetWideLifecycleLock(root)
 }

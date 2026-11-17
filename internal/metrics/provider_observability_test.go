@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/observability"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
@@ -78,7 +79,7 @@ func TestSecureProviderMetricsRenderMTLSScrapeContract(t *testing.T) {
 		Scope:            capability.ScopeApplication,
 		OwnerApplication: "demo",
 		Network:          "baseharbor-demo-dev",
-		Target:           "baseharbor-runtime:8443",
+		Target:           application.MetricsTargetAliasFor("demo", "dev", "runtime-broker-provider") + ":8443",
 		Path:             "/metrics",
 		Scheme:           "https",
 		Security: observability.Security{

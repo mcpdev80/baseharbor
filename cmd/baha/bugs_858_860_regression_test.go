@@ -210,7 +210,7 @@ func TestDestroyWithoutCoreRemovesRecordAndIsIdempotent(t *testing.T) {
 	target := configureTestTarget(t)
 	m, repo := bugApplicationRepository(t)
 	record := registerTestDeployment(t, target, m, repo, filepath.Join(repo, application.RepositoryManifestName))
-	resolved, err := resolvedRepositoryApplication(target, mustTargetRoot(t, target), application.RepositoryEnvironmentSelection{Manifest: m, ManifestPath: filepath.Join(repo, application.RepositoryManifestName), RepositoryRoot: repo})
+	resolved, err := resolvedRepositoryApplication(context.Background(), target, mustTargetRoot(t, target), application.RepositoryEnvironmentSelection{Manifest: m, ManifestPath: filepath.Join(repo, application.RepositoryManifestName), RepositoryRoot: repo})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -247,10 +247,41 @@ func mustTargetRoot(t *testing.T, target deployment.ResolvedTarget) string {
 func TestDoctorNotDeployedVersusIncomplete(t *testing.T) {
 	for _, artifact := range []string{"", "compose.yaml", "runtime.env", "topology.json", "installation.json", "pki"} {
 		t.Run("artifact="+artifact, func(t *testing.T) {
-			target := configureTestTarget(t)
+			// This test models a genuinely uninstalled Target. The shared
+			// docker-dev name can have real orphaned runtime resources from
+			// unrelated lifecycle tests on the same runner; the production
+			// Doctor must classify those as incomplete, not not-deployed.
+			configureTestTargetEmpty(t)
+			cfg, err := deployment.LoadConfig()
+			if err != nil {
+				t.Fatal(err)
+			}
+			definition := cfg.Targets[cfg.DefaultTarget]
+			delete(cfg.Targets, cfg.DefaultTarget)
+			cfg.DefaultTarget = "doctor-undeployed"
+			cfg.Targets[cfg.DefaultTarget] = definition
+			if err := cfg.Save(); err != nil {
+				t.Fatal(err)
+			}
+			target, err := cfg.ResolveTarget("", "")
+			if err != nil {
+				t.Fatal(err)
+			}
 			root, err := targetRuntimeStateRoot(target)
 			if err != nil {
 				t.Fatal(err)
+			}
+			// configureTestTarget seeds a bare authoritative Core so managed
+			// deployments have an owner; but the artifact="" probe must observe a
+			// genuinely NOT-DEPLOYED Target (empty runtime), so drop the seed's
+			// bare installation before the not-deployed/incomplete boundary check.
+			if artifact == "" {
+				// No installed Core means no residual Core or Docker binding
+				// fixture artifacts whatsoever; the complete absence is what
+				// distinguishes not-deployed from partial installation.
+				if err := os.RemoveAll(root); err != nil {
+					t.Fatalf("clear seeded Core fixture for not-deployed case: %v", err)
+				}
 			}
 			if artifact != "" {
 				if err := os.MkdirAll(root, 0700); err != nil {
@@ -337,12 +368,15 @@ func TestContextualCLIErrorHintsAndContracts(t *testing.T) {
 	}
 	t.Chdir(t.TempDir())
 
-	for _, args := range [][]string{{"down", "--yes"}, {"target", "delete", "demo", "--yes"}, {"app", "down", "--yes"}} {
+	for _, tc := range []struct {
+		args []string
+		want string
+	}{{[]string{"down", "--yes"}, "--yes"}, {[]string{"app", "down", "--bogus"}, "--bogus"}} {
 		out.Reset()
-		err := runWithIO(context.Background(), args, &out, &out)
+		err := runWithIO(context.Background(), tc.args, &out, &out)
 		formatCLIError(&out, err)
-		if cli.ExitCode(err) != 2 || !strings.Contains(out.String(), "--yes") || strings.Contains(out.String(), "Did you mean") || strings.Contains(out.String(), "baha doctor") {
-			t.Fatalf("%v: %v %s", args, err, out.String())
+		if cli.ExitCode(err) != 2 || !strings.Contains(out.String(), tc.want) || strings.Contains(out.String(), "Did you mean") || strings.Contains(out.String(), "baha doctor") {
+			t.Fatalf("%v: %v %s", tc.args, err, out.String())
 		}
 	}
 }
@@ -353,4 +387,55 @@ func createDuplicateTargetForBugTest(t *testing.T) error {
 		t.Fatal("duplicate accepted")
 	}
 	return err
+}
+
+// TestTargetDeleteNonTTYYesReachesArgParser (0427-164 r2, BF-03 follow-up) proves
+// the exact parser-stage regression: `baha target delete NAME --yes` on a
+// non-TTY must detach through runWithIO/dispatcher, while the same call without
+// --yes must still fail closed. The --yes flag has to leave the positional slice
+// so the NAME survives the arg-parser; a fix that only records --yes but keeps it
+// in the slice fails "requires NAME" at the parser stage, exactly the bug the card
+// heals.
+func TestTargetDeleteNonTTYYesReachesArgParser(t *testing.T) {
+	target := configureTestTarget(t)
+	t.Chdir(t.TempDir())
+
+	// Without --yes: non-TTY must fail closed (impact confirmation required).
+	// --no-input pins the non-interactive path so the assertion is deterministic
+	// regardless of the test harness stdin.
+	var noYes bytes.Buffer
+	err := runWithIO(context.Background(), []string{"--no-input", "target", "delete", target.Name}, &noYes, &noYes)
+	if err == nil || machine.Classify(err).CauseCode != "impact-confirmation-required" {
+		t.Fatalf("delete without --yes must fail closed: %v", err)
+	}
+	cfg, err := deployment.LoadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, exists := cfg.Targets[target.Name]; !exists {
+		t.Fatal("fail-closed refusal must not remove the configuration entry")
+	}
+
+	// With --yes: the documented non-TTY call must detach through the dispatcher.
+	var withYes bytes.Buffer
+	err = runWithIO(context.Background(), []string{"--no-input", "target", "delete", target.Name, "--yes"}, &withYes, &withYes)
+	if err != nil {
+		t.Fatalf("--yes detach must succeed on non-TTY via dispatcher: %v", err)
+	}
+	cfg, err = deployment.LoadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, exists := cfg.Targets[target.Name]; exists {
+		t.Fatal("--yes detach did not remove the configuration entry (arg-parser dropped the NAME)")
+	}
+
+	// The -y alias must behave identically.
+	configureTestTarget(t)
+	t.Chdir(t.TempDir())
+	var aliasOut bytes.Buffer
+	err = runWithIO(context.Background(), []string{"--no-input", "target", "delete", target.Name, "-y"}, &aliasOut, &aliasOut)
+	if err != nil {
+		t.Fatalf("-y alias must detach on non-TTY: %v", err)
+	}
 }

@@ -96,6 +96,19 @@ func (r *localKeycloakRealization) Apply(ctx context.Context) (KeycloakInstance,
 		if err := ensureLocalKeycloakDevelopmentRoute(ctx, r.app, r.namespace, r.runtime, r.issuer, files); err != nil {
 			return KeycloakInstance{}, err
 		}
+		effectiveBase, err := localKeycloakPublicBaseURL(r.app, r.namespace, r.runtime, files)
+		if err != nil {
+			return KeycloakInstance{}, err
+		}
+		if effectiveBase != publicBase {
+			publicBase = effectiveBase
+			if err := prepareApplicationKeycloakCanonicalURL(r.runtime, r.namespace, files, publicBase); err != nil {
+				return KeycloakInstance{}, err
+			}
+			if err := r.lifecycle.Apply(ctx, files); err != nil {
+				return KeycloakInstance{}, err
+			}
+		}
 	}
 	return r.instance(ctx, files, publicBase)
 }

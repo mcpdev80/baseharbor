@@ -13,6 +13,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/applicationlifecycle"
 	"github.com/mcpdev80/baseharbor/internal/cli"
+	"github.com/mcpdev80/baseharbor/internal/development"
 	"github.com/mcpdev80/baseharbor/internal/evidence"
 	"github.com/mcpdev80/baseharbor/internal/machine"
 	"github.com/mcpdev80/baseharbor/internal/operatorauth"
@@ -98,7 +99,11 @@ type machineApplicationStopInput struct {
 }
 
 type machineApplyInput struct {
+	SourceModel           *development.SourceModel           `json:"source_model,omitempty" jsonschema:"optional immutable Git/OCI source declarations; Core must verify exact artifact binding before apply"`
+	SourceSnapshotDigest  string                             `json:"source_snapshot_digest,omitempty" jsonschema:"Core-verified immutable developer source snapshot identifier"`
 	ProviderChangeConsent *application.ProviderChangeConsent `json:"provider_change_consent,omitempty" jsonschema:"explicit plan-bound acknowledgement stages and separate data deletion consent from the displayed provider impact plan"`
+	WorkloadPorts         map[string]string                  `json:"workload_ports,omitempty" jsonschema:"explicit published host ports for named workload environment variables; Core validates against repository Compose and persists per deployment"`
+	ConfirmCandidate      string                             `json:"confirm_candidate,omitempty" jsonschema:"operator-confirmed exact repository candidate content digest"`
 	Target                string                             `json:"target,omitempty" jsonschema:"optional BaseHarbor deployment target; otherwise uses BASEHARBOR_TARGET or configured default-target"`
 	Name                  string                             `json:"name,omitempty" jsonschema:"optional stored application name; omit inside an application repository"`
 	Environment           string                             `json:"environment,omitempty" jsonschema:"optional deployment environment selected from repository intent"`
@@ -151,7 +156,7 @@ type machineDestroyInput struct {
 	Name                  string                             `json:"name,omitempty" jsonschema:"optional stored application name; omit inside an application repository"`
 	Environment           string                             `json:"environment,omitempty" jsonschema:"optional deployment environment selected from repository intent"`
 	Approval              bool                               `json:"approval,omitempty" jsonschema:"explicit operator approval required before destructive mutation"`
-	FullReset             bool                               `json:"full_reset,omitempty" jsonschema:"also remove BaseHarbor-owned repository deployment and normalized TLS state"`
+	FullReset             bool                               `json:"full_reset,omitempty" jsonschema:"deprecated compatibility field; destroy always deletes all exclusively app-owned persistent state"`
 }
 
 type machineToolError struct {
@@ -345,6 +350,11 @@ func authorizeCurrentMCPContext(ctx context.Context, operationID, targetName, en
 	return authorizeMCPOperation(ctx, operationID, target.Name, environment, "", workspace)
 }
 
+// machineApplicationArgs builds the CLI argument shape of one application
+// command. A --uuid selector travels as a trailing option pair so it never
+// counts toward the one-NAME limit of resolveApplicationEnvironment — the
+// poisoned-registry uuid repair must stay addressable through the MCP shape
+// exactly like the CLI (0427-175, hp4 BF-10).
 func machineApplicationArgs(name, environment string) []string {
 	args := make([]string, 0, 3)
 	if name = strings.TrimSpace(name); name != "" {
@@ -352,6 +362,15 @@ func machineApplicationArgs(name, environment string) []string {
 	}
 	if environment = strings.TrimSpace(environment); environment != "" {
 		args = append(args, "--environment", environment)
+	}
+	return args
+}
+
+// machineApplicationArgsWithUUID appends a --uuid selector option pair to the
+// base argument shape built by machineApplicationArgs.
+func machineApplicationArgsWithUUID(args []string, uuid string) []string {
+	if uuid = strings.TrimSpace(uuid); uuid != "" {
+		args = append(args, "--uuid", uuid)
 	}
 	return args
 }

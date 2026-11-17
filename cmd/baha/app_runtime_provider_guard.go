@@ -69,7 +69,12 @@ func applyRemainingApplicationRuntimeProviderGuards(store application.Store, app
 				bhruntime.CapabilityResourceOwnership,
 			})
 		case "down":
-			guardApplicationRuntimeCommand(store, command, "app down", optionalNameGuard("down"), []bhruntime.RuntimeCapability{
+			guardApplicationRuntimeCommand(store, command, "app "+command.Name, destroyGuardTarget, []bhruntime.RuntimeCapability{
+				bhruntime.CapabilityWorkloadLifecycle,
+				bhruntime.CapabilityResourceOwnership,
+			})
+		case "stop":
+			guardApplicationRuntimeCommand(store, command, "app stop", destroyGuardTarget, []bhruntime.RuntimeCapability{
 				bhruntime.CapabilityWorkloadLifecycle,
 				bhruntime.CapabilityResourceOwnership,
 			})
@@ -94,7 +99,7 @@ func guardApplicationRuntimeCommand(store application.Store, command *cli.Comman
 			// cannot confidently identify an application target.
 			return baseRun(ctx, args, out, errOut)
 		}
-		if hasRemoteApplicationTarget(resolved) && (label == "app status" || label == "app doctor" || label == "app destroy") {
+		if hasRemoteApplicationTarget(resolved) && (label == "app status" || label == "app doctor" || label == "app destroy" || label == "app stop" || label == "app down") {
 			if _, err := remoteApplicationProjectRuntime(ctx, resolved); err != nil {
 				return err
 			}
@@ -142,6 +147,17 @@ func resolveGuardApplicationName(ctx context.Context, store application.Store, n
 		args = []string{name}
 	}
 	return resolveGuardApplication(ctx, store, args, command)
+}
+
+// resolveGuardApplicationUUID is the destroy-path mirror of the command seam
+// (0427-175): the guard observes the SAME deployment identity the real command
+// resolves when the operator uses the advertised uuid-addressed repair.
+func resolveGuardApplicationUUID(ctx context.Context, store application.Store, deploymentUUID, command, environment string) (resolvedApplication, bool) {
+	resolved, err := resolveApplicationEnvironment(ctx, store, []string{"--uuid", deploymentUUID}, command, environment)
+	if err != nil {
+		return resolvedApplication{}, false
+	}
+	return resolved, true
 }
 
 func backupGuardTarget(ctx context.Context, store application.Store, args []string) (resolvedApplication, bool) {
@@ -226,6 +242,24 @@ func doctorGuardTarget(ctx context.Context, store application.Store, args []stri
 }
 
 func destroyGuardTarget(ctx context.Context, store application.Store, args []string) (resolvedApplication, bool) {
+	// The same selector routing as the command seam (0427-175): the guard must
+	// observe the SAME deployment identity the destroy path resolves, so the
+	// uuid-addressed repair is never probed against a wrong target. The
+	// positional scan uses the list with the option pair removed, because the
+	// selector VALUE is an identifier and must not be read as a NAME. A
+	// malformed or value-less selector is left to the command's own parser,
+	// which fails closed there.
+	selectorUUID, uuidErr := extractApplicationUUID(args)
+	if uuidErr != nil {
+		return resolvedApplication{}, false
+	}
+	if selectorUUID != "" {
+		_, environment, splitErr := extractApplicationEnvironment(args, "destroy")
+		if splitErr != nil {
+			return resolvedApplication{}, false
+		}
+		return resolveGuardApplicationUUID(ctx, store, selectorUUID, "destroy", environment)
+	}
 	name, _, _, err := parseDestroyArgs(args)
 	if err != nil {
 		return resolvedApplication{}, false

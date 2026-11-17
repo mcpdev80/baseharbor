@@ -16,11 +16,22 @@ spec = importlib.util.spec_from_file_location('planner', ROOT / 'pr-gate-plan.py
 planner = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(planner)
 wizard_check = planner.wizard_check
+# The production gate map is loaded from the active release-catalog file. Its
+# release key is the live candidate release; tests that exercise the planner
+# against a fixed in-memory catalog must not inherit that live release key.
+# The suite below pins every shared in-memory catalog to v0.4.26 (the tested
+# baseline), so it uses a dedicated v0.4.26 mapping rather than the live MAP.
+# v0.4.27 catalog registration is covered separately in
+# scripts/test_ci_v0427_gate_catalog.py, which loads the real inventory.
 MAP = json.loads((ROOT / 'pr-gate-map-v1.json').read_text())
+MAP_26 = dict(MAP)
+MAP_26['release'] = 'v0.4.26'
 GATES = ['atomic/docker/data-capabilities', 'atomic/podman/data-capabilities',
          'integration/static/public-contracts', 'atomic/docker/lifecycle',
          'atomic/podman/lifecycle', 'journey/docker', 'journey/podman', 'ha/docker/data',
-          'atomic/docker/observability', 'atomic/podman/observability']
+          'atomic/docker/observability', 'atomic/podman/observability',
+          'atomic/docker/control-plane-recovery', 'atomic/podman/control-plane-recovery',
+          'atomic/docker/backup-restore', 'atomic/podman/backup-restore']
 REQ = {'releases': ['v0.4.26'],
        'gates': [{'id': g, 'required_for': ['v0.4.26']} for g in GATES]}
 
@@ -106,7 +117,7 @@ class AppIDFixtureExactQualificationTests(unittest.TestCase):
     def test_only_exact_reviewed_fixture_source_qualifies(self):
         reviewed = paths(*planner.APPID_FIX_REVIEWED_FILES)
         with patch.object(planner, 'core752_reviewed_merge_chain', return_value=True):
-            result = planner.plan(diff(reviewed), REQ, MAP)
+            result = planner.plan(diff(reviewed), REQ, MAP_26)
         self.assertEqual('resolved', result['coverage_status'])
         self.assertEqual([], result['selected_gates'])
         self.assertTrue({'source-contracts', 'cli-build', 'cli-vet',
@@ -115,7 +126,7 @@ class AppIDFixtureExactQualificationTests(unittest.TestCase):
         # A changed workload integration test is now covered by both native
         # lifecycle gates independently of this historical reviewed bundle.
         with patch.object(planner, 'core752_reviewed_merge_chain', return_value=True):
-            native = planner.plan(diff(paths('cmd/baha/app_workload_integration_test.go')), REQ, MAP)
+            native = planner.plan(diff(paths('cmd/baha/app_workload_integration_test.go')), REQ, MAP_26)
         self.assertEqual('resolved', native['coverage_status'])
         self.assertTrue({'atomic/docker/lifecycle', 'atomic/podman/lifecycle'}
                         .issubset(set(native['selected_gates'])))
@@ -127,14 +138,14 @@ class AppIDFixtureExactQualificationTests(unittest.TestCase):
             with self.subTest(changes=changes), patch.object(
                     planner, 'core752_reviewed_merge_chain', return_value=True):
                 self.assertEqual('unresolved',
-                    planner.plan(diff(changes), REQ, MAP)['coverage_status'])
+                    planner.plan(diff(changes), REQ, MAP_26)['coverage_status'])
         for integration in (None, '0'*40):
             altered = diff(reviewed)
             altered['integration_sha'] = integration
             with patch.object(planner, 'core752_reviewed_merge_chain',
                               return_value=False):
                 self.assertEqual('unresolved',
-                    planner.plan(altered, REQ, MAP)['coverage_status'])
+                    planner.plan(altered, REQ, MAP_26)['coverage_status'])
 
 
 class AppIDEnvRobustTestExactQualificationTests(unittest.TestCase):
@@ -144,7 +155,7 @@ class AppIDEnvRobustTestExactQualificationTests(unittest.TestCase):
         reviewed = [{'status': status, 'path': path} for path, status
                     in sorted(planner.APPID_ENV_ROBUST_TEST_REVIEWED_FILES.items())]
         with patch.object(planner, 'core752_reviewed_merge_chain', return_value=True):
-            result = planner.plan(diff(reviewed), REQ, MAP)
+            result = planner.plan(diff(reviewed), REQ, MAP_26)
         self.assertEqual('resolved', result['coverage_status'])
         self.assertEqual([], result['selected_gates'])
         self.assertEqual({'source-contracts'},
@@ -162,24 +173,24 @@ class AppIDEnvRobustTestExactQualificationTests(unittest.TestCase):
             with self.subTest(changes=changes), patch.object(
                     planner, 'core752_reviewed_merge_chain', return_value=True):
                 self.assertEqual('unresolved',
-                    planner.plan(diff(changes), REQ, MAP)['coverage_status'])
+                    planner.plan(diff(changes), REQ, MAP_26)['coverage_status'])
         for integration in (None, '0'*40):
             altered = diff(reviewed)
             altered['integration_sha'] = integration
             with patch.object(planner, 'core752_reviewed_merge_chain',
                               return_value=False):
                 self.assertEqual('unresolved',
-                    planner.plan(altered, REQ, MAP)['coverage_status'])
+                    planner.plan(altered, REQ, MAP_26)['coverage_status'])
         with patch.object(planner, 'core752_reviewed_merge_chain', return_value=False):
             self.assertEqual('unresolved',
-                planner.plan(diff(reviewed), REQ, MAP)['coverage_status'])
+                planner.plan(diff(reviewed), REQ, MAP_26)['coverage_status'])
 
 
 class Core751ImportCoverageProposalTests(unittest.TestCase):
     def test_candidate_selects_real_checks_but_fails_closed_without_source_binding(self):
         changes = [{'path': path, 'status': status}
                    for path, status in planner.INSPECT_IMPORT_CANDIDATE_FILES.items()]
-        result = planner.plan(diff(changes), REQ, MAP)
+        result = planner.plan(diff(changes), REQ, MAP_26)
         self.assertEqual('unresolved', result['coverage_status'])
         self.assertEqual(planner.INSPECT_IMPORT_REQUIRED_IDS,
                          {check['id'] for check in result['required_validation_checks']})
@@ -199,11 +210,11 @@ class Core751ImportCoverageProposalTests(unittest.TestCase):
         ]
         for changes in variants:
             with self.subTest(changes=changes):
-                result = planner.plan(diff(changes), REQ, MAP)
+                result = planner.plan(diff(changes), REQ, MAP_26)
                 self.assertEqual('unresolved', result['coverage_status'])
         stale = diff(candidate)
         stale['integration_sha'] = None
-        self.assertEqual('unresolved', planner.plan(stale, REQ, MAP)['coverage_status'])
+        self.assertEqual('unresolved', planner.plan(stale, REQ, MAP_26)['coverage_status'])
 
 
 class Core917ExactQualificationTests(unittest.TestCase):
@@ -260,7 +271,7 @@ class Core917ExactQualificationTests(unittest.TestCase):
             return self.proof(target, head, reviewed, self.repository)
         with patch.object(planner, 'CORE_917_REVIEWED_HEAD', self.reviewed), \
              patch.object(planner, 'core752_reviewed_merge_chain', side_effect=proof):
-            return planner.plan(actual, requirements, MAP)
+            return planner.plan(actual, requirements, MAP_26)
 
     def test_exact_source_and_real_clean_trusted_merge_require_all_checks(self):
         for head in (self.reviewed, self.head):
@@ -391,7 +402,7 @@ class Pr1272RegistrationMixedExactQualificationTests(unittest.TestCase):
             return self.proof(target, head, reviewed, self.repository)
         with patch.object(planner, 'PR1272_REGISTRATION_MIXED_HEAD', self.reviewed), \
              patch.object(planner, 'core752_reviewed_merge_chain', side_effect=proof):
-            return planner.plan(actual, requirements, MAP)
+            return planner.plan(actual, requirements, MAP_26)
 
     def test_exact_source_and_clean_trusted_merge_select_both_lifecycle_gates(self):
         for head in (self.reviewed, self.head):
@@ -504,7 +515,7 @@ class Core921ProductionRegistrationCoverageTests(unittest.TestCase):
                 actual = resolver.resolve_pr_diff(root, target, head, integration)
                 self.assertFalse(actual['broad_required'], actual['reasons'])
                 self.assertEqual(target, actual['merge_base_sha'])
-                planned = planner.plan(actual, REQ, MAP)
+                planned = planner.plan(actual, REQ, MAP_26)
                 self.assertEqual('resolved', planned['coverage_status'])
                 self.assertEqual([], planned['selected_gates'])
                 expected_checks = {c['id'] for c in
@@ -552,9 +563,9 @@ class Core921ProductionRegistrationCoverageTests(unittest.TestCase):
                  patch.object(planner, 'core752_reviewed_merge_chain', side_effect=proof):
                 actual = resolver.resolve_pr_diff(root, target, head, integration)
                 self.assertFalse(actual['broad_required'], actual['reasons'])
-                planned = planner.plan(actual, REQ, MAP)
+                planned = planner.plan(actual, REQ, MAP_26)
                 self.assertEqual('unresolved', planned['coverage_status'])
-                planned = planner.plan(actual, REQ, MAP)
+                planned = planner.plan(actual, REQ, MAP_26)
                 self.assertEqual('unresolved', planned['coverage_status'])
 
     def test_mutated_status_and_extra_missing_path_do_not_resolve(self):
@@ -593,7 +604,7 @@ class Core921ProductionRegistrationCoverageTests(unittest.TestCase):
                  patch.object(planner, 'core752_reviewed_merge_chain', side_effect=proof):
                 actual = resolver.resolve_pr_diff(root, target, head, integration)
                 self.assertFalse(actual['broad_required'], actual['reasons'])
-                planned = planner.plan(actual, REQ, MAP)
+                planned = planner.plan(actual, REQ, MAP_26)
                 self.assertEqual('unresolved', planned['coverage_status'])
 
     def test_real_unreviewed_commit_on_reviewed_bundle_fails_real_verifier(self):
@@ -639,7 +650,7 @@ class Core921ProductionRegistrationCoverageTests(unittest.TestCase):
                  patch.object(planner, 'core752_reviewed_merge_chain', side_effect=proof):
                 actual = resolver.resolve_pr_diff(root, target, head, integration)
                 self.assertFalse(actual['broad_required'], actual['reasons'])
-                planned = planner.plan(actual, REQ, MAP)
+                planned = planner.plan(actual, REQ, MAP_26)
                 self.assertEqual('unresolved', planned['coverage_status'])
 
     def test_extra_missing_path_and_wrong_status_do_not_resolve(self):
@@ -681,7 +692,7 @@ class Core921ProductionRegistrationCoverageTests(unittest.TestCase):
                  patch.object(planner, 'core752_reviewed_merge_chain', side_effect=proof):
                 actual = resolver.resolve_pr_diff(root, target, head, integration)
                 self.assertFalse(actual['broad_required'], actual['reasons'])
-                planned = planner.plan(actual, REQ, MAP)
+                planned = planner.plan(actual, REQ, MAP_26)
                 self.assertEqual('unresolved', planned['coverage_status'])
 
     def test_wrong_status_only_stays_unresolved(self):
@@ -722,7 +733,7 @@ class Core921ProductionRegistrationCoverageTests(unittest.TestCase):
             with patch.object(planner, 'CORE_921_PRODUCTION_REVIEWED_HEAD', reviewed), \
                  patch.object(planner, 'core752_reviewed_merge_chain', side_effect=proof):
                 self.assertFalse(actual['broad_required'], actual['reasons'])
-                planned = planner.plan(actual, REQ, MAP)
+                planned = planner.plan(actual, REQ, MAP_26)
                 self.assertEqual('unresolved', planned['coverage_status'])
 
 
@@ -730,7 +741,7 @@ class MappingTests(unittest.TestCase):
     def test_edit_navigation_uses_actual_sql_new_edit_gates(self):
         for path in ['cmd/baha/app_edit.go', 'cmd/baha/app_edit_test.go']:
             with self.subTest(path=path):
-                result = planner.plan(diff(paths(path)), REQ, MAP)
+                result = planner.plan(diff(paths(path)), REQ, MAP_26)
                 self.assertEqual('resolved', result['coverage_status'])
                 self.assertEqual(['atomic/docker/data-capabilities', 'atomic/podman/data-capabilities'],
                                  result['selected_gates'])
@@ -741,7 +752,7 @@ class MappingTests(unittest.TestCase):
         for name in ['docs/how-to/example.md', 'docs/internal/reference.md',
                      'README.md', 'CHANGELOG.md', 'mkdocs.yml']:
             with self.subTest(path=name):
-                result = planner.plan(diff(paths(name)), REQ, MAP)
+                result = planner.plan(diff(paths(name)), REQ, MAP_26)
                 self.assertEqual('resolved', result['coverage_status'])
                 self.assertFalse(result['broad_required'])
                 self.assertEqual([], result['selected_gates'])
@@ -751,7 +762,7 @@ class MappingTests(unittest.TestCase):
     def test_changelog_plus_docs_paths_classify_as_documentation(self):
         result = planner.plan(diff(paths('CHANGELOG.md', 'docs/how-to/example.md',
                   'docs/internal/reference.md', 'README.md',
-                  'CONTRIBUTING.md', 'mkdocs.yml')), REQ, MAP)
+                  'CONTRIBUTING.md', 'mkdocs.yml')), REQ, MAP_26)
         self.assertEqual('resolved', result['coverage_status'])
         self.assertFalse(result['broad_required'])
         self.assertEqual([], result['selected_gates'])
@@ -763,14 +774,14 @@ class MappingTests(unittest.TestCase):
     def test_code_picks_contract_without_private_consumers(self):
         for name in ['cmd/baha/guided_application_read_context.go', 'contracts/app.go']:
             with self.subTest(path=name):
-                result = planner.plan(diff(paths(name)), REQ, MAP)
+                result = planner.plan(diff(paths(name)), REQ, MAP_26)
                 self.assertEqual(['integration/static/public-contracts'],
                                  result['selected_gates'])
                 self.assertEqual('resolved', result['coverage_status'])
                 self.assertIn('source-contracts', {c['id'] for c in result['required_validation_checks']})
 
     def test_cli_requires_compilation_and_real_targeted_tests(self):
-        result = planner.plan(diff(paths('cmd/baha/guided_application_read_context.go')), REQ, MAP)
+        result = planner.plan(diff(paths('cmd/baha/guided_application_read_context.go')), REQ, MAP_26)
         self.assertEqual('resolved', result['coverage_status'])
         commands = {c['command'] for c in result['required_validation_checks']}
         self.assertIn('go vet ./cmd/baha', commands)
@@ -782,7 +793,7 @@ class MappingTests(unittest.TestCase):
                      'cmd/baha/app_apply.go', 'cmd/baha/app.go',
                      'cmd/baha/new_command.go']:
             with self.subTest(path=name):
-                result = planner.plan(diff(paths(name)), REQ, MAP)
+                result = planner.plan(diff(paths(name)), REQ, MAP_26)
                 self.assertEqual('unresolved', result['coverage_status'])
                 self.assertTrue(result['unresolved_coverage'])
                 commands = {c['command'] for c in result['required_validation_checks']}
@@ -792,7 +803,7 @@ class MappingTests(unittest.TestCase):
 
 
     def test_documentation_workflow_has_validation_without_native_gates(self):
-        result = planner.plan(diff(paths('.github/workflows/pages.yml')), REQ, MAP)
+        result = planner.plan(diff(paths('.github/workflows/pages.yml')), REQ, MAP_26)
         self.assertEqual('resolved', result['coverage_status'])
         self.assertEqual([], result['selected_gates'])
         self.assertIn('documentation-audit', {c['id'] for c in result['required_validation_checks']})
@@ -801,7 +812,7 @@ class MappingTests(unittest.TestCase):
         for name in ['internal/capability/domain_test.go',
                      'internal/capability/integration_contract_test.go']:
             with self.subTest(path=name):
-                result = planner.plan(diff(paths(name)), REQ, MAP)
+                result = planner.plan(diff(paths(name)), REQ, MAP_26)
                 self.assertEqual('resolved', result['coverage_status'])
                 commands = {check['command'] for check in result['required_validation_checks']}
                 self.assertIn('go test ./internal/capability/... -count=1', commands)
@@ -816,7 +827,7 @@ class MappingTests(unittest.TestCase):
                      'internal/capability/service_binding.go',
                      'internal/capability/service_binding_test.go']:
             with self.subTest(path=name):
-                result = planner.plan(diff(paths(name)), REQ, MAP)
+                result = planner.plan(diff(paths(name)), REQ, MAP_26)
                 self.assertEqual('resolved', result['coverage_status'])
                 self.assertFalse(result['unresolved_coverage'])
                 self.assertFalse(result['broad_required'])
@@ -834,7 +845,7 @@ class MappingTests(unittest.TestCase):
                      'internal/capability/provider_placement.go',
                      'internal/capability/manifest.go']:
             with self.subTest(path=name):
-                result = planner.plan(diff(paths(name)), REQ, MAP)
+                result = planner.plan(diff(paths(name)), REQ, MAP_26)
                 self.assertEqual('unresolved', result['coverage_status'])
                 self.assertTrue(result['unresolved_coverage'])
 
@@ -848,7 +859,7 @@ class MappingTests(unittest.TestCase):
                      'testdata/adoption-parity/kubernetes/app.yaml',
                      'testdata/adoption-parity/quadlet/storage.container']:
             with self.subTest(path=name):
-                result = planner.plan(diff(paths(name)), REQ, MAP)
+                result = planner.plan(diff(paths(name)), REQ, MAP_26)
                 self.assertEqual('resolved', result['coverage_status'])
                 self.assertFalse(result['unresolved_coverage'])
                 self.assertFalse(result['broad_required'])
@@ -861,7 +872,7 @@ class MappingTests(unittest.TestCase):
         # Fail-closed regression: a testdata file OUTSIDE adoption-parity still
         # falls to the catch-all unresolved branch (only the adopted prefix is
         # resolved).
-        result = planner.plan(diff(paths('testdata/something/else.txt')), REQ, MAP)
+        result = planner.plan(diff(paths('testdata/something/else.txt')), REQ, MAP_26)
         self.assertEqual('unresolved', result['coverage_status'])
         self.assertTrue(result['unresolved_coverage'])
 
@@ -871,7 +882,7 @@ class MappingTests(unittest.TestCase):
         for name in ['internal/repositoryinspect/reconcile.go',
                      'internal/repositoryinspect/reconcile_default_instance_test.go']:
             with self.subTest(path=name):
-                result = planner.plan(diff(paths(name)), REQ, MAP)
+                result = planner.plan(diff(paths(name)), REQ, MAP_26)
                 self.assertEqual('resolved', result['coverage_status'])
                 self.assertFalse(result['unresolved_coverage'])
                 self.assertFalse(result['broad_required'])
@@ -890,7 +901,7 @@ class MappingTests(unittest.TestCase):
         for name in ['internal/repositoryinspect/inspect.go',
                      'internal/repositoryinspect/workload_source_parity_test.go']:
             with self.subTest(path=name):
-                result = planner.plan(diff(paths(name)), REQ, MAP)
+                result = planner.plan(diff(paths(name)), REQ, MAP_26)
                 self.assertEqual('resolved', result['coverage_status'])
                 self.assertFalse(result['unresolved_coverage'])
                 self.assertFalse(result['broad_required'])
@@ -911,7 +922,7 @@ class MappingTests(unittest.TestCase):
                      'internal/repositoryinspect/workload_source.go',
                      'internal/repositoryinspect/model.go']:
             with self.subTest(path=name):
-                result = planner.plan(diff(paths(name)), REQ, MAP)
+                result = planner.plan(diff(paths(name)), REQ, MAP_26)
                 self.assertEqual('unresolved', result['coverage_status'])
                 self.assertTrue(result['unresolved_coverage'])
                 self.assertEqual([], result['selected_gates'])
@@ -930,15 +941,16 @@ class MappingTests(unittest.TestCase):
                      'internal/runtimebroker/broker_test.go',
                      'internal/runtimebroker/retirement_test.go']:
             with self.subTest(path=name):
-                result = planner.plan(diff(paths(name)), REQ, MAP)
+                result = planner.plan(diff(paths(name)), REQ, MAP_26)
                 self.assertEqual('resolved', result['coverage_status'])
                 self.assertFalse(result['unresolved_coverage'])
                 self.assertFalse(result['broad_required'])
-                self.assertEqual(['atomic/docker/lifecycle', 'atomic/podman/lifecycle'],
-                                 sorted(result['selected_gates']))
+                expected = [] if name.endswith('_test.go') else ['atomic/docker/lifecycle', 'atomic/podman/lifecycle']
+                self.assertEqual(expected, sorted(result['selected_gates']))
                 ids = {c['id'] for c in result['required_validation_checks']}
-                self.assertIn('cli-vet', ids)
-                self.assertIn('cli-build', ids)
+                self.assertIn('broker-package-tests', ids)
+                if not name.endswith('_test.go'):
+                    self.assertTrue({'cli-vet', 'cli-build'} <= ids)
 
     def test_resolver_routing_allowlist_runs_focused_resolver_checks_resolved(self):
         # core-1220 permanent lane: only the exact reviewed resolver files resolve
@@ -946,7 +958,7 @@ class MappingTests(unittest.TestCase):
         for name in ['internal/runtime/resolver/resolver.go',
                      'internal/runtime/resolver/resolver_test.go']:
             with self.subTest(path=name):
-                result = planner.plan(diff(paths(name)), REQ, MAP)
+                result = planner.plan(diff(paths(name)), REQ, MAP_26)
                 self.assertEqual('resolved', result['coverage_status'])
                 self.assertFalse(result['unresolved_coverage'])
                 self.assertFalse(result['broad_required'])
@@ -965,7 +977,7 @@ class MappingTests(unittest.TestCase):
         for name in ['internal/runtime/resolver/extra.go',
                      'internal/runtime/resolver/plan.go']:
             with self.subTest(path=name):
-                result = planner.plan(diff(paths(name)), REQ, MAP)
+                result = planner.plan(diff(paths(name)), REQ, MAP_26)
                 self.assertEqual('unresolved', result['coverage_status'])
                 self.assertTrue(result['unresolved_coverage'])
                 self.assertEqual([], result['selected_gates'])
@@ -977,7 +989,7 @@ class MappingTests(unittest.TestCase):
         # must never inherit the narrow resolved coverage.
         result = planner.plan(diff(paths(
             'internal/repositoryinspect/reconcile.go',
-            'internal/repositoryinspect/detector.go')), REQ, MAP)
+            'internal/repositoryinspect/detector.go')), REQ, MAP_26)
         self.assertEqual('unresolved', result['coverage_status'])
         self.assertTrue(result['broad_required'])
         self.assertIn('detector.go', str(result['unresolved_coverage']))
@@ -998,7 +1010,7 @@ class MappingTests(unittest.TestCase):
                      'internal/repositoryinspect/subpackage/reconcile_security.go',
                      'internal/repositoryinspectx/reconcile.go']:
             with self.subTest(path=name):
-                result = planner.plan(diff(paths(name)), REQ, MAP)
+                result = planner.plan(diff(paths(name)), REQ, MAP_26)
                 self.assertEqual('unresolved', result['coverage_status'])
                 self.assertTrue(result['unresolved_coverage'])
                 self.assertEqual([], result['selected_gates'])
@@ -1016,7 +1028,7 @@ class MappingTests(unittest.TestCase):
                      'internal/capability/registry_test.go',
                      'internal/capability/new_provider.go']:
             with self.subTest(path=name):
-                result = planner.plan(diff(paths(name)), REQ, MAP)
+                result = planner.plan(diff(paths(name)), REQ, MAP_26)
                 self.assertEqual('unresolved', result['coverage_status'])
                 self.assertTrue(result['unresolved_coverage'])
                 self.assertNotEqual(set(GATES), set(result['selected_gates']))
@@ -1030,26 +1042,40 @@ class MappingTests(unittest.TestCase):
                      'deploy/docker/security.yml',
                      'deploy/docker/production-setup.sh']:
             with self.subTest(path=name):
-                result = planner.plan(diff(paths(name)), REQ, MAP)
+                result = planner.plan(diff(paths(name)), REQ, MAP_26)
                 self.assertEqual('unresolved', result['coverage_status'])
                 self.assertTrue(result['unresolved_coverage'])
                 self.assertNotEqual(['atomic/docker/lifecycle'], result['selected_gates'])
 
     def test_ci_evidence_selects_policy_planner_executor_verifier(self):
-        for name in ['scripts/pr-gate-plan.py', 'scripts/test_pr_gate_plan.py']:
+        for name in ['scripts/pr-gate-plan.py', 'scripts/test_pr_gate_plan.py',
+                     'scripts/pre-release-runtime-reuse.py',
+                     'scripts/pre-release-runtime-impact.json',
+                     'scripts/test_pre_release_runtime_reuse.py',
+                     'scripts/test_pr_runtime_workflow_shape.py',
+                     '.github/workflows/ci.yml',
+                     '.github/workflows/pre-release.yml',
+                     '.github/workflows/pre-release-runtime-suite.yml']:
             with self.subTest(path=name):
-                result = planner.plan(diff(paths(name)), REQ, MAP)
+                result = planner.plan(diff(paths(name)), REQ, MAP_26)
                 self.assertEqual('resolved', result['coverage_status'])
                 self.assertEqual([], result['selected_gates'])
-                self.assertEqual({'ci-policy', 'pr-planner-tests', 'ci-executor-tests',
-                                  'receipt-execution-tests'},
+                expected_checks = {'ci-policy', 'pr-planner-tests', 'ci-executor-tests',
+                                   'receipt-execution-tests'}
+                if name.startswith('.github/workflows/'):
+                    expected_checks.add('ci-actionlint')
+                self.assertEqual(expected_checks,
                                  {c['id'] for c in result['required_validation_checks']})
+                planner_check = next(c for c in result['required_validation_checks']
+                                     if c['id'] == 'pr-planner-tests')
+                self.assertIn('scripts/test_pre_release_runtime_reuse.py',
+                              planner_check['command'])
 
     def test_unknown_never_auto_selects_full_release_catalog(self):
         for name in ['Dockerfile', 'internal/operatorauth/policy.go',
                      'config/deleted.yaml', 'spec/generated.pb.go']:
             with self.subTest(path=name):
-                result = planner.plan(diff(paths(name)), REQ, MAP)
+                result = planner.plan(diff(paths(name)), REQ, MAP_26)
                 self.assertEqual('unresolved', result['coverage_status'])
                 self.assertTrue(result['unresolved_coverage'])
                 self.assertEqual([], result['selected_gates'])
@@ -1061,7 +1087,7 @@ class MappingTests(unittest.TestCase):
         # go.mod no longer appears as an 'unknown impact' unresolved entry.
         result = planner.plan(diff([
             {'status': 'renamed', 'old_path': 'docs/a.md', 'new_path': 'go.mod'},
-            {'status': 'deleted', 'path': 'docs/deleted.md'}]), REQ, MAP)
+            {'status': 'deleted', 'path': 'docs/deleted.md'}]), REQ, MAP_26)
         self.assertEqual('resolved', result['coverage_status'])
         self.assertEqual([], result['unresolved_coverage'])
         self.assertEqual([], result['selected_gates'])
@@ -1085,7 +1111,7 @@ class MappingTests(unittest.TestCase):
             with self.subTest(mutation=mutation):
                 candidate = dict(base)
                 candidate.update(mutation)
-                result = planner.plan(candidate, REQ, MAP)
+                result = planner.plan(candidate, REQ, MAP_26)
                 self.assertEqual('unresolved', result['coverage_status'])
                 self.assertTrue(result['unresolved_coverage'])
                 self.assertEqual([], result['selected_gates'])
@@ -1094,14 +1120,14 @@ class MappingTests(unittest.TestCase):
     def test_immutable_diff_inputs_and_optional_integration(self):
         candidate = diff(paths('docs/readme.md'))
         candidate['integration_sha'] = None
-        result = planner.plan(candidate, REQ, MAP)
+        result = planner.plan(candidate, REQ, MAP_26)
         for key in ('target_base_sha', 'head_sha', 'merge_base_sha', 'integration_sha'):
             self.assertEqual(candidate[key], result[key])
 
     def test_missing_mapped_catalog_gate_is_unresolved(self):
         catalog = {'releases': ['v0.4.26'], 'gates': [
             {'id': 'journey/podman', 'required_for': ['v0.4.26']}]}
-        result = planner.plan(diff(paths('cmd/baha/app.go')), catalog, MAP)
+        result = planner.plan(diff(paths('cmd/baha/app.go')), catalog, MAP_26)
         self.assertEqual('unresolved', result['coverage_status'])
         self.assertEqual([], result['selected_gates'])
 
@@ -1111,16 +1137,16 @@ class MappingTests(unittest.TestCase):
         requirements = json.loads((ROOT / 'release-requirements.json').read_text())
         self.assertEqual(65, len([g for g in requirements['gates']
                                   if 'v0.4.26' in g['required_for']]))
-        docs = planner.plan(diff(paths('docs/how-to/guide.md')), requirements, MAP)
+        docs = planner.plan(diff(paths('docs/how-to/guide.md')), requirements, MAP_26)
         self.assertEqual('resolved', docs['coverage_status'])
         self.assertEqual([], docs['selected_gates'])
         self.assertEqual(4, len(docs['required_validation_checks']))
-        unknown = planner.plan(diff(paths('config/deleted.yaml')), requirements, MAP)
+        unknown = planner.plan(diff(paths('config/deleted.yaml')), requirements, MAP_26)
         self.assertEqual('unresolved', unknown['coverage_status'])
         self.assertNotEqual(65, len(unknown['selected_gates']))
 
     def test_consumer_contract_is_fail_closed(self):
-        result = planner.plan(diff(paths('go.mod')), REQ, MAP)
+        result = planner.plan(diff(paths('go.mod')), REQ, MAP_26)
         self.assertIn('MUST fail closed', result['validation_contract'])
         self.assertIn('zero selected_gates is valid', result['validation_contract'])
 
@@ -1141,7 +1167,7 @@ class MappingTests(unittest.TestCase):
         for expected, names in profiles.items():
             for name in names:
                 with self.subTest(path=name):
-                    result = planner.plan(diff(paths(name)), REQ, MAP)
+                    result = planner.plan(diff(paths(name)), REQ, MAP_26)
                     self.assertEqual('resolved', result['coverage_status'])
                     self.assertEqual([], result['selected_gates'])
                     ids = {row['id'] for row in result['required_validation_checks']}
@@ -1157,7 +1183,7 @@ class MappingTests(unittest.TestCase):
         candidate['head_sha'] = 'f' * 40
         candidate['merge_base_sha'] = '1' * 40
         candidate['integration_sha'] = '2' * 40
-        result = planner.plan(candidate, REQ, MAP)
+        result = planner.plan(candidate, REQ, MAP_26)
         self.assertEqual('resolved', result['coverage_status'])
         self.assertIn('wizard-app-edit-load-tests',
                       {row['id'] for row in result['required_validation_checks']})
@@ -1172,13 +1198,13 @@ class MappingTests(unittest.TestCase):
               'new_path': 'cmd/baha/app_edit_load_v2.go'}],
         ]:
             with self.subTest(change=change):
-                result = planner.plan(diff(change), REQ, MAP)
+                result = planner.plan(diff(change), REQ, MAP_26)
                 self.assertEqual('unresolved', result['coverage_status'])
                 self.assertTrue(result['unresolved_coverage'])
 
     def test_later_mutating_wizard_wiring_selects_only_targeted_lifecycle_gates(self):
         result = planner.plan(diff(paths('cmd/baha/app_edit_apply.go',
-                                         'cmd/baha/app_edit_apply_test.go')), REQ, MAP)
+                                         'cmd/baha/app_edit_apply_test.go')), REQ, MAP_26)
         self.assertEqual('resolved', result['coverage_status'])
         self.assertEqual(['atomic/docker/lifecycle', 'atomic/podman/lifecycle'],
                          result['selected_gates'])
@@ -1193,7 +1219,7 @@ class MappingTests(unittest.TestCase):
             ('cmd/baha/app_machine_adapters.go', 'wizard-machine-adapter-tests'),
         ]:
             with self.subTest(path=name):
-                result = planner.plan(diff(paths(name)), REQ, MAP)
+                result = planner.plan(diff(paths(name)), REQ, MAP_26)
                 self.assertEqual('resolved', result['coverage_status'])
                 self.assertEqual([], result['selected_gates'])
                 self.assertIn(check_id, {row['id'] for row in result['required_validation_checks']})
@@ -1205,7 +1231,7 @@ class PodmanHealthPackageBindingTests(unittest.TestCase):
                      'internal/providers/runtime/podman/doctor_test.go',
                      'internal/providers/runtime/podman/new.go'):
             with self.subTest(path=name):
-                result = planner.plan(diff(paths(name)), REQ, MAP)
+                result = planner.plan(diff(paths(name)), REQ, MAP_26)
                 self.assertEqual('resolved', result['coverage_status'])
                 self.assertIn('runtime-provider-package-tests',
                               {c['id'] for c in result['required_validation_checks']})
@@ -1219,24 +1245,24 @@ class PodmanHealthPackageBindingTests(unittest.TestCase):
                        [{'status': 'renamed', 'old_path': 'internal/providers/runtime/podman/doctor.go',
                          'new_path': 'internal/unknown/doctor.go'}]):
             with self.subTest(change=change):
-                self.assertEqual('unresolved', planner.plan(diff(change), REQ, MAP)['coverage_status'])
+                self.assertEqual('unresolved', planner.plan(diff(change), REQ, MAP_26)['coverage_status'])
 class NativeIntegrationSourceTests(unittest.TestCase):
     def test_native_sources_select_real_lifecycle_gates(self):
         for name in ('cmd/baha/app_repository_integration_test.go',
                      'cmd/baha/app_workload_integration_test.go',
                      'internal/application/runtime_multi_integration_test.go'):
             with self.subTest(name=name):
-                result = planner.plan(diff(paths(name)), REQ, MAP)
+                result = planner.plan(diff(paths(name)), REQ, MAP_26)
                 self.assertEqual('resolved', result['coverage_status'])
                 self.assertEqual({'atomic/docker/lifecycle', 'atomic/podman/lifecycle'},
                                  set(result['selected_gates']))
-                deleted = planner.plan(diff([{'status': 'deleted', 'path': name}]), REQ, MAP)
+                deleted = planner.plan(diff([{'status': 'deleted', 'path': name}]), REQ, MAP_26)
                 self.assertEqual('unresolved', deleted['coverage_status'])
 
 
 class LogsRenderingBindingTests(unittest.TestCase):
     def test_render_requires_package_and_native_observability(self):
-        result = planner.plan(diff(paths('internal/logs/render.go')), REQ, MAP)
+        result = planner.plan(diff(paths('internal/logs/render.go')), REQ, MAP_26)
         self.assertEqual('resolved', result['coverage_status'])
         self.assertIn('logs-package-tests', {c['id'] for c in result['required_validation_checks']})
         self.assertEqual({'atomic/docker/observability', 'atomic/podman/observability'},
@@ -1246,19 +1272,19 @@ class LogsRenderingBindingTests(unittest.TestCase):
         path = 'internal/logs/journal_provider_render_test.go'
         for status in ('added', 'modified'):
             with self.subTest(status=status):
-                result = planner.plan(diff([{'status': status, 'path': path}]), REQ, MAP)
+                result = planner.plan(diff([{'status': status, 'path': path}]), REQ, MAP_26)
                 self.assertEqual('resolved', result['coverage_status'])
                 self.assertIn('logs-package-tests', {c['id'] for c in result['required_validation_checks']})
                 self.assertEqual({'atomic/docker/observability', 'atomic/podman/observability'},
                                  set(result['selected_gates']))
-        result = planner.plan(diff([{'status': 'deleted', 'path': path}]), REQ, MAP)
+        result = planner.plan(diff([{'status': 'deleted', 'path': path}]), REQ, MAP_26)
         self.assertEqual('unresolved', result['coverage_status'])
 
     def test_other_logs_files_remain_unresolved(self):
         for path in ('internal/logs/sub/render.go', 'internal/logs/other.go',
                      'internal/logs/sub/journal_provider_render_test.go'):
             with self.subTest(path=path):
-                result = planner.plan(diff(paths(path)), REQ, MAP)
+                result = planner.plan(diff(paths(path)), REQ, MAP_26)
                 self.assertEqual('unresolved', result['coverage_status'])
 
     def test_executor_rejects_failure_and_empty_test_run(self):
@@ -1266,14 +1292,17 @@ class LogsRenderingBindingTests(unittest.TestCase):
         spec = importlib.util.spec_from_file_location('logs_runner', ROOT / 'pr-check-runner.py')
         runner = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(runner)
-        for result in (SimpleNamespace(returncode=1, stdout='failed'),
-                       SimpleNamespace(returncode=0, stdout='[no test files]')):
+        for result in (SimpleNamespace(returncode=1, stdout='', stderr='failed'),
+                       SimpleNamespace(returncode=0, stdout='', stderr='[no test files]')):
             with self.subTest(result=result), patch.object(runner.subprocess, 'run', return_value=result):
                 with self.assertRaises(RuntimeError):
                     runner.execute_validation('logs-package-tests', '.')
         with patch.object(runner.subprocess, 'run', return_value=SimpleNamespace(
-                returncode=0, stdout='=== RUN   TestRender\n--- PASS: TestRender\n')):
-            self.assertEqual(['internal/logs'], runner.execute_validation('logs-package-tests', '.'))
+                returncode=0, stderr='', stdout='\n'.join(json.dumps(row) for row in [
+                    {'Action': 'run', 'Package': 'example/internal/logs', 'Test': 'TestRender'},
+                    {'Action': 'pass', 'Package': 'example/internal/logs', 'Test': 'TestRender'},
+                    {'Action': 'pass', 'Package': 'example/internal/logs'}]) + '\n')):
+            self.assertEqual(['./internal/logs'], runner.execute_validation('logs-package-tests', '.'))
 
 
 class CliGofmtTestBindingTests(unittest.TestCase):
@@ -1289,7 +1318,7 @@ class CliGofmtTestBindingTests(unittest.TestCase):
         for name in ['cmd/baha/main_test.go',
                      'cmd/baha/app_show_test.go']:
             with self.subTest(path=name):
-                result = planner.plan(diff(paths(name)), REQ, MAP)
+                result = planner.plan(diff(paths(name)), REQ, MAP_26)
                 self.assertEqual('resolved', result['coverage_status'])
                 self.assertFalse(result['unresolved_coverage'])
                 self.assertFalse(result['broad_required'])
@@ -1304,7 +1333,7 @@ class CliGofmtTestBindingTests(unittest.TestCase):
         # fail-closed: resolved test file + an unreviewed production file keeps
         # the whole PR unresolved.
         result = planner.plan(diff(paths('cmd/baha/main_test.go',
-                                          'cmd/baha/app_apply.go')), REQ, MAP)
+                                          'cmd/baha/app_apply.go')), REQ, MAP_26)
         self.assertEqual('unresolved', result['coverage_status'])
         self.assertTrue(result['unresolved_coverage'])
 
@@ -1314,12 +1343,23 @@ class CliGofmtTestBindingTests(unittest.TestCase):
         for name in ['cmd/baha/mcp_workspace_mutation_test.go',
                      'cmd/baha/mcp_preconditions_test.go']:
             with self.subTest(path=name):
-                result = planner.plan(diff(paths(name)), REQ, MAP)
+                result = planner.plan(diff(paths(name)), REQ, MAP_26)
                 self.assertEqual('unresolved', result['coverage_status'])
                 self.assertTrue(result['unresolved_coverage'])
 
 
 class RuntimeDockerEngineMappingTests(unittest.TestCase):
+    def test_podman_pinned_service_stop_selects_exact_podman_lifecycle(self):
+        for name in ('internal/runtime/service_stop.go',
+                     'internal/runtime/service_stop_test.go'):
+            with self.subTest(path=name):
+                result = planner.plan(diff(paths(name)), REQ, MAP_26)
+                self.assertEqual('resolved', result['coverage_status'])
+                self.assertEqual(['atomic/podman/lifecycle'], result['selected_gates'])
+                self.assertFalse(result.get('fallback_used', False))
+                checks = {row['id'] for row in result['required_validation_checks']}
+                self.assertIn('runtime-provider-package-tests', checks)
+
     def test_docker_engine_path_classifies_to_lifecycle_gate(self):
         # core-1240 permanent lane: changing ONLY internal/runtime/docker_engine.go
         # must resolve with the real atomic docker lifecycle gate.  This is the exact
@@ -1327,9 +1367,9 @@ class RuntimeDockerEngineMappingTests(unittest.TestCase):
         # previously fell to `area='unresolved'` at line ~1526 and produced
         # `unknown impact for internal/runtime/docker_engine.go`, which kept
         # every PR that touched docker_engine ROT despite correct code.
-        result = planner.plan(diff(paths('internal/runtime/docker_engine.go')), REQ, MAP)
+        result = planner.plan(diff(paths('internal/runtime/docker_engine.go')), REQ, MAP_26)
         self.assertEqual('resolved', result['coverage_status'])
-        self.assertEqual(['atomic/docker/lifecycle'], result['selected_gates'])
+        self.assertEqual(['atomic/docker/lifecycle', 'atomic/podman/lifecycle'], result['selected_gates'])
         self.assertFalse(result['unresolved_coverage'])
         self.assertFalse(result['broad_required'])
         checks = {c['id'] for c in result['required_validation_checks']}
@@ -1341,28 +1381,30 @@ class RuntimeDockerEngineMappingTests(unittest.TestCase):
         # openbao_runtime_prepare.go provisions TLS and PostgreSQL storage for the
         # OpenBao stack — same mutation surface as the CORE_917/CORE_918 lifecycle
         # files.  Verify it maps to the same gate.
-        result = planner.plan(diff(paths('internal/runtime/openbao_runtime_prepare.go')), REQ, MAP)
+        result = planner.plan(diff(paths('internal/runtime/openbao_runtime_prepare.go')), REQ, MAP_26)
         self.assertEqual('resolved', result['coverage_status'])
-        self.assertEqual(['atomic/docker/lifecycle'], result['selected_gates'])
+        self.assertEqual(['atomic/docker/lifecycle', 'atomic/podman/lifecycle'], result['selected_gates'])
         self.assertFalse(result['unresolved_coverage'])
 
-    def test_docker_engine_test_file_selects_lifecycle_gate(self):
-        result = planner.plan(diff(paths('internal/runtime/docker_engine_test.go')), REQ, MAP)
+    def test_docker_engine_test_file_executes_its_package(self):
+        result = planner.plan(diff(paths('internal/runtime/docker_engine_test.go')), REQ, MAP_26)
         self.assertEqual('resolved', result['coverage_status'])
-        self.assertEqual(['atomic/docker/lifecycle'], result['selected_gates'])
+        self.assertEqual([], result['selected_gates'])
+        self.assertIn('runtime-provider-package-tests',
+                      {row['id'] for row in result['required_validation_checks']})
 
     def test_docker_engine_bundled_with_unreviewed_stays_unresolved(self):
         # Even if docker_engine is resolved, a second unreviewed file must
         # keep the whole PR unresolved — fail-closed.
         result = planner.plan(diff(paths('internal/runtime/docker_engine.go',
-                                          'internal/application/footprint.go')), REQ, MAP)
+                                          'internal/application/footprint.go')), REQ, MAP_26)
         self.assertEqual('unresolved', result['coverage_status'])
         self.assertTrue(result['unresolved_coverage'])
 
     def test_resolver_files_remain_separate_and_unresolved(self):
         # internal/runtime/resolver/*.go must NOT match the runtime-docker-engine
         # classification — the resolver branch must stay unresolved.
-        result = planner.plan(diff(paths('internal/runtime/resolver/extra.go')), REQ, MAP)
+        result = planner.plan(diff(paths('internal/runtime/resolver/extra.go')), REQ, MAP_26)
         self.assertEqual('unresolved', result['coverage_status'])
         self.assertTrue(result['unresolved_coverage'])
 
@@ -1373,7 +1415,7 @@ class CliEngineMappingTests(unittest.TestCase):
         # runtime and binds Docker/Podman engine observations to the Compose backend.
         # Changing ONLY this file must resolve with BOTH atomic lifecycle gates —
         # the engine code affects both runners (Docker and Podman/Quadlet).
-        result = planner.plan(diff(paths('cmd/baha/docker_engine.go')), REQ, MAP)
+        result = planner.plan(diff(paths('cmd/baha/docker_engine.go')), REQ, MAP_26)
         self.assertEqual('resolved', result['coverage_status'])
         self.assertEqual(['atomic/docker/lifecycle', 'atomic/podman/lifecycle'],
                          result['selected_gates'])
@@ -1384,20 +1426,18 @@ class CliEngineMappingTests(unittest.TestCase):
         self.assertIn('cli-build', checks)
         self.assertIn('cli-vet', checks)
 
-    def test_cli_docker_engine_podman_test_selects_both_lifecycle_gates(self):
-        # round2 B: the new dedicated test file for CLI-side docker engine binding
-        # exercises both Docker and Podman lifecycles.  Must map to both gates.
-        result = planner.plan(diff(paths('cmd/baha/docker_engine_podman_test.go')), REQ, MAP)
+    def test_cli_docker_engine_podman_test_runs_actual_unit_tests(self):
+        result = planner.plan(diff(paths('cmd/baha/docker_engine_podman_test.go')), REQ, MAP_26)
         self.assertEqual('resolved', result['coverage_status'])
-        self.assertEqual(['atomic/docker/lifecycle', 'atomic/podman/lifecycle'],
-                         result['selected_gates'])
+        self.assertEqual([], result['selected_gates'])
+        self.assertIn('cli-package-tests', {row['id'] for row in result['required_validation_checks']})
         self.assertFalse(result['unresolved_coverage'])
 
     def test_cli_docker_engine_bundled_with_unreviewed_stays_unresolved(self):
         # round2 fail-closed: even if docker_engine.go is resolved, a second
         # unreviewed file must keep the whole PR unresolved.
         result = planner.plan(diff(paths('cmd/baha/docker_engine.go',
-                                          'internal/application/footprint.go')), REQ, MAP)
+                                          'internal/application/footprint.go')), REQ, MAP_26)
         self.assertEqual('unresolved', result['coverage_status'])
         self.assertTrue(result['unresolved_coverage'])
 
@@ -1406,7 +1446,7 @@ class CliEngineMappingTests(unittest.TestCase):
         # in the wizard dict (like main.go) remain unresolved.
         # The wizard dict maps specific known files; anything else falls to the
         # catch-all unresolved branch.
-        result = planner.plan(diff(paths('cmd/baha/main.go')), REQ, MAP)
+        result = planner.plan(diff(paths('cmd/baha/main.go')), REQ, MAP_26)
         self.assertEqual('unresolved', result['coverage_status'])
         self.assertTrue(result['unresolved_coverage'])
 
@@ -1416,12 +1456,12 @@ class CliEngineMappingTests(unittest.TestCase):
         incomplete = {'releases': ['v0.4.26'],
                        'gates': [{'id': 'atomic/docker/lifecycle',
                                   'required_for': ['v0.4.26']}]}
-        result = planner.plan(diff(paths('cmd/baha/docker_engine.go')), incomplete, MAP)
+        result = planner.plan(diff(paths('cmd/baha/docker_engine.go')), incomplete, MAP_26)
         self.assertEqual('unresolved', result['coverage_status'])
 
 
 class RestartIntegrationMappingTests(unittest.TestCase):
-    def test_runtime_restart_integration_test_maps_both_lifecycle_gates(self):
+    def test_runtime_restart_integration_test_maps_both_recovery_gates(self):
         # gatemap-r2 Gap 1 (blocks #1245).  cmd/baha/runtime_restart_integration_test.go
         # is the control-plane restart proof the Lifecycle-Gates drive (targeted
         # integration.yml dispatches its TestExistingControlPlaneRestartRequiresAndUses
@@ -1430,9 +1470,9 @@ class RestartIntegrationMappingTests(unittest.TestCase):
         # It must resolve to BOTH atomic lifecycle gates, exactly like the other
         # cmd/baha runtime-mutation files — not the cli-unresolved-runtime-impact
         # catch-all that previously blocked PR Selected checks.
-        result = planner.plan(diff(paths('cmd/baha/runtime_restart_integration_test.go')), REQ, MAP)
+        result = planner.plan(diff(paths('cmd/baha/runtime_restart_integration_test.go')), REQ, MAP_26)
         self.assertEqual('resolved', result['coverage_status'])
-        self.assertEqual(['atomic/docker/lifecycle', 'atomic/podman/lifecycle'],
+        self.assertEqual(['atomic/docker/control-plane-recovery', 'atomic/podman/control-plane-recovery'],
                          result['selected_gates'])
         self.assertFalse(result['unresolved_coverage'])
         self.assertFalse(result['broad_required'])
@@ -1445,7 +1485,7 @@ class RestartIntegrationMappingTests(unittest.TestCase):
         # fail-closed: resolved restart test + an unreviewed second file keeps
         # the whole PR unresolved.
         result = planner.plan(diff(paths('cmd/baha/runtime_restart_integration_test.go',
-                                          'cmd/baha/main.go')), REQ, MAP)
+                                          'cmd/baha/main.go')), REQ, MAP_26)
         self.assertEqual('unresolved', result['coverage_status'])
         self.assertTrue(result['unresolved_coverage'])
 
@@ -1461,7 +1501,7 @@ class SharedBackendResolutionMappingTests(unittest.TestCase):
         # catalog token covering this shared Postgres service-identity/credential
         # path — NOT the application-implementation-unresolved catch-all that
         # previously blocked PR Selected checks.
-        result = planner.plan(diff(paths('internal/application/shared_backends.go')), REQ, MAP)
+        result = planner.plan(diff(paths('internal/application/shared_backends.go')), REQ, MAP_26)
         self.assertEqual('resolved', result['coverage_status'])
         self.assertEqual(['atomic/podman/lifecycle'], result['selected_gates'])
         self.assertFalse(result['unresolved_coverage'])
@@ -1472,12 +1512,12 @@ class SharedBackendResolutionMappingTests(unittest.TestCase):
     def test_shared_backend_dependency_sister_maps_to_lifecycle_gate(self):
         # The sister resolution file named in the mission (shared_backend_dependency.go)
         # must resolve via the same classification.
-        result = planner.plan(diff(paths('internal/application/shared_backend_dependency.go')), REQ, MAP)
+        result = planner.plan(diff(paths('internal/application/shared_backend_dependency.go')), REQ, MAP_26)
         self.assertEqual('resolved', result['coverage_status'])
         self.assertEqual(['atomic/podman/lifecycle'], result['selected_gates'])
 
     def test_shared_backend_state_sister_maps_to_lifecycle_gate(self):
-        result = planner.plan(diff(paths('internal/application/shared_backends_state.go')), REQ, MAP)
+        result = planner.plan(diff(paths('internal/application/shared_backends_state.go')), REQ, MAP_26)
         self.assertEqual('resolved', result['coverage_status'])
         self.assertEqual(['atomic/podman/lifecycle'], result['selected_gates'])
 
@@ -1485,14 +1525,14 @@ class SharedBackendResolutionMappingTests(unittest.TestCase):
         # fail-closed: resolved shared-backend file + an unreviewed second file
         # keeps the whole PR unresolved.
         result = planner.plan(diff(paths('internal/application/shared_backends.go',
-                                          'internal/application/footprint.go')), REQ, MAP)
+                                          'internal/application/footprint.go')), REQ, MAP_26)
         self.assertEqual('unresolved', result['coverage_status'])
         self.assertTrue(result['unresolved_coverage'])
 
     def test_unrelated_application_file_stays_unresolved(self):
         # A non-manifest application file must NOT pick up the r4 manifest
         # classification; it stays in application-implementation-unresolved.
-        result = planner.plan(diff(paths('internal/application/footprint.go')), REQ, MAP)
+        result = planner.plan(diff(paths('internal/application/footprint.go')), REQ, MAP_26)
         self.assertEqual('unresolved', result['coverage_status'])
         self.assertIn('application lifecycle', result['unresolved_coverage'][0])
         self.assertNotIn('atomic/podman/lifecycle', result['selected_gates'])
@@ -1507,7 +1547,7 @@ class SharedBackendResolutionMappingTests(unittest.TestCase):
                      'internal/application/manifest_parse.go',
                      'internal/application/v0425_contract_test.go']:
             with self.subTest(path=name):
-                result = planner.plan(diff(paths(name)), REQ, MAP)
+                result = planner.plan(diff(paths(name)), REQ, MAP_26)
                 self.assertEqual('resolved', result['coverage_status'])
                 self.assertEqual([], result['unresolved_coverage'])
                 self.assertEqual({'atomic/docker/lifecycle',
@@ -1523,7 +1563,7 @@ class SharedBackendResolutionMappingTests(unittest.TestCase):
         for name in ['internal/application/footprint.go',
                      'internal/application/provider_union.go']:
             with self.subTest(path=name):
-                result = planner.plan(diff(paths(name)), REQ, MAP)
+                result = planner.plan(diff(paths(name)), REQ, MAP_26)
                 self.assertEqual('unresolved', result['coverage_status'])
                 self.assertTrue(result['unresolved_coverage'])
                 self.assertNotEqual({'atomic/docker/lifecycle',
@@ -1535,7 +1575,7 @@ class SharedBackendResolutionMappingTests(unittest.TestCase):
         incomplete = {'releases': ['v0.4.26'],
                         'gates': [{'id': 'integration/static/public-contracts',
                                    'required_for': ['v0.4.26']}]}
-        result = planner.plan(diff(paths('internal/application/shared_backends.go')), incomplete, MAP)
+        result = planner.plan(diff(paths('internal/application/shared_backends.go')), incomplete, MAP_26)
         self.assertEqual('unresolved', result['coverage_status'])
 
     def test_app_observability_acceptance_maps_both_observability_gates(self):
@@ -1547,7 +1587,7 @@ class SharedBackendResolutionMappingTests(unittest.TestCase):
         # like the other cmd/baha runtime-acceptance files — not the
         # cli-unresolved-runtime-impact catch-all that previously blocked PR
         # Selected checks.
-        result = planner.plan(diff(paths('cmd/baha/app_observability_acceptance_test.go')), REQ, MAP)
+        result = planner.plan(diff(paths('cmd/baha/app_observability_acceptance_test.go')), REQ, MAP_26)
         self.assertEqual('resolved', result['coverage_status'])
         self.assertEqual(['atomic/docker/observability', 'atomic/podman/observability'],
                          result['selected_gates'])
@@ -1562,7 +1602,7 @@ class SharedBackendResolutionMappingTests(unittest.TestCase):
         # fail-closed: resolved observability test + an unreviewed second file
         # keeps the whole PR unresolved.
         result = planner.plan(diff(paths('cmd/baha/app_observability_acceptance_test.go',
-                                          'cmd/baha/main.go')), REQ, MAP)
+                                          'cmd/baha/main.go')), REQ, MAP_26)
         self.assertEqual('unresolved', result['coverage_status'])
         self.assertTrue(result['unresolved_coverage'])
 
@@ -1571,13 +1611,13 @@ class SharedBackendResolutionMappingTests(unittest.TestCase):
         incomplete = {'releases': ['v0.4.26'],
                         'gates': [{'id': 'atomic/docker/observability',
                                    'required_for': ['v0.4.26']}]}
-        result = planner.plan(diff(paths('cmd/baha/app_observability_acceptance_test.go')), incomplete, MAP)
+        result = planner.plan(diff(paths('cmd/baha/app_observability_acceptance_test.go')), incomplete, MAP_26)
         self.assertEqual('unresolved', result['coverage_status'])
 
     def test_unrelated_cli_test_file_stays_unresolved(self):
         # A non-observability cmd/baha/*.go test must NOT pick up the new
         # classification; it stays in cli-unresolved-runtime-impact.
-        result = planner.plan(diff(paths('cmd/baha/main.go')), REQ, MAP)
+        result = planner.plan(diff(paths('cmd/baha/main.go')), REQ, MAP_26)
         self.assertEqual('unresolved', result['coverage_status'])
         self.assertIn('CLI runtime impact', result['unresolved_coverage'][0])
         self.assertNotIn('atomic/docker/observability', result['selected_gates'])
@@ -1585,7 +1625,7 @@ class SharedBackendResolutionMappingTests(unittest.TestCase):
         # deps-gatemap / #1160: a Dependabot-only go.mod/go.sum diff must NOT fall
         # into the 'unknown impact' catch-all. It resolves and requires the Go
         # build/test validation checks the CI matrix runs for a Go change.
-        result = planner.plan(diff(paths('go.mod', 'go.sum')), REQ, MAP)
+        result = planner.plan(diff(paths('go.mod', 'go.sum')), REQ, MAP_26)
         self.assertEqual('resolved', result['coverage_status'])
         self.assertFalse(result['unresolved_coverage'])
         self.assertFalse(result['broad_required'])
@@ -1599,18 +1639,18 @@ class SharedBackendResolutionMappingTests(unittest.TestCase):
         # fail-closed: resolved go.mod/go.sum + an unreviewed product file keeps
         # the whole PR unresolved.
         result = planner.plan(diff(paths('go.mod', 'go.sum',
-                                        'internal/application/thing.go')), REQ, MAP)
+                                        'internal/application/thing.go')), REQ, MAP_26)
         self.assertEqual('unresolved', result['coverage_status'])
         self.assertTrue(result['unresolved_coverage'])
 
     def test_go_mod_alone_still_resolves(self):
         # A single go.mod modify resolves the same way (dependabot bump).
-        result = planner.plan(diff(paths('go.mod')), REQ, MAP)
+        result = planner.plan(diff(paths('go.mod')), REQ, MAP_26)
         self.assertEqual('resolved', result['coverage_status'])
         self.assertEqual([], result['unresolved_coverage'])
 
     def test_go_sum_alone_still_resolves(self):
-        result = planner.plan(diff(paths('go.sum')), REQ, MAP)
+        result = planner.plan(diff(paths('go.sum')), REQ, MAP_26)
         self.assertEqual('resolved', result['coverage_status'])
         self.assertEqual([], result['unresolved_coverage'])
 
@@ -1618,7 +1658,7 @@ class SharedBackendResolutionMappingTests(unittest.TestCase):
         # Fail-closed on an incomplete catalog is not required here: Go build/test
         # checks are validations only, but the module file must still route to the
         # go-module-dependency area rather than a broad unresolved catch-all.
-        result = planner.plan(diff(paths('go.mod', 'go.sum')), REQ, MAP)
+        result = planner.plan(diff(paths('go.mod', 'go.sum')), REQ, MAP_26)
         self.assertEqual('resolved', result['coverage_status'])
         reasons = ' '.join(result['reasons'])
         self.assertIn('go-module-dependency', reasons)
@@ -1628,7 +1668,7 @@ class ReceiptControlPlaneMappingTests(unittest.TestCase):
     def test_receipt_control_plane_script_maps_to_ci_class(self):
         for path in ['scripts/receipt_writer.py']:
             with self.subTest(path=path):
-                result = planner.plan(diff(paths(path)), REQ, MAP)
+                result = planner.plan(diff(paths(path)), REQ, MAP_26)
                 self.assertEqual('resolved', result['coverage_status'])
                 self.assertFalse(result['unresolved_coverage'])
                 self.assertEqual([], result['selected_gates'])
@@ -1640,7 +1680,7 @@ class ReceiptControlPlaneMappingTests(unittest.TestCase):
     def test_receipt_control_plane_test_script_maps_to_ci_class(self):
         for path in ['scripts/test_receipt_writer.py', 'scripts/test_receipt_postrun.py']:
             with self.subTest(path=path):
-                result = planner.plan(diff(paths(path)), REQ, MAP)
+                result = planner.plan(diff(paths(path)), REQ, MAP_26)
                 self.assertEqual('resolved', result['coverage_status'])
                 self.assertFalse(result['unresolved_coverage'])
                 self.assertEqual([], result['selected_gates'])
@@ -1652,7 +1692,7 @@ class ReceiptControlPlaneMappingTests(unittest.TestCase):
     def test_receipt_control_plane_workflow_maps_ci_and_actionlint(self):
         for path in ['.github/workflows/receipt-post-run.yml']:
             with self.subTest(path=path):
-                result = planner.plan(diff(paths(path)), REQ, MAP)
+                result = planner.plan(diff(paths(path)), REQ, MAP_26)
                 self.assertEqual('resolved', result['coverage_status'])
                 self.assertFalse(result['unresolved_coverage'])
                 self.assertEqual([], result['selected_gates'])
@@ -1663,7 +1703,7 @@ class ReceiptControlPlaneMappingTests(unittest.TestCase):
 
     def test_ci_workflow_policy_script_maps_to_ci_class(self):
         path = 'scripts/ci-workflow-policy.sh'
-        result = planner.plan(diff(paths(path)), REQ, MAP)
+        result = planner.plan(diff(paths(path)), REQ, MAP_26)
         self.assertEqual('resolved', result['coverage_status'])
         self.assertEqual([], result['unresolved_coverage'])
         self.assertEqual([], result['selected_gates'])
@@ -1675,7 +1715,7 @@ class ReceiptControlPlaneMappingTests(unittest.TestCase):
 
     def test_extra_unrelated_change_fails_closed(self):
         result = planner.plan(diff(paths('scripts/receipt_writer.py',
-                                          'cmd/baha/app_new_command.go')), REQ, MAP)
+                                          'cmd/baha/app_new_command.go')), REQ, MAP_26)
         self.assertEqual('unresolved', result['coverage_status'])
         self.assertTrue(any('cmd/baha/app_new_command.go' in item for item in
                             result['unresolved_coverage']))
@@ -1747,7 +1787,7 @@ class Core918TrustedCoverageTests(unittest.TestCase):
                           side_effect=lambda target, sha, reviewed=None:
                           real(target, sha, self.reviewed if reviewed ==
                                planner.CORE_918_REVIEWED_HEAD else reviewed, self.root)):
-            return planner.plan(actual, required, MAP)
+            return planner.plan(actual, required, MAP_26)
 
     def test_unmodified_reviewed_source_and_clean_develop_merge_resolve(self):
         for head in [self.reviewed, self.merged]:
@@ -1799,7 +1839,7 @@ class Core754ExecutionWithoutQualificationTests(unittest.TestCase):
     def test_exact_candidate_selects_both_tests_but_remains_unresolved(self):
         candidate = diff([{'status': 'added', 'path': planner.CORE_754_TEST_PATH}])
         candidate['head_sha'] = planner.CORE_754_TEST_HEAD
-        planned = planner.plan(candidate, REQ, MAP)
+        planned = planner.plan(candidate, REQ, MAP_26)
         checks = {row['id'] for row in planned['required_validation_checks']}
         self.assertIn(planner.CORE_754_TEST_CHECK, checks)
         self.assertTrue({'cli-gofmt', 'cli-vet', 'cli-build'} <= checks)
@@ -1846,7 +1886,7 @@ class Core754ExecutionWithoutQualificationTests(unittest.TestCase):
             candidate.update({'target_base_sha': target, 'head_sha': merged})
             with patch.object(planner, 'CORE_754_TEST_HEAD', reviewed), \
                  patch.object(planner, 'core752_reviewed_merge_chain', side_effect=actual_proof):
-                planned = planner.plan(candidate, REQ, MAP)
+                planned = planner.plan(candidate, REQ, MAP_26)
                 self.assertIn(planner.CORE_754_TEST_CHECK,
                               {c['id'] for c in planned['required_validation_checks']})
                 self.assertEqual('unresolved', planned['coverage_status'])
@@ -1856,7 +1896,7 @@ class Core754ExecutionWithoutQualificationTests(unittest.TestCase):
                 git('add', '.')
                 git('commit', '-qm', 'unreviewed follow-up')
                 candidate['head_sha'] = git('rev-parse', 'HEAD')
-                rejected = planner.plan(candidate, REQ, MAP)
+                rejected = planner.plan(candidate, REQ, MAP_26)
                 self.assertEqual('unresolved', rejected['coverage_status'])
                 self.assertIn('core-754 test source differs from exact reviewed candidate',
                               str(rejected['unresolved_coverage']))
@@ -1867,7 +1907,7 @@ class Core754ExecutionWithoutQualificationTests(unittest.TestCase):
         with patch.object(planner, 'core752_reviewed_merge_chain',
                           side_effect=lambda base, head, reviewed=None:
                               reviewed == planner.CORE_754_TEST_HEAD) as proof:
-            result = planner.plan(candidate, REQ, MAP)
+            result = planner.plan(candidate, REQ, MAP_26)
         self.assertIn(((candidate['target_base_sha'], candidate['head_sha'],
                         planner.CORE_754_TEST_HEAD), {}),
                       [(call.args, call.kwargs) for call in proof.call_args_list])
@@ -1884,7 +1924,7 @@ class Core754ExecutionWithoutQualificationTests(unittest.TestCase):
             with self.subTest(head=head, change=change):
                 candidate = diff([change])
                 candidate['head_sha'] = head
-                result = planner.plan(candidate, REQ, MAP)
+                result = planner.plan(candidate, REQ, MAP_26)
                 self.assertEqual('unresolved', result['coverage_status'])
                 self.assertTrue(result['unresolved_coverage'])
 
@@ -1907,7 +1947,7 @@ class OpenBaoValidationTests(unittest.TestCase):
                      'internal/openbao/application_runtime_client.go',
                      'internal/openbao/dev_access.go']:
             with self.subTest(path=name):
-                result = planner.plan(diff(paths(name)), REQ, MAP)
+                result = planner.plan(diff(paths(name)), REQ, MAP_26)
                 self.assertEqual('unresolved', result['coverage_status'])
                 self.assertTrue(result['unresolved_coverage'])
                 self.assertTrue(
@@ -1927,7 +1967,7 @@ class OpenBaoValidationTests(unittest.TestCase):
         ]
         for changes in variants:
             with self.subTest(changes=changes):
-                result = planner.plan(diff(changes), REQ, MAP)
+                result = planner.plan(diff(changes), REQ, MAP_26)
                 self.assertEqual('unresolved', result['coverage_status'])
                 self.assertTrue(result['unresolved_coverage'])
 
@@ -2106,20 +2146,28 @@ class OpenBaoExactRetryRouteTests(unittest.TestCase):
         runner = self.runner()
         names = runner.OPENBAO_REQUIRED_TESTS
         discovery = '\n'.join(names)
-        execution = ''.join('=== RUN   ' + n + '\n--- PASS: ' + n + ' (0.00s)\n' for n in names)
+        def stream(skip=None):
+            events = []
+            for name in names:
+                events.extend([{'Action': 'run', 'Package': 'example/internal/openbao', 'Test': name},
+                               {'Action': 'skip' if name == skip else 'pass',
+                                'Package': 'example/internal/openbao', 'Test': name}])
+            events.append({'Action': 'pass', 'Package': 'example/internal/openbao'})
+            return '\n'.join(json.dumps(row) for row in events) + '\n'
+        execution = stream()
         for listed, output, code, success in (
                 (discovery, execution, 0, True), ('', execution, 0, False),
                 ('\n'.join(names[:-1]), execution, 0, False),
                 (discovery, '', 0, False), (discovery, execution, 1, False),
-                (discovery, execution.replace('--- PASS: ' + names[0], '--- SKIP: ' + names[0]), 0, False)):
+                (discovery, stream(skip=names[0]), 0, False)):
             with self.subTest(listed=listed, code=code, success=success):
                 results = [SimpleNamespace(returncode=0, stdout=listed, stderr=''),
-                           SimpleNamespace(returncode=code, stdout=output)]
+                           SimpleNamespace(returncode=code, stdout=output, stderr='')]
                 with patch.object(runner.subprocess, 'run', side_effect=results) as process:
                     if success:
                         self.assertEqual(list(names), runner.execute_validation('openbao-package-tests', '.'))
-                        self.assertIn('./internal/openbao/...', process.call_args.args[0])
-                        self.assertIn('-run', process.call_args.args[0])
+                        self.assertIn('./internal/openbao', process.call_args.args[0])
+                        self.assertNotIn('-run', process.call_args.args[0])
                     else:
                         with self.assertRaises(RuntimeError):
                             runner.execute_validation('openbao-package-tests', '.')
@@ -2162,7 +2210,7 @@ class OpenBaoExactRetryRouteTests(unittest.TestCase):
             with patch.object(planner, 'OPENBAO_RETRY_HEAD', reviewed):
                 value = actual(target, reviewed)
                 self.assertEqual(planner.CODE_CHECKS + planner.OPENBAO_CHECKS, checks(value))
-                planned = planner.plan(value, REQ, MAP, repository=root,
+                planned = planner.plan(value, REQ, MAP_26, repository=root,
                                        context_repository='mcpdev80/baseharbor', context_target_branch='develop')
                 self.assertEqual('resolved', planned['coverage_status'], planned)
                 self.assertIn('openbao-package-tests', [c['id'] for c in planned['required_validation_checks']])
@@ -2326,7 +2374,7 @@ class ReleasePreflightSelectionTests(unittest.TestCase):
                                     '-qm', 'selection fixture'], check=True)
                     value = diff([{'path': path, 'status': status}])
                     value['head_sha'] = git_rev_parse(root, 'HEAD')
-                    result = planner.plan(value, REQ, MAP, repository=root)
+                    result = planner.plan(value, REQ, MAP_26, repository=root)
                     self.assertEqual('resolved' if accepted else 'unresolved',
                                      result['coverage_status'], result)
                     if accepted:
@@ -2373,7 +2421,7 @@ class SQLPreviewQualificationTests(unittest.TestCase):
                 integration = git('commit-tree', tree, '-p', target, '-p', candidate, '-m', 'PR integration')
                 return resolver.resolve_pr_diff(root, target, candidate, integration)
             def plan(value, requirements=REQ):
-                return planner.plan(value, requirements, MAP, repository=root)
+                return planner.plan(value, requirements, MAP_26, repository=root)
             def assert_rejected(value):
                 result = plan(value)
                 self.assertFalse(any(reason.startswith('Owner-qualified SQL Edit source:') for reason in result['reasons']), result)
@@ -2416,7 +2464,7 @@ class ReceiptControlPlaneExecutionTests(unittest.TestCase):
                  sorted(planner.RECEIPT_CONTROL_PLANE_TEST_SCRIPTS) +
                  sorted(planner.RECEIPT_CONTROL_PLANE_WORKFLOWS))
         changes = [{'status': 'modified', 'path': path} for path in names]
-        result = planner.plan(diff(changes), REQ, MAP)
+        result = planner.plan(diff(changes), REQ, MAP_26)
         self.assertEqual('resolved', result['coverage_status'])
         self.assertEqual([], result['unresolved_coverage'])
         self.assertFalse(result['broad_required'])
@@ -2425,15 +2473,20 @@ class ReceiptControlPlaneExecutionTests(unittest.TestCase):
     def test_unknown_product_path_stays_unresolved(self):
         for path in ('internal/unmapped/publisher.go', 'spec/unmapped.json'):
             with self.subTest(path=path):
-                result = planner.plan(diff([{'status': 'added', 'path': path}]), REQ, MAP)
+                result = planner.plan(diff([{'status': 'added', 'path': path}]), REQ, MAP_26)
                 self.assertEqual('unresolved', result['coverage_status'])
                 self.assertIn(path, ' '.join(result['unresolved_coverage']))
 
     def test_native_workflow_changes_select_normal_ci_checks(self):
-        path = '.github/workflows/runtime-s3-acceptance.yml'
-        result = planner.plan(diff([{'status': 'modified', 'path': path}]), REQ, MAP)
-        self.assertEqual('resolved', result['coverage_status'])
-        self.assertTrue({'ci-actionlint', 'ci-policy', 'ci-executor-tests'} <= self.check_ids(result))
+        for path in ('.github/workflows/runtime-s3-acceptance.yml',
+                     '.github/workflows/pre-release.yml',
+                     '.github/workflows/release.yml'):
+            with self.subTest(path=path):
+                result = planner.plan(diff([{'status': 'modified', 'path': path}]), REQ, MAP_26)
+                self.assertEqual('resolved', result['coverage_status'])
+                self.assertFalse(result['unresolved_coverage'])
+                self.assertTrue({'ci-actionlint', 'ci-policy', 'ci-executor-tests'} <=
+                                self.check_ids(result))
 
     def test_receipt_execution_check_actually_runs_receipt_suites(self):
         # Coupling guard: the receipt-execution-tests id the planner emits must
@@ -2460,7 +2513,7 @@ class RuntimeProjectionPathMappingTests(unittest.TestCase):
 
     def test_exact_projection_source_resolves_under_source_contracts(self):
         path = 'internal/application/runtime_native_binding_projection.go'
-        result = planner.plan(diff([{'status': 'modified', 'path': path}]), REQ, MAP)
+        result = planner.plan(diff([{'status': 'modified', 'path': path}]), REQ, MAP_26)
         self.assertEqual('resolved', result['coverage_status'])
         self.assertEqual([], result['unresolved_coverage'])
         self.assertFalse(result['broad_required'])
@@ -2470,7 +2523,7 @@ class RuntimeProjectionPathMappingTests(unittest.TestCase):
     def test_unknown_application_source_stays_unresolved(self):
         result = planner.plan(
             diff([{'status': 'added', 'path': 'internal/application/unknown_impl.go'}]),
-            REQ, MAP)
+            REQ, MAP_26)
         self.assertEqual('unresolved', result['coverage_status'])
         self.assertIn('application lifecycle/provider resolution impact needs targeted qualification',
                       ' '.join(result['unresolved_coverage']))
@@ -2487,7 +2540,7 @@ class PodmanDoctorRuntimeImpactMappingTests(unittest.TestCase):
             {'status': 'added', 'path': 'cmd/baha/podman_doctor_checks.go'},
             {'status': 'added', 'path': 'cmd/baha/podman_doctor_checks_test.go'},
         ]
-        result = planner.plan(diff(reviewed), REQ, MAP)
+        result = planner.plan(diff(reviewed), REQ, MAP_26)
         self.assertEqual('resolved', result['coverage_status'], result)
         self.assertEqual([], result['unresolved_coverage'], result)
         self.assertFalse(result['broad_required'])
@@ -2500,7 +2553,7 @@ class PodmanDoctorRuntimeImpactMappingTests(unittest.TestCase):
     def test_unrelated_new_cmd_baha_file_stays_unresolved(self):
         result = planner.plan(
             diff([{'status': 'added', 'path': 'cmd/baha/brand_new_command.go'}]),
-            REQ, MAP)
+            REQ, MAP_26)
         self.assertEqual('unresolved', result['coverage_status'])
         self.assertIn('CLI runtime impact needs qualified targeted native coverage',
                       ' '.join(result['unresolved_coverage']))
@@ -2528,7 +2581,7 @@ class NormalCISelectionTests(unittest.TestCase):
               'new_path': 'scripts/consumer_source_pins.py'}],
         ]:
             with self.subTest(changes=changes):
-                result = planner.plan(diff(changes), REQ, MAP)
+                result = planner.plan(diff(changes), REQ, MAP_26)
                 self.assertEqual('resolved', result['coverage_status'])
                 ids = {row['id'] for row in result['required_validation_checks']}
                 self.assertTrue({'ci-policy', 'ci-executor-tests', 'pr-planner-tests'} <= ids)
@@ -2536,13 +2589,13 @@ class NormalCISelectionTests(unittest.TestCase):
 
     def test_ci_source_cannot_hide_unknown_product_impact(self):
         result = planner.plan(diff(paths('scripts/pr-required-final.py',
-                                         'internal/unmapped/production.go')), REQ, MAP)
+                                         'internal/unmapped/production.go')), REQ, MAP_26)
         self.assertEqual('unresolved', result['coverage_status'])
         self.assertTrue(any('internal/unmapped/production.go' in reason
                             for reason in result['unresolved_coverage']))
 
     def test_changed_cli_unit_tests_run_package_tests(self):
-        result = planner.plan(diff(paths('cmd/baha/new_regression_test.go')), REQ, MAP)
+        result = planner.plan(diff(paths('cmd/baha/new_regression_test.go')), REQ, MAP_26)
         self.assertEqual('resolved', result['coverage_status'])
         self.assertIn('cli-package-tests', {row['id'] for row in result['required_validation_checks']})
 
@@ -2550,18 +2603,266 @@ class NormalCISelectionTests(unittest.TestCase):
         for path in ('internal/delivery/contract.go', 'internal/delivery/contract_test.go'):
             for status in ('added', 'modified', 'deleted'):
                 with self.subTest(path=path, status=status):
-                    result = planner.plan(diff([{'status': status, 'path': path}]), REQ, MAP)
+                    result = planner.plan(diff([{'status': status, 'path': path}]), REQ, MAP_26)
                     self.assertEqual('resolved', result['coverage_status'])
                     self.assertIn('delivery-package-tests', {row['id'] for row in result['required_validation_checks']})
                     self.assertEqual([], result['selected_gates'])
-        unknown = planner.plan(diff(paths('internal/delivery/newpkg/untested.go')), REQ, MAP)
+        unknown = planner.plan(diff(paths('internal/delivery/newpkg/untested.go')), REQ, MAP_26)
         self.assertEqual('unresolved', unknown['coverage_status'])
 
     def test_authority_package_routes_to_tests_without_native_matrix(self):
-        result = planner.plan(diff(paths(*sorted(planner.AUTHORITY_PACKAGE_PATHS))), REQ, MAP)
+        result = planner.plan(diff(paths('internal/coreinstallation/authority.go',
+                                         'internal/stableid/id.go',
+                                         'internal/serviceaccess/local_issuer.go')), REQ, MAP_26)
         self.assertEqual('resolved', result['coverage_status'])
         self.assertIn('authority-package-tests', {row['id'] for row in result['required_validation_checks']})
         self.assertEqual([], result['selected_gates'])
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class DeploymentPackageRoutingTests(unittest.TestCase):
+    def test_state_changes_run_package_consumers_and_both_lifecycles(self):
+        for change in [{'status': kind, 'path': 'internal/deployment/deployment_store.go'}
+                       for kind in ('added', 'modified', 'deleted')]:
+            with self.subTest(change=change):
+                result = planner.plan(diff([change]), REQ, MAP_26)
+                self.assertEqual('resolved', result['coverage_status'])
+                self.assertEqual(['atomic/docker/lifecycle', 'atomic/podman/lifecycle'],
+                                 result['selected_gates'])
+                self.assertTrue({'deployment-package-tests', 'source-contracts', 'cli-build'} <=
+                                {row['id'] for row in result['required_validation_checks']})
+
+    def test_test_only_changes_execute_package_without_native_matrix(self):
+        result = planner.plan(diff(paths('internal/deployment/one_writer_guard_test.go',
+                                         'internal/deployment/preferences_retention_test.go')), REQ, MAP_26)
+        self.assertEqual('resolved', result['coverage_status'])
+        self.assertEqual([], result['selected_gates'])
+        self.assertEqual(['deployment-package-tests'],
+                         [row['id'] for row in result['required_validation_checks']])
+
+    def test_rename_cannot_hide_production_or_unknown_nested_package(self):
+        result = planner.plan(diff([{'status': 'renamed',
+            'old_path': 'internal/deployment/deployment_store.go',
+            'new_path': 'internal/deployment/nested/state.go'}]), REQ, MAP_26)
+        self.assertEqual('unresolved', result['coverage_status'])
+        self.assertEqual(['atomic/docker/lifecycle', 'atomic/podman/lifecycle'],
+                         result['selected_gates'])
+
+
+class AuthorityPackageCompletenessTests(unittest.TestCase):
+    def test_each_known_authority_package_covers_new_direct_source_and_tests(self):
+        for package in planner.AUTHORITY_PACKAGES:
+            for filename in ('new_source.go', 'new_source_test.go'):
+                result = planner.plan(diff(paths(package + '/' + filename)), REQ, MAP_26)
+                self.assertEqual('resolved', result['coverage_status'], result)
+                self.assertTrue({'authority-package-tests', 'source-contracts', 'cli-build'} <=
+                                {row['id'] for row in result['required_validation_checks']})
+                self.assertEqual([], result['selected_gates'])
+
+    def test_unknown_nested_authority_package_stays_unresolved(self):
+        result = planner.plan(diff(paths('internal/serviceaccess/new_package/auth.go')), REQ, MAP_26)
+        self.assertEqual('unresolved', result['coverage_status'])
+
+
+class RuntimePackageCompletenessTests(unittest.TestCase):
+    def test_nested_runtime_tests_are_actually_selected_without_native_matrix(self):
+        for path in ('internal/runtime/remoteprojection/quadlet_test.go',
+                     'internal/runtime/model/plan_test.go',
+                     'internal/runtime/terminal/process_linux_test.go'):
+            result = planner.plan(diff(paths(path)), REQ, MAP_26)
+            self.assertEqual('resolved', result['coverage_status'])
+            self.assertEqual(['runtime-provider-package-tests'],
+                             [row['id'] for row in result['required_validation_checks']])
+            self.assertEqual([], result['selected_gates'])
+
+    def test_shared_quadlet_production_requires_both_runtime_checks(self):
+        result = planner.plan(diff(paths('internal/runtime/remoteprojection/quadlet.go')), REQ, MAP_26)
+        self.assertEqual(['atomic/docker/lifecycle', 'atomic/podman/lifecycle'],
+                         result['selected_gates'])
+        self.assertIn('runtime-provider-package-tests',
+                      {row['id'] for row in result['required_validation_checks']})
+
+
+class ConcreteUnitTestExecutionTests(unittest.TestCase):
+    def test_broker_unit_changes_execute_the_broker_package(self):
+        result = planner.plan(diff(paths('internal/runtimebroker/broker_test.go')), REQ, MAP_26)
+        self.assertEqual('resolved', result['coverage_status'])
+        self.assertEqual(['broker-package-tests'], [row['id'] for row in result['required_validation_checks']])
+        self.assertEqual([], result['selected_gates'])
+
+    def test_cli_engine_name_regression_executes_instead_of_guided_only(self):
+        result = planner.plan(diff(paths('cmd/baha/docker_engine_podman_test.go')), REQ, MAP_26)
+        self.assertEqual('resolved', result['coverage_status'])
+        self.assertIn('cli-package-tests', {row['id'] for row in result['required_validation_checks']})
+        self.assertEqual([], result['selected_gates'])
+
+
+class CurrentProductSeamRoutingTests(unittest.TestCase):
+    def test_openbao_manager_login_paths_resolve_package_tests(self):
+        for name in ('internal/openbao/bootstrap_auth.go',
+                     'internal/openbao/bootstrap_auth_test.go'):
+            with self.subTest(path=name):
+                result = planner.plan(diff(paths(name)), REQ, MAP_26)
+                self.assertEqual('resolved', result['coverage_status'])
+                checks = {row['id'] for row in result['required_validation_checks']}
+                self.assertIn('openbao-package-tests', checks)
+                self.assertFalse(result['unresolved_coverage'])
+
+    def test_mixed_cli_tests_run_with_deployment_owner_implementation(self):
+        result = planner.plan(diff(paths('cmd/baha/deployment_record.go',
+                                         'cmd/baha/app_context_incomplete_test.go',
+                                         'internal/deployment/deployment_store.go')), REQ, MAP_26)
+        self.assertEqual('resolved', result['coverage_status'])
+        self.assertTrue({'cli-package-tests', 'deployment-package-tests', 'source-contracts'} <=
+                        {row['id'] for row in result['required_validation_checks']})
+        self.assertEqual(['atomic/docker/lifecycle', 'atomic/podman/lifecycle'], result['selected_gates'])
+
+    def test_issuer_bridge_runs_authority_openbao_and_cli_consumers(self):
+        for name in ('cmd/baha/application_service_issuer.go', 'internal/openbao/service_issuer.go',
+                     'internal/openbao/service_pki.go', 'internal/testsupport/serviceissuer/issuer.go'):
+            result = planner.plan(diff(paths(name)), REQ, MAP_26)
+            self.assertEqual('resolved', result['coverage_status'])
+            self.assertTrue({'cli-package-tests', 'authority-package-tests', 'openbao-package-tests', 'source-contracts'} <=
+                            {row['id'] for row in result['required_validation_checks']})
+
+    def test_native_backup_source_runs_its_own_existing_gates(self):
+        result = planner.plan(diff(paths('cmd/baha/app_backup_restore_integration_test.go')), REQ, MAP_26)
+        self.assertEqual('resolved', result['coverage_status'])
+        self.assertEqual(['atomic/docker/backup-restore', 'atomic/podman/backup-restore'], result['selected_gates'])
+
+
+class CLISelectedCheckDeduplicationTests(unittest.TestCase):
+    def test_mixed_cli_unit_and_source_runs_guided_only_through_package(self):
+        changes = paths('cmd/baha/deployment_record.go',
+                        'cmd/baha/app_context_incomplete_test.go',
+                        'internal/deployment/deployment_store.go')
+        result = planner.plan(diff(changes), REQ, MAP_26)
+        ids = [check['id'] for check in result['required_validation_checks']]
+        self.assertEqual('resolved', result['coverage_status'])
+        self.assertIn('cli-package-tests', ids)
+        self.assertNotIn('cli-guided-tests', ids)
+        self.assertEqual(1, ids.count('cli-package-tests'))
+        self.assertTrue({'cli-vet', 'cli-build', 'source-contracts'} <= set(ids))
+        self.assertEqual(['atomic/docker/lifecycle', 'atomic/podman/lifecycle'],
+                         result['selected_gates'])
+
+    def test_test_only_change_keeps_one_package_owner_without_native_suite(self):
+        result = planner.plan(diff(paths('cmd/baha/new_regression_test.go')), REQ, MAP_26)
+        ids = [check['id'] for check in result['required_validation_checks']]
+        self.assertEqual('resolved', result['coverage_status'])
+        self.assertIn('cli-package-tests', ids)
+        self.assertNotIn('cli-guided-tests', ids)
+        self.assertEqual([], result['selected_gates'])
+
+    def test_guided_check_is_retained_when_no_full_package_selected(self):
+        result = planner.plan(diff(paths('cmd/baha/docker_engine.go')), REQ, MAP_26)
+        ids = [check['id'] for check in result['required_validation_checks']]
+        self.assertEqual('resolved', result['coverage_status'])
+        self.assertNotIn('cli-package-tests', ids)
+        self.assertIn('cli-guided-tests', ids)
+        self.assertTrue({'cli-vet', 'cli-build'} <= set(ids))
+        self.assertEqual(['atomic/docker/lifecycle', 'atomic/podman/lifecycle'],
+                         result['selected_gates'])
+
+    def test_deduplication_does_not_change_unresolved_coverage_or_gate_scope(self):
+        result = planner.plan(
+            diff(paths('cmd/baha/new_regression_test.go',
+                       'internal/unmapped/production.go')), REQ, MAP_26)
+        self.assertEqual('unresolved', result['coverage_status'])
+        self.assertTrue(result['unresolved_coverage'])
+        ids = [check['id'] for check in result['required_validation_checks']]
+        self.assertIn('cli-package-tests', ids)
+        self.assertNotIn('cli-guided-tests', ids)
+
+
+class ReviewedSudoTTYGateSelectionTests(unittest.TestCase):
+    def setUp(self):
+        self.changed = paths(*planner.SUDO_TTY_REVIEWED_FILES)
+        self.source = diff(self.changed)
+        self.source['head_sha'] = planner.SUDO_TTY_REVIEWED_HEAD
+        self.plan = {
+            'coverage_status': 'resolved', 'unresolved_coverage': [],
+            'selected_gates': ['atomic/docker/guided'],
+            'required_validation_checks': [{'id': 'go-vet', 'command': 'go vet ./cmd/baha'}],
+            'reasons': [],
+        }
+
+    def test_exact_reviewed_terminal_change_has_full_go_proof_without_docker_core(self):
+        narrowed = planner.narrow_reviewed_sudo_tty_plan(self.source, self.plan)
+        self.assertEqual([], narrowed['selected_gates'])
+        ids = {c['id'] for c in narrowed['required_validation_checks']}
+        self.assertTrue({'cli-package-tests', 'cli-gofmt', 'cli-vet', 'cli-build'} <= ids)
+        self.assertEqual(['atomic/docker/guided'], self.plan['selected_gates'])
+
+    def test_reviewed_descendant_with_unchanged_blobs_avoids_duplicate_docker_run(self):
+        descendant = {**self.source, 'head_sha': 'c' * 40}
+        ok = subprocess.CompletedProcess([], 0, stdout='same-blob\\n')
+        with patch.object(planner.subprocess, 'run', return_value=ok) as run:
+            narrowed = planner.narrow_reviewed_sudo_tty_plan(descendant, self.plan)
+        self.assertEqual([], narrowed['selected_gates'])
+        self.assertEqual(7, run.call_count)
+
+    def test_descendant_with_changed_blob_or_missing_ancestry_stays_native(self):
+        descendant = {**self.source, 'head_sha': 'c' * 40}
+        ok = subprocess.CompletedProcess([], 0, stdout='same-blob\\n')
+        modified = subprocess.CompletedProcess([], 0, stdout='new-blob\\n')
+        missing = subprocess.CompletedProcess([], 1, stdout='')
+        with patch.object(planner.subprocess, 'run',
+                          side_effect=[ok, ok, ok, ok, ok, ok, modified]):
+            self.assertIs(self.plan,
+                          planner.narrow_reviewed_sudo_tty_plan(descendant, self.plan))
+        with patch.object(planner.subprocess, 'run', return_value=missing):
+            self.assertIs(self.plan,
+                          planner.narrow_reviewed_sudo_tty_plan(descendant, self.plan))
+
+    def test_other_heads_and_other_source_changes_keep_real_runtime_gate(self):
+        variants = [
+            {**self.source, 'head_sha': 'c' * 40},
+            {**self.source, 'changes': paths('cmd/baha/rootless_bootstrap.go')},
+            {**self.source, 'changes': self.changed + paths('cmd/baha/runtime.go')},
+            {**self.source, 'broad_required': True},
+        ]
+        for variant in variants:
+            with self.subTest(variant=variant):
+                self.assertIs(self.plan,
+                              planner.narrow_reviewed_sudo_tty_plan(variant, self.plan))
+        unresolved = {**self.plan, 'coverage_status': 'unresolved',
+                      'unresolved_coverage': ['unowned change']}
+        self.assertIs(unresolved, planner.narrow_reviewed_sudo_tty_plan(self.source, unresolved))
+
+
+class IdentityProviderPackageRoutingTests(unittest.TestCase):
+    def test_keycloak_test_only_selects_one_package_not_broad_fallback(self):
+        for filename in ('internal/identityprovider/keycloak_single_native_ci_test.go',
+                         'internal/identityprovider/keycloak_files_test.go',
+                         'internal/identityprovider/keycloak_secret_rotation_test.go'):
+            result = planner.plan(diff(paths(filename)), REQ, MAP_26,
+                                  conservative_fallback=True)
+            checks = {row['id'] for row in result['required_validation_checks']}
+            self.assertEqual('resolved', result['coverage_status'])
+            self.assertFalse(result.get('fallback_used', False))
+            self.assertEqual([], result['selected_gates'])
+            self.assertIn('identity-provider-package-tests', checks)
+            self.assertFalse({'go-unit-tests', 'go-build', 'go-vet'} & checks)
+
+    def test_identity_implementation_requires_native_lifecycle_both_runtimes(self):
+        result = planner.plan(
+            diff(paths('internal/identityprovider/keycloak_core_sql.go')),
+            REQ, MAP_26, conservative_fallback=True,
+        )
+        self.assertEqual('resolved', result['coverage_status'])
+        checks = {row['id'] for row in result['required_validation_checks']}
+        self.assertTrue({'identity-provider-package-tests', 'source-contracts',
+                         'cli-vet', 'cli-build'} <= checks)
+        self.assertEqual(['atomic/docker/lifecycle', 'atomic/podman/lifecycle'],
+                         result['selected_gates'])
+
+    def test_unrelated_unknown_code_remains_conservative_fallback(self):
+        result = planner.plan(diff(paths('internal/newly_unknown/feature.go')), REQ, MAP_26,
+                              conservative_fallback=True)
+        self.assertTrue(result['fallback_used'])
+        checks = {row['id'] for row in result['required_validation_checks']}
+        self.assertTrue({'go-unit-tests', 'go-build', 'go-vet'} <= checks)
+        self.assertNotIn('identity-provider-package-tests', checks)

@@ -73,8 +73,10 @@ func repositoryApplicationUp(ctx context.Context, in io.Reader, out, errOut io.W
 
 	reportRepositoryContractEvolution(ctx, out, errOut, resolved)
 
-	if err := ensureRepositoryOpenBaoReady(ctx, in, out, errOut, opts); err != nil {
-		return err
+	if requiresManagedOpenBao(resolved.Manifest) {
+		if err := ensureRepositoryOpenBaoReady(ctx, in, out, errOut, opts); err != nil {
+			return err
+		}
 	}
 	if err := maybeOfferManagedHostTrust(ctx, in, out, opts); err != nil {
 		return err
@@ -100,8 +102,10 @@ func reconcileDevelopmentWorkloadChanges(
 	}
 
 	reportRepositoryContractEvolution(ctx, out, errOut, resolved)
-	if err := ensureRepositoryOpenBaoReady(ctx, in, out, errOut, opts); err != nil {
-		return true, err
+	if requiresManagedOpenBao(resolved.Manifest) {
+		if err := ensureRepositoryOpenBaoReady(ctx, in, out, errOut, opts); err != nil {
+			return true, err
+		}
 	}
 	if err := maybeOfferManagedHostTrust(ctx, in, out, opts); err != nil {
 		return true, err

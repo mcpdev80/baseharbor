@@ -18,16 +18,17 @@ import (
 // deliberately incomplete until actual provider/consumer transitions are wired;
 // it cannot report delivery, authentication or renewal continuity.
 type runtimeDestroyImpact struct {
-	Scope        application.ProviderImpactScope      `json:"scope"`
-	All          bool                                 `json:"all"`
-	Resources    []ownedDestroyResource               `json:"resources"`
-	Preserved    []fullDestroyResult                  `json:"preserved"`
-	Core         []runtimeDestroyCoreImpact           `json:"core"`
-	Effects      []application.OperationalConsequence `json:"effects"`
-	LocalState   []application.ResourceLocation       `json:"local_state_selected_for_deletion"`
-	Applications []applicationDestructionPlan         `json:"application_resets"`
-	Continuation *installationDestroyContinuation     `json:"continuation,omitempty"`
-	Discovery    []fullDestroyResult                  `json:"discovery,omitempty"`
+	Scope         application.ProviderImpactScope      `json:"scope"`
+	All           bool                                 `json:"all"`
+	Resources     []ownedDestroyResource               `json:"resources"`
+	Preserved     []fullDestroyResult                  `json:"preserved"`
+	RecoveryFiles []fullDestroyResult                  `json:"recovery_files_preserved,omitempty"`
+	Core          []runtimeDestroyCoreImpact           `json:"core"`
+	Effects       []application.OperationalConsequence `json:"effects"`
+	LocalState    []application.ResourceLocation       `json:"local_state_selected_for_deletion"`
+	Applications  []applicationDestructionPlan         `json:"application_resets"`
+	Continuation  *installationDestroyContinuation     `json:"continuation,omitempty"`
+	Discovery     []fullDestroyResult                  `json:"discovery,omitempty"`
 }
 
 type runtimeDestroyCoreImpact struct {
@@ -45,6 +46,11 @@ func buildRuntimeDestroyImpact(ctx context.Context, plans []targetDestroyInvento
 	recordDestroyPlan(context.WithValue(ctx, destroyReportContextKey{}, report), plans, preserved)
 	p.Resources = report.Resources
 	p.Preserved = report.Preserved
+	for _, item := range preserved {
+		if item.Resource == "external recovery file" && item.Status == "PRESERVED" {
+			p.RecoveryFiles = append(p.RecoveryFiles, item)
+		}
+	}
 	config, err := deployment.ConfigPath()
 	if err != nil {
 		return p, err
@@ -56,8 +62,8 @@ func buildRuntimeDestroyImpact(ctx context.Context, plans []targetDestroyInvento
 	owners := map[string]string{config: runtimeMutationRevision(data)}
 	zeroBytes(data)
 	if all {
-		_, targetDiscovery := discoverFullDestroyTargets()
-		_, deploymentDiscovery := discoverFullDestroyDeployments()
+		_, targetDiscovery := discoverFullDestroyTargets(ctx)
+		_, deploymentDiscovery := discoverFullDestroyDeployments(ctx)
 		p.Discovery = append(targetDiscovery, deploymentDiscovery...)
 		root, err := deployment.DataRoot()
 		if err != nil {
@@ -91,11 +97,14 @@ func buildRuntimeDestroyImpact(ctx context.Context, plans []targetDestroyInvento
 			}
 			owners["deployment/"+record.Identity.DeploymentID] = runtimeMutationRevision(record)
 			if all {
+				if plan.InventoryError != "" {
+					continue
+				}
 				root, err := targetDataRoot(plan.Target)
 				if err != nil {
 					return p, err
 				}
-				resolved, err := resolveRegisteredApplication(withTargetOverride(ctx, plan.Target.Name), plan.Target, root, record.Identity.Application, record.Identity.Environment, "destroy")
+				resolved, err := resolveRegisteredApplication(withTargetOverride(ctx, plan.Target.Name), plan.Target, root, record.Identity.Application, record.Identity.Environment, "destroy", "")
 				if err != nil {
 					return p, err
 				}
@@ -109,6 +118,13 @@ func buildRuntimeDestroyImpact(ctx context.Context, plans []targetDestroyInvento
 				}
 				p.Applications = append(p.Applications, child)
 			}
+		}
+		if plan.InventoryError != "" {
+			// The exact unobservable condition is part of the consent revision;
+			// an unavailable Target is retained, never guessed at or cleaned up.
+			owners["unavailable-target/"+plan.Target.Name] = runtimeMutationRevision([]byte(plan.InventoryError))
+			p.Preserved = append(p.Preserved, fullDestroyResult{Status: "PRESERVED", Target: plan.Target.Name, Resource: "target-runtime", Detail: "runtime could not be inventoried; runtime resources and Target retry state will be left untouched: " + plan.InventoryError})
+			continue
 		}
 		root, err := targetRuntimeStateRoot(plan.Target)
 		if err != nil {
@@ -141,7 +157,7 @@ func buildRuntimeDestroyImpact(ctx context.Context, plans []targetDestroyInvento
 			return p, runtimeMutationOwnerError()
 		}
 	}
-	p.Effects = []application.OperationalConsequence{{Aspect: "permanent-destruction", Before: "Existing owned resources, registered consumers and retained protected state.", After: "Permanently delete the displayed owned resources and selected local runtime state; --all also selects application deployments and installation configuration. Source repositories and displayed external recovery material are preserved. No working secret delivery, login, leases, certificates, renewal or consumer reconfiguration is guaranteed.", Evidence: "existing native ownership inventory; complete consumer transitions remain unverified"}}
+	p.Effects = []application.OperationalConsequence{{Aspect: "permanent-destruction", Before: "Existing owned resources, registered consumers and retained protected state.", After: "Permanently delete the displayed owned resources and selected local runtime state; --all also selects application deployments and installation configuration. Displayed OpenBao recovery files, source repositories and external application-owned data are preserved. No working secret delivery, login, leases, certificates, renewal or consumer reconfiguration is guaranteed.", Evidence: "existing native ownership inventory; complete consumer transitions remain unverified"}}
 	p.Scope, err = application.ComposeProviderImpactScope(application.ProviderScopeOwner{Owner: operation, Reference: config, Subject: operation, Destructive: true, Revision: runtimeDestroyImpactRevision(p, owners, destroyImpactTargets(plans))}, nil, false)
 	return p, err
 }
@@ -170,7 +186,7 @@ func authorizeRuntimeDestroyImpact(ctx context.Context, p runtimeDestroyImpact, 
 	if err != nil {
 		return false, err
 	}
-	in := applicationInput(ctx, nil)
+	in := applicationInput(ctx, runtimeInput)
 	if consent == nil && !noInput(ctx) && in != nil && readerIsTerminal(in) {
 		value, err := readProviderImpactAcknowledgements(bufio.NewReader(in), out, application.ProviderImpactPlan{PlanID: p.Scope.PlanID, ConfirmationsRequired: p.Scope.ConfirmationsRequired, Destructive: p.Scope.Destructive})
 		if err != nil {

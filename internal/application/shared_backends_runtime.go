@@ -234,6 +234,11 @@ func reconcileSharedPostgresApplication(ctx context.Context, compose bhruntime.R
 }
 
 func renderSharedBackendRuntime(files SharedBackendFiles, state sharedBackendState) error {
+	if sharedBackendUsesValkey(state) {
+		if err := ensureValkeyProviderBuildContext(files.Dir); err != nil {
+			return fmt.Errorf("prepare shared Valkey provider image: %w", err)
+		}
+	}
 	var env strings.Builder
 	if state.ValkeyAdminCredential != "" {
 		password, err := readSharedBackendCredential(files.Dir, state.ValkeyAdminCredential)
@@ -302,6 +307,18 @@ func renderSharedBackendRuntime(files SharedBackendFiles, state sharedBackendSta
 		return err
 	}
 	return os.WriteFile(files.Compose, []byte(sharedBackendCompose(files, state)), 0o600)
+}
+
+func sharedBackendUsesValkey(state sharedBackendState) bool {
+	if state.ValkeyAdminCredential != "" {
+		return true
+	}
+	for _, app := range state.Applications {
+		if len(app.Cache) > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // Keep canonical shape reconstruction read-only for ownership/impact checks.
@@ -408,13 +425,14 @@ func writeSharedPostgresUICompose(b *strings.Builder) {
 	b.WriteString(`  shared-pgadmin:
     image: ` + PostgresUIImage + `
     restart: unless-stopped
-    user: "5050:5050"
     read_only: true
     cap_drop: ["ALL"]
     security_opt: ["no-new-privileges:true"]
     environment:
       PGADMIN_DEFAULT_EMAIL: ${SHARED_PGADMIN_EMAIL}
       PGADMIN_DEFAULT_PASSWORD_FILE: /run/baseharbor/password
+      PGADMIN_CONFIG_PROXY_X_HOST_COUNT: "1"
+      PGADMIN_CONFIG_SHARED_STORAGE: "[{'name': 'BaseHarbor', 'path': '/run/baseharbor', 'restricted_access': True}]"
       PGADMIN_ENABLE_TLS: "True"
       PGADMIN_LISTEN_PORT: "8443"
       PGADMIN_SERVER_JSON_FILE: /run/baseharbor/servers.json
@@ -423,6 +441,7 @@ func writeSharedPostgresUICompose(b *strings.Builder) {
       PGADMIN_CUSTOM_CONFIG_DISTRO_FILE: /var/lib/pgadmin/config_distro.py
       PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
       PGPASS_FILE: /run/baseharbor/pgpass
+    entrypoint: ["/bin/sh", "/run/baseharbor/pgadmin-entrypoint.sh"]
     ports:
       - "127.0.0.1:${SHARED_POSTGRES_UI_HOST_PORT}:8443"
     tmpfs:
@@ -432,6 +451,7 @@ func writeSharedPostgresUICompose(b *strings.Builder) {
       - ./management-ui/postgres/password:/run/baseharbor/password:ro
       - ./management-ui/postgres/servers.json:/run/baseharbor/servers.json:ro
       - ./management-ui/postgres/pgpass:/run/baseharbor/pgpass:ro
+      - ./management-ui/postgres/pgadmin-entrypoint.sh:/run/baseharbor/pgadmin-entrypoint.sh:ro
       - ./management-ui/postgres/postgres.ca.pem:/run/baseharbor/postgres.ca.pem:ro
       - ./management-ui/postgres/server.cert:/certs/server.cert:ro
       - ./management-ui/postgres/server.key:/certs/server.key:ro
@@ -447,7 +467,6 @@ func writeSharedCacheUICompose(b *strings.Builder) {
 	b.WriteString(`  shared-cache-ui:
     image: ` + CacheUIImage + `
     restart: unless-stopped
-    user: "redis"
     read_only: true
     cap_drop: ["ALL"]
     security_opt: ["no-new-privileges:true"]
@@ -469,7 +488,6 @@ func writeSharedCacheUICompose(b *strings.Builder) {
   shared-cache-ui-access:
     image: ` + UIProxyImage + `
     restart: unless-stopped
-    user: "65532:65532"
     read_only: true
     cap_drop: ["ALL"]
     security_opt: ["no-new-privileges:true"]
@@ -550,20 +568,15 @@ func writeSharedPostgresClusterCompose(b *strings.Builder, state sharedBackendSt
 		b.WriteString("    entrypoint: [\"/bin/sh\", \"-ec\"]\n")
 		b.WriteString("    command:\n")
 		b.WriteString("      - |\n")
-		b.WriteString("        uid=$$(id -u postgres); gid=$$(id -g postgres)\n")
-		b.WriteString("        chmod 0755 /run/baseharbor\n")
-		b.WriteString("        install -d -o \"$$uid\" -g \"$$gid\" -m 0750 /run/baseharbor/tls\n")
+		b.WriteString("        mkdir -p /run/baseharbor/tls\n")
 		b.WriteString("        cp /run/baseharbor/tls-source/server-cert.pem /run/baseharbor/tls/server-cert.pem\n")
 		b.WriteString("        cp /run/baseharbor/tls-source/server-key.pem /run/baseharbor/tls/server-key.pem\n")
-		b.WriteString("        chown \"0:$$gid\" /run/baseharbor/tls/server-cert.pem /run/baseharbor/tls/server-key.pem\n")
 		b.WriteString("        chmod 0644 /run/baseharbor/tls/server-cert.pem\n")
-		b.WriteString("        chmod 0640 /run/baseharbor/tls/server-key.pem\n")
-		b.WriteString("        stat -c 'baseharbor=%U:%G %a' /run/baseharbor\n")
-		b.WriteString("        stat -c 'tls=%U:%G %a' /run/baseharbor/tls\n")
-		b.WriteString("        stat -c 'key=%U:%G %a' /run/baseharbor/tls/server-key.pem\n")
+		b.WriteString("        chmod 0600 /run/baseharbor/tls/server-key.pem\n")
+		b.WriteString("        if [ \"$$(id -u)\" = 0 ]; then chown postgres:postgres /run/baseharbor/tls/server-key.pem; fi\n")
 		b.WriteString("        exec /bin/sh /launch.sh init\n")
 		b.WriteString("    tmpfs:\n")
-		b.WriteString("      - /run/baseharbor/tls:rw,noexec,nosuid,nodev,mode=0750\n")
+		b.WriteString("      - /run/baseharbor/tls:rw,noexec,nosuid,nodev,mode=1777\n")
 		b.WriteString("    environment:\n")
 		b.WriteString("      SPILO_PROVIDER: local\n")
 		fmt.Fprintf(b, "      SCOPE: %s\n", strconv.Quote(cluster))
@@ -596,7 +609,6 @@ func writeSharedPostgresAccessCompose(b *strings.Builder, state sharedBackendSta
 	fmt.Fprintf(b, "  %s:\n", sharedPostgresAlias())
 	fmt.Fprintf(b, "    image: %s\n", serviceaccess.TCPGatewayImage)
 	b.WriteString("    restart: unless-stopped\n")
-	b.WriteString("    user: \"99:99\"\n")
 	b.WriteString("    read_only: true\n")
 	b.WriteString("    cap_drop: [\"ALL\"]\n")
 	b.WriteString("    security_opt: [\"no-new-privileges:true\"]\n")
@@ -630,9 +642,9 @@ func writeSharedValkeyCompose(b *strings.Builder, app sharedBackendAppState, ins
 	for ordinal := 0; ordinal < count; ordinal++ {
 		service := sharedValkeyMemberServiceName(app, instance, ordinal)
 		fmt.Fprintf(b, "  %s:\n", service)
-		b.WriteString("    image: docker.io/valkey/valkey:9.1.2-alpine\n")
+		b.WriteString("    image: " + valkeyProviderImage + "\n")
+		writeValkeyImageBuild(b)
 		b.WriteString("    restart: unless-stopped\n")
-		b.WriteString("    user: \"999:1000\"\n")
 		b.WriteString("    read_only: true\n")
 		b.WriteString("    cap_drop: [\"ALL\"]\n")
 		b.WriteString("    security_opt: [\"no-new-privileges:true\"]\n")
@@ -640,6 +652,7 @@ func writeSharedValkeyCompose(b *strings.Builder, app sharedBackendAppState, ins
 		b.WriteString("    environment:\n")
 		fmt.Fprintf(b, "      VALKEY_PASSWORD: ${%s}\n", passwordEnv)
 		b.WriteString("    command:\n      - sh\n      - -ec\n      - |\n")
+		writeValkeyDataPermissionPrelude(b)
 		if ordinal > 0 {
 			writeValkeyPrimaryAddressBootstrap(b, primary)
 		}
@@ -672,9 +685,9 @@ func writeSharedValkeyCompose(b *strings.Builder, app sharedBackendAppState, ins
 		for ordinal := 0; ordinal < 3; ordinal++ {
 			service := sharedValkeySentinelServiceName(app, instance, ordinal)
 			fmt.Fprintf(b, "  %s:\n", service)
-			b.WriteString("    image: docker.io/valkey/valkey:9.1.2-alpine\n")
+			b.WriteString("    image: " + valkeyProviderImage + "\n")
+			writeValkeyImageBuild(b)
 			b.WriteString("    restart: unless-stopped\n")
-			b.WriteString("    user: \"999:1000\"\n")
 			b.WriteString("    read_only: true\n")
 			b.WriteString("    cap_drop: [\"ALL\"]\n")
 			b.WriteString("    security_opt: [\"no-new-privileges:true\"]\n")
@@ -682,6 +695,7 @@ func writeSharedValkeyCompose(b *strings.Builder, app sharedBackendAppState, ins
 			b.WriteString("    environment:\n")
 			fmt.Fprintf(b, "      VALKEY_PASSWORD: ${%s}\n", passwordEnv)
 			b.WriteString("    command:\n      - sh\n      - -ec\n      - |\n")
+			writeValkeyDataPermissionPrelude(b)
 			writeValkeyPrimaryAddressBootstrap(b, primary)
 			b.WriteString("        {\n")
 			b.WriteString("          printf 'port 26379\\n'\n")

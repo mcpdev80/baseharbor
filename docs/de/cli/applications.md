@@ -2,6 +2,14 @@
 
 Application-Befehle arbeiten mit dem portablen Contract und seinem Deployment-Zustand.
 
+Bei `baha app new` erstellt die Auswahl `run` zunächst das Projekt und zeigt
+dann die genaue Identität samt Bestätigungshash des Repository-Kandidaten an.
+Erst nach ausdrücklicher Bestätigung läuft das Deployment weiter. Bei Ablehnung
+bleiben die Projektdateien erhalten; der Assistent zeigt den späteren
+Apply-Befehl. `create-only` startet den Lifecycle nicht.
+
+Der vollständige lokale, Remote- und Team-Weg beginnt unter [Lokal, remote und gemeinsam entwickeln](../how-to/local-remote-team-workflow.md).
+
 [Anwendungsbedarf erstellen und ändern](../how-to/application-needs.md) erklärt die interaktive Checkliste, Target-Provider-Präferenzen und Footprint-Vorschau.
 
 | Befehl | Aufgabe |
@@ -21,7 +29,41 @@ Application-Befehle arbeiten mit dem portablen Contract und seinem Deployment-Zu
 | `baha status` | Zustand beobachten |
 | `baha doctor` | Diagnostizieren, optional reparieren |
 | `baha app update` | Unterstützte Application-Source aktualisieren |
-| `baha destroy` | Application-eigene Ressourcen entfernen |
+| `baha app destroy NAME` | Eine Application und ihre eigenen Ressourcen entfernen |
+
+Auch bei einem ausgewählten Remote-Core-Target lautet der Repository-Ablauf
+`baha app init`, danach `baha up`. Die Initialisierung registriert den Vertrag
+und speichert die Deployment-Einstellungen beim Core. App-Name und Umgebung
+kommen aus `baseharbor.yaml`; der Target-Alias legt keine Umgebung fest.
+Interaktive Aufrufe zeigen die verbleibenden Änderungen aus dem Core-Plan:
+Neuinstallation, Start vorhandener Dienste, Updates und offene Prüfungen.
+Vorhandene Dienste stehen kompakt unter Weiterverwenden. Eine Bestätigung gibt diese Änderungen und den exakten aktuellen
+App-Quellstand frei. Ohne Eingabemöglichkeit erhält der Aufrufer die
+strukturierte Bestätigungsanforderung. Remote-Arbeit zeigt ihre aktuelle Phase
+und Wartezeit; JSON-Ausgaben bleiben maschinenlesbar.
+Beim Aktivieren von Entwicklungs-WebGUIs legt Core deren gemeinsamen Login an,
+wenn noch keiner existiert. Vorhandene Zugangsdaten werden wiederverwendet.
+Ein im Initialisierungsassistenten ausdrücklich gewählter Login wird einschließlich
+Benutzername und eigenem oder erzeugtem Passwort auf dem ausgewählten Core
+konfiguriert.
+Die im Assistenten oder mit `baha dev domain DOMAIN` gewählte Entwicklungsdomain
+wird auf dem ausgewählten Core konfiguriert und lokal projiziert. Neue
+Entwicklungsrechner erhalten die bestehende Core-Domain als Vorschlag.
+DNS-Namen müssen auf den Core zeigen; IP-Links sind davon unabhängig.
+Bei gespeicherter Core-LAN-Adresse und Namen außerhalb von `.localhost`
+verwendet das kanonische Gateway diese Adresse, sofern keine explizite
+Bind-Einstellung vorliegt. `.localhost` bleibt auf Loopback beschränkt.
+Die vorbereitete pgAdmin-Verbindung öffnet die App-Datenbank und
+zeigt im Baum nur diese Datenbank. Interne Core-Datenbanken sind getrennte Ressourcen.
+Ablehnung oder Abbruch der interaktiven Bestätigung stoppt den Rollout. Starte
+`baha up` erneut zum Prüfen und Bestätigen; ein manueller Quellhash ist nicht nötig.
+Nach erfolgreichem Remote-Deployment erscheinen eine kurze READY-Zusammenfassung
+und die App-Links. IP-Links verwenden die Core-Adresse und die tatsächlich
+veröffentlichten dynamischen Ports; kanonische URLs erscheinen ebenfalls.
+`--json` gibt den vollständigen verifizierten Beleg aus, `--verbose` weitere
+menschenlesbare Prüfergebnisse.
+
+Für ein Remote-Target wählst du mit `baha app apply NAME --workload-port VARIABLE=PORT` einen freien veröffentlichten Workload-Port. BaseHarbor prüft, ob die Variable im Compose-Workload des Repositorys vorkommt und der Port auf dem Core-Host frei ist, und speichert die Wahl für dieses Deployment. Beispiel: `--workload-port DEMO_HTTPS_PORT=8081` weicht einem Konflikt auf Port 8080 aus, ohne die Repository-Quelle zu ändern.
 
 ## Erzeugen oder übernehmen
 
@@ -87,24 +129,40 @@ Ownership-Prüfungen. `baha serve` erhält dadurch keine Freigabe: Seine
 Management-Sicherheitsvoraussetzungen und die explizite Core-Installation
 bleiben erforderlich.
 
-Ein lokales `baha app destroy` baut standardmäßig die eigene Runtime und die
-App-Routen ab. Persistente Daten, Zugangsdaten, Recovery-Material und die
-kanonische Deployment-Identität bleiben erhalten. `baha app apply` aktiviert
-das Deployment anhand des aktuellen App-Bedarfs erneut. Runtime-Abbau und
-vollständige Datenlöschung sind getrennte Entscheidungen. Provider-Folgen
-werden mit `Achtung` angezeigt und erfordern zwei ausdrückliche Bestätigungen
-desselben aktuellen Plans; `--yes` ersetzt keine dieser Bestätigungen. Das
-strukturierte Destroy-Ergebnis enthält erhaltenes Material und das gemeinsame
-Provider-Änderungsergebnis. Verifizierter Runtime-Abbau beweist weder weitere
-Secret-Auslieferung noch Login, Zertifikatserneuerung oder nutzbare Recovery.
-Ungeprüfte Folgen bleiben im Ergebnis ausdrücklich unvollständig.
+Für ein bereits ausgewähltes Remote-Target genügt `baha app destroy NAME --yes`;
+Target und Repository-Umgebung werden übernommen. Die CLI zeigt den aktuellen
+Provider-Plan und fragt vor der Änderung nach Zustimmung. Aktivierte, verwaltete
+Hosts-Einträge werden danach abgeglichen. Die Target-Gateway-CA bleibt vertraut,
+solange die Core-Verbindung bestehen bleibt.
+
+`baha app stop NAME --yes` (auch als `baha down` verfügbar) entfernt die laufende
+Anwendung und ihre freigegebenen app-eigenen Provider-Runtimes. Persistente Daten,
+Zugangsdaten, Recovery-Zustand und Deployment-Eigentümer bleiben zur späteren
+Reaktivierung erhalten. Der aktuelle Provider-Folgenplan muss weiterhin separat
+bestätigt werden. `baha app destroy NAME --yes` löscht dauerhaft den
+BaseHarbor-eigenen Anwendungszustand, Zugangsdaten, Runtime-Ressourcen,
+Deployment-Eintrag und Compose-Datenvolumes, deren exklusive Anwendungszuordnung
+verifiziert ist. Gemeinsame, fremde, eingebundene oder nicht eindeutig
+zugeordnete Daten bleiben erhalten und werden angezeigt. Gemeinsame
+Target-Infrastruktur, Repository-Quelldateien und das Vertrauen des weiterhin
+verbundenen Rechners in die Core-CA gehören nicht zu den Anwendungsdaten.
+Provider-Folgen und Datenlöschung werden im aktuellen Plan gezeigt und müssen
+ausdrücklich bestätigt werden. Ein zusätzliches `--full-reset` ist nicht nötig:
+Destroy löscht die eindeutig app-eigenen Daten immer.
 
 Plan-JSON sowie MCP/HTTP-Plan verwenden denselben `footprint`
 (`baseharbor.footprint/v1`). Ein neu geplanter Binding ist `requested/unbound`
 und kein Live-Nachweis. Angeforderte managed Capabilities werden mit ausgewählten
 Providern und ihren echten Abhängigkeiten realisiert. Ein bedingungsloses
-SQL-/Secrets-/Identity-Paket für jede App gibt es nicht. Ein unabhängig aktivierter
-Management-Core behält seine Sicherheitsvoraussetzungen. Speicher-/Containerwerte
+SQL-/Secrets-/Identity-Paket für jede App gibt es nicht. Der Installationsdatensatz
+bewahrt den Wiederherstellungsbesitz, hält aber die
+Laufzeit nicht dauerhaft aktiv. Ein gültiges, nicht abgelaufenes Workstation-
+oder Connector-Zertifikat ist ein eigenständiger Core-Verbraucher; solange es
+existiert, bleiben Core-SQL, OpenBao und Identity verfügbar. Abgelaufene oder
+widerrufene Zertifikate halten keine Dienste fest. Ist das Inventar nicht
+prüfbar, lässt BaseHarbor unsichere Core-Dienste vorsichtshalber laufen. Eine
+SQL-only-Anwendung startet OpenBao und Keycloak nicht allein wegen eines
+Core-Installationsdatensatzes. Speicher-/Containerwerte
 bleiben unbekannt, wenn ihre Zuordnung nicht nachgewiesen ist. Provider-Beobachtungen
 bleiben bis zum geprüften nativen Inventar `unverifiable`. Nichtinteraktives
 App-`--yes` autorisiert keine Einrichtung des Management-Core.
@@ -134,3 +192,26 @@ Voraussetzung. Fehlgeschlagene oder unterbrochene Ausführung bleibt teilweise
 erledigt und wiederaufnehmbar. Release-Bereitschaft benötigt die jeweils erforderliche
 Provider-, Mutationspfad- und native Ökosystem-Abnahme. Einzelne grüne Fixtures
 belegen keine Pre-Release-Bereitschaft.
+
+
+### Deploymente Identität und Wiederherstellung
+
+Jede Anwendungs-Umgebung wird pro Target genau einmal registriert: Die
+Kombination aus application_id und Umgebung identifiziert ein Deployment, und
+Erstregistrierungen sind gegen gleichzeitige Registrierungen serialisiert,
+damit racende `baha app init`-Läufe keine Duplikate anlegen können. Namen
+dürfen sich wiederholen; die Identität ist das UUID-Paar, nicht der Name.
+
+Hält ein Target, das vor dieser Serialisierung registriert wurde, bereits zwei
+Deployments für eine Anwendungs-Identität, scheitern alle Planungskommandos auf
+dem Target sichtbar und nennen beide kollidierenden Deployment-UUIDs.
+`baha app list` zeigt die Zwillinge weiterhin; jedes wird per UUID stillgelegt:
+
+```bash
+baha app destroy --uuid <deployment-uuid> --yes
+```
+
+Anschließend das Target mit `baha app list` nachprüfen. Kommandos mit `--uuid`
+bleiben auf einem solchen Target nutzbar; name-adressierte nicht, bis das
+Duplikat stillgelegt ist. Das Paar `(application_id, environment)` ist die
+System-Identität nach ADR 0017.

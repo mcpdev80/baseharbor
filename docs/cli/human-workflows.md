@@ -1,6 +1,6 @@
 # Human CLI — v0.4.24
 
-The default human CLI is **task-first**. Most developer operations work in the current application repository; advanced operators may use the explicit `app`, `target`, `provider`, `stack`, `config` and `mcp` command groups.
+The default human CLI is **task-first**. Most developer operations work in the current application repository; advanced operators may use the explicit `app`, `target`, `provider`, `stack`, `config` and `mcp` command groups. See [Local, remote and team development](../how-to/local-remote-team-workflow.md) for the end-to-end developer path.
 
 ## Daily workflow
 
@@ -17,9 +17,9 @@ The default human CLI is **task-first**. Most developer operations work in the c
 | Diagnose problems | `baha doctor` |
 | List managed applications | `baha list` |
 | Back up / restore | `baha backup` / `baha restore` |
-| Remove owned application state | `baha destroy --yes` |
+| Remove owned application state | `baha app destroy NAME --yes` |
 
-Outside an application repository, `down` and `destroy` operate at the selected installation/target boundary. **`baha destroy --all` is installation-wide** and must be reviewed separately. `baha down` does not delete application persistent data.
+`baha destroy` removes the complete BaseHarbor installation across all configured Targets; use `baha app destroy NAME` for one application. It displays the concrete plan and requires consequence and data-deletion consent. `baha down` does not delete application persistent data.
 
 Use `baha --help` or `baha COMMAND --help`; developer tasks appear first, and specialist operator namespaces remain discoverable.
 

@@ -58,7 +58,21 @@ func guidedRevision(value any) (string, error) {
 	return hex.EncodeToString(sum[:]), nil
 }
 
+func guidedRevisionSnapshot(snapshot application.ResolutionSnapshot) application.ResolutionSnapshot {
+	revisionSnapshot := snapshot
+	revisionSnapshot.Facts = make(map[string]application.ProviderFact, len(snapshot.Facts))
+	for id, fact := range snapshot.Facts {
+		fact.MemoryBytes, fact.Containers = application.Quantity{}, application.Quantity{}
+		revisionSnapshot.Facts[id] = fact
+	}
+	return revisionSnapshot
+}
+
 func readGuidedApplicationContext(ctx context.Context, resolved resolvedApplication) (GuidedReadContext, error) {
+	return readGuidedApplicationContextWithFacts(ctx, resolved, observeApplicationProviderFacts(ctx, resolved))
+}
+
+func readGuidedApplicationContextWithFacts(ctx context.Context, resolved resolvedApplication, observations map[string]application.ProviderFact) (GuidedReadContext, error) {
 	if resolved.Target.Name == "" || resolved.Manifest.Name == "" {
 		return GuidedReadContext{}, &GuidedReadError{Kind: "missing", Cause: errors.New("Target and application intent are required")}
 	}
@@ -73,7 +87,7 @@ func readGuidedApplicationContext(ctx context.Context, resolved resolvedApplicat
 	if err != nil {
 		return GuidedReadContext{}, guidedReadAuthorityError(err, "incompatible")
 	}
-	snapshot, preferences, err := applicationLifecycleSnapshot(resolved, observeApplicationProviderFacts(ctx, resolved))
+	snapshot, preferences, err := applicationLifecycleSnapshotContext(ctx, resolved, observations)
 	if err != nil {
 		return GuidedReadContext{}, guidedReadAuthorityError(err, "unverifiable")
 	}
@@ -83,17 +97,21 @@ func readGuidedApplicationContext(ctx context.Context, resolved resolvedApplicat
 	}
 	// The lifecycle preview is the existing owner of provider consequences and
 	// the authoritative consent PlanID; a bare union has no impact PlanID.
-	lifecycle, err := buildResolvedApplicationPlan(ctx, resolved)
+	lifecycle, err := buildResolvedApplicationPlanWithFacts(ctx, resolved, observations)
 	if err != nil {
 		return GuidedReadContext{}, &GuidedReadError{Kind: "unverifiable", Cause: err}
 	}
 	plan := lifecycle.ProviderPlan
 	footprint = lifecycle.Footprint
+	// Runtime memory/container samples are footprint display evidence, not a
+	// change in provider ownership, dependencies, or requested intent. Keep the
+	// revision stable across fresh samples while retaining all authoritative
+	// registry and provider facts.
 	snapshotRev, err := guidedRevision(struct {
 		Manifest    application.Manifest
 		Snapshot    application.ResolutionSnapshot
 		Preferences []application.ProviderPreference
-	}{resolved.Manifest, snapshot, preferences})
+	}{resolved.Manifest, guidedRevisionSnapshot(snapshot), preferences})
 	if err != nil {
 		return GuidedReadContext{}, &GuidedReadError{Kind: "unverifiable", Cause: err}
 	}

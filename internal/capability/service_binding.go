@@ -36,6 +36,32 @@ func IsServiceBindingWellKnownName(name string) bool {
 	return ok
 }
 
+// projectedServiceBindingNames returns the names a capability.Binding would
+// project as Service Binding 1.1 output entries. Only the fields the runtime
+// exposes through SERVICE_BINDING_ROOT are enforced here; secure-binding
+// references resolve at the trusted projection boundary and are not entry names.
+func projectedServiceBindingNames(b Binding) []string {
+	names := []string{}
+	if b.Resource.Provider != "" {
+		names = append(names, ServiceBindingProvider)
+	}
+	if b.Security != nil {
+		if b.Security.Identity != nil {
+			names = append(names, "baha.identity-ref")
+		}
+		if len(b.Security.Credentials) > 0 {
+			names = append(names, "baha.credential-ref")
+		}
+		if len(b.Security.Secrets) > 0 {
+			names = append(names, "baha.secret-ref")
+		}
+		if len(b.Security.Trust) > 0 {
+			names = append(names, "baha.trust-ref")
+		}
+	}
+	return names
+}
+
 // ValidateServiceBindingName prevents BaseHarbor from creating aliases for
 // Service Binding 1.1 well-known fields. Provider-specific or capability-specific
 // extensions remain allowed when they use a namespaced name.

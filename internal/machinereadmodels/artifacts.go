@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/jsonschema-go/jsonschema"
+	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/machine"
 	"github.com/mcpdev80/baseharbor/internal/runtimeexplorer"
 )
@@ -25,6 +26,11 @@ func Examples() []Example {
 	scope := machine.OperationContext{Environment: "prod", Target: "synthetic-target", Resource: "synthetic-container"}
 	return []Example{
 		{"app.list", machine.ApplicationListResult{ContractVersion: "v1", Deployments: []machine.DeploymentSummary{{ContractVersion: "v1", DeploymentID: "synthetic-deployment", ApplicationID: "synthetic-application", Target: "synthetic-target", Application: "synthetic-demo", Environment: "prod", RuntimeProvider: "podman", State: "running", Ready: true, SourceKind: "repository", SourceAvailable: true}}}},
+		{"app.versions", ApplicationVersionsResult{ContractVersion: ReleaseViewContractVersion, Releases: []VersionView{{ContractVersion: ReleaseViewContractVersion, Identity: ViewIdentity{Target: "synthetic-target", Application: "synthetic-demo", Environment: "prod", SourceKind: "repository"}, Source: ViewSourceState{Available: true}, Stages: ViewStages{
+			Wanted:   &ViewStageCell{Kind: deployment.ReferenceIntended, Reference: "sha256:synthetic-intended", ObservedAt: now},
+			Applied:  &ViewStageCell{Kind: deployment.ReferenceApplied, Reference: "sha256:synthetic-applied", ObservedAt: now.Add(-time.Hour)},
+			Observed: &ViewStageCell{Kind: deployment.ReferenceObserved, Reference: "sha256:synthetic-applied", ObservedAt: now.Add(-time.Hour)},
+		}}}}},
 		{"app.list", machine.ApplicationListResult{ContractVersion: "v1", Deployments: []machine.DeploymentSummary{}, Warnings: []string{"Synthetic partial source observation"}}},
 		{"target.list", machine.TargetListResult{ContractVersion: "v1", Targets: []machine.TargetSummary{{ContractVersion: "v1", Name: "synthetic-target", RuntimeProvider: "podman", AccessReference: "synthetic-node", Scope: "synthetic-scope", Default: true, Effective: true}}}},
 		{"workspace.list", machine.WorkspaceListResult{ContractVersion: "v1", Workspaces: []machine.WorkspaceSummary{{ContractVersion: "v1", Application: "synthetic-demo", Manifest: "/synthetic/baseharbor.yaml", SourceCount: 1, Sources: map[string]string{"app": "/synthetic/app"}}}}},
@@ -51,6 +57,7 @@ func Golden() ([]byte, error) {
 func Schema() ([]byte, error) {
 	types := map[string]reflect.Type{
 		"app.list":             reflect.TypeFor[machine.ApplicationListResult](),
+		"app.versions":         reflect.TypeFor[ApplicationVersionsResult](),
 		"target.list":          reflect.TypeFor[machine.TargetListResult](),
 		"workspace.list":       reflect.TypeFor[machine.WorkspaceListResult](),
 		"runtime.list":         reflect.TypeFor[[]runtimeexplorer.Resource](),

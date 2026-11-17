@@ -23,7 +23,7 @@ func appInspectCommand() *cli.Command {
 			if err != nil {
 				return err
 			}
-			result, err := inspectRepositorySource(ctx, root)
+			result, err := inspectRepositorySource(ctx, root, out)
 			if err != nil {
 				return err
 			}

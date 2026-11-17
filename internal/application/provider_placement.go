@@ -129,6 +129,17 @@ func ResolveConfiguredProviderPlacement(m Manifest, provider capability.Provider
 		}
 	}
 
+	// Private-mode switch (r27 / w144): when the manifest opts in, force an
+	// application-scoped backend for SQL and key/value so the load-app gets its
+	// own database + own key/value service in their own network. This is the
+	// single documented private mode; it never touches the shared environment
+	// bridge and, when unset (the default), leaves placement untouched.
+	if m.Private && (provider == capability.ProviderPostgreSQL || provider == capability.ProviderValkey) {
+		placement.Scope = capability.ScopeApplication
+		placement.Ownership = capability.OwnershipBaseHarbor
+		placement.ExternalReference = ""
+	}
+
 	if raw := strings.TrimSpace(os.Getenv(ProviderSharingBoundaryEnv(provider))); raw != "" {
 		placement.SharingBoundary = raw
 	}

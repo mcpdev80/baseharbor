@@ -4,26 +4,89 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/cli"
+	"github.com/mcpdev80/baseharbor/internal/coreinstallation"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/machine"
 	"github.com/mcpdev80/baseharbor/internal/machinehttp"
+	"github.com/mcpdev80/baseharbor/internal/sourcetransfer"
 	"github.com/mcpdev80/baseharbor/internal/targetsession"
 )
 
 type bahaMachineExecutor struct {
 	store             application.Store
 	connectorSessions *targetsession.Pool
+	sourceTransfers   *sourcetransfer.Store
 	coreAuthority     *deployment.ResolvedTarget
+	// ownedStateRoot is the durable installation state root this management-host
+	// serve process owns: the server holds the kernel lifecycle lock on it for
+	// the whole server lifetime, so lifecycle operations routed through THIS
+	// executor execute on the owned authority. It is nil for a per-application
+	// runtime broker (which owns no installation) and for the local no-login
+	// path, where nothing binds.
+	ownedStateRoot string
 }
 
 // Bound once during Core startup, before accepting any machine request.
+//
+// The management-host serve process holds the kernel lifecycle lock on
+// ownedStateRoot for its whole lifetime. Lifecycle operations routed through
+// THIS executor execute on the owned authority. The executor must NOT acquire
+// a second, non-reentrant per-operation lifecycle lock on the same root: that
+// would dead-lock against the server itself, because the kernel lock is held
+// for the server's whole lifetime. The owning process already authorises the
+// authority for the whole request, so no second lock is required.
+
+// ManagementInstallation exposes only the startup-pinned local Core identity.
+// It must never resolve installation identity from a request's Target.
+func (e *bahaMachineExecutor) ManagementInstallation(context.Context) (string, string, error) {
+	if e.coreAuthority == nil || (e.coreAuthority.AccessProvider != "" && e.coreAuthority.AccessProvider != "local") {
+		return "", "", errors.New("management API has no pinned local Core authority")
+	}
+	root := e.ownedStateRoot
+	if root == "" {
+		var err error
+		root, err = targetRuntimeStateRoot(*e.coreAuthority)
+		if err != nil {
+			return "", "", err
+		}
+	}
+	state, err := coreinstallation.Load(root)
+	if err != nil {
+		return "", "", err
+	}
+	if !state.Ready || state.Spec.Target != e.coreAuthority.Name || state.Spec.Runtime != e.coreAuthority.RuntimeProvider ||
+		state.IdentityIssuer == "" {
+		return "", "", errors.New("startup Core installation identity is not ready")
+	}
+	return state.ID, state.IdentityIssuer, nil
+}
+
+func (e *bahaMachineExecutor) BindSourceTransfers(store *sourcetransfer.Store) {
+	e.sourceTransfers = store
+}
+
 func (e *bahaMachineExecutor) BindConnectorSessions(pool *targetsession.Pool) {
 	e.connectorSessions = pool
+}
+
+// BindOwnedStateRoot pins the durable installation state root this
+// management-host serve process owns, so lifecycle operations routed through
+// this executor execute on the owned authority. The server holds the kernel
+// lifecycle lock on this root for its whole lifetime, so the executor must NOT
+// acquire a second, non-reentrant per-operation lifecycle lock on the same
+// root (which would dead-lock against the server itself); the owning process
+// already authorises the authority for the whole request.
+func (e *bahaMachineExecutor) BindOwnedStateRoot(root string) {
+	if strings.TrimSpace(root) == "" {
+		return
+	}
+	e.ownedStateRoot = root
 }
 
 func newBahaMachineExecutor(store application.Store) machinehttp.Executor {
@@ -48,6 +111,15 @@ func (e *bahaMachineExecutor) Execute(
 	opts.Quiet = true
 	opts.Plain = true
 	ctx = cli.WithOutputOptions(ctx, opts)
+
+	// Owned-authority passthrough: when this executor belongs to a management
+	// host that owns a durable installation state root, inject that ownership so
+	// lifecycle operations execute on the owned authority. The server already
+	// holds the kernel lifecycle lock on this root for its whole lifetime, so no
+	// second lock is acquired here (that would dead-lock the server).
+	if e.ownedStateRoot != "" {
+		ctx = withOwnedHostState(ctx, e.ownedStateRoot)
+	}
 
 	if report != nil {
 		report(machine.OperationProgress{Stage: "accepted", Message: "Operation accepted by BaseHarbor Core."})

@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mcpdev80/baseharbor/internal/capability"
 )
 
 func TestServiceSchemasUseJSONSchema202012AndStayProviderNeutral(t *testing.T) {
@@ -52,6 +54,46 @@ func TestShippedServiceFamiliesHaveSchemas(t *testing.T) {
 			t.Fatalf("shipped service family %q has no v1 JSON Schema: %v", name, err)
 		}
 	}
+}
+
+func TestServiceBindingSchemaReservesNamespacedExtensionsOnly(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("binding", "v1", "service-binding.schema.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var schema map[string]any
+	if err := json.Unmarshal(data, &schema); err != nil {
+		t.Fatalf("service-binding.schema.json: invalid JSON: %v", err)
+	}
+	if got := schema["$schema"]; got != "https://json-schema.org/draft/2020-12/schema" {
+		t.Fatalf("service-binding.schema.json: $schema=%v", got)
+	}
+}
+
+// TestServiceBindingGuardRejectsUnknownOutputNames asserts the well-known
+// output-name policy: the binding schema reserves open top-level extensions,
+// but the well-known-output-name guard must fail for an unknown, non-namespaced
+// top-level output key. This is the behavioral counterpart to the dialect test.
+func TestServiceBindingGuardRejectsUnknownOutputNames(t *testing.T) {
+	for _, key := range []string{"region", "account", "connectionstring"} {
+		if err := capability.ValidateServiceBindingName(key); err == nil {
+			t.Fatalf("well-known-output-name guard accepted unknown non-namespaced output key %q", key)
+		}
+	}
+
+	for _, key := range []string{"type", "provider", "host", "uri", "username", "private-key", "baha.region", "provider.example/endpoint"} {
+		if err := capability.ValidateServiceBindingName(key); err != nil {
+			t.Fatalf("accepted entry %q rejected: %v", key, err)
+		}
+	}
+}
+
+func keysOf(m map[string]string) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	return out
 }
 
 func TestProviderAndBindingSchemasUseJSONSchema202012(t *testing.T) {

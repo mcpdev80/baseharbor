@@ -2,6 +2,8 @@
 
 BaseHarbor keeps human CLI, JSON and MCP as separate interfaces over the same domain lifecycle.
 
+For the shared human/automation workflow boundary, use [Local, remote and team development](../how-to/local-remote-team-workflow.md) as the entry guide. Machine clients must use explicit operation inputs and the same Target, environment, authorization and consent semantics described there.
+
 ## Structured output
 
 Commands that support machine-readable results use:

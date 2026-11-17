@@ -1,9 +1,20 @@
 package deployment
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 )
+
+// ErrManagedCredentialAlreadyExists documents a create-only (compare-and-swap)
+// seed that could not run because a managed credential already exists for the
+// reference. It lives in the low-level deployment package so both the OpenBao
+// managed-secret authority and the devaccess device-rebind binder can reference
+// the same sentinel without an import cycle. The fresh-device reconcile path
+// treats this as the winning case: the existing managed authority keeps its
+// value and is read back, so a concurrently created managed value is never
+// overwritten by the stale local candidate.
+var ErrManagedCredentialAlreadyExists = errors.New("managed credential already exists")
 
 func OperatorAuthForTargetEnvironment(target, environment string) (OperatorAuthEnvironmentConfig, bool, error) {
 	cfg, err := LoadConfig()

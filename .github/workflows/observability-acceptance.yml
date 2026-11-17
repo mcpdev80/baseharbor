@@ -35,11 +35,16 @@ permissions:
 jobs:
   docker:
     if: ${{ inputs.all_runtimes || !contains(github.ref_name, '/podman/') }}
-    runs-on: [self-hosted, Linux, X64, baseharbor, docker]
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
       BASEHARBOR_TEST_RUNTIME: docker
       BASEHARBOR_OBSERVABILITY_ACCEPTANCE: "1"
+      # Fresh hosted runners have no pre-provisioned shared backends; a first-time
+      # shared backend needs two-stage operator consent an unattended acceptance
+      # journey cannot give. Pin application placement (update_core_isolated_test.go:34).
+      BASEHARBOR_PROVIDER_POSTGRESQL_SCOPE: application
+      BASEHARBOR_PROVIDER_VALKEY_SCOPE: application
       BASEHARBOR_RUNTIME_IMAGE: baseharbor-runtime:observability-ci
 
     steps:
@@ -47,6 +52,9 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.ref || github.sha }}
+
+      - name: Prepare verified rootless runtime
+        run: bash scripts/ci-core-rootless-runtime.sh
 
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
@@ -100,11 +108,13 @@ jobs:
 
   podman:
     if: ${{ inputs.all_runtimes || contains(github.ref_name, '/podman/') }}
-    runs-on: [self-hosted, Linux, X64, baseharbor, podman]
+    runs-on: ubuntu-26.04
     timeout-minutes: 20
     env:
       BASEHARBOR_TEST_RUNTIME: podman
       BASEHARBOR_OBSERVABILITY_ACCEPTANCE: "1"
+      BASEHARBOR_PROVIDER_POSTGRESQL_SCOPE: application
+      BASEHARBOR_PROVIDER_VALKEY_SCOPE: application
       BASEHARBOR_RUNTIME_IMAGE: baseharbor-runtime:observability-ci
 
     steps:
@@ -112,6 +122,9 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.ref || github.sha }}
+
+      - name: Prepare verified rootless runtime
+        run: bash scripts/ci-core-rootless-runtime.sh
 
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7

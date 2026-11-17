@@ -202,8 +202,18 @@ func listApplicationSecretKeysWithToken(ctx context.Context, executor Executor, 
 
 func listApplicationSecretDocuments(ctx context.Context, executor Executor, files bhruntime.Files, token string, identity ApplicationIdentity) ([]string, error) {
 	out, err := execWithToken(ctx, executor, files, token, fmt.Sprintf(`exec bao kv list -format=json -mount=baseharbor %s`, applicationSecretPath(identity)))
-	if err != nil {
-		return nil, errors.New("list managed OpenBao application secret documents failed")
+	return parseManagedApplicationSecretDocuments(out, err)
+}
+
+func parseManagedApplicationSecretDocuments(out string, commandErr error) ([]string, error) {
+	if commandErr != nil {
+		// OpenBao's CLI exits nonzero for an absent KV v2 namespace and emits
+		// exactly {}. Treat this as an already-clean namespace while preserving
+		// authorization, transport, and other command failures.
+		if strings.TrimSpace(out) == "{}" {
+			return []string{}, nil
+		}
+		return nil, fmt.Errorf("list managed OpenBao application secret documents failed: %w", commandErr)
 	}
 	var raw []string
 	if err := json.Unmarshal([]byte(out), &raw); err != nil {

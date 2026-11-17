@@ -16,6 +16,14 @@ import (
 )
 
 func standaloneProviderVersionChangeRequests(ctx context.Context, resolved resolvedApplication, requests []application.ProviderChangeRequest) ([]application.ProviderChangeRequest, error) {
+	return standaloneProviderVersionChangeRequestsWithPrior(ctx, resolved, requests, retainedApplicationBackendIntent)
+}
+
+func standaloneProviderVersionChangeRequestsForPlan(ctx context.Context, resolved resolvedApplication, requests []application.ProviderChangeRequest) ([]application.ProviderChangeRequest, error) {
+	return standaloneProviderVersionChangeRequestsWithPrior(ctx, resolved, requests, retainedApplicationBackendIntentForPlan)
+}
+
+func standaloneProviderVersionChangeRequestsWithPrior(ctx context.Context, resolved resolvedApplication, requests []application.ProviderChangeRequest, loadPrior func(resolvedApplication) (application.Manifest, error)) ([]application.ProviderChangeRequest, error) {
 	enabled, err := application.TracesCollectionEnabled(resolved.Manifest)
 	if err != nil {
 		return nil, err
@@ -39,7 +47,7 @@ func standaloneProviderVersionChangeRequests(ctx context.Context, resolved resol
 	for _, request := range requests {
 		seen[request.InstanceID] = true
 	}
-	prior, err := retainedApplicationBackendIntent(resolved)
+	prior, err := loadPrior(resolved)
 	if err != nil {
 		return nil, err
 	}

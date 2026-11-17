@@ -70,6 +70,12 @@ func (f *nativeBackendRetirementFixture) RetireOwnedProjectContainers(_ context.
 	return nil
 }
 
+// ConfigJSONProjectFilesEnv renders no model so the retirement path keeps the
+// canonical single-ordinal fallback for this non-Compose native backend.
+func (f *nativeBackendRetirementFixture) ConfigJSONProjectFilesEnv(context.Context, string, string, map[string]string, ...string) (string, error) {
+	return "", nil
+}
+
 func TestNamedBackendRemovalRequiresImpactAndPreservesPeerData(t *testing.T) {
 	resolved := retainedNativeBackendFixture(t)
 	prior := resolved.Manifest
@@ -117,7 +123,8 @@ func TestNamedBackendRemovalRequiresImpactAndPreservesPeerData(t *testing.T) {
 	}
 	// An interrupted prior apply retains the original manifest even after the
 	// generated definition is updated. Repeating the cleanup remains possible.
-	if _, err := recordDeploymentBeforeMutation(context.Background(), resolved, "applying"); err != nil {
+	confirmCtx, confirm := withConfirmCandidateDigestForResolved(context.Background(), resolved)
+	if _, err := recordDeploymentBeforeMutation(confirmCtx, resolved, "applying", confirm); err != nil {
 		t.Fatal(err)
 	}
 	canonical, err := application.RuntimeComposeYAMLForProject(resolved.Manifest, files.ResourceProject)

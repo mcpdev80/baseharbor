@@ -63,6 +63,21 @@ func StopOwnedProjectServices(ctx context.Context, provider RuntimeServiceStopPr
 	if err != nil {
 		return r, err
 	}
+	// Compute the validated planned native-name set once for each selected
+	// service from the actual Compose render inputs, so both the initial
+	// replica check below and the selected-stop postcondition share this exact
+	// contract (0427-128: a pinned container_name lives outside
+	// <project>-<service>-1 and must be accepted there too).
+	plannedByService := map[string][]string{}
+	if cfg, ok := provider.(RuntimeConfigProvider); ok && len(composeFiles) > 0 {
+		if rendered, rerr := cfg.ConfigJSONProjectFilesEnv(ctx, project, workdir, nil, composeFiles...); rerr == nil && rendered != "" {
+			for _, service := range services {
+				if planned, perr := parsedExpectedContainerNames(rendered, project, service); perr == nil && len(planned) > 0 {
+					plannedByService[service] = planned
+				}
+			}
+		}
+	}
 	baseline := map[string]RuntimeContainer{}
 	live := map[string]bool{}
 	for _, container := range containers {
@@ -76,9 +91,13 @@ func StopOwnedProjectServices(ctx context.Context, provider RuntimeServiceStopPr
 		if !selected[container.Service] {
 			continue
 		}
-		resource := ProjectResource{Kind: "container", Name: project + "-" + container.Service + "-1"}
-		if !ContainerMatchesProjectResource(provider.Kind(), container, project, resource) {
-			return r, errors.New("selected stop has an unplanned service replica")
+		plannedNames := plannedByService[container.Service]
+		if provider.Kind() == ProviderPodman {
+			plannedNames = append(plannedNames, project+"-"+container.Service, project+"-"+container.Service+"-1")
+		}
+		plannedNames = append(plannedNames, project+"-"+container.Service+"-1")
+		if !containerNameInPlannedSet(provider.Kind(), container, project, plannedNames) {
+			return r, fmt.Errorf("selected stop has an unplanned service replica (%s): %s", container.Service, container.Name)
 		}
 		live[container.Service] = true
 	}
@@ -113,6 +132,18 @@ func StopOwnedProjectServices(ctx context.Context, provider RuntimeServiceStopPr
 			for service := range selected {
 				selectedContainer = selectedContainer || resource == (ProjectResource{Kind: "container", Name: project + "-" + service + "-1"})
 			}
+			// Compose may remove a selected container with an explicit
+			// container_name during stop/backup. Its disappearance is native
+			// process retirement, not loss of a retained sibling. Only admit
+			// the exact previously observed selected service instance when
+			// its name was verified against the rendered Compose plan.
+			if resource.Kind == "container" && !selectedContainer {
+				if previous, ok := baseline[resource.Name]; ok && selected[previous.Service] {
+					plannedNames := append([]string(nil), plannedByService[previous.Service]...)
+					plannedNames = append(plannedNames, project+"-"+previous.Service+"-1")
+					selectedContainer = containerNameInPlannedSet(provider.Kind(), previous, project, plannedNames)
+				}
+			}
 			if selectedContainer {
 				r.Removed = append(r.Removed, resource)
 				continue
@@ -129,7 +160,9 @@ func StopOwnedProjectServices(ctx context.Context, provider RuntimeServiceStopPr
 	for _, container := range actual {
 		if container.Project == project {
 			observed[container.Name] = container
-			if selected[container.Service] && (!ContainerMatchesProjectResource(provider.Kind(), container, project, ProjectResource{Kind: "container", Name: project + "-" + container.Service + "-1"}) || container.Running) {
+			plannedNames := plannedByService[container.Service]
+			plannedNames = append(plannedNames, project+"-"+container.Service+"-1")
+			if selected[container.Service] && (!containerNameInPlannedSet(provider.Kind(), container, project, plannedNames) || container.Running) {
 				listErr = errors.Join(listErr, errors.New("selected stop observed an unexpected or running service process"))
 				r.VerificationFailures = append(r.VerificationFailures, "unexpected-or-running-selected-process:"+container.Service)
 			}

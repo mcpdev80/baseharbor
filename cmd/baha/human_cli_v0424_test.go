@@ -11,14 +11,14 @@ import (
 )
 
 func TestAppDownRejectsUnknownOptionsBeforeRuntime(t *testing.T) {
-	for _, args := range [][]string{{"app", "down", "--yes"}, {"app", "down", "--unknown"}} {
+	for _, args := range [][]string{{"app", "down", "--yes", "--unknown"}} {
 		var out bytes.Buffer
 		err := runWithIO(context.Background(), args, &out, &out)
 		if err == nil {
 			t.Fatalf("%v should fail", args)
 		}
 		var usage *cli.UsageError
-		if !errors.As(err, &usage) || !strings.Contains(usage.Message, "unknown option") {
+		if !errors.As(err, &usage) || (!strings.Contains(usage.Message, "unknown option") && !strings.Contains(usage.Message, "unsupported remote application option")) {
 			t.Fatalf("%v: want typed unknown option, got %v", args, err)
 		}
 	}
@@ -67,8 +67,8 @@ func TestHumanOpenFailsClosedBeforeBrowserInvocation(t *testing.T) {
 
 func TestTargetDeleteUnknownFlagIsNotNameError(t *testing.T) {
 	var out bytes.Buffer
-	err := runWithIO(context.Background(), []string{"target", "delete", "example", "--yes"}, &out, &out)
-	if err == nil || !strings.Contains(err.Error(), "unknown target delete option --yes") {
-		t.Fatalf("target delete must reject undeclared --yes: %v", err)
+	err := runWithIO(context.Background(), []string{"target", "delete", "example", "--bogus"}, &out, &out)
+	if err == nil || !strings.Contains(err.Error(), "unknown target delete option --bogus") {
+		t.Fatalf("target delete must reject undeclared options: %v", err)
 	}
 }

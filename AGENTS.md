@@ -73,11 +73,17 @@ workflow and explicit prerequisites before enabling them.
 
 ## CI checks and commit receipts
 
-CI, Pre-Release and Release run ordinary required jobs. Their dependency results determine success; missing, failing or cancelled required work blocks. There is no CI gate-manifest collection, completed-run/job re-verification, evidence reuse, receipt approval or shadow chain. After an authorized develop merge the sole CI record contains merge SHA and PR number; see [minimal CI receipts](docs/development/minimal-ci-receipts.md).
+CI, Pre-Release and Release run ordinary required jobs. Their dependency results determine success; missing, failing or cancelled required work blocks. There is no CI gate-manifest collection, completed-run/job re-verification, evidence reuse, receipt approval or shadow chain. Prior successful CI jobs are never acceptance evidence or merge receipts; an ephemeral same-PR scheduling optimization may omit unchanged successful checks only within 24 hours after authenticated ancestry, workflow/toolchain/test-definition identity, and dependency-aware invalidation checks. Missing or ambiguous proof always schedules the normal full selection. After an authorized develop merge the sole CI record contains merge SHA and PR number; see [minimal CI receipts](docs/development/minimal-ci-receipts.md).
 
 Rulesets remain disabled during the current CI repair. Do not claim live Required Check enforcement until separately verified and enabled. This change authorizes no release or tag. Product audit/recovery records, source pinning, artifact checksums and build provenance retain their own semantics.
 
 ## CI execution discipline
+
+Ordinary branch pushes do not start CI. Draft PRs run workflow policy, source
+formatting and readability checks. Marking a PR ready and subsequent pushes run
+its selected checks. Bundle local commits into coherent pushes. Merging into
+`develop` writes the small receipt without a duplicate Source & Quality run.
+Explicit validation branches and manual validation remain available.
 
 - Batch related implementation, test and formatting changes into one coherent
   verification candidate. Run available focused local or isolated prechecks
@@ -97,8 +103,10 @@ Rulesets remain disabled during the current CI repair. Do not claim live Require
   and why cheaper checks are insufficient. Do not trade away required coverage,
   safety, runner isolation, actual test execution or fail-closed checks.
 - Select checks from actual impact. Run targeted native runtime gates only when
-  needed to prove uncovered behavior. Unknown impact must block explicitly;
-  never automatically launch the complete release matrix for a PR.
+  needed to prove uncovered behavior. Valid paths without a narrow mapping select
+  broad Go unit/vet/build checks and applicable Docker/Podman lifecycles. Invalid
+  source/diff/catalog data still fails; never automatically launch the complete
+  release matrix for a PR.
 - Run affected checks directly. Label deliberate negative pilots and their expected failure.
 - Repeated pushes that unnecessarily cancel running checks are a process
   defect. Do not hide the churn by disabling required checks or cancellation

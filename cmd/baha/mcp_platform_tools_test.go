@@ -57,7 +57,9 @@ func TestPlatformDestructionAndHostTrustNeedApprovalBeforeRuntime(t *testing.T) 
 }
 
 func TestDevelopmentCredentialsMCPNeverReturnsProtectedValue(t *testing.T) {
-	target := configureTestTarget(t)
+	// This test verifies protected local credential handling without a Core.
+	// A registered Core with missing runtime files must fail closed instead.
+	target := configureTestTargetEmpty(t)
 	t.Chdir(t.TempDir())
 	protected := filepath.Join(t.TempDir(), "password")
 	if err := os.WriteFile(protected, []byte("NEVER_EXPOSE_DEVELOPMENT_PASSWORD\n"), 0600); err != nil {

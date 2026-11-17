@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
@@ -60,6 +61,59 @@ func TestRepositoryDesiredStateFingerprintChangesWithRepositorySource(t *testing
 	}
 	if first == second {
 		t.Fatal("repository source change did not change desired-state fingerprint")
+	}
+}
+
+// Source+image traversal completeness (r27 round 7, finding 3 recipe / w65
+// Punkt 4): the desired-state fingerprint must detect a change to a component's
+// OWNED image reference, not only to a tracked file. The image reference is part
+// of the component source-identity that enters the fingerprint, so an operator
+// who retargets the component image must change the candidate digest that binds
+// the deployment — the ownership boundary of the component source is enforced.
+func TestRepositoryDesiredStateFingerprintDetectsComponentImageRetarget(t *testing.T) {
+	repo := t.TempDir()
+	manifestPath := filepath.Join(repo, "baseharbor.yaml")
+	manifest := `version: 1
+app:
+  name: demo
+  environment: dev
+components:
+  - component: web
+    source:
+      type: repository
+      path: ./web
+    image: ghcr.io/example/web:v1
+`
+	if err := os.WriteFile(manifestPath, []byte(manifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	webDir := filepath.Join(repo, "web")
+	if err := os.MkdirAll(webDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(webDir, "index.html"), []byte("<h1>1</h1>"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	resolved := resolvedApplication{
+		Manifest:       application.New("demo", "dev", false, false, false),
+		ManifestPath:   manifestPath,
+		FromRepository: true,
+	}
+	first, err := repositoryDesiredStateFingerprint(context.Background(), resolved)
+	if err != nil {
+		t.Fatalf("fingerprint: %v", err)
+	}
+	// Retarget the owned component image only — no tracked file changes.
+	if err := os.WriteFile(manifestPath, []byte(strings.ReplaceAll(manifest, "ghcr.io/example/web:v1", "ghcr.io/example/web:v2")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	second, err := repositoryDesiredStateFingerprint(context.Background(), resolved)
+	if err != nil {
+		t.Fatalf("fingerprint after retarget: %v", err)
+	}
+	if first == second {
+		t.Fatal("component image retarget did not change desired-state fingerprint; component image ownership not traversed")
 	}
 }
 

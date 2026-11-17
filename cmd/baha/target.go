@@ -54,6 +54,28 @@ func withTargetOverride(ctx context.Context, name string) context.Context {
 	return context.WithValue(ctx, targetOverrideContextKey{}, strings.TrimSpace(name))
 }
 
+// ownedHostStateContextKey pins the durable installation state root this
+// management-host serve process owns. Lifecycle operations routed through the
+// owning executor read it so they execute on the owned authority without
+// acquiring a second, non-reentrant lifecycle lock on the same root.
+type ownedHostStateContextKey struct{}
+
+// withOwnedHostState pins the owned durable installation state root into the
+// selection context. It is only set on the executor path of a management host
+// that owns an existing installation.
+func withOwnedHostState(ctx context.Context, root string) context.Context {
+	return context.WithValue(ctx, ownedHostStateContextKey{}, strings.TrimSpace(root))
+}
+
+// ownedHostStateRoot returns the durable installation state root this serve
+// process owns, if any. An empty result means no owning management host is in
+// force (a per-application runtime broker, or the local no-login path), so the
+// executor selects the authority the normal way.
+func ownedHostStateRoot(ctx context.Context) string {
+	root, _ := ctx.Value(ownedHostStateContextKey{}).(string)
+	return root
+}
+
 func targetOverrideFromContext(ctx context.Context) string {
 	if ctx == nil {
 		return ""
@@ -142,7 +164,7 @@ func targetCommand() *cli.Command {
 	return &cli.Command{
 		Name:    "target",
 		Summary: "Inspect and manage BaseHarbor deployment targets",
-		Usage:   "baha target [list|show|create|delete|activate|deactivate] [-o json|--output json|--json]",
+		Usage:   "baha target [list|show|policy|create|delete|activate|deactivate] [-o json|--output json|--json]",
 		Run:     inspectTargetCommand,
 		Children: []*cli.Command{
 			{
@@ -221,10 +243,11 @@ func targetCommand() *cli.Command {
 				},
 			},
 			targetShowCommand(),
+			targetPolicyCommand(),
 			{
 				Name:    "create",
 				Summary: "Create a deployment target",
-				Usage:   "baha target create NAME --runtime-provider PROVIDER --access ACCESS --access-provider PROVIDER --reference REFERENCE [--scope SCOPE] [--default] [--docker-endpoint SOCKET | --docker-context CONTEXT] [--docker-mode rootless|rootful]; baha target create NAME --from-recovery PATH",
+				Usage:   "baha target create NAME --runtime-provider PROVIDER --access ACCESS --access-provider PROVIDER --reference REFERENCE [--scope SCOPE] [--tenant-id UUID] [--deployment-preset development|test|staging|production|custom] [--default] [--docker-endpoint SOCKET | --docker-context CONTEXT] [--docker-mode rootless|rootful]; baha target create NAME --from-recovery PATH",
 				Run:     createTarget,
 			},
 			{
@@ -254,6 +277,14 @@ func targetCommand() *cli.Command {
 					}
 					if _, ok := cfg.Targets[args[0]]; !ok && args[0] != "local" {
 						return machine.NewError(machine.ErrorNotFound, fmt.Sprintf("target %q is not configured", args[0]), "Run baha target list to choose an existing deployment Target.", false)
+					}
+					// Bind the explicit selection through the single production
+					// management-connection boundary BEFORE persisting: a Target
+					// without a verified management connection fails closed and
+					// persists no selection. Explicit selection wins
+					// deterministically over any context-derived connection.
+					if err := bindExplicitSelectionToConnection(ctx, args[0]); err != nil {
+						return err
 					}
 					if err := writePersistedTarget(args[0]); err != nil {
 						return err
@@ -456,11 +487,13 @@ func createTarget(ctx context.Context, args []string, out, errOut io.Writer) err
 		fmt.Fprintf(out, "Target %s definition restored; live access and authentication remain to be verified. Activate it explicitly when selection is blocked.\n", name)
 		return nil
 	}
-	var runtimeProvider, accessProvider, accessName, reference, scope, dockerEndpoint, dockerContext, dockerMode string
+	var runtimeProvider, accessProvider, accessName, reference, scope, tenantID, dockerEndpoint, dockerContext, dockerMode string
+	var deploymentPreset, deploymentBranches string
+	policyFlags := make(map[string]string)
 	makeDefault := false
 	for i := 1; i < len(args); i++ {
 		switch args[i] {
-		case "--provider", "--runtime-provider", "--access-provider", "--access", "--reference", "--scope", "--docker-endpoint", "--docker-context", "--docker-mode":
+		case "--provider", "--runtime-provider", "--access-provider", "--access", "--reference", "--scope", "--tenant-id", "--docker-endpoint", "--docker-context", "--docker-mode", "--deployment-preset", "--deployment-branches", "--deployment-dirty", "--deployment-commit", "--deployment-remote-commit", "--deployment-approval", "--deployment-image-digest":
 			if i+1 >= len(args) || strings.HasPrefix(args[i+1], "-") {
 				return usageError(args[i]+" requires a value", "Run 'baha target create --help' for usage.")
 			}
@@ -477,17 +510,25 @@ func createTarget(ctx context.Context, args []string, out, errOut io.Writer) err
 				reference = value
 			case "--scope":
 				scope = value
+			case "--tenant-id":
+				tenantID = value
 			case "--docker-endpoint":
 				dockerEndpoint = value
 			case "--docker-context":
 				dockerContext = value
 			case "--docker-mode":
 				dockerMode = value
+			case "--deployment-preset":
+				deploymentPreset = value
+			case "--deployment-branches":
+				deploymentBranches = value
+			case "--deployment-dirty", "--deployment-commit", "--deployment-remote-commit", "--deployment-approval", "--deployment-image-digest":
+				policyFlags[key] = value
 			}
 		case "--default":
 			makeDefault = true
 		default:
-			return unknownOptionUsage("baha target create", args[i], "--provider", "--runtime-provider", "--access-provider", "--access", "--reference", "--scope", "--default", "--docker-endpoint", "--docker-context", "--docker-mode")
+			return unknownOptionUsage("baha target create", args[i], "--provider", "--runtime-provider", "--access-provider", "--access", "--reference", "--scope", "--tenant-id", "--default", "--docker-endpoint", "--docker-context", "--docker-mode", "--deployment-preset", "--deployment-branches", "--deployment-dirty", "--deployment-commit", "--deployment-remote-commit", "--deployment-approval", "--deployment-image-digest")
 		}
 	}
 	if runtimeProvider == "" || accessName == "" || reference == "" {
@@ -500,7 +541,11 @@ func createTarget(ctx context.Context, args []string, out, errOut io.Writer) err
 			return usageError("non-local target access requires --access-provider", "Example: baha target create docker-remote --runtime-provider docker --access node-a --access-provider baseharbor-node-connector --reference node-a")
 		}
 	}
-	result, err := createTargetDefinition(ctx, machineTargetCreateInput{Name: name, RuntimeProvider: runtimeProvider, AccessProvider: accessProvider, Access: accessName, Reference: reference, Scope: scope, Default: makeDefault, DockerEndpoint: dockerEndpoint, DockerContext: dockerContext, DockerMode: dockerMode})
+	policy, err := resolveTargetDeploymentPolicyFlags(deploymentPreset, deploymentBranches, policyFlags)
+	if err != nil {
+		return err
+	}
+	result, err := createTargetDefinition(ctx, machineTargetCreateInput{Name: name, RuntimeProvider: runtimeProvider, AccessProvider: accessProvider, Access: accessName, Reference: reference, Scope: scope, TenantID: tenantID, Default: makeDefault, DockerEndpoint: dockerEndpoint, DockerContext: dockerContext, DockerMode: dockerMode, DeploymentPolicy: policy})
 	if err != nil {
 		return err
 	}
@@ -521,13 +566,27 @@ func deleteTarget(ctx context.Context, args []string, out, errOut io.Writer) err
 		return err
 	}
 	args = filtered
+	yes := false
+	kept := make([]string, 0, len(args))
 	for _, arg := range args {
-		if strings.HasPrefix(arg, "-") {
-			return &cli.UsageError{Message: "unknown target delete option " + arg, Hint: "Use baha target delete NAME; target deletion does not accept --yes.", NoSuggestions: arg == "--yes" || arg == "-y"}
+		switch arg {
+		case "--yes", "-y":
+			yes = true
+		case "-o", "--output", "--json":
+			// already consumed by parseReadOutputArgs; ignore if still present
+		default:
+			if strings.HasPrefix(arg, "-") {
+				return &cli.UsageError{Message: "unknown target delete option " + arg, Hint: "Use baha target delete NAME. --yes honours the two non-destructive consequence acknowledgements for config-only detachment on the local path.", NoSuggestions: arg == "--yes" || arg == "-y"}
+			}
+			kept = append(kept, arg)
 		}
 	}
+	args = kept
 	if len(args) != 1 {
 		return usageError("baha target delete requires NAME", "Example: baha target delete docker-dev")
+	}
+	if yes {
+		ctx = withAssumeYes(ctx, true)
 	}
 	name := args[0]
 	var presentation io.Writer = out
@@ -547,6 +606,19 @@ func deleteTarget(ctx context.Context, args []string, out, errOut io.Writer) err
 
 func targetRuntimeStateRoot(target deployment.ResolvedTarget) (string, error) {
 	root, err := deployment.TargetStateRoot(target.Name)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(root, "runtime"), nil
+}
+
+// targetRuntimeStateRootByName resolves the Core installation runtime root for a
+// Target name (deployment.TargetStateRoot/<name>/runtime): the exact root the
+// reading resolver coreinstallation.ResolverForTargetSelection loads. It backs
+// cmd/baha/use_target.go bindExplicitSelectionToConnection, which binds the
+// explicit selection through the management-connection boundary before persisting.
+func targetRuntimeStateRootByName(name string) (string, error) {
+	root, err := deployment.TargetStateRoot(name)
 	if err != nil {
 		return "", err
 	}

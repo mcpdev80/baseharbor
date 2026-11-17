@@ -425,7 +425,7 @@ func (d *Driver) DestroyBucket(ctx context.Context, logicalBucket string) error 
 	}
 	physical := PhysicalBucketName(d.app, logicalBucket)
 	command := fmt.Sprintf("s3.bucket.delete -name=%s", physical)
-	if err := d.runSeaweedShell(ctx, command); err != nil {
+	if _, err := d.runSeaweedShellOutput(ctx, command); err != nil && !isSeaweedFSBucketNotFound(err) {
 		return fmt.Errorf("destroy S3 bucket %s: %w", logicalBucket, err)
 	}
 	iamUser, err := currentBucketIAMUser(d.files, logicalBucket, physical)
@@ -433,11 +433,23 @@ func (d *Driver) DestroyBucket(ctx context.Context, logicalBucket string) error 
 		return fmt.Errorf("resolve S3 identity for %s: %w", logicalBucket, err)
 	}
 	revoke := fmt.Sprintf("s3.configure -user=%s -delete -apply", iamUser)
-	if err := d.runSeaweedShell(ctx, revoke); err != nil {
+	if err := d.runSeaweedShell(ctx, revoke); err != nil && !isSeaweedFSUserNotFound(err) {
 		return fmt.Errorf("revoke S3 identity for %s: %w", logicalBucket, err)
 	}
 	_ = os.Remove(bucketCredentialIdentityStatePath(d.files, logicalBucket))
 	return nil
+}
+
+func isSeaweedFSBucketNotFound(err error) bool {
+	return err != nil && strings.Contains(strings.ToLower(err.Error()), "bucket not found")
+}
+
+func isSeaweedFSUserNotFound(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "user ") && strings.Contains(message, " not found")
 }
 
 func (d *Driver) runSeaweedShell(ctx context.Context, command string) error {
@@ -669,8 +681,8 @@ func providerComposeYAMLWithAccessAndNetwork(access serviceaccess.HTTPGatewayFil
 		fmt.Fprintf(&b, "  %s:\n", name)
 		fmt.Fprintf(&b, "    image: %s\n", ProviderImage)
 		b.WriteString("    restart: unless-stopped\n")
-		b.WriteString("    user: \"1000:1000\"\n")
 		b.WriteString("    cap_drop: [\"ALL\"]\n")
+		b.WriteString("    cap_add: [\"CHOWN\", \"SETGID\", \"SETUID\"]\n")
 		b.WriteString("    security_opt: [\"no-new-privileges:true\"]\n")
 		b.WriteString("    tmpfs:\n      - /tmp:rw,noexec,nosuid,nodev\n")
 		b.WriteString("    command:\n")

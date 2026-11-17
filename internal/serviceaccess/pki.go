@@ -16,6 +16,12 @@ import (
 	"time"
 )
 
+// DefaultObservationMaxAge is the single, authoritative freshness bound for an
+// issued service certificate. It is the one window both the wrapper path
+// (ValidateSignedCSR) and the serviceaccess default consume; no caller may
+// hardcode its own minute-, 5-minute- or hour-scale bound.
+const DefaultObservationMaxAge = time.Hour
+
 const managedCertificateRenewalWindow = 7 * 24 * time.Hour
 
 type TLSMaterial struct {

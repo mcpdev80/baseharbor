@@ -9,17 +9,20 @@ Find exact options with `baha COMMAND --help`. [Global options](global-options.m
 | Command | CLI description (verified) | CLI syntax (verified) | Task guide |
 | --- | --- | --- | --- |
 | `baha` | BaseHarbor command-line interface | `baha <command> [options]` | [↗](index.md) |
+| `baha access` | Guide profile assignment and deliberate offboarding of a person on a target | `baha access assign\|--assign PERSON [--json] \| baha access offboard\|--offboard PERSON [--json]` | [↗](applications.md) |
+| `baha access assign` | Guided assignment of an access profile to a person on selected Targets | `baha access assign PERSON [--json]` | [↗](applications.md) |
+| `baha access offboard` | Guided deliberate offboarding of a person from a target | `baha access offboard PERSON [--json]` | [↗](applications.md) |
 | `baha agent` | Discover the stable BaseHarbor machine interface | `baha agent describe [-o json\|--output json]` | [↗](automation-agents.md) |
 | `baha agent describe` | Describe supported machine operations and contracts | `baha agent describe [-o json\|--output json]` | [↗](automation-agents.md) |
 | `baha app` | Manage declarative application backend runtimes | `baha app <command> [options]` | [↗](applications.md) |
-| `baha app apply` | Converge and verify an application's backend runtime | `baha app apply [NAME] [--skip-memory-preflight]` | [↗](applications.md) |
+| `baha app apply` | Converge and verify an application's backend runtime | `baha app apply [NAME] [--skip-memory-preflight] [--confirm-candidate <digest>] [--workload-port NAME=PORT]` | [↗](applications.md) |
 | `baha app backup` | Create one encrypted recovery unit for an application | `baha app backup [NAME] [--output FILE] [--password-file FILE] [--include-state CLASS] [--exclude-state CLASS]` | [↗](applications.md) |
 | `baha app cache` | Open the managed cache console for the current application | `baha app cache [INSTANCE] [--app NAME]` | [↗](applications.md) |
 | `baha app create` | Create an application manifest in BaseHarbor state | `baha app create NAME [--environment ENV] [--sql\|--sql-instance NAME] [--cache\|--cache-instance NAME] [--key-value\|--key-value-instance NAME] [--document-db\|--document-db-instance NAME] [--messaging-queue\|--messaging-queue-instance NAME] [--messaging-pubsub\|--messaging-pubsub-instance NAME] [--messaging-stream\|--messaging-stream-instance NAME] [--s3\|--s3-bucket NAME] [--secrets\|--require-secret NAME]...` | [↗](applications.md) |
 | `baha app creds` | Show connection metadata without revealing credentials by default | `baha app creds postgres\|valkey [INSTANCE] [--app NAME] [--reveal]` | [↗](applications.md) |
-| `baha app destroy` | Retire owned application runtime while retaining data and recovery state | `baha app destroy [NAME] [--yes] [--full-reset]` | [↗](applications.md) |
+| `baha app destroy` | Permanently remove an application and its exclusively owned data | `baha app destroy [NAME] [--uuid DEPLOYMENT-ID] [--yes]` | [↗](applications.md) |
 | `baha app doctor` | Diagnose and safely repair an application's runtime | `baha app doctor [NAME] [--fix --yes]` | [↗](applications.md) |
-| `baha app down` | Stop an application runtime while preserving persistent data | `baha app down [NAME]` | [↗](applications.md) |
+| `baha app down` | Stop application runtimes while preserving data for reactivation | `baha app down [NAME] [--yes]` | [↗](applications.md) |
 | `baha app edit` | Edit current application needs with preview and impact consent | `baha app edit [NAME] [-e ENV\|--environment ENV]` | [↗](applications.md) |
 | `baha app env` | Show the standard environment contract for an application | `baha app env [NAME] [--format dotenv\|shell\|json\|yaml] [--reveal] [--path]` | [↗](applications.md) |
 | `baha app evidence` | Export secret-safe application lifecycle and verification evidence | `baha app evidence [NAME] [-e ENV\|--environment ENV] [-o json\|--output json]` | [↗](applications.md) |
@@ -33,6 +36,7 @@ Find exact options with `baha COMMAND --help`. [Global options](global-options.m
 | `baha app new` | Create a new ecosystem-native application from a BaseHarbor contract | `baha app new [NAME] [--directory PARENT] [--stack go\|nextjs\|python\|quarkus \| --stack-profile NAME] [--emit-backstage --backstage-owner OWNER [--backstage-lifecycle LIFECYCLE]] [-e ENV\|--environment ENV] [--http] [--sql] [--cache] [--key-value] [--document-db] [--queue] [--pubsub] [--stream] [--s3] [--secrets] [--require-secret NAME]... [--telemetry] [--all] [-o json\|--output json]` | [↗](applications.md) |
 | `baha app plan` | Show desired resources without changing anything | `baha app plan [NAME] [-o json\|--output json]` | [↗](applications.md) |
 | `baha app preflight` | Validate an application before mutation | `baha app preflight [NAME]` | [↗](applications.md) |
+| `baha app prune` | Remove a dangling deployment record whose source repository is gone | `baha app prune <name>` | [↗](applications.md) |
 | `baha app restore` | Restore and verify an encrypted application recovery unit | `baha app restore [BACKUP] [NAME] [--password-file FILE] [--json]` | [↗](applications.md) |
 | `baha app runtime-identity` | Manage the app-scoped credential used for dynamic secret references | `baha app runtime-identity <rotate\|revoke> [NAME] [--yes]` | [↗](applications.md) |
 | `baha app runtime-identity revoke` | Immediately revoke the application runtime credential | `baha app runtime-identity revoke [NAME] [--yes]` | [↗](applications.md) |
@@ -42,14 +46,19 @@ Find exact options with `baha COMMAND --help`. [Global options](global-options.m
 | `baha app secret list` | List secret key names without values | `baha app secret list [NAME]` | [↗](applications.md) |
 | `baha app secret set` | Create or replace one secret value from stdin or a file | `baha app secret set [NAME] KEY [--stdin \| --file PATH]` | [↗](applications.md) |
 | `baha app secret tls-set` | Validate and store a TLS certificate chain and private key | `baha app secret tls-set [NAME] --cert-file PATH --key-file PATH [--chain-file PATH]` | [↗](applications.md) |
+| `baha app secure-profile` | Encrypt explicitly selected local credentials into a password-locked export | `baha app secure-profile export [NAME] --password-file FILE --output FILE` | [↗](applications.md) |
+| `baha app secure-profile export` | Encrypt selected local credentials into a password-locked export file | `baha app secure-profile export [NAME] --password-file FILE [--output FILE]` | [↗](applications.md) |
 | `baha app shell` | Open a shell in an application workload service | `baha app shell SERVICE [--app NAME]` | [↗](applications.md) |
 | `baha app show` | Show a coherent application overview | `baha app show [NAME]` | [↗](applications.md) |
 | `baha app sql` | Open the managed SQL console for the current application | `baha app sql [INSTANCE] [--app NAME]` | [↗](applications.md) |
 | `baha app status` | Show application runtime and readiness status | `baha app status [NAME] [-o json\|--output json]` | [↗](applications.md) |
+| `baha app stop` | Stop application runtimes while preserving data for reactivation | `baha app stop [NAME] [--yes]` | [↗](applications.md) |
 | `baha app tls` | Inspect and maintain application TLS certificates | `baha app tls <command>` | [↗](applications.md) |
 | `baha app tls update` | Check for or install a newer existing TLS certificate | `baha app tls update [--check]` | [↗](applications.md) |
 | `baha app up` | Start an existing application runtime and verify readiness | `baha app up [NAME] [--yes\|-y] [--skip-memory-preflight]` | [↗](applications.md) |
 | `baha app update` | Safely inspect or update a Git-backed application | `baha app update [--check] [--backup-password-file FILE \| --no-backup]` | [↗](applications.md) |
+| `baha app version` | Show separated wanted/applied/observed release and component versions | `baha app version [NAME] [-o json\|--output json]` | [↗](applications.md) |
+| `baha app versions` | Show readable wanted/applied/observed versions for recorded deployments | `baha app versions [--all-targets] [-o json\|--output json]` | [↗](applications.md) |
 | `baha app workspace` | Manage local multi-repository workspace mappings | `baha app workspace [<init\|map\|show\|resolve\|status\|update> [options]]` | [↗](applications.md) |
 | `baha app workspace init` | Create versioned source identity metadata for a multi-repository application | `baha app workspace init [--manifest PATH] --source ID=REPOSITORY [--source ...] [--oci ID=IMAGE] [--component COMPONENT=SOURCE[@SUBPATH]]... [-o json]` | [↗](applications.md) |
 | `baha app workspace map` | Map one repository source identity to an existing local checkout/worktree | `baha app workspace map SOURCE PATH [--manifest PATH] [-o json]` | [↗](applications.md) |
@@ -68,27 +77,31 @@ Find exact options with `baha COMMAND --help`. [Global options](global-options.m
 | `baha config prompt` | Configure the optional BaseHarbor shell prompt segment | `baha config prompt [--enable\|--disable] [--preset minimal\|compact\|accessible\|detailed\|none] [--position before-path\|after-path\|right] [--environment never\|critical-only\|always] [--show-application\|--hide-application] [--text-only\|--color-output] [--prod-indicator TEXT] [--label TARGET=LABEL] [--color KEY=VALUE]` | [↗](organization-policy.md) |
 | `baha connect` | Allow one explicit application service to reach another | `baha connect SOURCE TARGET` | [↗](security-trust.md) |
 | `baha connections` | List explicit cross-application connectivity policy | `baha connections` | [↗](security-trust.md) |
-| `baha destroy` | Remove owned runtime resources with explicit consequence consent | `baha destroy [--yes] [--delete-data] \| baha destroy --all [--yes]` | [↗](core.md) |
-| `baha dev` | Manage local development conveniences | `baha dev <credentials\|domain>` | [↗](development.md) |
+| `baha destroy` | Remove the complete BaseHarbor installation with explicit consequence consent | `baha destroy [--yes]` | [↗](core.md) |
+| `baha dev` | Manage local development conveniences | `baha dev <credentials\|domain\|hosts\|cleanup>` | [↗](development.md) |
+| `baha dev cleanup` | Remove this Target's owned workstation hosts and CA trust | `baha dev cleanup --yes` | [↗](development.md) |
 | `baha dev credentials` | Show or rotate the target-scoped development management login | `baha dev credentials [--reset] [--username USER] [--password-file FILE]` | [↗](development.md) |
 | `baha dev domain` | Show or configure the target-scoped development domain | `baha dev domain [DOMAIN]` | [↗](development.md) |
+| `baha dev hosts` | Opt in to target-scoped workstation name resolution | `baha dev hosts <status\|sync\|remove> [--yes]` | [↗](development.md) |
 | `baha disconnect` | Remove one explicit cross-application connectivity exception | `baha disconnect SOURCE TARGET` | [↗](security-trust.md) |
 | `baha doctor` | Diagnose the current application repository, otherwise the control plane | `baha doctor [--fix --yes] [-o json\|--output json]` | [↗](core.md) |
 | `baha down` | Stop the current application, or the local control plane outside a repository | `baha down [options]` | [↗](core.md) |
 | `baha init` | Initialize or adopt the application in the current repository | `baha init --agents [--json] \| baha init [--quick] [--json] [--input NAME=VALUE]... [--yes]` | [↗](applications.md) |
 | `baha inspect` | Inspect the current repository and its application requirements | `baha inspect [options]` | [↗](applications.md) |
-| `baha list` | List managed applications on the selected Target | `baha list [options]` | [↗](applications.md) |
-| `baha login` | Authenticate the BaseHarbor operator through OIDC | `baha login -e ENV\|--environment ENV` | [↗](security-trust.md) |
+| `baha list` | List managed applications on the selected Target | `baha list [--all-targets]` | [↗](applications.md) |
+| `baha login` | Authenticate the BaseHarbor operator through OIDC | `baha login -e ENV\|--environment ENV [--init-tenant] [--tenant-slug SLUG] [--tenant-name NAME] [--ca FILE] [--auth-code-file FILE] [--no-browser]` | [↗](security-trust.md) |
 | `baha logout` | Remove a local BaseHarbor operator session | `baha logout -e ENV\|--environment ENV` | [↗](security-trust.md) |
+| `baha logs` | Show application logs for the current workload | `baha logs [SERVICE] [--follow] [--app NAME]` | [↗](applications.md) |
 | `baha mcp` | Expose BaseHarbor semantic operations over MCP | `baha mcp serve` | [↗](automation-agents.md) |
 | `baha mcp serve` | Run the local stdio MCP server | `baha mcp serve` | [↗](automation-agents.md) |
 | `baha new` | Create an application, stack, target, provider, or workspace | `baha new [application\|stack\|target\|provider\|workspace] [options]` | [↗](applications.md) |
 | `baha node` | Enroll and manage remote Docker or Podman nodes | `baha node [add\|connect\|list\|status\|disconnect]` | [↗](applications.md) |
-| `baha node add` | Create a remote Target and one-use enrollment bundle | `baha node add [NODE] [--target NAME] --runtime docker\|podman --tenant-id UUID --core-url https://HOST:PORT --core-address HOST:PORT --ca-file FILE [--environment ENV] [--output FILE] [--json]` | [↗](applications.md) |
+| `baha node add` | Create a remote Target and one-use enrollment bundle | `baha node add [NODE] --runtime docker\|podman [--target NAME] [--core-url https://HOST:PORT] [--core-address HOST:PORT] [--ca-file FILE] [--tenant-id UUID] [--environment ENV] [--output FILE] [--json]` | [↗](applications.md) |
 | `baha node connect` | Enroll this host and start the rootless connector service | `baha node connect [ENROLLMENT-FILE] [--connector-bin FILE] [--json]` | [↗](applications.md) |
 | `baha node disconnect` | Revoke node access after impact acknowledgement and retain recovery owners | `baha node disconnect TARGET --yes [--json]` | [↗](applications.md) |
 | `baha node list` | List configured remote connector nodes | `baha node list [--json]` | [↗](applications.md) |
 | `baha node status` | Inspect Core enrollment state for a remote node | `baha node status TARGET [--json]` | [↗](applications.md) |
+| `baha onboard` | Guided onboarding: attach a workstation to a BaseHarbor installation | `baha onboard [--target NAME] [--json] \| baha onboard --import PRIVATE_FILE [--target-name NAME] [--trust-host-ca\|--skip-host-trust] [--configure-hosts\|--skip-hosts] \| baha onboard --invite [--name PERSON] [--login LOGIN] [--email EMAIL] [--station DEVICE] [--certificate-ttl 5y] [--output PRIVATE_FILE] \| baha onboard --init-tenant [-e ENV] [--tenant-slug SLUG --tenant-name NAME]` | [↗](applications.md) |
 | `baha open` | Open a verified HTTPS application endpoint | `baha open [--print] [--json]` | [↗](applications.md) |
 | `baha openbao` | Bootstrap and operate the BaseHarbor OpenBao trust plane | `baha openbao <command> [options]` | [↗](security-trust.md) |
 | `baha openbao bootstrap` | Initialize OpenBao and establish the BaseHarbor manager identity | `baha openbao bootstrap --recovery-file PATH` | [↗](security-trust.md) |
@@ -115,22 +128,28 @@ Find exact options with `baha COMMAND --help`. [Global options](global-options.m
 | `baha stack list` | List built-in, user and repository Stack Profiles | `baha stack list [-o json\|--output json]` | [↗](development.md) |
 | `baha stack show` | Show a resolved Stack Profile | `baha stack show NAME [-o json\|--output json]` | [↗](development.md) |
 | `baha status` | Show application status in a repository, otherwise control-plane status | `baha status [-o json\|--output json]` | [↗](core.md) |
-| `baha target` | Inspect and manage BaseHarbor deployment targets | `baha target [list\|show\|create\|delete\|activate\|deactivate] [-o json\|--output json\|--json]` | [↗](targets.md) |
+| `baha target` | Inspect and manage BaseHarbor deployment targets | `baha target [list\|show\|policy\|create\|delete\|activate\|deactivate] [-o json\|--output json\|--json]` | [↗](targets.md) |
 | `baha target activate` | Persist the active deployment target for this user | `baha target activate NAME` | [↗](targets.md) |
-| `baha target create` | Create a deployment target | `baha target create NAME --runtime-provider PROVIDER --access ACCESS --access-provider PROVIDER --reference REFERENCE [--scope SCOPE] [--default] [--docker-endpoint SOCKET \| --docker-context CONTEXT] [--docker-mode rootless\|rootful]; baha target create NAME --from-recovery PATH` | [↗](targets.md) |
+| `baha target create` | Create a deployment target | `baha target create NAME --runtime-provider PROVIDER --access ACCESS --access-provider PROVIDER --reference REFERENCE [--scope SCOPE] [--tenant-id UUID] [--deployment-preset development\|test\|staging\|production\|custom] [--default] [--docker-endpoint SOCKET \| --docker-context CONTEXT] [--docker-mode rootless\|rootful]; baha target create NAME --from-recovery PATH` | [↗](targets.md) |
 | `baha target deactivate` | Clear persisted active deployment target | `baha target deactivate` | [↗](targets.md) |
 | `baha target delete` | Detach target configuration with protected recovery; preserve runtime and data | `baha target delete NAME` | [↗](targets.md) |
 | `baha target list` | List configured targets | `baha target list [-o json\|--output json\|--json]` | [↗](targets.md) |
+| `baha target policy` | Inspect or change editable Target deployment policy | `baha target policy <show\|set> NAME` | [↗](targets.md) |
+| `baha target policy set` | Update the protected deployment policy without changing Runtime or Access | `baha target policy set NAME [--deployment-preset development\|test\|staging\|production\|custom\|none] [--deployment-branches BRANCHES] [--deployment-dirty yes\|no] [--deployment-commit yes\|no] [--deployment-remote-commit yes\|no] [--deployment-approval yes\|no] [--deployment-image-digest yes\|no]` | [↗](targets.md) |
+| `baha target policy show` | Show the persisted deployment policy of a Target | `baha target policy show NAME` | [↗](targets.md) |
 | `baha target show` | Show one target | `baha target show [NAME] [-o json\|--output json\|--json]` | [↗](targets.md) |
 | `baha trust` | Inspect, export or explicitly install the managed local BaseHarbor CA | `baha trust <status\|export\|install\|uninstall> [options]` | [↗](security-trust.md) |
 | `baha trust export` | Export only the public managed-local CA certificate | `baha trust export --output PATH` | [↗](security-trust.md) |
-| `baha trust install` | Explicitly install the managed-local CA into the host trust store | `baha trust install --yes` | [↗](security-trust.md) |
+| `baha trust install` | Explicitly install the public CA into system and supported browser trust stores | `baha trust install --yes` | [↗](security-trust.md) |
 | `baha trust status` | Show whether the managed-local CA is trusted by this host | `baha trust status` | [↗](security-trust.md) |
 | `baha trust uninstall` | Remove only BaseHarbor-owned host trust anchors | `baha trust uninstall [--yes] [--json]` | [↗](security-trust.md) |
 | `baha tui` | Open the interactive BaseHarbor status dashboard | `baha tui [--json]` | [↗](shell-ux.md) |
-| `baha up` | Converge selected application intent, or explicitly start the management Core | `baha up [-e ENV\|--environment ENV] [--yes] [--skip-memory-preflight] [--control-plane-only] [--ha] [--trust-host-ca] [--postgres-port PORT] [--openbao-port PORT] [--recovery-file PATH]` | [↗](core.md) |
+| `baha up` | Converge selected application intent, or explicitly start the management Core | `baha up [NAME] [-e ENV\|--environment ENV] [--yes] [--skip-memory-preflight] [--control-plane-only] [--ha] [--trust-host-ca] [--postgres-port PORT] [--openbao-port PORT] [--recovery-file PATH]` | [↗](core.md) |
 | `baha update` | Safely inspect or update BaseHarbor itself | `baha update [--check] [--yes] [--channel stable\|rc \| --version VERSION] [--recover]` | [↗](core.md) |
 | `baha use` | Select and persist the active Core or deployment target | `baha use [TARGET]` | [↗](applications.md) |
+| `baha user` | Manage people and their enrolled workstations | `baha user list \| baha user offboard LOGIN [--yes]` | [↗](applications.md) |
+| `baha user list` | List people and their enrolled workstation counts | `baha user list` | [↗](applications.md) |
+| `baha user offboard` | Disable a person and revoke all their workstations | `baha user offboard LOGIN [--yes]` | [↗](applications.md) |
 | `baha version` | Print build version | `baha version [-o json\|--output json\|--json]` | [↗](core.md) |
 | `baha whoami` | Show the authenticated BaseHarbor operator identity | `baha whoami -e ENV\|--environment ENV` | [↗](security-trust.md) |
 | `baha workspace` | Configure local workspace sources and repository mappings | `baha workspace [<init\|map\|show\|resolve\|status\|update> [options]]` | [↗](development.md) |
@@ -140,3 +159,7 @@ Find exact options with `baha COMMAND --help`. [Global options](global-options.m
 | `baha workspace show` | Show canonical source identities and local workspace mappings | `baha workspace show [--manifest PATH] [-o json\|--output json]` | [↗](development.md) |
 | `baha workspace status` | Inspect Git state for all mapped repository sources | `baha workspace status [--manifest PATH] [--fetch] [-o json\|--output json]` | [↗](development.md) |
 | `baha workspace update` | Safely fast-forward mapped Git repositories | `baha workspace update [--manifest PATH] [--check] [-o json\|--output json]` | [↗](development.md) |
+| `baha workstation` | Invite, list and revoke developer workstations connected to this Core | `baha workstation new \| baha workstation list \| baha workstation revoke NAME [--yes]` | [↗](applications.md) |
+| `baha workstation list` | List enrolled workstations and certificate expiry | `baha workstation list` | [↗](applications.md) |
+| `baha workstation new` | Issue a one-use invitation for another workstation owned by an existing user | `baha workstation new [--user LOGIN] [--name DEVICE] [--certificate-ttl 5y] [--output PRIVATE_FILE]` | [↗](applications.md) |
+| `baha workstation revoke` | Revoke a workstation's current certificate | `baha workstation revoke NAME [--yes]` | [↗](applications.md) |

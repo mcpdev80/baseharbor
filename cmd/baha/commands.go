@@ -43,7 +43,8 @@ func rootCommand() *cli.Command {
 		{
 			Name:    "list",
 			Summary: "List managed applications on the selected Target",
-			Usage:   "baha list [options]",
+			Usage:   "baha list [--all-targets]",
+			Long:    "Lists applications on the selected Target by default. With multiple configured Targets and no effective selection, listing deliberately fails closed. Use 'baha list --all-targets' for a read-only inventory with an explicit TARGET column, or run 'baha target list' and 'baha target activate NAME' (or set BASEHARBOR_TARGET) to select one Target.",
 			Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 				for _, child := range appCmd.Children {
 					if child.Name == "list" && child.Run != nil {
@@ -74,7 +75,7 @@ func rootCommand() *cli.Command {
 		{
 			Name:    "up",
 			Summary: "Converge selected application intent, or explicitly start the management Core",
-			Usage:   "baha up [-e ENV|--environment ENV] [--yes] [--skip-memory-preflight] [--control-plane-only] [--ha] [--trust-host-ca] [--postgres-port PORT] [--openbao-port PORT] [--recovery-file PATH]",
+			Usage:   "baha up [NAME] [-e ENV|--environment ENV] [--yes] [--skip-memory-preflight] [--control-plane-only] [--ha] [--trust-host-ca] [--postgres-port PORT] [--openbao-port PORT] [--recovery-file PATH]",
 			Long:    "Inside an application repository, converges selected capabilities and genuine dependencies through the same current-plan acknowledgement, authorization and verification as app apply. It does not install a management Core merely because an application exists. Unresolved deployment inputs use the existing guided resolver; --yes does not replace provider-consequence or data-deletion consent. In a detected project without baseharbor.yaml, interactive use initializes the application through the existing guided flow; --yes uses unambiguous safe defaults. Directories without application signals retain explicit management setup. --control-plane-only explicitly selects the independent SQL/Secrets/Identity management installation and its HA, port, recovery and host-trust options. --trust-host-ca remains a separate explicit opt-in; --yes never changes host trust. -e/--environment selects resolved deployment state without rewriting authored intent.",
 			Run:     runtimeUpCommandWithInputResolver,
 		},
@@ -91,13 +92,10 @@ func rootCommand() *cli.Command {
 		},
 		{
 			Name:    "destroy",
-			Summary: "Remove owned runtime resources with explicit consequence consent",
-			Usage:   "baha destroy [--yes] [--delete-data] | baha destroy --all [--yes]",
-			Long:    "Outside a repository, remove only canonical Core containers/startup units after two current-plan acknowledgements, including deliberately accepted outages for active consumers. Preserve data, networks, protected owners, bindings, workloads and other providers by default. --delete-data additionally selects owned Core volumes and requires separate deletion consent. --yes replaces no consequence or deletion consent. --all is the explicit installation cleanup path across all Targets; it selects owned data and installation state for deletion while preserving application source repositories and external application-owned data.",
+			Summary: "Remove the complete BaseHarbor installation with explicit consequence consent",
+			Usage:   "baha destroy [--yes]",
+			Long:    "Removes registered applications, owned providers and runtime resources, Core services, and BaseHarbor configuration/state across all configured Targets. Application source repositories and external infrastructure are preserved. Use 'baha app destroy NAME' to remove one application while keeping the installation. The command shows the concrete impact plan and requires its acknowledgements plus separate data-deletion consent; --yes skips none of them. Targets that cannot be inventoried are left untouched and retain ownership state for retry. --all remains as a compatibility alias.",
 			Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
-				if inApplicationRepository() && !containsExactArgument(args, "--all") {
-					return appDestroyCommand(store).Run(ctx, args, out, errOut)
-				}
 				return runtimeDestroyCommand(ctx, args, out, errOut)
 			},
 		},
@@ -114,35 +112,15 @@ func rootCommand() *cli.Command {
 			},
 		},
 		{
-			Name:    "status",
-			Summary: "Show application status in a repository, otherwise control-plane status",
-			Usage:   "baha status [-o json|--output json]",
+			Name:    "logs",
+			Summary: "Show application logs for the current workload",
+			Usage:   "baha logs [SERVICE] [--follow] [--app NAME]",
+			Long:    "Repository-aware shorthand for 'baha app logs'. It resolves the nearest application and streams the same workload logs the explicit app command provides.",
 			Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
-				if inApplicationRepository() {
-					return appStatusCommandWithTLS(store).Run(ctx, args, out, errOut)
-				}
-				filtered, format, err := parseReadOutputArgs(args, "status")
-				if err != nil {
-					return err
-				}
-				if len(filtered) != 0 {
-					return usageError("status accepts output options only", "Use --json for structured control-plane state.")
-				}
-				if format == outputJSON {
-					result, err := inspectControlPlane(ctx)
-					if err != nil {
-						return err
-					}
-					return writeJSON(out, result)
-				}
-				target, err := effectiveTarget(ctx)
-				if err != nil {
-					return err
-				}
-				fmt.Fprintf(out, "Selection source: %s (%s)\n", target.Name, targetSelectionOrigin(ctx))
-				return runtimeStatus(ctx, out)
+				return appLogsCommand(store).Run(ctx, args, out, errOut)
 			},
 		},
+		rootStatusCommand(store),
 		{
 			Name:    "doctor",
 			Summary: "Diagnose the current application repository, otherwise the control plane",
@@ -162,11 +140,15 @@ func rootCommand() *cli.Command {
 		targetCommand(),
 		useTargetCommand(),
 		nodeCommand(),
+		onboardCommand(),
+		workstationCommand(),
+		userCommand(),
 		devCommand(),
 		configCommand(),
 		shellInitCommand(),
 		promptCommand(),
 		policyCommand(store),
+		accessWizardCommand(),
 		agentCommand(),
 		mcpCommand(store),
 		serveCommand(store),
@@ -248,6 +230,7 @@ func configuredApplicationCommand(store application.Store) *cli.Command {
 		appPSQLCommand(store),
 		appRedisCommand(store),
 		appCredsCommand(store),
+		secureProfileExportCommand(store),
 		appLogsCommand(store),
 		appShellCommand(store),
 		appExecCommand(store),
@@ -256,11 +239,15 @@ func configuredApplicationCommand(store application.Store) *cli.Command {
 		appStatusCommandWithTLS(store),
 		appDoctorRepairCommandWithTLS(store),
 		appDownCommand(store),
+		appStopCommand(store),
 		appUpCommand(store),
 		appDestroyCommand(store),
 		appSecretCommand(store),
 		appRuntimeIdentityCommand(store),
 		appEvidenceCommand(store),
+		appVersionCommand(store),
+		appVersionsCommand(),
+		appPruneCommand(store),
 	)
 	applyRemainingApplicationRuntimeProviderGuards(store, appCmd)
 

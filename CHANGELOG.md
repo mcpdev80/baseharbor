@@ -6,6 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.4.27]
+
+### Added
+
+- Direct mTLS onboarding for developer workstations; identity-provider user invitations, Target-scoped access profiles and offboarding; independent workstation renewal and revocation.
+- Separate desired, applied and observed application versions for each deployment stage.
+- Editable Target deployment-policy presets for development, test, staging and production.
+- Demo coverage for exact-candidate confirmation and cross-application connectivity.
+
+### Changed
+
+- Core-local Docker and Podman can be managed directly from a developer workstation without a Node Connector.
+- `baha destroy` can remove one connected Core from the workstation, then clean up that workstation's owned connection state; native local Target behavior remains available.
+
+### Fixed
+
+- Application destruction completes removal of the selected app when provider impact inventory is incomplete, while retaining shared or unverified provider resources.
+
 ## [0.4.26]
 
 Candidate release section; promoted date recorded when v0.4.26 is published

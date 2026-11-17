@@ -7,6 +7,9 @@ Aktuelle Daten liefert `baha agent describe -o json` (`cli_coverage`). Nach Code
 | Befehl | Einordnung | CLI JSON / strukturiertes Ergebnis | Operation / Tool | Begründung |
 | --- | --- | --- | --- | --- |
 | `baha` | Darstellung |  |  | Command group; invoke its supported subcommands. |
+| `baha access` | Darstellung |  |  | Command group; invoke its supported subcommands. |
+| `baha access assign` | ausgeschlossen |  |  | Guided, human interactive profile assignment folds every decision into the single production policy authority (policy.Aggregate/policy.ResolveFinding); no typed MCP operation, so excluded from the machine tool boundary by design. |
+| `baha access offboard` | ausgeschlossen |  |  | Guided, human interactive offboarding re-checks the current configuration at submit time and folds every decision into the single production policy authority; no typed MCP operation, so excluded from the machine tool boundary by design. |
 | `baha agent` | Darstellung |  |  | Command group; invoke its supported subcommands. |
 | `baha agent describe` | Darstellung |  |  | Machine registry/discovery itself, rather than a product mutation. |
 | `baha app` | Darstellung |  |  | Command group; invoke its supported subcommands. |
@@ -18,6 +21,7 @@ Aktuelle Daten liefert `baha agent describe -o json` (`cli_coverage`). Nach Code
 | `baha app destroy` | semantisch | CLI -o json / typed MCP result | baseharbor.destroy |  |
 | `baha app doctor` | semantisch | CLI -o json / typed MCP result | baseharbor.doctor |  |
 | `baha app down` | semantisch | CLI -o json / typed MCP result | baseharbor.app.stop |  |
+| `baha app stop` | semantisch | CLI -o json / typed MCP result | baseharbor.app.stop |  |
 | `baha app edit` | semantisch | Interactive CLI / typed two-phase MCP consent | baseharbor.app.edit |  |
 | `baha app env` | semantisch | CLI --format json (masked) / typed MCP result | baseharbor.app.environment | MCP exposes masked values only. --reveal and loading the protected local dotenv file are execution-host credential access and are explicitly excluded modes. |
 | `baha app evidence` | semantisch | CLI -o json / typed MCP result | baseharbor.evidence |  |
@@ -31,6 +35,7 @@ Aktuelle Daten liefert `baha agent describe -o json` (`cli_coverage`). Nach Code
 | `baha app new` | semantisch | CLI -o json / typed MCP result | baseharbor.app.new |  |
 | `baha app plan` | semantisch | CLI -o json / typed MCP result | baseharbor.plan |  |
 | `baha app preflight` | semantisch | CLI -o json / typed MCP result | baseharbor.app.preflight |  |
+| `baha app prune` | semantisch | CLI -o json / typed MCP result | baseharbor.app.prune |  |
 | `baha app restore` | semantisch | CLI -o json / typed MCP result | baseharbor.restore |  |
 | `baha app runtime-identity` | Darstellung |  |  | Command group; invoke its supported subcommands. |
 | `baha app runtime-identity revoke` | semantisch | CLI -o json / typed MCP result | baseharbor.runtime-identity.revoke |  |
@@ -40,6 +45,8 @@ Aktuelle Daten liefert `baha agent describe -o json` (`cli_coverage`). Nach Code
 | `baha app secret list` | semantisch | CLI -o json / typed MCP result | baseharbor.secret.list |  |
 | `baha app secret set` | semantisch | CLI -o json / typed MCP result | baseharbor.secret.set |  |
 | `baha app secret tls-set` | semantisch | CLI -o json / typed MCP result | baseharbor.secret.tls-set |  |
+| `baha app secure-profile` | Darstellung |  |  | Command group; invoke its supported subcommands. |
+| `baha app secure-profile export` | Darstellung |  |  | Operator-local, password-locked file export of opt-in local credentials; no runtime mutation or machine tool. Ciphertext opens only with the export password. |
 | `baha app shell` | ausgeschlossen |  |  | Interactive container terminal is host/TTY dependent and would grant arbitrary exec; use typed lifecycle and app.environment instead. |
 | `baha app show` | semantisch | CLI -o json / typed MCP result | baseharbor.app.show |  |
 | `baha app sql` | ausgeschlossen |  |  | Interactive database terminal and raw SQL passthrough are excluded; app.connection supplies secret-safe connection metadata for an operator-owned client. |
@@ -48,6 +55,8 @@ Aktuelle Daten liefert `baha agent describe -o json` (`cli_coverage`). Nach Code
 | `baha app tls update` | semantisch | CLI -o json / typed MCP result | baseharbor.tls.update |  |
 | `baha app up` | semantisch | CLI -o json / typed MCP result | baseharbor.apply |  |
 | `baha app update` | semantisch | CLI -o json / typed MCP result | baseharbor.update |  |
+| `baha app version` | Darstellung |  |  | Repository-bound presentation of the app.versions read model for the current deployment; machine clients invoke app.versions with explicit identity. |
+| `baha app versions` | semantisch | CLI -o json / typed MCP result | baseharbor.app.versions |  |
 | `baha app workspace` | Darstellung |  |  | Interactive presentation combining workspace.init and workspace.map; clients invoke those typed operations explicitly. |
 | `baha app workspace init` | semantisch | CLI -o json / typed MCP result | baseharbor.workspace.init |  |
 | `baha app workspace map` | semantisch | CLI -o json / typed MCP result | baseharbor.workspace.map |  |
@@ -66,8 +75,10 @@ Aktuelle Daten liefert `baha agent describe -o json` (`cli_coverage`). Nach Code
 | `baha config prompt` | Darstellung |  |  | Client-local shell prompt display preferences; explicit target arguments and target inspection provide semantic context. |
 | `baha connect` | semantisch | CLI -o json / typed MCP result | baseharbor.connectivity.connect |  |
 | `baha connections` | semantisch | CLI -o json / typed MCP result | baseharbor.connectivity.list |  |
-| `baha destroy` | semantisch | CLI -o json / typed MCP result | baseharbor.control-plane.destroy | Control-plane mode maps here; repository application mode uses destroy. --all maps to installation.destroy after authorization of every discovered deployment. All destruction retains ownership checks and explicit approval. |
+| `baha destroy` | semantisch | CLI -o json / typed MCP result | baseharbor.installation.destroy | Entfernt die gesamte Installation. Entfernte Core-Targets werden über die authentifizierte Machine-API abgebaut; lokale Docker-/Podman-Targets behalten den nativen Ablauf. Autorisiert jedes gefundene Deployment und verlangt Eigentums- sowie Datenlöschungsbestätigung. |
 | `baha dev` | Darstellung |  |  | Command group; invoke its supported subcommands. |
+| `baha dev cleanup` | excluded |  |  | Workstation-local removal of owned hosts and CA trust, preserving other connections; explicit host operator approval required. No Core or application mutation. |
+| `baha dev hosts` | excluded |  |  | Workstation-local hosts-file opt-in and ownership cleanup; cannot mutate the MCP server host on behalf of a remote client. Names come from authenticated control-plane.status metadata. |
 | `baha dev credentials` | semantisch | CLI -o json / typed MCP result | baseharbor.dev.credentials | Ensure/reset/configuration use the shared authority. MCP returns username and protected file reference; CLI password display is an excluded operator-local mode. |
 | `baha dev domain` | semantisch | CLI -o json / typed MCP result | baseharbor.dev.domain |  |
 | `baha disconnect` | semantisch | CLI -o json / typed MCP result | baseharbor.connectivity.disconnect |  |
@@ -78,6 +89,7 @@ Aktuelle Daten liefert `baha agent describe -o json` (`cli_coverage`). Nach Code
 | `baha list` | semantisch | CLI -o json / typed MCP result | baseharbor.app.list |  |
 | `baha login` | ausgeschlossen |  |  | Authorization Code/PKCE browser handoff establishes the operator's local protected session before semantic requests; operator.identity verifies that boundary without returning tokens. |
 | `baha logout` | ausgeschlossen |  |  | Removes a client-local protected login session; performed by the authentication client, outside server product actions. operator.identity reports the resulting boundary. |
+| `baha logs` | ausgeschlossen |  |  | Top-level shorthand for the excluded baha app logs: raw/follow runtime streams can include application secrets and require a streaming transport; status, doctor and evidence provide bounded secret-safe observation. |
 | `baha mcp` | Darstellung |  |  | Command group; invoke its supported subcommands. |
 | `baha mcp serve` | Darstellung |  |  | Starts the local MCP transport; clients launch it before discovery. |
 | `baha new` | Darstellung |  |  | Human creation chooser delegating to existing app.new, stack.create, target.create, provider.init and workspace operations. |
@@ -87,6 +99,14 @@ Aktuelle Daten liefert `baha agent describe -o json` (`cli_coverage`). Nach Code
 | `baha node disconnect` | semantisch | CLI -o json / typed MCP result | baseharbor.node.disconnect |  |
 | `baha node list` | semantisch | CLI -o json / typed MCP result | baseharbor.node.list |  |
 | `baha node status` | semantisch | CLI -o json / typed MCP result | baseharbor.node.status |  |
+| `baha onboard` | Darstellung |  |  | Guided workstation onboarding presentation; the underlying installation, target and enrollment operations retain their own authenticated semantic contracts. |
+| `baha user` | Darstellung |  |  | Human directory and lifecycle commands for Core-managed people. |
+| `baha user list` | Darstellung |  |  | Core-local human directory view; authentication state remains authoritative in the owned Keycloak realm. |
+| `baha user offboard` | ausgeschlossen |  |  | Human-confirmed operator directory action disables the owned Keycloak user and revokes its workstation leaves; no typed MCP operation, so excluded from the machine tool boundary by design. |
+| `baha workstation` | Darstellung |  |  | Human inventory and lifecycle commands for Core-managed workstation certificates. |
+| `baha workstation list` | Darstellung |  |  | Core-local inventory of workstation certificate ownership, expiry and revocation state. |
+| `baha workstation new` | ausgeschlossen |  |  | Human invitation workflow for a new device; private one-use invitation transfer is an operator action and has no machine equivalent. |
+| `baha workstation revoke` | ausgeschlossen |  |  | Human-confirmed device revocation; no typed MCP operation, so excluded from the machine tool boundary by design. |
 | `baha open` | Darstellung |  |  | Host browser presentation over validated application/TLS state; typed clients inspect app status and TLS instead. |
 | `baha openbao` | Darstellung |  |  | Command group; invoke its supported subcommands. |
 | `baha openbao bootstrap` | semantisch | CLI -o json / typed MCP result | baseharbor.openbao.bootstrap |  |
@@ -119,6 +139,9 @@ Aktuelle Daten liefert `baha agent describe -o json` (`cli_coverage`). Nach Code
 | `baha target deactivate` | Darstellung |  |  | Clears persisted local user selection; machine clients omit explicit target to resolve configured defaults. |
 | `baha target delete` | semantisch | CLI -o json / typed MCP result | baseharbor.target.delete |  |
 | `baha target list` | semantisch | CLI -o json / typed MCP result | baseharbor.target.list |  |
+| `baha target policy` | Darstellung |  |  | Command group; invoke its supported subcommands. |
+| `baha target policy set` | Darstellung |  |  | Geschuetzte lokale Target-Policy-Aenderung mit CAS; fuer Remote-Targets wird keine lokale Policy-Aenderung anstelle der Core-Operator-Autoritaet zugelassen. |
+| `baha target policy show` | semantisch | CLI -o json / typed MCP result | baseharbor.target |  |
 | `baha target show` | semantisch | CLI -o json / typed MCP result | baseharbor.target |  |
 | `baha trust` | Darstellung |  |  | Command group; invoke its supported subcommands. |
 | `baha trust export` | semantisch | CLI --json (--output is CA destination) / typed MCP result | baseharbor.trust.export |  |

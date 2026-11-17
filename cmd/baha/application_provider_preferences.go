@@ -106,7 +106,7 @@ func persistAppNewPreferences(ctx context.Context, root string, manifest applica
 	// Authored source deliberately excludes the system-owned ID. Retain the
 	// identity already allocated by the existing New authority in its record.
 	selection.Manifest.ApplicationID = manifest.ApplicationID
-	resolved, err = resolvedRepositoryApplication(resolved.Target, resolved.TargetStateRoot, selection)
+	resolved, err = resolvedRepositoryApplication(context.Background(), resolved.Target, resolved.TargetStateRoot, selection)
 	if err != nil {
 		return err
 	}
@@ -211,12 +211,7 @@ func appNewEditSelection(ctx context.Context, reader *bufio.Reader, out io.Write
 	}
 }
 
-func finishAppNewWizard(ctx context.Context, root string, result development.CreationResult, profile development.StackProfile, controller appWizardController, mode string, out, errOut io.Writer, release func()) error {
-	fmt.Fprintf(out, "Created %s\n", result.Manifest.Name)
-	fmt.Fprintf(out, "Location: %s\n", displayUserPath(root))
-	fmt.Fprintf(out, "Stack: %s\n", profile.Metadata.Name)
-	fmt.Fprintln(out, "Validation: SATISFIED")
-
+func finishAppNewWizard(ctx context.Context, reader *bufio.Reader, root string, result development.CreationResult, profile development.StackProfile, controller appWizardController, mode string, out, errOut io.Writer, release func()) error {
 	decision, ok := controller.Decision()
 	if !ok {
 		return errors.New("confirmed New decision missing")
@@ -224,8 +219,15 @@ func finishAppNewWizard(ctx context.Context, root string, result development.Cre
 	if err := persistAppNewPreferences(ctx, root, result.Manifest, decision.Preferences); err != nil {
 		return fmt.Errorf("project created but Target preference registration incomplete: %w", err)
 	}
+	printCreated := func() {
+		fmt.Fprintf(out, "Created %s\n", result.Manifest.Name)
+		fmt.Fprintf(out, "Location: %s\n", displayUserPath(root))
+		fmt.Fprintf(out, "Stack: %s\n", profile.Metadata.Name)
+		fmt.Fprintln(out, "Validation: SATISFIED")
+	}
 	if mode == "create-only" {
-		fmt.Fprintln(out, "Next: cd "+displayUserPath(root)+" && baha up")
+		printCreated()
+		printAppNewNextSteps(out, root)
 		return nil
 	}
 	release()
@@ -238,6 +240,18 @@ func finishAppNewWizard(ctx context.Context, root string, result development.Cre
 	}
 	defer func() { _ = os.Chdir(previous) }()
 	err := appNewLifecycleExecutor(ctx, application.DefaultStore(), nil, out, errOut)
+	if digest := candidateConsentDigestFromError(err); digest != "" {
+		confirmed, promptErr := promptYesNo(reader, out,
+			"Bind this exact candidate and continue with its lifecycle?", false)
+		if promptErr != nil {
+			return promptErr
+		}
+		if !confirmed {
+			fmt.Fprintf(out, "Candidate not bound. Project files remain at %s; run baha app apply --confirm-candidate %s from that directory when ready.\n", displayUserPath(root), digest)
+			return nil
+		}
+		err = appNewLifecycleExecutor(ctx, application.DefaultStore(), []string{"--confirm-candidate", digest}, out, errOut)
+	}
 	if err != nil {
 		fmt.Fprintln(errOut, "Project files were created; the authorized lifecycle did not complete.")
 		// The error-only lifecycle cannot attest individual provider effects.
@@ -257,7 +271,9 @@ func finishAppNewWizard(ctx context.Context, root string, result development.Cre
 		}
 		return fmt.Errorf("New lifecycle incomplete after project creation: %w", errors.Join(err, presentErr))
 	}
+	printCreated()
 	fmt.Fprintln(out, "Lifecycle: VERIFIED")
+	fmt.Fprintln(out, "Next: baha app status")
 	return nil
 }
 
@@ -290,7 +306,7 @@ type appNewSelectionTerminal struct {
 
 func (m appNewSelectionTerminal) Init() tea.Cmd { return nil }
 func (m appNewSelectionTerminal) View() tea.View {
-	return tea.NewView(m.controller.View() + "\nP: optional provider preference · Esc/Ctrl+C: cancel\n")
+	return tea.NewView(m.controller.View() + "\np: provider preference · b/←: previous row · Esc/Ctrl+C: cancel\n")
 }
 func (m appNewSelectionTerminal) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	key, ok := msg.(tea.KeyPressMsg)
@@ -305,8 +321,13 @@ func (m appNewSelectionTerminal) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case "p":
 		m.provider = true
 		return m, tea.Quit
+	case "b", "left":
+		action = "up"
 	case "enter":
 		if m.controller.selection.cursor != len(m.controller.selection.visibleNeeds()) {
+			if _, err := m.controller.choicesForSelection(); err != nil {
+				m.err = fmt.Errorf("provider choice cannot be confirmed: %w", err)
+			}
 			return m, tea.Quit
 		}
 	case " ":

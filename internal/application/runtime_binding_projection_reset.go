@@ -15,7 +15,10 @@ func resetWorkloadBindingProjection(m Manifest, root string) error {
 	}
 	info, err := os.Lstat(root)
 	if os.IsNotExist(err) {
-		return os.MkdirAll(root, 0755)
+		if err := os.MkdirAll(root, 0755); err != nil {
+			return err
+		}
+		return os.Chmod(root, 0755)
 	}
 	if err != nil || !ownedWorkloadProjectionDirectory(info) {
 		return fmt.Errorf("workload binding projection must be an existing regular directory")
@@ -41,7 +44,10 @@ func resetWorkloadBindingProjection(m Manifest, root string) error {
 			return err
 		}
 	}
-	return nil
+	// This directory is the read-only bind-mount root exposed to the selected
+	// workload. MkdirAll's requested mode is reduced by umask, so normalize it
+	// explicitly after validating ownership and removing stale projections.
+	return os.Chmod(root, 0755)
 }
 
 func ownedWorkloadProjectionDirectory(info os.FileInfo) bool {
@@ -50,4 +56,33 @@ func ownedWorkloadProjectionDirectory(info os.FileInfo) bool {
 	}
 	owner, ok := info.Sys().(*syscall.Stat_t)
 	return ok && owner.Uid == uint32(os.Geteuid())
+}
+
+// verifyConsumerReadableProjection checks access using the mode bits that an
+// arbitrary non-root UID receives, rather than the developer/Core owner's
+// access. The projection is bind-mounted read-only into the authorized app.
+func verifyConsumerReadableProjection(root string) error {
+	return filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return fmt.Errorf("workload service binding projection is not traversable")
+		}
+		if entry.Type()&os.ModeSymlink != 0 {
+			return fmt.Errorf("workload service binding projection contains a symbolic link")
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return fmt.Errorf("workload service binding projection metadata is unavailable")
+		}
+		mode := info.Mode().Perm()
+		if info.IsDir() {
+			if mode&0o005 != 0o005 || mode&0o022 != 0 {
+				return fmt.Errorf("workload service binding directory is not readable/traversable by an arbitrary UID")
+			}
+			return nil
+		}
+		if !info.Mode().IsRegular() || mode&0o004 == 0 || mode&0o022 != 0 {
+			return fmt.Errorf("workload service binding file is not safely readable by an arbitrary UID")
+		}
+		return nil
+	})
 }

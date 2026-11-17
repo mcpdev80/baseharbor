@@ -12,6 +12,17 @@ baha target activate
 baha target deactivate
 ```
 
+
+## Local Core isolation boundary
+
+A single host currently has **one local Core management authority**. Multiple Target names using the same `local` access share its Core runtime and provider/deployment registry; creating a second local Target does **not** create an isolated Core. A conflicting definition fails without mutation:
+
+```text
+access "local" already exists with different provider/reference
+```
+
+First inspect the registered Targets with `baha target list`. Reuse the existing local access only when sharing that Core is intended. For an isolated Docker/Podman installation, use a **separate host** and the existing `baha node add` / `baha node connect` enrollment workflow. Do not remove or overwrite the existing local access registry to force isolation.
+
 ## Target resolution
 
 A Target can be selected through:
@@ -87,10 +98,12 @@ baha target create docker-dev \
 Remote Docker/Podman hosts use the Node Connector enrollment workflow rather than hand-authoring access records:
 
 ```bash
-baha node add node-a
+baha node add node-a --runtime podman
 baha node list
 baha node status node-a
 ```
+
+The default path uses an owner-local Core connection profile containing the verified public API and Connector endpoints and pinned CA. The tenant UUID is obtained from the authenticated Core operator membership and is never guessed or requested from the developer. Advanced flags may override endpoint/CA values, but a supplied tenant UUID cannot override the Core membership. Missing or ambiguous public TLS identity fails closed instead of using loopback.
 
 `baha node add` is guided on a terminal. It creates the remote Target and writes one owner-only enrollment bundle containing the short-lived one-use authorization. Copy that file to the remote host and run:
 
@@ -136,6 +149,17 @@ baha --target docker-dev up -e dev
 
 Run the last two commands inside an application repository. Confirm `runtime_provider`, access settings and the plan's environment before applying. An explicit `--target` applies to that invocation without relying on the shell's active Target. Target registration alone does not install Docker or validate every provider capability.
 
+## Remote Core-owned Docker/Podman
+
+When the Docker/Podman runtime belongs to the same host as the Core installation, the developer workstation does not need a Node Connector. Configure a remote `baseharbor-core` access Target with the same name and runtime as the Core installation. Its `--tenant-id` must match the operator's actual Core membership; the pinned HTTPS/OIDC profile verifies it again against the live Core. No local runtime is used.
+
+```bash
+baha target create vm-core --runtime-provider docker --access vm-core-management --access-provider baseharbor-core --reference vm-core --tenant-id 11111111-1111-4111-8111-111111111111
+baha use vm-core
+```
+
+The pinned `BASEHARBOR_CONNECTION_PROFILE` and valid operator session are required before `baha use`. This creates only a client-side route; the Core stays the authority for source admission, consent and the application lifecycle.
+
 ## Local Docker engine selection
 
 Rootless Docker is the default. The provider resolves and verifies one Unix socket before any lifecycle operation, then uses `docker --host SOCKET` for Compose, inspection, execution, volume recovery and cleanup. A failed or rootful selection never falls back to System Docker.
@@ -153,4 +177,20 @@ These read results include `docker_engine.endpoint`, `mode`, `daemon_id`, `selec
 
 The first owned lifecycle operation records a protected `runtime/docker-engine.json` binding under the Target state directory. Subsequent CLI and MCP operations use that binding even when their ambient Docker contexts differ. A changed endpoint, mode or daemon identity refuses mutation, duplicate bootstrap and cleanup. Existing Core state without a binding must have provable owned resources on the selected engine. When System Docker is reachable, an existing same-Target project there also blocks a fresh duplicate bootstrap on Rootless Docker.
 
-Existing rootful installations remain intact. Maintaining one requires explicit Target configuration with `docker-endpoint: unix:///var/run/docker.sock` and `docker-mode: rootful`; these values also have `--docker-endpoint` and `--docker-mode` Target-create options and `docker_endpoint`/`docker_mode` machine/MCP fields. This is explicit maintenance intent, not a migration. Do not remove protected state or switch a recorded Target's socket to move existing data. Use a separate Target for a genuinely separate installation.
+Existing rootful installations remain intact. Maintaining one requires explicit Target configuration with `docker-endpoint: unix:///var/run/docker.sock` and `docker-mode: rootful`; these values also have `--docker-endpoint` and `--docker-mode` Target-create options and `docker_endpoint`/`docker_mode` machine/MCP fields. This is explicit maintenance intent, not a migration. Do not remove protected state or switch a recorded Target's socket to move existing data. For an independent Core installation, use a separate host with its own Target and authenticated Connector access; another local Target name shares this host's Core.
+
+## Guided first-run Rootless Docker repair
+
+For a new, unconfigured local Docker Target, `baha up` checks the selected daemon before preparing the Core image. If the rootless socket is unavailable, an interactive session explains the detected problem and the exact repair plan. The plan may install Ubuntu/Debian `uidmap` using `sudo`, configure the user-scoped Rootless Docker daemon with `dockerd-rootless-setuptool.sh install --force`, and start or re-enable its systemd user service. Every host-changing step requires **separate affirmative approval** (default No); `--yes` does not authorize privilege escalation or Docker setup.
+
+System Docker is not stopped, changed or silently substituted. After setup BaseHarbor restores the default Docker CLI context and verifies the original selected rootless endpoint. Existing user services are started rather than reinstalled. Explicit Docker contexts/endpoints, remote Targets and Podman are excluded.
+
+The guided repair currently requires Linux on Ubuntu/Debian with a user systemd session, Docker rootless setup tools and existing non-overlapping subordinate UID/GID mappings of at least 65536 IDs in `/etc/subuid` and `/etc/subgid`. If those mappings or setup tools are missing, BaseHarbor reports actionable prerequisites without changing the host. Noninteractive runs stop without sudo or installation and require manual provisioning. A failed step does not fall back to rootful Docker; rerun after resolving the reported failure.
+
+## Editable deployment policies
+
+New Targets can select editable best-practice defaults with `baha target create NAME ... --deployment-preset development|test|staging|production|custom`. In the guided Target wizard, `development` is suggested; overrides are explicit. No policy is silently imposed on existing Targets.
+
+Inspect a configured Target using `baha target policy show NAME`. To change its protected policy later, use `baha target policy set NAME --deployment-preset test`; this resets the previous overrides to the selected preset. To change one option without resetting the others, use `baha target policy set NAME --deployment-dirty yes` (or the respective `--deployment-branches`, `--deployment-commit`, `--deployment-remote-commit`, `--deployment-approval`, and `--deployment-image-digest` flags). An explicit `--deployment-preset none` removes a local Target policy and restores legacy behavior.
+
+Changes use the protected Target configuration owner with compare-and-swap; runtime, tenant, access binding and installed workloads are preserved. Only existing locally owned Targets support this edit command. A remote Target edit fails closed until the owning Core exposes an authenticated operator mutation endpoint; running the command locally never weakens that remote Core's policy. Strict deployments without Core-verified provenance are refused, not treated as approved based on client-provided metadata.

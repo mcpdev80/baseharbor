@@ -116,7 +116,7 @@ func TestKeycloakSingleBootstrapDependencies(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := map[string]bool{"keycloak-1": true, "keycloak-access": true, "keycloak-db-tls-init": true, "keycloak-db": true, "keycloak-db-init": true}
+	want := map[string]bool{"keycloak-1": true, "keycloak-access": true, "keycloak-db": true, "keycloak-db-init": true}
 	for _, name := range selected {
 		if !want[name] {
 			t.Errorf("unexpected single boot service %s", name)

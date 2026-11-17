@@ -45,6 +45,9 @@ func providerTargetFileName(source observability.MetricsSource) string {
 }
 
 func syncProviderTargets(dir string, sources []observability.MetricsSource) error {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return err
@@ -78,7 +81,7 @@ func syncProviderTargets(dir string, sources []observability.MetricsSource) erro
 			return err
 		}
 	}
-	return nil
+	return bhruntime.NormalizeContainerReadableProjection(dir)
 }
 
 func syncProviderSecurity(dir string, sources []observability.MetricsSource) error {
@@ -138,7 +141,7 @@ func syncProviderSecurity(dir string, sources []observability.MetricsSource) err
 			}
 		}
 	}
-	return nil
+	return bhruntime.NormalizeContainerReadableProjection(dir)
 }
 
 func hasSecureProviderMetrics(sources []observability.MetricsSource) bool {
@@ -261,6 +264,11 @@ func EnsureProviderFilesWithRuntimeCAAt(ctx context.Context, issuer serviceacces
 	hasRuntimeCA := caErr == nil
 	if caErr != nil && !errors.Is(caErr, os.ErrNotExist) {
 		return ProviderFiles{}, caErr
+	}
+	if hasRuntimeCA {
+		if err := os.Chmod(files.RuntimeCA, 0o644); err != nil {
+			return ProviderFiles{}, fmt.Errorf("set BaseHarbor runtime CA permissions for Prometheus: %w", err)
+		}
 	}
 
 	values := map[string]string{}
@@ -576,6 +584,12 @@ func writePrometheusWebConfig(path string, policy serviceaccess.Policy, values m
 	}
 	if err := os.WriteFile(path, []byte(b.String()), 0o644); err != nil {
 		return fmt.Errorf("write Prometheus native web config: %w", err)
+	}
+	// The Core service uses a restrictive umask. Explicitly restore the
+	// container-readable mode; the containing provider directory remains
+	// private on the host and the file is mounted read-only into Prometheus.
+	if err := os.Chmod(path, 0o644); err != nil {
+		return fmt.Errorf("set Prometheus native web config permissions: %w", err)
 	}
 	return nil
 }

@@ -27,7 +27,6 @@ type Placement struct {
 	Network          string
 	Dir              string
 	LokiVolume       string
-	AlloyVolume      string
 	SharingBoundary  string
 	OwnerApplication string
 }
@@ -79,13 +78,12 @@ func retainedPlacementIdentityAt(dataDir, namespace string, m application.Manife
 		project := bhruntime.SharedProjectName(namespace)
 		dir := filepath.Join(filepath.Clean(dataDir), "providers", "loki", "shared")
 		lokiVolume := "baseharbor-loki-data"
-		alloyVolume := "baseharbor-alloy-data"
 		legacyProject := providerProject
 		if prefix != "" {
 			legacyProject = "baseharbor-logs-" + strings.TrimSuffix(prefix, "-")
 		}
 		network := legacyProject + "-internal"
-		return Placement{Scope: p.Scope, Project: project, Network: network, Dir: dir, LokiVolume: lokiVolume, AlloyVolume: alloyVolume, SharingBoundary: p.SharingBoundary}, nil
+		return Placement{Scope: p.Scope, Project: project, Network: network, Dir: dir, LokiVolume: lokiVolume, SharingBoundary: p.SharingBoundary}, nil
 	case capability.ScopeApplication:
 		suffix := prefix + m.Name + "-" + m.Environment
 		project := bhruntime.ApplicationProjectName(namespace, m.Name, m.Environment)
@@ -95,7 +93,6 @@ func retainedPlacementIdentityAt(dataDir, namespace string, m application.Manife
 			Network:          project + "-internal",
 			Dir:              filepath.Join(filepath.Clean(dataDir), "providers", "loki", "applications", m.Name, m.Environment),
 			LokiVolume:       "baseharbor-loki-data-" + suffix,
-			AlloyVolume:      "baseharbor-alloy-data-" + suffix,
 			OwnerApplication: m.Name,
 		}, nil
 	case capability.ScopeExternal:
@@ -133,6 +130,10 @@ func EnsureProviderFilesForModeAt(ctx context.Context, issuer serviceaccess.Issu
 }
 
 func ensureProviderFilesForModeAt(ctx context.Context, issuer serviceaccess.Issuer, dataDir, namespace string, m application.Manifest, mode bhruntime.LogCollectionMode, storage *objectstorage.PlatformBucket) (ProviderFiles, error) {
+	journalMapping, err := journalGroupMappingForMode(string(mode))
+	if err != nil {
+		return ProviderFiles{}, err
+	}
 	if application.ComponentHA(m, "logs") && storage == nil {
 		return ProviderFiles{}, errors.New("Loki HA requires an explicitly prepared object-storage binding")
 	}
@@ -196,7 +197,7 @@ func ensureProviderFilesForModeAt(ctx context.Context, issuer serviceaccess.Issu
 		if err != nil {
 			return ProviderFiles{}, fmt.Errorf("read Loki object-storage trust bundle: %w", err)
 		}
-		if err := os.WriteFile(filepath.Join(files.Dir, "object-storage-ca.pem"), trust, 0o644); err != nil {
+		if err := bhruntime.WriteContainerReadableProjection(filepath.Join(files.Dir, "object-storage-ca.pem"), trust); err != nil {
 			return ProviderFiles{}, fmt.Errorf("project Loki object-storage trust bundle: %w", err)
 		}
 		config = lokiHAConfig()
@@ -243,7 +244,7 @@ func ensureProviderFilesForModeAt(ctx context.Context, issuer serviceaccess.Issu
 			return ProviderFiles{}, err
 		}
 	}
-	if err := os.WriteFile(files.Compose, []byte(providerComposeYAMLForModeAndAccess(p, registrations, mode, accessFiles, platformSyslogPort, storageNetwork)), 0o600); err != nil {
+	if err := os.WriteFile(files.Compose, []byte(providerComposeYAMLForModeAndAccess(p, registrations, mode, accessFiles, platformSyslogPort, storageNetwork, journalMapping)), 0o600); err != nil {
 		return ProviderFiles{}, err
 	}
 	return files, nil

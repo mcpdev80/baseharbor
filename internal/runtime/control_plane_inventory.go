@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"sort"
 	"strings"
@@ -66,7 +67,7 @@ func ExistingControlPlaneRuntimeInventory(stateDir, project string) (ControlPlan
 	if err != nil {
 		return inventory, err
 	}
-	if !bytes.Equal(actual, []byte(bootstrap)) && !bytes.Equal(actual, []byte(secured)) {
+	if !controlPlaneComposeMatchesCanonical(actual, bootstrap) && !controlPlaneComposeMatchesCanonical(actual, secured) {
 		return inventory, errors.New("native control-plane definition differs from its canonical owner shape")
 	}
 	var model struct {
@@ -122,4 +123,60 @@ func ExistingControlPlaneRuntimeInventory(stateDir, project string) (ControlPlan
 		return inventory.Resources[i].Kind+inventory.Resources[i].Name < inventory.Resources[j].Kind+inventory.Resources[j].Name
 	})
 	return inventory, nil
+}
+
+// controlPlaneComposeMatchesCanonical accepts an older renderer only when its
+// sole differences are the fixed image-user overrides removed for platforms
+// that assign arbitrary non-root UIDs. All other owner-shape drift fails closed.
+func controlPlaneComposeMatchesCanonical(actual []byte, canonical string) bool {
+	if bytes.Equal(actual, []byte(canonical)) {
+		return true
+	}
+	var observed map[string]any
+	if yaml.Unmarshal(actual, &observed) != nil {
+		return false
+	}
+	services, ok := observed["services"].(map[string]any)
+	if !ok {
+		return false
+	}
+	legacyUsers := make(map[string]struct{}, len(services))
+	for _, rawService := range services {
+		service, ok := rawService.(map[string]any)
+		if !ok {
+			return false
+		}
+		user, exists := service["user"]
+		if !exists {
+			continue
+		}
+		image, _ := service["image"].(string)
+		want, supported := legacyControlPlaneUserForImage(image)
+		if !supported || fmt.Sprint(user) != want {
+			return false
+		}
+		legacyUsers[image] = struct{}{}
+		delete(service, "user")
+	}
+	if len(legacyUsers) == 0 {
+		return false
+	}
+	var expected map[string]any
+	if yaml.Unmarshal([]byte(canonical), &expected) != nil {
+		return false
+	}
+	return reflect.DeepEqual(observed, expected)
+}
+
+func legacyControlPlaneUserForImage(image string) (string, bool) {
+	switch image {
+	case "docker.io/library/postgres:18-alpine":
+		return "70:70", true
+	case "docker.io/library/haproxy:3.2.23-alpine":
+		return "99:99", true
+	case "docker.io/openbao/openbao:2.7.1":
+		return "100", true
+	default:
+		return "", false
+	}
 }

@@ -23,7 +23,7 @@ type verifiedRestoreScope struct {
 }
 
 func prepareAuthorizedApplicationRestore(ctx context.Context, resolved resolvedApplication, data applicationRestoreData, out io.Writer) (context.Context, func(), error) {
-	unlock, err := lockApplicationTargetLifecycle(resolved)
+	unlock, err := lockApplicationTargetLifecycle(resolved, false)
 	if err != nil {
 		return ctx, nil, err
 	}

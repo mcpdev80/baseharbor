@@ -17,11 +17,12 @@ import (
 // Stopping preserves desired intent and bindings. It is not last-consumer
 // withdrawal: shared providers remain requested for a later application up.
 type applicationStopPlan struct {
-	Scope           application.ProviderImpactScope   `json:"scope"`
-	Functions       []application.FunctionConsequence `json:"functions"`
-	Materials       []application.MaterialConsequence `json:"materials"`
-	protected       map[string]string
-	appliedRevision string
+	Scope            application.ProviderImpactScope   `json:"scope"`
+	Functions        []application.FunctionConsequence `json:"functions"`
+	Materials        []application.MaterialConsequence `json:"materials"`
+	protected        map[string]string
+	appliedRevision  string
+	retirementPlanID string
 }
 
 func buildApplicationStopPlan(ctx context.Context, resolved resolvedApplication) (applicationStopPlan, error) {
@@ -39,7 +40,7 @@ func buildApplicationStopPlan(ctx context.Context, resolved resolvedApplication)
 	}
 	applied := resolved
 	applied.Manifest = prior
-	snapshot, preferences, err := applicationLifecycleSnapshot(applied, observeApplicationProviderFacts(ctx, applied))
+	snapshot, preferences, err := applicationLifecycleSnapshotContext(ctx, applied, observeApplicationProviderFacts(ctx, applied))
 	if err != nil {
 		return p, err
 	}
@@ -61,6 +62,16 @@ func buildApplicationStopPlan(ctx context.Context, resolved resolvedApplication)
 	impact, err := resolveApplicationProviderImpact(ctx, applied, snapshot, union, requests)
 	if err != nil {
 		return p, err
+	}
+	if isApplicationDownMode(ctx) || isApplicationStopMode(ctx) {
+		_, retirement, err := buildApplicationRuntimeRetirementPlan(ctx, resolved)
+		if err != nil {
+			return p, err
+		}
+		if retirement.Impact == nil {
+			return p, runtimeMutationOwnerError()
+		}
+		p.retirementPlanID = retirement.Impact.PlanID
 	}
 	root, err := deployment.DeploymentRoot(resolved.DeploymentIdentity)
 	if err != nil {
@@ -103,9 +114,10 @@ func buildApplicationStopPlan(ctx context.Context, resolved resolvedApplication)
 	p.protected = owners
 	p.Functions = []application.FunctionConsequence{{Consumer: "application/" + prior.ApplicationID + "/" + prior.Environment, Function: "workload-availability", Outcome: "unavailable", Required: true, Via: []string{resolved.DeploymentIdentity.DeploymentID}, Behavior: "Application workload, its broker and the explicitly listed application-scoped provider realizations stop. Desired intent and bindings remain for explicit up. Shared and unselected standalone providers are retained. In-flight work, sessions, reconnection and transient-state effects are unverified; retained data does not prove continued application access.", Evidence: "existing applied deployment intent and resolved consumer union"}}
 	p.Scope, err = application.ComposeProviderImpactScope(application.ProviderScopeOwner{Owner: "application-deployment", Reference: filepath.Join(root, "deployment.json"), Subject: resolved.DeploymentIdentity.DeploymentID, Revision: runtimeMutationRevision(struct {
-		Owners map[string]string
-		Plan   applicationStopPlan
-	}{owners, p})}, []application.ProviderImpactPlan{impact}, false)
+		Owners           map[string]string
+		Plan             applicationStopPlan
+		RetirementPlanID string
+	}{Owners: owners, Plan: p, RetirementPlanID: p.retirementPlanID})}, []application.ProviderImpactPlan{impact}, false)
 	return p, err
 }
 
@@ -115,11 +127,11 @@ func stopApplicationRuntime(ctx context.Context, resolved resolvedApplication, o
 }
 
 func stopApplicationRuntimeWithResult(ctx context.Context, resolved resolvedApplication, out, errOut io.Writer) (applicationStopResult, error) {
-	result := applicationStopResult{Application: resolved.Manifest.Name, Environment: resolved.Manifest.Environment, State: "unknown"}
+	result := applicationStopResult{Application: resolved.Manifest.Name, Environment: resolved.Manifest.Environment, Target: resolved.Target.Name, State: "unknown"}
 	if err := authorizeApplicationOperation(ctx, "app.stop", resolved); err != nil {
 		return result, err
 	}
-	unlock, err := lockApplicationTargetLifecycle(resolved)
+	unlock, err := lockApplicationTargetLifecycle(resolved, true)
 	if err != nil {
 		return result, err
 	}
@@ -154,7 +166,7 @@ func stopApplicationRuntimeWithResult(ctx context.Context, resolved resolvedAppl
 	receipt, receiptErr := application.RecordProviderImpactScopeResult(plan.Scope, owner, nil)
 	result.ProviderChangeResult = &receipt
 	if operationErr == nil && verified && record.Observed.State == "stopped" && !record.Observed.Ready {
-		result.State, result.DataPreserved = "stopped", true
+		result.State, result.Verified, result.DataPreserved = "stopped", true, true
 	}
 	if operationErr != nil || !verified || receiptErr != nil || result.State != "stopped" {
 		return result, &machine.Error{Code: machine.ErrorConflict, CauseCode: "application_stop_partial", Message: "Application stop is incomplete; inspect actual runtime and retained recovery ownership before retrying.", Details: result, Cause: errors.Join(operationErr, receiptErr, recordErr, readErr)}

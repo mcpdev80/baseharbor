@@ -20,7 +20,7 @@ import (
 
 func corelessResolvedFixture(t *testing.T) resolvedApplication {
 	t.Helper()
-	target := configureTestTarget(t)
+	target := configureTestTargetEmpty(t)
 	root := t.TempDir()
 	m := application.WithWorkloadComponents(application.New("plain", "dev", false, false, false), "api")
 	if err := os.WriteFile(filepath.Join(root, "compose.yaml"), []byte("services:\n  api:\n    image: alpine:3.22\n    command: [sleep, infinity]\n"), 0o600); err != nil {

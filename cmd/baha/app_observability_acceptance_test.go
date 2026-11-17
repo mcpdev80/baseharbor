@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"os"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -86,6 +87,8 @@ func TestObservabilityFullStackAcceptanceInCI(t *testing.T) {
       - |
         import os
         import ssl
+        import threading
+        import time
         from http.server import BaseHTTPRequestHandler, HTTPServer
 
         body = b"baseharbor_acceptance_metric 1\n# EOF\n"
@@ -105,7 +108,12 @@ func TestObservabilityFullStackAcceptanceInCI(t *testing.T) {
             def log_message(self, format, *args):
                 return
 
-        print("baseharbor-observability-acceptance-api", flush=True)
+        def emit_logs():
+            while True:
+                print("baseharbor-observability-acceptance-api", flush=True)
+                time.sleep(1)
+
+        threading.Thread(target=emit_logs, daemon=True).start()
         server = HTTPServer(("0.0.0.0", 8080), Handler)
         cert_file = os.environ.get("TLS_CERT_FILE", "").strip()
         key_file = os.environ.get("TLS_KEY_FILE", "").strip()
@@ -114,10 +122,28 @@ func TestObservabilityFullStackAcceptanceInCI(t *testing.T) {
             context.load_cert_chain(certfile=cert_file, keyfile=key_file)
             server.socket = context.wrap_socket(server.socket, server_side=True)
         server.serve_forever()
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('127.0.0.1', 8080), 2).close()"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
   trace-probe:
     image: docker.io/curlimages/curl:8.16.0
     entrypoint: ["sh", "-c"]
-    command: ["echo baseharbor-observability-acceptance-trace-probe; sleep 3600"]
+    command: ["while :; do echo baseharbor-observability-acceptance-trace-probe; sleep 1; done"]
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          set -- --silent --show-error --max-time 3 --cacert "$$OTEL_EXPORTER_OTLP_CERTIFICATE";
+          if [ -n "$${OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE:-}" ]; then
+          set -- "$$@" --cert "$$OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE" --key "$$OTEL_EXPORTER_OTLP_CLIENT_KEY";
+          fi;
+          code=$$(curl "$$@" -o /dev/null -w '%{http_code}' "$${OTEL_EXPORTER_OTLP_ENDPOINT%/}/") &&
+          case "$$code" in 200|204|404|405) exit 0;; *) exit 1;; esac
+      interval: 2s
+      timeout: 5s
+      retries: 30
 `
 	if err := os.WriteFile("compose.yaml", []byte(composeYAML), 0o644); err != nil {
 		t.Fatal(err)
@@ -129,12 +155,49 @@ func TestObservabilityFullStackAcceptanceInCI(t *testing.T) {
 		_ = runWithIO(context.Background(), []string{"app", "destroy", "--yes"}, &out, &out)
 	}()
 
-	if err := runWithIO(ctx, []string{"app", "apply"}, &out, &out); err != nil {
-		t.Fatalf("full-stack observability apply failed: %v\n%s", err, out.String())
+	// The provider-change consent guard requires a plan→apply flow.
+	// On first apply the impact plan is complete=false → confirmations=2,
+	// so a direct "app apply" without consent fails with
+	// "impact-confirmation-required". Build the impact plan, provide the
+	// required two-stage consent, and carry it through with
+	// withProviderChangeConsent so the apply lifecycle can honour the
+	// prescribed plan→apply acknowledgement.
+	resolved, err := resolveApplication(ctx, application.Store{}, nil, "apply")
+	if err != nil {
+		t.Fatalf("resolve application for plan build: %v", err)
+	}
+	plan, err := buildResolvedApplicationPlan(ctx, resolved)
+	if err != nil {
+		t.Fatalf("build resolved application plan: %v", err)
+	}
+	if plan.ProviderPlan.Impact == nil {
+		t.Fatal("app apply requires a provider-impact plan")
+	}
+	impact := plan.ProviderPlan.Impact
+
+	// Construct the two-stage consent required by the impact plan.
+	// Complete=false or confirmations==2 both require First+Second.
+	consent := &application.ProviderChangeConsent{
+		PlanID:     impact.PlanID,
+		First:      true,
+		Second:     impact.ConfirmationsRequired == 2,
+		DeleteData: false,
+	}
+	if err := application.ValidateProviderChangeConsent(*impact, *consent); err != nil {
+		t.Fatalf("impact consent validation failed: %v", err)
+	}
+
+	if err := runWithIO(withProviderChangeConsent(ctx, consent), []string{"--verbose", "app", "apply"}, &out, &out); err != nil {
+		t.Fatal("full-stack observability apply failed")
 	}
 	if !strings.Contains(out.String(), "application and requested infrastructure verified") {
-		t.Fatalf("apply output missing final verified-ready state:\n%s", out.String())
+		t.Fatal("apply output missing final verified-ready state")
 	}
+	providerEvidence := regexp.MustCompile(`(?m)^\[VERIFIED\] logs\s+[0-9]+ workload stream\(s\), [1-9][0-9]* provider stream\(s\) ingested for ` + regexp.QuoteMeta(m.Name) + `$`).FindString(out.String())
+	if providerEvidence == "" {
+		t.Fatal("apply did not verify ingestion of any provider log streams")
+	}
+	t.Log(providerEvidence)
 
 	assertSignalProviders(t, m, observability.SignalMetrics, []capability.ProviderKind{
 		capability.ProviderOTelCollector,
@@ -156,15 +219,15 @@ func TestObservabilityFullStackAcceptanceInCI(t *testing.T) {
 		capability.ProviderRuntimeExecutor,
 	})
 
-	resolved, err := resolveApplication(ctx, application.Store{}, nil, "status")
+	statusResolved, err := resolveApplication(ctx, application.Store{}, nil, "status")
 	if err != nil {
 		t.Fatal(err)
 	}
-	files, err := application.ExistingRuntimeFiles(resolved.Store, resolved.Manifest)
+	files, err := application.ExistingRuntimeFiles(statusResolved.Store, statusResolved.Manifest)
 	if err != nil {
 		t.Fatal(err)
 	}
-	workload, found, err := application.MaterializeWorkload(root, resolved.Manifest, files)
+	workload, found, err := application.MaterializeWorkload(root, statusResolved.Manifest, files)
 	if err != nil || !found {
 		t.Fatalf("materialize workload: found=%v err=%v", found, err)
 	}
@@ -183,7 +246,7 @@ curl "$@" -H "Content-Type: application/x-protobuf" --data-binary @- "${OTEL_EXP
 	if _, err := compose.ExecProjectFilesInput(ctx, workload.Project, root, "trace-probe", composeFiles, payload, "sh", "-ec", tracePost); err != nil {
 		t.Fatalf("workload OTLP export through injected binding failed: %v", err)
 	}
-	if err := tracesprovider.VerifyTraceAt(ctx, resolved.Manifest, traceID, resolved.TargetStateRoot, resolved.Target.Name); err != nil {
+	if err := tracesprovider.VerifyTraceAt(ctx, statusResolved.Manifest, traceID, statusResolved.TargetStateRoot, statusResolved.Target.Name); err != nil {
 		t.Fatalf("workload OTLP trace was not queryable from Tempo: %v", err)
 	}
 }

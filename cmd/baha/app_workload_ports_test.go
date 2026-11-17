@@ -14,6 +14,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/repositoryinspect"
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
 func TestWorkloadPublishedPortVariables(t *testing.T) {
@@ -182,6 +183,98 @@ func TestEnsureRepositoryWorkloadPortsForUpPersistsAvailableDefault(t *testing.T
 	}
 	if values["HTTP_PORT"] != strconv.Itoa(port) {
 		t.Fatalf("HTTP_PORT = %q, want %d", values["HTTP_PORT"], port)
+	}
+}
+
+func TestPreflightRepositoryWorkloadPortsPersistsExplicitRemoteSelection(t *testing.T) {
+	repo := t.TempDir()
+	listener, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	port := listener.Addr().(*net.TCPAddr).Port
+	_ = listener.Close()
+	compose := "services:\n  edge:\n    image: caddy:2-alpine\n    ports:\n      - \"${HTTP_PORT:-8080}:80\"\n"
+	if err := os.WriteFile(filepath.Join(repo, "compose.yaml"), []byte(compose), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	composePath := filepath.Join(repo, "compose.yaml")
+	files := application.RuntimeFiles{Dir: t.TempDir()}
+	environment := map[string]string{}
+	ctx := withRequestedWorkloadPorts(context.Background(), map[string]string{"HTTP_PORT": strconv.Itoa(port)})
+	var out bytes.Buffer
+	if err := persistRequestedWorkloadPortSelections(ctx, &out, application.WorkloadFiles{
+		RepositoryRoot: repo, Compose: composePath, Services: []string{"edge"},
+	}, files, environment); err != nil {
+		t.Fatalf("%v; output=%q; env=%#v", err, out.String(), environment)
+	}
+	if environment["HTTP_PORT"] != strconv.Itoa(port) {
+		t.Fatalf("HTTP_PORT environment = %q, want %d", environment["HTTP_PORT"], port)
+	}
+	data, err := os.ReadFile(filepath.Join(files.Dir, workloadPortOverridesFile))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "HTTP_PORT="+strconv.Itoa(port)) {
+		t.Fatalf("persisted workload port missing: %s", data)
+	}
+}
+
+func TestPersistRequestedWorkloadPortAllowsExistingApplicationBinding(t *testing.T) {
+	repo := t.TempDir()
+	composePath := filepath.Join(repo, "compose.yaml")
+	compose := "services:\n  edge:\n    image: caddy:2-alpine\n    ports:\n      - \"${HTTP_PORT:-8080}:80\"\n"
+	if err := os.WriteFile(composePath, []byte(compose), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	listener, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	port := strconv.Itoa(listener.Addr().(*net.TCPAddr).Port)
+	files := application.RuntimeFiles{Dir: t.TempDir()}
+	if err := os.WriteFile(filepath.Join(files.Dir, workloadPortOverridesFile), []byte("HTTP_PORT="+port+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	environment := map[string]string{}
+	err = persistRequestedWorkloadPortSelections(
+		withRequestedWorkloadPorts(context.Background(), map[string]string{"HTTP_PORT": port}),
+		&bytes.Buffer{}, application.WorkloadFiles{RepositoryRoot: repo, Compose: composePath, Services: []string{"edge"}}, files, environment,
+	)
+	if err != nil {
+		t.Fatalf("same persisted application port should be reusable: %v", err)
+	}
+	if environment["HTTP_PORT"] != port {
+		t.Fatalf("HTTP_PORT = %q, want %q", environment["HTTP_PORT"], port)
+	}
+}
+
+type explicitWorkloadPortConflictRuntime struct{ bhruntime.RuntimeProvider }
+
+func (explicitWorkloadPortConflictRuntime) UpProjectFilesSelectedNoBuildProgress(context.Context, string, string, map[string]string, []string, func(string), ...string) error {
+	return errors.New("bind for 127.0.0.1:8081: address already in use")
+}
+
+func TestStartRepositoryWorkloadDoesNotReplaceExplicitRemotePort(t *testing.T) {
+	repo := t.TempDir()
+	composePath := filepath.Join(repo, "compose.yaml")
+	compose := "services:\n  edge:\n    image: caddy:2-alpine\n    ports:\n      - \"${HTTP_PORT:-8080}:80\"\n"
+	if err := os.WriteFile(composePath, []byte(compose), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	err := startRepositoryWorkloadWithPortFallback(
+		withRequestedWorkloadPorts(context.Background(), map[string]string{"HTTP_PORT": "8081"}),
+		strings.NewReader(""), &out, explicitWorkloadPortConflictRuntime{},
+		application.WorkloadFiles{Project: "demo", RepositoryRoot: repo, Compose: composePath},
+		application.RuntimeFiles{Dir: t.TempDir()}, map[string]string{"HTTP_PORT": "8081"}, []string{"edge"}, nil,
+	)
+	if err == nil || !strings.Contains(err.Error(), "set explicitly by the operator") {
+		t.Fatalf("explicit port conflict error = %v", err)
+	}
+	if strings.Contains(out.String(), "Found free host port") {
+		t.Fatalf("BaseHarbor offered an automatic replacement for an explicit port: %q", out.String())
 	}
 }
 

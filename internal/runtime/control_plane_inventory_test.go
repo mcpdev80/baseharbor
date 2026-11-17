@@ -5,8 +5,11 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"syscall"
 	"testing"
+
+	"go.yaml.in/yaml/v3"
 )
 
 func TestControlPlaneModuleInventoryIsCanonicalReadOnlyAndSeparatesSQL(t *testing.T) {
@@ -59,7 +62,32 @@ func TestControlPlaneModuleInventoryIsCanonicalReadOnlyAndSeparatesSQL(t *testin
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(files.Compose, append(actual, []byte("# modified owner definition\n")...), 0600); err != nil {
+		var legacyDocument map[string]any
+		if err := yaml.Unmarshal(actual, &legacyDocument); err != nil {
+			t.Fatal(err)
+		}
+		services := legacyDocument["services"].(map[string]any)
+		for _, rawService := range services {
+			service := rawService.(map[string]any)
+			if user, ok := legacyControlPlaneUserForImage(service["image"].(string)); ok {
+				service["user"] = user
+			}
+		}
+		legacy, err := yaml.Marshal(legacyDocument)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(files.Compose, legacy, 0600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := ExistingControlPlaneRuntimeInventory(root, files.Project); err != nil {
+			t.Fatalf("known prior fixed-UID renderer must remain upgradeable: %v", err)
+		}
+		modified := strings.Replace(string(legacy), "restart: unless-stopped", "restart: no", 1)
+		if modified == string(legacy) {
+			t.Fatal("test fixture has no restart policy to mutate")
+		}
+		if err := os.WriteFile(files.Compose, []byte(modified), 0600); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := ExistingControlPlaneRuntimeInventory(root, files.Project); err == nil {

@@ -16,6 +16,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/coreinstallation"
 	"github.com/mcpdev80/baseharbor/internal/coreupdate"
+	"github.com/mcpdev80/baseharbor/internal/delivery"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/identityprovider"
 	platformopenbao "github.com/mcpdev80/baseharbor/internal/openbao"
@@ -88,6 +89,54 @@ func TestCoreHAOpenBaoVersionsRuntimeAcceptance(t *testing.T) {
 	runCoreProviderVersionsRuntimeAcceptance(t, true)
 }
 
+// seedProviderRuntimeOwner sets up a valid authoritative owner with the exact
+// topology and runtime of this acceptance fixture. Never rewrite an existing
+// owned Core selection to make a conflicting test pass.
+func seedProviderRuntimeOwner(t *testing.T, ctx context.Context, targetName, engine string, ha bool) string {
+	t.Helper()
+	root, err := installationRuntimeRoot(t, targetName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = coreinstallation.Run(ctx, root, coreinstallation.Spec{
+		Target: targetName, Runtime: engine, MachineRole: coreinstallation.Development, HA: ha,
+	}, coreinstallation.Steps{
+		Preflight: func(context.Context, coreinstallation.State) error { return nil },
+		SQL:       func(context.Context, coreinstallation.State) error { return nil },
+		Secrets:   func(context.Context, coreinstallation.State) error { return nil },
+		Identity: func(context.Context, coreinstallation.State) (string, error) {
+			return "https://identity.localhost:8443/realms/baseharbor", nil
+		},
+		Verify: func(context.Context, coreinstallation.State) error { return nil },
+	})
+	if err != nil {
+		t.Fatalf("register exact %s HA=%t Core owner: %v", engine, ha, err)
+	}
+	return root
+}
+
+func TestProviderRuntimeOwnerFixtureMatchesRequestedSelection(t *testing.T) {
+	for _, engine := range []string{"docker", "podman"} {
+		for _, ha := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/ha=%t", engine, ha), func(t *testing.T) {
+				target := configureTestTargetEmpty(t)
+				root := seedProviderRuntimeOwner(t, context.Background(), target.Name, engine, ha)
+				state, err := coreinstallation.Load(root)
+				if err != nil {
+					t.Fatal(err)
+				}
+				want := coreinstallation.Spec{
+					Target: target.Name, Runtime: engine,
+					MachineRole: coreinstallation.Development, HA: ha,
+				}
+				if state.Spec != want {
+					t.Fatalf("fixture Core owner selection = %+v; want %+v", state.Spec, want)
+				}
+			})
+		}
+	}
+}
+
 func runCoreProviderVersionsRuntimeAcceptance(t *testing.T, ha bool) {
 	engine := os.Getenv("BASEHARBOR_TEST_RUNTIME")
 	if engine == "" {
@@ -103,7 +152,7 @@ func runCoreProviderVersionsRuntimeAcceptance(t *testing.T, ha bool) {
 	}
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Minute)
 	defer cancel()
-	target := configureTestTarget(t)
+	target := configureTestTargetEmpty(t)
 	if engine == "podman" {
 		cfg, err := deployment.LoadConfig()
 		if err != nil {
@@ -120,6 +169,7 @@ func runCoreProviderVersionsRuntimeAcceptance(t *testing.T, ha bool) {
 			t.Fatal(err)
 		}
 	}
+	root := seedProviderRuntimeOwner(t, ctx, target.Name, engine, ha)
 	t.Chdir(t.TempDir())
 	rt, err := detectRuntimeForTarget(ctx, target)
 	if err != nil {
@@ -151,10 +201,6 @@ func runCoreProviderVersionsRuntimeAcceptance(t *testing.T, ha bool) {
 			t.Errorf("owned fixture cleanup: %v", err)
 		}
 	}()
-	root, err := targetRuntimeStateRoot(target)
-	if err != nil {
-		t.Fatal(err)
-	}
 	dataDir, err := targetDataRoot(target)
 	if err != nil {
 		t.Fatal(err)
@@ -228,7 +274,22 @@ func runCoreProviderVersionsRuntimeAcceptance(t *testing.T, ha bool) {
 	if err := writeInitializedAuthoredManifest(t, application.RepositoryManifestName, manifest, 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := runWithIO(ctx, []string{"app", "apply"}, &output, &output); err != nil {
+	// The fixture acts as the explicit automation operator for its isolated
+	// candidate. Bind consent to the exact current repository submission; the
+	// production candidate digest check still rejects stale or forged inputs.
+	resolvedBaseline, err := resolveApplication(ctx, application.DefaultStore(), nil, "apply")
+	if err != nil {
+		t.Fatalf("resolve baseline candidate: %v", err)
+	}
+	submission, _ := candidateSubmissionForResolvedApp(ctx, resolvedBaseline)
+	candidateDigest := delivery.CandidateConsentDigest(submission)
+	if candidateDigest == "" {
+		t.Fatal("baseline candidate has no verifiable digest")
+	}
+	applyCtx := withCandidateConsentDigest(ctx, candidateDigest)
+	if err := runBackupFixtureWithConsent(applyCtx, "apply", func(applyCtx context.Context) error {
+		return runWithIO(applyCtx, []string{"app", "apply"}, &output, &output)
+	}); err != nil {
 		t.Fatalf("baseline application: %v", err)
 	}
 	if err := ops.verifyOwnedApplicationSecretScopes(ctx); err != nil {

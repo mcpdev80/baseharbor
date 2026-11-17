@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/providertopology"
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
 
@@ -28,7 +29,7 @@ func projectSeaweedNativeTLS(dir string, material serviceaccess.TLSMaterial) err
 		if len(data) == 0 {
 			return fmt.Errorf("SeaweedFS TLS material %s is empty", name)
 		}
-		if err := os.WriteFile(filepath.Join(dir, name), data, 0o644); err != nil {
+		if err := bhruntime.WriteContainerReadableProjection(filepath.Join(dir, name), data); err != nil {
 			return err
 		}
 	}

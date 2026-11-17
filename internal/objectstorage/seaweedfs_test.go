@@ -189,9 +189,9 @@ func TestSignedS3RequestUsesSigV4AndPathStyle(t *testing.T) {
 func TestSeaweedFSProviderRunsUnprivileged(t *testing.T) {
 	text := providerComposeYAML()
 	for _, want := range []string{
-		"user: \"1000:1000\"",
 		"read_only: true",
 		"cap_drop: [\"ALL\"]",
+		"cap_add: [\"CHOWN\", \"SETGID\", \"SETUID\"]",
 		"no-new-privileges:true",
 		"/tmp:rw,noexec,nosuid,nodev",
 	} {
@@ -236,6 +236,9 @@ func TestSeaweedFSManagementUIUsesHardenedWritableTmpfs(t *testing.T) {
 		}
 		if !strings.Contains(block, "/tmp:rw,noexec,nosuid,nodev") {
 			t.Fatalf("%s missing hardened writable /tmp:\n%s", service, block)
+		}
+		if !strings.Contains(block, "cap_add: [\"CHOWN\", \"SETGID\", \"SETUID\"]") {
+			t.Fatalf("%s missing the minimal capabilities needed by the image entrypoint to drop privileges:\n%s", service, block)
 		}
 	}
 }

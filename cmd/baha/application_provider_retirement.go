@@ -14,6 +14,18 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
 
+func applicationDestroyMayRetireProviders(plan applicationDestructionPlan) bool {
+	impactComplete := plan.Providers.Impact != nil && plan.Providers.Impact.Complete
+	if plan.Providers.Impact == nil && len(plan.Providers.Changes) == 0 {
+		impactComplete = true
+	}
+	return !plan.IncompleteInventory &&
+		plan.Scope.Complete &&
+		plan.Providers.Version == application.ProviderPlanVersion &&
+		plan.Providers.Complete &&
+		impactComplete
+}
+
 func prepareApplicationProviderRetirement(ctx context.Context, resolved resolvedApplication) (application.ProviderPlan, error) {
 	observed := observeApplicationProviderFacts(ctx, resolved)
 	plan, err := resolveApplicationProviderPlan(resolved, observed)
@@ -33,7 +45,21 @@ func prepareApplicationProviderRetirement(ctx context.Context, resolved resolved
 		if (!released[change.InstanceID] && !controlPlaneStorage && !ownedControlPlaneSecrets(registry, change.InstanceID)) || len(change.Consumers) > 0 || change.Ownership == capability.OwnershipExternal {
 			continue
 		}
-		if !plan.Complete || change.Action == "preserve" {
+		// ADR-0022 retirement-decision boundary: the fail-closed guard gates
+		// only an actual RELEASE of a provider (stop/remove-runtime), where the
+		// last consumer, runtime or ownership must be verifiable. A normal edit
+		// that merely retains/reuses an existing owned resource (preserve/reuse/
+		// restart/add of a required instance) is NOT a retirement: there is
+		// nothing to release, so unverifiable inventory of that retained
+		// resource must not veto the safe edit. Real release attempts stay
+		// fail-closed here and again in retireReleasedApplicationProviders.
+		if change.Action == "preserve" {
+			continue
+		}
+		if change.Action != "stop" && change.Action != "remove-runtime" {
+			continue
+		}
+		if !plan.Complete {
 			return application.ProviderPlan{}, &machine.Error{Code: machine.ErrorOwnershipAmbiguous, CauseCode: "provider_retirement_unverifiable", Resource: change.InstanceID, Message: "The last consumer cannot be released without verified runtime and complete consumer inventory.", Next: "Recover the existing provider/deployment inventory and retry; ownership and runtime remain available.", Details: struct {
 				Plan     application.ProviderPlan            `json:"plan"`
 				Observed map[string]application.ProviderFact `json:"observed"`

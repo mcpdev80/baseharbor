@@ -24,7 +24,7 @@ func (e controlledLogExecutor) OpenLogStream(context.Context, machine.StreamRequ
 func TestHTTPSLogStreamAdmitsIdleProducerAndFlushesSmallOutput(t *testing.T) {
 	reader, writer := io.Pipe()
 	defer writer.Close()
-	handler, err := New(controlledLogExecutor{reader: reader})
+	handler, err := New(controlledLogExecutor{reader: reader}, "")
 	if err != nil {
 		t.Fatal(err)
 	}

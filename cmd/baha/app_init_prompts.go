@@ -91,6 +91,10 @@ func promptCapabilityList(reader *bufio.Reader, out io.Writer, defaults []bool, 
 }
 
 func promptCapabilityTTY(reader *bufio.Reader, out io.Writer, fd uintptr, labels []string, defaults []bool, allowNone bool) ([]bool, error) {
+	return promptCheckboxTTY(reader, out, fd, "Select application capabilities", labels, defaults, allowNone)
+}
+
+func promptCheckboxTTY(reader *bufio.Reader, out io.Writer, fd uintptr, title string, labels []string, defaults []bool, allowNone bool) ([]bool, error) {
 	selected := append([]bool(nil), defaults...)
 	cursor := 0
 
@@ -100,7 +104,7 @@ func promptCapabilityTTY(reader *bufio.Reader, out io.Writer, fd uintptr, labels
 	}
 	defer term.Restore(fd, oldState)
 
-	fmt.Fprintln(out, "\nSelect application capabilities")
+	fmt.Fprintln(out, "\n"+title)
 	fmt.Fprintln(out, "Use ↑/↓ to move, Space to toggle, Enter to confirm.")
 	fmt.Fprint(out, "\x1b[?25l")
 	defer fmt.Fprint(out, "\x1b[?25h")
@@ -392,7 +396,7 @@ func promptYesNo(reader *bufio.Reader, out io.Writer, label string, defaultYes b
 	case "n", "no", "nein":
 		return false, nil
 	default:
-		return false, fmt.Errorf("expected yes or no, got %q", line)
+		return false, usageError(fmt.Sprintf("expected yes or no, got %q", line), "Answer yes (y) or no (n), or cancel the wizard before changing anything.")
 	}
 }
 
@@ -402,7 +406,9 @@ func readPrompt(reader *bufio.Reader, out io.Writer, prompt string) (string, err
 	if err != nil && !errors.Is(err, io.EOF) {
 		return "", err
 	}
-	if errors.Is(err, io.EOF) && line == "" {
+	// EOF is cancellation even with buffered partial input. Otherwise Ctrl-D
+	// after a partial "yes" could inadvertently authorize a mutation.
+	if errors.Is(err, io.EOF) {
 		return "", io.EOF
 	}
 	return strings.TrimRight(line, "\r\n"), nil

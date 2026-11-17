@@ -10,6 +10,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/mcpdev80/baseharbor/internal/health"
 	platformopenbao "github.com/mcpdev80/baseharbor/internal/openbao"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
@@ -20,6 +23,40 @@ const (
 	controlPlaneStartTimeout        = 10 * time.Minute
 	controlPlaneComposeStartTimeout = 8 * time.Minute
 )
+
+// persistControlPlaneOpenBaoReference records the shared baseharbor-owned
+// openbao/control-plane realization into the persisted provider registry after a
+// control-plane 'up'. A fresh host never wrote this instance (only the first
+// app apply reconciles the registry), so the persisted provider-registry.json
+// stayed empty until then. The runtime broker and destroy paths resolve that
+// shared instance from the persisted registry; an empty file would otherwise
+// surface 'runtime broker dependency "openbao/control-plane" is not registered'.
+// Registering a second time is a no-op: Register dedupes by instance ID.
+func persistControlPlaneOpenBaoReference(ctx context.Context) error {
+	target, err := effectiveTarget(ctx)
+	if err != nil {
+		return err
+	}
+	dataRoot, err := targetDataRoot(target)
+	if err != nil {
+		return err
+	}
+	store := capability.RegistryStore{Path: filepath.Join(dataRoot, "provider-registry.json")}
+	return store.Update(func(registry *capability.Registry) error {
+		// Mirror registerReferenceProvidersAt's OpenBao registration: a shared,
+		// baseharbor-owned realization with no sharing boundary. No manifest is
+		// required because the shared placement is the default for OpenBao.
+		resource := capability.Resource{Kind: capability.Secrets, Name: "default", Provider: capability.ProviderOpenBao}
+		instance, err := application.ReferenceProviderInstanceForRegistration(resource)
+		if err != nil {
+			return err
+		}
+		if instance.Ownership != capability.OwnershipBaseHarbor {
+			return fmt.Errorf("runtime broker requires its supported managed OpenBao realization")
+		}
+		return registry.Register(instance)
+	})
+}
 
 func runtimeUp(parent context.Context, out io.Writer) error {
 	return runtimeUpExisting(parent, out, "")
@@ -50,8 +87,16 @@ func runtimeUpWithPortsSelection(parent context.Context, out io.Writer, ports bh
 	if err := resumeSharedPlatformRuntimeForSelection(ctx, compose, out, controlPlaneOnly); err != nil {
 		return fmt.Errorf("resume shared platform runtime: %w", err)
 	}
-	fmt.Fprintln(out, "BaseHarbor control-plane runtime started")
-	fmt.Fprintln(out, "next: run 'baha status' and 'baha doctor'")
+	// A fresh host never persisted the shared OpenBao control-plane realization
+	// (only the first app apply reconciles the provider registry). Persist it
+	// here so the persisted provider-registry.json always lists the baseharbor
+	// openbao/control-plane instance that the runtime broker and destroy paths
+	// resolve against; an empty persisted registry would otherwise surface
+	// 'runtime broker dependency "openbao/control-plane" is not registered'.
+	if err := persistControlPlaneOpenBaoReference(ctx); err != nil {
+		return fmt.Errorf("persist control-plane OpenBao provider reference: %w", err)
+	}
+	cli.ReportActivityNotice(out, "PostgreSQL and OpenBao service containers started")
 	return nil
 }
 
@@ -125,7 +170,10 @@ func runtimeUpExistingSelection(parent context.Context, out io.Writer, recoveryF
 		if len(checks) > 0 {
 			_, ready := health.Format(checks)
 			if ready {
-				fmt.Fprintln(out, "BaseHarbor control-plane runtime already READY. No changes.")
+				if err := persistControlPlaneOpenBaoReference(ctx); err != nil {
+					return fmt.Errorf("persist control-plane OpenBao provider reference: %w", err)
+				}
+				fmt.Fprintln(out, "BaseHarbor control-plane runtime already READY.")
 				return nil
 			}
 		}
@@ -141,6 +189,9 @@ func runtimeUpExistingSelection(parent context.Context, out io.Writer, recoveryF
 	}
 	if err := verifyExistingControlPlaneAfterStart(ctx, compose, files, resolvedRecoveryFile, out); err != nil {
 		return err
+	}
+	if err := persistControlPlaneOpenBaoReference(ctx); err != nil {
+		return fmt.Errorf("persist control-plane OpenBao provider reference: %w", err)
 	}
 	if _, found, err := bhruntime.LoadControlPlaneCredentialRotation(files); err != nil {
 		return fmt.Errorf("inspect pending control-plane credential rotation: %w", err)
@@ -377,19 +428,29 @@ func startControlPlaneRuntime(ctx context.Context, out io.Writer, ports bhruntim
 		return nil, bhruntime.Files{}, err
 	}
 	startCtx, startCancel := context.WithTimeout(ctx, controlPlaneComposeStartTimeout)
-	err = compose.UpProject(startCtx, files.Project, files.Compose, files.Env)
+	var startErr error
+	if progressCompose, ok := compose.(interface {
+		UpProjectProgress(context.Context, string, string, string, func(string)) error
+	}); ok {
+		startErr = progressCompose.UpProjectProgress(startCtx, files.Project, files.Compose, files.Env, func(detail string) {
+			cli.ReportActivityDetail(out, detail)
+		})
+	} else {
+		cli.ReportActivityDetail(out, "creating and starting PostgreSQL and OpenBao containers")
+		startErr = compose.UpProject(startCtx, files.Project, files.Compose, files.Env)
+	}
 	startCancel()
-	if err != nil {
+	if startErr != nil {
 		diagnosticCtx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 		defer cancel()
 		if diagnostics, ok := compose.(interface {
 			DiagnosticsProject(context.Context, string, string, string) string
 		}); ok {
 			if details := strings.TrimSpace(diagnostics.DiagnosticsProject(diagnosticCtx, files.Project, files.Compose, files.Env)); details != "" {
-				return nil, bhruntime.Files{}, fmt.Errorf("start control plane within %s: %w\n%s", controlPlaneComposeStartTimeout, err, details)
+				return nil, bhruntime.Files{}, fmt.Errorf("start control plane within %s: %w\n%s", controlPlaneComposeStartTimeout, startErr, details)
 			}
 		}
-		return nil, bhruntime.Files{}, fmt.Errorf("start control plane within %s: %w", controlPlaneComposeStartTimeout, err)
+		return nil, bhruntime.Files{}, fmt.Errorf("start control plane within %s: %w", controlPlaneComposeStartTimeout, startErr)
 	}
 	return compose, files, nil
 }
@@ -450,6 +511,9 @@ func verifyExistingControlPlaneAfterStart(ctx context.Context, compose bhruntime
 			)
 		}
 		fmt.Fprintln(out, "OpenBao is sealed; unsealing from the operator recovery file...")
+		if err := waitForOpenBaoPostgresStorage(ctx, compose, files); err != nil {
+			return fmt.Errorf("verify OpenBao PostgreSQL storage before unseal: %w", err)
+		}
 		if err := platformopenbao.Unseal(ctx, compose, files, recoveryFile); err != nil {
 			return fmt.Errorf("unseal OpenBao after control-plane start: %w", err)
 		}
@@ -484,4 +548,22 @@ func verifyExistingControlPlaneAfterStart(ctx context.Context, compose bhruntime
 		case <-time.After(250 * time.Millisecond):
 		}
 	}
+}
+
+func waitForOpenBaoPostgresStorage(ctx context.Context, compose bhruntime.RuntimeProvider, files bhruntime.Files) error {
+	credentials, err := bhruntime.LoadControlPlaneCredentials(files)
+	if err != nil {
+		return fmt.Errorf("load OpenBao PostgreSQL credentials: %w", err)
+	}
+	if err := waitForControlPlanePostgresCredential(
+		ctx,
+		compose,
+		files,
+		credentials.OpenBaoDBUser,
+		credentials.OpenBaoDBPassword,
+		"openbao",
+	); err != nil {
+		return fmt.Errorf("wait for authenticated PostgreSQL TLS storage connection: %w", err)
+	}
+	return nil
 }

@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/capability"
 	platformopenbao "github.com/mcpdev80/baseharbor/internal/openbao"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/testsupport/containersecurity"
@@ -32,6 +34,25 @@ func TestSingleControlPlaneRestartRotationAndCleanup(t *testing.T) {
 	runControlPlaneRestartAcceptance(t, false)
 }
 
+// activeDockerMode detects the mode of the container daemon that the active
+// context resolves to. On GitHub-hosted runners (AppArmor blocks unprivileged
+// user namespaces) the system daemon is rootful; on a real rootless-capable
+// host it may be rootless. The target inherits this mode so the integration
+// test verifies the actual engine on the host, not a hardcoded rootless
+// assumption. Falls back to rootless when the engine cannot be probed
+// (e.g. podman not installed on the runner).
+func activeDockerMode(ctx context.Context, command string) string {
+	selection, err := bhruntime.ResolveDockerEngine(ctx, command)
+	if err != nil {
+		// Engine unreachable or not installed — fall back to the documented
+		// default. On GitHub-hosted runners this means the system daemon will
+		// be selected (rootful) because hostDefaultEndpoint falls back there
+		// when rootless is impossible.
+		return "rootless"
+	}
+	return selection.Mode
+}
+
 func runControlPlaneRestartAcceptance(t *testing.T, ha bool) {
 	t.Helper()
 
@@ -47,9 +68,21 @@ func runControlPlaneRestartAcceptance(t *testing.T, ha bool) {
 	t.Setenv("BASEHARBOR_TARGET", "")
 	// Both engines need an explicit protected Target record. An implicit local
 	// Docker default is sufficient for initial start, not for mutation admission.
-	var targetOut bytes.Buffer
+	// For Docker targets we detect the active engine mode and pass it as
+	// --docker-mode so the target verifies the actual daemon on the host
+	// (rootless where available, rootful on GitHub-hosted runners where
+	// AppArmor blocks unprivileged user namespaces). Podman targets do not
+	// use Docker engine configuration.
 	targetName := runtimeCommand + "-restart-ci"
-	if err := runWithIO(ctx, []string{"target", "create", targetName, "--provider", runtimeCommand, "--access", targetName, "--reference", "local", "--default"}, &targetOut, &targetOut); err != nil {
+	var targetArgs []string
+	if runtimeCommand == "docker" {
+		dockerMode := activeDockerMode(ctx, runtimeCommand)
+		targetArgs = []string{"target", "create", targetName, "--provider", runtimeCommand, "--access", targetName, "--reference", "local", "--default", "--docker-mode", dockerMode}
+	} else {
+		targetArgs = []string{"target", "create", targetName, "--provider", runtimeCommand, "--access", targetName, "--reference", "local", "--default"}
+	}
+	var targetOut bytes.Buffer
+	if err := runWithIO(ctx, targetArgs, &targetOut, &targetOut); err != nil {
 		t.Fatalf("create restart target: %v\n%s", err, targetOut.String())
 	}
 	if output, err := exec.CommandContext(
@@ -150,6 +183,19 @@ func runControlPlaneRestartAcceptance(t *testing.T, ha bool) {
 	if err := persistTargetRecoveryFileReference(ctx, recovery); err != nil {
 		t.Fatalf("persist target recovery reference: %v", err)
 	}
+	// Simulate a target created before control-plane references were persisted.
+	target, err := effectiveTarget(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dataRoot, err := targetDataRoot(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	registryPath := filepath.Join(dataRoot, "provider-registry.json")
+	if err := os.Remove(registryPath); err != nil && !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
 
 	out.Reset()
 	if err := runtimeUpExisting(ctx, &out, ""); err != nil {
@@ -160,6 +206,35 @@ func runControlPlaneRestartAcceptance(t *testing.T, ha bool) {
 	}
 	if !strings.Contains(out.String(), "control-plane runtime started and ready") {
 		t.Fatalf("restart output did not report verified readiness: %q", out.String())
+	}
+	registry, err := (capability.RegistryStore{Path: registryPath}).Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifest := application.New("worker", "dev", false, false, false)
+	manifest = application.WithWorkloadComponents(manifest, "api")
+	manifest = application.WithRuntimePermission(manifest, string(capability.MetricsV1.ID), []string{"api"}, "runtime.get")
+	roots, err := application.RuntimeDependencyRoots(manifest, registry)
+	if err != nil || len(roots) != 1 || roots[0] != "openbao/control-plane" {
+		t.Fatalf("restarted control plane broker dependency: %v, %v", roots, err)
+	}
+	if err := os.Remove(registryPath); err != nil {
+		t.Fatal(err)
+	}
+	out.Reset()
+	if err := runtimeUpExisting(ctx, &out, ""); err != nil {
+		t.Fatalf("up of an already-ready control plane: %v\n%s", err, out.String())
+	}
+	if !strings.Contains(out.String(), "control-plane runtime already READY") {
+		t.Fatalf("expected already-ready path: %q", out.String())
+	}
+	registry, err = (capability.RegistryStore{Path: registryPath}).Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	roots, err = application.RuntimeDependencyRoots(manifest, registry)
+	if err != nil || len(roots) != 1 || roots[0] != "openbao/control-plane" {
+		t.Fatalf("already-ready control plane broker dependency: %v, %v", roots, err)
 	}
 
 	state, err := platformopenbao.Inspect(ctx, compose, files)

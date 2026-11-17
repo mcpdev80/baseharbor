@@ -22,6 +22,9 @@ type OutputOptions struct {
 	ReducedMotion  bool
 	Plain          bool
 	NonInteractive bool
+	// ProgressHeartbeat overrides the persistent progress heartbeat. A negative
+	// duration suppresses it when a remote operation supplies real phase events.
+	ProgressHeartbeat time.Duration
 }
 
 // WithOutputOptions attaches process-wide human-output preferences to a command
@@ -350,6 +353,72 @@ func (t *Terminal) Activity(ctx context.Context, label string, fn func(io.Writer
 			} else {
 				t.activityLine("WAIT", label+" - still working ("+formatActivityDuration(time.Since(startedAt))+")")
 			}
+		}
+	}
+}
+
+// Progress reports a long-running human-facing operation as persistent lines.
+// Unlike Activity, it always prints a start and result row and never rewrites
+// terminal output, which makes phase-by-phase setup readable in SSH sessions
+// and captured logs.
+func (t *Terminal) Progress(ctx context.Context, label string, fn func(io.Writer) error) error {
+	if t.opts.Quiet {
+		buffer := newActivityBuffer()
+		err := fn(buffer)
+		if err != nil {
+			_, _ = io.Copy(t.errOut, buffer)
+		}
+		_, _ = io.Copy(t.errOut, &buffer.notices)
+		return err
+	}
+
+	startedAt := time.Now()
+	t.activityLine("START", label)
+	progress := newActivityBuffer()
+	done := make(chan error, 1)
+	go func() { done <- fn(progress) }()
+	interval := t.opts.ProgressHeartbeat
+	if interval == 0 {
+		interval = 10 * time.Second
+	}
+	var ticks <-chan time.Time
+	if interval > 0 {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		ticks = ticker.C
+	}
+
+	finish := func(err error) error {
+		for {
+			select {
+			case detail := <-progress.details:
+				t.activityLine("INFO", label+" - "+detail)
+			default:
+				goto detailsFlushed
+			}
+		}
+	detailsFlushed:
+		suffix := " (" + formatActivityDuration(time.Since(startedAt)) + ")"
+		if err == nil {
+			t.activityLine("OK", label+suffix)
+		} else {
+			t.activityLine("FAIL", label+suffix)
+			_, _ = io.WriteString(t.errOut, progress.String())
+		}
+		_, _ = io.WriteString(t.errOut, progress.notices.String())
+		return err
+	}
+
+	for {
+		select {
+		case err := <-done:
+			return finish(err)
+		case <-ctx.Done():
+			return finish(ctx.Err())
+		case detail := <-progress.details:
+			t.activityLine("INFO", label+" - "+detail)
+		case <-ticks:
+			t.activityLine("WAIT", label+" - still working ("+formatActivityDuration(time.Since(startedAt))+")")
 		}
 	}
 }

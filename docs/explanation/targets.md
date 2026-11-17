@@ -195,6 +195,34 @@ Mutation and destructive operations identify the full effective deployment:
 target + application + environment
 ```
 
+### Lifecycle lock scope and fairness
+
+Lifecycle mutation of a Target is serialised by a kernel advisory lock. The lock
+has two independent boundaries:
+
+- **Per-Target owner lock** (``.installation.lock``): protects the Target-wide Core
+  installation, shared backend providers (SQL/Valkey/etc.), and the target-owned
+  runtime from concurrent mutation by a single owner.
+- **Per-Application lock** (``.installation.lock`` under ``<target>/lock/<deployment-id>``):
+  serialises lifecycle mutation of a single application. It is keyed by the
+  application's own identity, so two **independent** service-less applications
+  that merely share one host Target converge **in parallel** instead of being
+  fully serialized. Two writers to the *same* application still serialize.
+
+The two boundaries are deliberately decoupled: sharing a host Target is not a
+genuine write dependency between unrelated apps, so serializing them was a false
+limitation. Shared Core/provider state that *does* need serialization stays
+protected by the per-Target owner lock and the per-shared-owner backend lock.
+
+**Fairness.** The kernel lock is first-come, first-served, which cannot by
+itself prevent a long-lived ``app up`` from starving a ``destroy`` (or vice versa)
+on the same Target. The CLI acquisition policy therefore gives ``destroy``/``stop``
+a single priority attempt before every operation retries with jittered
+exponential backoff up to a bounded deadline (15s), then fails closed with the
+same "Target application lifecycle is active" contention message. A ``destroy``
+therefore acquires the lock in finite time and is never starved by a continuous
+stream of writers, while still respecting the same fail-closed refusal.
+
 ## Listing deployments
 
 `baha app list` reads the deployment registry for the effective Target rather than repository-local state.

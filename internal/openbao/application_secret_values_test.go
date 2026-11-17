@@ -3,6 +3,7 @@ package openbao
 import (
 	"bytes"
 	"context"
+	"errors"
 	"reflect"
 	"strings"
 	"testing"
@@ -61,6 +62,20 @@ func TestParseApplicationSecretKeyListRejectsUnexpectedNamespaceEntries(t *testi
 		if _, err := parseApplicationSecretKeyList(input); err == nil {
 			t.Fatalf("expected input %s to be rejected", input)
 		}
+	}
+}
+
+func TestParseManagedApplicationSecretDocumentsAllowsOnlyMissingNamespace(t *testing.T) {
+	keys, err := parseManagedApplicationSecretDocuments("{}", errors.New("exit status 2"))
+	if err != nil || len(keys) != 0 {
+		t.Fatalf("missing namespace = %#v, %v; want empty success", keys, err)
+	}
+	if _, err := parseManagedApplicationSecretDocuments("", errors.New("permission denied")); err == nil {
+		t.Fatal("authorization failures must not be treated as an absent namespace")
+	}
+	keys, err = parseManagedApplicationSecretDocuments(`["_baseharbor","APP_SECRET"]`, nil)
+	if err != nil || !reflect.DeepEqual(keys, []string{"_baseharbor", "APP_SECRET"}) {
+		t.Fatalf("managed secret documents = %#v, %v", keys, err)
 	}
 }
 

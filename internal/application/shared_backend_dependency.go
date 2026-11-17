@@ -2,6 +2,7 @@ package application
 
 import (
 	"errors"
+	"fmt"
 
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
@@ -14,7 +15,11 @@ func selectSharedBackendDependency(state *sharedBackendState, m Manifest, issuer
 	if issuer == nil {
 		return bhruntime.Files{}, errors.New("shared providers require a verified service-access issuer")
 	}
-	state.Environment = "core"
+	// The calling application's environment is authoritative for the backend
+	// service identity (shared-postgres-<env>) and naming. Core selection is a
+	// provider binding, never an environment override; clobbering state.Environment
+	// would resolve readiness/identity probes to a non-existent service.
+	caller := state.Environment
 	if err := checkSharedValkeyTopology(*state, m); err != nil {
 		return bhruntime.Files{}, err
 	}
@@ -34,6 +39,12 @@ func selectSharedBackendDependency(state *sharedBackendState, m Manifest, issuer
 	}
 	if core.Project != bhruntime.SharedProjectName(namespace) || core.ResourceProject != bhruntime.SharedResourceProjectName(namespace) {
 		return bhruntime.Files{}, errors.New("shared backend dependency does not belong to the selected Target")
+	}
+	// Core SQL is an environment-owned backend; an environment mismatch between
+	// the caller and the Core binding is a state conflict (fail-closed), never a
+	// silent fallback.
+	if caller != "" && caller != "core" && state.Environment != caller {
+		return bhruntime.Files{}, fmt.Errorf("shared SQL environment conflict: caller %q vs Core binding %q", caller, state.Environment)
 	}
 	if sharedBackendUsesStandalonePostgres(*state) {
 		return bhruntime.Files{}, errors.New("retained standalone providers cannot be implicitly migrated into management SQL")

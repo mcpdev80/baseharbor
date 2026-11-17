@@ -121,6 +121,17 @@ must preserve the failed state and display the consequences. Details do not gran
 approval; any retry still requires the current plan-bound acknowledgements and
 separate explicit consent for data deletion.
 
+Discovery advertises `execution.terminal.installation-destroy` when the Core
+supports a terminal receipt for `installation.destroy`. A client MAY set
+`wait_for_terminal: true` only for that operation. The Core returns HTTP `200`
+with its terminal `Execution v1` and `Location` on the same authenticated HTTPS
+request. This exception exists because successful installation destruction
+removes the Core's execution journal and identity services, so a later status
+request cannot be authenticated. The request still requires an
+`Idempotency-Key`; a replay without a terminal receipt is rejected and MUST NOT
+start a second destruction. Clients must treat a transport loss as an unknown
+result and inspect the installation before attempting recovery.
+
 Operation input is not retained in ordinary execution metadata. The semantic
 executor rejects unknown fields, duplicate keys at every depth, non-object input,
 invalid UTF-8, nesting beyond 64 levels and trailing JSON values without
@@ -273,6 +284,33 @@ membership identifiers and unknown safety classes deny. An authenticated
 request in `dev` retains this check; it does not become a trusted local operator.
 This role check supplements effective policy and resource ownership. It does
 not establish tenant isolation for an adapter's inventory or runtime resources.
+
+## Verified claim mapping and team boundary
+
+Machine authorization is fail closed for a verified operator identity: an
+`issuer`/`subject` pair alone grants nothing. The verified transport principal
+carries provider-neutral `group`/`app-role` claims, but these claims never
+grant a right on their own and are only meaningful when the token that produced
+them verified against its issuer (`issuer_verified` set). A claim-scoped machine
+operation therefore requires a `MembershipProvider` that maps the verified
+`issuer`/`subject` and the verified `group`/`app-role` claims onto the current,
+concrete tenant memberships and the current revocation state of that one
+installation.
+
+- A verified operator with no resolved claim membership is denied, including
+  when no `MembershipProvider` is installed. A verified identity alone does not
+  open the door; `dev` retains this check and does not become a trusted local
+  operator.
+- A claim resolves only to the tenant its verified claims name. A `team-a`
+  claim must not authorize a `tenant-b` operation, and ambiguous memberships that
+  span more than one tenant fail closed. This is the two-team boundary at the
+  authorization-decision level, not only inside the tenant resolver.
+- A withdrawn or revoked claim or membership — a provider that returns no
+  membership or reports an error on the revocation lookup — denies the next
+  operation. Provider group changes are not revoked instantly within an issued
+  token's lifetime; this window is the only bounded exception.
+- The existing tenant/role RBAC checks are preserved and are not replaced by the
+  claim mapping; claim mapping binds verified claims onto them.
 
 ### Navigation result consumption
 

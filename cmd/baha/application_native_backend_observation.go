@@ -17,10 +17,18 @@ import (
 // The applied intent remains authoritative for removed services. During retry
 // the existing deployment owner retains its original intent explicitly.
 func retainedApplicationBackendIntent(resolved resolvedApplication) (application.Manifest, error) {
+	return retainedApplicationBackendIntentWithLoader(resolved, deployment.LoadDeploymentRecord)
+}
+
+func retainedApplicationBackendIntentForPlan(resolved resolvedApplication) (application.Manifest, error) {
+	return retainedApplicationBackendIntentWithLoader(resolved, deployment.LoadOptionalDeploymentRecord)
+}
+
+func retainedApplicationBackendIntentWithLoader(resolved resolvedApplication, load func(deployment.DeploymentIdentity) (deployment.DeploymentRecord, error)) (application.Manifest, error) {
 	if resolved.DeploymentIdentity.DeploymentID == "" {
 		return resolved.Manifest, nil
 	}
-	record, err := deployment.LoadDeploymentRecord(resolved.DeploymentIdentity)
+	record, err := load(resolved.DeploymentIdentity)
 	if errors.Is(err, os.ErrNotExist) {
 		return resolved.Manifest, nil
 	}

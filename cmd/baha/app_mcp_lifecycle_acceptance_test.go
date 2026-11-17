@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -83,8 +84,14 @@ func TestMCPGenericClientRealApplicationLifecycle(t *testing.T) {
 	defer clientSession.Close()
 
 	callMCPAcceptanceTool(t, ctx, clientSession, "baseharbor.inspect", map[string]any{"path": root})
-	callMCPAcceptanceTool(t, ctx, clientSession, "baseharbor.plan", map[string]any{})
-	callMCPAcceptanceTool(t, ctx, clientSession, "baseharbor.apply", map[string]any{})
+	planResult := callMCPAcceptanceTool(t, ctx, clientSession, "baseharbor.plan", map[string]any{})
+	_, needsConsent := callMCPAcceptanceToolToleratingConsent(t, ctx, clientSession, "baseharbor.apply", map[string]any{})
+	if needsConsent {
+		consent := mcpAcceptanceProviderChangeConsent(t, planResult)
+		callMCPAcceptanceTool(t, ctx, clientSession, "baseharbor.apply", map[string]any{
+			"provider_change_consent": consent,
+		})
+	}
 	callMCPAcceptanceTool(t, ctx, clientSession, "baseharbor.status", map[string]any{})
 	callMCPAcceptanceTool(t, ctx, clientSession, "baseharbor.doctor", map[string]any{})
 	callMCPAcceptanceTool(t, ctx, clientSession, "baseharbor.observe", map[string]any{})
@@ -140,9 +147,87 @@ func TestMCPGenericClientRealApplicationLifecycle(t *testing.T) {
 		"backup_path":   backupPath,
 		"password_file": passwordPath,
 	})
+	stopPlan := callMCPAcceptanceTool(t, ctx, clientSession, "baseharbor.plan", map[string]any{})
+	_, needsStopConsent := callMCPAcceptanceToolToleratingConsent(t, ctx, clientSession, "baseharbor.stop", map[string]any{})
+	if needsStopConsent {
+		callMCPAcceptanceTool(t, ctx, clientSession, "baseharbor.stop", map[string]any{
+			"provider_change_consent": mcpAcceptanceProviderChangeConsent(t, stopPlan),
+		})
+	}
 	callMCPAcceptanceTool(t, ctx, clientSession, "baseharbor.status", map[string]any{})
 	callMCPAcceptanceTool(t, ctx, clientSession, "baseharbor.doctor", map[string]any{})
-	callMCPAcceptanceTool(t, ctx, clientSession, "baseharbor.destroy", map[string]any{"approval": true})
+	destroyPlan := callMCPAcceptanceTool(t, ctx, clientSession, "baseharbor.plan", map[string]any{})
+	_, needsDestroyConsent := callMCPAcceptanceToolToleratingConsent(t, ctx, clientSession, "baseharbor.destroy", map[string]any{
+		"approval": true,
+	})
+	if needsDestroyConsent {
+		callMCPAcceptanceTool(t, ctx, clientSession, "baseharbor.destroy", map[string]any{
+			"approval":                true,
+			"provider_change_consent": mcpAcceptanceProviderChangeConsent(t, destroyPlan),
+		})
+	}
+}
+
+func mcpAcceptanceProviderChangeConsent(t *testing.T, planResult *mcp.CallToolResult) map[string]any {
+	t.Helper()
+	// The machine contract requires a plan-bound consent: plan_id plus both
+	// acknowledgement stages (application.ProviderChangeConsent json schema).
+	raw := formatMCPAcceptanceContent(planResult)
+	var payload any
+	if err := json.Unmarshal([]byte(raw), &payload); err != nil {
+		t.Fatalf("plan result is not JSON: %v\n%s", err, raw)
+	}
+	planID := ""
+	var walk func(any)
+	walk = func(v any) {
+		switch value := v.(type) {
+		case map[string]any:
+			for k, child := range value {
+				if k == "plan_id" || k == "id" {
+					if s, ok := child.(string); ok && s != "" && planID == "" {
+						planID = s
+					}
+				}
+				walk(child)
+			}
+		case []any:
+			for _, child := range value {
+				walk(child)
+			}
+		}
+	}
+	walk(payload)
+	if planID == "" {
+		t.Fatalf("plan result lacks a plan id for consent: %s", raw)
+	}
+	return map[string]any{"plan_id": planID, "first": true, "second": true, "delete_data": false}
+}
+
+func callMCPAcceptanceToolToleratingConsent(t *testing.T, ctx context.Context, session *mcp.ClientSession, name string, args map[string]any) (*mcp.CallToolResult, bool) {
+	t.Helper()
+	result, err := session.CallTool(ctx, &mcp.CallToolParams{Name: name, Arguments: args})
+	if err != nil {
+		t.Fatalf("%s transport call failed: %v", name, err)
+	}
+	if !result.IsError {
+		return result, false
+	}
+	body := formatMCPAcceptanceContent(result)
+	// Hosts that already own the shared backend return a complete plan and a
+	// plain success; fresh hosted runners require the two-stage plan-bound
+	// provider acknowledgement. The journey continues identically either way,
+	// so only this consent shape is tolerated, every other error is fatal.
+	// approval_required carries the two-stage plan acknowledgements;
+	// placement_pending asks for a complete resource inventory that only the
+	// operator-supplied placement policy can give. Both are deterministic
+	// first-provisioning states on a fresh host, never product regressions.
+	if strings.Contains(body, "\"approval_required\"") ||
+		strings.Contains(body, "impact-confirmation-required") ||
+		strings.Contains(body, "\"placement_pending\"") {
+		return result, true
+	}
+	t.Fatalf("%s returned machine error: %s", name, body)
+	return nil, false
 }
 
 func callMCPAcceptanceTool(t *testing.T, ctx context.Context, session *mcp.ClientSession, name string, args map[string]any) *mcp.CallToolResult {

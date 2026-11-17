@@ -252,8 +252,8 @@ func TestComposeYAMLUsesNonRootPreparedRuntimeOperationVolume(t *testing.T) {
 	if !strings.Contains(got, "runtime-operations:/var/lib/baseharbor/runtime-operations") {
 		t.Fatalf("runtime broker compose missing persistent operations volume:\n%s", got)
 	}
-	if !strings.Contains(got, "user: \"65532:65532\"") {
-		t.Fatalf("runtime broker compose missing explicit non-root identity:\n%s", got)
+	if strings.Contains(got, "user:") {
+		t.Fatalf("runtime broker compose must leave UID assignment to the runtime:\n%s", got)
 	}
 }
 
@@ -381,6 +381,85 @@ func TestComposeYAMLBrokerHealthcheckPinsTLSHostnameToLoopback(t *testing.T) {
 		!strings.Contains(got, "BASEHARBOR_RUNTIME_OPENBAO_CA_FILE: \"/run/baseharbor/openbao/ca.pem\"") ||
 		!strings.Contains(got, "/run/baseharbor/openbao/ca.pem:ro") {
 		t.Fatalf("broker healthcheck is not DNS-independent while preserving TLS hostname:\n%s", got)
+	}
+}
+
+func TestRuntimeBrokerMetricsAliasIsUniquePerApplication(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name string) string {
+		t.Helper()
+		path := filepath.Join(dir, name)
+		if err := os.WriteFile(path, []byte("test"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return path
+	}
+	m := application.WithMetricsSource(application.New("full-demo", "dev", false, false, false), "application", "api", 8080, "/metrics")
+	mtls := openbao.RuntimeMTLSFiles{
+		CA: write("ca.pem"), BrokerCert: write("broker-cert.pem"), BrokerKey: write("broker-key.pem"),
+		ClientCert: write("client-cert.pem"), ClientKey: write("client-key.pem"),
+	}
+	got, err := composeYAML(m, mtls, write("runtime-token"), "", "", write("permissions.json"), write("service-tokens.json"), "baseharbor-runtime:test", "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	blocks := strings.SplitN(got, "      observability:\n", 2)
+	if len(blocks) != 2 {
+		t.Fatalf("broker observability network is missing:\n%s", got)
+	}
+	alias := application.MetricsTargetAlias(m, "runtime-broker-provider")
+	if !strings.Contains(blocks[1], "          - "+alias+"\n") || strings.Contains(blocks[1], "          - baseharbor-runtime\n") {
+		t.Fatalf("broker observability network must use the unique scrape alias %q:\n%s", alias, got)
+	}
+}
+
+func TestComposeYAMLBrokerHealthcheckTimingConfiguration(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name string) string {
+		t.Helper()
+		path := filepath.Join(dir, name)
+		if err := os.WriteFile(path, []byte("test"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return path
+	}
+	m := application.New("demo", "dev", false, false, true)
+	mtls := openbao.RuntimeMTLSFiles{
+		CA:         write("ca.pem"),
+		BrokerCert: write("broker-cert.pem"),
+		BrokerKey:  write("broker-key.pem"),
+		ClientCert: write("client-cert.pem"),
+		ClientKey:  write("client-key.pem"),
+	}
+	got, err := composeYAML(
+		m,
+		mtls,
+		write("runtime-token"),
+		write("openbao.env"),
+		write("openbao-ca.pem"),
+		write("permissions.json"),
+		write("service-tokens.json"),
+		"baseharbor-runtime:test",
+		"",
+		nil,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Healthcheck timing must allow OpenBao and broker enough time to initialize
+	// before the first /readyz probe. start_period 2s was too aggressive.
+	// 30s gives OpenBao ~30s to come up before the healthcheck loop starts.
+	if !strings.Contains(got, "start_period: 30s") {
+		t.Errorf("healthcheck start_period should be 30s to avoid premature /readyz failures; got:\n%s", got)
+	}
+	if !strings.Contains(got, "interval: 5s") {
+		t.Errorf("healthcheck interval should be 5s; got:\n%s", got)
+	}
+	if !strings.Contains(got, "retries: 12") {
+		t.Errorf("healthcheck retries should be 12; got:\n%s", got)
+	}
+	if !strings.Contains(got, "timeout: 5s") {
+		t.Errorf("healthcheck timeout should be 5s; got:\n%s", got)
 	}
 }
 

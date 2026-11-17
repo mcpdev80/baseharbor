@@ -119,7 +119,15 @@ func writeCoreSharedValkeyACL(shared SharedBackendFiles, state sharedBackendStat
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(dir, "consumer-acl.conf"), []byte(content.String()), 0644)
+	path := filepath.Join(dir, "consumer-acl.conf")
+	if err := os.WriteFile(path, []byte(content.String()), 0644); err != nil {
+		return err
+	}
+	// The file lives under the private shared-backend state directory, so the
+	// host-side ACL remains protected while the numeric Valkey user can read
+	// the bind-mounted file inside the container. WriteFile's mode is reduced
+	// by umask; explicitly set the container-facing read bit afterwards.
+	return os.Chmod(path, 0644)
 }
 
 func verifyCoreSharedValkey(ctx context.Context, op provideroperation.Executor, shared SharedBackendFiles, state sharedBackendState, m Manifest) error {

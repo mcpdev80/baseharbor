@@ -31,7 +31,15 @@ func applicationProviderChangeRequests(plan application.ProviderPlan) []applicat
 // management access without releasing the whole provider. Include those actual
 // renderer changes in the same acknowledged consequence plan.
 func nativeBackendChangeRequests(resolved resolvedApplication, existing []application.ProviderChangeRequest) ([]application.ProviderChangeRequest, error) {
-	prior, err := retainedApplicationBackendIntent(resolved)
+	return nativeBackendChangeRequestsWithPrior(resolved, existing, retainedApplicationBackendIntent)
+}
+
+func nativeBackendChangeRequestsForPlan(resolved resolvedApplication, existing []application.ProviderChangeRequest) ([]application.ProviderChangeRequest, error) {
+	return nativeBackendChangeRequestsWithPrior(resolved, existing, retainedApplicationBackendIntentForPlan)
+}
+
+func nativeBackendChangeRequestsWithPrior(resolved resolvedApplication, existing []application.ProviderChangeRequest, loadPrior func(resolvedApplication) (application.Manifest, error)) ([]application.ProviderChangeRequest, error) {
+	prior, err := loadPrior(resolved)
 	if err != nil {
 		return nil, err
 	}

@@ -15,10 +15,12 @@ import (
 )
 
 type publicControlPlaneCheck struct {
-	Name  string `json:"name"`
-	Ready bool   `json:"ready"`
+	Name    string `json:"name"`
+	Ready   bool   `json:"ready"`
+	Message string `json:"message,omitempty"`
 }
 type controlPlaneReport struct {
+	DevelopmentHosts      *developmentHosts                  `json:"development_hosts,omitempty"`
 	DockerEngine          *bhruntime.DockerEngineObservation `json:"docker_engine,omitempty"`
 	Installation          *coreinstallation.State            `json:"installation,omitempty"`
 	Target                string                             `json:"target"`
@@ -38,7 +40,7 @@ func inspectControlPlane(ctx context.Context) (controlPlaneReport, error) {
 	if err != nil {
 		return controlPlaneReport{}, err
 	}
-	result := controlPlaneReport{Target: target.Name, State: "not_deployed"}
+	result := controlPlaneReport{Target: target.Name, State: "not_deployed", DevelopmentHosts: observedDevelopmentHosts(target)}
 	result.DockerEngine, _ = inspectTargetDockerEngine(ctx, target)
 	root, err := targetRuntimeStateRoot(target)
 	if err != nil {
@@ -112,9 +114,14 @@ func inspectControlPlane(ctx context.Context) (controlPlaneReport, error) {
 }
 
 type controlPlaneDoctorReport struct {
-	DockerEngine *bhruntime.DockerEngineObservation `json:"docker_engine,omitempty"`
-	Ready        bool                               `json:"ready"`
-	Checks       []publicControlPlaneCheck          `json:"checks"`
+	DockerEngine  *bhruntime.DockerEngineObservation `json:"docker_engine,omitempty"`
+	CoreVersion   string                             `json:"core_version,omitempty"`
+	CoreCommit    string                             `json:"core_commit,omitempty"`
+	CLIVersion    string                             `json:"cli_version,omitempty"`
+	CLICommit     string                             `json:"cli_commit,omitempty"`
+	UpdateCommand string                             `json:"update_command,omitempty"`
+	Ready         bool                               `json:"ready"`
+	Checks        []publicControlPlaneCheck          `json:"checks"`
 }
 
 func inspectControlPlaneDoctor(ctx context.Context) (controlPlaneDoctorReport, error) {
@@ -122,7 +129,7 @@ func inspectControlPlaneDoctor(ctx context.Context) (controlPlaneDoctorReport, e
 		return controlPlaneDoctorReport{}, err
 	}
 	checks := collectControlPlaneDoctorChecks(ctx)
-	result := controlPlaneDoctorReport{Ready: true, Checks: []publicControlPlaneCheck{}}
+	result := controlPlaneDoctorReport{Ready: true, CoreVersion: version, CoreCommit: commit, Checks: []publicControlPlaneCheck{}}
 	if target, err := effectiveTarget(ctx); err == nil {
 		result.DockerEngine, _ = inspectTargetDockerEngine(ctx, target)
 	}
@@ -150,12 +157,26 @@ func collectControlPlaneDoctorChecks(ctx context.Context) []health.Check {
 	if targetErr != nil {
 		return append(checks, health.Check{Name: "target-selection", OK: false, Message: targetErr.Error()})
 	}
-	if engine, err := inspectTargetDockerEngine(ctx, target); engine != nil {
-		message := fmt.Sprintf("%s (%s; daemon %s)", engine.Endpoint, engine.Mode, engine.DaemonID)
-		if err != nil {
-			message = err.Error()
+	if target.RuntimeProvider == "docker" {
+		if engine, err := inspectTargetDockerEngine(ctx, target); engine != nil {
+			message := fmt.Sprintf("%s (%s; daemon %s)", engine.Endpoint, engine.Mode, engine.DaemonID)
+			if err != nil {
+				message = err.Error()
+			}
+			checks = append(checks, health.Check{Name: "Docker engine", OK: err == nil && engine.Verified, Message: message})
 		}
-		checks = append(checks, health.Check{Name: "Docker engine", OK: err == nil && engine.Verified, Message: message})
+	}
+	// Native runtime readiness is probed explicitly for the target's provider.
+	// The dropped health.Doctor() legacy probes never emitted a named runtime
+	// check, so a Podman-target doctor never reported podman/quadlet
+	// availability — and on a fresh Podman runner with an absent Core the early
+	// core-deployment return below would skip any runtime probe entirely. Probe
+	// here, before that early return, so the checks always appear. They are
+	// emitted only for a Podman target, keeping Docker-target doctor output
+	// untouched (Docker assertions require every check ready and never expect a
+	// podman check).
+	if target.RuntimeProvider == "podman" {
+		checks = append(checks, PodmanRuntimeDoctorChecks(ctx, target)...)
 	}
 	if target.AccessProvider == "" || target.AccessProvider == "local" {
 		state, stateErr := managedTrustCoreState(ctx)

@@ -1,0 +1,69 @@
+[
+  {
+    "record": "malformed-missing-app",
+    "fixture": {
+      "contract_version": "baseharbor.candidate/v1",
+      "target": { "name": "lab" },
+      "consent": { "acknowledged": true, "by": "operator" },
+      "source": { "kind": "source", "repository": "example/app", "revision": "0123456789abcdef0123456789abcdef01234567" }
+    }
+  },
+  {
+    "record": "malformed-missing-consent",
+    "fixture": {
+      "contract_version": "baseharbor.candidate/v1",
+      "app": { "id": "00000000-0000-0000-0000-000000000001" },
+      "target": { "name": "lab" }
+    }
+  },
+  {
+    "record": "malformed-bad-contract-version",
+    "fixture": {
+      "contract_version": "baseharbor.candidate/v2",
+      "app": { "id": "00000000-0000-0000-0000-000000000001" },
+      "target": { "name": "lab" },
+      "consent": { "acknowledged": true, "by": "operator" }
+    }
+  },
+  {
+    "record": "digest-mutable-tag-only",
+    "fixture": {
+      "contract_version": "baseharbor.candidate/v1",
+      "app": { "id": "00000000-0000-0000-0000-000000000002" },
+      "target": { "name": "lab" },
+      "consent": { "acknowledged": true, "by": "automation" },
+      "image": { "kind": "image", "reference": "example/app:latest" }
+    }
+  },
+  {
+    "record": "digest-bad-sha-format",
+    "fixture": {
+      "contract_version": "baseharbor.candidate/v1",
+      "app": { "id": "00000000-0000-0000-0000-000000000002" },
+      "target": { "name": "lab" },
+      "consent": { "acknowledged": true, "by": "automation" },
+      "image": { "kind": "image", "reference": "example/app", "digest": "sha256:deadbeef" }
+    }
+  },
+  {
+    "record": "path-source-and-image-both",
+    "fixture": {
+      "contract_version": "baseharbor.candidate/v1",
+      "app": { "id": "00000000-0000-0000-0000-000000000004" },
+      "target": { "name": "lab" },
+      "consent": { "acknowledged": true, "by": "operator" },
+      "source": { "kind": "source", "repository": "example/app", "revision": "0123456789abcdef0123456789abcdef01234567" },
+      "image": { "kind": "image", "reference": "example/app", "digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222" }
+    }
+  },
+  {
+    "record": "secret-reference-not-submitted",
+    "fixture": {
+      "contract_version": "baseharbor.candidate/v1",
+      "app": { "id": "00000000-0000-0000-0000-000000000005" },
+      "target": { "name": "lab" },
+      "consent": { "acknowledged": true, "by": "operator" },
+      "source": { "kind": "source", "repository": "example/app", "revision": "0123456789abcdef0123456789abcdef01234567", "secretRef": "secrets/db-password" }
+    }
+  }
+]

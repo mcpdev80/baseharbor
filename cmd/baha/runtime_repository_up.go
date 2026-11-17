@@ -43,7 +43,7 @@ func routeRepositoryRuntimeUp(ctx context.Context, in io.Reader, out, errOut io.
 			return true, err
 		}
 	}
-	resolved, err := resolveApplication(ctx, application.DefaultStore(), nil, "up")
+	resolved, err := resolveApplication(ctx, application.DefaultStore(), upNameArgs(opts.Name), "up")
 	if err != nil {
 		return true, err
 	}
@@ -57,5 +57,8 @@ func routeRepositoryRuntimeUp(ctx context.Context, in io.Reader, out, errOut io.
 		return true, err
 	}
 	fmt.Fprintln(out, "Converging selected application capabilities and their genuine dependencies...")
+	if opts.CandidateConsent != "" {
+		ctx = withCandidateConsentDigest(ctx, opts.CandidateConsent)
+	}
 	return true, appApplyCommand(application.DefaultStore()).Run(ctx, nil, out, errOut)
 }

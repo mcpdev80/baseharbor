@@ -4,10 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
+
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/machine"
-	"strings"
 )
 
 type machineTargetCreateInput struct {
@@ -24,6 +25,7 @@ type machineTargetCreateInput struct {
 	Reference             string                             `json:"reference"`
 	Scope                 string                             `json:"scope,omitempty"`
 	Default               bool                               `json:"default,omitempty"`
+	DeploymentPolicy      *deployment.TargetDeploymentPolicy `json:"deployment_policy,omitempty"`
 }
 type targetMutationResult struct {
 	RecoveryFile         string                                 `json:"recovery_file,omitempty"`
@@ -35,9 +37,18 @@ type targetMutationResult struct {
 	Deleted              bool                                   `json:"deleted,omitempty"`
 }
 
+// A local access definition is one host-wide management Core identity, not an
+// isolated Core per Target name. The caller keeps existing access untouched.
+func targetAccessConflictError(name string) error {
+	if name == "local" {
+		return fmt.Errorf("access %q already exists with different provider/reference; local access is one shared Core per host, not an isolated Core per Target. Run 'baha target list' and reuse the existing local access without changing its identity, or use 'baha node add' to enroll a separate remote Docker/Podman host", name)
+	}
+	return fmt.Errorf("access %q already exists with different provider/reference", name)
+}
+
 func createTargetDefinition(ctx context.Context, input machineTargetCreateInput) (targetMutationResult, error) {
 	if input.RecoveryFile != "" {
-		if input.RuntimeProvider != "" || input.AccessProvider != "" || input.Access != "" || input.Reference != "" || input.TenantID != "" || input.Scope != "" || input.Default || input.DockerEndpoint != "" || input.DockerContext != "" || input.DockerMode != "" {
+		if input.RuntimeProvider != "" || input.AccessProvider != "" || input.Access != "" || input.Reference != "" || input.TenantID != "" || input.Scope != "" || input.Default || input.DockerEndpoint != "" || input.DockerContext != "" || input.DockerMode != "" || input.DeploymentPolicy != nil {
 			return targetMutationResult{}, errors.New("Target recovery cannot override original runtime, access, authentication or recovery references")
 		}
 		if input.ProviderChangeConsent != nil {
@@ -72,16 +83,17 @@ func createTargetDefinition(ctx context.Context, input machineTargetCreateInput)
 	}
 	if existing, exists := cfg.Access[accessName]; exists {
 		if existing.Provider != accessProvider || existing.Reference != reference {
-			return targetMutationResult{}, fmt.Errorf("access %q already exists with different provider/reference", accessName)
+			return targetMutationResult{}, targetAccessConflictError(accessName)
 		}
 	} else {
 		cfg.Access[accessName] = deployment.AccessDefinition{Provider: accessProvider, Reference: reference}
 	}
 	cfg.Targets[name] = deployment.TargetDefinition{
-		TenantID: strings.TrimSpace(input.TenantID),
-		Runtime:  deployment.RuntimeDefinition{Provider: runtimeProvider, DockerEndpoint: strings.TrimSpace(input.DockerEndpoint), DockerContext: strings.TrimSpace(input.DockerContext), DockerMode: strings.TrimSpace(input.DockerMode)},
-		Access:   deployment.TargetAccess{Reference: accessName},
-		Scope:    scope,
+		TenantID:         strings.TrimSpace(input.TenantID),
+		Runtime:          deployment.RuntimeDefinition{Provider: runtimeProvider, DockerEndpoint: strings.TrimSpace(input.DockerEndpoint), DockerContext: strings.TrimSpace(input.DockerContext), DockerMode: strings.TrimSpace(input.DockerMode)},
+		Access:           deployment.TargetAccess{Reference: accessName},
+		Scope:            scope,
+		DeploymentPolicy: input.DeploymentPolicy,
 	}
 	if makeDefault {
 		cfg.DefaultTarget = name

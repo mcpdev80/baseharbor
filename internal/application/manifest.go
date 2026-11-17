@@ -33,6 +33,11 @@ type Manifest struct {
 	HA                bool
 	Availability      map[string]availability.Override
 	Consumes          []ConsumptionRequirement
+	// Private selects an application-scoped backend (own SQL + own key/value in
+	// their own network) instead of the shared environment bridge. It is a
+	// single, explicit opt-in switch: when false (the default) the existing
+	// shared-bridge behavior is unchanged. See provider_placement.go.
+	Private bool
 }
 
 type RuntimeRequirements struct {
@@ -145,6 +150,12 @@ func WithIdentityAuthentication(m Manifest, mfa string, methods []string, passwo
 // repository authoring metadata and never to portable application intent.
 type WorkloadConfig struct {
 	Components []string
+	// Compose is repository-source provenance (a compose/quadlet/k8s source path)
+	// and MUST NOT be required as portable Application Intent. The omitempty json
+	// tag keeps it out of the generated MCP intent schema's "required" list; the
+	// authoring intent is portable, source provenance stays optional and
+	// parseable. See spec/application-contract-v1.md workload section.
+	Compose string `json:"compose,omitempty"`
 }
 
 // HTTPExposureRequirement is provider-neutral public HTTP exposure intent.
@@ -172,6 +183,17 @@ func WithHA(m Manifest, enabled bool) Manifest {
 	return m
 }
 
+// WithPrivate marks the manifest for an application-scoped ("private") backend:
+// own SQL + own key/value in their own network, without touching the shared
+// environment bridge. This is the single documented private-mode switch.
+func WithPrivate(m Manifest, enabled bool) Manifest {
+	m.Private = enabled
+	return m
+}
+
+// HasPrivate reports whether the manifest requests the private backend switch.
+func HasPrivate(m Manifest) bool { return m.Private }
+
 func WithAvailabilityOverride(m Manifest, component string, ha *bool, instances int) Manifest {
 	if m.Availability == nil {
 		m.Availability = map[string]availability.Override{}
@@ -190,8 +212,19 @@ type SecretRequirements struct {
 
 type SecretRequirement struct {
 	Name     string
+	Source   SecretSource
 	Generate *SecretGeneration
 }
+
+// SecretSource identifies an explicit BaseHarbor-managed source from which a
+// required development secret is synchronized into the application's own
+// protected secret scope. These values are intentionally limited to dev.
+type SecretSource string
+
+const (
+	SecretSourceTargetDevelopmentUsername SecretSource = "target-development-username"
+	SecretSourceTargetDevelopmentPassword SecretSource = "target-development-password"
+)
 
 type SecretGeneration struct {
 	Type   string

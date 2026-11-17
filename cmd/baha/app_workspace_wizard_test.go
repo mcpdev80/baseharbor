@@ -55,7 +55,7 @@ func TestWorkspaceWizardCreatesPortableModelAndLocalMapping(t *testing.T) {
 		"ghcr.io/example/external@sha256:deadbeef",
 		"n",
 		"y",
-	}, "\n"))
+	}, "\n") + "\n")
 
 	oldWD, err := os.Getwd()
 	if err != nil {
@@ -127,7 +127,7 @@ func TestWorkspaceWizardCancelDoesNotWriteState(t *testing.T) {
 		"ghcr.io/example/app:latest",
 		"n",
 		"n",
-	}, "\n"))
+	}, "\n") + "\n")
 	oldWD, err := os.Getwd()
 	if err != nil {
 		t.Fatal(err)

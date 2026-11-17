@@ -45,6 +45,14 @@ func appDoctorRepairCommand(store application.Store) *cli.Command {
 }
 
 func executeApplicationRepairLifecycle(ctx context.Context, store application.Store, args []string, out, errOut io.Writer) error {
+	if target, err := effectiveTarget(ctx); err == nil && target.AccessProvider != "" && target.AccessProvider != "local" {
+		for _, arg := range args {
+			if arg == "--fix" || arg == "--yes" {
+				return usageError("remote application doctor is read-only", "Review the Core findings, then run 'baha app apply NAME' to reconcile through the normal remote lifecycle.")
+			}
+		}
+		return appDoctorCommand(store).Run(ctx, args, out, errOut)
+	}
 	if requestsJSONOutput(args) {
 		for _, arg := range args {
 			if arg == "--yes" {

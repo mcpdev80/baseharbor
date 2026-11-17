@@ -45,3 +45,5 @@ source <(baha completion bash)
 
 
 Technische Bezeichner: `baha app `.
+
+`baha tui` liest bei einem entfernten Core-Target alle Ansichten über dessen verifizierte Verbindung, wie `status` und `doctor`. Lokale Deployment-Dateien werden dafür nicht verwendet. Im App-Repository erscheint die App, außerhalb die Core-Übersicht. Auch `baha tui --json` beachtet das ausgewählte Target.

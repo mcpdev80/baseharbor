@@ -13,6 +13,20 @@ type openBaoOperationResult struct {
 	ManagerReady bool `json:"manager_ready"`
 }
 
+func (openBaoOperationResult) Answer(ok bool) string {
+	if ok {
+		return "yes"
+	}
+	return "no"
+}
+
+func (openBaoOperationResult) StatusMarker(ok bool) string {
+	if ok {
+		return "[OK]  "
+	}
+	return "[FAIL]"
+}
+
 func inspectManagedOpenBao(ctx context.Context) (openBaoOperationResult, error) {
 	if err := authorizeCurrentMCPContext(ctx, "openbao.status", "", "", ""); err != nil {
 		return openBaoOperationResult{}, err
@@ -32,6 +46,10 @@ func inspectManagedOpenBao(ctx context.Context) (openBaoOperationResult, error) 
 	return result, nil
 }
 func bootstrapManagedOpenBao(ctx context.Context, recoveryPath string) error {
+	return bootstrapManagedOpenBaoProgress(ctx, recoveryPath, nil)
+}
+
+func bootstrapManagedOpenBaoProgress(ctx context.Context, recoveryPath string, onProgress func(string)) error {
 	if err := authorizeCurrentMCPContext(ctx, "openbao.bootstrap", "", "", ""); err != nil {
 		return err
 	}
@@ -44,11 +62,17 @@ func bootstrapManagedOpenBao(ctx context.Context, recoveryPath string) error {
 			return fmt.Errorf("OpenBao bootstrap preflight: %w", err)
 		}
 	}
-	if err := platformopenbao.Bootstrap(ctx, compose, files, recoveryPath); err != nil {
+	if err := platformopenbao.BootstrapProgress(ctx, compose, files, recoveryPath, onProgress); err != nil {
 		return err
+	}
+	if onProgress != nil {
+		onProgress("saving the recovery-file reference")
 	}
 	if err := persistTargetRecoveryFileReference(ctx, recoveryPath); err != nil {
 		return fmt.Errorf("persist OpenBao recovery-file reference: %w", err)
+	}
+	if onProgress != nil {
+		onProgress("reconciling Core service certificates")
 	}
 	if err := reconcileControlPlaneServiceAccess(ctx, compose, files, recoveryPath); err != nil {
 		return fmt.Errorf("reconcile control-plane service access after OpenBao bootstrap: %w", err)

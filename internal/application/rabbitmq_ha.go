@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/devaccess"
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
 
@@ -24,6 +25,31 @@ func rabbitmqMemberServiceName(instance string, ordinal int) string {
 
 func rabbitmqMemberVolumeName(instance string, ordinal int) string {
 	return rabbitmqMemberServiceName(instance, ordinal) + "-data"
+}
+
+// Docker runs health checks as root when the image does not declare USER,
+// while RabbitMQ's entrypoint drops the broker to its rabbitmq account. With
+// the container's intentionally restricted capabilities, root cannot read
+// the broker's owner-only Erlang cookie. On Docker, drop the health check to
+// the broker account; platforms that assign a non-root UID can run it as-is.
+const rabbitMQHealthcheckCommand = `if [ "$(id -u)" -eq 0 ]; then su-exec rabbitmq rabbitmq-diagnostics -q ping; else rabbitmq-diagnostics -q ping; fi`
+
+func rabbitMQBrokerCommandArgs(command string, args ...string) []string {
+	wrapped := []string{
+		"sh", "-c",
+		`if [ "$(id -u)" -eq 0 ]; then exec su-exec rabbitmq "$@"; else exec "$@"; fi`,
+		"baseharbor-rabbitmq",
+		command,
+	}
+	return append(wrapped, args...)
+}
+
+func rabbitMQBrokerScriptArgs(script string) []string {
+	return []string{
+		"sh", "-c",
+		`if [ "$(id -u)" -eq 0 ]; then exec su-exec rabbitmq sh -ceu "$1"; else exec sh -ceu "$1"; fi`,
+		"baseharbor-rabbitmq", script,
+	}
 }
 
 func rabbitmqGatewayUpstreams(m Manifest, instance string) []serviceaccess.TCPGatewayUpstream {
@@ -57,7 +83,7 @@ func ensureRabbitMQHAConfigFiles(files RuntimeFiles, m Manifest) error {
 		b.WriteString("default_queue_type = quorum\n")
 		fmt.Fprintf(&b, "quorum_queue.initial_cluster_size = %d\n", rabbitmqMemberCount(m))
 		b.WriteString("cluster_partition_handling = pause_minority\n")
-		if err := os.WriteFile(filepath.Join(root, "rabbitmq.conf"), []byte(b.String()), 0o644); err != nil {
+		if err := bhruntime.WriteContainerReadableProjection(filepath.Join(root, "rabbitmq.conf"), []byte(b.String())); err != nil {
 			return fmt.Errorf("write RabbitMQ HA config for %s: %w", instance, err)
 		}
 	}
@@ -83,7 +109,6 @@ func writeRabbitMQComposeService(b *strings.Builder, m Manifest, instance string
 		fmt.Fprintf(b, "    image: %s\n", image)
 		b.WriteString("    restart: unless-stopped\n")
 		fmt.Fprintf(b, "    hostname: %s\n", service)
-		b.WriteString("    user: \"rabbitmq\"\n")
 		b.WriteString("    read_only: true\n")
 		b.WriteString("    cap_drop: [\"ALL\"]\n")
 		b.WriteString("    cap_add: [\"CHOWN\", \"SETGID\", \"SETUID\"]\n")
@@ -102,7 +127,7 @@ func writeRabbitMQComposeService(b *strings.Builder, m Manifest, instance string
 			fmt.Fprintf(b, "      - %s\n", rabbitmqHAConfigMount(instance))
 		}
 		b.WriteString("    healthcheck:\n")
-		b.WriteString("      test: [\"CMD-SHELL\", \"rabbitmq-diagnostics -q ping\"]\n")
+		fmt.Fprintf(b, "      test: [\"CMD-SHELL\", %q]\n", rabbitMQHealthcheckCommand)
 		b.WriteString("      interval: 5s\n      timeout: 5s\n      retries: 12\n      start_period: 10s\n\n")
 	}
 }
@@ -114,7 +139,6 @@ func writeRabbitMQUIComposeService(b *strings.Builder, m Manifest, instance stri
 	fmt.Fprintf(b, `  %s:
     image: %s
     restart: unless-stopped
-    user: "65532:65532"
     read_only: true
     cap_drop: ["ALL"]
     security_opt: ["no-new-privileges:true"]

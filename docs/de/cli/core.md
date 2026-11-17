@@ -1,21 +1,29 @@
 # Core-Workflow
 
-## Core gezielt abbauen
+Den ersten Tenant richtest du auf dem eigenen Core ausdrücklich mit
+`baha login -e dev --init-tenant` ein. `baha up` weist den ersten Tenant-Owner
+nicht automatisch zu. Siehe [Befehle für Sicherheit und Vertrauen](security-trust.md).
 
-Außerhalb eines App-Repositories entfernt ein bestätigtes `baha destroy` nur
-die kanonischen PostgreSQL-/OpenBao-Container und ihre Startdefinitionen. Aktive
-Verbraucher verhindern die bewusst gewählte Entscheidung nicht; die konkreten
-Ausfallfolgen benötigen zwei Bestätigungen des aktuellen Plans. Volumes,
-Netzwerke, geschützte Zugangsdaten/Konfiguration, Bindings, Workloads, andere
-Provider und Sicherheitsrichtlinien bleiben für Wiederaufnahme oder Retry.
-Erhalt beweist keine laufende Secret-Zustellung, Anmeldung oder Erneuerung.
+## Entwicklungsrechner verbinden
 
-`--delete-data` wählt zusätzlich die eigenen Core-Volumes zur Löschung aus und
-erzeugt einen anderen Plan. Nach beiden Planbestätigungen ist separate
-Löschzustimmung erforderlich. Erhaltene Zugangsdaten stellen gelöschte Volume-
-Inhalte nicht wieder her. `--yes` ersetzt keine dieser Zustimmungen. MCP verwendet
-`delete_data` für die Auswahl und `provider_change_consent` für die Zustimmung
-zum konkreten Plan.
+Führe auf dem Core-Rechner außerhalb eines Anwendungsordners `baha up` und danach
+`baha onboard` aus. `baha up` prüft ORAS und lädt das BaseHarbor-Runtime-Image
+anhand seines unveränderlichen Digests, bevor es den Core startet. Fehlt ORAS,
+erklärt Baha den Zweck und fragt vor der Installation.
+`baha onboard` wartet auf den startbereiten Core, richtet den verwalteten
+LAN-HTTPS-Endpunkt ein und schreibt eine private Einmal-Einladung als JSON-Datei.
+Ein separater `baha serve`-Prozess ist nicht nötig.
+
+Übertrage die Datei sicher. Führe auf dem Entwicklungsrechner
+`baha onboard --import FILE` aus. Übernimm den vorgeschlagenen Target-Namen, etwa
+`dev-docker-1`, oder gib `--target-name NAME` an. Wähle das Target anschließend
+mit `baha use NAME` aus. Der Name ändert nicht das Core-Target; ein lokales
+Target bleibt verfügbar. Anwendungsbefehle laufen danach auf dem
+Entwicklungsrechner über das ausgewählte Core-Target. Der verbindliche Ablauf steht in
+[Core-zu-Workstation-Onboarding](../spec/zero-friction-workstation-onboarding-v0427.md).
+
+Die Geräteeinschreibung ist von der interaktiven OIDC-Anmeldung eines Operators
+getrennt. Siehe [Befehle für Sicherheit und Vertrauen](security-trust.md).
 
 | Befehl | Aufgabe | Eingriff |
 | --- | --- | --- |
@@ -25,7 +33,7 @@ zum konkreten Plan.
 | `baha status` | Im Repository Application-, sonst Control-Plane-Status | Lesend |
 | `baha plan` | Application-Plan anzeigen | Lesend |
 | `baha doctor` | Application/Control Plane diagnostizieren | Standardmäßig lesend |
-| `baha destroy` | Eigene Ressourcen entfernen | Destruktiv |
+| `baha destroy` | Gesamte Installation über konfigurierte Targets entfernen | Destruktiv |
 | `baha update` | Unterstützten Update-Pfad ausführen | Verändernd |
 | `baha version` | Build-Version anzeigen | Lesend |
 
@@ -48,6 +56,12 @@ Frische Standard-Targets verwenden einen nativen PostgreSQL- und einen OpenBao-S
 
 `--target NAME` setzt das Ziel ausdrücklich. `--no-input`/`--non-interactive` unterdrücken Prompts; `--yes` genehmigt unterstützte Entscheidungen, ersetzt aber keine fehlenden Secrets oder Policy.
 
+Bei einem Remote-Target vergleicht `doctor` die Versionen von Entwickler-CLI
+und Core. Eine Abweichung schlägt den Versionscheck fehl und nennt den exakten
+Befehl `baha update --version <CLI_VERSION> --yes` für den Core-Host.
+Entwicklungs-Builds haben kein veröffentlichtes Release-Kommando; Doctor weist
+dann auf die Installation desselben Builds auf dem Core-Host hin.
+
 ## Application prüfen und stoppen
 
 In einem eingerichteten Application-Repository:
@@ -64,14 +78,18 @@ Mit `baha up` wird sie fortgesetzt. `doctor --fix` ist ausdrücklich verändernd
 
 ## Vollständiges Entfernen
 
-Im Repository betrifft `baha destroy` die eigene Application; außerhalb zeigt es den sicheren Scope des effektiven Targets. `baha destroy --all` betrifft alle eigenen Installationsressourcen, bewahrt Source-Repositories und fremde Infrastruktur. Ohne ausdrückliche Freigabe wird nicht gelöscht.
+`baha destroy` entfernt die BaseHarbor-Installation über alle konfigurierten Targets, unabhängig vom aktuellen Verzeichnis. Dabei werden registrierte Apps, eigene Provider und Runtime-Ressourcen, Core-Dienste sowie BaseHarbor-Konfiguration und lokaler Zustand entfernt. App-Quellcode und externe Infrastruktur bleiben erhalten. `baha app destroy NAME` entfernt dagegen nur eine einzelne App und lässt die Installation bestehen. `--all` bleibt als Rückwärtskompatibilitäts-Alias gültig.
+
+Der Befehl zeigt den konkreten Auswirkungsplan und verlangt die dazugehörigen Bestätigungen; `--yes` überspringt diese nicht. Eigene Daten werden zur dauerhaften Löschung ausgewählt und benötigen eine separate Datenlöschungs-Bestätigung. Ist ein Target nicht erreichbar, bleiben dessen Runtime-Ressourcen erhalten. Die erreichbaren Targets werden trotzdem bereinigt; Recovery-Dateien bleiben als operatorverwahrtes Material erhalten.
+
+Ist ein entferntes Core-Target konfiguriert, führt `baha destroy` den vollständigen Abbau über dessen authentifizierte Core-Verbindung vom Entwicklerrechner aus und bereinigt danach lokale Docker-/Podman-Targets nativ. Der Core sendet den Abschluss über dieselbe HTTPS-Anfrage zurück, da der Abbau sein Ausführungsjournal und seine Identitätsdienste entfernt. Bei mehreren entfernten Cores bricht der Befehl vor Änderungen ab, damit jede Installation einen eigenen geprüften Plan erhält. Ohne entfernte Targets bleibt der native lokale Ablauf bestehen.
 
 ```bash
-baha destroy --all -o json
-baha destroy --all --yes -o json
+baha destroy -o json
+baha destroy --yes -o json
 ```
 
-Diese Ausgabe zeigt Ressourcen und bewahrtes Recovery-Material. Erst `baha destroy --all --yes -o json` führt das genehmigte Entfernen aus. Externe Recovery-Dateien werden als `PRESERVED` aufgeführt, nicht gelesen oder automatisch gelöscht. Container-Alter oder rekonstruierte Namen beweisen keinen Besitz.
+Diese Ausgabe zeigt Ressourcen und separat erhaltene operatorverwahrte Recovery-Dateien. Deren Inhalte werden nie gelesen oder ausgegeben. Die bestätigte Ausführung löscht nur verifiziert BaseHarbor-eigene Runtime-Ressourcen. Nicht erreichbare Targets werden als `PRESERVED` gemeldet; Container-Alter oder rekonstruierte Namen beweisen keinen Besitz.
 
 Exakte Referenz: [Core-Befehle (EN)](https://mcpdev80.github.io/baseharbor/cli/core/).
 

@@ -144,16 +144,16 @@ Zugangsdaten.
 
 ## Target-Verbraucherunion und Hinzufügen/Entfernen/Reaktivieren
 
-App-`--full-reset` und Remote-App-Zerstörung bestätigen einen aggregierten
+App-Stopp und -Zerstörung bestätigen einen aggregierten
 `baseharbor.provider-impact-scope/v1` des ausgewählten Deployments. Der enthaltene
 Providerplan allein erlaubt kein Löschen seines geschützten Zustands. Beide
-aktuellen Bestätigungen sind erforderlich; Full Reset verlangt zusätzlich die
+aktuellen Bestätigungen sind erforderlich; Destroy verlangt außerdem die
 separate Datenlöschungszustimmung. Geänderte Veröffentlichungs-/Recovery-Owner
 machen diese Zustimmung ungültig. Ungeprüftes Remote-Material und dessen Zugriff
-bleiben explizit teilweise. Standard-Remote-Zerstörung behält Veröffentlichung,
-Zugangsdaten und Deployment-Owner, gibt Referenzen erst nach geprüfter
-Containerentfernung frei und nutzt die geschützte stillgelegte Absicht zur
-expliziten Reaktivierung. Erhaltene Dateien beweisen weder unauthentifizierten
+bleiben explizit teilweise. Stop behält Veröffentlichung, Zugangsdaten und
+Deployment-Owner zur ausdrücklichen Reaktivierung. Destroy entfernt exklusiv
+app-eigene Daten und Zustand und gibt Referenzen erst nach geprüfter
+Ressourcenentfernung frei. Erhaltene Dateien beweisen weder unauthentifizierten
 Zugriff noch eine funktionierende Materialübergabe.
 
 `ResolveProviderPlan(snapshot, consumers, inventoryComplete)` delegiert jeden
@@ -234,9 +234,16 @@ plan/preflight/confirmation/apply/verify-Autoritäten.
 | materials | Einzelnes aktuelles Material und Ort, Recovery-Referenzen, geplantes retained/transferred/deleted/revoked/expired/invalidated/nonrecoverable/unknown-Ergebnis und Ziel/Zugriff |
 | prerequisites | Konkrete Übergabe, Rebind oder adapterspezifische Verifikation, Unterstützung/Nachweis und Folge fehlender Verifikation; kein erfundener Fallback |
 | effects | Tatsächlich relevante Vorher-/Nachher-Änderungen bei Verfügbarkeit, Konsistenz, Dauerhaftigkeit, Aufbewahrung, Protokoll, Policy/TLS/HA, Zustellung, Routing, Wiederverbindung oder Recovery aus dem Adapter |
-| complete | Vollständigkeit des Wissens; false benötigt Achtung/zwei Bestätigungen und verbietet die informierte Entscheidung nicht |
+| complete | Vollständigkeit des Wissens; false benötigt Achtung/zwei Bestätigungsfelder und verbietet die informierte Entscheidung nicht |
 | plan_id / revision | Deterministischer Hash aus Folgen, relevantem Binding-/Ownership-/Dependency-State und Revision bestehender Owner; wesentliche Änderungen entwerten alte Zustimmung |
 | confirmations_required / destructive | Eine normale Stufe oder zwei für alternativlose/unbekannte/destruktive Folgen; explizite Datenlöschung bleibt getrennt |
+
+Beim interaktiven App-Deployment können die erforderlichen Folgenfelder und die
+Zustimmung zum exakten Quellkandidaten nach einer Dienstübersicht gemeinsam
+abgefragt werden. Diese Entscheidung gilt ausschließlich für den angezeigten
+Plan und Quellhash. Bei Datenlöschung benennt die Frage ausdrücklich die
+dauerhafte Löschung. Gewöhnliches `--yes` setzt diese Zustimmungsfelder nicht;
+Wartungsoperationen behalten ihre bisherigen getrennten Bestätigungen.
 
 `ProviderPlan.ConsumerActivity` enthält auch explizit inaktive Verbraucher aus
 denselben Intents; vergangene Runtime-Nutzung wird nicht als aktueller Bedarf

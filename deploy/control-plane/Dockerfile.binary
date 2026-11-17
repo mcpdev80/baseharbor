@@ -1,5 +1,7 @@
-FROM alpine:3.24@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6
-RUN apk add --no-cache ca-certificates curl \
+FROM debian:trixie-slim@sha256:a72b4433de1cf7d6bae0c4cee74d0547f58601a643b3375f070c51600d63b6b2
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates curl \
+    && rm -rf /var/lib/apt/lists/* \
     && mkdir -p /var/lib/baseharbor/runtime-operations /var/lib/baseharbor/runtime-resources /var/lib/baseharbor/runtime-metrics \
     && chown -R 65532:65532 /var/lib/baseharbor \
     && chgrp -R 0 /var/lib/baseharbor \

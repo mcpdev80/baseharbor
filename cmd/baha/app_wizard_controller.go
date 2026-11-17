@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"strings"
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
@@ -25,6 +26,8 @@ const (
 
 var errAppWizardAbort = errors.New("wizard cancelled without changes")
 var errAppWizardNonInteractive = errors.New("interactive wizard requires a TTY and input")
+
+const appWizardPreviewRefreshTimeout = 120 * time.Second
 
 type appWizardEvent string
 
@@ -99,6 +102,44 @@ func appWizardKey(target string, req capability.Requirement) string {
 	return fmt.Sprintf("%d:%s|%d:%s|%d:%s", len(target), target, len(req.Kind), req.Kind, len(req.Name), req.Name)
 }
 
+// parseAppWizardPreferenceKey inverts the length-prefixed key format so the
+// controller can recover the exact requirement of an explicit selection.
+func parseAppWizardPreferenceKey(key string) (capability.Requirement, bool) {
+	var targetLen, kindLen, nameLen int
+	var target, kind, name string
+	n, err := fmt.Sscanf(key, "%d:", &targetLen)
+	if err != nil || n != 1 {
+		return capability.Requirement{}, false
+	}
+	prefix := fmt.Sprintf("%d:", targetLen)
+	rest := strings.TrimPrefix(key, prefix)
+	if rest == key {
+		return capability.Requirement{}, false
+	}
+	separator := "|"
+	target, rest, found := strings.Cut(rest, separator)
+	if !found || len(target) != targetLen {
+		return capability.Requirement{}, false
+	}
+	if n, err = fmt.Sscanf(rest, "%d:", &kindLen); err != nil || n != 1 {
+		return capability.Requirement{}, false
+	}
+	prefix = fmt.Sprintf("%d:", kindLen)
+	rest = strings.TrimPrefix(rest, prefix)
+	kind, rest, found = strings.Cut(rest, separator)
+	if !found || len(kind) != kindLen {
+		return capability.Requirement{}, false
+	}
+	if n, err = fmt.Sscanf(rest, "%d:", &nameLen); err != nil || n != 1 {
+		return capability.Requirement{}, false
+	}
+	name = rest[len(fmt.Sprintf("%d:", nameLen)):]
+	if len(name) != nameLen {
+		return capability.Requirement{}, false
+	}
+	return capability.Requirement{Kind: capability.Kind(kind), Name: name}, true
+}
+
 func (w appWizardController) copy() appWizardController {
 	next := w
 	next.selection.selected = make(map[capability.Kind]bool, len(w.selection.selected))
@@ -141,7 +182,21 @@ func (w appWizardController) intent() appWizardDecision {
 }
 
 func (w appWizardController) choicesForSelection() ([]appProviderChoice, error) {
-	choices, err := appProviderChoices(w.manifest, w.snapshot, w.selection)
+	explicit := make([]application.ProviderPreference, 0, len(w.preferences))
+	for key, id := range w.preferences {
+		if id == "" {
+			continue
+		}
+		requirement, ok := parseAppWizardPreferenceKey(key)
+		if !ok {
+			continue
+		}
+		explicit = append(explicit, application.ProviderPreference{Requirement: requirement, InstanceID: id})
+	}
+	// The wizard selection collects intent only; provider realization gaps of
+	// this or other applications never abort it. The plan/preview authorities
+	// below fail closed with the concrete conflict.
+	choices, err := appProviderChoicesWithView(w.manifest, w.snapshot, w.selection, explicit, true)
 	if err != nil {
 		return nil, err
 	}
@@ -163,7 +218,7 @@ func (w appWizardController) freshFacts(ctx context.Context, d appWizardDecision
 	if w.refresh == nil {
 		return nil, nil, errors.New("current preview authority required")
 	}
-	refreshCtx, refreshCancel := context.WithTimeout(ctx, 30*time.Second)
+	refreshCtx, refreshCancel := context.WithTimeout(ctx, appWizardPreviewRefreshTimeout)
 	defer refreshCancel()
 	fp, impact, err := w.refresh(refreshCtx, d)
 	if err != nil {
@@ -198,7 +253,50 @@ func snapshotAppWizardFacts(fp *GuidedReadContext, impact *application.ProviderI
 	if detached.Footprint == nil || detached.Impact == nil {
 		return nil, nil, nil, errors.New("missing preview data")
 	}
-	return detached.Footprint, detached.Impact, facts, nil
+	preview, err := appWizardSemanticPreviewFacts(detached.Footprint, detached.Impact)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	return detached.Footprint, detached.Impact, preview, nil
+}
+
+// appWizardSemanticPreviewFacts binds the decision to stable intent, provider
+// resolution and consequence-plan data. Memory/container samples are shown in
+// the footprint, but are observation-only evidence and do not change approved
+// ownership or the plan. Keep this normalization aligned with
+// applicationImpactRevisionInput.
+func appWizardSemanticPreviewFacts(fp *GuidedReadContext, impact *application.ProviderImpactPlan) ([]byte, error) {
+	if fp == nil || impact == nil {
+		return nil, errors.New("missing preview data")
+	}
+	semantic := *fp
+	semantic.Footprint = fp.Footprint
+	semantic.Footprint.Existing = append([]application.ProviderFootprint(nil), fp.Footprint.Existing...)
+	for i := range semantic.Footprint.Existing {
+		semantic.Footprint.Existing[i].MemoryBytes = application.Quantity{}
+		semantic.Footprint.Existing[i].Containers = application.Quantity{}
+	}
+	semantic.Footprint.Additional = append([]application.ProviderFootprint(nil), fp.Footprint.Additional...)
+	for i := range semantic.Footprint.Additional {
+		semantic.Footprint.Additional[i].MemoryBytes = application.Quantity{}
+		semantic.Footprint.Additional[i].Containers = application.Quantity{}
+	}
+	stableImpact := *impact
+	stableImpact.Impacts = append([]application.ProviderImpact(nil), impact.Impacts...)
+	for i, item := range impact.Impacts {
+		stableImpact.Impacts[i].Functions = append([]application.FunctionConsequence(nil), item.Functions...)
+		for j := range stableImpact.Impacts[i].Functions {
+			stableImpact.Impacts[i].Functions[j].RemainingValiditySeconds = nil
+		}
+		stableImpact.Impacts[i].Materials = append([]application.MaterialConsequence(nil), item.Materials...)
+		for j := range stableImpact.Impacts[i].Materials {
+			stableImpact.Impacts[i].Materials[j].RemainingValiditySeconds = nil
+		}
+	}
+	return json.Marshal(struct {
+		Footprint *GuidedReadContext
+		Impact    *application.ProviderImpactPlan
+	}{&semantic, &stableImpact})
 }
 
 // Step never invokes a mutation or consent hook. A decision requires verified
@@ -253,10 +351,7 @@ func (w appWizardController) Step(ctx context.Context, event appWizardEvent) (ap
 			if err != nil {
 				return w, err
 			}
-			fresh, err := json.Marshal(struct {
-				Footprint *GuidedReadContext
-				Impact    *application.ProviderImpactPlan
-			}{fp, impact})
+			fresh, err := appWizardSemanticPreviewFacts(fp, impact)
 			if err != nil {
 				return w, err
 			}
@@ -331,10 +426,11 @@ func (w appWizardController) View() string {
 	case appWizardNeeds:
 		out := w.selection.View()
 		choices, err := w.choicesForSelection()
-		if err == nil {
-			for _, choice := range choices {
-				out += "\n" + choice.View()
-			}
+		if err != nil {
+			return out + "\nProvider choices unavailable: " + err.Error() + "\nNext: review the selected needs or cancel; no choice was confirmed."
+		}
+		for _, choice := range choices {
+			out += "\n" + wrapWizardDisplay(choice.View(), 100)
 		}
 		return out
 	case appWizardProvider:

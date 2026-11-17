@@ -9,6 +9,12 @@ final = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(final)
 
 
+stage_spec = importlib.util.spec_from_file_location(
+    'stage', Path(__file__).with_name('pr-stage-boundary.py'))
+stage = importlib.util.module_from_spec(stage_spec)
+stage_spec.loader.exec_module(stage)
+
+
 class FinalChecks(unittest.TestCase):
     def setUp(self):
         self.plan = {'schema': 'baseharbor.pr-gate-plan/v1', 'head_sha': 'a'*40,
@@ -44,6 +50,19 @@ class FinalChecks(unittest.TestCase):
             needs[name]['result'] = 'skipped'
             self.assertTrue(final.verify(self.plan, needs))
 
+    def test_staged_successful_docker_guided_gate_is_accepted(self):
+        self.plan['selected_gates'] = ['atomic/docker/guided']
+        self.plan['required_consumer_dependencies'] = ['core', 'demo']
+        self.plan = stage.stage(self.plan)
+        self.assertEqual(['atomic/docker/guided'], self.plan['selected_gates'])
+        self.assertEqual([], self.plan['deferred_integration_gates'])
+        for name in ('pr_candidate', 'pr_runner_interface',
+                     'pr_runtime_selected', 'pr_demo_pin'):
+            self.needs[name] = {'result': 'success'}
+        self.assertEqual([], final.verify(self.plan, self.needs))
+        self.needs['pr_runtime_selected'] = {'result': 'failure'}
+        self.assertTrue(final.verify(self.plan, self.needs))
+
     def test_public_contracts_and_private_dependency(self):
         self.plan['selected_gates'] = ['integration/static/public-contracts']
         self.plan['required_consumer_dependencies'] = ['core', 'console']
@@ -51,6 +70,27 @@ class FinalChecks(unittest.TestCase):
         self.assertTrue(final.verify(self.plan, self.needs))
         self.needs['pr_consumer_pins'] = {'result': 'success'}
         self.assertEqual([], final.verify(self.plan, self.needs))
+
+    def test_coreless_gates_require_selected_integration_executor(self):
+        self.plan['selected_gates'] = [
+            'integration/docker/coreless-lifecycle',
+            'integration/podman/coreless-lifecycle']
+        self.needs['pr_selected_integration'] = {'result': 'success'}
+        self.needs['pr_demo_pin'] = {'result': 'success'}
+        self.assertEqual([], final.verify(self.plan, self.needs))
+        self.needs['pr_selected_integration']['result'] = 'skipped'
+        self.assertTrue(final.verify(self.plan, self.needs))
+        self.needs['pr_selected_integration']['result'] = 'success'
+        self.needs['pr_demo_pin']['result'] = 'skipped'
+        self.assertTrue(final.verify(self.plan, self.needs))
+
+        self.plan['selected_gates'] = []
+        self.plan['deferred_integration_gates'] = [
+            'integration/docker/coreless-lifecycle',
+            'integration/podman/coreless-lifecycle']
+        self.assertTrue(final.verify(self.plan, self.needs))
+        self.plan['deferred_integration_gates'].append('integration/unknown')
+        self.assertTrue(final.verify(self.plan, self.needs))
 
     def test_unknown_empty_unresolved_and_stale_are_not_success(self):
         for change in ({'selected_gates': ['ha/docker/data']},
@@ -62,6 +102,18 @@ class FinalChecks(unittest.TestCase):
                 self.assertTrue(final.verify({**self.plan, **change}, self.needs))
         self.assertTrue(final.verify(self.plan, self.needs, head='c'*40))
         self.assertTrue(final.verify(self.plan, self.needs, integration='c'*40))
+
+    def test_selected_go_unit_shards_are_mandatory(self):
+        for selection in ('go-unit-tests', 'cli-package-tests'):
+            with self.subTest(selection=selection):
+                plan = {**self.plan, 'required_validation_checks': [{'id': selection}]}
+                self.assertTrue(final.verify(plan, self.needs))
+                needs = copy.deepcopy(self.needs)
+                needs['pr_unit_shards'] = {'result': 'success'}
+                self.assertEqual([], final.verify(plan, needs))
+                for result in ('failure', 'skipped', 'cancelled'):
+                    needs['pr_unit_shards']['result'] = result
+                    self.assertTrue(final.verify(plan, needs))
 
     def test_optional_failure_is_not_ignored(self):
         self.needs['pr_demo_pin'] = {'result': 'failure'}

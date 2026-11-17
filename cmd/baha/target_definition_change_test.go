@@ -49,6 +49,56 @@ func TestTargetDefinitionRejectsUnprovenTenantOwnership(t *testing.T) {
 	}
 }
 
+func TestTargetDefinitionHonoursYesOnNonTTYForConfigOnlyDetach(t *testing.T) {
+	name, owner := targetDefinitionFixture(t)
+	plan, err := buildTargetDefinitionChangePlan(context.Background(), name, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Scope.Destructive {
+		t.Fatal("config-only detach must not be destructive")
+	}
+	ctx := withAssumeYes(context.Background(), true)
+	var out bytes.Buffer
+	if err := deleteTarget(ctx, []string{name}, &out, &out); err != nil {
+		t.Fatalf("--yes on non-TTY must honour both consequence acknowledgements and detach: %v", err)
+	}
+	if _, err := os.Stat(plan.RecoveryFile); err != nil {
+		t.Fatalf("detach must persist the recovery file: %v", err)
+	}
+	cfg, err := deployment.LoadConfig()
+	if err != nil {
+		t.Fatalf("load config after detach: %v", err)
+	}
+	if _, exists := cfg.Targets[name]; exists {
+		t.Fatal("--yes detach did not remove the configuration entry")
+	}
+	after, err := os.ReadFile(owner)
+	if err != nil || string(after) != "original-before-detach" {
+		t.Fatal("--yes detach must not mutate the retained runtime owner")
+	}
+}
+
+func TestTargetDefinitionRefusesDetachWithoutYesOnNonTTY(t *testing.T) {
+	name, owner := targetDefinitionFixture(t)
+	ctx := withAssumeYes(context.Background(), false)
+	var out bytes.Buffer
+	err := deleteTarget(ctx, []string{name}, &out, &out)
+	if err == nil || machine.Classify(err).CauseCode != "impact-confirmation-required" {
+		t.Fatalf("no --yes on non-TTY must fail closed: %v", err)
+	}
+	cfg, err := deployment.LoadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, exists := cfg.Targets[name]; !exists {
+		t.Fatal("refusal must not remove the configuration entry")
+	}
+	if after, err := os.ReadFile(owner); err != nil || string(after) != "original-before-detach" {
+		t.Fatal("refusal must not mutate the retained runtime owner")
+	}
+}
+
 func TestTargetDefinitionRequiresTwoCurrentAcknowledgements(t *testing.T) {
 	name, owner := targetDefinitionFixture(t)
 	plan, err := buildTargetDefinitionChangePlan(context.Background(), name, "")

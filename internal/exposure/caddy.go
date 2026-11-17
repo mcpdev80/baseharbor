@@ -537,7 +537,6 @@ func composeYAML(state State, files Files) string {
 		fmt.Fprintf(&b, "  %s:\n", serviceName)
 		fmt.Fprintf(&b, "    image: %s\n", caddyImage)
 		b.WriteString("    restart: unless-stopped\n")
-		b.WriteString("    user: \"65532:65532\"\n")
 		b.WriteString("    read_only: true\n")
 		b.WriteString("    cap_drop: [\"ALL\"]\n")
 		b.WriteString("    cap_add: [\"NET_BIND_SERVICE\"]\n")

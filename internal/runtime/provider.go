@@ -29,6 +29,15 @@ type ProviderFactory = runtimecontract.ProviderFactory
 type ProviderRegistration = runtimecontract.ProviderRegistration
 type ProviderRegistry = runtimecontract.ProviderRegistry
 
+type RuntimeNetworkState = runtimecontract.RuntimeNetworkState
+
+const (
+	RuntimeNetworkStatePresent      = runtimecontract.RuntimeNetworkStatePresent
+	RuntimeNetworkStateAbsent       = runtimecontract.RuntimeNetworkStateAbsent
+	RuntimeNetworkStateNotManaged   = runtimecontract.RuntimeNetworkStateNotManaged
+	RuntimeNetworkStateInspectError = runtimecontract.RuntimeNetworkStateInspectError
+)
+
 func ParseProviderKind(value string) (ProviderKind, error) {
 	return runtimecontract.ParseProviderKind(value)
 }

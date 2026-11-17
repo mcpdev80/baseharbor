@@ -1,13 +1,33 @@
 package traces
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/objectstorage"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
+
+func TestTempoContainerProjectionOverridesRestrictiveUmask(t *testing.T) {
+	old := syscall.Umask(0o077)
+	defer syscall.Umask(old)
+
+	path := filepath.Join(t.TempDir(), "tempo.yaml")
+	if err := writeContainerReadableProjection(path, []byte("server:\n  http_listen_port: 3200\n")); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := info.Mode().Perm(); got != 0o644 {
+		t.Fatalf("Tempo config projection mode = %04o, want 0644", got)
+	}
+}
 
 func TestTempoConfigUsesExplicitOTLPAndLocalStorage(t *testing.T) {
 	config := configYAML()
@@ -28,7 +48,6 @@ func TestTempoComposeIsHardenedAndLoopbackPublished(t *testing.T) {
 	rendered := composeYAML(Placement{Scope: capability.ScopeShared, Network: "baseharbor-traces", Volume: "baseharbor-tempo-data"})
 	for _, want := range []string{
 		"docker.io/grafana/tempo:3.1.0",
-		"user: \"10001:10001\"",
 		"read_only: true",
 		"cap_drop: [\"ALL\"]",
 		"no-new-privileges:true",

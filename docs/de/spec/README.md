@@ -23,6 +23,7 @@ Wo sinnvoll, sind maschinenlesbare Definitionen maßgeblich:
 - Runtime Provider Contract v1
 - Runtime Provider Conformance v1
 - Delivery Provider Contract v1
+- Candidate Contract v1
 - Development Extension v1
 - Reconciliation v1
 - Machine Interface v1

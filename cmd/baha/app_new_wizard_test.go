@@ -17,6 +17,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/delivery"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/development"
 )
@@ -25,9 +26,10 @@ import (
 // may change the number of automatic choices, but the separate execution mode
 // and write consent must still be explicitly reached and accepted.
 type newWizardPromptReader struct {
-	output *bytes.Buffer
-	prefix []string
-	mode   string
+	output           *bytes.Buffer
+	prefix           []string
+	mode             string
+	candidateConsent string
 }
 
 func (r *newWizardPromptReader) Read(dst []byte) (int, error) {
@@ -43,11 +45,116 @@ func (r *newWizardPromptReader) Read(dst []byte) (int, error) {
 		switch {
 		case strings.Contains(prompt, "After creation"):
 			answer = r.mode
+		case strings.Contains(prompt, "Bind this exact candidate"):
+			answer = r.candidateConsent
 		case strings.Contains(prompt, "Create project files"):
 			answer = "y"
 		}
 	}
 	return copy(dst, answer+"\n"), nil
+}
+
+func TestAppNewLifecycleExecutorBindsExactCandidateFlag(t *testing.T) {
+	digest := strings.Repeat("a", 64)
+	ctx, remaining := appNewLifecycleArgs(context.Background(), []string{"--confirm-candidate", digest})
+	if len(remaining) != 0 {
+		t.Fatalf("candidate confirmation was not removed from apply arguments: %#v", remaining)
+	}
+	if got := candidateConsentOverride(ctx); got != digest {
+		t.Fatalf("candidate confirmation was not bound to lifecycle context: got %q", got)
+	}
+}
+
+func TestAppNewWizardRunExplicitlyConfirmsExactCandidate(t *testing.T) {
+	t.Setenv("BASEHARBOR_STATE_DIR", filepath.Join(t.TempDir(), "state"))
+	configureTestTarget(t)
+	parent := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(t.TempDir(), "config"))
+	t.Setenv("HOME", t.TempDir())
+
+	oldInput := appNewInput
+	oldExecutor := appNewLifecycleExecutor
+	defer func() {
+		appNewInput = oldInput
+		appNewLifecycleExecutor = oldExecutor
+	}()
+	var out bytes.Buffer
+	appNewInput = &newWizardPromptReader{
+		output: &out, prefix: []string{"consented-run", parent, "1"},
+		mode: "run", candidateConsent: "yes",
+	}
+
+	submission := delivery.CandidateSubmission{
+		ContractVersion:  delivery.CandidateContractVersion,
+		ApplicationID:    "app-123",
+		TargetName:       "local",
+		SourceRepository: filepath.Join(parent, "consented-run"),
+		SourceRevision:   "source-fingerprint",
+	}
+	wantDigest := delivery.CandidateConsentDigest(submission)
+	var calls [][]string
+	appNewLifecycleExecutor = func(_ context.Context, _ application.Store, args []string, _, _ io.Writer) error {
+		calls = append(calls, append([]string(nil), args...))
+		if len(calls) == 1 {
+			return missingCandidateConsentError(submission)
+		}
+		return nil
+	}
+
+	if err := runAppNewWizard(context.Background(), &out, &out); err != nil {
+		t.Fatalf("New failed after explicit candidate consent: %v\n%s", err, out.String())
+	}
+	if len(calls) != 2 || len(calls[0]) != 0 || len(calls[1]) != 2 || calls[1][0] != "--confirm-candidate" || calls[1][1] != wantDigest {
+		t.Fatalf("New did not retry with the exact displayed candidate digest: %#v", calls)
+	}
+	if !strings.Contains(out.String(), "Bind this exact candidate") || !strings.Contains(out.String(), "Lifecycle: VERIFIED") {
+		t.Fatalf("New omitted the exact consent prompt or verified receipt:\n%s", out.String())
+	}
+}
+
+func TestAppNewWizardCandidateConsentNoKeepsProjectAndDoesNotRetry(t *testing.T) {
+	t.Setenv("BASEHARBOR_STATE_DIR", filepath.Join(t.TempDir(), "state"))
+	configureTestTarget(t)
+	parent := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(t.TempDir(), "config"))
+	t.Setenv("HOME", t.TempDir())
+
+	oldInput := appNewInput
+	oldExecutor := appNewLifecycleExecutor
+	defer func() {
+		appNewInput = oldInput
+		appNewLifecycleExecutor = oldExecutor
+	}()
+	var out bytes.Buffer
+	appNewInput = &newWizardPromptReader{
+		output: &out, prefix: []string{"declined-run", parent, "1"},
+		mode: "run", candidateConsent: "no",
+	}
+	submission := delivery.CandidateSubmission{
+		ContractVersion:  delivery.CandidateContractVersion,
+		ApplicationID:    "app-123",
+		TargetName:       "local",
+		SourceRepository: filepath.Join(parent, "declined-run"),
+		SourceRevision:   "source-fingerprint",
+	}
+	calls := 0
+	appNewLifecycleExecutor = func(_ context.Context, _ application.Store, _ []string, _, _ io.Writer) error {
+		calls++
+		return missingCandidateConsentError(submission)
+	}
+
+	if err := runAppNewWizard(context.Background(), &out, &out); err != nil {
+		t.Fatalf("declined candidate should leave the created project available: %v\n%s", err, out.String())
+	}
+	if calls != 1 {
+		t.Fatalf("declining candidate consent retried the lifecycle %d times", calls)
+	}
+	if _, err := os.Stat(filepath.Join(parent, "declined-run", "baseharbor.yaml")); err != nil {
+		t.Fatalf("declined lifecycle removed the created project: %v", err)
+	}
+	if strings.Contains(out.String(), "Lifecycle: VERIFIED") || !strings.Contains(out.String(), "Candidate not bound") {
+		t.Fatalf("declined candidate was reported as applied or lacked guidance:\n%s", out.String())
+	}
 }
 
 func TestAppNewWizardCancelLeavesNoProject(t *testing.T) {
@@ -84,7 +191,7 @@ func TestAppNewWizardCancelLeavesNoProject(t *testing.T) {
 
 func TestAppNewWizardCreatesValidatedProject(t *testing.T) {
 	t.Setenv("BASEHARBOR_STATE_DIR", filepath.Join(t.TempDir(), "state"))
-	configureTestTarget(t)
+	configureTestTargetWithOwner(t)
 	parent := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(t.TempDir(), "config"))
 	t.Setenv("HOME", t.TempDir())
@@ -346,6 +453,9 @@ func TestAppNewWizardRunReportsCreatedProjectWhenLifecyclePartiallyFails(t *test
 	}
 	if !strings.Contains(out.String(), "Provider change result:") {
 		t.Fatalf("shared result presenter was not used:\n%s", out.String())
+	}
+	if strings.Contains(out.String(), "Created partial-run") || strings.Contains(out.String(), "Validation: SATISFIED") {
+		t.Fatalf("failed lifecycle advertised successful creation:\n%s", out.String())
 	}
 	if strings.Contains(out.String(), "status: applied") || strings.Contains(out.String(), "Lifecycle: VERIFIED") {
 		t.Fatalf("aggregate failure fabricated verified provider results:\n%s", out.String())
@@ -775,7 +885,7 @@ func TestAppNewWizardActualTerminalNoPreservesChecklistAndCancels(t *testing.T) 
 		for {
 			n, err := master.Read(buf)
 			rendered.Write(buf[:n])
-			marker := "P: optional provider preference"
+			marker := "p: provider preference"
 			if stage == 1 {
 				marker = question + " [Y/n]"
 			}

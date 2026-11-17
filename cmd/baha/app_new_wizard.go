@@ -30,7 +30,18 @@ type guidedStackSelection struct {
 	Created    bool
 }
 
-var appNewLifecycleExecutor = executeApplicationApplyLifecycle
+func appNewLifecycleArgs(ctx context.Context, args []string) (context.Context, []string) {
+	confirm, remaining := stripConfirmCandidateOverride(args)
+	if confirm != "" {
+		ctx = withCandidateConsentDigest(ctx, confirm)
+	}
+	return ctx, remaining
+}
+
+var appNewLifecycleExecutor = func(ctx context.Context, store application.Store, args []string, out, errOut io.Writer) error {
+	ctx, remaining := appNewLifecycleArgs(ctx, args)
+	return executeApplicationApplyLifecycle(ctx, store, remaining, out, errOut)
+}
 
 func runAppNewWizard(ctx context.Context, out, errOut io.Writer) error {
 	reader := bufio.NewReader(appNewInput)
@@ -50,9 +61,9 @@ func runAppNewWizard(ctx context.Context, out, errOut io.Writer) error {
 	if err != nil {
 		return appNewAbortOnEOF(ctx, out, appWizardController{}, err)
 	}
-	name = slugifyAppName(name)
-	if name == "" {
-		return usageError("application name is required", "Enter a lowercase application name such as catalog-api.")
+	name, err = normalizeAppNewWizardName(name, out)
+	if err != nil {
+		return err
 	}
 
 	root, err := guidedNewApplicationRoot(reader, out, name)
@@ -108,11 +119,15 @@ func runAppNewWizard(ctx context.Context, out, errOut io.Writer) error {
 			if err != nil {
 				return nil, nil, err
 			}
-			guided, err := readGuidedApplicationContext(refreshCtx, projected)
+			// One fresh native-provider observation must back both the displayed
+			// guided read and its consent plan. Re-observing during a single
+			// refresh needlessly serializes expensive Podman inspections.
+			observations := observeApplicationProviderFacts(refreshCtx, projected)
+			guided, err := readGuidedApplicationContextWithFacts(refreshCtx, projected, observations)
 			if err != nil {
 				return nil, nil, err
 			}
-			plan, err := buildResolvedApplicationPlan(refreshCtx, projected)
+			plan, err := buildResolvedApplicationPlanWithFacts(refreshCtx, projected, observations)
 			if err != nil {
 				return nil, nil, err
 			}
@@ -180,7 +195,7 @@ func runAppNewWizard(ctx context.Context, out, errOut io.Writer) error {
 			fmt.Fprintln(out, "Return to the preserved checklist; no changes were made.")
 			continue
 		}
-		unlock, lockErr := lockApplicationTargetLifecycle(resolved)
+		unlock, lockErr := lockApplicationTargetLifecycle(resolved, false)
 		if lockErr != nil {
 			return lockErr
 		}
@@ -221,7 +236,25 @@ func runAppNewWizard(ctx context.Context, out, errOut io.Writer) error {
 			creationUnlock = nil
 		}
 	}
-	return finishAppNewWizard(ctx, root, result, profile, controller, mode, out, errOut, release)
+	return finishAppNewWizard(ctx, reader, root, result, profile, controller, mode, out, errOut, release)
+}
+
+// normalizeAppNewWizardName makes the chosen repository identity explicit before
+// any filesystem or registry mutation. Navigation words are not app names.
+func normalizeAppNewWizardName(raw string, out io.Writer) (string, error) {
+	original := strings.TrimSpace(raw)
+	name := slugifyAppName(original)
+	if name == "" {
+		return "", usageError("application name is required", "Enter a lowercase application name such as catalog-api.")
+	}
+	switch name {
+	case "cancel", "back", "exit", "quit":
+		return "", usageError("reserved application name "+name, "Choose a project name other than a wizard navigation command.")
+	}
+	if original != name {
+		fmt.Fprintf(out, "Application name normalized: %q -> %q\n", original, name)
+	}
+	return name, nil
 }
 
 func appNewWizardAuthorityContext(ctx context.Context, root string, manifest application.Manifest) (resolvedApplication, application.ResolutionSnapshot, error) {
@@ -234,7 +267,7 @@ func appNewWizardAuthorityContext(ctx context.Context, root string, manifest app
 		return resolvedApplication{}, application.ResolutionSnapshot{}, err
 	}
 	resolved := resolvedApplication{Target: target, TargetStateRoot: stateRoot, Manifest: manifest, RepositoryRoot: root, FromRepository: true, SourceAvailable: false}
-	snapshot, _, err := applicationLifecycleSnapshot(resolved, observeApplicationProviderFacts(ctx, resolved))
+	snapshot, _, err := applicationLifecycleSnapshotContext(ctx, resolved, observeApplicationProviderFacts(ctx, resolved))
 	if err != nil {
 		return resolvedApplication{}, application.ResolutionSnapshot{}, err
 	}

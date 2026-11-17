@@ -6,10 +6,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"path/filepath"
 	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/deployment"
 )
 
 // appEditPreviewAuthority projects desired intent through the existing read-only
@@ -37,7 +39,10 @@ type appEditSession struct {
 // appEditStart hydrates the exact authored source and initializes the accepted
 // controller from current named requirements and Target-local preferences.
 // No mutation authority is reachable while this function runs.
-func appEditStart(ctx context.Context, target string, source []byte, snapshot application.ResolutionSnapshot, authorities appEditAuthorities) (appEditSession, error) {
+func appEditStart(ctx context.Context, target string, source []byte, snapshot application.ResolutionSnapshot, authorities appEditAuthorities, out io.Writer) (appEditSession, error) {
+	if out == nil {
+		out = io.Discard
+	}
 	if authorities.Read == nil || authorities.Choices == nil || authorities.Plan == nil || authorities.Preview == nil {
 		return appEditSession{}, errors.New("app edit requires read, choice, plan and preview authorities")
 	}
@@ -65,9 +70,41 @@ func appEditStart(ctx context.Context, target string, source []byte, snapshot ap
 	}
 
 	// Preserve existing explicit preferences through the same accepted selector
-	// used for a new choice. Automatic preferences remain automatic.
+	// used for a new choice. Automatic preferences remain automatic. A stored
+	// instance that the current projection lost must never block the whole
+	// edit: it is re-resolved against the live Target provider inventory and
+	// kept; an instance the surface does not offer at all stays unselected —
+	// the authoritative plan/apply surfaces report its concrete conflict
+	// instead of the session blocking. The candidate lists come from the same
+	// selection-view authority the wizard renders.
+	surface, surfaceErr := controller.choicesForSelection()
+	if surfaceErr != nil {
+		surface = nil
+	}
+	offeredInstances := map[capability.Requirement]map[string]bool{}
+	for _, choice := range surface {
+		offers := map[string]bool{}
+		for _, candidate := range choice.Candidates {
+			offers[candidate.Instance.ID] = true
+		}
+		offeredInstances[choice.Requirement] = offers
+	}
 	for _, preference := range loaded.Preferences {
 		if preference.InstanceID == "" {
+			continue
+		}
+		if !offeredInstances[preference.Requirement][preference.InstanceID] {
+			if controller, err = selectStoredProviderPreference(ctx, controller, preference); err == nil {
+				continue
+			} else if !errors.Is(err, errAppEditPreferenceUnresolvable) {
+				return appEditSession{}, fmt.Errorf("restore provider preference for %s/%s: %w", preference.Requirement.Kind, preference.Requirement.Name, err)
+			}
+			fmt.Fprintf(out, "provider preference %s/%s instance %s is unavailable on Target %s; the choice reverted to automatic — re-resolve it with 'provider %s/%s <id>' or keep automatic to select from the current Target inventory\n",
+				preference.Requirement.Kind, preference.Requirement.Name, preference.InstanceID, target,
+				preference.Requirement.Kind, preference.Requirement.Name)
+			if controller, err = controller.SelectProvider(ctx, preference.Requirement, ""); err != nil {
+				return appEditSession{}, fmt.Errorf("reset unavailable provider preference for %s/%s: %w", preference.Requirement.Kind, preference.Requirement.Name, err)
+			}
 			continue
 		}
 		controller, err = controller.SelectProvider(ctx, preference.Requirement, preference.InstanceID)
@@ -101,6 +138,82 @@ func appEditStart(ctx context.Context, target string, source []byte, snapshot ap
 	}
 
 	return appEditSession{Loaded: loaded, Controller: controller}, nil
+}
+
+// errAppEditPreferenceUnresolvable marks the single case where neither the
+// projection nor the live provider registry can resolve an explicit stored
+// preference. It is reported to the operator, never a silent failure.
+var errAppEditPreferenceUnresolvable = errors.New("provider preference instance is not resolvable on this Target")
+
+// liveProviderKindsForInstance returns the distinct provider kinds the live
+// provider registry registers under one instance identity.
+func liveProviderKindsForInstance(instanceID string) ([]capability.ProviderKind, error) {
+	dataRoot, err := deployment.DataRoot()
+	if err != nil {
+		return nil, err
+	}
+	registry, err := (capability.RegistryStore{Path: filepath.Join(dataRoot, "provider-registry.json")}).Load()
+	if err != nil {
+		return nil, err
+	}
+	var kinds []capability.ProviderKind
+	for _, instance := range registry.Instances {
+		if instance.ID != instanceID {
+			continue
+		}
+		known := false
+		for _, kind := range kinds {
+			known = known || kind == instance.Provider.Kind
+		}
+		if !known {
+			kinds = append(kinds, instance.Provider.Kind)
+		}
+	}
+	return kinds, nil
+}
+
+// selectStoredProviderPreference restores one explicit stored preference via
+// the accepted selector. When the current projection lost the instance, the
+// live Target registry re-offers it (re-resolution against the running
+// provider) and the same choice is retried on the widened snapshot.
+func selectStoredProviderPreference(ctx context.Context, controller appWizardController, preference application.ProviderPreference) (appWizardController, error) {
+	if preference.Requirement.Kind == "" || preference.Requirement.Name == "" {
+		// A stored preference without its requirement identity can never be
+		// re-resolved; it stays unselected instead of blocking the session.
+		return controller, errAppEditPreferenceUnresolvable
+	}
+	if controller, err := controller.SelectProvider(ctx, preference.Requirement, preference.InstanceID); err == nil {
+		return controller, nil
+	}
+	// The projection lost this instance. An unapplied record may still store
+	// the preference as requirement-only (the provider kind the canonical
+	// owner would pin was never persisted); recover it from the live Target
+	// inventory so re-resolution sees the same shape the plan authority does.
+	probe := preference
+	if probe.ProviderKind == "" {
+		if kinds, kindErr := liveProviderKindsForInstance(preference.InstanceID); kindErr == nil && len(kinds) == 1 {
+			probe.ProviderKind = kinds[0]
+		}
+	}
+	offered, err := liveCanonicalChoiceInstances([]application.ProviderPreference{probe})
+	if err != nil {
+		return controller, err
+	}
+	extra := offered[preference.Requirement]
+	if len(extra) == 0 {
+		return controller, errAppEditPreferenceUnresolvable
+	}
+	widened := controller.snapshot
+	widened.Registry.Instances = append(append([]capability.ProviderInstance(nil), widened.Registry.Instances...), extra...)
+	previous := controller.snapshot
+	controller.snapshot = widened
+	next, selectErr := controller.SelectProvider(ctx, preference.Requirement, preference.InstanceID)
+	if selectErr != nil {
+		// The widened snapshot must not leak into a failing session.
+		controller.snapshot = previous
+		return controller, errAppEditPreferenceUnresolvable
+	}
+	return next, nil
 }
 
 func appEditMachineRequest(decision appWizardDecision, snapshotRevision string) appMachineDesiredRequest {
@@ -155,7 +268,11 @@ func driveAppEditWizard(ctx context.Context, session appEditSession, reader *buf
 func driveAppEditNeeds(ctx context.Context, session appEditSession, key string, out io.Writer) appEditSession {
 	switch key {
 	case "", "next", "enter":
-		next, _ := session.Controller.Step(ctx, appWizardNext)
+		next, err := session.Controller.Step(ctx, appWizardNext)
+		if err != nil {
+			fmt.Fprintf(out, "could not build read-only decision preview: %v\n", err)
+			return session
+		}
 		session.Controller = next
 		return session
 	case "c", "cancel", "q", "quit":
@@ -241,11 +358,11 @@ func runAppEdit(ctx context.Context, store application.Store, args []string, in 
 	}
 	authorities := defaultAppEditAuthorities(store, args)
 	authorities.Execute = appEditRuntimeExecuteAuthority(store, args, resolved, source, authorities, out, errOut, nil, nil)
-	snapshot, _, err := applicationLifecycleSnapshot(resolved, observeApplicationProviderFacts(ctx, resolved))
+	snapshot, _, err := applicationLifecycleSnapshotContext(ctx, resolved, observeApplicationProviderFacts(ctx, resolved))
 	if err != nil {
 		return appEditApplyResult{}, err
 	}
-	session, err := appEditStart(ctx, resolved.Target.Name, source, snapshot, authorities)
+	session, err := appEditStart(ctx, resolved.Target.Name, source, snapshot, authorities, out)
 	if err != nil {
 		return appEditApplyResult{}, err
 	}

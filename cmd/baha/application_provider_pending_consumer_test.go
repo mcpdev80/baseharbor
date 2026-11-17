@@ -70,6 +70,31 @@ func TestOtherInterruptedApplyRejectsDamagedOrForeignPreviousIntent(t *testing.T
 
 func qualifyInterruptedSiblingConsumer(t *testing.T, rename bool) {
 	target := configureTestTarget(t)
+	// The interrupted-apply recovery path targets a Coreless tenant: remove the
+	// Core installation and register a valid node-connector access binding so the
+	// grant-only TenantOwnerResolver hook admits the tenant target through the
+	// owner seam (the removed fail-open adapter previously admitted Coreless
+	// targets without an owner).
+	if stateRoot, err := deployment.TargetStateRoot(target.Name); err == nil {
+		if e := os.RemoveAll(stateRoot); e != nil {
+			t.Fatal(e)
+		}
+	} else {
+		t.Fatal(err)
+	}
+	cfg, err := deployment.LoadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.Access["connector"] = deployment.AccessDefinition{Provider: "baseharbor-node-connector", Reference: "node-interrupted"}
+	definition := cfg.Targets[target.Name]
+	definition.TenantID = "11111111-1111-4111-8111-111111111111"
+	definition.Runtime = deployment.RuntimeDefinition{Provider: "podman"}
+	definition.Access = deployment.TargetAccess{Reference: "connector"}
+	cfg.Targets[target.Name] = definition
+	if err := cfg.Save(); err != nil {
+		t.Fatal(err)
+	}
 	current := application.New("current", "dev", false, false, false)
 	prior := application.WithIdentity(application.New("sibling", "dev", false, false, false))
 	desired := prior

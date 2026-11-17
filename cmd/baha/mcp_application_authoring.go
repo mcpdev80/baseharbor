@@ -6,6 +6,7 @@ import (
 
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/development"
 	"github.com/mcpdev80/baseharbor/internal/machine"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -30,6 +31,20 @@ func machineApplicationAuthoringTool[Input any](operation, description string) *
 }
 
 func createMachineApplication(ctx context.Context, intent application.Manifest) (applicationAdoptionResult, error) {
+	return createMachineApplicationWithSource(ctx, intent, nil)
+}
+
+// createMachineApplicationWithSource persists only the existing portable
+// source selection during first registration, never workstation file bytes.
+func createMachineApplicationWithSource(ctx context.Context, intent application.Manifest, source *development.SourceModel) (applicationAdoptionResult, error) {
+	if source != nil {
+		if source.Application != intent.Name {
+			return applicationAdoptionResult{}, machine.NewError(machine.ErrorValidationFailed, "Source application does not match requested remote application.", "Select the matching .baseharbor/sources.yaml.", false)
+		}
+		if err := development.ValidateImmutableRemoteSources(*source); err != nil {
+			return applicationAdoptionResult{}, machine.Wrap(machine.ErrorValidationFailed, err, "Provide a pinned Git commit or OCI digest.", false)
+		}
+	}
 	if intent.ApplicationID != "" {
 		return applicationAdoptionResult{}, machine.NewError(machine.ErrorValidationFailed, "ApplicationID is system-owned.", "Omit ApplicationID; BaseHarbor assigns the identity during creation.", false)
 	}
@@ -44,7 +59,7 @@ func createMachineApplication(ctx context.Context, intent application.Manifest) 
 	if err != nil {
 		return applicationAdoptionResult{}, err
 	}
-	path, err := createTargetManagedApplication(ctx, intent)
+	path, err := createTargetManagedApplication(ctx, intent, source)
 	if err != nil {
 		return applicationAdoptionResult{}, err
 	}

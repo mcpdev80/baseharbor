@@ -230,6 +230,16 @@ func (p *manifestYAMLParser) parseIndent2(lineNo int, trim string) error {
 	case p.section == "runtime" && trim == "permissions:":
 		p.runtimeField = "permissions"
 		return nil
+	case p.section == "runtime" && strings.HasPrefix(trim, "private:"):
+		value := strings.TrimSpace(strings.TrimPrefix(trim, "private:"))
+		if strings.Contains(value, ":") {
+			return fmt.Errorf("line %d: expected private: true|false", lineNo)
+		}
+		if strings.TrimSpace(value) != "true" && strings.TrimSpace(value) != "false" {
+			return fmt.Errorf("line %d: runtime.private must be true|false", lineNo)
+		}
+		p.manifest.Private, _ = strconv.ParseBool(strings.TrimSpace(value))
+		return nil
 	case p.section == "identity":
 		switch trim {
 		case "callback_paths:", "logout_paths:", "scopes:", "claims:", "authentication:":
@@ -299,11 +309,20 @@ func (p *manifestYAMLParser) parseServiceSection(lineNo int, trim string) error 
 }
 
 func (p *manifestYAMLParser) parseWorkloadField(lineNo int, trim string) error {
-	if trim != "components:" {
-		return fmt.Errorf("line %d: unsupported workload field %q; expected components:", lineNo, trim)
+	switch {
+	case trim == "components:":
+		p.workloadField = "components"
+		return nil
+	case strings.HasPrefix(trim, "compose:"):
+		_, value, ok := strings.Cut(trim, ":")
+		if ok {
+			p.manifest.Workload.Compose = strings.TrimSpace(value)
+		}
+		p.workloadField = "compose"
+		return nil
+	default:
+		return fmt.Errorf("line %d: unsupported workload field %q; expected components: or compose:", lineNo, trim)
 	}
-	p.workloadField = "components"
-	return nil
 }
 
 func (p *manifestYAMLParser) parseIndent4(lineNo int, trim string) error {
@@ -592,6 +611,18 @@ func (p *manifestYAMLParser) parseIndent6(lineNo int, trim string) error {
 		}
 		requirement.Generate = &SecretGeneration{}
 		p.secretGenerate = true
+		return nil
+	}
+	if p.section == "secrets" && (p.secretField == "required" || p.secretField == "optional") && p.secretIndex >= 0 {
+		requirement := secretRequirementPointer(&p.manifest, p.secretField, p.secretIndex)
+		if requirement == nil {
+			return fmt.Errorf("line %d: invalid secret requirement", lineNo)
+		}
+		key, value, ok := strings.Cut(trim, ":")
+		if !ok || key != "source" || strings.TrimSpace(value) == "" {
+			return fmt.Errorf("line %d: expected secret source: SOURCE", lineNo)
+		}
+		requirement.Source = SecretSource(strings.TrimSpace(value))
 		return nil
 	}
 	return p.parseServiceInstance(lineNo, trim)

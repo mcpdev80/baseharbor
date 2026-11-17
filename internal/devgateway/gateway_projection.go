@@ -3,7 +3,6 @@ package devgateway
 import (
 	"fmt"
 	"os"
-	"os/user"
 	"path/filepath"
 )
 
@@ -38,24 +37,4 @@ func projectReadableMode(source, target string, mode os.FileMode) error {
 		return err
 	}
 	return nil
-}
-
-func gatewayRuntimeIdentity() (string, string) {
-	current, err := user.Current()
-	if err == nil && numericIdentity(current.Uid) && numericIdentity(current.Gid) {
-		return current.Uid, current.Gid
-	}
-	return "65532", "65532"
-}
-
-func numericIdentity(value string) bool {
-	if value == "" {
-		return false
-	}
-	for _, r := range value {
-		if r < '0' || r > '9' {
-			return false
-		}
-	}
-	return true
 }

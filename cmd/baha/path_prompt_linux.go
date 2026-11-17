@@ -90,7 +90,7 @@ func promptPathWithCompletionBase(reader *bufio.Reader, out io.Writer, label str
 			_, _ = fmt.Fprintln(out)
 			return strings.TrimSpace(string(value)), nil
 		case 3: // Ctrl-C
-			_, _ = fmt.Fprintln(out)
+			_, _ = fmt.Fprintln(out, "\nInterrupted. No changes were made.")
 			return "", context.Canceled
 		case 4: // Ctrl-D
 			if len(value) == 0 {

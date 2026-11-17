@@ -2,7 +2,9 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -38,31 +40,9 @@ func appInitWithInputResolverCommand(store application.Store) *cli.Command {
 			ctx = machineNoninteractiveContext(ctx)
 		}
 
-		filtered, agents, err := extractAgentsOption(args)
-		if err != nil {
+		handled, err := runAgentsInitOption(args, format, destination, out)
+		if err != nil || handled {
 			return err
-		}
-		if agents {
-			if len(filtered) != 0 {
-				return usageError("--agents cannot be combined with application initialization arguments", "Use baha app init --agents for documentation only; run baha app init separately to configure a deployment.")
-			}
-			cwd, err := os.Getwd()
-			if err != nil {
-				return err
-			}
-			changed, err := ensureBaseHarborAgentsSection(cwd)
-			if err != nil {
-				return err
-			}
-			if format == outputJSON {
-				return writeJSON(destination, map[string]any{"path": filepath.Join(cwd, "AGENTS.md"), "changed": changed})
-			}
-			if changed {
-				fmt.Fprintln(out, "AGENTS.md: BaseHarbor guidance added or updated")
-			} else {
-				fmt.Fprintln(out, "AGENTS.md: BaseHarbor guidance already current")
-			}
-			return nil
 		}
 		forwarded, injected, err := extractDeclaredInputArgs(filtered)
 		if err != nil {
@@ -134,6 +114,9 @@ func appInitWithInputResolverCommand(store application.Store) *cli.Command {
 				return usageError("--quick cannot be combined with explicit app-init arguments", "Use quick adoption or explicit deployment configuration separately.")
 			}
 			if hasLocalManifest {
+				if handled, err := existingRemoteQuickInit(ctx, format, out, destination); handled || err != nil {
+					return err
+				}
 				resolved, err := resolveApplication(ctx, store, nil, "init")
 				if err != nil {
 					return err
@@ -162,7 +145,7 @@ func appInitWithInputResolverCommand(store application.Store) *cli.Command {
 				if err != nil {
 					return err
 				}
-				return writeJSON(destination, result)
+				return completeRepositoryInitJSON(ctx, result, destination)
 			}
 		}
 		if !hasLocalManifest {
@@ -170,13 +153,20 @@ func appInitWithInputResolverCommand(store application.Store) *cli.Command {
 				return usageError("--input is available after an application contract exists", "Create baseharbor.yaml first with guided/quick init or deterministic manifest flags, then inject deployment inputs.")
 			}
 			if format == outputJSON {
-
-				return appInitCommand().Run(ctx, append(forwarded, "--json"), destination, errOut)
+				var result bytes.Buffer
+				if err := appInitCommand().Run(ctx, append(forwarded, "--json"), &result, errOut); err != nil {
+					return err
+				}
+				var adopted applicationAdoptionResult
+				if err := json.Unmarshal(result.Bytes(), &adopted); err != nil {
+					return err
+				}
+				return completeRepositoryInitJSON(ctx, adopted, destination)
 			}
 			if err := baseRun(ctx, forwarded, out, errOut); err != nil {
 				return err
 			}
-			return nil
+			return finishRemoteRepositoryInit(ctx, out)
 		}
 
 		opts, err := parseRepositoryInitOptions(forwarded)
@@ -185,6 +175,24 @@ func appInitWithInputResolverCommand(store application.Store) *cli.Command {
 		}
 		if err := applyInjectedRepositoryInputs(&opts, injected); err != nil {
 			return err
+		}
+		target, err := effectiveTarget(ctx)
+		if err != nil {
+			return err
+		}
+		if target.AccessProvider != "" && target.AccessProvider != "local" {
+			manifest, err := application.LoadManifestFile(manifestPath)
+			if err != nil {
+				return err
+			}
+			if err := initializeRemoteRepository(ctx, target, filepath.Dir(manifestPath), manifest, opts, out); err != nil {
+				return err
+			}
+			if format == outputJSON {
+				return writeJSON(destination, map[string]any{"application": manifest.Name, "environment": manifest.Environment, "target": target.Name, "configured": true})
+			}
+			fmt.Fprintf(out, "Application runtime initialization saved on remote Core Target %s.\n", target.Name)
+			return nil
 		}
 		resolved, err := resolveApplication(ctx, store, nil, "init")
 		if err != nil {
@@ -200,6 +208,36 @@ func appInitWithInputResolverCommand(store application.Store) *cli.Command {
 		return nil
 	}
 	return base
+}
+
+func runAgentsInitOption(args []string, format cliOutputFormat, destination, out io.Writer) (bool, error) {
+	filtered, agents, err := extractAgentsOption(args)
+	if err != nil {
+		return false, err
+	}
+	if !agents {
+		return false, nil
+	}
+	if len(filtered) != 0 {
+		return true, usageError("--agents cannot be combined with application initialization arguments", "Use baha app init --agents for documentation only; run baha app init separately to configure a deployment.")
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		return true, err
+	}
+	changed, err := ensureBaseHarborAgentsSection(cwd)
+	if err != nil {
+		return true, err
+	}
+	if format == outputJSON {
+		return true, writeJSON(destination, map[string]any{"path": filepath.Join(cwd, "AGENTS.md"), "changed": changed})
+	}
+	if changed {
+		fmt.Fprintln(out, "AGENTS.md: BaseHarbor guidance added or updated")
+	} else {
+		fmt.Fprintln(out, "AGENTS.md: BaseHarbor guidance already current")
+	}
+	return true, nil
 }
 
 func containsQuickAdoptionOption(args []string) bool {
@@ -499,6 +537,43 @@ func runtimeUpCommandWithInputResolver(ctx context.Context, args []string, out, 
 	defer restoreEnvironment()
 	ctx = withMemoryPreflightOverride(ctx, opts.SkipMemoryPreflight)
 	ctx = withAssumeYes(ctx, opts.Yes)
+	// Core bootstrap must never select the developer workstation when a
+	// remote execution Target is active. A remote management installer is
+	// not available yet; refuse this path before any local resources mutate.
+	if opts.ControlPlaneOnly {
+		selected, err := effectiveTarget(ctx)
+		if err != nil {
+			return err
+		}
+		if selected.AccessProvider != "" && selected.AccessProvider != "local" {
+			return usageError("remote control-plane bootstrap is not supported by baha up", "Run the Core bootstrap on its owning Docker/Podman host and configure a verified remote management connection; the selected remote Target will not fall back to the local Docker daemon.")
+		}
+	}
+	if !opts.ControlPlaneOnly {
+		target, err := effectiveTarget(ctx)
+		if err != nil {
+			return err
+		}
+		if target.AccessProvider != "" && target.AccessProvider != "local" {
+			if opts.HA || opts.PostgresPort != 0 || opts.OpenBaoPort != 0 || opts.RecoveryFile != "" || opts.TrustHostCA {
+				return usageError("management Core options cannot configure a remote application", "Set up Core on its owning host; use ordinary 'baha up' for this repository.")
+			}
+			remoteArgs := upNameArgs(opts.Name)
+			if format == outputJSON {
+				remoteArgs = append(remoteArgs, "--json")
+			}
+			if opts.Environment != "" {
+				remoteArgs = append(remoteArgs, "--environment", opts.Environment)
+			}
+			if opts.SkipMemoryPreflight {
+				remoteArgs = append(remoteArgs, "--skip-memory-preflight")
+			}
+			if opts.CandidateConsent != "" {
+				remoteArgs = append(remoteArgs, "--confirm-candidate", opts.CandidateConsent)
+			}
+			return remoteApplicationApplyCLI(ctx, target, remoteArgs, destination, errOut)
+		}
+	}
 	if handled, err := routeRepositoryRuntimeUp(ctx, applicationInput(ctx, runtimeInput), out, errOut, opts); handled {
 		if err != nil {
 			return err
@@ -523,7 +598,7 @@ func runtimeUpCommandWithInputResolver(ctx context.Context, args []string, out, 
 			return err
 		}
 		if found {
-			resolved, err := resolveApplication(ctx, application.DefaultStore(), nil, "up")
+			resolved, err := resolveApplication(ctx, application.DefaultStore(), upNameArgs(opts.Name), "up")
 			if err != nil {
 				return err
 			}

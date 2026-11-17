@@ -19,43 +19,51 @@ import (
 )
 
 var (
-	ErrMissingDatabaseURL = errors.New("control-plane database URL is required")
-	ErrMissingTLSFiles    = errors.New("control-plane TLS certificate and key are required")
+	ErrMissingDatabaseURL   = errors.New("control-plane database URL is required")
+	ErrMissingTLSFiles      = errors.New("control-plane TLS certificate and key are required")
+	ErrMissingOperationsDir = errors.New("control-plane runtime operations directory is required for the machine execution journal")
 )
 
 type Config struct {
-	ListenAddr                 string
-	DatabaseURL                string
-	ConnectorEnrollmentEnabled bool
-	ConnectorAuthorityTarget   string
-	ConnectorListenAddr        string
-	ConnectorTLSCertFile       string
-	ConnectorTLSKeyFile        string
-	ConnectorTLSCAFile         string
-	OIDCIssuer                 string
-	OIDCAudiences              []string
-	TLSCertFile                string
-	TLSKeyFile                 string
-	TLSClientCAFile            string
-	RuntimeAppName             string
-	RuntimeEnvironment         string
-	RuntimeSecretsEnabled      bool
-	RuntimeOpenBaoURL          string
-	RuntimeOpenBaoCAFile       string
-	RuntimeCredentialsFile     string
-	RuntimeTokenFile           string
-	RuntimePermissionsFile     string
-	RuntimeServiceTokensFile   string
-	RuntimeExecutorURL         string
-	RuntimeExecutorCAFile      string
-	RuntimeExecutorCertFile    string
-	RuntimeExecutorKeyFile     string
-	RuntimeOperationsDir       string
-	RuntimeMetricsTargetsDir   string
-	RuntimeDocsListenAddr      string
-	RuntimeBuildVersion        string
-	RuntimeBuildCommit         string
-	ShutdownTimeout            time.Duration
+	ListenAddr                   string
+	DatabaseURL                  string
+	ConnectorEnrollmentEnabled   bool
+	ConnectorAuthorityTarget     string
+	WorkstationEnrollmentEnabled bool
+	ConnectorListenAddr          string
+	ConnectorTLSCertFile         string
+	ConnectorTLSKeyFile          string
+	ConnectorTLSCAFile           string
+	OIDCIssuer                   string
+	OIDCAudiences                []string
+	// OperatorOIDCTrustFile optionally adds the managed operator CA to the
+	// OIDC discovery trust pool, on top of the system trust pool (additive
+	// only; verification is never weakened). It lets `baha serve` verify a
+	// managed operator issuer the same way `baha login` does, without OS
+	// system-trust surgery.
+	OperatorOIDCTrustFile    string
+	TLSCertFile              string
+	TLSKeyFile               string
+	TLSClientCAFile          string
+	RuntimeAppName           string
+	RuntimeEnvironment       string
+	RuntimeSecretsEnabled    bool
+	RuntimeOpenBaoURL        string
+	RuntimeOpenBaoCAFile     string
+	RuntimeCredentialsFile   string
+	RuntimeTokenFile         string
+	RuntimePermissionsFile   string
+	RuntimeServiceTokensFile string
+	RuntimeExecutorURL       string
+	RuntimeExecutorCAFile    string
+	RuntimeExecutorCertFile  string
+	RuntimeExecutorKeyFile   string
+	RuntimeOperationsDir     string
+	RuntimeMetricsTargetsDir string
+	RuntimeDocsListenAddr    string
+	RuntimeBuildVersion      string
+	RuntimeBuildCommit       string
+	ShutdownTimeout          time.Duration
 }
 
 func (c Config) operatorAPIEnabled() bool {
@@ -75,8 +83,17 @@ func (c Config) Validate() error {
 			strings.TrimSpace(c.ConnectorAuthorityTarget) == "" {
 			return errors.New("Connector enrollment requires the operator API, database and an explicit local authority Target")
 		}
-	} else if strings.TrimSpace(c.ConnectorAuthorityTarget) != "" {
-		return errors.New("Connector authority Target requires enrollment to be enabled")
+	} else if strings.TrimSpace(c.ConnectorAuthorityTarget) != "" && !c.WorkstationEnrollmentEnabled {
+		return errors.New("local enrollment authority Target requires connector or workstation enrollment")
+	}
+	if c.WorkstationEnrollmentEnabled {
+		if c.boundRuntimeEnabled() || strings.TrimSpace(c.DatabaseURL) == "" ||
+			strings.TrimSpace(c.ConnectorAuthorityTarget) == "" {
+			return errors.New("Workstation enrollment requires the Core database and a locally owned authority Target")
+		}
+		if !c.operatorAPIEnabled() && c.ConnectorEnrollmentEnabled {
+			return errors.New("Connector enrollment requires a configured operator OIDC identity")
+		}
 	}
 	if strings.TrimSpace(c.TLSCertFile) == "" || strings.TrimSpace(c.TLSKeyFile) == "" {
 		return ErrMissingTLSFiles
@@ -192,6 +209,19 @@ func Run(ctx context.Context, cfg Config, store application.Store, machineExecut
 func runtimeTLSConfig(cfg Config) (*tls.Config, error) {
 	config := &tls.Config{MinVersion: tls.VersionTLS12}
 	if !cfg.boundRuntimeEnabled() {
+		if cfg.WorkstationEnrollmentEnabled {
+			// Optional workstation certificates are requested without
+			// rejecting human browser connections that authenticate by OIDC.
+			// Their chain/tenant/registry/CRL are checked on every machine
+			// request by workstationDeviceMiddleware. A missing managed CA
+			// cannot silently enable an unauthenticated machine API.
+			pool, err := loadClientCAPool(cfg.TLSClientCAFile)
+			if err != nil {
+				return nil, fmt.Errorf("workstation client CA is required: %w", err)
+			}
+			config.ClientAuth = tls.RequestClientCert
+			config.ClientCAs = pool
+		}
 		return config, nil
 	}
 	pool, err := loadClientCAPool(cfg.TLSClientCAFile)

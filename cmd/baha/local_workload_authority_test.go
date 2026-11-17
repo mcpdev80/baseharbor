@@ -33,7 +33,7 @@ func (r *localAuthorityRuntime) VerifyLocalRuntimeAuthority(context.Context) err
 func TestLocalWorkloadAuthorityPreservesAllNonlocalAndPolicyBoundaries(t *testing.T) {
 	for _, scenario := range []string{"local-cli", "local-stdio", "local-podman", "http", "unmarked", "tenant", "management", "management-operation", "stored-policy", "partial-env-policy", "unknown-podman", "remote-docker", "unverified-engine", "partial-management", "damaged-management", "redirected-owner", "binding-mismatch", "missing-engine"} {
 		t.Run(scenario, func(t *testing.T) {
-			target := configureTestTarget(t)
+			target := configureTestTargetEmpty(t)
 			for _, name := range []string{operatorauth.EnvIssuer, operatorauth.EnvClientID, operatorauth.EnvScopes, operatorauth.EnvCallbackPort} {
 				t.Setenv(name, "")
 			}

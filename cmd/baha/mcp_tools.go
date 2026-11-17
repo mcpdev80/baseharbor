@@ -56,6 +56,17 @@ func registerMCPDiscoveryReadTools(server *mcp.Server) {
 		return nil, result, nil
 	})
 
+	mcp.AddTool(server, machineMCPTool("app.versions", "Render readable wanted/applied/observed versions for recorded deployments as three separated reference cells.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineApplicationVersionsInput) (*mcp.CallToolResult, any, error) {
+		if err := authorizeCurrentMCPContext(ctx, "app.versions", input.Target, "", ""); err != nil {
+			return machineMCPFailure(err)
+		}
+		result, err := collectMachineApplicationVersions(withTargetOverride(ctx, input.Target), input)
+		if err != nil {
+			return machineMCPFailure(err)
+		}
+		return nil, result, nil
+	})
+
 	mcp.AddTool(server, machineMCPTool("target", "Read-only inspection of the effective BaseHarbor target and repository-resolved deployment identity.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineTargetInput) (*mcp.CallToolResult, any, error) {
 		ctx = withTargetOverride(ctx, input.Target)
 		if err := authorizeCurrentMCPContext(ctx, "target", input.Target, "", ""); err != nil {
@@ -80,7 +91,7 @@ func registerMCPDiscoveryReadTools(server *mcp.Server) {
 		if err := authorizeCurrentMCPContext(ctx, "inspect", "", environment, path); err != nil {
 			return machineMCPFailure(err)
 		}
-		result, err := inspectRepositorySource(ctx, path)
+		result, err := inspectRepositorySource(ctx, path, io.Discard)
 		if err != nil {
 			return machineMCPFailure(err)
 		}
@@ -467,10 +478,12 @@ func registerMCPLifecycleTools(server *mcp.Server, store application.Store) {
 
 func registerMCPApplicationMutationTools(server *mcp.Server, store application.Store) {
 	registerMCPAppEditTool(server, store)
+	registerMCPAppPruneTool(server, store)
 	mcp.AddTool(server, machineMCPTool("apply", "Converge the complete selected BaseHarbor application lifecycle and return verified semantic status. TIGHT host-memory headroom requires explicit skip_memory_preflight approval; hard failures remain enforced.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineApplyInput) (*mcp.CallToolResult, any, error) {
 		ctx = withProviderChangeConsent(ctx, input.ProviderChangeConsent)
 		ctx = withTargetOverride(ctx, input.Target)
 		ctx = withMemoryPreflightOverride(ctx, input.SkipMemoryPreflight)
+		ctx = withCandidateConsentDigest(ctx, input.ConfirmCandidate)
 		args := machineApplicationArgs(input.Name, input.Environment)
 		resolved, err := resolveApplication(ctx, store, args, "apply")
 		if err != nil {
@@ -680,13 +693,11 @@ func registerMCPRecoveryTools(server *mcp.Server, store application.Store) {
 		defer cancelLifecycle()
 		args := machineApplicationArgs(input.Name, input.Environment)
 		args = append(args, "--yes")
-		if input.FullReset {
-			args = append(args, "--full-reset")
-		}
+		args = append(args, "--full-reset")
 		if err := executeApplicationDestroyLifecycle(ctx, store, args, io.Discard, io.Discard); err != nil {
 			return machineMCPFailure(err)
 		}
-		result, err := applicationDestroyResult(resolved, input.FullReset)
+		result, err := applicationDestroyResult(resolved, true)
 		if err != nil {
 			return machineMCPFailure(err)
 		}

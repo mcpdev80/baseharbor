@@ -22,6 +22,11 @@ func TestBuiltInProvidersExposeIndependentCapabilities(t *testing.T) {
 		t.Fatalf("node connector capabilities incomplete: %#v", connector)
 	}
 
+	core, ok := BuiltInDescriptor(ProviderCoreRemote)
+	if !ok || !core.Remote || !core.Capabilities.Connect || !core.Capabilities.PeerIdentity || core.Capabilities.ExecTransport || core.Capabilities.NativeContext {
+		t.Fatalf("verified remote Core must expose management-only transport, never direct runtime authority: %#v", core)
+	}
+
 	native, ok := BuiltInDescriptor(ProviderNativeAPI)
 	if !ok {
 		t.Fatal("native-api descriptor missing")

@@ -19,7 +19,7 @@ func acknowledgeProviderImpact(ctx context.Context, in io.Reader, out io.Writer,
 	if out == nil {
 		out = io.Discard
 	}
-	if err := printProviderImpact(out, plan); err != nil {
+	if err := printProviderImpactForCLI(ctx, out, plan); err != nil {
 		return err
 	}
 	if supplied != nil {
@@ -30,7 +30,7 @@ func acknowledgeProviderImpact(ctx context.Context, in io.Reader, out io.Writer,
 	if noInput(ctx) || in == nil || !readerIsTerminal(in) {
 		return providerImpactConsentError(plan, application.ValidateProviderChangeConsent(plan, application.ProviderChangeConsent{PlanID: plan.PlanID}))
 	}
-	consent, err := readProviderImpactAcknowledgements(bufio.NewReader(in), out, plan)
+	consent, err := readProviderApplyAcknowledgement(bufio.NewReader(in), out, plan)
 	if err != nil {
 		return err
 	}
@@ -53,6 +53,25 @@ func providerImpactConsentError(plan application.ProviderImpactPlan, err error) 
 		machineError.Details = plan
 	}
 	return classified
+}
+
+func readProviderApplyAcknowledgement(reader *bufio.Reader, out io.Writer, plan application.ProviderImpactPlan) (application.ProviderChangeConsent, error) {
+	consent := application.ProviderChangeConsent{PlanID: plan.PlanID}
+	label := "Apply these changes?"
+	if plan.Destructive {
+		label = "Apply these changes and permanently delete the listed data?"
+	}
+	accepted, err := promptYesNo(reader, out, label, false)
+	if err != nil || !accepted {
+		return consent, err
+	}
+	// One explicit review acknowledges every displayed consequence. Keep the
+	// existing wire fields so Core still validates the complete current plan.
+	consent.First = true
+	consent.Second = plan.ConfirmationsRequired == 2
+	consent.DeleteData = plan.Destructive
+
+	return consent, nil
 }
 
 func readProviderImpactAcknowledgements(reader *bufio.Reader, out io.Writer, plan application.ProviderImpactPlan) (application.ProviderChangeConsent, error) {

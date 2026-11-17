@@ -58,11 +58,14 @@ services:
     entrypoint: ["/bin/sh", "-ec"]
     command:
       - |
-        install -d -o postgres -g postgres -m 0700 /run/baseharbor/tls-runtime
-        install -o postgres -g postgres -m 0600 /run/baseharbor/tls-source/server-key.pem /run/baseharbor/tls-runtime/server-key.pem
-        install -o postgres -g postgres -m 0644 /run/baseharbor/etcd-source/ca.pem /run/baseharbor/tls-runtime/etcd-ca.pem
-        install -o postgres -g postgres -m 0644 /run/baseharbor/etcd-source/client.pem /run/baseharbor/tls-runtime/etcd-client.pem
-        install -o postgres -g postgres -m 0600 /run/baseharbor/etcd-source/client-key.pem /run/baseharbor/tls-runtime/etcd-client-key.pem
+        mkdir -p /run/baseharbor/tls-runtime
+        cp /run/baseharbor/tls-source/server-key.pem /run/baseharbor/tls-runtime/server-key.pem
+        cp /run/baseharbor/etcd-source/ca.pem /run/baseharbor/tls-runtime/etcd-ca.pem
+        cp /run/baseharbor/etcd-source/client.pem /run/baseharbor/tls-runtime/etcd-client.pem
+        cp /run/baseharbor/etcd-source/client-key.pem /run/baseharbor/tls-runtime/etcd-client-key.pem
+        chmod 0644 /run/baseharbor/tls-runtime/etcd-ca.pem /run/baseharbor/tls-runtime/etcd-client.pem
+        chmod 0600 /run/baseharbor/tls-runtime/server-key.pem /run/baseharbor/tls-runtime/etcd-client-key.pem
+        if [ "$$(id -u)" = 0 ]; then chown postgres:postgres /run/baseharbor/tls-runtime/server-key.pem /run/baseharbor/tls-runtime/etcd-client-key.pem; fi
         exec /bin/sh /launch.sh
     environment:
       SPILO_PROVIDER: local
@@ -88,7 +91,7 @@ services:
       SSL_TEST_RELOAD: "true"
       SPILO_CONFIGURATION: '{"postgresql":{"create_replica_methods":["basebackup"],"basebackup":{"checkpoint":"fast"},"pg_hba":["local all all trust","local replication ${BASEHARBOR_POSTGRES_REPLICATION_USER:-baseharbor_replication} trust","local replication ${BASEHARBOR_POSTGRES_REPLICATION_PREVIOUS_USER:-baseharbor_replication} trust","hostssl replication ${BASEHARBOR_POSTGRES_REPLICATION_USER:-baseharbor_replication} all scram-sha-256","hostssl replication ${BASEHARBOR_POSTGRES_REPLICATION_PREVIOUS_USER:-baseharbor_replication} all scram-sha-256","hostssl all all all scram-sha-256","hostnossl all all all reject"],"connect_address":"postgres-member-1:5432"},"restapi":{"connect_address":"postgres-member-1:8008"}}'
     tmpfs:
-      - /run/baseharbor/tls-runtime:rw,noexec,nosuid,nodev,mode=0700
+    - /run/baseharbor/tls-runtime:rw,noexec,nosuid,nodev,mode=1777
     volumes:
       - postgres-data-1:/home/postgres/pgdata/pgroot
       - ./providers/postgresql/runtime/server-cert.pem:/run/baseharbor/tls/server-cert.pem:ro
@@ -103,11 +106,14 @@ services:
     entrypoint: ["/bin/sh", "-ec"]
     command:
       - |
-        install -d -o postgres -g postgres -m 0700 /run/baseharbor/tls-runtime
-        install -o postgres -g postgres -m 0600 /run/baseharbor/tls-source/server-key.pem /run/baseharbor/tls-runtime/server-key.pem
-        install -o postgres -g postgres -m 0644 /run/baseharbor/etcd-source/ca.pem /run/baseharbor/tls-runtime/etcd-ca.pem
-        install -o postgres -g postgres -m 0644 /run/baseharbor/etcd-source/client.pem /run/baseharbor/tls-runtime/etcd-client.pem
-        install -o postgres -g postgres -m 0600 /run/baseharbor/etcd-source/client-key.pem /run/baseharbor/tls-runtime/etcd-client-key.pem
+        mkdir -p /run/baseharbor/tls-runtime
+        cp /run/baseharbor/tls-source/server-key.pem /run/baseharbor/tls-runtime/server-key.pem
+        cp /run/baseharbor/etcd-source/ca.pem /run/baseharbor/tls-runtime/etcd-ca.pem
+        cp /run/baseharbor/etcd-source/client.pem /run/baseharbor/tls-runtime/etcd-client.pem
+        cp /run/baseharbor/etcd-source/client-key.pem /run/baseharbor/tls-runtime/etcd-client-key.pem
+        chmod 0644 /run/baseharbor/tls-runtime/etcd-ca.pem /run/baseharbor/tls-runtime/etcd-client.pem
+        chmod 0600 /run/baseharbor/tls-runtime/server-key.pem /run/baseharbor/tls-runtime/etcd-client-key.pem
+        if [ "$$(id -u)" = 0 ]; then chown postgres:postgres /run/baseharbor/tls-runtime/server-key.pem /run/baseharbor/tls-runtime/etcd-client-key.pem; fi
         exec /bin/sh /launch.sh
     environment:
       SPILO_PROVIDER: local
@@ -133,7 +139,7 @@ services:
       SSL_TEST_RELOAD: "true"
       SPILO_CONFIGURATION: '{"postgresql":{"create_replica_methods":["basebackup"],"basebackup":{"checkpoint":"fast"},"pg_hba":["local all all trust","local replication ${BASEHARBOR_POSTGRES_REPLICATION_USER:-baseharbor_replication} trust","local replication ${BASEHARBOR_POSTGRES_REPLICATION_PREVIOUS_USER:-baseharbor_replication} trust","hostssl replication ${BASEHARBOR_POSTGRES_REPLICATION_USER:-baseharbor_replication} all scram-sha-256","hostssl replication ${BASEHARBOR_POSTGRES_REPLICATION_PREVIOUS_USER:-baseharbor_replication} all scram-sha-256","hostssl all all all scram-sha-256","hostnossl all all all reject"],"connect_address":"postgres-member-2:5432"},"restapi":{"connect_address":"postgres-member-2:8008"}}'
     tmpfs:
-      - /run/baseharbor/tls-runtime:rw,noexec,nosuid,nodev,mode=0700
+    - /run/baseharbor/tls-runtime:rw,noexec,nosuid,nodev,mode=1777
     volumes:
       - postgres-data-2:/home/postgres/pgdata/pgroot
       - ./providers/postgresql/runtime/server-cert.pem:/run/baseharbor/tls/server-cert.pem:ro
@@ -148,11 +154,14 @@ services:
     entrypoint: ["/bin/sh", "-ec"]
     command:
       - |
-        install -d -o postgres -g postgres -m 0700 /run/baseharbor/tls-runtime
-        install -o postgres -g postgres -m 0600 /run/baseharbor/tls-source/server-key.pem /run/baseharbor/tls-runtime/server-key.pem
-        install -o postgres -g postgres -m 0644 /run/baseharbor/etcd-source/ca.pem /run/baseharbor/tls-runtime/etcd-ca.pem
-        install -o postgres -g postgres -m 0644 /run/baseharbor/etcd-source/client.pem /run/baseharbor/tls-runtime/etcd-client.pem
-        install -o postgres -g postgres -m 0600 /run/baseharbor/etcd-source/client-key.pem /run/baseharbor/tls-runtime/etcd-client-key.pem
+        mkdir -p /run/baseharbor/tls-runtime
+        cp /run/baseharbor/tls-source/server-key.pem /run/baseharbor/tls-runtime/server-key.pem
+        cp /run/baseharbor/etcd-source/ca.pem /run/baseharbor/tls-runtime/etcd-ca.pem
+        cp /run/baseharbor/etcd-source/client.pem /run/baseharbor/tls-runtime/etcd-client.pem
+        cp /run/baseharbor/etcd-source/client-key.pem /run/baseharbor/tls-runtime/etcd-client-key.pem
+        chmod 0644 /run/baseharbor/tls-runtime/etcd-ca.pem /run/baseharbor/tls-runtime/etcd-client.pem
+        chmod 0600 /run/baseharbor/tls-runtime/server-key.pem /run/baseharbor/tls-runtime/etcd-client-key.pem
+        if [ "$$(id -u)" = 0 ]; then chown postgres:postgres /run/baseharbor/tls-runtime/server-key.pem /run/baseharbor/tls-runtime/etcd-client-key.pem; fi
         exec /bin/sh /launch.sh
     environment:
       SPILO_PROVIDER: local
@@ -178,7 +187,7 @@ services:
       SSL_TEST_RELOAD: "true"
       SPILO_CONFIGURATION: '{"postgresql":{"create_replica_methods":["basebackup"],"basebackup":{"checkpoint":"fast"},"pg_hba":["local all all trust","local replication ${BASEHARBOR_POSTGRES_REPLICATION_USER:-baseharbor_replication} trust","local replication ${BASEHARBOR_POSTGRES_REPLICATION_PREVIOUS_USER:-baseharbor_replication} trust","hostssl replication ${BASEHARBOR_POSTGRES_REPLICATION_USER:-baseharbor_replication} all scram-sha-256","hostssl replication ${BASEHARBOR_POSTGRES_REPLICATION_PREVIOUS_USER:-baseharbor_replication} all scram-sha-256","hostssl all all all scram-sha-256","hostnossl all all all reject"],"connect_address":"postgres-member-3:5432"},"restapi":{"connect_address":"postgres-member-3:8008"}}'
     tmpfs:
-      - /run/baseharbor/tls-runtime:rw,noexec,nosuid,nodev,mode=0700
+    - /run/baseharbor/tls-runtime:rw,noexec,nosuid,nodev,mode=1777
     volumes:
       - postgres-data-3:/home/postgres/pgdata/pgroot
       - ./providers/postgresql/runtime/server-cert.pem:/run/baseharbor/tls/server-cert.pem:ro
@@ -195,7 +204,6 @@ services:
         condition: service_started
       postgres-member-3:
         condition: service_started
-    user: "99:99"
     read_only: true
     cap_drop: ["ALL"]
     security_opt: ["no-new-privileges:true"]
@@ -268,7 +276,6 @@ services:
   openbao-member-1:
     image: docker.io/openbao/openbao:2.7.1
     restart: unless-stopped
-    user: "100"
     read_only: true
     cap_drop: ["ALL"]
     security_opt: ["no-new-privileges:true"]
@@ -297,7 +304,6 @@ services:
   openbao-member-2:
     image: docker.io/openbao/openbao:2.7.1
     restart: unless-stopped
-    user: "100"
     read_only: true
     cap_drop: ["ALL"]
     security_opt: ["no-new-privileges:true"]
@@ -326,7 +332,6 @@ services:
   openbao-member-3:
     image: docker.io/openbao/openbao:2.7.1
     restart: unless-stopped
-    user: "100"
     read_only: true
     cap_drop: ["ALL"]
     security_opt: ["no-new-privileges:true"]
@@ -362,7 +367,6 @@ services:
         condition: service_started
       openbao-member-3:
         condition: service_started
-    user: "99:99"
     read_only: true
     cap_drop: ["ALL"]
     security_opt: ["no-new-privileges:true"]
@@ -382,7 +386,6 @@ services:
   openbao-admin:
     image: docker.io/openbao/openbao:2.7.1
     restart: unless-stopped
-    user: "100"
     read_only: true
     cap_drop: ["ALL"]
     security_opt: ["no-new-privileges:true"]

@@ -2,6 +2,12 @@
 
 Normal CI, Pre-Release and Release execute their required tests directly. Failing, cancelled or missing required jobs block the workflow through its normal dependencies and final result check. CI does not download gate manifests, reinterpret completed Actions runs or use an additional evidence or receipt approval chain.
 
+## When checks run
+
+Ordinary branch pushes do not start CI. Draft PRs run only workflow policy, source formatting and readability checks. Marking a PR ready runs the selected checks; later pushes to a ready PR rerun the affected checks. Bundle local commits before pushing. A merge into `develop` writes the receipt without a duplicate Source & Quality run. Explicit validation branches and manual validation remain available.
+
+A valid changed path without a narrow mapping selects full Go unit tests, vet and build; changes in product/runtime areas additionally select Docker/Podman lifecycle checks. Invalid source identities, diffs, paths or catalog configuration still fail. The fallback never automatically starts the complete release matrix.
+
 ## Commit record
 
 After an authorized merge into `develop`, `receipt-post-run.yml` writes one canonical JSON file to `baseharbor-plan`:

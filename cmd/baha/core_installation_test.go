@@ -16,7 +16,7 @@ import (
 )
 
 func TestCoreRequiredNoninteractiveHasNoMutation(t *testing.T) {
-	target := configureTestTarget(t)
+	target := configureTestTargetEmpty(t)
 	ctx := machineNoninteractiveContext(context.Background())
 	err := requireApplicationCore(ctx, strings.NewReader(""), io.Discard)
 	var failure *machine.Error
@@ -33,7 +33,7 @@ func TestCoreRequiredNoninteractiveHasNoMutation(t *testing.T) {
 }
 
 func TestCoreBootstrapPromptPreservesApplicationInput(t *testing.T) {
-	configureTestTarget(t)
+	configureTestTargetEmpty(t)
 	previous := applicationCoreBootstrap
 	t.Cleanup(func() { applicationCoreBootstrap = previous })
 	calls := 0

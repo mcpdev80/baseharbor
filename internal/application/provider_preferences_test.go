@@ -13,6 +13,10 @@ import (
 
 func preferenceFixture(t *testing.T, target string) (Manifest, string, deployment.DeploymentRecord) {
 	t.Helper()
+	// The deployment-owner seam (SaveDeploymentRecord -> verifyDeploymentOwnerAtSeam)
+	// requires a genuine Core owner for the Target. Seed one AFTER t.Setenv so it
+	// lands in this test's temp data root; no global bypass, no skip.
+	seedManagedTargetOwner(t, target)
 	m := New("preference-owner", "dev", true, false, false)
 	m.ApplicationID = "11111111-1111-4111-8111-111111111111"
 	m = WithSQLInstances(m, "primary", "analytics")

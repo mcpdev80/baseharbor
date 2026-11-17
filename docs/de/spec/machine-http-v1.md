@@ -121,6 +121,18 @@ Consumer müssen den Fehlerzustand beibehalten und die Folgen anzeigen. Die Deta
 erteilen keine Freigabe; ein erneuter Versuch benötigt weiterhin die Bestätigungen
 für den aktuellen Plan und eine separate ausdrückliche Zustimmung zur Datenlöschung.
 
+Unterstützt der Core einen terminalen Abschluss für `installation.destroy`,
+weist Discovery die Fähigkeit `execution.terminal.installation-destroy` aus.
+Nur für diese Operation darf ein Client `wait_for_terminal: true` senden. Der
+Core gibt die terminale `Execution v1` samt `Location` mit HTTP `200` über
+dieselbe authentifizierte HTTPS-Anfrage zurück. Der vollständige Abbau entfernt
+das Ausführungsjournal und die Identitätsdienste des Core; eine spätere
+Statusabfrage wäre daher nicht mehr authentifizierbar. Die Anfrage benötigt
+weiterhin einen `Idempotency-Key`. Eine Wiederholung ohne terminalen Abschluss
+wird abgelehnt und darf keine zweite Löschung starten. Nach einem
+Verbindungsabbruch ist das Ergebnis unbekannt; vor einem erneuten Versuch muss
+der Installationszustand geprüft werden.
+
 Die Eingabe der Operation wird nicht in normalen Metadaten der Ausführung beibehalten.
 Executor weist unbekannte Felder zurück, dupliziert Schlüssel in jeder Tiefe, nicht Objekteingabe,
 ungültige UTF-8, Verschachtelung über 64 Levels und hintere JSON-Werte ohne
@@ -273,6 +285,36 @@ Mitgliedschaftskennungen und unbekannte Sicherheitsklassen leugnen. Eine authent
 Antrag auf `dev` behält sich diese Prüfung vor; sie wird nicht zu einem vertrauenswürdigen lokalen Betreiber.
 Diese Rolle überprüfen ergänzt effektive Politik und Ressourcenbesitz. Es tut
 keine Mieterisolation für das Inventar oder die Laufzeitressourcen eines Adapters festlegen.
+
+## Verifizierte Anspruchs-Abbildung und Teamgrenze
+
+Maschinenautorisierung schlägt für eine verifizierte Operator-Identität fehl
+(closed): eine reine `issuer`/`subject`-Paar gewährt nichts. Der verifizierte
+Transport-Principal führt provider-neutrale `group`/`app-role`-Ansprüche, diese
+Ansprüche gewähren jedoch allein kein Recht und sind nur bedeutsam, wenn das
+Token, das sie erzeugte, gegen seinen Aussteller verifiziert ist
+(`issuer_verified` gesetzt). Anspruchsgebundener Betrieb erfordert daher eine
+`MembershipProvider`, die den verifizierten `issuer`/`subject` und die
+verifizierten `group`/`app-role`-Ansprüche auf die aktuellen konkreten
+Mietermitgliedschaften und den aktuellen Widerrufsstatus dieser einen Installation
+abbildet.
+
+- Ein verifizierter Operator ohne gelösten Anspruch-Membership wird abgewiesen,
+  auch wenn kein `MembershipProvider` installiert ist. Eine verifizierte Identität
+  allein öffnet nicht die Tür; `dev` behält diese Prüfung bei und wird nicht zu
+  einem vertrauenswürdigen lokalen Betreiber.
+- Ein Anspruch löst sich nur zum Tenant, seine verifizierten Ansprüche nennen.
+  Ein `team-a`-Anspruch darf keinen `tenant-b`-Betrieb freigeben, und mehrdeutige
+  Mitgliedschaften, mehr als einen Tenant umfassen, schlagen fehl. Dies ist die
+  Teamgrenze auf der Freigabe-Entscheidungsebene, nur im Tenant-Löser.
+- Ein entzogener oder widerrufener Anspruch oder Mitgliedschaft — Provider, kein
+  Mitglied liefert oder Fehler beim Widerrufs-Lookup meldet — lehnt den nächsten
+  Betrieb ab. Anbieter-Gruppe-Änderungen sind innerhalb der Lebenszeit eines
+  ausgestellten Tokens nicht sofort widerrufbar; dieses begrenzte Fenster ist die
+  einzige begrenzte Ausnahme.
+- Die vorhandenen Tenant/Rollen-RBAC-Prüfungen bleiben erhalten, werden nicht
+  durch die Anspruchs-Abbildung ersetzt; die Anspruch-Abbindung verbindet
+  verifizierte Ansprüche mit ihnen.
 
 ### Verbrauch von Navigationsergebnissen
 

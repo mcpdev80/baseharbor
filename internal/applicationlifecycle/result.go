@@ -10,6 +10,7 @@ type Result struct {
 	RetainedMaterials    []application.ProviderMaterial    `json:"retained_materials,omitempty"`
 	OwnerPreserved       bool                              `json:"owner_preserved,omitempty"`
 	DataDeleted          *bool                             `json:"data_deleted,omitempty"`
+	DataPreserved        bool                              `json:"data_preserved,omitempty"`
 
 	ContractVersion string `json:"contract_version"`
 	Operation       string `json:"operation"`

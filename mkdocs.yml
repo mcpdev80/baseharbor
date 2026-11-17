@@ -64,6 +64,7 @@ nav:
 
   - Getting Started:
       - First application: tutorials/getting-started.md
+      - Local, remote and team workflow: how-to/local-remote-team-workflow.md
       - Homelab: tutorials/homelab.md
       - Core resources: explanation/core-resources.md
       - CLI orientation: cli/index.md
@@ -82,6 +83,7 @@ nav:
       - Target concepts: explanation/targets.md
       - Target commands: cli/targets.md
       - Developer access: how-to/developer-access.md
+      - Remote workstation: how-to/remote-workstation.md
 
   - Providers:
       - Provider model: explanation/providers.md

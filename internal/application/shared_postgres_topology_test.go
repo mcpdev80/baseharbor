@@ -48,8 +48,8 @@ func TestSharedPostgresDefaultAndExplicitHARealizations(t *testing.T) {
 				t.Fatalf("non-HA created hidden cluster/toolbox/proxy: %#v", model.Services)
 			}
 			server := model.Services[sharedPostgresService("dev")]
-			if server.Image != "docker.io/library/postgres:18-alpine" || server.User != "70:70" {
-				t.Fatalf("non-HA PostgreSQL must be native and non-root: %#v", server)
+			if server.Image != "docker.io/library/postgres:18-alpine" || server.User != "" {
+				t.Fatalf("non-HA PostgreSQL must leave UID assignment to the runtime: %#v", server)
 			}
 			for _, required := range []string{"ssl=on", "hba_file=", "postgres-access", "shared-postgres-data-1:/var/lib/postgresql", "./postgresql/runtime/server-key.pem:/run/baseharbor/tls-source/server-key.pem:ro", "./postgresql/runtime/server-cert.pem:/run/baseharbor/tls-source/server-cert.pem:ro", "./postgresql/runtime/pg_hba.conf:/run/baseharbor/tls-source/pg_hba.conf:ro"} {
 				if !strings.Contains(rendered.String(), required) {

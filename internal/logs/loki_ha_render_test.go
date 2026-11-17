@@ -16,11 +16,10 @@ func TestLokiHARenderUsesProcessTrustStoreForSeaweedFS(t *testing.T) {
 	}
 
 	placement := Placement{
-		Scope:       capability.ScopeShared,
-		Project:     "bh-test-shared",
-		Network:     "bh-test-logs",
-		LokiVolume:  "bh-test-loki",
-		AlloyVolume: "bh-test-alloy",
+		Scope:      capability.ScopeShared,
+		Project:    "bh-test-shared",
+		Network:    "bh-test-logs",
+		LokiVolume: "bh-test-loki",
 	}
 	access := serviceaccess.HTTPGatewayFiles{
 		Caddyfile: "./service-access/Caddyfile",
@@ -48,6 +47,19 @@ func TestLokiHARenderUsesProcessTrustStoreForSeaweedFS(t *testing.T) {
 		if !strings.Contains(compose, want) {
 			t.Fatalf("Loki HA compose missing %q:\n%s", want, compose)
 		}
+	}
+}
+
+func TestSyslogComposeDoesNotReceivePodmanJournalGroup(t *testing.T) {
+	compose := providerComposeYAMLForModeAndAccess(
+		Placement{Scope: capability.ScopeShared, Project: "bh-test-shared", Network: "bh-test-logs", LokiVolume: "bh-test-loki"},
+		nil,
+		bhruntime.LogCollectionSyslog,
+		serviceaccess.HTTPGatewayFiles{Caddyfile: "./service-access/Caddyfile"},
+		journalGroupMapping{HostGID: "999"},
+	)
+	if strings.Contains(compose, "group_add:") || strings.Contains(compose, "x-baseharbor-podman-gid-map") {
+		t.Fatalf("syslog Compose path must not acquire Podman journal group access:\n%s", compose)
 	}
 }
 

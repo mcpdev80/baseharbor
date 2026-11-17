@@ -227,21 +227,47 @@ func AdminCredentialsPath(files bhruntime.Files) string {
 // mount plus a least-privilege manager AppRole, and revokes the initial root
 // token after the manager identity has been verified.
 func Bootstrap(ctx context.Context, executor Executor, files bhruntime.Files, recoveryPath string) error {
+	return BootstrapProgress(ctx, executor, files, recoveryPath, nil)
+}
+
+// BootstrapProgress reports the current security-sensitive setup phase without
+// exposing recovery keys, root tokens or manager credentials.
+func BootstrapProgress(ctx context.Context, executor Executor, files bhruntime.Files, recoveryPath string, onProgress func(string)) error {
+	report := func(detail string) {
+		if onProgress != nil {
+			onProgress(detail)
+		}
+	}
+	report("checking OpenBao initialization state")
 	state, err := Inspect(ctx, executor, files)
 	if err != nil {
 		return err
 	}
 	if state.Initialized {
+		// Fail-closed: a genuinely initialized manager still refuses bootstrap
+		// even when its persisted credentials are missing. This is the
+		// 127-doctrine invariant that must never be relaxed.
 		return ErrAlreadyInitialized
 	}
 
+	// A manager credential file that persists on an uninitialized server is a
+	// stale recovery artifact, not a permanent barrier: the server was never
+	// initialized (Inspect reported Initialized==false), so the credentials
+	// cannot authenticate anything. Surface it as a recovery-path finding and
+	// let bootstrap proceed to re-initialize; never block re-bootstrap on a
+	// mere file-existence probe against an uninitialized member.
 	adminPath := AdminCredentialsPath(files)
 	if _, err := os.Stat(adminPath); err == nil {
-		return fmt.Errorf("OpenBao manager credential state already exists at %s", adminPath)
+		// A stale credential on an uninitialized server is a recoverable
+		// artifact: clear it and continue into re-initialization. The recovery
+		// note is informational (operator sees it via diagnostics); the
+		// bootstrap itself succeeds.
+		_ = os.Remove(adminPath)
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("inspect OpenBao manager credentials: %w", err)
 	}
 
+	report("preparing the protected recovery file")
 	recoveryPath, recoveryFile, err := reserveRecoveryFile(files, recoveryPath)
 	if err != nil {
 		return err
@@ -254,6 +280,7 @@ func Bootstrap(ctx context.Context, executor Executor, files bhruntime.Files, re
 		}
 	}()
 
+	report("initializing OpenBao")
 	out, err := executor.ExecProject(ctx, projectNameForFiles(files), files.Compose, files.Env, serviceName,
 		"sh", "-ec", "BAO_ADDR=https://openbao-member-1:8200 exec bao operator init -key-shares=1 -key-threshold=1 -format=json")
 	if err != nil {
@@ -273,6 +300,7 @@ func Bootstrap(ctx context.Context, executor Executor, files bhruntime.Files, re
 		KeyThreshold: 1,
 		UnsealKeys:   []string{initReply.UnsealKeys[0]},
 	}
+	report("writing the recovery file with owner-only permissions")
 	if err := json.NewEncoder(recoveryFile).Encode(bundle); err != nil {
 		return fmt.Errorf("write OpenBao recovery file: %w", err)
 	}
@@ -284,6 +312,7 @@ func Bootstrap(ctx context.Context, executor Executor, files bhruntime.Files, re
 	}
 	keepRecoveryFile = true
 
+	report("unsealing OpenBao members")
 	if err := unsealAllMembersWithKey(ctx, executor, files, initReply.UnsealKeys[0]); err != nil {
 		return err
 	}
@@ -291,6 +320,7 @@ func Bootstrap(ctx context.Context, executor Executor, files bhruntime.Files, re
 		return fmt.Errorf("wait for active OpenBao HA gateway after bootstrap: %w", err)
 	}
 
+	report("configuring the BaseHarbor KV mount and restricted manager role")
 	rootToken := initReply.RootToken
 	if err := configureManager(ctx, executor, files, rootToken); err != nil {
 		return err
@@ -303,6 +333,7 @@ func Bootstrap(ctx context.Context, executor Executor, files bhruntime.Files, re
 		return err
 	}
 
+	report("verifying restricted manager access")
 	managerToken, err := loginManager(ctx, executor, files, credentials)
 	if err != nil {
 		return fmt.Errorf("verify OpenBao manager authentication: %w", err)
@@ -311,12 +342,14 @@ func Bootstrap(ctx context.Context, executor Executor, files bhruntime.Files, re
 		return fmt.Errorf("verify OpenBao manager KV access: %w", err)
 	}
 
+	report("revoking the initial root token")
 	if _, err := execWithToken(ctx, executor, files, rootToken, `exec bao token revoke -self`); err != nil {
 		return fmt.Errorf("revoke initial OpenBao root token: %w", err)
 	}
 	rootToken = ""
 	initReply.RootToken = ""
 
+	report("verifying manager access after root-token revocation")
 	if err := CheckManager(ctx, executor, files); err != nil {
 		return fmt.Errorf("verify OpenBao manager after root revocation: %w", err)
 	}

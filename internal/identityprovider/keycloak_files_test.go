@@ -47,14 +47,12 @@ func TestKeycloakComposeInheritsManagementHTTPS(t *testing.T) {
 		t.Fatalf("Keycloak compose missing native HTTPS listener health probe:\n%s", got)
 	}
 	for _, want := range []string{
-		"keycloak-db-tls-init:",
 		"PGROOT: /home/postgres/pgdata/pgroot",
 		"PGDATA: /home/postgres/pgdata/pgroot/data",
 		"keycloak-db-data-1:/home/postgres/pgdata/pgroot",
-		"keycloak-db-tls:/run/baseharbor/db-tls:ro",
-		"uid=$$(id -u postgres); gid=$$(id -g postgres)",
-		"chown \"$$uid:$$gid\"",
-		"chmod 0600 /target/server-key.pem",
+		"./db-ha/runtime/server-key.pem:/run/baseharbor/db-tls-source/server-key.pem:ro",
+		"cp /run/baseharbor/db-tls-source/server-key.pem /run/baseharbor/etcd-runtime/server-key.pem",
+		"chmod 0600 /run/baseharbor/etcd-runtime/client-key.pem /run/baseharbor/etcd-runtime/server-key.pem",
 		"-v app_user=\"$$BASEHARBOR_KEYCLOAK_DB_USER\"",
 		"attempts=$$((attempts+1))",
 		"if [ \"$$attempts\" -ge 90 ]",
@@ -95,6 +93,27 @@ func TestKeycloakHAPostgresHAProxyUsesRuntimeDNS(t *testing.T) {
 	}
 }
 
+func TestKeycloakPostgresHAClusterRequiresOnePrimaryAndTwoReadyReplicas(t *testing.T) {
+	tests := []struct {
+		name  string
+		roles []string
+		want  bool
+	}{
+		{name: "healthy cluster", roles: []string{"replica", "primary", "replica"}, want: true},
+		{name: "primary not recovered", roles: []string{"primary", "unknown", "replica"}},
+		{name: "two primaries", roles: []string{"primary", "primary", "replica"}},
+		{name: "missing member", roles: []string{"primary", "replica"}},
+		{name: "unknown role", roles: []string{"primary", "replica", "starting"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := keycloakPostgresHAClusterRolesReady(tt.roles); got != tt.want {
+				t.Fatalf("cluster roles %v ready = %t, want %t", tt.roles, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestKeycloakSingleComposeHasNoHAResources(t *testing.T) {
 	app := application.New("demo", "prod", false, false, false)
 	files := KeycloakFiles{Project: "test", ConsumerNetwork: "test-identity", InternalNetwork: "test-identity-internal"}
@@ -104,8 +123,8 @@ func TestKeycloakSingleComposeHasNoHAResources(t *testing.T) {
 			t.Errorf("single mode missing %q", want)
 		}
 	}
-	for _, unwanted := range []string{"  keycloak-2:", "  keycloak-3:", "keycloak-db-member-1:", "keycloak-db-etcd-1:", "keycloak-db-tls:/run/baseharbor/db-tls:ro"} {
-		if strings.Contains(got, unwanted) && unwanted != "keycloak-db-tls:/run/baseharbor/db-tls:ro" {
+	for _, unwanted := range []string{"  keycloak-2:", "  keycloak-3:", "keycloak-db-member-1:", "keycloak-db-etcd-1:", "keycloak-db-tls-init:", "user:", "install -o"} {
+		if strings.Contains(got, unwanted) {
 			t.Errorf("non-HA contains %q", unwanted)
 		}
 	}

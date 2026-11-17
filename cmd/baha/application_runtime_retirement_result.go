@@ -13,10 +13,8 @@ import (
 func applicationDestroyResult(resolved resolvedApplication, fullReset bool) (applicationlifecycle.Result, error) {
 	result := applicationlifecycle.NewResult("destroy", resolved.Manifest.Name, resolved.Manifest.Environment, "destroyed", true).WithTarget(resolved.Target.Name)
 	if fullReset {
-		if fullReset {
-			deleted := true
-			result.DataDeleted = &deleted
-		}
+		deleted := true
+		result.DataDeleted = &deleted
 		return result, nil
 	}
 	record, err := deployment.LoadDeploymentRecord(resolved.DeploymentIdentity)
@@ -38,6 +36,7 @@ func applicationDestroyResult(resolved resolvedApplication, fullReset bool) (app
 	}
 	deleted := false
 	result.DataDeleted = &deleted
+	result.DataPreserved = true
 	result.State = "runtime-retired"
 	result.OwnerPreserved = true
 	result.ProviderChangeResult = &receipt

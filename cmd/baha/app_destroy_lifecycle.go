@@ -11,11 +11,11 @@ import (
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/applicationlifecycle"
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/devaccess"
-	"github.com/mcpdev80/baseharbor/internal/devgateway"
 	"github.com/mcpdev80/baseharbor/internal/identityprovider"
 	logsprovider "github.com/mcpdev80/baseharbor/internal/logs"
 	"github.com/mcpdev80/baseharbor/internal/machine"
@@ -40,28 +40,149 @@ type applicationDestroyExecution struct {
 	files               application.RuntimeFiles
 	runtimeErr          error
 	partialRuntime      bool
+	incompleteInventory bool
 	compose             bhruntime.RuntimeProvider
 	existing            []bhruntime.ProjectResource
 	repositoryVolumes   []bhruntime.RepositoryVolume
 	coreRuntime         bhruntime.RuntimeProvider
 	platformFiles       bhruntime.Files
 	destroyOpenBaoScope bool
+	// selection carries the explicit deployment-id selection of the command
+	// invocation (the uuid-addressed repair) down to the mutation seam, which
+	// refuses to delete anything but the record that was selected (0427-175).
+	selection []string
+}
+
+// finishUninitializedRepositoryDestroy makes the common "already removed / not
+// initialized" case idempotent. A repository manifest by itself does not
+// establish ownership of runtime resources, so this succeeds only when the
+// selected Target has no matching deployment and neither the repository nor
+// any registered Target claims an application identity for this source. It
+// deliberately preserves authored source files and never guesses at runtime
+// resources whose owner cannot be proven.
+func finishUninitializedRepositoryDestroy(ctx context.Context, target deployment.ResolvedTarget, args []string, format cliOutputFormat, out io.Writer) (bool, error) {
+	filtered, environment, err := extractApplicationEnvironment(args, "destroy")
+	if err != nil {
+		return false, err
+	}
+	name, _, _, err := parseDestroyArgs(filtered)
+	if err != nil {
+		return false, err
+	}
+	if name != "" || strings.TrimSpace(environment) != "" || strings.TrimSpace(applicationEnvironmentOverride) != "" {
+		return false, nil
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		return false, fmt.Errorf("resolve current directory: %w", err)
+	}
+	selection, err := application.ResolveRepositoryEnvironment(cwd, "")
+	if errors.Is(err, application.ErrRepositoryManifestNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	owner := application.Store{Root: filepath.Join(selection.RepositoryRoot, ".baseharbor", "apps")}
+	snapshot, err := repositoryIdentityClaims(target, selection.RepositoryRoot, owner, selection.Manifest)
+	if err != nil {
+		return false, err
+	}
+	applicationIDs := applicationDestroyIdentityIDs(selection.Manifest, snapshot)
+	records, warnings, err := deployment.ListDeploymentsForDisplay(target.Name)
+	if err != nil || len(warnings) != 0 {
+		// A damaged deployment inventory must keep using the normal recovery path;
+		// it is not evidence that the app has nothing to delete.
+		return false, err
+	}
+	for _, record := range records {
+		if (record.Identity.Application == selection.Manifest.Name && record.Identity.Environment == selection.Manifest.Environment) ||
+			applicationIDs[record.Identity.ApplicationID] ||
+			(record.Source.Repository != "" && filepath.Clean(record.Source.Repository) == filepath.Clean(selection.RepositoryRoot)) {
+			return false, nil
+		}
+	}
+	targetRoot, err := deployment.TargetStateRoot(target.Name)
+	if err != nil {
+		return false, err
+	}
+	registry, err := (capability.RegistryStore{Path: filepath.Join(targetRoot, "provider-registry.json")}).Load()
+	if err != nil {
+		return false, err
+	}
+	for _, binding := range registry.Bindings {
+		if applicationIDs[binding.ApplicationID] && (binding.Environment == "" || binding.Environment == selection.Manifest.Environment) {
+			return false, nil
+		}
+	}
+	for _, instance := range registry.Instances {
+		if (instance.OwnerApplicationID != "" && applicationIDs[instance.OwnerApplicationID]) ||
+			(instance.OwnerApplication == selection.Manifest.Name && instance.OwnerEnvironment == selection.Manifest.Environment) {
+			return false, nil
+		}
+	}
+	detail := "No application identity or deployment is registered on Target " + target.Name + "; there is no BaseHarbor-owned application state to remove. Repository source files were kept."
+	if format == outputJSON {
+		result := applicationlifecycle.NewResult("destroy", selection.Manifest.Name, selection.Manifest.Environment, "absent", true).WithTarget(target.Name)
+		result.Detail = detail
+		return true, writeJSON(out, result)
+	}
+	fmt.Fprintln(out, "Application already absent")
+	fmt.Fprintln(out, "  "+detail)
+	return true, nil
 }
 
 func newApplicationDestroyExecution(ctx context.Context, store application.Store, args []string, out, errOut io.Writer) (*applicationDestroyExecution, error) {
+	// --uuid DEPLOYMENT-ID is the identity the registry-conflict repair
+	// advertises ('baha app destroy --uuid <id> --full-reset', 0427-175), so it
+	// must be routed to the resolver instead of dropped. extractApplicationUUID
+	// reads the selector from the raw command arguments; the positional scan
+	// uses the same list with the whole option pair removed, because the
+	// selector VALUE is an identifier, never a NAME (the environment splitter
+	// consumes only the FLAG and leaves the bare VALUE behind, app_context.go).
+	// NAME and --uuid select through different seams and a combination could
+	// name two deployments (0427-149/0427-175).
 	filtered, environment, err := extractApplicationEnvironment(args, "destroy")
 	if err != nil {
 		return nil, err
+	}
+	// The selector is read from the SAME arguments the resolver below receives,
+	// so the command and the resolver can never disagree about the identity
+	// (0427-175). A malformed or value-less selector fails here with the shared
+	// usage error, before anything is resolved.
+	selectorUUID, uuidErr := extractApplicationUUID(args)
+	if uuidErr != nil {
+		return nil, uuidErr
 	}
 	name, confirmed, fullReset, err := parseDestroyArgs(filtered)
 	if err != nil {
 		return nil, err
 	}
+	if isApplicationStopMode(ctx) {
+		fullReset = false
+	}
+	// NAME and --uuid select through different seams and are mutually exclusive:
+	// combining them could name two deployments (0427-149/0427-175).
+	if name != "" && selectorUUID != "" {
+		return nil, usageError("baha app destroy accepts either NAME or --uuid DEPLOYMENT-ID, not both", "Address the twin to retire by uuid, or the application by NAME.")
+	}
+	// The resolver must receive the selector as an intact option pair: --uuid
+	// routes at the registry seam, whose record is the authoritative identity,
+	// so authorization, preflight and mutation below keep working on the
+	// SELECTED twin and never on a same-named sibling (0427-175). Without a
+	// selector the arguments keep their previous positional-name behaviour
+	// verbatim.
 	var appArgs []string
-	if name != "" {
+	switch {
+	case selectorUUID != "":
+		appArgs = []string{"--uuid", selectorUUID}
+	case name != "":
 		appArgs = []string{name}
 	}
-	resolved, err := resolveApplicationEnvironment(ctx, store, appArgs, "destroy", environment)
+	// The selected deployment id travels with the call so that authorization,
+	// preflight and the mutation below all act on THAT record and on nothing
+	// else (0427-175).
+	resolved, err := resolveApplicationEnvironment(ctx, store, appArgs, "destroy", environment, selectorUUID)
 	if err != nil {
 		return nil, err
 	}
@@ -71,7 +192,7 @@ func newApplicationDestroyExecution(ctx context.Context, store application.Store
 	}
 
 	if isRemoteApplication(resolved) {
-		return &applicationDestroyExecution{resolved: resolved, manifest: m, term: cli.NewTerminal(ctx, out, errOut), out: out, confirmed: confirmed, fullReset: fullReset}, nil
+		return &applicationDestroyExecution{resolved: resolved, manifest: m, term: cli.NewTerminal(ctx, out, errOut), out: out, confirmed: confirmed, fullReset: fullReset, selection: appArgs}, nil
 	}
 	files, runtimeErr := application.ExistingRuntimeFiles(resolved.Store, m)
 	partialRuntime := false
@@ -98,6 +219,7 @@ func newApplicationDestroyExecution(ctx context.Context, store application.Store
 		files:           files,
 		runtimeErr:      runtimeErr,
 		partialRuntime:  partialRuntime,
+		selection:       appArgs,
 	}, nil
 }
 
@@ -119,9 +241,6 @@ func (e *applicationDestroyExecution) runPreflight(ctx context.Context) error {
 	composeRequired := devaccess.Enabled(m.Environment) || e.runtimeErr == nil || e.resolved.FromRepository || m.Services.Secrets || application.HasManagedRuntimeServices(m) || application.HasIdentity(m)
 	checks := []preflight.Check{
 		{Name: "manifest", Run: func(context.Context) error { return m.Validate() }},
-		{Name: "retained provider ownership", Run: func(ctx context.Context) error {
-			return checkRetainedApplicationProviderOwnership(ctx, e.resolved)
-		}},
 		{Name: "connectivity policy", Run: func(context.Context) error {
 			return application.CheckApplicationConnectivityReleasedAt(e.resolved.TargetStateRoot, m)
 		}},
@@ -129,6 +248,11 @@ func (e *applicationDestroyExecution) runPreflight(ctx context.Context) error {
 			return checkManifestPermissions(e.resolved.ManifestPath, e.resolved.FromRepository)
 		}},
 		applicationWorkloadContractCheck(e.resolved),
+	}
+	if !e.incompleteInventory {
+		checks = append(checks, preflight.Check{Name: "retained provider ownership", Run: func(ctx context.Context) error {
+			return checkRetainedApplicationProviderOwnership(ctx, e.resolved)
+		}})
 	}
 	if composeRequired {
 		checks = append(checks, preflight.Check{Name: "runtime orchestration", Run: func(ctx context.Context) error {
@@ -222,7 +346,7 @@ func (e *applicationDestroyExecution) runPreflight(ctx context.Context) error {
 				if !e.destroyOpenBaoScope {
 					return nil
 				}
-				return openbao.CheckApplicationScopeOwnership(ctx, e.coreRuntime, e.platformFiles, identity)
+				return openbao.CheckApplicationScopeOwnershipForDestroy(ctx, e.coreRuntime, e.platformFiles, identity)
 			}},
 		)
 	}
@@ -230,16 +354,44 @@ func (e *applicationDestroyExecution) runPreflight(ctx context.Context) error {
 	results, ok := preflight.RunWithTimeout(ctx, checks, 30*time.Second)
 	renderPreflightUX(e.term, results)
 	if !ok {
-		return errors.New("application destroy preflight failed; nothing was deleted")
+		return applicationDestroyPreflightError(results)
 	}
 	e.excludeManagedInfrastructureVolumes()
 	return nil
 }
 
+func applicationDestroyPreflightError(results []preflight.Result) error {
+	failed := make([]string, 0)
+	for _, result := range results {
+		if result.OK {
+			continue
+		}
+		detail := strings.TrimSpace(result.Detail)
+		if len(detail) > 200 {
+			detail = detail[:197] + "..."
+		}
+		if detail == "" {
+			failed = append(failed, result.Name)
+		} else {
+			failed = append(failed, result.Name+": "+detail)
+		}
+	}
+	if len(failed) == 0 {
+		return errors.New("application destroy preflight failed; nothing was deleted")
+	}
+	return fmt.Errorf("application destroy preflight failed; nothing was deleted (%s)", strings.Join(failed, "; "))
+}
+
 func (e *applicationDestroyExecution) renderDeletePlan() error {
 	m := e.manifest
 	e.term.Section("Delete plan")
-	renderRepositoryVolumePreservation(e.out, e.repositoryVolumes, e.resolved.Target.RuntimeProvider)
+	if e.incompleteInventory {
+		fmt.Fprintln(e.out, "  partial cleanup: Target consumer inventory is damaged; unknown and shared provider resources will be retained")
+	}
+	if e.resolved.FromRepository {
+		project := application.WorkloadProjectNameForRuntime(m, e.files)
+		renderRepositoryDestroyVolumes(e.out, e.repositoryVolumes, project)
+	}
 
 	if e.partialRuntime {
 		fmt.Fprintln(e.out, "  recovery:   generated runtime definition is incomplete; using ownership-verified cleanup")
@@ -299,13 +451,8 @@ func (e *applicationDestroyExecution) renderDeletePlan() error {
 	fmt.Fprintf(e.out, "  state:      %s\n", appDir)
 	if e.resolved.FromRepository {
 		fmt.Fprintf(e.out, "  manifest:   %s (preserved)\n", e.resolved.ManifestPath)
-		if e.fullReset {
-			fmt.Fprintf(e.out, "  deployment: %s (removed by --full-reset)\n", repositoryInitEnvPathFromStateRoot(e.resolved.stateRoot()))
-			fmt.Fprintf(e.out, "  local TLS:  %s (removed by --full-reset; external certificate source is never touched)\n", filepath.Join(e.resolved.stateRoot(), repositoryTLSDirName))
-		} else {
-			fmt.Fprintf(e.out, "  deployment: %s (preserved)\n", repositoryInitEnvPathFromStateRoot(e.resolved.stateRoot()))
-			fmt.Fprintf(e.out, "  local TLS:  %s (preserved)\n", filepath.Join(e.resolved.stateRoot(), repositoryTLSDirName))
-		}
+		fmt.Fprintf(e.out, "  deployment: %s (removed)\n", repositoryInitEnvPathFromStateRoot(e.resolved.stateRoot()))
+		fmt.Fprintf(e.out, "  local TLS:  %s (removed; external certificate source is never touched)\n", filepath.Join(e.resolved.stateRoot(), repositoryTLSDirName))
 	}
 	return nil
 }
@@ -315,29 +462,22 @@ func (e *applicationDestroyExecution) destroyRuntimeResources(ctx context.Contex
 		return errors.New("application destroy requires explicit --yes consent; nothing was deleted")
 	}
 	m := e.manifest
-	if e.resolved.FromRepository {
-		if err := e.saveRepositoryVolumeObservation(); err != nil {
-			return err
-		}
-	}
 	if e.runtimeErr == nil {
 		if err := destroyManagedExposure(ctx, e.compose, m, e.files); err != nil {
 			return err
 		}
 	}
 	if e.resolved.FromRepository {
-		if _, err := stopRepositoryWorkload(ctx, e.compose, e.resolved, e.files); err != nil {
+		if _, err := destroyRepositoryWorkloadStop(ctx, e.compose, e.resolved, e.files); err != nil {
 			return err
 		}
 		if _, err := destroyRepositoryWorkloadRuntime(ctx, e.compose, e.resolved, e.files); err != nil {
 			return err
 		}
-
-	}
-	if e.runtimeErr == nil && application.RequiresRuntimeBroker(m) {
-		if err := destroyRuntimeBroker(ctx, e.compose, m, e.files); err != nil {
+		if err := e.destroyRepositoryDataVolumes(ctx); err != nil {
 			return err
 		}
+
 	}
 	sharedBackendsRegistered := false
 	for _, provider := range []capability.ProviderKind{capability.ProviderPostgreSQL, capability.ProviderValkey} {
@@ -548,26 +688,12 @@ func (e *applicationDestroyExecution) cleanupMetrics(ctx context.Context) error 
 	return nil
 }
 
-func (e *applicationDestroyExecution) cleanupDevelopmentCanonicalRoutes(ctx context.Context) error {
-	if !devaccess.Enabled(e.manifest.Environment) {
-		return nil
-	}
-	appOwner := "app/" + e.manifest.Name + "/" + e.manifest.Environment
-	present, err := devgateway.OwnerRoutesPresent(ctx, e.compose, e.resolved.Target.Name, appOwner)
-	if err != nil {
-		return fmt.Errorf("inspect development gateway before cleanup: %w", err)
-	}
-	if !present {
-		e.term.Info("development gateway", "NOT DEPLOYED for this application; no routes to remove")
-		return nil
-	}
-	if err := removeApplicationGatewayOwners(ctx, e.compose, e.resolved, appOwner); err != nil {
-		return fmt.Errorf("remove canonical development routes: %w", err)
-	}
-	return nil
-}
-
 func (e *applicationDestroyExecution) removeApplicationState() error {
+	// The selector-vs-resolved drift guard now runs earlier, in the
+	// resolve-and-authorize phase of executeApplicationDestroyLifecycle, before
+	// ANY cleanup (routes, runtime, provider) and before this seam — see
+	// app_lifecycle.go. A check that only sits here would be after the very
+	// mutations it must prevent, so it is intentionally absent from this seam.
 	appDir := filepath.Join(e.resolved.Store.Root, e.manifest.Name)
 	if _, err := os.Stat(appDir); err == nil {
 		if err := e.resolved.Store.Delete(e.manifest.Name); err != nil {
@@ -588,23 +714,64 @@ func (e *applicationDestroyExecution) removeApplicationState() error {
 	if err := application.ReleaseApplicationProviderRegistryAt(e.resolved.TargetStateRoot, e.manifest); err != nil {
 		return fmt.Errorf("application resources were destroyed but provider registry cleanup failed: %w", err)
 	}
+	if e.resolved.FromRepository {
+		if err := os.Remove(e.repositoryVolumeObservationPath()); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("remove obsolete preserved-volume observation: %w", err)
+		}
+	}
 	if _, err := os.Stat(appDir); !errors.Is(err, os.ErrNotExist) {
 		if err == nil {
 			return errors.New("verify application destruction: application state still exists")
 		}
 		return fmt.Errorf("verify application destruction: %w", err)
 	}
+
 	if err := deployment.DeleteDeploymentRecord(e.resolved.DeploymentIdentity); err != nil {
 		return fmt.Errorf("remove target deployment record after verified destruction: %w", err)
 	}
 
 	e.term.Section("Application")
 	e.term.Result("DELETED", "application", e.manifest.Name+" permanently deleted")
-	renderRepositoryVolumePreservation(e.out, e.repositoryVolumes, e.resolved.Target.RuntimeProvider)
 	if e.resolved.FromRepository {
-		e.term.Info("repository", "baseharbor.yaml and application-owned Compose data preserved; use 'baha app apply' to recreate")
+		e.term.Info("repository", "authored source files are preserved; application runtime data and BaseHarbor state were deleted")
 	}
 	return nil
+}
+
+// assertSelectionResolvedIdentity fails closed when the operator-visible
+// --uuid selector does not match the resolved deployment identity. It is the
+// selector-vs-resolved guard (0427-175), now executed in the resolve-and-
+// authorize phase of executeApplicationDestroyLifecycle — BEFORE the
+// cleanupDevelopmentCanonicalRoutes / destroyRuntimeResources /
+// cleanupProviderState cleanup and before the DeploymentRecord removal in
+// removeApplicationState — so a selection that drifted onto another twin can
+// never remove a record the operator did not address. An absent selector
+// (ordinary NAME/destroy) keeps the guard inert.
+func (e *applicationDestroyExecution) assertSelectionResolvedIdentity() error {
+	selectedID := selectionDeploymentID(e.selection)
+	if selectedID == "" {
+		return nil
+	}
+	if e.resolved.DeploymentIdentity.DeploymentID != selectedID {
+		return fmt.Errorf("deployment selection %s did not route to the resolved record %s; refusing to delete either twin", selectedID, e.resolved.DeploymentIdentity.DeploymentID)
+	}
+	return nil
+}
+
+// selectionDeploymentID reads the explicit deployment-id selector out of a
+// destroy command's raw arguments (`--uuid <id>`), the form the CLI entry
+// forwards to the resolver. It complements selectedDeploymentIDFromArguments,
+// which only recognizes the internal `deployment-id:` routing slot: the guard
+// in removeApplicationState must see the operator-visible selector so it can
+// compare it against the resolved identity and fail closed on drift. An absent
+// selector returns "" so the guard stays inert for ordinary NAME/destroys.
+func selectionDeploymentID(command []string) string {
+	for i := 0; i < len(command)-1; i++ {
+		if command[i] == "--uuid" {
+			return strings.TrimSpace(command[i+1])
+		}
+	}
+	return ""
 }
 
 type repositoryVolumeInventory interface {

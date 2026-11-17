@@ -79,8 +79,11 @@ func TestSharedPostgresTwoApplicationIsolationBackupRestoreDestroy(t *testing.T)
 	if state.PostgresMembers != 1 {
 		t.Fatalf("default shared PostgreSQL unexpectedly selected %d members", state.PostgresMembers)
 	}
+	if state.Environment != "core" {
+		t.Fatalf("shared PostgreSQL must use the physical core owner, got %q", state.Environment)
+	}
 	running, err := compose.RunningServicesProject(ctx, shared.Project, shared.Compose, shared.Env)
-	if err != nil || len(running) != 1 || running[0] != sharedPostgresService("dev") {
+	if err != nil || len(running) != 1 || running[0] != sharedPostgresService(state.Environment) {
 		t.Fatalf("non-HA provider must run exactly one native PostgreSQL service: %v, %v", running, err)
 	}
 	aState := state.Applications[sharedBackendApplicationKey(appA)]
@@ -173,7 +176,7 @@ func TestSharedPostgresTwoApplicationIsolationBackupRestoreDestroy(t *testing.T)
 	if got := readSharedPostgresSentinel(t, ctx, compose, shared, bState.SQL["default"]); got != "B-ONLY" {
 		t.Fatalf("appB sentinel after appA destroy = %q, want B-ONLY", got)
 	}
-	if out, err := compose.ExecProject(ctx, shared.Project, shared.Compose, shared.Env, sharedPostgresService("dev"), "psql", "-U", "baseharbor_admin", "-d", "postgres", "-tAc", "SELECT current_user"); err != nil {
+	if out, err := compose.ExecProject(ctx, shared.Project, shared.Compose, shared.Env, sharedPostgresIntegrationService(t, shared), "psql", "-U", "baseharbor_admin", "-d", "postgres", "-tAc", "SELECT current_user"); err != nil {
 		t.Fatalf("baseharbor_admin missing after appA destroy: %v", err)
 	} else if strings.TrimSpace(out) != "baseharbor_admin" {
 		t.Fatalf("provider admin after appA destroy = %q", strings.TrimSpace(out))
@@ -195,11 +198,24 @@ func TestSharedPostgresTwoApplicationIsolationBackupRestoreDestroy(t *testing.T)
 	if state.PostgresAdminCredential == "" {
 		t.Fatal("shared PostgreSQL provider admin credential was removed with last application")
 	}
-	if out, err := compose.ExecProject(ctx, shared.Project, shared.Compose, shared.Env, sharedPostgresService("dev"), "psql", "-U", "baseharbor_admin", "-d", "postgres", "-tAc", "SELECT current_user"); err != nil {
+	if out, err := compose.ExecProject(ctx, shared.Project, shared.Compose, shared.Env, sharedPostgresIntegrationService(t, shared), "psql", "-U", "baseharbor_admin", "-d", "postgres", "-tAc", "SELECT current_user"); err != nil {
 		t.Fatalf("shared PostgreSQL provider stopped after last application destroy: %v", err)
 	} else if strings.TrimSpace(out) != "baseharbor_admin" {
 		t.Fatalf("provider admin after last application destroy = %q", strings.TrimSpace(out))
 	}
+}
+
+func sharedPostgresIntegrationService(t *testing.T, shared SharedBackendFiles) string {
+	t.Helper()
+	data, err := os.ReadFile(shared.State)
+	if err != nil {
+		t.Fatalf("read shared PostgreSQL owner state: %v", err)
+	}
+	state, err := decodeSharedBackendState(data)
+	if err != nil || state.Environment != "core" {
+		t.Fatalf("shared PostgreSQL physical owner state invalid: environment=%q error=%v", state.Environment, err)
+	}
+	return sharedPostgresService(state.Environment)
 }
 
 func seedSharedPostgresSentinel(t *testing.T, ctx context.Context, compose bhruntime.RuntimeProvider, shared SharedBackendFiles, resource sharedPostgresResource, value string) {
@@ -221,7 +237,7 @@ func readSharedPostgresSentinel(t *testing.T, ctx context.Context, compose bhrun
 		t.Fatalf("read app credential: %v", err)
 	}
 	command := "IFS= read -r PGPASSWORD; export PGPASSWORD; exec psql -h 127.0.0.1 -U " + shellQuote(resource.Username) + " -d " + shellQuote(resource.Database) + " -tAc 'SELECT value FROM isolation_probe'"
-	out, err := compose.ExecProjectInput(ctx, shared.Project, shared.Compose, shared.Env, []byte(password+"\n"), sharedPostgresService("dev"), "sh", "-ec", command)
+	out, err := compose.ExecProjectInput(ctx, shared.Project, shared.Compose, shared.Env, []byte(password+"\n"), sharedPostgresIntegrationService(t, shared), "sh", "-ec", command)
 	if err != nil {
 		t.Fatalf("read sentinel from %s: %v", resource.Database, err)
 	}
@@ -235,7 +251,7 @@ func execSharedPostgresAsApp(t *testing.T, ctx context.Context, compose bhruntim
 		t.Fatalf("read app credential: %v", err)
 	}
 	command := "IFS= read -r PGPASSWORD; export PGPASSWORD; exec psql -h 127.0.0.1 -U " + shellQuote(resource.Username) + " -d " + shellQuote(resource.Database) + " -v ON_ERROR_STOP=1 -c " + shellQuote(sql)
-	if _, err := compose.ExecProjectInput(ctx, shared.Project, shared.Compose, shared.Env, []byte(password+"\n"), sharedPostgresService("dev"), "sh", "-ec", command); err != nil {
+	if _, err := compose.ExecProjectInput(ctx, shared.Project, shared.Compose, shared.Env, []byte(password+"\n"), sharedPostgresIntegrationService(t, shared), "sh", "-ec", command); err != nil {
 		t.Fatalf("execute as %s on %s: %v", resource.Username, resource.Database, err)
 	}
 }

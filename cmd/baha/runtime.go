@@ -14,13 +14,16 @@ import (
 	"github.com/charmbracelet/x/term"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/mcpdev80/baseharbor/internal/coreinstallation"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
 var runtimeInput io.Reader = os.Stdin
+var ensureCoreRuntimeImageForTarget = ensureCoreRuntimeImage
 
 type runtimeUpOptions struct {
+	Name                string
 	MachineRole         coreinstallation.MachineRole
 	HA                  bool
 	Yes                 bool
@@ -31,6 +34,7 @@ type runtimeUpOptions struct {
 	Environment         string
 	TrustHostCA         bool
 	SkipMemoryPreflight bool
+	CandidateConsent    string
 }
 
 func runtimeUpCommand(ctx context.Context, args []string, out, errOut io.Writer) error {
@@ -43,6 +47,22 @@ func runtimeUpCommand(ctx context.Context, args []string, out, errOut io.Writer)
 	defer restoreEnvironment()
 	ctx = withMemoryPreflightOverride(ctx, opts.SkipMemoryPreflight)
 	ctx = withAssumeYes(ctx, opts.Yes)
+	if opts.ControlPlaneOnly {
+		selected, err := effectiveTarget(ctx)
+		if err != nil {
+			return err
+		}
+		if selected.AccessProvider != "" && selected.AccessProvider != "local" {
+			return usageError("remote control-plane bootstrap is not supported by baha up", "Bootstrap Core on its owning host and configure a verified remote management connection; no local Docker fallback is allowed.")
+		}
+	}
+	// `up` is an apply path: the repository-owned candidate submission is bound
+	// only on explicit operator/automation confirmation, exactly like `app apply`.
+	// Route the parsed --confirm-candidate override through the same leaf so a
+	// repository apply can clear the candidate gate in the normal up flow; the
+	// fail-closed candidate contract is unchanged (no new consent semantics, no
+	// second gate).
+	ctx = withCandidateConsentDigest(ctx, opts.CandidateConsent)
 	if handled, err := routeRepositoryRuntimeUp(ctx, applicationInput(ctx, runtimeInput), out, errOut, opts); handled {
 		return err
 	}
@@ -56,27 +76,28 @@ func runtimeUpCommand(ctx context.Context, args []string, out, errOut io.Writer)
 }
 
 func parseRuntimeUpOptions(args []string) (runtimeUpOptions, error) {
-	opts := runtimeUpOptions{}
+	var opts runtimeUpOptions
 	for i := 0; i < len(args); i++ {
-		switch args[i] {
-		case "--yes", "-y":
+		arg := args[i]
+		switch {
+		case arg == "--yes" || arg == "-y":
 			opts.Yes = true
-		case "--ha":
+		case arg == "--ha":
 			opts.HA = true
-		case "--control-plane-only":
+		case arg == "--control-plane-only":
 			opts.ControlPlaneOnly = true
-		case "--trust-host-ca":
+		case arg == "--trust-host-ca":
 			opts.TrustHostCA = true
-		case "--skip-memory-preflight":
+		case arg == "--skip-memory-preflight":
 			opts.SkipMemoryPreflight = true
-		case "--environment", "-e":
-			if i+1 >= len(args) || strings.HasPrefix(args[i+1], "-") {
+		case arg == "--environment", arg == "-e":
+			if len(args) <= i+1 || strings.HasPrefix(args[i+1], "-") {
 				return opts, usageError("--environment requires ENV", "Example: baha up -e dev")
 			}
 			i++
 			opts.Environment = strings.TrimSpace(args[i])
-		case "--postgres-port":
-			if i+1 >= len(args) {
+		case arg == "--postgres-port":
+			if len(args) <= i+1 {
 				return opts, usageError("--postgres-port requires PORT", "Example: baha up --postgres-port 15432")
 			}
 			i++
@@ -85,8 +106,8 @@ func parseRuntimeUpOptions(args []string) (runtimeUpOptions, error) {
 				return opts, err
 			}
 			opts.PostgresPort = port
-		case "--openbao-port":
-			if i+1 >= len(args) {
+		case arg == "--openbao-port":
+			if len(args) <= i+1 {
 				return opts, usageError("--openbao-port requires PORT", "Example: baha up --openbao-port 18200")
 			}
 			i++
@@ -95,31 +116,50 @@ func parseRuntimeUpOptions(args []string) (runtimeUpOptions, error) {
 				return opts, err
 			}
 			opts.OpenBaoPort = port
-		case "--recovery-file":
-			if i+1 >= len(args) || strings.HasPrefix(args[i+1], "-") {
+		case arg == "--recovery-file":
+			if len(args) <= i+1 || strings.HasPrefix(args[i+1], "-") {
 				return opts, usageError("--recovery-file requires PATH", "Example: baha up --recovery-file /secure/openbao-recovery.json")
 			}
 			i++
 			opts.RecoveryFile = args[i]
+		case arg == "--confirm-candidate":
+			if len(args) <= i+1 {
+				return opts, usageError("--confirm-candidate requires DIGEST", "Re-run with --confirm-candidate <the printed confirm-hash>.")
+			}
+			i++
+			opts.CandidateConsent = args[i]
+		case strings.HasPrefix(arg, "--environment="):
+			opts.Environment = strings.TrimSpace(strings.TrimPrefix(arg, "--environment="))
+			if opts.Environment == "" {
+				return opts, usageError("--environment requires ENV", "Example: baha up --environment dev")
+			}
+		case strings.HasPrefix(arg, "--recovery-file="):
+			opts.RecoveryFile = strings.TrimPrefix(arg, "--recovery-file=")
+			if strings.TrimSpace(opts.RecoveryFile) == "" {
+				return opts, usageError("--recovery-file requires PATH", "Example: baha up --recovery-file /secure/openbao-recovery.json")
+			}
+		case strings.HasPrefix(arg, "--confirm-candidate="):
+			opts.CandidateConsent = strings.TrimPrefix(arg, "--confirm-candidate=")
+		case strings.HasPrefix(arg, "-"):
+			return opts, unknownOptionUsage("baha up", arg, "--yes", "-y", "--control-plane-only", "--trust-host-ca", "--skip-memory-preflight", "--environment", "-e", "--postgres-port", "--openbao-port", "--recovery-file", "--confirm-candidate")
 		default:
-			if strings.HasPrefix(args[i], "--environment=") {
-				opts.Environment = strings.TrimSpace(strings.TrimPrefix(args[i], "--environment="))
-				if opts.Environment == "" {
-					return opts, usageError("--environment requires ENV", "Example: baha up --environment dev")
-				}
-				continue
+			if opts.Name != "" {
+				return opts, usageError("baha up accepts at most one NAME", "Run 'baha up --help' for usage.")
 			}
-			if strings.HasPrefix(args[i], "--recovery-file=") {
-				opts.RecoveryFile = strings.TrimPrefix(args[i], "--recovery-file=")
-				if strings.TrimSpace(opts.RecoveryFile) == "" {
-					return opts, usageError("--recovery-file requires PATH", "Example: baha up --recovery-file /secure/openbao-recovery.json")
-				}
-				continue
-			}
-			return opts, unknownOptionUsage("baha up", args[i], "--yes", "-y", "--control-plane-only", "--trust-host-ca", "--skip-memory-preflight", "--environment", "-e", "--postgres-port", "--openbao-port", "--recovery-file")
+			opts.Name = arg
 		}
 	}
 	return opts, nil
+}
+
+// upNameArgs converts an optional resolved NAME into the single-element args
+// slice that resolveApplication expects, or nil when no NAME was supplied so the
+// repository baseharbor.yaml is resolved by directory, exactly as 'app up'.
+func upNameArgs(name string) []string {
+	if name == "" {
+		return nil
+	}
+	return []string{name}
 }
 
 func parsePort(value string) (int, error) {
@@ -134,7 +174,34 @@ func runtimeUpGuided(parent context.Context, in io.Reader, out io.Writer, opts r
 	if opts.PostgresPort != 0 && opts.PostgresPort == opts.OpenBaoPort {
 		return errors.New("PostgreSQL and OpenBao cannot use the same host port")
 	}
-	_, err := installCore(parent, in, out, opts)
+	// Reject an unauthorized MCP request before probing or installing host tools.
+	// installCore repeats this check at the mutation boundary.
+	if err := authorizeCurrentMCPContext(parent, "control-plane.up", "", "", ""); err != nil {
+		return err
+	}
+	// This function is reached only after repository application routing declines
+	// the command, making it the unambiguous Core bootstrap boundary.
+	target, err := effectiveTarget(parent)
+	if err != nil {
+		return err
+	}
+	if target.AccessProvider == "" || target.AccessProvider == "local" {
+		fmt.Fprintln(out, "Checking ORAS for immutable OCI image verification.")
+		if err := ensureORASForCoreUp(parent, in, out, opts.Yes); err != nil {
+			return err
+		}
+		fmt.Fprintln(out, "[OK] ORAS is available.")
+		if err := maybeRepairRootlessDocker(parent, in, out, target); err != nil {
+			return err
+		}
+		term := cli.NewTerminal(parent, out, out)
+		if err := progress(parent, term, "Verify and prepare the BaseHarbor runtime image", func(progressOut io.Writer) error {
+			return ensureCoreRuntimeImageForTarget(parent, target, progressOut)
+		}); err != nil {
+			return err
+		}
+	}
+	_, err = installCore(parent, in, out, opts)
 	return err
 }
 
@@ -150,6 +217,15 @@ func runtimeUpGuidedProviders(parent context.Context, in io.Reader, out io.Write
 func materializeControlPlaneProviders(parent context.Context, in io.Reader, out io.Writer, opts runtimeUpOptions) error {
 	if opts.PostgresPort != 0 && opts.OpenBaoPort != 0 && opts.PostgresPort == opts.OpenBaoPort {
 		return errors.New("PostgreSQL and OpenBao cannot use the same host port")
+	}
+	// Fail-closed second-target conflict gate (0427-163 / BF-05): two same-host
+	// Targets that bind one local engine share exactly one Core. If a Core
+	// belonging to a different owning target is already running on this engine,
+	// refuse instead of silently joining it.
+	if conflict, err := detectSharedCoreOwnerConflict(parent); err != nil {
+		return err
+	} else if conflict != nil {
+		return conflict
 	}
 	if existing, err := existingTargetRuntimeFiles(parent); err == nil {
 		if opts.HA && !existing.HA {
@@ -224,7 +300,30 @@ func materializeControlPlaneProviders(parent context.Context, in io.Reader, out 
 		}
 	}
 
-	return runtimeUpWithPortsSelection(parent, out, bhruntime.Ports{Postgres: postgresPort, OpenBao: openBaoPort}, opts.HA, opts.ControlPlaneOnly)
+	term := cli.NewTerminal(parent, out, out)
+	return progress(parent, term, "Start PostgreSQL and OpenBao services", func(progressOut io.Writer) error {
+		return runtimeUpWithPortsSelection(parent, progressOut, bhruntime.Ports{Postgres: postgresPort, OpenBao: openBaoPort}, opts.HA, opts.ControlPlaneOnly)
+	})
+}
+
+// detectSharedCoreOwnerConflict runs the fail-closed second-target conflict gate
+// (0427-163 / BF-05): it resolves the effective target and its local engine,
+// then inspects the running containers. When a Core belonging to a *different*
+// owning target is already running on that engine, it returns a
+// *bhruntime.SharedCoreOwnerConflict so the caller fails closed instead of
+// silently joining the first target's Core.
+func detectSharedCoreOwnerConflict(parent context.Context) (*bhruntime.SharedCoreOwnerConflict, error) {
+	target, err := effectiveTarget(parent)
+	if err != nil {
+		return nil, err
+	}
+	provider, err := detectRuntimeForTarget(parent, target)
+	if err != nil {
+		// An unreadable engine is not proof of absence. Refuse fail-closed.
+		return nil, err
+	}
+	ownProject := bhruntime.SharedProjectName(target.Name)
+	return bhruntime.SharedCoreOwnerConflictForEngine(parent, provider, ownProject)
 }
 
 func repositoryApplicationDetectedForUp() bool {

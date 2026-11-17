@@ -17,16 +17,21 @@ func TestRepositoryWorkflowRealLifecycle(t *testing.T) {
 	if os.Getenv("BASEHARBOR_CI_RUNTIME_INTEGRATION") != "1" {
 		t.Skip("real repository lifecycle requires BASEHARBOR_CI_RUNTIME_INTEGRATION=1")
 	}
+	// Bootstrap has its own readiness budget. It must not consume the
+	// bounded lifecycle-test context before the test reaches its assertions.
+	bootstrapCtx, bootstrapCancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer bootstrapCancel()
+	if _, err := testruntime.Resolve(bootstrapCtx); err != nil {
+		t.Fatalf("compose runtime unavailable: %v", err)
+	}
+	ensureRuntimeIntegrationTrustPlane(t, bootstrapCtx)
 	timeout := 2 * time.Minute
 	if strings.EqualFold(strings.TrimSpace(os.Getenv("BASEHARBOR_TEST_RUNTIME")), "podman") {
 		timeout = 3 * time.Minute
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	if _, err := testruntime.Resolve(ctx); err != nil {
-		t.Skipf("compose runtime unavailable: %v", err)
-	}
-	ensureRuntimeIntegrationTrustPlane(t, ctx)
+	isolateRuntimeForTest(t, "repository-workflow")
 
 	root := t.TempDir()
 	old, err := os.Getwd()

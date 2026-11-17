@@ -418,3 +418,16 @@ func TestFootprintUnprojectedDependenciesNeverClaimCoreless(t *testing.T) {
 		}
 	}
 }
+
+func TestParseYAMLAcceptsComposeWorkloadField(t *testing.T) {
+	// Regression: S3 acceptance stack sends 'compose: compose.yaml' as workload field.
+	// The parser must accept it instead of rejecting with 'unsupported workload field'.
+	input := "version: 1\napp:\n  name: myapp\n  environment: dev\nworkload:\n  compose: compose.yaml\n"
+	m, err := ParseYAML(input)
+	if err != nil {
+		t.Fatalf("ParseYAML rejected compose workload field: %v", err)
+	}
+	if m.Workload.Compose != "compose.yaml" {
+		t.Fatalf("expected Workload.Compose=%q, got %q", "compose.yaml", m.Workload.Compose)
+	}
+}

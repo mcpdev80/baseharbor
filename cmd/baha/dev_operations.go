@@ -27,7 +27,13 @@ func configureDevelopmentDomain(ctx context.Context, value string) (devDomainRes
 		return devDomainResult{}, err
 	}
 	var domain string
-	if value != "" {
+	if target.AccessProvider != "" && target.AccessProvider != "local" {
+		domain, err = remoteDevelopmentDomain(ctx, target, value)
+		if err != nil {
+			return devDomainResult{}, err
+		}
+		domain, err = devaccess.ConfigureDomain(target.Name, domain)
+	} else if value != "" {
 		domain, err = devaccess.ConfigureDomain(target.Name, value)
 	} else {
 		domain, err = devaccess.EnsureDomain(target.Name)
@@ -70,6 +76,18 @@ func configureDevelopmentCredentials(ctx context.Context, reset bool, username, 
 		if err != nil {
 			return devaccess.Credentials{}, "", err
 		}
+	}
+
+	if target.AccessProvider != "" && target.AccessProvider != "local" {
+		if err := reconcileRemoteDevelopmentCredentials(ctx, target, credentials.Username, credentials.Password, explicitReplace); err != nil {
+			if existingErr == nil {
+				_, _ = devaccess.Configure(target.Name, environment, existing.Username, existing.Password)
+			} else if path, pathErr := devaccess.Path(target.Name, environment); pathErr == nil {
+				_ = os.Remove(path)
+			}
+			return devaccess.Credentials{}, "", err
+		}
+		return credentials, target.Name, nil
 	}
 
 	authoritative, err := reconcileDeveloperCredentialAuthority(ctx, target.Name, environment, credentials, explicitReplace)

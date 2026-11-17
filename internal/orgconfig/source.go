@@ -5,13 +5,13 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 
+	"github.com/mcpdev80/baseharbor/internal/credential/native"
 	"go.yaml.in/yaml/v3"
 )
 
@@ -67,6 +67,13 @@ func Resolve(ctx context.Context, source Source) (Resolution, Config, error) {
 	case SourceGit:
 		return resolveGit(ctx, source)
 	case SourceOCI:
+		// The OCI org-config path pulls the organization configuration from a
+		// shared OCI Distribution endpoint. It is opt-in: without the operator
+		// turning BASEHARBOR_ORG_OCI_ENABLED on, an OCI source fails closed with
+		// ErrOrgSourceRegistryDisabled and never reaches the shared endpoint.
+		// When opted in, the resolve/pull is guarded against public-default and
+		// unreachable endpoints so a refusal is explicit and carries no mutable
+		// fallback (the registry-access 1395c trap).
 		return resolveOCI(ctx, source)
 	default:
 		return Resolution{}, Config{}, fmt.Errorf("%w: kind %q", ErrUnsupportedSource, source.Kind)
@@ -120,6 +127,13 @@ func resolveGit(ctx context.Context, source Source) (Resolution, Config, error) 
 		return Resolution{}, Config{}, err
 	}
 	defer os.RemoveAll(tmp)
+	if nativeHost := native.HostFromURL(source.Location); nativeHost != "" {
+		if nativeHit, _ := native.PreInteractiveNoPrompt(ctx, nativeHost); nativeHit {
+			if _, cerr := runDisabledPrompt(ctx, "git", "clone", "--quiet", "--no-checkout", source.Location, tmp); cerr != nil {
+				return Resolution{}, Config{}, fmt.Errorf("%w: clone organization Git source: %v", ErrSourceUnavailable, cerr)
+			}
+		}
+	}
 	if _, err := run(ctx, "git", "clone", "--quiet", "--no-checkout", source.Location, tmp); err != nil {
 		return Resolution{}, Config{}, fmt.Errorf("%w: clone organization Git source: %v", ErrSourceUnavailable, err)
 	}
@@ -180,16 +194,38 @@ func resolveOCI(ctx context.Context, source Source) (Resolution, Config, error) 
 	} else {
 		ref += ":" + requested
 	}
+	// Opt-in guard: the shared OCI endpoint is only reachable when the operator
+	// turned the switch on. Without the opt-in the OCI source fails closed with
+	// an explicit, distinct identity — never a silent default and never the
+	// merely-unavailable class a mutable fallback could cover.
+	if !orgRegistryOptInEnabled() {
+		return Resolution{}, Config{}, fmt.Errorf("%w: OCI organization source %q requires opt-in via %s",
+			ErrOrgSourceRegistryDisabled, ref, OrgRegistryOptInEnv)
+	}
+	// Fail closed against a public docker.io default before touching the native
+	// tool: a host that merely has oras installed must never turn a public
+	// default into a resolved enterprise endpoint.
+	if err := classifyOrgRegistryError(nil, ref); err != nil {
+		return Resolution{}, Config{}, err
+	}
 	out, err := run(ctx, "oras", "resolve", ref)
 	if err != nil {
-		if errors.Is(err, exec.ErrNotFound) {
-			return Resolution{}, Config{}, fmt.Errorf("%w: oras is required to resolve OCI organization sources; install ORAS or use Git/local/system distribution", ErrSourceUnavailable)
-		}
-		return Resolution{}, Config{}, fmt.Errorf("%w: resolve organization OCI source %q: %v", ErrSourceUnavailable, ref, err)
+		// The actionable missing-tool identity is returned FIRST, before any
+		// class wrapper: a host without the oras binary gets it intact, and
+		// no caller can mistake it for a merely-unavailable host that a
+		// mutable fallback could cover. classifyNativeToolFailure keeps the
+		// exec.ErrNotFound identity alive through redacting %v wrappers so
+		// the classifier still recognises the fail-closed path downstream;
+		// classifyOrgRegistryError then hard-rejects a public-default
+		// endpoint over whatever class the tool produced.
+		return Resolution{}, Config{}, classifyOrgRegistryError(
+			classifyNativeToolFailure("oras", err), ref)
 	}
 	digest := firstDigest(out)
 	if digest == "" {
-		return Resolution{}, Config{}, fmt.Errorf("organization OCI source %q did not resolve to an immutable sha256 digest", ref)
+		// An unpruefbar (unverifiable) resolution: the tool answered without
+		// an immutable digest, so no mutable fallback may qualify on it.
+		return Resolution{}, Config{}, fmt.Errorf("%w: organization OCI source %q did not resolve to an immutable sha256 digest", ErrOrgSourceUnverifiable, ref)
 	}
 	tmp, err := os.MkdirTemp("", "baseharbor-org-oci-*")
 	if err != nil {
@@ -198,7 +234,8 @@ func resolveOCI(ctx context.Context, source Source) (Resolution, Config, error) 
 	defer os.RemoveAll(tmp)
 	immutableRef := strings.TrimSpace(source.Location) + "@" + digest
 	if _, err := run(ctx, "oras", "pull", immutableRef, "--output", tmp); err != nil {
-		return Resolution{}, Config{}, fmt.Errorf("%w: pull organization OCI source %q: %v", ErrSourceUnavailable, immutableRef, err)
+		return Resolution{}, Config{}, classifyOrgRegistryError(
+			fmt.Errorf("%w: pull organization OCI source %q: %v", ErrSourceUnavailable, immutableRef, err), source.Location)
 	}
 	path, err := locateOrganizationFile(tmp)
 	if err != nil {
@@ -278,6 +315,26 @@ func firstDigest(out string) string {
 
 func run(ctx context.Context, name string, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, name, args...)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		detail := strings.TrimSpace(stderr.String())
+		if detail == "" {
+			return "", err
+		}
+		return "", fmt.Errorf("%w: %s", err, detail)
+	}
+	return strings.TrimSpace(stdout.String()), nil
+}
+
+// runDisabledPrompt runs the git command with GIT_TERMINAL_PROMPT=0 so no
+// interactive credential prompt is possible when a native source can service
+// the org-config Git host. It is a found-only gate: a native hit leaves git's
+// own authentication decision intact.
+func runDisabledPrompt(ctx context.Context, name string, args ...string) (string, error) {
+	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr

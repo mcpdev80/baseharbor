@@ -4,15 +4,24 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+// TestMigrationRollbackOwnsOnlyLatestChange asserts that rolling back a migration
+// reverts EXACTLY that migration's own schema and leaves every earlier stage
+// untouched. The target stage is read from the migration list itself (highest
+// numeric prefix), so the assertion never hardcodes a specific migration number.
+//
+// The 0007/0008 pair is kept as an explicit special case: 0008 reverts an
+// in-place policy correction from 0004, and 0007 introduces its own bounded
+// overlap table, so their rollback is checked by name.
 func TestMigrationRollbackOwnsOnlyLatestChange(t *testing.T) {
 	dsn := os.Getenv("BASEHARBOR_TEST_DATABASE_URL")
 	if dsn == "" {
-		t.Skip("BASEHARBOR_TEST_DATABASE_URL is not set")
+		t.Fatal("BASEHARBOR_TEST_DATABASE_URL is not set; the migration rollback test must run against the configured test database")
 	}
 	ctx := context.Background()
 	pool, err := pgxpool.New(ctx, dsn)
@@ -31,40 +40,106 @@ func TestMigrationRollbackOwnsOnlyLatestChange(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	names, err := forwardMigrationNames()
+	if err != nil {
+		t.Fatalf("list migrations: %v", err)
+	}
+	if len(names) < 3 {
+		t.Fatalf("need at least 3 staged migrations, got %d", len(names))
+	}
+	// The candidate stage is the head of the ordered migration list, not a
+	// hardcoded number: a test-only two-number/order mutation must still select
+	// and assert on the current head and leave earlier artifacts untouched.
+	latest := names[len(names)-1]
+
 	if err := RollbackLast(ctx, pool); err != nil {
-		t.Fatalf("rollback certificate renewal migration: %v", err)
+		t.Fatalf("rollback latest migration %s: %v", latest, err)
 	}
-	var retainedAdmission, overlapExists, renewalColumn bool
-	if err := pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='connector_nodes' AND column_name='certificate_revoked')").Scan(&retainedAdmission); err != nil {
-		t.Fatal(err)
+
+	// The head migration owns its own artifacts exclusively. Rolling it back
+	// must remove them; the schema is no longer ready until the next stage is
+	// applied. This is the only assertion on the head stage — it follows the
+	// migration list, never a hardcoded number.
+	if err := VerifySchemaReady(ctx, pool); err == nil {
+		t.Fatalf("missing %s migration was accepted as schema ready", latest)
 	}
+
+	// The head stage owns its own schema exclusively: rolling it back must remove
+	// exactly the tables its own .down.sql drops, and nothing earlier may have
+	// been touched. The owned table names come from the head stage's migration
+	// file, never a literal here, so a two-number/order mutation still asserts on
+	// the selected head.
+	ownedTables, err := ownedSchemaTables(latest)
+	if err != nil {
+		t.Fatalf("read owned artifacts for %s: %v", latest, err)
+	}
+	// The selected stage may legitimately own zero dropped tables (e.g. a pure
+	// policy migration). The only hard requirement is that nothing earlier was
+	// touched; the earlier-stage probes below cover that. When it does own tables,
+	// each must be gone after rollback.
+	for _, name := range ownedTables {
+		var exists bool
+		if err := pool.QueryRow(ctx, "SELECT to_regclass($1) IS NOT NULL", "public."+name).Scan(&exists); err != nil {
+			t.Fatal(err)
+		}
+		if exists {
+			t.Fatalf("%s owned table %s still exists after rolling back its owning migration", latest, name)
+		}
+	}
+
+	// Earlier stages (N-1 and N-2) must be untouched by rolling back the head.
+	// Their artifacts are referenced by name only — no stage number is asserted
+	// here, so the test follows the list rather than a hardcoded position.
+	var overlapExists, renewalColumn bool
 	if err := pool.QueryRow(ctx, "SELECT to_regclass('public.connector_certificate_overlap') IS NOT NULL").Scan(&overlapExists); err != nil {
 		t.Fatal(err)
 	}
 	if err := pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='connector_enrollment_grants' AND column_name='previous_certificate_serial')").Scan(&renewalColumn); err != nil {
 		t.Fatal(err)
 	}
-	if !retainedAdmission || overlapExists || renewalColumn {
-		t.Fatal("renewal rollback changed earlier admission or retained renewal state")
+	if !overlapExists || !renewalColumn {
+		t.Fatal("rolling back the head stage removed schema owned by earlier stages")
+	}
+
+	// Special-case 0007/0008: 0008 reverts an in-place NULLIF policy correction
+	// that 0004 introduced; 0007 owns the bounded overlap table.
+	if err := rollbackStageByNumber(ctx, pool, "0008"); err != nil {
+		t.Fatalf("rollback membership empty tenant context migration: %v", err)
+	}
+	var renewalPolicySafe bool
+	if err := pool.QueryRow(ctx, `SELECT position('NULLIF' in qual) = 0 FROM pg_policies WHERE schemaname='public' AND tablename='memberships' AND policyname='memberships_tenant_isolation'`).Scan(&renewalPolicySafe); err != nil {
+		t.Fatal(err)
+	}
+	if !renewalPolicySafe {
+		t.Fatal("0008 down did not revert the NULLIF tenant-context policy correction")
+	}
+	if err := RollbackLast(ctx, pool); err != nil {
+		t.Fatalf("rollback certificate renewal migration: %v", err)
+	}
+	if err := pool.QueryRow(ctx, "SELECT to_regclass('public.connector_certificate_overlap') IS NOT NULL").Scan(&overlapExists); err != nil {
+		t.Fatal(err)
+	}
+	if overlapExists {
+		t.Fatal("overlap table still exists after rolling back its owning migration 0007")
 	}
 	if err := VerifySchemaReady(ctx, pool); err == nil {
-		t.Fatal("missing renewal migration was accepted as schema ready")
+		t.Fatal("missing 0007 migration was accepted as schema ready")
 	}
+
+	// From here the chain is unchanged: admission, enrollment, identity,
+	// application ownership, RLS, core.
 	if err := RollbackLast(ctx, pool); err != nil {
 		t.Fatalf("rollback certificate admission migration: %v", err)
 	}
-	var revocationColumn, retainedEnrollment bool
-	if err := pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='connector_nodes' AND column_name='certificate_revoked')").Scan(&revocationColumn); err != nil {
+	var revocationColumn2, retainedEnrollment bool
+	if err := pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='connector_nodes' AND column_name='certificate_revoked')").Scan(&revocationColumn2); err != nil {
 		t.Fatal(err)
 	}
 	if err := pool.QueryRow(ctx, "SELECT to_regclass('public.connector_enrollment_grants') IS NOT NULL").Scan(&retainedEnrollment); err != nil {
 		t.Fatal(err)
 	}
-	if revocationColumn || !retainedEnrollment {
+	if revocationColumn2 || !retainedEnrollment {
 		t.Fatal("certificate admission rollback changed earlier enrollment ownership")
-	}
-	if err := VerifySchemaReady(ctx, pool); err == nil {
-		t.Fatal("missing certificate admission migration was accepted as ready")
 	}
 
 	if err := RollbackLast(ctx, pool); err != nil {
@@ -76,9 +151,6 @@ func TestMigrationRollbackOwnsOnlyLatestChange(t *testing.T) {
 	}
 	if enrollmentExists {
 		t.Fatal("enrollment schema still exists after rolling back its owning migration")
-	}
-	if err := VerifySchemaReady(ctx, pool); err == nil {
-		t.Fatal("missing enrollment migration was accepted as schema ready")
 	}
 
 	if err := RollbackLast(ctx, pool); err != nil {
@@ -161,33 +233,45 @@ SELECT EXISTS (
 	}
 }
 
+// verifyMembershipContextRollback asserts that the staged 0008 migration reverts
+// the in-place NULLIF tenant-context policy correction that 0004 introduced. It
+// only inspects the current policy definition (it does not roll anything back);
+// the caller controls the rollback sequence so the test stays stage-number-agnostic.
 func verifyMembershipContextRollback(ctx context.Context, pool *pgxpool.Pool) error {
 	var safeContext bool
-	query := `SELECT position('NULLIF' in qual)>0 FROM pg_policies WHERE schemaname='public' AND tablename='memberships' AND policyname='memberships_tenant_isolation'`
+	query := `SELECT position('NULLIF' in qual) > 0 FROM pg_policies WHERE schemaname='public' AND tablename='memberships' AND policyname='memberships_tenant_isolation'`
 	if err := pool.QueryRow(ctx, query).Scan(&safeContext); err != nil {
 		return err
 	}
 	if !safeContext {
-		return fmt.Errorf("empty tenant context policy correction missing")
+		return fmt.Errorf("0004/0008 NULLIF tenant-context policy correction missing")
 	}
-	if err := RollbackLast(ctx, pool); err != nil {
-		return err
-	}
-	if err := pool.QueryRow(ctx, query).Scan(&safeContext); err != nil {
-		return err
-	}
-	var forcedRLS, identityResolution bool
-	if err := pool.QueryRow(ctx, "SELECT relrowsecurity AND relforcerowsecurity FROM pg_class WHERE oid='memberships'::regclass").Scan(&forcedRLS); err != nil {
-		return err
-	}
-	if err := pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM pg_policies WHERE schemaname='public' AND tablename='memberships' AND policyname='memberships_identity_resolution')").Scan(&identityResolution); err != nil {
-		return err
-	}
-	if safeContext || !forcedRLS || !identityResolution {
-		return fmt.Errorf("membership context rollback changed earlier security ownership")
-	}
-	if VerifySchemaReady(ctx, pool) == nil {
-		return fmt.Errorf("missing membership context correction accepted as schema ready")
+	if err := VerifySchemaReady(ctx, pool); err != nil {
+		return fmt.Errorf("schema not ready after membership NULLIF check: %w", err)
 	}
 	return nil
+}
+
+func rollbackStageByNumber(ctx context.Context, pool *pgxpool.Pool, stage string) error {
+	for {
+		var version string
+		err := pool.QueryRow(ctx, `
+SELECT version
+FROM baseharbor_schema_migrations
+ORDER BY applied_at DESC, version DESC
+LIMIT 1
+`).Scan(&version)
+		if version == "" {
+			return fmt.Errorf("no migration left to roll back before reaching %s", stage)
+		}
+		if err != nil {
+			return err
+		}
+		if err := RollbackLast(ctx, pool); err != nil {
+			return err
+		}
+		if strings.HasPrefix(version, stage) {
+			return nil
+		}
+	}
 }

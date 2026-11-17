@@ -116,6 +116,109 @@ Application business users, groups, roles and permissions remain application/IdP
 
 A provider reporting process health is not sufficient when the capability requires protocol/data-flow verification.
 
+## Container filesystem handoff
+
+When a provider generates configuration, certificates, target definitions or
+other files for a container, its implementation MUST declare the intended
+consumer and make the required paths readable by that container's effective
+UID/GID regardless of the host process umask. A successful host-side write is
+not proof that the container can read the file or traverse its mounted
+directories.
+
+Non-secret configuration projections SHOULD use the narrowest modes that let
+the declared consumer read them (commonly files `0644` and directories `0755`)
+and MUST be mounted read-only unless the container must write them. Secret
+source files MUST remain owner-protected on the host. A provider that needs to
+make secret material readable to a non-root container MUST create a
+consumer-scoped projection under a protected host-side parent and mount it only
+into that authorized container. It MUST NOT solve access failures with
+world-writable modes such as `0777`, by running the container as root, or by
+loosening the original secret's permissions.
+
+Provider lifecycle and conformance checks MUST exercise generated file and
+directory access under a restrictive host umask and verify the consuming
+container's actual read or protocol path before reporting readiness.
+
+### Shipped provider filesystem requirements
+
+The following requirements apply to every shipped provider realization and
+management consumer. They are part of this contract, not implementation
+guidance. A provider descriptor or implementation MUST refine these entries
+with concrete image/version, effective UID/GID, mount destination, and access
+mode for its selected topology. A provider MUST NOT pin a numeric UID or
+require UID `0`. With Docker/Compose, omitting `user` preserves the image's
+declared default identity; platforms such as OpenShift may assign an arbitrary
+non-root UID. Provider images and filesystem paths MUST support those
+platform-assigned UIDs. UIDs observed in a particular Docker run are diagnostic
+metadata only and MUST NOT become provider requirements.
+
+| Provider / consumer | Runtime identity requirement | Filesystem contract |
+|---|---|---|
+| PostgreSQL member | Image default locally; arbitrary platform UID supported, no BaseHarbor override | Database data directory is writable through the runtime's volume ownership/group mechanism. On rootless Docker, the upstream initialization entrypoint needs `CHOWN`, `DAC_READ_SEARCH`, `FOWNER`, `SETGID`, and `SETUID` to prepare a fresh volume and drop from root to the image's postgres account. Compose drops every other capability and keeps `no-new-privileges`. Server key, certificate, CA, and `pg_hba.conf` are read-only mounts. The key's host source remains owner-only; its tmpfs copy is mode 0600, owned by `postgres` before the entrypoint drops privileges, and scoped to PostgreSQL. |
+| PostgreSQL HAProxy | Image default locally; arbitrary platform UID supported, no BaseHarbor override | `haproxy.cfg` and server certificate are non-secret/read-only projections. The proxy has no database data mount. |
+| pgAdmin | Image default locally; arbitrary platform UID supported, no BaseHarbor override | `servers.json`, `pgpass`, connection CA certificates, UI password, and TLS certificate/key are consumer-scoped read-only projections. Credential/private-key projections remain below a host directory inaccessible to unrelated users and are mounted only into pgAdmin. |
+| Valkey | BaseHarbor builds a pinned derivative with the upstream `valkey` image account as its local default and no Compose UID override; arbitrary platform UID supported | `/data` is group-owned by GID `0` and group writable/executable in the image so a platform-assigned non-root UID can initialize and write a mounted volume. AOF files are created with a restrictive group-compatible umask. On startup, existing Valkey-owned AOF files are migrated to GID `0` with group permissions; an assigned UID that cannot safely migrate old data MUST fail with a clear error. ACL configuration and TLS material are read-only mounts; ACL source is host-protected and projected only to Valkey. |
+| Valkey HAProxy | Image default locally; arbitrary platform UID supported, no BaseHarbor override | `haproxy.cfg` and server certificate are readable, non-writable projections; no provider data or application credential files are mounted. |
+| Redis Commander | Image default locally; arbitrary platform UID supported, no BaseHarbor override | `local.json`, `local-production.json`, HTTP password, and TLS material are read-only, consumer-scoped projections. `local.json` contains credentials and is mounted only into this authorized UI. |
+| MongoDB | Image default locally; arbitrary platform UID supported, no BaseHarbor override | Database data is writable through the runtime's volume ownership/group mechanism. Initialization scripts, server certificate, and CA are read-only. Private key source remains protected and any consumer projection is scoped to MongoDB. |
+| MongoDB UI | Image default locally; arbitrary platform UID supported, no BaseHarbor override | MongoDB CA/trust input is a read-only consumer projection. The UI access proxy is separately isolated and does not receive database credentials except through its declared authenticated upstream. |
+| MongoDB UI access proxy | Image default locally; arbitrary platform UID supported, no BaseHarbor override | Caddyfile, server certificate, and private key are read-only mounts. The key is delivered only as a consumer-scoped projection beneath a protected host parent. Caddy watches its configuration projection so changed management credentials take effect without a separate manual restart. |
+| RabbitMQ | Image default locally; arbitrary platform UID supported, no BaseHarbor override | Broker data is writable through the runtime's volume ownership/group mechanism; generated configuration and TLS material are read-only projections. Credentials and private keys remain protected at source and are delivered only through scoped mounts. Docker health checks and broker-admin commands drop from root to the broker account before reading its owner-only Erlang cookie; a platform-assigned non-root UID runs these commands directly. |
+| RabbitMQ UI access proxy | Image default locally; arbitrary platform UID supported, no BaseHarbor override | Caddyfile, certificate, and key are read-only consumer projections. A Caddyfile containing an authentication verifier is mounted only into this proxy. |
+| SeaweedFS nodes/admin | Image default locally; arbitrary platform UID supported, no BaseHarbor override | The Docker image entrypoint uses `CHOWN`, `SETGID` and `SETUID` only to repair `/data` ownership and drop to its service account; these are the only added capabilities, with all others dropped and `no-new-privileges` retained. On arbitrary-UID platforms, the assigned UID must be able to write `/data` through the platform volume ownership/group mechanism. S3/admin credentials and TLS material are protected at source; each consumer receives only its scoped read-only configuration/key projections. |
+| SeaweedFS access proxy | Image default locally; arbitrary platform UID supported, no BaseHarbor override | Caddy configuration and TLS material are read-only mounts; private key is consumer-scoped. |
+| OpenBao server | Image default locally; arbitrary platform UID supported, no BaseHarbor override | Configuration, CA, server certificate/key, and PostgreSQL CA are read-only mounts. OpenBao storage is writable through the runtime's volume ownership/group mechanism. Server key and machine credentials remain host-protected and mounted only into OpenBao. |
+| OpenBao HAProxy | Image default locally; arbitrary platform UID supported, no BaseHarbor override | HAProxy configuration is a readable, non-writable projection; no OpenBao machine credential or storage mount is permitted. |
+| OpenBao admin surface | Image default locally; arbitrary platform UID supported, no BaseHarbor override | Admin CA/trust input and provider configuration are read-only. Administrative credentials use protected secret channels and MUST NOT be copied into broadly readable configuration. |
+| Keycloak | Image default locally; arbitrary platform UID supported, no BaseHarbor override | Keycloak data is writable through the runtime's volume ownership/group mechanism. TLS and database CA material are read-only mounts; private material is host-protected and scoped to Keycloak. |
+| Keycloak access proxy | Image default locally; arbitrary platform UID supported, no BaseHarbor override | Caddy configuration, upstream trust, certificate, and private key are read-only mounts; key material is consumer-scoped. |
+| Prometheus | Image default locally; arbitrary platform UID supported, no BaseHarbor override | Configuration and target directories are read-only and readable/traversable by the assigned UID. Its data directory alone is writable through the runtime's volume ownership/group mechanism. Scrape client keys/certificates are consumer-scoped read-only projections. |
+| Prometheus access proxy | Image default locally; arbitrary platform UID supported, no BaseHarbor override | Caddy configuration, upstream trust, and TLS material are read-only consumer projections; private keys are scoped to this proxy. |
+| OpenTelemetry Collector | Image default locally; arbitrary platform UID supported, no BaseHarbor override | Collector configuration, CA, client certificate, and key are read-only consumer projections. Only declared queue/storage paths may be writable. Secret key sources remain protected and are projected only for the collector. |
+| Loki | Image default locally; arbitrary platform UID supported, no BaseHarbor override | Loki configuration and trust material are read-only consumer-readable projections. Only Loki's `/loki` data paths may be writable. Object-storage credentials stay in protected runtime environment and MUST NOT be copied into broadly readable config. |
+| Grafana Alloy log collector | Image default locally; arbitrary platform UID supported, no BaseHarbor override | Alloy config is a read-only consumer-readable projection. Its agent state uses a mode-`1777` temporary filesystem so any assigned non-root UID can create it; retained log data belongs to Loki. Host journal access MUST use a platform-supported read-only group/mount mechanism and MUST NOT be implemented by pinning UID `0`. |
+| Tempo | Image default locally; arbitrary platform UID supported, no BaseHarbor override | `tempo.yaml` and public object-storage CA are read-only mounts; `/var/tempo` is the declared writable data path. S3 credentials remain in protected runtime environment and MUST NOT be written into `tempo.yaml`. |
+| Runtime broker/executor | Image default locally; arbitrary platform UID supported, no BaseHarbor override | Runtime permissions/configuration, service tokens, workload identity certificates and operation paths are read-only except explicitly declared operation/resource state. Private keys and tokens are individual secret mounts. |
+| Application workload | Workload/platform default locally; arbitrary platform UID supported, no BaseHarbor override | Service bindings, CA bundles, and runtime identity are read-only mounts. Every directory in the workload binding tree MUST be mode `0755` (or narrower while still granting read/traverse to an arbitrary UID), and every binding file MUST be consumer-readable without group/other write. Credential-bearing bindings are mounted only into the authorized workload; their host parent remains protected. Readiness MUST validate the consumer-visible tree's access modes. Only declared application data paths may be writable. |
+| Caddy exposure and provider access proxies | Image default locally; arbitrary platform UID supported, no BaseHarbor override | Caddy configuration and certificates are read-only mounts; only explicitly declared Caddy state/cache paths may be writable. Private keys are consumer-scoped projections under protected host parents. |
+
+For every row, the provider implementation MUST enforce these operational
+rules:
+
+- Requested creation modes are not sufficient: after writing or atomically
+  replacing a consumer projection, the provider MUST explicitly set and verify
+  its effective mode so a restrictive umask cannot make it unreadable.
+- Providers MUST support arbitrary non-root UIDs. They MUST NOT set `runAsUser`,
+  Compose `user`, or equivalent to a fixed numeric UID, and MUST NOT require UID
+  `0`. Filesystem access MUST use read-only mounts, runtime-supported volume
+  ownership, or group permissions compatible with platform-assigned UIDs.
+- Non-secret configuration/public certificate projections MUST be readable by
+  an arbitrary assigned UID without granting write access. Secret projections
+  MUST use a consumer-scoped read-only mount plus a runtime-supported ownership
+  or group mechanism; they MUST NOT rely on world-readable host source files.
+  On OpenShift-compatible images, writable image paths MUST be group-owned by
+  GID `0` and group-writable/executable as required (`g=u`); this is a group
+  compatibility rule, not a UID `0` requirement.
+- Authoritative private keys, credentials, tokens, and secret stores MUST stay
+  owner-protected (normally `0600` files and `0700` parent directories) on the
+  host. They MUST NOT be made readable by broadening their source permissions.
+- Every bind mount MUST be read-only unless the provider requires container
+  writes to that exact path. Writable data directories MUST be distinct from
+  configuration/secret projections and owned or mapped to the declared
+  runtime-assigned identity or declared group mechanism.
+- A file replacement does not update an already-running container's bind
+  mount. Providers MUST recreate/reload the consumer as required by that
+  runtime and MUST verify the new inode/configuration is active before
+  reporting readiness or rotation complete.
+- Readiness MUST include a consumer-side read and the provider protocol/data
+  path, not merely host-side `stat`, successful file creation, or a running
+  container state.
+
+Implementations MUST maintain a tested mapping from each row to the concrete
+mount sources, file modes, directory traversal modes, arbitrary-UID behavior, and
+reload/recreation action. Newly added providers and management surfaces MUST
+add their requirements here before being considered supported.
+
 ## Registry boundaries
 
 BaseHarbor distinguishes two registries:
@@ -189,3 +292,18 @@ The normative shipped-provider/surface classification is [Provider and managemen
 Capability providers negotiate the same portable availability requirement independently from the Runtime Provider.
 
 Providers declare SUPPORTED, PARTIALLY_SUPPORTED or UNSUPPORTED with explicit limits. A required unsupported guarantee fails before provider mutation. Provider-native clustering, quorum, replica roles and managed-service product modes remain realization state and never enter portable Application Intent.
+
+For the managed shared development Identity UI, the provider MUST declare the
+account/admin landing paths of its owned development operator realm. Its selected
+developer username/password MUST open those consoles without collecting real-name
+claims. Only first/last-name requirements in that verified owned dev operator realm
+are optional; username/email and unrelated profile settings MUST be preserved.
+Other realms and runtime device identity authorities MUST remain unchanged.
+
+The managed development Identity provider MUST reconcile its browser clients
+against the actual published canonical and IP GUI endpoints, including dynamic
+ports: explicit CORS origins, console-subtree redirect URIs, and session-check
+iframe sources. It MUST preserve other client fields and browser security
+headers, including frame-ancestors, reject foreign realm ownership, and remove
+stale managed origins when endpoints change. Readiness MUST probe the declared
+account/admin landing paths rather than the server root.

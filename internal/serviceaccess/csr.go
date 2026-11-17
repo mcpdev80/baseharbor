@@ -16,6 +16,10 @@ import (
 	"time"
 )
 
+// MaxWorkstationCertificateTTL bounds the certificate lifetime reserved for
+// installation-bound developer workstation identities.
+const MaxWorkstationCertificateTTL = 5 * 365 * 24 * time.Hour
+
 // CSRIssuer signs a client-owned key through the existing protected authority.
 // It must never generate or return a client private key.
 type CSRIssuer interface {
@@ -40,10 +44,20 @@ type CSRSigningRequest struct {
 }
 
 func (r CSRSigningRequest) Validate() (*x509.CertificateRequest, error) {
+	return r.validate(24*time.Hour, nil)
+}
+
+// ValidateWorkstation applies the longer certificate bound reserved for
+// installation-bound developer workstation identities.
+func (r CSRSigningRequest) ValidateWorkstation() (*x509.CertificateRequest, error) {
+	return r.validate(MaxWorkstationCertificateTTL, nil)
+}
+
+func (r CSRSigningRequest) validate(maxTTL time.Duration, authorizedDNS []string) (*x509.CertificateRequest, error) {
 	if len(r.DNSNames) != 0 {
 		return nil, errors.New("node CSR cannot authorize TLS server names")
 	}
-	return r.validate(nil)
+	return r.validateNames(maxTTL, authorizedDNS)
 }
 
 // ValidateCore binds DNS SANs to an explicit internal server authorization.
@@ -64,15 +78,15 @@ func (r CSRSigningRequest) ValidateCore() (*x509.CertificateRequest, error) {
 		}
 		seen[name] = true
 	}
-	return r.validate(r.DNSNames)
+	return r.validateNames(24*time.Hour, r.DNSNames)
 }
 
-func (r CSRSigningRequest) validate(authorizedDNS []string) (*x509.CertificateRequest, error) {
+func (r CSRSigningRequest) validateNames(maxTTL time.Duration, authorizedDNS []string) (*x509.CertificateRequest, error) {
 	identity, err := url.Parse(r.Identity)
 	if err != nil || identity.Scheme != "spiffe" || identity.Host == "" || identity.User != nil || identity.RawQuery != "" || identity.Fragment != "" || identity.Path == "" || identity.Opaque != "" {
 		return nil, errors.New("CSR signing requires one scoped URI identity")
 	}
-	if r.TTL <= 0 || r.TTL > 24*time.Hour || len(r.CSRPEM) > 65536 {
+	if r.TTL <= 0 || r.TTL > maxTTL || len(r.CSRPEM) > 65536 {
 		return nil, errors.New("CSR signing TTL or size is outside the supported bounds")
 	}
 	block, rest := pem.Decode(r.CSRPEM)

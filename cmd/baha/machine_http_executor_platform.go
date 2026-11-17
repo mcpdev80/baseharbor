@@ -23,6 +23,12 @@ func (e *bahaMachineExecutor) executeHTTPPlatformMutation(
 	report machinehttp.ProgressReporter,
 ) (any, error) {
 	switch operationID {
+	case "dev.domain":
+		return executeHTTPDevelopmentDomain(ctx, operationContext, raw)
+	case "dev.credentials":
+		return executeHTTPDevelopmentCredentials(ctx, operationContext, raw)
+	case "secret.set":
+		return e.executeHTTPApplicationSecretSet(ctx, operationContext, raw)
 	case "openbao.rotate":
 		return executeHTTPManagedRotation(ctx, operationContext, raw, report)
 	case "control-plane.up":
@@ -41,9 +47,31 @@ func (e *bahaMachineExecutor) executeHTTPPlatformMutation(
 		}
 		reportHTTPProgress(report, "core", "Core readiness verified.", 100)
 		return state, nil
+	case "control-plane.repair":
+		if err := decodeHTTPInput(raw, &struct{}{}); err != nil {
+			return nil, err
+		}
+		target := withTargetOverride(ctx, operationContext.Target)
+		reportHTTPProgress(report, "core", "Reconverging existing Core configuration.", 10)
+		if err := repairExistingControlPlaneRuntime(target, io.Discard); err != nil {
+			return nil, err
+		}
+		result, err := inspectControlPlane(target)
+		if err != nil {
+			return nil, err
+		}
+		if err := requireControlPlaneReady(result); err != nil {
+			return nil, err
+		}
+		reportHTTPProgress(report, "core", "Core readiness verified.", 100)
+		return result, nil
 
 	case "workspace.update":
 		return executeHTTPWorkspaceUpdate(ctx, operationContext, raw, report)
+	case "app.create":
+		return executeHTTPAppCreate(ctx, operationContext, raw)
+	case "app.configure":
+		return e.executeHTTPAppConfigure(ctx, operationContext, raw)
 	case "app.new":
 		return executeHTTPAppNew(ctx, operationContext, raw, report)
 	case "provider.add", "provider.remove":
@@ -88,6 +116,36 @@ func executeHTTPWorkspaceUpdate(
 	}
 	reportHTTPProgress(report, "workspace", "Workspace update completed.", 100)
 	return result, nil
+}
+
+// executeHTTPAppCreate exposes the already-authorized target-managed Intent
+// creation contract. This does not import workstation filesystem paths or
+// source bytes; it creates a canonical remote application identity only.
+func executeHTTPAppCreate(ctx context.Context, operationContext machine.OperationContext, raw json.RawMessage) (any, error) {
+	var input machineApplicationCreateInput
+	if err := decodeHTTPInput(raw, &input); err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(operationContext.Target) == "" ||
+		strings.TrimSpace(operationContext.Application) == "" ||
+		strings.TrimSpace(operationContext.Environment) == "" {
+		return nil, machine.NewError(machine.ErrorValidationFailed,
+			"Remote app creation requires explicit Target, application and environment selectors.",
+			"Provide all three authorized operation selectors.", false)
+	}
+	target, err := bindHTTPSelector("target", operationContext.Target, input.Target)
+	if err != nil {
+		return nil, err
+	}
+	input.Intent.Name, err = bindHTTPSelector("application", operationContext.Application, input.Intent.Name)
+	if err != nil {
+		return nil, err
+	}
+	input.Intent.Environment, err = bindHTTPSelector("environment", operationContext.Environment, input.Intent.Environment)
+	if err != nil {
+		return nil, err
+	}
+	return createMachineApplicationWithSource(withTargetOverride(ctx, target), input.Intent, input.SourceModel)
 }
 
 func executeHTTPAppNew(

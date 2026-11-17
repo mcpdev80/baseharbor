@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Conservative v0.4.26 PR area-to-existing-gate selection (#892)."""
 import argparse
+import importlib.util
 import json
 import os
 import re
@@ -8,6 +9,16 @@ import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
+
+
+def _coverage_module():
+    spec = importlib.util.spec_from_file_location(
+        'pr_gate_coverage_validator', ROOT / 'validate-pr-gate-coverage.py')
+    if spec is None or spec.loader is None:
+        raise RuntimeError('cannot load declarative PR gate coverage resolver')
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 DOC_CHECKS = [
     {'id': 'documentation-audit', 'owner': 'scripts/documentation-audit.sh',
@@ -63,23 +74,30 @@ AUTHORITY_PACKAGE_CHECKS = [
     {'id': 'authority-package-tests', 'owner': 'installation authority and stable identity',
      'command': 'python3 scripts/pr-check-runner.py execute --check authority-package-tests --repository .'},
 ]
-AUTHORITY_PACKAGE_PATHS = {
-    'internal/coreinstallation/authority.go', 'internal/coreinstallation/authority_test.go',
-    'internal/coreinstallation/lifecycle_lock.go', 'internal/coreinstallation/lock_unix.go',
-    'internal/coreinstallation/lock_windows.go', 'internal/serviceaccess/local_issuer.go',
-    'internal/stableid/lock.go', 'internal/stableid/lock_test.go',
-    'internal/stableid/lock_unix.go', 'internal/stableid/lock_windows.go',
-}
+AUTHORITY_PACKAGES = ('internal/coreinstallation', 'internal/stableid', 'internal/serviceaccess',
+                      'internal/installauthority')
+
 
 DELIVERY_PACKAGE_CHECKS = [{'id': 'delivery-package-tests', 'owner': 'delivery owner and selection contract',
     'command': 'python3 scripts/pr-check-runner.py execute --check delivery-package-tests --repository .'}]
 
+DEPLOYMENT_PACKAGE_CHECKS = [{'id': 'deployment-package-tests', 'owner': 'deployment state and Target ownership',
+    'command': 'python3 scripts/pr-check-runner.py execute --check deployment-package-tests --repository .'}]
+
+BROKER_PACKAGE_CHECKS = [{'id': 'broker-package-tests', 'owner': 'runtime broker package',
+    'command': 'python3 scripts/pr-check-runner.py execute --check broker-package-tests --repository .'}]
+
 CLI_PACKAGE_CHECKS = [{'id': 'cli-package-tests', 'owner': 'cmd/baha package tests',
     'command': 'go test ./cmd/baha -count=1'}]
 
+IDENTITY_PROVIDER_CHECKS = [
+    {'id': 'identity-provider-package-tests', 'owner': 'Keycloak and Identity provider unit contract',
+     'command': 'python3 scripts/pr-check-runner.py execute --check identity-provider-package-tests --repository .'},
+]
+
 RUNTIME_PROVIDER_CHECKS = [
     {'id': 'runtime-provider-package-tests', 'owner': 'runtime and provider packages',
-     'command': 'go test ./internal/runtime ./internal/health ./internal/providers/runtime/podman -count=1'},
+     'command': 'go test ./internal/runtime/... ./internal/health ./internal/providers/runtime/podman -count=1'},
 ]
 CLI_CHECKS = [
     {'id': 'cli-guided-tests', 'owner': 'cmd/baha guided read-only adapter',
@@ -609,21 +627,6 @@ PR1272_REGISTRATION_MIXED_GATES = {'atomic/docker/lifecycle', 'atomic/podman/lif
 # rather than inherit the generic cmd/baha/*_test.go cli-gofmt binding. Any
 # OTHER cmd/baha/*_test.go (not in this set) is eligible for the generic
 # test-only binding below.
-REVIEWED_TEST_FILES = frozenset({
-    'cmd/baha/app_workload_integration_test.go',
-    'internal/application/manifest_test.go',
-    'internal/application/external_provider_registry_test.go',
-    'internal/application/external_provider_removal_retry_test.go',
-    'internal/application/external_provider_scope_test.go',
-    'internal/application/protected_tempdir_test.go',
-    'internal/application/runtime_binding_projection_reset_test.go',
-    'internal/application/telemetry_authorization_test.go',
-})
-
-def _is_reviewed_test_file(path):
-    """True for cmd/baha/*_test.go paths bound by an exact reviewed-test clause."""
-    return path.endswith('_test.go') and path in REVIEWED_TEST_FILES
-
 def core752_reviewed_merge_chain(target, head, reviewed=None, repository='.'):
     """Trust only clean, first-parent-preserving merges of trusted target commits.
 
@@ -683,7 +686,8 @@ RECEIPT_CONTROL_PLANE_WORKFLOWS = frozenset({'.github/workflows/receipt-post-run
 
 CI_CHECKS = [
     {'id': 'pr-planner-tests', 'owner': 'scripts/test_pr_gate_plan.py',
-     'command': 'python3 -m unittest scripts/test_pr_gate_plan.py'},
+     'command': ('python3 -m unittest scripts/test_pr_gate_plan.py '
+                 'scripts/test_pre_release_runtime_reuse.py')},
     {'id': 'ci-policy', 'owner': 'scripts/ci-workflow-policy.sh',
      'command': 'bash scripts/ci-workflow-policy.sh'},
     {'id': 'ci-executor-tests', 'owner': 'normal selected CI regressions',
@@ -719,6 +723,14 @@ PINNED_PINS_VALIDATION = [
      'command': ('python3 scripts/pr-check-runner.py execute --check pins-data-validation '
                  '--repository .')},
 ]
+
+# Release metadata only: verify the immutable Demo SHA without scheduling
+# application or runtime suites.
+DEMO_SOURCE_PIN_VALIDATION = [
+    {'id': 'demo-source-pin-validation', 'owner': 'exact immutable Demo source pin',
+     'command': ('python3 scripts/pr-check-runner.py execute --check '
+                 'demo-source-pin-validation --repository .')},
+]
 def openbao_retry_checks(diff, repository='.', context_repository=None,
                          context_target_branch=None):
     """Bind the frozen retry candidate and clean target merges to strict tests."""
@@ -748,7 +760,7 @@ def openbao_retry_checks(diff, repository='.', context_repository=None,
 
 
 
-def plan(diff, requirements, mapping, repository='.',
+def targeted_plan(diff, requirements, mapping, repository='.',
          context_repository=None, context_target_branch=None):
     if mapping.get('schema') != 'baseharbor.pr-gate-map/v1':
         raise ValueError('unsupported mapping schema')
@@ -1094,7 +1106,12 @@ def plan(diff, requirements, mapping, repository='.',
                 'reasons': ['Trusted target record: exact repository, branch, head, full '
                             'inventory, raw SHA-256 blobs and clean integration verified.']}
     for path in paths:
-        if re.fullmatch(r'docs/releases/v0\.4\.(?:23|24|25|26)\.consumer-pins\.json', path):
+        if path == 'docs/releases/v0.4.27.demo-ref':
+            area = 'release-demo-source-pin'
+            require(DEMO_SOURCE_PIN_VALIDATION)
+            if len(paths) != 1 or path_status.get(path) != 'modified':
+                unresolved.append('v0.4.27 Demo source pin must be a standalone modified file')
+        elif re.fullmatch(r'docs/releases/v0\.4\.(?:23|24|25|26)\.consumer-pins\.json', path):
             area = 'pins-data'
             require(PINNED_PINS_VALIDATION)
             if path_status.get(path) != 'added':
@@ -1134,6 +1151,27 @@ def plan(diff, requirements, mapping, repository='.',
                                                       CORE_754_TEST_HEAD))):
                 unresolved.append('core-754 test source differs from exact reviewed candidate')
             unresolved.append('core-754 MCP test content requires independent source qualification: ' + path)
+        elif path in ('internal/openbao/bootstrap_auth.go',
+                      'internal/openbao/bootstrap_auth_test.go'):
+            area = 'openbao-manager-login'
+            require(CODE_CHECKS + OPENBAO_CHECKS)
+        elif path in ('cmd/baha/application_service_issuer.go',
+                      'cmd/baha/application_service_issuer_test.go',
+                      'internal/openbao/service_issuer.go', 'internal/openbao/service_issuer_test.go',
+                      'internal/openbao/service_pki.go', 'internal/openbao/service_pki_test.go') or \
+                re.fullmatch(r'internal/testsupport/serviceissuer/[^/]+\.go', path):
+            area = 'application-authority-issuer'
+            require(AUTHORITY_PACKAGE_CHECKS + OPENBAO_CHECKS + CODE_CHECKS + CLI_PACKAGE_CHECKS)
+            if not path.endswith('_test.go') and not path.startswith('internal/testsupport/'):
+                selected.update(('atomic/docker/lifecycle', 'atomic/podman/lifecycle'))
+        elif path == 'cmd/baha/deployment_record.go':
+            area = 'cli-deployment-owner'
+            require(DEPLOYMENT_PACKAGE_CHECKS + CODE_CHECKS + CLI_PACKAGE_CHECKS + CLI_CHECKS)
+            selected.update(('atomic/docker/lifecycle', 'atomic/podman/lifecycle'))
+        elif path == 'cmd/baha/app_backup_restore_integration_test.go':
+            area = 'native-backup-tests'
+            require(CODE_CHECKS + CLI_PACKAGE_CHECKS)
+            selected.update(('atomic/docker/backup-restore', 'atomic/podman/backup-restore'))
         elif path in {
             'cmd/baha/commands.go',
             'cmd/baha/app_commands.go',
@@ -1181,33 +1219,14 @@ def plan(diff, requirements, mapping, repository='.',
             selected.add('atomic/docker/lifecycle')
             selected.add('atomic/podman/lifecycle')
         elif path == 'cmd/baha/docker_engine_podman_test.go':
-            # Dedicated test for the CLI-side docker engine binding that exercises
-            # both Docker and Podman lifecycles in a single test file.  Maps to both
-            # lifecycle gates to ensure neither runner is left untested.
-            area = 'cli-engine-runtime-impact'
-            require(CODE_CHECKS)
-            require(CLI_CHECKS)
-            selected.add('atomic/docker/lifecycle')
-            selected.add('atomic/podman/lifecycle')
+            area = 'cli-engine-unit-tests'
+            require(CLI_PACKAGE_CHECKS + WIZARD_BASE_CHECKS)
+
         elif path == 'cmd/baha/runtime_restart_integration_test.go':
-            # Control-plane restart integration test (TestExistingControlPlane
-            # RestartRequiresAndUsesRecoveryFile / TestSingleControlPlaneRestart
-            # RotationAndCleanup).  This boots a real Postgres/OpenBao control-plane
-            # on a native container runtime, performs an OpenBao recovery-file
-            # restart, credential rotations and HA failover.  It is the exact
-            # restart-after-crash proof the Lifecycle-Gates drive and runs on BOTH
-            # runners (the targeted-integration.yml v0421_ha matrix dispatches this
-            # file to the control-plane / control-plane-single cases for docker and
-            # podman).  Bind it to the SAME existing native lifecycle gates as the
-            # other cmd/baha runtime-mutation files (atomic/docker/lifecycle,
-            # atomic/podman/lifecycle) — no new gate, no weakening.  Without this
-            # branch the file fell to the cli-unresolved-runtime-impact catch-all
-            # and blocked PR Selected checks (#1245).
-            area = 'cli-engine-runtime-impact'
-            require(CODE_CHECKS)
-            require(CLI_CHECKS)
-            selected.add('atomic/docker/lifecycle')
-            selected.add('atomic/podman/lifecycle')
+            area = 'control-plane-restart-tests'
+            require(CODE_CHECKS + CLI_CHECKS)
+            selected.update(('atomic/docker/control-plane-recovery', 'atomic/podman/control-plane-recovery'))
+
         elif path in (
                 'cmd/baha/podman_doctor_checks.go',
                 'cmd/baha/podman_doctor_checks_test.go'):
@@ -1273,28 +1292,16 @@ def plan(diff, requirements, mapping, repository='.',
             require(CLI_CHECKS)
             selected.add('atomic/docker/observability')
             selected.add('atomic/podman/observability')
-        elif path.startswith('internal/runtimebroker/') and path.endswith('.go'):
-            # runtime-broker container realization + its tests (compose_render.go
-            # readiness grace, broker/retirement lifecycle). The broker renders
-            # and drives the runtime on BOTH runners (Docker/Compose and rootless
-            # Podman/Quadlet), so it must exercise the real atomic lifecycle gates
-            # on both.  Bind the whole package to those EXISTING gates only — no
-            # new release gate, no widening.  Without this branch the files fell to
-            # the generic internal/runtime/ catch-all and left PR Selected Checks
-            # fail-closed with 'unknown impact for internal/runtimebroker/…'
-            # (#1265).  Any other internal/runtimebroker/*.go that does not match an
-            # explicit reviewed-source clause below stays unresolved.
-            area = 'runtimebroker-lifecycle'
-            require(CODE_CHECKS)
-            require(CLI_CHECKS)
-            selected.add('atomic/docker/lifecycle')
-            selected.add('atomic/podman/lifecycle')
-        elif path.endswith('_test.go') and path.startswith('cmd/baha/') and \
-                all(p.endswith('_test.go') for p in paths) and \
-                not any(_is_reviewed_test_file(path) for path in paths):
-            # Test-only CLI changes execute the package, including newly added
-            # regression tests outside the Guided family. Native opt-in tests
-            # keep their explicit runtime routes above.
+        elif re.fullmatch(r'internal/runtimebroker/[^/]+\.go', path):
+            area = 'runtimebroker-package'
+            require(BROKER_PACKAGE_CHECKS)
+            if not path.endswith('_test.go'):
+                require(CODE_CHECKS + CLI_CHECKS)
+                selected.update(('atomic/docker/lifecycle', 'atomic/podman/lifecycle'))
+
+        elif path.endswith('_test.go') and path.startswith('cmd/baha/'):
+            # Mixed implementation/test PRs also execute new CLI assertions.
+            # Required opt-in native fixtures keep their explicit routes above.
             area = 'cli-package-tests'
             require(CLI_PACKAGE_CHECKS)
             require(CODE_CHECKS)
@@ -1404,8 +1411,8 @@ def plan(diff, requirements, mapping, repository='.',
             unresolved.append('application lifecycle/provider resolution impact needs targeted qualification: ' + path)
         elif path.startswith('internal/openbao/'):
             # Fail-closed OpenBao handling: no blanket path exemption.
-            # Only the reviewed bootstrap source files (bootstrap.go /
-            # bootstrap_test.go) receive resolved coverage.  Any other
+            # Only explicitly mapped OpenBao source files receive resolved
+            # coverage. Any other
             # added, deleted, renamed or unreviewed OpenBao production
             # file stays unresolved and requires independent diff review.
             area = 'openbao-unreviewed'
@@ -1430,16 +1437,33 @@ def plan(diff, requirements, mapping, repository='.',
         elif path in RESOLVER_ROUTING_REVIEWED:
             area = 'resolver-routing-resolved'
             require(RESOLVER_CHECKS)
+        elif path.startswith('internal/identityprovider/') and path.endswith('.go'):
+            area = 'identity-provider-package'
+            require(IDENTITY_PROVIDER_CHECKS)
+            # Test-only additions execute the complete Identity package without
+            # triggering unrelated source contracts or the full Go fallback.
+            # Shared runtime/SQL dependencies retain native integration gates.
+            if not path.endswith('_test.go'):
+                require(CODE_CHECKS + CLI_CHECKS)
+                selected.update(('atomic/docker/lifecycle', 'atomic/podman/lifecycle'))
+        elif path in ('internal/runtime/service_stop.go',
+                      'internal/runtime/service_stop_test.go'):
+            # Podman selected-stop name planning is runtime-specific: its native
+            # acceptance must exercise the pinned-name backup path on Podman.
+            # Keep the Go package checks (including auto-discovered unit tests)
+            # and bind this narrow source/test pair to the existing Podman
+            # lifecycle gate only.
+            area = 'podman-selected-service-stop'
+            require(RUNTIME_PROVIDER_CHECKS)
+            if path == 'internal/runtime/service_stop.go':
+                require(CODE_CHECKS + CLI_CHECKS)
+            selected.add('atomic/podman/lifecycle')
         elif path.startswith('internal/runtime/') and path.endswith('.go') and not path.startswith('internal/runtime/resolver/'):
-            # Container-runtime files: docker_engine.go and openbao_runtime_prepare.go
-            # are explicit runtime-mutation surfaces that must exercise the real atomic
-            # docker lifecycle gate.  This path prefix classification targets the known
-            # concrete files (see the test case below) — any future internal/runtime/*.go
-            # that does not match an explicit reviewed-source clause stays unresolved.
-            area = 'runtime-docker-engine'
-            require(CODE_CHECKS)
-            require(CLI_CHECKS)
-            selected.add('atomic/docker/lifecycle')
+            area = 'runtime-package'
+            require(RUNTIME_PROVIDER_CHECKS)
+            if not path.endswith('_test.go'):
+                require(CODE_CHECKS + CLI_CHECKS)
+                selected.update(('atomic/docker/lifecycle', 'atomic/podman/lifecycle'))
         elif path.startswith('cmd/baha/') and path.endswith('_engine.go'):
             # CLI-side docker_engine.go and similar *_engine.go files that call the
             # runtime and bind Docker/Podman engine observations to the Compose backend.
@@ -1452,27 +1476,26 @@ def plan(diff, requirements, mapping, repository='.',
             require(CLI_CHECKS)
             selected.add('atomic/docker/lifecycle')
             selected.add('atomic/podman/lifecycle')
-        elif path == 'cmd/baha/docker_engine_podman_test.go':
-            # Dedicated test for the CLI-side docker engine binding that exercises
-            # both Docker and Podman lifecycles in a single test file.  Maps to both
-            # lifecycle gates to ensure neither runner is left untested.
-            area = 'cli-engine-runtime-impact'
-            require(CODE_CHECKS)
-            require(CLI_CHECKS)
-            selected.add('atomic/docker/lifecycle')
-            selected.add('atomic/podman/lifecycle')
+
         elif path.startswith('internal/runtime/resolver/') and path.endswith('.go'):
             area = 'resolver-routing-unresolved'
             require(RESOLVER_CHECKS)
             unresolved.append('unreviewed runtime resolver routing file needs targeted qualification: ' + path)
+        elif re.fullmatch(r'internal/deployment/[^/]+\.go', path):
+            area = 'deployment-package'
+            require(DEPLOYMENT_PACKAGE_CHECKS)
+            if not path.endswith('_test.go'):
+                # State/owner mutations affect application consumers and both runtimes.
+                require(CODE_CHECKS + CLI_CHECKS)
+                selected.update(('atomic/docker/lifecycle', 'atomic/podman/lifecycle'))
         elif re.fullmatch(r'internal/delivery/[^/]+\.go', path):
             area = 'delivery-package'
             require(DELIVERY_PACKAGE_CHECKS)
             require(CLI_CHECKS)
-        elif path in AUTHORITY_PACKAGE_PATHS:
+        elif any(re.fullmatch(re.escape(package) + r'/[^/]+\.go', path)
+                 for package in AUTHORITY_PACKAGES):
             area = 'authority-package'
-            require(AUTHORITY_PACKAGE_CHECKS)
-            require(CLI_CHECKS)
+            require(AUTHORITY_PACKAGE_CHECKS + CODE_CHECKS + CLI_CHECKS)
         elif path.startswith('contracts/') and path.endswith(('.go', '.json')):
             area = 'contract'
             require(CODE_CHECKS)
@@ -1514,12 +1537,19 @@ def plan(diff, requirements, mapping, repository='.',
             area = 'go-module-dependency'
             require(CODE_CHECKS)
             require(CLI_CHECKS)
+        elif path in ('scripts/pr-go-unit-shard.py', 'scripts/pr-unit-database.sh',
+                         'scripts/test_pr_go_unit_shard.py', 'scripts/test_pr_unit_database_route.py'):
+            # Changes to the unit-test sharding executor require full Go proof.
+            # Ordinary product changes still use their precisely selected checks.
+            area = 'go-unit-executor'
+            require(CI_CHECKS + CONSERVATIVE_CHECKS)
         elif (path.startswith('scripts/ci-') or path.startswith('scripts/pr-') or
               path.startswith('scripts/test_pr_') or
               path.startswith('scripts/verify-') or
               (path.startswith('scripts/') and path.endswith(('.py', '.sh', '.json', '.md'))) or
               path in ('AGENTS.md', '.github/copilot-instructions.md') or
-              path.startswith('evidence-r27/') or path.startswith('evidence/')):
+              path.startswith('evidence-r27/') or path.startswith('evidence/') or
+              path.startswith('baseharbor-plan/evidence/')):
             area = 'ci-executor'
             require(CI_CHECKS)
         else:
@@ -1546,6 +1576,184 @@ def plan(diff, requirements, mapping, repository='.',
                 'or automatically run the complete release catalog.'),
             'reasons': reasons}
 
+CONSERVATIVE_CHECKS = [
+    {'id': 'go-unit-tests', 'owner': 'all Go unit packages', 'command': 'go test ./... -count=1'},
+    {'id': 'go-vet', 'owner': 'all Go packages', 'command': 'go vet ./...'},
+    {'id': 'go-build', 'owner': 'all Go packages', 'command': 'go build ./...'},
+]
+
+
+def deduplicate_cli_package_validations(result):
+    """One full CLI package run covers its Guided test subset at the same SHA.
+
+    Keep the small Guided check when the full package is not selected. Only
+    eliminate a test-subset execution, never independent format/vet/build,
+    runtime-native, or security validation owners.
+    """
+    ids = {check['id'] for check in result['required_validation_checks']}
+    if not {'cli-package-tests', 'cli-guided-tests'} <= ids:
+        return result
+    result = dict(result)
+    result['required_validation_checks'] = [
+        check for check in result['required_validation_checks']
+        if check['id'] != 'cli-guided-tests'
+    ]
+    return result
+
+
+# Exact reviewed terminal-only follow-up, PR #1667. This is deliberately
+# head- and path-pinned: future Rootless Docker setup changes still require
+# their declared native Docker guided gate. The existing CLI unit, build,
+# vet and formatting checks verify the isolated sudo terminal adapter.
+SUDO_TTY_REVIEWED_HEAD = '7e7e3331abc527df86083b51fd48ce3b451a9b72'
+SUDO_TTY_REVIEWED_FILES = {
+    'cmd/baha/rootless_bootstrap.go': 'modified',
+    'cmd/baha/rootless_bootstrap_test.go': 'modified',
+    'scripts/pr-gate-coverage.json': 'modified',
+}
+
+
+def reviewed_sudo_tty_tree_matches(head, repository):
+    if head == SUDO_TTY_REVIEWED_HEAD:
+        return True
+    if not isinstance(head, str) or not re.fullmatch(r'[0-9a-f]{40}', head):
+        return False
+    try:
+        ancestor = subprocess.run(
+            ['git', '-C', str(repository), 'merge-base', '--is-ancestor',
+             SUDO_TTY_REVIEWED_HEAD, head], capture_output=True, check=False)
+        if ancestor.returncode:
+            return False
+        for path in SUDO_TTY_REVIEWED_FILES:
+            blobs = []
+            for commit in (SUDO_TTY_REVIEWED_HEAD, head):
+                result = subprocess.run(
+                    ['git', '-C', str(repository), 'rev-parse', commit + ':' + path],
+                    capture_output=True, text=True, check=False)
+                if result.returncode:
+                    return False
+                blobs.append(result.stdout.strip())
+            if blobs[0] != blobs[1]:
+                return False
+    except OSError:
+        return False
+    return True
+
+
+def narrow_reviewed_sudo_tty_plan(diff, result, repository='.'):
+    changes = diff.get('changes')
+    if (not reviewed_sudo_tty_tree_matches(diff.get('head_sha'), repository) or
+            diff.get('broad_required') is not False or
+            not isinstance(changes, list) or
+            len(changes) != len(SUDO_TTY_REVIEWED_FILES) or
+            {(row.get('path'), row.get('status')) for row in changes
+             if isinstance(row, dict)} != set(SUDO_TTY_REVIEWED_FILES.items()) or
+            result.get('coverage_status') != 'resolved' or
+            result.get('unresolved_coverage') != [] or
+            result.get('selected_gates') != ['atomic/docker/guided']):
+        return result
+    validations = {check['id']: check for check in result['required_validation_checks']}
+    for check in CLI_PACKAGE_CHECKS + WIZARD_BASE_CHECKS:
+        validations[check['id']] = check
+    result = dict(result)
+    result['selected_gates'] = []
+    result['required_validation_checks'] = [
+        validations[key] for key in sorted(validations)]
+    result['reasons'] = list(result.get('reasons', [])) + [
+        'Exact reviewed sudo terminal-only fix: full CLI Go tests instead of Docker Core guided runtime']
+    return result
+
+
+def plan(diff, requirements, mapping, repository='.', context_repository=None,
+         context_target_branch=None, *, conservative_fallback=False):
+    """Try targeted selection; production CI tests valid unknown impact broadly."""
+    result = targeted_plan(diff, requirements, mapping, repository,
+                           context_repository, context_target_branch)
+    coverage_path = ROOT / 'pr-gate-coverage.json'
+    if coverage_path.is_file():
+        coverage = json.loads(coverage_path.read_text())
+        if coverage.get('release') == result['release']:
+            coverage_errors = _coverage_module().validate(coverage, requirements)
+            if coverage_errors:
+                raise ValueError('invalid trusted PR gate coverage catalog: ' + '; '.join(coverage_errors))
+            paths = [change[key] for change in diff.get('changes', [])
+                     for key in ('path', 'old_path', 'new_path') if key in change]
+            covered, unowned = _coverage_module().resolve_covered_gates(paths, coverage)
+            legacy_selected = set(result['selected_gates'])
+            required = {gate['id'] for gate in requirements.get('gates', [])
+                        if result['release'] in gate.get('required_for', [])}
+            missing = sorted(set(covered) - required)
+            if missing:
+                result = dict(result)
+                result['coverage_status'] = 'unresolved'
+                result['broad_required'] = True
+                result['unresolved_coverage'] = list(result['unresolved_coverage']) + [
+                    'declared coverage gates absent from trusted release catalog: ' + ', '.join(missing)]
+            else:
+                result = dict(result)
+                # The catalog is the sole authority for runtime gate selection.
+                # Legacy path heuristics below still choose package validations,
+                # but must not add lifecycle, journey, or other runtime gates.
+                result['selected_gates'] = sorted(covered)
+                if covered:
+                    result['reasons'] = list(result['reasons']) + [
+                        'Declared coverage selected gates: ' + ', '.join(covered)]
+                if unowned:
+                    result['reasons'] = list(result['reasons']) + [
+                        'No declared runtime gate owner for: ' + ', '.join(unowned)]
+                    if legacy_selected:
+                        result['coverage_status'] = 'unresolved'
+                        result['broad_required'] = True
+                        result['unresolved_coverage'] = list(result['unresolved_coverage']) + [
+                            'legacy runtime impact has no declared gate coverage: ' +
+                            ', '.join(unowned)]
+    result = narrow_reviewed_sudo_tty_plan(diff, result, repository)
+    if not conservative_fallback or result['coverage_status'] == 'resolved':
+        return deduplicate_cli_package_validations(result)
+    valid, _ = validated_diff(diff)
+    reasons = result['unresolved_coverage']
+    invalid = ('invalid diff-base', 'diff-base requires', 'invalid changed path',
+               'unrecognized change status', 'empty or unverified changes',
+               'required mapped gates absent', 'required SQL Edit gates absent',
+               'release preflight selection')
+    if (not valid or diff['broad_required'] or not diff.get('integration_sha')
+            or context_repository not in (None, 'mcpdev80/baseharbor')
+            or context_target_branch not in (None, 'develop')
+            or any(reason.startswith(invalid) for reason in reasons)):
+        return deduplicate_cli_package_validations(result)
+    paths = [change[key] for change in diff['changes']
+             for key in ('path', 'old_path', 'new_path') if key in change]
+    if not paths:
+        return deduplicate_cli_package_validations(result)
+    checks = {row['id']: row for row in result['required_validation_checks']}
+    for row in CONSERVATIVE_CHECKS:
+        checks[row['id']] = row
+    # The fallback's full Go test/vet/build owners subsume these exact narrow
+    # package commands on the same candidate. Keep checks with extra runtime
+    # fixtures or explicit test assertions (for example openbao-package-tests
+    # and runtime-provider-package-tests) independently selected.
+    subsumed = {
+        'cli-package-tests', 'cli-guided-tests', 'source-contracts',
+        'capability-package-tests', 'cli-vet', 'cli-build',
+    }
+    for identifier in subsumed:
+        checks.pop(identifier, None)
+    if any(path.startswith('internal/openbao/') for path in paths):
+        for row in OPENBAO_CHECKS:
+            checks[row['id']] = row
+    # Conservative unknown-source fallback runs broad unit/vet/build checks.
+    # Runtime gates are never guessed here; they require a declared coverage
+    # contract in the catalog, which prevents unrelated Podman gates from being
+    # selected as a side effect of an unknown Go path.
+    gates = set(result['selected_gates'])
+    result.update(coverage_status='resolved', unresolved_coverage=[], broad_required=False,
+                  fallback_used=True, fallback_reasons=reasons,
+                  selected_gates=sorted(gates),
+                  required_validation_checks=[checks[key] for key in sorted(checks)])
+    result['reasons'].append('Unknown narrow coverage selects normal broad unit/vet/build checks; runtime gates require declared coverage.')
+    return deduplicate_cli_package_validations(result)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--diff', type=Path, required=True, help='JSON output from scripts/pr-diff-base.py')
@@ -1571,7 +1779,7 @@ def main():
             % (context_repository, context_target_branch))
     result = plan(diff, requirements, mapping,
                   context_repository=context_repository,
-                  context_target_branch=context_target_branch)
+                  context_target_branch=context_target_branch, conservative_fallback=True)
     print(json.dumps(result, indent=2, sort_keys=True))
 
 

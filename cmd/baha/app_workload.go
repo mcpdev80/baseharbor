@@ -607,6 +607,37 @@ func applyRepositoryWorkload(ctx context.Context, out io.Writer, compose bhrunti
 }
 
 func stopRepositoryWorkload(ctx context.Context, compose bhruntime.RuntimeProvider, resolved resolvedApplication, files application.RuntimeFiles) (bool, error) {
+	// State-oriented ownership check: the workload runtime is materialized under
+	// files.Dir (state/<environment>/runtime) by EnsureRuntime during apply. A
+	// deployment that was applied but whose runtime was never materialized
+	// (e.g. a provider-change abort at the double-confirmation before
+	// EnsureRuntime ran) has no runtime directory and therefore no owned
+	// workload containers to stop. Deriving the stop set from what actually
+	// exists on disk, skip the stop when the runtime directory is absent
+	// instead of failing on the missing fixed runtime.env / override path. This
+	// no-op is correct for EVERY caller: with no runtime directory there are
+	// genuinely no owned containers to stop.
+	if _, statErr := os.Stat(files.Dir); statErr != nil {
+		if os.IsNotExist(statErr) {
+			return false, nil
+		}
+		return false, fmt.Errorf("inventory application workload runtime: %w", statErr)
+	}
+	// Fail-closed ownership inventory: a runtime directory that exists must
+	// carry an exclusively owned runtime.env, because EnsureRuntime materializes
+	// runtime.env during apply. A present-but-absent or present-but-unowned
+	// runtime.env is an INVENTORY ERROR here, not a "no workload" signal: backup,
+	// TLS-update, restore and ordinary stop share this helper and must not infer
+	// "workload already stopped" from a missing owner file while a workload may
+	// still be running (review-1382b, r27 round 3). The destroy/retirement path
+	// does NOT share this gate; its rc=0 retirement for the stuck-apply state
+	// lives in destroyRepositoryWorkloadStop below. The shared readWorkloadRuntimeEnv
+	// reader is never touched here, so it stays strictly fail-closed.
+	if owned, err := application.VerifyRuntimeFileOwner(files.Env); err != nil {
+		return false, fmt.Errorf("inventory application workload runtime ownership: %w", err)
+	} else if !owned {
+		return false, fmt.Errorf("application workload runtime directory present without an owned runtime.env; refusing to infer workload-stopped from a missing owner file")
+	}
 	workload, found, err := materializeRepositoryWorkload(resolved, files)
 	if err != nil || !found {
 		return false, err
@@ -623,6 +654,10 @@ func stopRepositoryWorkload(ctx context.Context, compose bhruntime.RuntimeProvid
 	for _, service := range workload.Services {
 		expected = append(expected, bhruntime.ProjectResource{Kind: "container", Name: workload.Project + "-" + service + "-1"})
 	}
+	// A pinned container_name (0427-128) lives outside <project>-<service>-1 and
+	// must be carried in the validated inventory so inspection verifies it; the
+	// canonical name still selects/owns the service.
+	expected = bhruntime.AppendPinnedContainerNames(ctx, compose, workload.Project, workload.RepositoryRoot, environment, composeFiles, workload.Services, expected)
 	// Runtime modules share one deployment project. Only the repository's
 	// selected workload services may stop; SQL, broker and other modules stay up.
 	result, err := bhruntime.StopOwnedProjectServices(ctx, compose, workload.Project, workload.RepositoryRoot, environment, expected, workload.Services, composeFiles...)
@@ -630,6 +665,14 @@ func stopRepositoryWorkload(ctx context.Context, compose bhruntime.RuntimeProvid
 		return len(result.Stopped) > 0, fmt.Errorf("stop selected application workload services: %w", err)
 	}
 	return len(result.Stopped) > 0, nil
+}
+
+func destroyRepositoryWorkloadStop(ctx context.Context, compose bhruntime.RuntimeProvider, resolved resolvedApplication, files application.RuntimeFiles) (bool, error) {
+	// Destruction immediately inventories and removes this workload's
+	// runtime-owned containers and networks. A graceful Compose stop would
+	// resolve workload secrets and can block cleanup when the secret identity is
+	// already damaged; it is unnecessary before the ownership-checked removal.
+	return false, nil
 }
 
 func destroyRepositoryWorkloadRuntime(ctx context.Context, compose bhruntime.RuntimeProvider, resolved resolvedApplication, files application.RuntimeFiles) (bool, error) {

@@ -17,6 +17,31 @@ func NewConnectorEnrollmentStore(pool *pgxpool.Pool) *ConnectorEnrollmentStore {
 	return &ConnectorEnrollmentStore{pool: pool}
 }
 
+// HasActiveCertificate reports whether at least one connector still has a
+// currently admissible certificate for this installation. Enrollment grants
+// and expired or revoked leaves do not keep Core runtime services alive.
+func (s *ConnectorEnrollmentStore) HasActiveCertificate(ctx context.Context, tenantID string) (bool, error) {
+	if s == nil || s.pool == nil || strings.TrimSpace(tenantID) == "" {
+		return false, targetenrollment.ErrDenied
+	}
+	active := false
+	err := WithTenantTx(ctx, s.pool, tenantID, func(tx pgx.Tx) error {
+		return tx.QueryRow(ctx, `SELECT EXISTS(
+SELECT 1 FROM connector_nodes
+WHERE tenant_id=$1 AND certificate_serial IS NOT NULL
+AND NOT certificate_revoked AND certificate_expires_at > clock_timestamp()
+UNION ALL
+SELECT 1 FROM connector_certificate_overlap
+WHERE tenant_id=$1 AND NOT certificate_revoked
+AND certificate_expires_at > clock_timestamp() AND admit_until > clock_timestamp()
+)`, tenantID).Scan(&active)
+	})
+	if err != nil {
+		return false, targetenrollment.ErrDenied
+	}
+	return active, nil
+}
+
 func (s *ConnectorEnrollmentStore) Create(ctx context.Context, grant targetenrollment.Grant) error {
 	if s == nil || s.pool == nil || grant.Scope.Validate() != nil {
 		return targetenrollment.ErrDenied

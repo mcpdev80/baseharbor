@@ -8,10 +8,20 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/mcpdev80/baseharbor/internal/deployment"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
 var ErrManagedCredentialNotFound = errors.New("managed credential does not exist")
+
+// ErrManagedCredentialAlreadyExists documents a create-only (compare-and-swap)
+// seed that could not run because a managed object already exists for the
+// reference. The fresh-device reconcile path treats this as the winning case:
+// an existing managed authority keeps its value and is read back, so a
+// concurrently created managed value is never overwritten by the stale local
+// candidate. It is aliased from the low-level deployment package so the
+// devaccess binder can detect the same sentinel without an import cycle.
+var ErrManagedCredentialAlreadyExists = deployment.ErrManagedCredentialAlreadyExists
 
 const maxManagedCredentialBytes = 1 << 20
 
@@ -51,6 +61,59 @@ func SetManagedCredential(ctx context.Context, executor Executor, files bhruntim
 	}
 	if !bytes.Equal(stored, value) {
 		return errors.New("verify managed credential after write failed: stored value differs from stdin payload")
+	}
+	return nil
+}
+
+// SetManagedCredentialIfAbsent seeds the managed credential only when no
+// managed object already exists for reference. It is the create-only /
+// compare-and-swap variant of SetManagedCredential used by the fresh-device
+// reconcile path: a concurrent managed value that appeared after the initial
+// not-found lookup keeps its value, so it is never overwritten with the stale
+// local candidate.
+//
+// It returns ErrManagedCredentialAlreadyExists when the object already exists
+// and leaves that value untouched; any other returned error is a genuine write
+// or infrastructure failure the caller must surface rather than racing an
+// unconditional write.
+func SetManagedCredentialIfAbsent(ctx context.Context, executor Executor, files bhruntime.Files, reference string, value []byte) error {
+	reference, err := validateManagedCredentialReference(reference)
+	if err != nil {
+		return err
+	}
+	if len(value) == 0 {
+		return errors.New("managed credential value must not be empty")
+	}
+	if len(value) > maxManagedCredentialBytes {
+		return fmt.Errorf("managed credential value exceeds the %d-byte limit", maxManagedCredentialBytes)
+	}
+	if !utf8.Valid(value) {
+		return errors.New("managed credential value must be valid UTF-8 text")
+	}
+
+	credentials, err := LoadAdminCredentials(files)
+	if err != nil {
+		return err
+	}
+	token, err := loginManager(ctx, executor, files, credentials)
+	if err != nil {
+		return err
+	}
+
+	path := "managed/" + reference
+	// KV v2 uses -cas=0 for an atomic create-only write. Never interpret
+	// an arbitrary CLI failure (permissions, unsupported flags, network)
+	// as proof that the secret already exists.
+	if _, writeErr := execWithTokenInput(ctx, executor, files, token, fmt.Sprintf("exec bao kv put -cas=0 -mount=baseharbor %s value=-", path), value); writeErr != nil {
+		if _, readErr := readManagedCredentialWithToken(ctx, executor, files, token, path); readErr == nil {
+			return ErrManagedCredentialAlreadyExists
+		}
+		return errors.New("create-only managed credential write failed; managed authority not confirmed")
+	}
+	// A successful create must be readable from the same authoritative store.
+	stored, err := readManagedCredentialWithToken(ctx, executor, files, token, path)
+	if err != nil || !bytes.Equal(stored, value) {
+		return errors.New("verify create-only managed credential after write failed")
 	}
 	return nil
 }

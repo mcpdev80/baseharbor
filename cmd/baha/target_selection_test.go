@@ -80,6 +80,12 @@ func TestAmbiguousTargetProducesTypedError(t *testing.T) {
 	if typed.Code != machine.ErrorConflict || typed.Next == "" {
 		t.Fatalf("expected actionable conflict: %#v", typed)
 	}
+	if !strings.Contains(err.Error(), "a, b") {
+		t.Fatalf("expected sorted choices in ambiguity error, got: %v", err)
+	}
+	if !strings.Contains(typed.Next, "baha target activate NAME") || !strings.Contains(typed.Next, "BASEHARBOR_TARGET=NAME") {
+		t.Fatalf("expected concrete persisted and per-command selection paths: %#v", typed)
+	}
 }
 
 func TestDoctorTargetFindingsStayManual(t *testing.T) {

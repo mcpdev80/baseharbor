@@ -31,6 +31,15 @@ func RuntimeProjectName(m Manifest) string {
 	return "baseharbor-" + m.Name + "-" + m.Environment
 }
 
+// RuntimeProjectNameForApp derives the workload runtime project name from the
+// retained application name and environment alone. It is used by the
+// damaged-state network check, where the deploy directory is a per-deploy UUID
+// carrying no application name, so the manifest/record identity is the only
+// source of truth for the workload network name.
+func RuntimeProjectNameForApp(applicationName, environment string) string {
+	return "baseharbor-" + applicationName + "-" + environment
+}
+
 func RuntimeProjectNameForStore(store Store, m Manifest) string {
 	namespace := strings.TrimSpace(strings.ReplaceAll(store.Namespace, ".", "-"))
 	if namespace == "" {
@@ -90,6 +99,11 @@ func EnsureRuntime(ctx context.Context, issuer serviceaccess.Issuer, store Store
 	}
 	if err := os.MkdirAll(files.Dir, 0o700); err != nil {
 		return RuntimeFiles{}, fmt.Errorf("create application runtime directory: %w", err)
+	}
+	if len(ValkeyInstanceNames(m)) > 0 && !UsesSharedValkey(m) {
+		if err := ensureValkeyProviderBuildContext(files.Dir); err != nil {
+			return RuntimeFiles{}, fmt.Errorf("prepare Valkey provider image: %w", err)
+		}
 	}
 	if err := ensureRuntimeEnv(files.Env, m); err != nil {
 		return RuntimeFiles{}, err
@@ -394,9 +408,9 @@ func writePostgresComposeService(b *strings.Builder, instance string) {
 	fmt.Fprintf(b, `  %s:
     image: docker.io/library/postgres:18-alpine
     restart: unless-stopped
-    user: "70:70"
     read_only: true
     cap_drop: ["ALL"]
+    cap_add: ["CHOWN", "DAC_READ_SEARCH", "FOWNER", "SETGID", "SETUID"]
     security_opt: ["no-new-privileges:true"]
     entrypoint:
       - /bin/sh
@@ -405,6 +419,7 @@ func writePostgresComposeService(b *strings.Builder, instance string) {
       - |
         cp /run/baseharbor/tls-source/server-key.pem /tmp/server-key.pem
         chmod 0600 /tmp/server-key.pem
+        if [ "$$(id -u)" = 0 ]; then chown postgres:postgres /tmp/server-key.pem; fi
         exec /usr/local/bin/docker-entrypoint.sh postgres -c ssl=on -c ssl_cert_file=/run/baseharbor/tls-source/server-cert.pem -c ssl_key_file=/tmp/server-key.pem -c hba_file=/run/baseharbor/tls-source/pg_hba.conf
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev
@@ -435,7 +450,6 @@ func writePostgresUIComposeService(b *strings.Builder, m Manifest) {
 	b.WriteString(`  postgres-ui:
     image: ` + PostgresUIImage + `
     restart: unless-stopped
-    user: "5050:5050"
     read_only: true
     cap_drop: ["ALL"]
     security_opt: ["no-new-privileges:true"]
@@ -450,6 +464,8 @@ func writePostgresUIComposeService(b *strings.Builder, m Manifest) {
       PGADMIN_CUSTOM_CONFIG_DISTRO_FILE: /var/lib/pgadmin/config_distro.py
       PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
       PGPASS_FILE: /run/baseharbor/pgpass
+      PGADMIN_CONFIG_SHARED_STORAGE: "[{'name': 'BaseHarbor', 'path': '/run/baseharbor', 'restricted_access': True}]"
+    entrypoint: ["/bin/sh", "/run/baseharbor/pgadmin-entrypoint.sh"]
     ports:
       - "127.0.0.1:${` + PostgresUIHostPortEnv + `}:8443"
     tmpfs:
@@ -459,6 +475,7 @@ func writePostgresUIComposeService(b *strings.Builder, m Manifest) {
       - ./providers/management-ui/postgres/password:/run/baseharbor/password:ro
       - ./providers/management-ui/postgres/servers.json:/run/baseharbor/servers.json:ro
       - ./providers/management-ui/postgres/pgpass:/run/baseharbor/pgpass:ro
+      - ./providers/management-ui/postgres/pgadmin-entrypoint.sh:/run/baseharbor/pgadmin-entrypoint.sh:ro
       - ./providers/management-ui/postgres/server.cert:/certs/server.cert:ro
       - ./providers/management-ui/postgres/server.key:/certs/server.key:ro
 `)
@@ -473,7 +490,6 @@ func writeCacheUIComposeServices(b *strings.Builder, m Manifest) {
 	b.WriteString(`  cache-ui:
     image: ` + CacheUIImage + `
     restart: unless-stopped
-    user: "redis"
     read_only: true
     cap_drop: ["ALL"]
     security_opt: ["no-new-privileges:true"]
@@ -493,7 +509,6 @@ func writeCacheUIComposeServices(b *strings.Builder, m Manifest) {
   cache-ui-access:
     image: ` + UIProxyImage + `
     restart: unless-stopped
-    user: "65532:65532"
     read_only: true
     cap_drop: ["ALL"]
     security_opt: ["no-new-privileges:true"]

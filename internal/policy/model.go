@@ -27,6 +27,10 @@ type Finding struct {
 	Value    string   `json:"value,omitempty"`
 	Message  string   `json:"message"`
 	Source   Source   `json:"source"`
+	// Revision carries the resolved profile's current write revision through the
+	// aggregate decision path so a downstream caller can re-verify staleness at
+	// commit. Empty when the finding is not profile-derived.
+	Revision string `json:"revision,omitempty"`
 }
 
 type Rule struct {

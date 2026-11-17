@@ -99,6 +99,8 @@ type keycloakUserCredential struct {
 type keycloakUser struct {
 	ID            string                   `json:"id,omitempty"`
 	Username      string                   `json:"username"`
+	FirstName     string                   `json:"firstName,omitempty"`
+	LastName      string                   `json:"lastName,omitempty"`
 	Email         string                   `json:"email,omitempty"`
 	Enabled       bool                     `json:"enabled"`
 	EmailVerified bool                     `json:"emailVerified,omitempty"`

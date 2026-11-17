@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strings"
 
@@ -51,7 +52,7 @@ func ExistingSharedBackendInventoryAt(dataDir, namespace, environment string) (S
 	inventory.NetworkExternal = state.NetworkExternal
 	canonical := sharedBackendCompose(files, state)
 	actual, err := os.ReadFile(files.Compose)
-	if err != nil || !bytes.Equal(actual, []byte(canonical)) {
+	if err != nil || !sharedBackendComposeMatchesCanonical(actual, []byte(canonical)) {
 		return inventory, errors.New("shared backend runtime differs from its canonical owner shape")
 	}
 	var model struct {
@@ -114,4 +115,159 @@ func ExistingSharedBackendInventoryAt(dataDir, namespace, environment string) (S
 		return inventory.Resources[i].Kind+inventory.Resources[i].Name < inventory.Resources[j].Kind+inventory.Resources[j].Name
 	})
 	return inventory, nil
+}
+
+// sharedBackendComposeMatchesCanonical accepts known renderer transitions only
+// when their differences are the fixed Compose user overrides removed for
+// arbitrary-UID compatibility, or an older pgAdmin server-mode configuration.
+// Any other drift remains fail-closed. Reconciliation writes the current shape.
+func sharedBackendComposeMatchesCanonical(actual, canonical []byte) bool {
+	if bytes.Equal(actual, canonical) {
+		return true
+	}
+	var observed map[string]any
+	if yaml.Unmarshal(actual, &observed) != nil {
+		return false
+	}
+	services, ok := observed["services"].(map[string]any)
+	if !ok {
+		return false
+	}
+	changed := false
+	var expected map[string]any
+	if yaml.Unmarshal(canonical, &expected) != nil {
+		return false
+	}
+	expectedServices, ok := expected["services"].(map[string]any)
+	if !ok {
+		return false
+	}
+	legacyValkey := map[string]bool{}
+	for name, rawService := range services {
+		service, ok := rawService.(map[string]any)
+		if !ok {
+			return false
+		}
+		image, _ := service["image"].(string)
+		if name == "shared-pgadmin" {
+			expectedService, ok := expectedServices[name].(map[string]any)
+			if !ok {
+				return false
+			}
+			expectedEnvironment, ok := expectedService["environment"].(map[string]any)
+			if !ok {
+				return false
+			}
+			if environment, ok := service["environment"].(map[string]any); ok {
+				for _, key := range []string{"PGADMIN_CONFIG_PROXY_X_HOST_COUNT", "PGADMIN_CONFIG_SHARED_STORAGE"} {
+					if _, exists := environment[key]; !exists {
+						environment[key] = expectedEnvironment[key]
+						changed = true
+					}
+				}
+			}
+			if _, exists := service["entrypoint"]; !exists {
+				service["entrypoint"] = expectedService["entrypoint"]
+				changed = true
+			}
+			if volumes, ok := service["volumes"].([]any); ok {
+				for expectedIndex, volume := range expectedService["volumes"].([]any) {
+					if !strings.Contains(fmt.Sprint(volume), "pgadmin-entrypoint.sh:/run/baseharbor/pgadmin-entrypoint.sh:ro") {
+						continue
+					}
+					found := false
+					for _, existing := range volumes {
+						if reflect.DeepEqual(existing, volume) {
+							found = true
+							break
+						}
+					}
+					if !found {
+						volumes = append(volumes, nil)
+						copy(volumes[expectedIndex+1:], volumes[expectedIndex:])
+						volumes[expectedIndex] = volume
+						service["volumes"] = volumes
+						changed = true
+					}
+				}
+			}
+		}
+		if image == "docker.io/valkey/valkey:9.1.2-alpine" {
+			service["image"] = valkeyProviderImage
+			service["build"] = map[string]any{"context": "./" + valkeyProviderBuildDir, "dockerfile": "Dockerfile"}
+			legacyValkey[name] = true
+			changed = true
+		}
+		if legacyUser, exists := service["user"]; exists {
+			want, supported := legacySharedBackendUserForImage(image)
+			if !supported || fmt.Sprint(legacyUser) != want {
+				return false
+			}
+			delete(service, "user")
+			changed = true
+		}
+	}
+	if !changed {
+		return false
+	}
+	// Earlier Compose renderers used the same Valkey command without the
+	// now-required arbitrary-UID data-permission prelude. Accept that exact
+	// historical command only alongside the known upstream image migration.
+	for name := range legacyValkey {
+		observedService, ok := services[name].(map[string]any)
+		if !ok {
+			return false
+		}
+		expectedService, ok := expectedServices[name].(map[string]any)
+		if !ok {
+			return false
+		}
+		if !reflect.DeepEqual(observedService["command"], expectedService["command"]) {
+			legacyCommand, ok := sharedValkeyCommandWithoutPermissionPrelude(expectedService["command"])
+			if !ok || !reflect.DeepEqual(observedService["command"], legacyCommand) {
+				return false
+			}
+			observedService["command"] = expectedService["command"]
+		}
+	}
+	return reflect.DeepEqual(observed, expected)
+}
+
+func sharedValkeyCommandWithoutPermissionPrelude(command any) (any, bool) {
+	parts, ok := command.([]any)
+	if !ok || len(parts) != 3 {
+		return nil, false
+	}
+	script, ok := parts[2].(string)
+	if !ok {
+		return nil, false
+	}
+	prelude := valkeyDataPermissionPrelude
+	if !strings.HasPrefix(script, prelude) {
+		return nil, false
+	}
+	legacy := append([]any(nil), parts...)
+	legacyScript := strings.TrimPrefix(script, prelude)
+	legacyScript = strings.TrimPrefix(legacyScript, "\n")
+	legacy[2] = legacyScript
+	return legacy, true
+}
+
+func legacySharedBackendUserForImage(image string) (string, bool) {
+	switch image {
+	case PostgresUIImage:
+		return "5050:5050", true
+	case CacheUIImage:
+		return "redis", true
+	case UIProxyImage:
+		return "65532:65532", true
+	case "docker.io/library/haproxy:3.2.23-alpine":
+		return "99:99", true
+	case "docker.io/valkey/valkey:9.1.2-alpine":
+		return "999:1000", true
+	case valkeyProviderImage:
+		return "999:1000", true
+	default:
+		return "", false
+	}
 }

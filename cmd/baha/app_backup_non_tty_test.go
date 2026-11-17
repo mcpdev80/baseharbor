@@ -16,6 +16,16 @@ func TestNonTTYBackupDefaultUsesProtectedExternalArchive(t *testing.T) {
 	repo := t.TempDir()
 	t.Chdir(repo)
 	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	// The fresh XDG_DATA_HOME above has no Core installation; register one so
+	// the deployment-owner seam (exercised by the backup output path) runs
+	// against a real owner instead of the removed fail-open adapter.
+	target, err := effectiveTarget(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if e := registerInstallationForTarget(t, target.Name); e != nil {
+		t.Fatal(e)
+	}
 	m := application.New("demo", "dev", true, false, false)
 	if err := writeInitializedAuthoredManifest(t, filepath.Join(repo, application.RepositoryManifestName), m, 0644); err != nil {
 		t.Fatal(err)

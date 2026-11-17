@@ -198,3 +198,26 @@ func (r controlPlaneAvailability) Detail() string {
 		r.Satisfied,
 	) + topology
 }
+
+// controlPlaneAvailabilitySummary keeps the terminal status concise while the
+// structured status response retains AvailabilityDetail for diagnostics.
+func controlPlaneAvailabilitySummary(detail string, satisfied bool) string {
+	requested := ""
+	for _, field := range strings.Fields(detail) {
+		key, value, ok := strings.Cut(field, "=")
+		if ok && key == "requested" {
+			requested = value
+			break
+		}
+	}
+	if !satisfied {
+		if requested == "ha" {
+			return "Requested HA topology is not satisfied; run 'baha doctor' for details."
+		}
+		return "Core availability checks are not satisfied; run 'baha doctor' for details."
+	}
+	if requested == "ha" {
+		return "Requested HA topology is healthy on one runtime host; host failure is not covered."
+	}
+	return "Single-instance setup is healthy; failover is not configured."
+}

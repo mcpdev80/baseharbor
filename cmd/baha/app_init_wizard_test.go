@@ -676,3 +676,33 @@ func TestBuildGuidedInitManifestPreservesExplicitHTTPSExposureEvidence(t *testin
 		t.Fatalf("exposures = %#v, want %#v", m.Exposures, want)
 	}
 }
+
+func TestGuidedInitDeterministicPositionalEnvironmentAliases(t *testing.T) {
+	for _, flag := range []string{"-e", "--environment"} {
+		t.Run(flag, func(t *testing.T) {
+			dir := t.TempDir()
+			mustWriteWizardTestFile(t, filepath.Join(dir, "compose.yaml"), "services:\n  api:\n    image: example/api:1\n")
+			withWizardTestDir(t, dir)
+			var out bytes.Buffer
+			err := appGuidedInitCommand().Run(context.Background(), []string{
+				"demo", flag, "dev", "--sql",
+				"--workload-source", "compose:compose.yaml",
+				"--workload-component", "api",
+			}, &out, &bytes.Buffer{})
+			if err != nil {
+				t.Fatalf("documented positional/environment arguments rejected: %v", err)
+			}
+			m, err := application.LoadManifestFile(filepath.Join(dir, application.RepositoryManifestName))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if m.Name != "demo" || m.Environment != "dev" || !m.Services.SQL {
+				t.Fatalf("init created wrong manifest for %s: %+v", flag, m)
+			}
+			names := application.WorkloadComponentNames(m)
+			if len(names) != 1 || names[0] != "api" {
+				t.Fatalf("workload component missing for %s: %v", flag, names)
+			}
+		})
+	}
+}

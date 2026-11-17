@@ -14,6 +14,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
+	"github.com/mcpdev80/baseharbor/internal/development"
 	"github.com/mcpdev80/baseharbor/internal/repositoryinspect"
 )
 
@@ -36,7 +37,22 @@ func appCommand(store application.Store) *cli.Command {
 	}
 }
 
-func createTargetManagedApplication(ctx context.Context, m application.Manifest) (string, error) {
+func createTargetManagedApplication(ctx context.Context, m application.Manifest, selectedSources ...*development.SourceModel) (string, error) {
+	if len(selectedSources) > 1 {
+		return "", fmt.Errorf("only one immutable remote source model may be selected")
+	}
+	var source *development.SourceModel
+	if len(selectedSources) == 1 {
+		source = selectedSources[0]
+	}
+	if source != nil {
+		if source.Application != m.Name {
+			return "", fmt.Errorf("remote source model application does not match the canonical application")
+		}
+		if err := development.ValidateImmutableRemoteSources(*source); err != nil {
+			return "", err
+		}
+	}
 	if err := application.ValidateApplicationID(m.ApplicationID); err != nil {
 		return "", err
 	}
@@ -87,6 +103,23 @@ func createTargetManagedApplication(ctx context.Context, m application.Manifest)
 		_ = os.RemoveAll(root)
 		return "", err
 	}
+	if source != nil {
+		// Persist only Git/OCI source identities beside the canonical
+		// Core-owned intent. No workstation paths, local files or runtime
+		// deployment material are imported during app.create.
+		if _, err := development.WriteSourceModel(path, *source); err != nil {
+			_ = os.RemoveAll(root)
+			return "", fmt.Errorf("retain immutable Core source selection: %w", err)
+		}
+	}
+	// The authored source deliberately omits the system-owned ApplicationID.
+	// Retain the Core-assigned identity beside it so subsequent read-only
+	// lifecycle resolution never attempts to initialize a second identity.
+	owner := application.Store{Root: filepath.Join(sourceRoot, ".baseharbor", "apps")}
+	if _, err := owner.Sync(m); err != nil {
+		_ = os.RemoveAll(root)
+		return "", fmt.Errorf("retain Core-owned application identity: %w", err)
+	}
 	intent, err := json.Marshal(m)
 	if err != nil {
 		_ = os.RemoveAll(root)
@@ -107,6 +140,11 @@ func createTargetManagedApplication(ctx context.Context, m application.Manifest)
 				"deployment": root,
 				"state":      filepath.Join(root, "state"),
 			},
+		},
+		References: deployment.ReferenceDimensions{
+			// Managed records carry the intended (desired) reference; the applied
+			// reference is derived at the first real apply.
+			deployment.ReferenceIntended: &deployment.ReferenceDimension{},
 		},
 		Observed: deployment.ObservedDeployment{State: "created"},
 	}

@@ -376,7 +376,6 @@ func HTTPGatewayComposeService(files HTTPGatewayFiles, spec HTTPGatewaySpec) str
 		b.WriteString("    environment:\n")
 		fmt.Fprintf(&b, "      %s: ${%s}\n", files.HealthAuthorizationEnv, files.HealthAuthorizationEnv)
 	}
-	b.WriteString("    user: \"65532:65532\"\n")
 	b.WriteString("    read_only: true\n")
 	b.WriteString("    cap_drop: [\"ALL\"]\n")
 	if spec.ContainerPort < 1024 {

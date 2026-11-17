@@ -4,6 +4,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"strings"
+
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/development"
 )
@@ -26,5 +28,15 @@ func TestQuarkusRoundTrip(t *testing.T) {
 	}
 	if !result.Validation.Satisfied {
 		t.Fatalf("validation = %#v", result.Validation)
+	}
+	files := make(map[string]string)
+	for _, f := range result.Files {
+		files[f.Path] = string(f.Content)
+	}
+	if _, ok := files["compose.yaml"]; !ok {
+		t.Fatal("generated files missing compose.yaml")
+	}
+	if !strings.Contains(files["compose.yaml"], "/q/health") {
+		t.Fatal("generated compose file does not include workload healthcheck")
 	}
 }

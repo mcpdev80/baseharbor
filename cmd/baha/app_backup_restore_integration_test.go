@@ -339,6 +339,12 @@ func configureAppBackupRuntimeTarget(t *testing.T, configRoot, dataRoot string) 
 	if err != nil {
 		t.Fatal(err)
 	}
+	// The owner seam now requires an authoritative Core installation for a Core
+	// target; register one so tests that save deployments through it exercise
+	// the real single-installation-owner check rather than the removed bypass.
+	if err := registerInstallationForTarget(t, target.Name); err != nil {
+		t.Fatal(err)
+	}
 	if target.Name != cfg.DefaultTarget || target.RuntimeProvider != string(kind) || target.AccessProvider != "local" {
 		t.Fatalf("native guided-up Target mismatch: got %q/%q/%q, want %q/%q/local",
 			target.Name, target.RuntimeProvider, target.AccessProvider, cfg.DefaultTarget, kind)

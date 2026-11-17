@@ -40,6 +40,9 @@ func TestIsolatedCoreInventoryOnlyRegisteredOwnedProject(t *testing.T) {
 		Applied:  deployment.AppliedDeployment{RuntimeProvider: "docker"},
 	}
 	record.Applied.Intent, _ = json.Marshal(m)
+	if err := registerInstallationForTarget(t, target); err != nil {
+		t.Fatal(err)
+	}
 	if err := deployment.SaveDeploymentRecord(record); err != nil {
 		t.Fatal(err)
 	}
@@ -97,6 +100,9 @@ func TestIsolatedCoreInventoryRejectsRuntimeMismatch(t *testing.T) {
 		Version:  deployment.DeploymentRecordVersion,
 		Identity: deployment.DeploymentIdentity{DeploymentID: testDeploymentID, ApplicationID: m.ApplicationID, Target: target, Application: m.Name, Environment: m.Environment},
 		Applied:  deployment.AppliedDeployment{RuntimeProvider: "docker", Intent: intent},
+	}
+	if err := registerInstallationForTarget(t, target); err != nil {
+		t.Fatal(err)
 	}
 	if err := deployment.SaveDeploymentRecord(record); err != nil {
 		t.Fatal(err)

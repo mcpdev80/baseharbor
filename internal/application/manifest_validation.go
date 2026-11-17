@@ -139,6 +139,9 @@ func (m Manifest) validate(requireWorkload bool) error {
 			if err := validateSecretGeneration(requirement.Name, requirement.Generate); err != nil {
 				return err
 			}
+			if err := validateSecretSource(m.Environment, group.label, requirement); err != nil {
+				return err
+			}
 		}
 	}
 	if err := validateWorkload(m.Workload); err != nil {
@@ -160,6 +163,27 @@ func (m Manifest) validate(requireWorkload bool) error {
 		return err
 	}
 	return nil
+}
+
+func validateSecretSource(environment, requirementGroup string, requirement SecretRequirement) error {
+	if requirement.Source == "" {
+		return nil
+	}
+	if requirementGroup != "required" {
+		return fmt.Errorf("secret source for %q is supported only on required secrets", requirement.Name)
+	}
+	if requirement.Generate != nil {
+		return fmt.Errorf("secret %q cannot declare both source and generate", requirement.Name)
+	}
+	if !strings.EqualFold(strings.TrimSpace(environment), "dev") && !strings.EqualFold(strings.TrimSpace(environment), "development") {
+		return fmt.Errorf("secret source %q is available only in the dev environment", requirement.Source)
+	}
+	switch requirement.Source {
+	case SecretSourceTargetDevelopmentUsername, SecretSourceTargetDevelopmentPassword:
+		return nil
+	default:
+		return fmt.Errorf("unsupported secret source %q", requirement.Source)
+	}
 }
 
 func validateRuntimePermissions(workload WorkloadConfig, permissions []RuntimePermission) error {

@@ -158,6 +158,7 @@ done
 # Release audit requires full page coverage and retained technical literals.
 python scripts/check_docs_locale_parity.py
 python scripts/check_de_translation_integrity.py
+python scripts/check_local_remote_team_workflow.py
 
 if [ -d site/de ]; then
   python scripts/documentation-language-audit.py --built-site

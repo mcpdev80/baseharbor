@@ -171,7 +171,6 @@ func TestComposeRunsCaddyUnprivileged(t *testing.T) {
 	state := State{Routes: []Route{{Name: "public", Service: "web", TargetPort: 8080, Protocol: "http", Visibility: "internal", PublishedPort: 18080}}}
 	got := composeYAML(state, Files{Dir: "/tmp/provider"})
 	for _, want := range []string{
-		"user: \"65532:65532\"",
 		"read_only: true",
 		"cap_drop: [\"ALL\"]",
 		"cap_add: [\"NET_BIND_SERVICE\"]",

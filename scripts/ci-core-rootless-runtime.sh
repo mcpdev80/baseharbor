@@ -52,11 +52,37 @@ config.write_text(json.dumps(settings) + '\n')
 PY
     dockerd-rootless-setuptool.sh install --force
     export DOCKER_HOST="unix://$XDG_RUNTIME_DIR/docker.sock"
-    printf 'DOCKER_HOST=%s\n' "$DOCKER_HOST" >> "$GITHUB_ENV"
+    # The setuptool activates its 'rootless' CLI context as a side effect. An
+    # active context beats DOCKER_HOST in the engine resolver, so neutralize
+    # it and let the published endpoint decide; $GITHUB_ENV mirrors both.
+    docker context use default
+    printf 'DOCKER_HOST=%s\nDOCKER_CONTEXT=\n' "$DOCKER_HOST" >> "$GITHUB_ENV"
     docker info --format '{{json .SecurityOptions}}'
     ;;
   podman)
     sudo apt-get install -y podman
+    journal_gid="$(getent group systemd-journal | cut -d: -f3)"
+    [[ "$journal_gid" =~ ^[0-9]+$ ]]
+    runner_user="$(id -un)"
+    # Rootless Podman needs the host journal GID explicitly available as a
+    # subordinate GID before the Alloy Quadlet can map that one group into its
+    # container namespace. Keep the grant to this single GID.
+    set +e
+    sudo awk -F: -v gid="$journal_gid" -v user="$runner_user" '
+      $2 ~ /^[0-9]+$/ && $3 ~ /^[0-9]+$/ && gid >= $2 && gid < $2 + $3 {
+        if ($1 == user) found = 1; else conflict = 1
+      }
+      END { if (conflict) exit 2; if (found) exit 0; exit 1 }
+    ' /etc/subgid
+    subgid_status=$?
+    set -e
+    if [ "$subgid_status" -eq 1 ]; then
+      printf '%s:%s:1\n' "$runner_user" "$journal_gid" | sudo tee -a /etc/subgid >/dev/null
+    elif [ "$subgid_status" -ne 0 ]; then
+      echo "systemd-journal GID $journal_gid is delegated to another user in /etc/subgid" >&2
+      exit 1
+    fi
+    printf 'BASEHARBOR_SYSTEMD_JOURNAL_GID=%s\n' "$journal_gid" >> "$GITHUB_ENV"
     mkdir -p "$HOME/.config/containers/registries.conf.d"
     cache_location="${BASEHARBOR_CI_PUBLIC_IMAGE_CACHE#http://}"
     cat > "$HOME/.config/containers/registries.conf.d/99-baseharbor-ci-public-cache.conf" <<EOF
@@ -78,6 +104,18 @@ location = "$cache_location/library"
 insecure = true
 EOF
     podman info --format '{{.Host.Security.Rootless}}'
+    # Podman jobs must leave a resolvable Docker CLI context: the engine
+    # probe runs 'docker context show', which errors when the current-context
+    # pointer references a context that does not exist on this host. GH
+    # ubuntu-26.04 images pre-register a "ci" context; pin the pointer to the
+    # always-present "default" (the setuptool may also have activated a
+    # "rootless" context whose daemon is never started on this path).
+    docker context use default
+    # The podman path never starts a rootless dockerd, so the Docker engine
+    # prerequisite resolves through the host's System Docker: publish
+    # DOCKER_HOST explicitly (the resolver honours DOCKER_HOST over any CLI
+    # context) and keep DOCKER_CONTEXT neutral.
+    printf 'DOCKER_HOST=unix:///var/run/docker.sock\nDOCKER_CONTEXT=\n' >> "$GITHUB_ENV"
     ;;
   *) echo "unsupported Core qualification runtime" >&2; exit 2 ;;
 esac

@@ -1,9 +1,12 @@
 package main
 
 import (
+	"bytes"
+	"context"
 	"strings"
 	"testing"
 
+	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/mcpdev80/baseharbor/internal/health"
 )
 
@@ -94,6 +97,71 @@ func TestSingleControlPlaneAvailabilityReportsActualTopology(t *testing.T) {
 	}
 	if evaluateControlPlaneAvailability(append(running, "postgres-etcd-1"), checks, false).Satisfied {
 		t.Fatal("hidden etcd must not satisfy single topology")
+	}
+}
+
+func TestControlPlaneAvailabilitySummaryIsHumanReadable(t *testing.T) {
+	tests := []struct {
+		name      string
+		detail    string
+		satisfied bool
+		want      string
+	}{
+		{
+			name:      "single instance",
+			detail:    "requested=single resolved=postgresql:1,openbao:1 failover=false running=postgresql:1/1,etcd:0/0,openbao:1/1 satisfied=true",
+			satisfied: true,
+			want:      "Single-instance setup is healthy; failover is not configured.",
+		},
+		{
+			name:      "healthy HA",
+			detail:    "requested=ha resolved=postgresql:3,openbao:3 host-failure-tolerance=false",
+			satisfied: true,
+			want:      "Requested HA topology is healthy on one runtime host; host failure is not covered.",
+		},
+		{
+			name:      "unsatisfied HA",
+			detail:    "requested=ha resolved=postgresql:3,openbao:3",
+			satisfied: false,
+			want:      "Requested HA topology is not satisfied; run 'baha doctor' for details.",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := controlPlaneAvailabilitySummary(tt.detail, tt.satisfied)
+			if got != tt.want {
+				t.Fatalf("summary = %q, want %q", got, tt.want)
+			}
+			for _, internal := range []string{"requested=", "replication-proof=", "configured-replicas="} {
+				if strings.Contains(got, internal) {
+					t.Fatalf("summary leaked diagnostic field %q: %q", internal, got)
+				}
+			}
+		})
+	}
+}
+
+func TestDoctorRendersCoreAvailabilityWithoutHAInternals(t *testing.T) {
+	var out bytes.Buffer
+	term := cli.NewTerminal(context.Background(), &out, &out)
+	checks := []health.Check{{
+		Name:    "Core availability",
+		OK:      true,
+		Message: controlPlaneAvailabilitySummary("requested=single failover=false satisfied=true", true),
+	}}
+	if !renderControlPlaneDoctor(term, checks) {
+		t.Fatal("healthy single-instance Core reported doctor failure")
+	}
+	got := out.String()
+	for _, want := range []string{"Core availability", "Single-instance setup is healthy", "failover is not configured"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("doctor output missing %q:\n%s", want, got)
+		}
+	}
+	for _, internal := range []string{"control-plane-ha", "requested=", "replication-proof=", "configured-replicas=", "SATISFIED"} {
+		if strings.Contains(got, internal) {
+			t.Fatalf("doctor output leaked %q:\n%s", internal, got)
+		}
 	}
 }
 

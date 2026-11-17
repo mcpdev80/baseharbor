@@ -1,5 +1,7 @@
 # Release Notes
 
+[v0.4.27](v0.4.27.md) — Remote-Onboarding, Deployment-Richtlinien und zuverlässigere Anwendungsverwaltung.
+
 [v0.4.26](v0.4.26.md) — Bedarfswizard, Edit, Footprint und gezielte Entwicklungsprüfungen.
 
 [v0.4.25](v0.4.25.md) — Core-loser App-Pfad und minimales Manifest.

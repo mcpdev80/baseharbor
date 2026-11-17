@@ -14,6 +14,53 @@ transports already-selected, already-authorized bounded operations.
 
 Neither axis substitutes for the other.
 
+## Authority boundary (installation vs management connection vs Target)
+
+Authority is layered on top of the transport separation above; it is not itself a
+transport. Three independent selections, never conflated:
+
+```text
+installation  (one per machine root, opaque UUID — the durable authority)
+   ├── management-connection  (how a remote client reaches the selected Core)
+   └── target                 (the admitted environment Core operates on)
+```
+
+- **Installation** is the sole durable authority. It is owned by
+  `internal/coreinstallation` (`installation_id`, `owner=baseharbor`,
+  `placement=shared`, capabilities `{sql,secrets,identity}`). Its selection
+  `{target, runtime, machineRole, ha}` is immutable once persisted; a conflicting
+  selection is rejected, not replaced.
+- **Management connection** is how a remote client addresses the selected Core.
+  It is one of the Target Access Providers above (e.g. `baseharbor-node-connector`
+  or `native-api`). It is neither the installation nor the Target.
+- **Target** is the admitted environment. It carries no authority over
+  installation identity or consent.
+
+Local direct execution addresses the selected installation **directly** through
+the same semantic Core, without a mandatory login/server or an unconditional
+SQL/Secrets/Identity stack. Remote clients **address** the selected installation
+through its management connection; they never become the installation's authority
+and never fall back to local execution.
+
+One authoritative state/lock owner governs each managed deployment: the Core owns
+deployment state directly (`internal/deployment`), and Target configuration
+mutation takes a single owner via `.installation.lock` +
+`coreinstallation.AcquireStateFileLock`). The lifecycle-lock primitives live in the stdlib-only leaf `internal/stableid` and were behaviour-preserving relocated there (from `coreinstallation`) to break the `coreinstallation -> serviceaccess` import cycle; `coreinstallation` re-exports them with unchanged signatures. There is no second local owner and no
+reconciliation between a "local cache" and a "remote truth".
+
+Remote clients never own authoritative state. No authoritative remote state is
+stored on developer workstations, NFS, home-directory synchronization,
+Baha-to-Baha federation, or any other local copy. A cached last-known status is a
+stale observation that carries its own `observed-at` freshness; when live
+observation fails it is reported as stale/rejected and never claimed `READY`. A
+missing, foreign or expired management connection fails closed; a missing or
+foreign session never selects a local runtime. A stale plan or consent, an
+incompatible revision, a foreign revision/consent, a lost response, a process
+restart, an unavailable Target or a revoked device all fail closed.
+
+See [ADR 0021](../decisions/0021-one-installation-authority.md) for the full
+authority contract.
+
 ## Target model
 
 The existing Target model remains authoritative:
@@ -208,7 +255,7 @@ The scoped enrollment boundary and PostgreSQL one-use store are implemented;
 see [ADR 0020](../decisions/0020-scoped-connector-enrollment.md). Signatures use
 the existing protected OpenBao authority and client-owned CSR keys. Bootstrap
 authorization binds tenant, Target, node, runtime and nonce and expires within
-ten minutes. Certificate TTL is bounded to 24 hours. Consumption commits before
+ten minutes. Connector certificate TTL is bounded to 24 hours. Consumption commits before
 signing, so a failed or interrupted issuance requires a fresh authorization.
 
 The operator and bootstrap HTTPS handlers use the canonical wire records and
@@ -226,6 +273,7 @@ access with Docker or Podman. A request cannot choose another signing authority.
 
 | HTTPS endpoint | Authorization and result |
 | --- | --- |
+| `GET /api/v1/connectors/owner-context` | Returns the tenant UUID only after verified operator OIDC and authorized membership, never from request-supplied tenant identity. |
 | `POST /api/v1/connectors/authorizations` | Operator OIDC and resolved tenant `create` permission; returns only the protected `token`, `nonce`, `expires_at` projection. |
 | `POST /api/v1/connectors/enroll` | One scoped `Authorization: Bearer` credential plus canonical enrollment request; returns the signed client certificate and public trust bundle. |
 | `POST /api/v1/connectors/renewal-authorizations` | Protected operator identity, tenant membership and update permission; creates a one-use authorization pinned to the node's current active certificate. |

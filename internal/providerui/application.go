@@ -371,7 +371,6 @@ func applicationCompose(m application.Manifest, files application.RuntimeFiles, 
 		fmt.Fprintf(&b, `  redisinsight:
     image: %s
     restart: unless-stopped
-    user: "1000:1000"
     read_only: true
     cap_drop: ["ALL"]
     security_opt: ["no-new-privileges:true"]

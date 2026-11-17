@@ -15,7 +15,7 @@ import (
 func TestTenantRLSIsolation(t *testing.T) {
 	dsn := os.Getenv("BASEHARBOR_TEST_DATABASE_URL")
 	if dsn == "" {
-		t.Skip("BASEHARBOR_TEST_DATABASE_URL is not set")
+		t.Fatal("testumgebung nicht hergestellt: BASEHARBOR_TEST_DATABASE_URL fehlt")
 	}
 
 	ctx := context.Background()
@@ -75,7 +75,9 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON tenants, external_identities, membership
 		t.Fatal(err)
 	}
 
-	runtimeDSN := "postgres://baseharbor_runtime_ci:" + runtimePassword + "@127.0.0.1:5432/baseharbor_test?sslmode=disable"
+	runtimeDSN := os.Getenv("BASEHARBOR_TEST_DATABASE_URL") +
+		"&user=baseharbor_runtime_ci&password=" + runtimePassword +
+		"&connect_timeout=5"
 	runtime, err := pgxpool.New(ctx, runtimeDSN)
 	if err != nil {
 		t.Fatal(err)
@@ -186,6 +188,9 @@ DROP TABLE IF EXISTS connector_nodes CASCADE;
 DROP TABLE IF EXISTS application_ownerships CASCADE;
 DROP TABLE IF EXISTS memberships CASCADE;
 DROP TABLE IF EXISTS external_identities CASCADE;
+DROP TABLE IF EXISTS workstation_enrollment_grants CASCADE;
+DROP TABLE IF EXISTS workstation_enrollment_registry CASCADE;
+DROP TABLE IF EXISTS workstation_users CASCADE;
 DROP TABLE IF EXISTS tenants CASCADE;
 DROP TABLE IF EXISTS baseharbor_schema_migrations CASCADE;
 `)

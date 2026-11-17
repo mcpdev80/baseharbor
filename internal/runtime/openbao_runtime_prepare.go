@@ -60,7 +60,7 @@ func prepareOpenBaoStorage(stateDir, envPath string, ha bool) error {
 		}
 		config := strings.ReplaceAll(string(data), "  server openbao-2 openbao-member-2:8200\n", "")
 		config = strings.ReplaceAll(config, "  server openbao-3 openbao-member-3:8200\n", "")
-		return os.WriteFile(path, []byte(config), 0644)
+		return WriteContainerReadableProjection(path, []byte(config))
 	}
 	return nil
 }
@@ -72,6 +72,11 @@ func writeOpenBaoPostgresInit(stateDir string) error {
 	}
 	const script = `#!/bin/sh
 set -eu
+# Enforce TLS on every psql connection through the postgres HAProxy.
+# verify-ca trusts the CA that signed Spilo's server cert but does not
+# require hostname match (the proxy changes the network path).
+export PGSSLMODE=verify-ca
+export PGSSLROOTCERT=/run/baseharbor/postgres-ca/ca.pem
 psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname postgres \
   --set=baseharbor_user="$BASEHARBOR_POSTGRES_USER" \
   --set=baseharbor_secret="$BASEHARBOR_POSTGRES_PASSWORD" \
@@ -104,17 +109,21 @@ SELECT format('ALTER DATABASE openbao OWNER TO %I', :'openbao_user')
 REVOKE ALL ON DATABASE openbao FROM PUBLIC;
 SELECT format('GRANT CONNECT ON DATABASE openbao TO %I', :'openbao_user')
 \gexec
+SELECT format('GRANT CONNECT, TEMPORARY ON DATABASE postgres TO %I', :'openbao_user')
+\gexec
+SELECT format('GRANT CONNECT, TEMPORARY ON DATABASE template1 TO %I', :'openbao_user')
+\gexec
 EOSQL
 
-PGPASSWORD="$BASEHARBOR_POSTGRES_PASSWORD" psql -v ON_ERROR_STOP=1 \
+PGPASSWORD="$BASEHARBOR_POSTGRES_PASSWORD" PGSSLMODE=verify-ca PGSSLROOTCERT=/run/baseharbor/postgres-ca/ca.pem psql -v ON_ERROR_STOP=1 \
   --username "$BASEHARBOR_POSTGRES_USER" --dbname "$BASEHARBOR_POSTGRES_DB" \
   -Atqc 'SELECT 1' >/dev/null
 
-PGPASSWORD="$BASEHARBOR_OPENBAO_DB_PASSWORD" psql -v ON_ERROR_STOP=1 \
+PGPASSWORD="$BASEHARBOR_OPENBAO_DB_PASSWORD" PGSSLMODE=verify-ca PGSSLROOTCERT=/run/baseharbor/postgres-ca/ca.pem psql -v ON_ERROR_STOP=1 \
   --username "$BASEHARBOR_OPENBAO_DB_USER" --dbname openbao \
   -Atqc 'SELECT 1' >/dev/null
 `
-	return os.WriteFile(filepath.Join(dir, "openbao-init.sh"), []byte(script), 0o644)
+	return WriteContainerReadableProjection(filepath.Join(dir, "openbao-init.sh"), []byte(script))
 }
 
 func writeOpenBaoHAProxyConfig(stateDir string) error {
@@ -153,7 +162,7 @@ resolvers runtime-dns
   timeout resolve 1s
   timeout retry 1s
 `
-	return os.WriteFile(filepath.Join(dir, "haproxy.cfg"), []byte(config), 0o644)
+	return WriteContainerReadableProjection(filepath.Join(dir, "haproxy.cfg"), []byte(config))
 }
 
 func writeOpenBaoRuntimeConfig(stateDir, user, secret string, ha bool) error {
@@ -166,7 +175,7 @@ func writeOpenBaoRuntimeConfig(stateDir, user, secret string, ha bool) error {
 		User:   url.UserPassword(user, secret),
 		Host:   "postgres:5432",
 		Path:   "/openbao",
-		RawQuery: "sslmode=verify-full&sslrootcert=" +
+		RawQuery: "sslmode=verify-ca&sslrootcert=" +
 			url.QueryEscape("/run/baseharbor/postgres-ca/ca.pem"),
 	}).String()
 	config := fmt.Sprintf(`ui = true
@@ -193,5 +202,5 @@ listener "tcp" {
 
 api_addr = "https://openbao:8200"
 `, connectionURL, ha)
-	return os.WriteFile(filepath.Join(dir, "openbao.hcl"), []byte(config), 0o644)
+	return WriteContainerReadableProjection(filepath.Join(dir, "openbao.hcl"), []byte(config))
 }

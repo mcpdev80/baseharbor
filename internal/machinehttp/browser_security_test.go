@@ -18,7 +18,7 @@ func TestBrowserOriginAndExpiredPrincipalFailBeforeExecution(t *testing.T) {
 	handler, err := New(executorFunc(func(context.Context, machine.Operation, machine.OperationContext, json.RawMessage, ProgressReporter) (json.RawMessage, error) {
 		t.Error("invalid browser request reached executor")
 		return nil, nil
-	}))
+	}), "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,7 +61,7 @@ func (e pendingLogExecutor) OpenLogStream(ctx context.Context, _ machine.StreamR
 
 func TestOpenLogStreamTerminatesAtTokenExpiryAndWithoutProducerOutput(t *testing.T) {
 	opened := make(chan context.Context, 1)
-	handler, err := New(pendingLogExecutor{opened: opened})
+	handler, err := New(pendingLogExecutor{opened: opened}, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,7 +104,7 @@ func TestBrowserOriginCannotBeReboundByForwardingHeaders(t *testing.T) {
 	handler, err := New(executorFunc(func(context.Context, machine.Operation, machine.OperationContext, json.RawMessage, ProgressReporter) (json.RawMessage, error) {
 		t.Error("foreign installation reached executor")
 		return nil, nil
-	}))
+	}), "")
 	if err != nil {
 		t.Fatal(err)
 	}

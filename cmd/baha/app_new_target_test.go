@@ -80,3 +80,23 @@ func TestResolveNewApplicationRootRejectsMatchingNonEmptyCurrentDirectory(t *tes
 		t.Fatal("non-empty current directory unexpectedly accepted")
 	}
 }
+
+func TestResolveNewApplicationRootDoesNotCreateParent(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "not-created")
+	if _, err := resolveNewApplicationRoot("catalog-api", missing); err == nil {
+		t.Fatal("missing parent unexpectedly accepted")
+	}
+	if _, err := os.Stat(missing); !os.IsNotExist(err) {
+		t.Fatalf("parent directory was created or stat failed unexpectedly: %v", err)
+	}
+}
+
+func TestResolveNewApplicationRootRejectsParentFile(t *testing.T) {
+	parent := filepath.Join(t.TempDir(), "file")
+	if err := os.WriteFile(parent, []byte("existing"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := resolveNewApplicationRoot("catalog-api", parent); err == nil {
+		t.Fatal("ordinary file accepted as parent directory")
+	}
+}

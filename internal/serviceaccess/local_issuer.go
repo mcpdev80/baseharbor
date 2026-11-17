@@ -16,7 +16,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/mcpdev80/baseharbor/internal/coreinstallation"
+	"github.com/mcpdev80/baseharbor/internal/stableid"
 )
 
 // LocalIssuer is the software realization of the existing service-access
@@ -72,7 +72,7 @@ func EnsureLocalIssuer(dir string) (*LocalIssuer, error) {
 	if err != nil || !info.IsDir() || info.Mode().Perm()&0077 != 0 {
 		return nil, errors.New("local issuer requires canonical private state")
 	}
-	unlock, err := coreinstallation.AcquireLifecycleLock(dir)
+	unlock, err := stableid.AcquireLifecycleLock(dir)
 	if err != nil {
 		return nil, err
 	}
@@ -101,8 +101,13 @@ func EnsureLocalIssuer(dir string) (*LocalIssuer, error) {
 	if err != nil {
 		return nil, err
 	}
+	publicKeyDER, err := x509.MarshalPKIXPublicKey(&key.PublicKey)
+	if err != nil {
+		return nil, err
+	}
+	keyIDHash := sha256.Sum256(publicKeyDER)
 	now := time.Now().UTC()
-	ca := &x509.Certificate{SerialNumber: serial, Subject: pkix.Name{CommonName: "BaseHarbor Target Service Authority"}, NotBefore: now.Add(-time.Minute), NotAfter: now.Add(5 * 365 * 24 * time.Hour), IsCA: true, BasicConstraintsValid: true, MaxPathLenZero: true, KeyUsage: x509.KeyUsageCertSign | x509.KeyUsageCRLSign}
+	ca := &x509.Certificate{SerialNumber: serial, Subject: pkix.Name{CommonName: "BaseHarbor Target Service Authority"}, SubjectKeyId: append([]byte(nil), keyIDHash[:20]...), NotBefore: now.Add(-time.Minute), NotAfter: now.Add(5 * 365 * 24 * time.Hour), IsCA: true, BasicConstraintsValid: true, MaxPathLenZero: true, KeyUsage: x509.KeyUsageCertSign | x509.KeyUsageCRLSign}
 	der, err := x509.CreateCertificate(rand.Reader, ca, ca, &key.PublicKey, key)
 	if err != nil {
 		return nil, err
@@ -113,6 +118,19 @@ func EnsureLocalIssuer(dir string) (*LocalIssuer, error) {
 	}
 	data := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})
 	data = append(data, pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: private})...)
+	// Publish the empty revocation list before the authority file. issuer.pem
+	// is the commit marker for a newly created issuer: any failure before its
+	// atomic rename leaves only partial state, which CheckLocalIssuer rejects
+	// instead of silently regenerating or repairing an existing authority.
+	crl, err := x509.CreateRevocationList(rand.Reader, &x509.RevocationList{
+		Number: big.NewInt(1), ThisUpdate: now, NextUpdate: now.Add(24 * time.Hour),
+	}, ca, key)
+	if err != nil {
+		return nil, err
+	}
+	if err := writeLocalIssuerAtomic(filepath.Join(dir, "revocations.pem"), pem.EncodeToMemory(&pem.Block{Type: "X509 CRL", Bytes: crl})); err != nil {
+		return nil, err
+	}
 	if err := writeLocalIssuerAtomic(path, data); err != nil {
 		return nil, err
 	}
@@ -180,6 +198,34 @@ func (i *LocalIssuer) Status(ctx context.Context) (IssuerStatus, error) {
 	return IssuerStatus{IssuerReference: trust.IssuerReference, Ready: err == nil}, err
 }
 
+// BaseSerial is the read-only identity of the local management connection: the
+// base (CA) certificate serial that issued every leaf. It lets the production
+// selection boundary observe the existing connection without issuing a new leaf.
+func (i *LocalIssuer) BaseSerial(ctx context.Context) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	ca, _, _, err := i.load()
+	if err != nil {
+		return "", err
+	}
+	return ca.SerialNumber.Text(16), nil
+}
+
+// BaseExpiry is the read-only freshness bound of the local management
+// connection: the base (CA) certificate not-after. The production selection
+// boundary uses it as the freshness bound instead of issuing a fresh leaf.
+func (i *LocalIssuer) BaseExpiry(ctx context.Context) (time.Time, error) {
+	if err := ctx.Err(); err != nil {
+		return time.Time{}, err
+	}
+	ca, _, _, err := i.load()
+	if err != nil {
+		return time.Time{}, err
+	}
+	return ca.NotAfter.UTC(), nil
+}
+
 func (i *LocalIssuer) Issue(ctx context.Context, request CertificateRequest) (IssuedCertificate, error) {
 	if err := ctx.Err(); err != nil {
 		return IssuedCertificate{}, err
@@ -212,7 +258,7 @@ func (i *LocalIssuer) Issue(ctx context.Context, request CertificateRequest) (Is
 	if err != nil {
 		return IssuedCertificate{}, err
 	}
-	return IssuedCertificate{IssuerReference: ref, Certificate: pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}), PrivateKey: pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: private}), IssuingCA: pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: ca.Raw}), Serial: serial.Text(16), ExpiresAt: leaf.NotAfter}, nil
+	return IssuedCertificate{IssuerReference: ref, Certificate: pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}), PrivateKey: pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: private}), IssuingCA: pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: ca.Raw}), Serial: serial.Text(16), ExpiresAt: leaf.NotAfter, Reference: ca.SerialNumber.Text(16), IssuerNotAfter: ca.NotAfter}, nil
 }
 
 func (i *LocalIssuer) Renew(ctx context.Context, current IssuedCertificate, request CertificateRequest) (IssuedCertificate, error) {
@@ -228,7 +274,7 @@ func (i *LocalIssuer) Renew(ctx context.Context, current IssuedCertificate, requ
 	if err != nil || leaf.CheckSignatureFrom(ca) != nil {
 		return IssuedCertificate{}, errors.New("local issuer refuses unverifiable renewal")
 	}
-	list, err := i.revocations(ca)
+	list, err := i.revocations(ca, false)
 	if err != nil {
 		return IssuedCertificate{}, err
 	}
@@ -242,11 +288,44 @@ func (i *LocalIssuer) Renew(ctx context.Context, current IssuedCertificate, requ
 	return i.Issue(ctx, request)
 }
 
+// SignCSR signs a workstation-owned CSR through the local authority. It never
+// generates or returns a client private key; it only produces the signed leaf
+// and the issuing CA, exactly as the managed (OpenBao) path does. A missing or
+// unverifiable issuer authority, an invalid CSR, or an out-of-window TTL all fail
+// closed.
+func (i *LocalIssuer) SignCSR(ctx context.Context, request CSRSigningRequest) (IssuedCertificate, error) {
+	if err := ctx.Err(); err != nil {
+		return IssuedCertificate{}, err
+	}
+	csr, err := request.Validate()
+	if err != nil {
+		return IssuedCertificate{}, err
+	}
+	ca, signingKey, ref, err := i.load()
+	if err != nil {
+		return IssuedCertificate{}, err
+	}
+	if request.TTL <= 0 || request.TTL > 24*time.Hour {
+		return IssuedCertificate{}, errors.New("local workstation certificate TTL must be at most 24 hours")
+	}
+	serial, err := localIssuerSerial()
+	if err != nil {
+		return IssuedCertificate{}, err
+	}
+	now := time.Now().UTC().Truncate(time.Second)
+	leaf := &x509.Certificate{SerialNumber: serial, Subject: pkix.Name{CommonName: request.Identity}, NotBefore: now.Add(-time.Minute), NotAfter: now.Add(request.TTL), KeyUsage: x509.KeyUsageDigitalSignature, ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth}, URIs: csr.URIs}
+	der, err := x509.CreateCertificate(rand.Reader, leaf, ca, csr.PublicKey, signingKey)
+	if err != nil {
+		return IssuedCertificate{}, err
+	}
+	return IssuedCertificate{IssuerReference: ref, Certificate: pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}), IssuingCA: pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: ca.Raw}), Serial: serial.Text(16), ExpiresAt: leaf.NotAfter, Reference: ca.SerialNumber.Text(16), IssuerNotAfter: ca.NotAfter}, nil
+}
+
 func (i *LocalIssuer) Revoke(ctx context.Context, serial string) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	unlock, err := coreinstallation.AcquireLifecycleLock(i.Dir)
+	unlock, err := stableid.AcquireLifecycleLock(i.Dir)
 	if err != nil {
 		return err
 	}
@@ -262,7 +341,7 @@ func (i *LocalIssuer) Revoke(ctx context.Context, serial string) error {
 	path := filepath.Join(i.Dir, "revocations.pem")
 	var entries []x509.RevocationListEntry
 	sequence := big.NewInt(1)
-	list, err := i.revocations(ca)
+	list, err := i.revocations(ca, true)
 	if err != nil {
 		return err
 	}
@@ -284,13 +363,19 @@ func (i *LocalIssuer) Revoke(ctx context.Context, serial string) error {
 	return writeLocalIssuerAtomic(path, pem.EncodeToMemory(&pem.Block{Type: "X509 CRL", Bytes: der}))
 }
 
-// revocations validates protected state before reading it, including during
-// renewal. An expired publication still retains every permanent revocation.
-func (i *LocalIssuer) revocations(ca *x509.Certificate) (*x509.RevocationList, error) {
+// revocations validates protected state before reading it. A missing CRL is
+// tolerated only when the caller is itself creating the first publication
+// (tolerateMissing=true); on every consumption path (tolerateMissing=false) a
+// missing revocation list is fail-closed, because the issuer cannot prove the
+// current leaf is not revoked.
+func (i *LocalIssuer) revocations(ca *x509.Certificate, tolerateMissing bool) (*x509.RevocationList, error) {
 	path := filepath.Join(i.Dir, "revocations.pem")
 	info, err := os.Lstat(path)
 	if errors.Is(err, os.ErrNotExist) {
-		return nil, nil
+		if tolerateMissing {
+			return nil, nil
+		}
+		return nil, errors.New("local revocation list unavailable")
 	}
 	if err != nil {
 		return nil, err
@@ -311,6 +396,59 @@ func (i *LocalIssuer) revocations(ca *x509.Certificate) (*x509.RevocationList, e
 		return nil, errors.New("unverifiable local revocation state")
 	}
 	return list, nil
+}
+
+// Revoked is a read-only revocation predicate: it reports whether the observed
+// certificate serial appears in the issuer's published CRL without changing any
+// state. It reuses the private revocations() loader (revocations.pem) exactly
+// as Renew does and never writes. A missing CRL, an unverifiable CRL, an
+// unparseable serial or a non-positive/non-159-bit serial all fail closed by
+// returning false, so a connection whose revocation status cannot be read is not
+// treated as accepted.
+func (i *LocalIssuer) Revoked(ctx context.Context, serial string) bool {
+	revoked, _ := i.RevokedStatus(ctx, serial)
+	return revoked
+}
+
+// RevokedStatus is the tri-state read-only revocation boundary. It reuses the
+// private revocations() loader (revocations.pem) exactly as Renew does and
+// never writes. A canceled context, an unreadable issuer authority, a corrupt
+// or unparseable CRL, a missing CRL, or an unparseable/non-positive/overflow
+// serial all report err != nil, so the fail-closed production path rejects the
+// connection instead of treating an unknown status as safe. A CRL that loads
+// cleanly but does not contain the serial reports (false, nil).
+func (i *LocalIssuer) RevokedStatus(ctx context.Context, serial string) (bool, error) {
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
+	ca, _, _, err := i.load()
+	if err != nil {
+		return false, err
+	}
+	list, err := i.revocations(ca, true)
+	if err != nil {
+		// An unparseable or unverifiable CRL is an unreadable revocation
+		// status: fail closed rather than treat it as not-revoked.
+		return false, errMissingRevocationStatus
+	}
+	// A missing (absent) CRL is an unreadable revocation status on the
+	// consumption path: r4 requires fail-closed rejection of a missing or
+	// unreadable local CRL, not a tolerated "not revoked". Only the first
+	// publication path (Revocations, tolerateMissing=true) may bootstrap a CRL
+	// from a missing one; every read-only consumption call rejects a missing CRL.
+	if list == nil {
+		return false, errMissingRevocationStatus
+	}
+	number, ok := new(big.Int).SetString(serial, 16)
+	if !ok || number.Sign() <= 0 || number.BitLen() > 159 {
+		return false, errMalformedSerial
+	}
+	for _, entry := range list.RevokedCertificateEntries {
+		if entry.SerialNumber.Cmp(number) == 0 {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func writeLocalIssuerAtomic(path string, data []byte) error {

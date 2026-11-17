@@ -130,6 +130,12 @@ func ResolveEffective(state ActiveState, environment string, preferences ...Pref
 	if err := evaluateConstraints(&result, state.Config, state.Config.Constraints, ScopeOrganization, state.Config.Organization); err != nil {
 		return result, err
 	}
+	// The active organization may declare a single machine operation for the
+	// production policy path; validate it against the fixed domain so an
+	// undeclared verb cannot widen the surface.
+	if err := validateOperation(state.Config.Operation); err != nil {
+		return result, err
+	}
 	if team := state.Config.Team; team != nil {
 		if err := evaluateConstraints(&result, state.Config, team.Constraints, ScopeTeam, team.Name); err != nil {
 			return result, err

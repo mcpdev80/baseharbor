@@ -70,7 +70,7 @@ The same Target owns one development domain, default `baha.localhost`. With the 
 
 BaseHarbor operator identity is a third boundary and is not interchangeable with application-user identity.
 
-- `dev` uses trusted-local operator mode and requires no login.
+- Unconfigured `dev` can use trusted-local operator mode without login. After explicit first-owner initialization, its saved OIDC boundary is used for ordinary login.
 - `test` and `prod` require a valid OIDC operator session scoped to the effective Target and Environment.
 - The CLI uses Authorization Code + PKCE and stores only short-lived owner-only local session state.
 - Managed Keycloak and external OIDC can provide the operator boundary.
@@ -79,6 +79,47 @@ BaseHarbor operator identity is a third boundary and is not interchangeable with
 Use `baha login -e ENV`, `baha whoami -e ENV` and `baha logout -e ENV` for explicit session management.
 
 Advanced BaseHarbor RBAC/JIT/approval/break-glass governance is separate from this minimum authenticated operator boundary.
+
+### Trusting the managed CA without OS surgery
+
+The managed operator issuer is served by Keycloak behind the installation's managed CA
+("BaseHarbor Managed Service CA"), which the operating system's trust pool does not install.
+The CLI therefore does not rely on the OS trust pool alone: it trusts the managed CA it just
+bootstrapped on top of the system pool (additive only; the system pool is never replaced).
+
+Trust is resolved in this order:
+
+1. `--ca FILE` on the login command.
+2. `BASEHARBOR_OPERATOR_OIDC_CA_FILE` (state-wide alias).
+3. The state-dir default file `trust/managed-operator-ca.pem` written during Core bootstrap.
+
+When none of these resolve to a certificate, discovery fails closed and the error names the
+remedy path (install the managed CA or point `--ca`/`BASEHARBOR_OPERATOR_OIDC_CA_FILE` at it).
+
+### Headless PKCE on non-browser hosts
+
+On SSH/PTY-less hosts the operator login does not require a real browser. The loopback callback
+still binds (a fixed port when `BASEHARBOR_OPERATOR_OIDC_CALLBACK_PORT` is set) and the CLI prints
+the authorization URL; the authorization code is completed headless:
+
+```sh
+# 1. Start the login; it prints the authorization URL and waits for the code.
+baha login -e dev --init-tenant --auth-code-file /tmp/baha-auth-code --no-browser
+
+# 2. In another shell, open the printed URL in a real browser, authenticate, and copy the
+#    returned authorization code into the file.
+printf 'MjM0UTflfn...authorization-code...' > /tmp/baha-auth-code
+```
+
+`BASEHARBOR_OPERATOR_OIDC_AUTH_CODE_FILE` is the state-wide alias of `--auth-code-file`, and
+`BASEHARBOR_NO_BROWSER=1` is the alias of `--no-browser`. The callback port is honored end-to-end
+via `BASEHARBOR_OPERATOR_OIDC_CALLBACK_PORT`, so the printed loopback URL is directly addressable.
+The same headless boundary applies to `baha node add`, which completes the operator session the
+same way before it enrolls a remote node.
+
+## Installation-owned first-operator tenant
+
+The explicit first-owner command is `baha login -e dev --init-tenant` on a locally owned, ready Core. The [complete bootstrap and Connector flow](../cli/security-trust.md) documents its required PKCE login, first `default` tenant and `editor` membership, idempotent retry, denial of foreign takeovers, and operator API issuer/audience alignment. The initial bootstrap uses installation-authorized PostgreSQL over verified TLS and tenant RLS, not the runtime HTTP principal. Pending CI and native acceptance in Core PR #1437.
 
 ## Pre-tenant membership resolution
 

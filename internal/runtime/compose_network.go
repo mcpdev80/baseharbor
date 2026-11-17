@@ -7,6 +7,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	runtimecontract "github.com/mcpdev80/baseharbor/internal/runtime/contract"
 )
 
 func (c Compose) PullImage(ctx context.Context, image string) error {
@@ -48,6 +50,44 @@ func (c Compose) NetworkProjectOwner(ctx context.Context, network string) (strin
 		return "", err
 	}
 	return strings.TrimSpace(out), nil
+}
+
+// InspectNetwork reports the managed-owner state of a single runtime network.
+// It returns RuntimeNetworkStatePresent when the named network exists and carries
+// the BaseHarbor connectivity ownership label (io.baseharbor.managed=connectivity),
+// RuntimeNetworkStateAbsent when the runtime cannot find the network at all (the
+// BF-03 "network removed" damage), RuntimeNetworkStateNotManaged when the network
+// exists but is owned by another project or lacks the BaseHarbor label, and
+// RuntimeNetworkStateInspectError when the runtime itself could not be queried.
+// It never returns Absent from an unrelated inspect failure, so the damaged-state
+// check must not fabricate a missing network from a transient runtime error.
+func (c Compose) InspectNetwork(ctx context.Context, network string) (runtimecontract.RuntimeNetworkState, error) {
+	name := strings.TrimSpace(network)
+	if name == "" {
+		return runtimecontract.RuntimeNetworkStateInspectError, errors.New("network name is required")
+	}
+	// A missing network fails inspect (no such network); a present one succeeds.
+	_, err := c.directOutput(ctx, "network", "inspect", "--format", "{{.Name}}", name)
+	if err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "no such network") {
+			return runtimecontract.RuntimeNetworkStateAbsent, nil
+		}
+		if strings.Contains(strings.ToLower(err.Error()), "no such") || strings.Contains(strings.ToLower(err.Error()), "not found") {
+			return runtimecontract.RuntimeNetworkStateAbsent, nil
+		}
+		return runtimecontract.RuntimeNetworkStateInspectError, err
+	}
+	// Present: confirm BaseHarbor connectivity ownership via the managed label,
+	// mirroring EnsureManagedNetwork/RemoveManagedNetwork so only a network this
+	// runtime created for BaseHarbor counts as the workload network.
+	label, err := c.directOutput(ctx, "network", "inspect", "--format", `{{ index .Labels "io.baseharbor.managed" }}`, name)
+	if err != nil {
+		return runtimecontract.RuntimeNetworkStateInspectError, err
+	}
+	if strings.TrimSpace(label) != "connectivity" {
+		return runtimecontract.RuntimeNetworkStateNotManaged, nil
+	}
+	return runtimecontract.RuntimeNetworkStatePresent, nil
 }
 
 func (c Compose) ContainerExposedTCPPorts(ctx context.Context, container string) ([]int, error) {
@@ -100,6 +140,9 @@ func (c Compose) EnsureManagedNetwork(ctx context.Context, name string) error {
 		return nil
 	}
 	_, err = c.directOutput(ctx, "network", "create", "--label", "io.baseharbor.managed=connectivity", name)
+	if err != nil && runtimeNetworkPoolExhausted(err) {
+		return fmt.Errorf("create managed network %q with runtime %q: no available network address pool; inspect networks with '%s network ls' and remove only verified unused networks (for Docker, 'docker network prune' removes all unused networks); automatic cleanup is not performed: %w", name, c.command, c.command, err)
+	}
 	return err
 }
 
@@ -158,4 +201,15 @@ func (c Compose) RemoveManagedNetwork(ctx context.Context, name string) error {
 	}
 	_, err = c.directOutput(ctx, "network", "rm", name)
 	return err
+}
+
+// Match the runtime's known address-pool errors, not unrelated network failures.
+func runtimeNetworkPoolExhausted(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "all predefined address pools have been fully subnetted") ||
+		strings.Contains(message, "could not find an available, non-overlapping ipv4 address pool") ||
+		strings.Contains(message, "no available ipv4 address pool")
 }

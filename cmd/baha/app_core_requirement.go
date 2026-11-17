@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"path/filepath"
 	"strings"
@@ -29,13 +30,22 @@ func resolveApplicationLifecycleFootprintWithFacts(resolved resolvedApplication,
 }
 
 func applicationLifecycleSnapshot(resolved resolvedApplication, observations map[string]application.ProviderFact) (application.ResolutionSnapshot, []application.ProviderPreference, error) {
+	return applicationLifecycleSnapshotContext(context.Background(), resolved, observations)
+}
+
+func applicationLifecycleSnapshotContext(ctx context.Context, resolved resolvedApplication, observations map[string]application.ProviderFact) (application.ResolutionSnapshot, []application.ProviderPreference, error) {
+	// A poisoned registry (two records claiming one application_id) breaks the
+	// projection reads below with a bare sentinel wrap; classify it once here
+	// into the structured inventory error so EVERY planning surface — this
+	// snapshot, the union plan and the footprint — fails closed with the same
+	// repair text (0427-175).
 	registry, err := (capability.RegistryStore{Path: filepath.Join(resolved.TargetStateRoot, "provider-registry.json")}).Load()
 	if err != nil {
-		return application.ResolutionSnapshot{}, nil, err
+		return application.ResolutionSnapshot{}, nil, classifyInventoryConflict(err)
 	}
 	planned, err := application.PreviewReferenceProviderRegistryAt(resolved.TargetStateRoot, resolved.Manifest)
 	if err != nil {
-		return application.ResolutionSnapshot{}, nil, err
+		return application.ResolutionSnapshot{}, nil, classifyInventoryConflict(err)
 	}
 	// Adapter availability is execution admission, not a veto on read-only
 	// consequence planning. Preserve the actual selected offers and bindings.
@@ -55,22 +65,44 @@ func applicationLifecycleSnapshot(resolved resolvedApplication, observations map
 		requested[capability.Requirement{Kind: capability.Secrets, Name: "default"}] = true
 	}
 	var preferences []application.ProviderPreference
-	actualBindings := []capability.ProviderBinding{}
+	actualBindings := make([]capability.ProviderBinding, 0, len(planned.Bindings))
+	knownBindings := make(map[capability.ProviderBinding]bool, len(planned.Bindings))
 	for _, binding := range planned.Bindings {
 		if binding.ApplicationID != resolved.Manifest.ApplicationID || binding.Environment != resolved.Manifest.Environment {
 			actualBindings = append(actualBindings, binding)
+			knownBindings[binding] = true
 			continue
 		}
 		requirement := capability.Requirement{Kind: binding.Resource.Kind, Name: binding.Resource.Name}
 		if requested[requirement] {
 			preferences = append(preferences, application.ProviderPreference{Requirement: requirement, InstanceID: binding.ProviderInstanceID, ProviderKind: binding.Resource.Provider})
 		}
+		// Keep a binding only if the selected provider is already applied. A
+		// newly selected replacement remains a preference until the normal
+		// acknowledged apply publishes it; the old binding is handled by the
+		// replacement planners below.
 		for _, old := range registry.Bindings {
 			if old == binding {
 				actualBindings = append(actualBindings, binding)
+				knownBindings[binding] = true
 				break
 			}
 		}
+	}
+	// A removed capability may still have an applied binding in Target state.
+	// Preserve that binding as retained ownership without reviving it as desired
+	// intent. For still-requested capabilities, the projected provider above is
+	// the desired selection and the change planners compare it with actual state.
+	for _, binding := range registry.Bindings {
+		if binding.ApplicationID != resolved.Manifest.ApplicationID || binding.Environment != resolved.Manifest.Environment {
+			continue
+		}
+		requirement := capability.Requirement{Kind: binding.Resource.Kind, Name: binding.Resource.Name}
+		if requested[requirement] || knownBindings[binding] {
+			continue
+		}
+		actualBindings = append(actualBindings, binding)
+		knownBindings[binding] = true
 	}
 	planned.Bindings = actualBindings
 	snapshot := application.ResolutionSnapshot{DependencyRoots: []string{}, Target: resolved.Target.Name, Registry: planned, Facts: map[string]application.ProviderFact{}}
@@ -115,7 +147,7 @@ func applicationLifecycleSnapshot(resolved resolvedApplication, observations map
 	if err := appendApplicationBrokerDependencies(resolved, observations, &snapshot); err != nil {
 		return application.ResolutionSnapshot{}, nil, err
 	}
-	if _, err := appendManagementProviderDependencies(resolved, observations, &snapshot); err != nil {
+	if _, err := appendManagementProviderDependencies(ctx, resolved, observations, &snapshot); err != nil {
 		return application.ResolutionSnapshot{}, nil, err
 	}
 	// Observe backing modules in the same resolver without creating competing
@@ -159,9 +191,35 @@ func classifyApplicationResolutionError(err error) error {
 		return err
 	}
 	code := machine.ErrorInternal
+	resource := resolution.InstanceID
+	next := "Reconcile the existing Target provider binding and dependency inventory before retrying; no provider was mutated."
+	causeCode := "provider_resolution_" + strings.ReplaceAll(resolution.Code, "-", "_")
+	if resolution.Consumer != "" && resolution.Code == "missing-dependency" {
+		// The union resolver attributes a failed edge to the authoritative
+		// consumer that references it. A stale reference left by another
+		// application's record is therefore reported as the concrete conflict
+		// it is, naming that consumer and its recovery owner.
+		causeCode = "provider_stale_consumer_dependency"
+		resource = resolution.Consumer
+		next = fmt.Sprintf("Consumer %q references provider realization %q, which no longer exists on the Target. Restore that realization or release the named consumer through its own lifecycle owner, then rerun the last command; no provider was mutated.",
+			resolution.Consumer, resolution.InstanceID)
+	} else if resolution.Consumer != "" {
+		// ResolveProviderPlan annotates all resolver failures with their owner,
+		// not only missing dependency edges. Keep conflict/incompatibility
+		// causes precise instead of misreporting them as stale consumers.
+		next = fmt.Sprintf("Resolve provider selection for consumer %q and retry; no provider was mutated.", resolution.Consumer)
+	}
 	switch resolution.Code {
 	case "missing", "missing-dependency":
 		code = machine.ErrorNotFound
+		if resolution.Consumer == "" {
+			if resolution.InstanceID == "" {
+				// An unmaterialized requirement names no instance; the
+				// requirement itself is the resource the operator can act on.
+				resource = string(resolution.Requirement.Kind) + "/" + resolution.Requirement.Name
+			}
+			next = fmt.Sprintf("Materialize or reconcile the provider realization %q, then rerun the last command; no provider was mutated.", resource)
+		}
 	case "incompatible", "dependency-cycle":
 		code = machine.ErrorValidationFailed
 	case "ambiguous", "binding-conflict":
@@ -169,7 +227,21 @@ func classifyApplicationResolutionError(err error) error {
 	case "foreign", "foreign-target":
 		code = machine.ErrorOwnershipAmbiguous
 	}
-	return &machine.Error{Code: code, CauseCode: "provider_resolution_" + strings.ReplaceAll(resolution.Code, "-", "_"), Message: err.Error(), Resource: resolution.InstanceID, Next: "Reconcile the existing Target provider binding and dependency inventory before retrying; no provider was mutated.", Cause: err}
+	diagnostic := applicationResolutionDiagnostic{
+		Code: resolution.Code, Consumer: resolution.Consumer, InstanceID: resolution.InstanceID,
+		Requirement: string(resolution.Requirement.Kind) + "/" + resolution.Requirement.Name,
+	}
+	return &machine.Error{Code: code, CauseCode: causeCode, Message: err.Error(), Resource: resource, Next: next, Details: diagnostic, Cause: err}
+}
+
+// applicationResolutionDiagnostic contains only stable resolver identifiers.
+// It lets proposal failures retain the actual failing edge without exposing
+// filesystem paths, registry payloads, or runtime credentials.
+type applicationResolutionDiagnostic struct {
+	Code        string `json:"resolution_code"`
+	Consumer    string `json:"consumer,omitempty"`
+	InstanceID  string `json:"instance_id,omitempty"`
+	Requirement string `json:"requirement,omitempty"`
 }
 
 func requireResolvedApplicationCore(ctx context.Context, resolved resolvedApplication, in io.Reader, out io.Writer) error {
@@ -217,11 +289,17 @@ type applicationLifecyclePlan struct {
 }
 
 func buildResolvedApplicationPlan(ctx context.Context, resolved resolvedApplication) (applicationLifecyclePlan, error) {
+	return buildResolvedApplicationPlanWithFacts(ctx, resolved, observeApplicationProviderFacts(ctx, resolved))
+}
+
+// buildResolvedApplicationPlanWithFacts lets callers that already took a
+// provider observation use the same fresh facts for their snapshot and plan.
+func buildResolvedApplicationPlanWithFacts(ctx context.Context, resolved resolvedApplication, observations map[string]application.ProviderFact) (applicationLifecyclePlan, error) {
 	plan, err := application.BuildPlan(resolved.Manifest)
 	if err != nil {
 		return applicationLifecyclePlan{}, err
 	}
-	snapshot, preferences, err := applicationLifecycleSnapshot(resolved, observeApplicationProviderFacts(ctx, resolved))
+	snapshot, preferences, err := applicationLifecycleSnapshotContext(ctx, resolved, observations)
 	if err != nil {
 		return applicationLifecyclePlan{}, err
 	}
@@ -238,11 +316,11 @@ func buildResolvedApplicationPlan(ctx context.Context, resolved resolvedApplicat
 		return applicationLifecyclePlan{}, err
 	}
 	requests := applicationProviderChangeRequests(union)
-	requests, err = nativeBackendChangeRequests(resolved, requests)
+	requests, err = nativeBackendChangeRequestsForPlan(resolved, requests)
 	if err != nil {
 		return applicationLifecyclePlan{}, err
 	}
-	requests, err = standaloneProviderVersionChangeRequests(ctx, resolved, requests)
+	requests, err = standaloneProviderVersionChangeRequestsForPlan(ctx, resolved, requests)
 	if err != nil {
 		return applicationLifecyclePlan{}, err
 	}

@@ -32,6 +32,13 @@ func TestGuidedWithdrawalPreferencesPreserveCanonicalOwners(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// The test copies the config to a second Target without provisioning a Core
+	// installation for it. Register one so the SaveDeploymentRecord below (and
+	// the owner seam it exercises) runs against a real authoritative owner
+	// instead of the removed fail-open adapter.
+	if err := registerInstallationForTarget(t, other.Name); err != nil {
+		t.Fatal(err)
+	}
 	paths := []string{}
 	var selected resolvedApplication
 	var preferred string
@@ -68,7 +75,7 @@ func TestGuidedWithdrawalPreferencesPreserveCanonicalOwners(t *testing.T) {
 		}
 		paths = append(paths, filepath.Join(deploymentRoot, "deployment.json"), registryPath, recovery)
 		if index == 0 {
-			selected, err = resolveRegisteredApplication(context.Background(), current, root, manifest.Name, manifest.Environment, "destroy")
+			selected, err = resolveRegisteredApplication(context.Background(), current, root, manifest.Name, manifest.Environment, "destroy", "")
 			if err != nil {
 				t.Fatal(err)
 			}

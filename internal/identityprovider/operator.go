@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"net/url"
 	"os"
 	"strconv"
@@ -78,7 +79,8 @@ func EnsureManagedOperatorOIDC(ctx context.Context, runtime KeycloakRuntime, iss
 		"baseharbor.environment": strings.TrimSpace(environment),
 	}
 	// Realm-local authority preserves the installation/master issuer.
-	ownership["frontendUrl"] = canonicalBase
+	realmAttributes := maps.Clone(ownership)
+	realmAttributes["frontendUrl"] = canonicalBase
 	desiredRealm := keycloakRealm{
 		Realm:                                  realm,
 		Enabled:                                true,
@@ -93,9 +95,9 @@ func EnsureManagedOperatorOIDC(ctx context.Context, runtime KeycloakRuntime, iss
 		WebAuthnPolicySignatureAlgorithms:      []string{"ES256", "RS256"},
 		WebAuthnPolicyPasswordlessRpEntityName: "BaseHarbor",
 		WebAuthnPolicyPasswordlessSignatureAlgorithms: []string{"ES256", "RS256"},
-		Attributes: ownership,
+		Attributes: realmAttributes,
 	}
-	if err := admin.reconcileRealm(ctx, desiredRealm); err != nil {
+	if err := admin.reconcileRealm(ctx, desiredRealm, ownership); err != nil {
 		return ManagedOperatorOIDC{}, err
 	}
 
@@ -143,6 +145,25 @@ func EnsureManagedOperatorOIDC(ctx context.Context, runtime KeycloakRuntime, iss
 	if _, err := admin.reconcileClient(ctx, realm, client); err != nil {
 		return ManagedOperatorOIDC{}, err
 	}
+	// First-owner onboarding must work after "up --control-plane-only".
+	// No application has been applied yet, so the shared Keycloak development
+	// gateway route does not exist. Publish the already-owned shared route
+	// before verifying the canonical HTTPS discovery endpoint; never weaken
+	// discovery verification or substitute the internal Keycloak URL.
+	if err := ensureLocalKeycloakDevelopmentRoute(ctx, app, namespace, runtime, issuer, files); err != nil {
+		return ManagedOperatorOIDC{}, fmt.Errorf("publish managed operator Keycloak gateway route: %w", err)
+	}
+	effectiveBase, err := managedOperatorCanonicalBaseURL(runtime, namespace)
+	if err != nil {
+		return ManagedOperatorOIDC{}, err
+	}
+	if effectiveBase != files.CanonicalPublicURL {
+		desiredRealm.Attributes["frontendUrl"] = effectiveBase
+		if err := admin.reconcileRealm(ctx, desiredRealm, ownership); err != nil {
+			return ManagedOperatorOIDC{}, err
+		}
+		files.CanonicalPublicURL = effectiveBase
+	}
 	publicClient, err := keycloakPublicHTTPClient(files)
 	if err != nil {
 		return ManagedOperatorOIDC{}, err
@@ -185,6 +206,9 @@ func EnsureManagedDevelopmentAccess(ctx context.Context, runtime KeycloakRuntime
 	if err := admin.ensureDeveloperOwnershipAttribute(ctx, operatorRealm("dev"), target); err != nil {
 		return ManagedOperatorOIDC{}, err
 	}
+	if err := admin.ensureDeveloperProfile(ctx, target); err != nil {
+		return ManagedOperatorOIDC{}, err
+	}
 	// Apply/re-add preserves existing credentials. Credential rotation remains
 	// a distinct explicit mutation; a retained account is not a reset request.
 	if err := admin.reconcileUserWithPolicy(ctx, operatorRealm("dev"), username, password, true, true); err != nil {
@@ -193,6 +217,41 @@ func EnsureManagedDevelopmentAccess(ctx context.Context, runtime KeycloakRuntime
 	return managed, nil
 }
 
+// EnsureManagedUserInvite invites an owned user through the least-privilege
+// native provider admin adapter. The IdP owns password/activation/MFA: this
+// path triggers the provider-native activation link and never stores a
+// password. Double-invite of an identical email is idempotent (the owned,
+// enabled, verified account is left untouched); a genuinely ambiguous email or
+// an unverified realm is refused. Profile assignment is a separate authorized
+// action and is deliberately out of scope here.
+func EnsureManagedUserInvite(ctx context.Context, runtime KeycloakRuntime, issuer serviceaccess.Issuer, dataDir, namespace, target, environment, email string) error {
+	_, err := EnsureManagedOperatorOIDC(ctx, runtime, issuer, dataDir, namespace, target, environment)
+	if err != nil {
+		return err
+	}
+	app := application.Manifest{
+		Version:     application.CurrentVersion,
+		Name:        "operator-access",
+		Environment: strings.TrimSpace(environment),
+		Services:    application.Services{Identity: true},
+	}
+	files, err := ExistingKeycloakFilesAt(app, dataDir, namespace)
+	if err != nil {
+		return err
+	}
+	admin, err := operatorKeycloakAdmin(ctx, files)
+	if err != nil {
+		return err
+	}
+	realm := operatorRealm(environment)
+	ownership := map[string]string{
+		"baseharbor.owner":       "baseharbor",
+		"baseharbor.scope":       "operator",
+		"baseharbor.target":      strings.TrimSpace(target),
+		"baseharbor.environment": strings.TrimSpace(environment),
+	}
+	return admin.inviteManagedUser(ctx, realm, target, environment, email, ownership)
+}
 func FinalizeManagedOperatorOIDC(ctx context.Context, runtime KeycloakRuntime, issuer serviceaccess.Issuer, dataDir, namespace, target, environment string) error {
 	app := application.Manifest{
 		Version:     application.CurrentVersion,
@@ -281,4 +340,11 @@ func operatorClientID(environment string) string {
 
 func decodeJSON(value string, target any) error {
 	return json.Unmarshal([]byte(value), target)
+}
+
+// DevelopmentManagementPaths selects the realm containing the configured
+// developer user, rather than Keycloak's unrelated master administrator login.
+func DevelopmentManagementPaths() (account, admin string) {
+	realm := operatorRealm("dev")
+	return "/realms/" + realm + "/account/", "/admin/" + realm + "/console/"
 }

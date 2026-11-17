@@ -2,8 +2,13 @@ package auth
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
+	"net/http"
+	"os"
+	"sort"
 	"strings"
 
 	"github.com/coreos/go-oidc/v3/oidc"
@@ -20,18 +25,92 @@ type OIDCVerifier struct {
 
 // NewOIDCVerifier discovers the OIDC provider and prepares verifiers for every
 // configured audience. Discovery must succeed before the verifier is usable.
+//
+// When cfg.TrustFile is set, discovery verifies the issuer against that CA on
+// top of the system trust pool (additive only); the system pool is never
+// replaced. This is what lets the CLI trust the managed CA a managed Core
+// bootstrapped without OS system-trust surgery.
 func NewOIDCVerifier(ctx context.Context, cfg Config) (*OIDCVerifier, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
 
-	provider, err := oidc.NewProvider(ctx, strings.TrimSpace(cfg.Issuer))
+	providerCtx := ctx
+	if cfg.TrustFile != "" {
+		pool, err := trustPool(cfg.TrustFile)
+		if err != nil {
+			return nil, err
+		}
+		providerCtx = oidc.ClientContext(ctx, &http.Client{Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12},
+		}})
+	}
+
+	provider, err := oidc.NewProvider(providerCtx, strings.TrimSpace(cfg.Issuer))
 	if err != nil {
 		return nil, fmt.Errorf("discover OIDC provider: %w", err)
 	}
 	return newOIDCVerifier(strings.TrimSpace(cfg.Issuer), cfg.Audiences, func(audience string) *oidc.IDTokenVerifier {
 		return provider.Verifier(&oidc.Config{ClientID: audience})
 	})
+}
+
+// extractClaimStringSet normalizes one or more claim values that may be a single
+// string, a slice of strings, or absent into a sorted, de-duplicated, trimmed
+// string slice. It never leaks structured token material beyond the plain claim
+// values and is safe for a nil receiver.
+func extractClaimStringSet(values ...any) []string {
+	seen := make(map[string]struct{})
+	for _, v := range values {
+		switch t := v.(type) {
+		case string:
+			if s := strings.TrimSpace(t); s != "" {
+				seen[s] = struct{}{}
+			}
+		case []string:
+			for _, s := range t {
+				if s = strings.TrimSpace(s); s != "" {
+					seen[s] = struct{}{}
+				}
+			}
+		case []any:
+			for _, item := range t {
+				if s, ok := item.(string); ok {
+					if s = strings.TrimSpace(s); s != "" {
+						seen[s] = struct{}{}
+					}
+				}
+			}
+		}
+	}
+	if len(seen) == 0 {
+		return nil
+	}
+	roles := make([]string, 0, len(seen))
+	for role := range seen {
+		roles = append(roles, role)
+	}
+	sort.Strings(roles)
+	return roles
+}
+
+// trustPool builds an additive RootCAs pool that always includes the system
+// trust anchors and optionally adds one managed CA certificate. Returning an
+// error (instead of falling back to a bare pool) keeps discovery fail-closed
+// when the supplied CA is malformed.
+func trustPool(trustFile string) (*x509.CertPool, error) {
+	pool, err := x509.SystemCertPool()
+	if err != nil {
+		pool = x509.NewCertPool()
+	}
+	data, err := os.ReadFile(trustFile)
+	if err != nil {
+		return nil, fmt.Errorf("read operator OIDC trust file %s: %w", trustFile, err)
+	}
+	if !pool.AppendCertsFromPEM(data) {
+		return nil, fmt.Errorf("operator OIDC trust file %s contains no valid PEM certificate", trustFile)
+	}
+	return pool, nil
 }
 
 func newOIDCVerifier(issuer string, audiences []string, makeVerifier func(string) *oidc.IDTokenVerifier) (*OIDCVerifier, error) {
@@ -76,19 +155,27 @@ func (v *OIDCVerifier) Verify(ctx context.Context, rawToken string) (*identity.P
 			return nil, ErrInvalidToken
 		}
 		var claims struct {
-			ACR string   `json:"acr"`
-			AMR []string `json:"amr"`
+			ACR      string   `json:"acr"`
+			AMR      []string `json:"amr"`
+			Groups   any      `json:"group"`
+			Groups2  any      `json:"groups"`
+			Roles    any      `json:"roles"`
+			AppRole  any      `json:"app_role"`
+			AppRole2 any      `json:"app-role"`
 		}
 		if err := token.Claims(&claims); err != nil {
 			return nil, ErrInvalidToken
 		}
 		return &identity.Principal{
-			Issuer:    token.Issuer,
-			Subject:   token.Subject,
-			Audience:  append([]string(nil), token.Audience...),
-			Assurance: strings.TrimSpace(claims.ACR),
-			Methods:   append([]string(nil), claims.AMR...),
-			ExpiresAt: &token.Expiry,
+			Issuer:         token.Issuer,
+			Subject:        token.Subject,
+			Audience:       append([]string(nil), token.Audience...),
+			Assurance:      strings.TrimSpace(claims.ACR),
+			Methods:        append([]string(nil), claims.AMR...),
+			ExpiresAt:      &token.Expiry,
+			Groups:         extractClaimStringSet(claims.Groups, claims.Groups2),
+			AppRoles:       extractClaimStringSet(claims.Roles, claims.AppRole, claims.AppRole2),
+			IssuerVerified: true,
 		}, nil
 	}
 	return nil, ErrInvalidToken

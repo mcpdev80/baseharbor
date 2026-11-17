@@ -2,31 +2,37 @@ name: Release · Pre-Release Validation
 run-name: Pre-Release · ${{ inputs.tag || github.ref_name }}
 permissions:
   contents: read
+  actions: read
 concurrency:
-  group: baseharbor-release-qualification
+  group: ${{ inputs.develop_mode && format('baseharbor-develop-{0}', github.run_id) || 'baseharbor-release-qualification' }}
   cancel-in-progress: false
 jobs:
-  source:
-    name: Source · Contracts · Docs
+  source_prepare:
+    name: Source · Candidate and Gate Plan
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 20
     outputs:
       tag: ${{ steps.release.outputs.tag }}
       candidate_sha: ${{ steps.release.outputs.candidate_sha }}
+      develop_sha: ${{ steps.release.outputs.develop_sha }}
       demo_ref: ${{ steps.release.outputs.demo_ref }}
       consumer_ref: ${{ steps.release.outputs.consumer_ref }}
       adoption: ${{ steps.selection.outputs.adoption }}
       adoption_count: ${{ steps.selection.outputs.adoption_count }}
-      static: ${{ steps.selection.outputs.static }}
+      static: ${{ steps.runtime_reuse.outputs.static }}
       static_count: ${{ steps.selection.outputs.static_count }}
-      light_docker: ${{ steps.selection.outputs.light_docker }}
+      light_docker: ${{ steps.runtime_reuse.outputs.light_docker }}
       light_docker_count: ${{ steps.selection.outputs.light_docker_count }}
-      light_podman: ${{ steps.selection.outputs.light_podman }}
+      light_docker_execute_count: ${{ steps.runtime_reuse.outputs.light_docker_execute_count }}
+      light_podman: ${{ steps.runtime_reuse.outputs.light_podman }}
       light_podman_count: ${{ steps.selection.outputs.light_podman_count }}
-      heavy_docker: ${{ steps.selection.outputs.heavy_docker }}
+      light_podman_execute_count: ${{ steps.runtime_reuse.outputs.light_podman_execute_count }}
+      heavy_docker: ${{ steps.runtime_reuse.outputs.heavy_docker }}
       heavy_docker_count: ${{ steps.selection.outputs.heavy_docker_count }}
-      heavy_podman: ${{ steps.selection.outputs.heavy_podman }}
+      heavy_docker_execute_count: ${{ steps.runtime_reuse.outputs.heavy_docker_execute_count }}
+      heavy_podman: ${{ steps.runtime_reuse.outputs.heavy_podman }}
       heavy_podman_count: ${{ steps.selection.outputs.heavy_podman_count }}
+      heavy_podman_execute_count: ${{ steps.runtime_reuse.outputs.heavy_podman_execute_count }}
       ha_docker: ${{ steps.selection.outputs.ha_docker }}
       ha_docker_count: ${{ steps.selection.outputs.ha_docker_count }}
       ha_podman: ${{ steps.selection.outputs.ha_podman }}
@@ -43,9 +49,6 @@ jobs:
       with:
         ref: ${{ inputs.ref || github.sha }}
         fetch-depth: 0
-    - name: Enforce workflow policy
-      id: workflow_policy
-      run: bash scripts/ci-workflow-policy.sh
     - name: Resolve release candidate
       id: release
       shell: bash
@@ -54,9 +57,39 @@ jobs:
         INPUT_TAG: ${{ inputs.tag }}
         INPUT_DEMO_REF: ${{ inputs.demo_ref }}
         INPUT_CONSUMER_REF: ${{ inputs.consumer_ref }}
+        INPUT_CONSOLE_REF: ${{ inputs.console_ref }}
+        INPUT_DEVELOP_SHA: ${{ inputs.develop_sha }}
+        RELEASE_MODE: ${{ inputs.release_mode }}
         GH_TOKEN: ${{ github.token }}
       run: |
         set -euo pipefail
+        if [ "${{ inputs.develop_mode }}" = true ]; then
+          test "$EVENT_NAME" = workflow_call
+          git fetch --no-tags origin develop
+          core_sha="$(git rev-parse HEAD)"
+          develop_sha="$(git rev-parse origin/develop)"
+          [[ "${{ inputs.ref }}" =~ ^[0-9a-f]{40}$ ]]
+          test "$core_sha" = "${{ inputs.ref }}"
+          git merge-base --is-ancestor "$develop_sha" "$core_sha" || {
+            echo "REJECT: develop validation candidate does not contain fetched develop tip $develop_sha (drift)." >&2
+            exit 1
+          }
+          [[ "$INPUT_DEMO_REF" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$INPUT_CONSOLE_REF" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$INPUT_CONSUMER_REF" =~ ^[0-9a-f]{40}$ ]]
+          python3 scripts/develop-ecosystem-source.py \
+            --core "$core_sha" --demo "$INPUT_DEMO_REF" \
+            --console "$INPUT_CONSOLE_REF" --connector "$INPUT_CONSUMER_REF"
+          {
+            echo "tag=develop"
+            echo "candidate_sha=$core_sha"
+            echo "develop_sha=$develop_sha"
+            echo "demo_ref=$INPUT_DEMO_REF"
+            echo "consumer_ref=$INPUT_CONSUMER_REF"
+            echo "console_ref=$INPUT_CONSOLE_REF"
+          } >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
         if [ -n "$INPUT_TAG" ]; then
           tag="$INPUT_TAG"
         else
@@ -71,17 +104,59 @@ jobs:
         fi
 
         git fetch origin main develop
+        develop_sha="$(git rev-parse origin/develop)"
         release_ref="refs/remotes/origin/release/$tag"
         git fetch origin "refs/heads/release/$tag:$release_ref" || true
-        if git merge-base --is-ancestor origin/develop HEAD; then
-          echo "Candidate follows the current develop release line."
-        elif git merge-base --is-ancestor origin/main HEAD; then
-          echo "Candidate follows the current released main line."
-        elif git show-ref --verify --quiet "$release_ref" && [ "$(git rev-parse "$release_ref")" = "$(git rev-parse HEAD)" ]; then
-          echo "Candidate exactly matches the current release/$tag branch tip."
+        if [ "$RELEASE_MODE" = true ]; then
+          [[ "$INPUT_DEVELOP_SHA" =~ ^[0-9a-f]{40}$ ]] || {
+            echo "REJECT: Publish must provide the exact develop SHA checked by its tag job." >&2
+            exit 1
+          }
+          git merge-base --is-ancestor "$INPUT_DEVELOP_SHA" "$develop_sha" || {
+            echo "REJECT: Publish's checked develop SHA is no longer on the fetched develop line." >&2
+            exit 1
+          }
+          develop_sha="$INPUT_DEVELOP_SHA"
+          if [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            # Hotfix flow via main; develop integration follows after publish. See docs/reference/releases.md#hotfix-releases.
+            git merge-base --is-ancestor origin/main HEAD || {
+              echo "REJECT: hotfix candidate must descend from the released main line." >&2
+              exit 1
+            }
+            echo "Hotfix candidate follows the documented main-based hotfix path."
+          else
+            git merge-base --is-ancestor HEAD "$develop_sha" || {
+              echo "REJECT: release tag is not integrated into develop; refusing publication." >&2
+              exit 1
+            }
+            echo "Release candidate is integrated into develop."
+          fi
+        elif [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          # Hotfix flow via main; develop integration follows after publish. See docs/reference/releases.md#hotfix-releases.
+          git merge-base --is-ancestor origin/main HEAD || {
+            echo "REJECT: hotfix candidate must descend from the released main line." >&2
+            exit 1
+          }
+          echo "Hotfix candidate follows the documented main-based hotfix path."
         else
-          echo "Pre-release candidate must follow current develop/main or exactly match release/$tag." >&2
-          exit 1
+          if [ -n "$INPUT_DEVELOP_SHA" ]; then
+            [[ "$INPUT_DEVELOP_SHA" =~ ^[0-9a-f]{40}$ ]] || {
+              echo "develop_sha input must be an exact 40-character commit SHA." >&2
+              exit 1
+            }
+            test "$INPUT_DEVELOP_SHA" = "$develop_sha" || {
+              echo "REJECT: supplied develop SHA does not match the fetched develop tip." >&2
+              exit 1
+            }
+          fi
+        fi
+        if [ "$RELEASE_MODE" != true ] && [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          if git merge-base --is-ancestor "$develop_sha" HEAD; then
+            echo "Candidate contains the checked develop tip $develop_sha."
+          else
+            echo "REJECT: pre-release candidate does not contain develop tip $develop_sha (drift)." >&2
+            exit 1
+          fi
         fi
 
         version="${tag#v}"
@@ -121,25 +196,92 @@ jobs:
         fi
 
         echo "tag=$tag" >> "$GITHUB_OUTPUT"
-        echo "candidate_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+        candidate_sha="$(git rev-parse HEAD)"
+        echo "candidate_sha=$candidate_sha" >> "$GITHUB_OUTPUT"
+        echo "develop_sha=$develop_sha" >> "$GITHUB_OUTPUT"
         echo "demo_ref=$pinned_demo_ref" >> "$GITHUB_OUTPUT"
+    - name: Select normal release checks
+      id: selection
+      env:
+        TAG: ${{ steps.release.outputs.tag }}
+        ONLY_GATES: ${{ inputs.only_gates }}
+      run: |
+        set -euo pipefail
+        if [[ "$GITHUB_REF_NAME" == validation/pre-release/selected/gates/* ]]; then
+          ONLY_GATES="${GITHUB_REF_NAME#validation/pre-release/selected/gates/}"
+          test -n "$ONLY_GATES"
+        elif [[ "$GITHUB_REF_NAME" == validation/pre-release/selected/* ]]; then
+          ONLY_GATES="$(python3 -c 'import json,sys; print(",".join(json.load(open(sys.argv[1]))))' "docs/releases/$TAG.selected-gates.json")"
+          test -n "$ONLY_GATES"
+        fi
+        if [ "${{ inputs.develop_mode }}" = true ]; then
+          # v0.4.26 is the existing gate-inventory baseline, NOT the build/release identity.
+          test "$ONLY_GATES" = "integration/docker/remote-target,integration/podman/remote-target,integration/static/live-console"
+          TAG=v0.4.26
+        fi
+        python3 scripts/pre-release-check-plan.py --tag "$TAG" --only-gates "$ONLY_GATES" >> "$GITHUB_OUTPUT"
+        echo "only_gates=$ONLY_GATES" >> "$GITHUB_OUTPUT"
+    - name: Plan fail-closed reuse for runtime matrix gates
+      id: runtime_reuse
+      env:
+        GH_TOKEN: ${{ github.token }}
+        REPO: ${{ github.repository }}
+        RUN_ID: ${{ github.run_id }}
+        TAG: ${{ steps.release.outputs.tag }}
+        CANDIDATE_SHA: ${{ steps.release.outputs.candidate_sha }}
+        DEMO_REF: ${{ steps.release.outputs.demo_ref }}
+        ONLY_GATES: ${{ steps.selection.outputs.only_gates }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        python3 scripts/pre-release-runtime-reuse.py \
+          --repo "$REPO" --run-id "$RUN_ID" --tag "$TAG" \
+          --candidate-sha "$CANDIDATE_SHA" --demo-ref "$DEMO_REF" \
+          --only-gates "$ONLY_GATES" --token "$GH_TOKEN" \
+          --temp-dir "$RUNNER_TEMP/pre-release-runtime-reuse" \
+          --output "$GITHUB_OUTPUT"
+    - name: Record qualification source binding
+      id: qualification_binding
+      env:
+        TAG: ${{ steps.release.outputs.tag }}
+        CANDIDATE_SHA: ${{ steps.release.outputs.candidate_sha }}
+        DEVELOP_SHA: ${{ steps.release.outputs.develop_sha }}
+        DEMO_SHA: ${{ steps.release.outputs.demo_ref }}
+        ONLY_GATES: ${{ steps.selection.outputs.only_gates }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        [[ "$CANDIDATE_SHA" =~ ^[0-9a-f]{40}$ ]]
+        [[ "$DEVELOP_SHA" =~ ^[0-9a-f]{40}$ ]]
+        [[ "$DEMO_SHA" =~ ^[0-9a-f]{40}$ ]]
+        suite="$ONLY_GATES"
+        if [ -z "$suite" ]; then
+          suite="full:$TAG"
+        fi
+        printf 'Qualification binding: tag=%s candidate_sha=%s develop_tip_sha=%s demo_sha=%s suite=%s\n' \
+          "$TAG" "$CANDIDATE_SHA" "$DEVELOP_SHA" "$DEMO_SHA" "$suite" \
+          >> "$GITHUB_STEP_SUMMARY"
+        printf 'candidate_sha=%s\ndevelop_sha=%s\nsuite=%s\n' \
+          "$CANDIDATE_SHA" "$DEVELOP_SHA" "$suite" >> "$GITHUB_OUTPUT"
+
+  source_format:
+    name: Source · Format and Readability
+    needs: source_prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+    - name: Checkout candidate source
+      id: checkout
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        ref: ${{ needs.source_prepare.outputs.candidate_sha }}
+        fetch-depth: 0
     - name: Set up Go
       id: setup_go
       uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
       with:
         go-version-file: go.mod
         cache: false
-    - name: Set up Python
-      id: setup_python
-      uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
-      with:
-        python-version: '3.14'
-    - name: Install validation tooling
-      id: tooling
-      shell: bash
-      run: |
-        python -m pip install --disable-pip-version-check -r requirements-docs.txt
-        GOBIN="$RUNNER_TEMP/bin" go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
     - name: Check Go formatting
       id: formatting
       shell: bash
@@ -154,16 +296,105 @@ jobs:
     - name: Validate source readability
       id: source_readability
       run: bash scripts/source-readability-audit.sh
-    - name: Run release-source tests
+
+  source_tests:
+    name: Source · Go Tests · ${{ matrix.shard }}
+    needs: source_prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [cli-0, cli-1, cli-2, cli-3, packages]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_DB: baseharbor_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d baseharbor_test"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      BASEHARBOR_TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/baseharbor_test?sslmode=disable
+    steps:
+    - name: Checkout candidate source
+      id: checkout
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        ref: ${{ needs.source_prepare.outputs.candidate_sha }}
+        fetch-depth: 0
+    - name: Set up Go
+      id: setup_go
+      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+      with:
+        go-version-file: go.mod
+        cache: false
+    - name: Run discovered release-source test shard
       id: source_tests
       shell: bash
+      env:
+        SHARD: ${{ matrix.shard }}
       run: |
         set -euo pipefail
-        logs="$RUNNER_TEMP/pre-release-source-logs"
-        mkdir -p "$logs"
-        go test ./contracts/... ./internal/... ./spec/... ./conformance/... 2>&1 | tee "$logs/go-test-internal-spec.log"
-        BASEHARBOR_LOGS_ENABLED=false go test ./cmd/baha 2>&1 | tee "$logs/go-test-cmd-baha.log"
-        go vet ./... 2>&1 | tee "$logs/go-vet.log"
+        if [[ "$SHARD" == cli-* ]]; then
+          export BASEHARBOR_LOGS_ENABLED=false
+        fi
+        python3 scripts/pr-go-unit-shard.py --mode "$SHARD"
+
+  source_vet:
+    name: Source · Go Vet
+    needs: source_prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+    - name: Checkout candidate source
+      id: checkout
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        ref: ${{ needs.source_prepare.outputs.candidate_sha }}
+        fetch-depth: 0
+    - name: Set up Go
+      id: setup_go
+      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+      with:
+        go-version-file: go.mod
+        cache: false
+    - name: Vet all Go packages
+      id: source_vet
+      run: go vet ./...
+
+  source_docs:
+    name: Docs · Workflow and Release Validation
+    needs: source_prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+    - name: Checkout candidate source
+      id: checkout
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        ref: ${{ needs.source_prepare.outputs.candidate_sha }}
+        fetch-depth: 0
+    - name: Set up Python
+      id: setup_python
+      uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+      with:
+        python-version: '3.14'
+    - name: Install validation tooling
+      id: tooling
+      shell: bash
+      run: |
+        python -m pip install --disable-pip-version-check -r requirements-docs.txt
+        GOBIN="$RUNNER_TEMP/bin" go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+    - name: Enforce workflow policy
+      id: workflow_policy
+      run: bash scripts/ci-workflow-policy.sh
     - name: Validate documentation
       id: docs
       shell: bash
@@ -173,7 +404,7 @@ jobs:
         bash scripts/documentation-audit.sh
     - name: Validate v0.4.20 release-note hygiene
       id: v0420_hygiene
-      if: steps.release.outputs.tag == 'v0.4.20'
+      if: needs.source_prepare.outputs.tag == 'v0.4.20'
       shell: bash
       run: |
         set -euo pipefail
@@ -185,15 +416,34 @@ jobs:
           echo "$release_internal" >&2
           exit 1
         }
-    - name: Validate v0.4.21 release readiness
-      id: v0421_readiness
-      if: steps.release.outputs.tag == 'v0.4.21'
+    - name: Validate release readiness
+      id: release_readiness
+      if: needs.source_prepare.outputs.tag == 'v0.4.21'
       shell: bash
       run: bash scripts/v0.4.21-readiness.sh
     - name: Validate workflow syntax
       id: workflow_syntax
       shell: bash
       run: $RUNNER_TEMP/bin/actionlint -shellcheck=
+
+  release_snapshot:
+    name: Release · Snapshot Build
+    needs: source_prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+    - name: Checkout candidate source
+      id: checkout
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        ref: ${{ needs.source_prepare.outputs.candidate_sha }}
+        fetch-depth: 0
+    - name: Set up Go
+      id: setup_go
+      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+      with:
+        go-version-file: go.mod
+        cache: false
     - name: Build release snapshot
       id: snapshot
       uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94
@@ -210,14 +460,33 @@ jobs:
         test "$(find dist -maxdepth 1 -type f -name 'baseharbor_linux_*.tar.gz' | wc -l)" -eq 2
         grep -q 'baseharbor_linux_amd64.tar.gz' dist/checksums.txt
         grep -q 'baseharbor_linux_arm64.tar.gz' dist/checksums.txt
+
+  release_candidate:
+    name: Release · Candidate Artifact
+    needs: source_prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+    - name: Checkout candidate source
+      id: checkout
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        ref: ${{ needs.source_prepare.outputs.candidate_sha }}
+        fetch-depth: 0
+    - name: Set up Go
+      id: setup_go
+      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+      with:
+        go-version-file: go.mod
+        cache: false
     - name: Build exact candidate binary
       id: candidate_binary
       shell: bash
       run: |
         set -euo pipefail
         mkdir -p "$RUNNER_TEMP/pre-release-candidate"
-        CGO_ENABLED=0 go build -trimpath             -ldflags="-s -w -X main.version=${{ steps.release.outputs.tag }} -X main.commit=${{ steps.release.outputs.candidate_sha }} -X main.date=unknown"             -o "$RUNNER_TEMP/pre-release-candidate/baha" ./cmd/baha
-        "$RUNNER_TEMP/pre-release-candidate/baha" version | grep -F "${{ steps.release.outputs.candidate_sha }}"
+        CGO_ENABLED=0 go build -trimpath             -ldflags="-s -w -X main.version=${{ needs.source_prepare.outputs.tag }} -X main.commit=${{ needs.source_prepare.outputs.candidate_sha }} -X main.date=unknown"             -o "$RUNNER_TEMP/pre-release-candidate/baha" ./cmd/baha
+        "$RUNNER_TEMP/pre-release-candidate/baha" version | grep -F "${{ needs.source_prepare.outputs.candidate_sha }}"
     - name: Upload source candidate
       id: source_candidate
       uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
@@ -225,28 +494,72 @@ jobs:
         name: pre-release-source-candidate
         path: ${{ runner.temp }}/pre-release-candidate
         if-no-files-found: error
-        retention-days: 1
+        retention-days: 7
         compression-level: 0
-    - name: Select normal release checks
-      id: selection
+
+  source:
+    name: Source · Qualified
+    needs: [source_prepare, source_format, source_tests, source_vet, source_docs, release_snapshot, release_candidate]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      tag: ${{ needs.source_prepare.outputs.tag }}
+      candidate_sha: ${{ needs.source_prepare.outputs.candidate_sha }}
+      demo_ref: ${{ needs.source_prepare.outputs.demo_ref }}
+      consumer_ref: ${{ needs.source_prepare.outputs.consumer_ref }}
+      adoption: ${{ needs.source_prepare.outputs.adoption }}
+      adoption_count: ${{ needs.source_prepare.outputs.adoption_count }}
+      static: ${{ needs.source_prepare.outputs.static }}
+      static_count: ${{ needs.source_prepare.outputs.static_count }}
+      light_docker: ${{ needs.source_prepare.outputs.light_docker }}
+      light_docker_count: ${{ needs.source_prepare.outputs.light_docker_count }}
+      light_docker_execute_count: ${{ needs.source_prepare.outputs.light_docker_execute_count }}
+      light_podman: ${{ needs.source_prepare.outputs.light_podman }}
+      light_podman_count: ${{ needs.source_prepare.outputs.light_podman_count }}
+      light_podman_execute_count: ${{ needs.source_prepare.outputs.light_podman_execute_count }}
+      heavy_docker: ${{ needs.source_prepare.outputs.heavy_docker }}
+      heavy_docker_count: ${{ needs.source_prepare.outputs.heavy_docker_count }}
+      heavy_docker_execute_count: ${{ needs.source_prepare.outputs.heavy_docker_execute_count }}
+      heavy_podman: ${{ needs.source_prepare.outputs.heavy_podman }}
+      heavy_podman_count: ${{ needs.source_prepare.outputs.heavy_podman_count }}
+      heavy_podman_execute_count: ${{ needs.source_prepare.outputs.heavy_podman_execute_count }}
+      ha_docker: ${{ needs.source_prepare.outputs.ha_docker }}
+      ha_docker_count: ${{ needs.source_prepare.outputs.ha_docker_count }}
+      ha_podman: ${{ needs.source_prepare.outputs.ha_podman }}
+      ha_podman_count: ${{ needs.source_prepare.outputs.ha_podman_count }}
+      journey: ${{ needs.source_prepare.outputs.journey }}
+      journey_count: ${{ needs.source_prepare.outputs.journey_count }}
+      integration: ${{ needs.source_prepare.outputs.integration }}
+      integration_count: ${{ needs.source_prepare.outputs.integration_count }}
+      console_ref: ${{ needs.source_prepare.outputs.console_ref }}
+      develop_sha: ${{ needs.source_prepare.outputs.develop_sha }}
+    steps:
+    - name: Require every source qualification job to pass
       env:
-        TAG: ${{ steps.release.outputs.tag }}
-        ONLY_GATES: ${{ inputs.only_gates }}
+        PREPARE_RESULT: ${{ needs.source_prepare.result }}
+        FORMAT_RESULT: ${{ needs.source_format.result }}
+        TEST_RESULT: ${{ needs.source_tests.result }}
+        VET_RESULT: ${{ needs.source_vet.result }}
+        DOCS_RESULT: ${{ needs.source_docs.result }}
+        SNAPSHOT_RESULT: ${{ needs.release_snapshot.result }}
+        CANDIDATE_RESULT: ${{ needs.release_candidate.result }}
+      shell: bash
       run: |
         set -euo pipefail
-        if [[ "$GITHUB_REF_NAME" == validation/pre-release/selected/gates/* ]]; then
-          ONLY_GATES="${GITHUB_REF_NAME#validation/pre-release/selected/gates/}"
-          test -n "$ONLY_GATES"
-        elif [[ "$GITHUB_REF_NAME" == validation/pre-release/selected/* ]]; then
-          ONLY_GATES="$(python3 -c 'import json,sys; print(",".join(json.load(open(sys.argv[1]))))' "docs/releases/$TAG.selected-gates.json")"
-          test -n "$ONLY_GATES"
-        fi
-        python3 scripts/pre-release-check-plan.py --tag "$TAG" --only-gates "$ONLY_GATES" >> "$GITHUB_OUTPUT"
+        for result in "$PREPARE_RESULT" "$FORMAT_RESULT" "$TEST_RESULT" "$VET_RESULT" "$DOCS_RESULT" "$SNAPSHOT_RESULT" "$CANDIDATE_RESULT"; do
+          if [ "$result" != success ]; then
+            echo "Source qualification did not pass: $result" >&2
+            exit 1
+          fi
+        done
+        echo "All source test shards, vet, docs, workflow, snapshot, and candidate-artifact jobs passed."
+
   runtime_candidate:
     name: Candidate · Runtime Image
     needs: source
-    if: needs.source.outputs.light_docker_count != '0' || needs.source.outputs.light_podman_count != '0' || needs.source.outputs.heavy_docker_count
-      != '0' || needs.source.outputs.heavy_podman_count != '0' || needs.source.outputs.journey_count != '0'
+    if: needs.source.outputs.light_docker_execute_count != '0' || needs.source.outputs.light_podman_execute_count != '0' || needs.source.outputs.heavy_docker_execute_count
+      != '0' || needs.source.outputs.heavy_podman_execute_count != '0' || needs.source.outputs.journey_count != '0'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -289,7 +602,7 @@ jobs:
         name: pre-release-runtime-candidate
         path: ${{ runner.temp }}/pre-release-candidate
         if-no-files-found: error
-        retention-days: 1
+        retention-days: 7
         compression-level: 0
     - name: Cleanup Docker runner state
       if: always()
@@ -355,7 +668,7 @@ jobs:
       fail-fast: false
       max-parallel: 5
       matrix:
-        gate: ${{ fromJSON(needs.source.outputs.static) }}
+        include: ${{ fromJSON(needs.source.outputs.static) }}
     uses: ./.github/workflows/pre-release-runtime-suite.yml
     with:
       ref: ${{ needs.source.outputs.candidate_sha }}
@@ -363,20 +676,28 @@ jobs:
       runtime: static
       gate: ${{ matrix.gate }}
       candidate_artifact: pre-release-source-candidate
+      tag: ${{ needs.source.outputs.tag }}
+      input_fingerprint: ${{ matrix.input_fingerprint }}
+      workflow_version: ${{ matrix.workflow_version }}
+      catalog_version: ${{ matrix.catalog_version }}
+      reuse_from: ${{ matrix.reuse_from }}
+      evidence_reuse: ${{ matrix.evidence_reuse }}
+      evidence_artifact_id: ${{ matrix.evidence_artifact_id }}
+      evidence_created_at: ${{ matrix.evidence_created_at }}
+      evidence_run_created_at: ${{ matrix.evidence_run_created_at }}
+      current_run_created_at: ${{ matrix.current_run_created_at }}
   runtime_light_gates_docker:
     name: Light · ${{ matrix.runtime }} · ${{ matrix.gate }}
     needs:
     - source
     - runtime_candidate
-    if: ${{ always() && !cancelled() && needs.source.result == 'success' && needs.runtime_candidate.result == 'success'
+    if: ${{ always() && !cancelled() && needs.source.result == 'success'
+      && (needs.runtime_candidate.result == 'success' || (needs.runtime_candidate.result == 'skipped' && needs.source.outputs.light_docker_execute_count == '0'))
       && needs.source.outputs.light_docker_count != '0' }}
     strategy:
       fail-fast: false
-      max-parallel: 2
       matrix:
-        runtime:
-        - docker
-        gate: ${{ fromJSON(needs.source.outputs.light_docker) }}
+        include: ${{ fromJSON(needs.source.outputs.light_docker) }}
     uses: ./.github/workflows/pre-release-runtime-suite.yml
     with:
       ref: ${{ needs.source.outputs.candidate_sha }}
@@ -384,20 +705,28 @@ jobs:
       runtime: ${{ matrix.runtime }}
       gate: ${{ matrix.gate }}
       candidate_artifact: pre-release-runtime-candidate
+      tag: ${{ needs.source.outputs.tag }}
+      input_fingerprint: ${{ matrix.input_fingerprint }}
+      workflow_version: ${{ matrix.workflow_version }}
+      catalog_version: ${{ matrix.catalog_version }}
+      reuse_from: ${{ matrix.reuse_from }}
+      evidence_reuse: ${{ matrix.evidence_reuse }}
+      evidence_artifact_id: ${{ matrix.evidence_artifact_id }}
+      evidence_created_at: ${{ matrix.evidence_created_at }}
+      evidence_run_created_at: ${{ matrix.evidence_run_created_at }}
+      current_run_created_at: ${{ matrix.current_run_created_at }}
   runtime_light_gates_podman:
     name: Light · ${{ matrix.runtime }} · ${{ matrix.gate }}
     needs:
     - source
     - runtime_candidate
-    if: ${{ always() && !cancelled() && needs.source.result == 'success' && needs.runtime_candidate.result == 'success'
+    if: ${{ always() && !cancelled() && needs.source.result == 'success'
+      && (needs.runtime_candidate.result == 'success' || (needs.runtime_candidate.result == 'skipped' && needs.source.outputs.light_podman_execute_count == '0'))
       && needs.source.outputs.light_podman_count != '0' }}
     strategy:
       fail-fast: false
-      max-parallel: 2
       matrix:
-        runtime:
-        - podman
-        gate: ${{ fromJSON(needs.source.outputs.light_podman) }}
+        include: ${{ fromJSON(needs.source.outputs.light_podman) }}
     uses: ./.github/workflows/pre-release-runtime-suite.yml
     with:
       ref: ${{ needs.source.outputs.candidate_sha }}
@@ -405,6 +734,16 @@ jobs:
       runtime: ${{ matrix.runtime }}
       gate: ${{ matrix.gate }}
       candidate_artifact: pre-release-runtime-candidate
+      tag: ${{ needs.source.outputs.tag }}
+      input_fingerprint: ${{ matrix.input_fingerprint }}
+      workflow_version: ${{ matrix.workflow_version }}
+      catalog_version: ${{ matrix.catalog_version }}
+      reuse_from: ${{ matrix.reuse_from }}
+      evidence_reuse: ${{ matrix.evidence_reuse }}
+      evidence_artifact_id: ${{ matrix.evidence_artifact_id }}
+      evidence_created_at: ${{ matrix.evidence_created_at }}
+      evidence_run_created_at: ${{ matrix.evidence_run_created_at }}
+      current_run_created_at: ${{ matrix.current_run_created_at }}
   runtime_light_gates:
     name: runtime light gates · All runtime results
     needs:
@@ -430,15 +769,13 @@ jobs:
     needs:
     - source
     - runtime_candidate
-    if: ${{ always() && !cancelled() && needs.source.result == 'success' && needs.runtime_candidate.result == 'success'
+    if: ${{ always() && !cancelled() && needs.source.result == 'success'
+      && (needs.runtime_candidate.result == 'success' || (needs.runtime_candidate.result == 'skipped' && needs.source.outputs.heavy_docker_execute_count == '0'))
       && needs.source.outputs.heavy_docker_count != '0' }}
     strategy:
       fail-fast: false
-      max-parallel: 2
       matrix:
-        runtime:
-        - docker
-        gate: ${{ fromJSON(needs.source.outputs.heavy_docker) }}
+        include: ${{ fromJSON(needs.source.outputs.heavy_docker) }}
     uses: ./.github/workflows/pre-release-runtime-suite.yml
     with:
       ref: ${{ needs.source.outputs.candidate_sha }}
@@ -446,20 +783,28 @@ jobs:
       runtime: ${{ matrix.runtime }}
       gate: ${{ matrix.gate }}
       candidate_artifact: pre-release-runtime-candidate
+      tag: ${{ needs.source.outputs.tag }}
+      input_fingerprint: ${{ matrix.input_fingerprint }}
+      workflow_version: ${{ matrix.workflow_version }}
+      catalog_version: ${{ matrix.catalog_version }}
+      reuse_from: ${{ matrix.reuse_from }}
+      evidence_reuse: ${{ matrix.evidence_reuse }}
+      evidence_artifact_id: ${{ matrix.evidence_artifact_id }}
+      evidence_created_at: ${{ matrix.evidence_created_at }}
+      evidence_run_created_at: ${{ matrix.evidence_run_created_at }}
+      current_run_created_at: ${{ matrix.current_run_created_at }}
   runtime_heavy_gates_podman:
     name: Heavy · ${{ matrix.runtime }} · ${{ matrix.gate }}
     needs:
     - source
     - runtime_candidate
-    if: ${{ always() && !cancelled() && needs.source.result == 'success' && needs.runtime_candidate.result == 'success'
+    if: ${{ always() && !cancelled() && needs.source.result == 'success'
+      && (needs.runtime_candidate.result == 'success' || (needs.runtime_candidate.result == 'skipped' && needs.source.outputs.heavy_podman_execute_count == '0'))
       && needs.source.outputs.heavy_podman_count != '0' }}
     strategy:
       fail-fast: false
-      max-parallel: 2
       matrix:
-        runtime:
-        - podman
-        gate: ${{ fromJSON(needs.source.outputs.heavy_podman) }}
+        include: ${{ fromJSON(needs.source.outputs.heavy_podman) }}
     uses: ./.github/workflows/pre-release-runtime-suite.yml
     with:
       ref: ${{ needs.source.outputs.candidate_sha }}
@@ -467,6 +812,16 @@ jobs:
       runtime: ${{ matrix.runtime }}
       gate: ${{ matrix.gate }}
       candidate_artifact: pre-release-runtime-candidate
+      tag: ${{ needs.source.outputs.tag }}
+      input_fingerprint: ${{ matrix.input_fingerprint }}
+      workflow_version: ${{ matrix.workflow_version }}
+      catalog_version: ${{ matrix.catalog_version }}
+      reuse_from: ${{ matrix.reuse_from }}
+      evidence_reuse: ${{ matrix.evidence_reuse }}
+      evidence_artifact_id: ${{ matrix.evidence_artifact_id }}
+      evidence_created_at: ${{ matrix.evidence_created_at }}
+      evidence_run_created_at: ${{ matrix.evidence_run_created_at }}
+      current_run_created_at: ${{ matrix.current_run_created_at }}
   runtime_heavy_gates:
     name: runtime heavy gates · All runtime results
     needs:
@@ -487,8 +842,8 @@ jobs:
         test "$SOURCE_RESULT" = success
         test "$DOCKER_RESULT" = success || { test "$DOCKER_RESULT" = skipped && test "$DOCKER_COUNT" = 0; }
         test "$PODMAN_RESULT" = success || { test "$PODMAN_RESULT" = skipped && test "$PODMAN_COUNT" = 0; }
-  v0421_ha_groups_docker:
-    name: v0.4.21 HA · ${{ matrix.group }} · ${{ matrix.runtime }}
+  ha_groups_docker:
+    name: HA · ${{ matrix.group }} · ${{ matrix.runtime }}
     needs: source
     if: ${{ always() && !cancelled() && needs.source.result == 'success' && needs.source.outputs.ha_docker_count
       != '0' }}
@@ -496,7 +851,6 @@ jobs:
     timeout-minutes: 90
     strategy:
       fail-fast: false
-      max-parallel: 2
       matrix:
         runtime:
         - docker
@@ -511,6 +865,8 @@ jobs:
         ref: ${{ needs.source.outputs.candidate_sha }}
     - name: Prepare verified rootless runtime
       run: bash scripts/ci-core-rootless-runtime.sh
+    - name: Install verified ORAS for Core bootstrap
+      run: bash scripts/ci-install-oras.sh
     - name: Set up Go
       uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
       with:
@@ -538,8 +894,8 @@ jobs:
       shell: bash
       timeout-minutes: 3
       run: bash scripts/ci-runtime-reset.sh "${{ matrix.runtime }}"
-  v0421_ha_groups_podman:
-    name: v0.4.21 HA · ${{ matrix.group }} · ${{ matrix.runtime }}
+  ha_groups_podman:
+    name: HA · ${{ matrix.group }} · ${{ matrix.runtime }}
     needs: source
     if: ${{ always() && !cancelled() && needs.source.result == 'success' && needs.source.outputs.ha_podman_count
       != '0' }}
@@ -547,7 +903,6 @@ jobs:
     timeout-minutes: 90
     strategy:
       fail-fast: false
-      max-parallel: 2
       matrix:
         runtime:
         - podman
@@ -562,6 +917,8 @@ jobs:
         ref: ${{ needs.source.outputs.candidate_sha }}
     - name: Prepare verified rootless runtime
       run: bash scripts/ci-core-rootless-runtime.sh
+    - name: Install verified ORAS for Core bootstrap
+      run: bash scripts/ci-install-oras.sh
     - name: Set up Go
       uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
       with:
@@ -589,19 +946,19 @@ jobs:
       shell: bash
       timeout-minutes: 3
       run: bash scripts/ci-runtime-reset.sh "${{ matrix.runtime }}"
-  v0421_ha_groups:
-    name: v0421 ha groups · All runtime results
+  ha_groups:
+    name: HA groups · All runtime results
     needs:
     - source
-    - v0421_ha_groups_docker
-    - v0421_ha_groups_podman
+    - ha_groups_docker
+    - ha_groups_podman
     if: ${{ always() }}
     runs-on: ubuntu-latest
     steps:
     - name: Require both runtime matrices
       env:
-        DOCKER_RESULT: ${{ needs.v0421_ha_groups_docker.result }}
-        PODMAN_RESULT: ${{ needs.v0421_ha_groups_podman.result }}
+        DOCKER_RESULT: ${{ needs.ha_groups_docker.result }}
+        PODMAN_RESULT: ${{ needs.ha_groups_podman.result }}
         SOURCE_RESULT: ${{ needs.source.result }}
         DOCKER_COUNT: ${{ needs.source.outputs.ha_docker_count }}
         PODMAN_COUNT: ${{ needs.source.outputs.ha_podman_count }}
@@ -618,7 +975,6 @@ jobs:
     - runtime_candidate
     strategy:
       fail-fast: false
-      max-parallel: 2
       matrix:
         runtime: ${{ fromJSON(needs.source.outputs.journey) }}
     runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
@@ -633,6 +989,8 @@ jobs:
         ref: ${{ needs.source.outputs.candidate_sha }}
     - name: Prepare verified rootless runtime
       run: bash scripts/ci-core-rootless-runtime.sh
+    - name: Install verified ORAS for Core bootstrap
+      run: bash scripts/ci-install-oras.sh
     - name: Verify Podman Quadlet runtime
       id: quadlet
       if: matrix.runtime == 'podman'
@@ -679,6 +1037,8 @@ jobs:
         "${{ matrix.runtime }}" load -i "$archive"
         "${{ matrix.runtime }}" image inspect "$BASEHARBOR_RUNTIME_IMAGE" >/dev/null
         "$RUNNER_TEMP/pre-release-candidate/baha" version | grep -F "${{ needs.source.outputs.candidate_sha }}"
+    - name: Publish exact candidate image for ORAS verification
+      run: bash scripts/ci-local-oci-registry.sh publish "$BASEHARBOR_RUNTIME_IMAGE" localhost:5000/baseharbor-runtime:pre-release
     - name: Checkout exact demo revision
       id: demo
       shell: bash
@@ -694,6 +1054,8 @@ jobs:
         git -C "$workdir" checkout --detach FETCH_HEAD
         test "$(git -C "$workdir" rev-parse HEAD)" = "$DEMO_REF"
         echo "workdir=$workdir" >> "$GITHUB_OUTPUT"
+    - name: Install verified ORAS for Core bootstrap
+      run: bash scripts/ci-install-oras.sh
     - name: Run complete reference journey
       id: journey
       shell: bash
@@ -710,6 +1072,7 @@ jobs:
         cd "$workdir"
         started=$(date +%s)
         set +e
+        BASEHARBOR_ALLOW_MUTABLE_DEVELOPMENT_IMAGE=1 \
         BASEHARBOR_PREBUILT_BINARY="$RUNNER_TEMP/pre-release-candidate/baha" \
         BASEHARBOR_SOURCE_REF="$CANDIDATE_SHA" \
         BASEHARBOR_RUNTIME_IMAGE="$BASEHARBOR_RUNTIME_IMAGE" \
@@ -857,6 +1220,8 @@ jobs:
         fetch-depth: 0
     - name: Prepare verified rootless runtime
       run: bash scripts/ci-core-rootless-runtime.sh
+    - name: Install verified ORAS for Core bootstrap
+      run: bash scripts/ci-install-oras.sh
     - name: Set up Go
       uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
       with:
@@ -864,6 +1229,8 @@ jobs:
         cache: false
     - name: Build exact Core runtime image
       run: docker build --pull -t "$BASEHARBOR_RUNTIME_IMAGE" -f deploy/control-plane/Dockerfile .
+    - name: Publish Core runtime image for ORAS verification
+      run: bash scripts/ci-local-oci-registry.sh publish "$BASEHARBOR_RUNTIME_IMAGE" localhost:5000/baseharbor-runtime:core-bootstrap
     - name: Verify Core-only bootstrap and ownership-safe retry
       env:
         CANDIDATE_SHA: ${{ needs.source.outputs.candidate_sha }}
@@ -890,6 +1257,8 @@ jobs:
         fetch-depth: 0
     - name: Prepare verified rootless runtime
       run: bash scripts/ci-core-rootless-runtime.sh
+    - name: Install verified ORAS for Core bootstrap
+      run: bash scripts/ci-install-oras.sh
     - name: Set up Go
       uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
       with:
@@ -897,6 +1266,8 @@ jobs:
         cache: false
     - name: Build exact Core runtime image
       run: podman build --pull -t "$BASEHARBOR_RUNTIME_IMAGE" -f deploy/control-plane/Dockerfile .
+    - name: Publish Core runtime image for ORAS verification
+      run: bash scripts/ci-local-oci-registry.sh publish "$BASEHARBOR_RUNTIME_IMAGE" localhost:5000/baseharbor-runtime:core-bootstrap
     - name: Verify Core-only bootstrap and ownership-safe retry
       env:
         CANDIDATE_SHA: ${{ needs.source.outputs.candidate_sha }}
@@ -905,13 +1276,17 @@ jobs:
         BASEHARBOR_CONSUMER_REF: ${{ needs.source.outputs.consumer_ref }}
       run: python scripts/pre-release-integration.py --gate integration/podman/core-bootstrap --candidate "$CANDIDATE_SHA"
         --demo "$DEMO_REF" --tag "$TAG" --output "$RUNNER_TEMP/core-bootstrap-podman"
-  integration_coreless_docker:
-    name: Integration · integration/docker/coreless-lifecycle
+  integration_coreless_docker_shards:
+    name: Integration · Docker Coreless · ${{ matrix.shard }}
     needs: source
     if: ${{ needs.source.result == 'success' && contains(fromJSON(needs.source.outputs.integration), 'integration/docker/coreless-lifecycle')
       }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [foundation, identity-backend, application, core-capability]
     env:
       BASEHARBOR_TEST_RUNTIME: docker
       BASEHARBOR_RUNTIME_IMAGE: localhost/baseharbor-runtime:coreless-lifecycle
@@ -923,6 +1298,8 @@ jobs:
         fetch-depth: 0
     - name: Prepare verified rootless runtime
       run: bash scripts/ci-core-rootless-runtime.sh
+    - name: Install verified ORAS for Core bootstrap
+      run: bash scripts/ci-install-oras.sh
     - name: Set up Go
       uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
       with:
@@ -937,6 +1314,7 @@ jobs:
         CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.version=dev -X main.commit=${{ needs.source.outputs.candidate_sha }} -X main.date=unknown" -o "$out/baha" ./cmd/baha
         cp deploy/control-plane/Dockerfile.binary "$out/Dockerfile"
         docker build --pull -t "$BASEHARBOR_RUNTIME_IMAGE" "$out"
+        bash scripts/ci-local-oci-registry.sh publish "$BASEHARBOR_RUNTIME_IMAGE" localhost:5000/baseharbor-runtime:coreless-lifecycle
     - name: Verify fresh Core-less lifecycle, ownership-safe recovery and managed reuse
       env:
         CANDIDATE_SHA: ${{ needs.source.outputs.candidate_sha }}
@@ -944,14 +1322,31 @@ jobs:
         TAG: ${{ needs.source.outputs.tag }}
         BASEHARBOR_CONSUMER_REF: ${{ needs.source.outputs.consumer_ref }}
       run: python scripts/pre-release-integration.py --gate integration/docker/coreless-lifecycle --candidate "$CANDIDATE_SHA"
-        --demo "$DEMO_REF" --tag "$TAG" --output "$RUNNER_TEMP/coreless-lifecycle-docker"
-  integration_coreless_podman:
-    name: Integration · integration/podman/coreless-lifecycle
+        --demo "$DEMO_REF" --tag "$TAG" --output "$RUNNER_TEMP/coreless-lifecycle-docker" --shard "${{ matrix.shard }}"
+    - name: Reset the isolated runtime after this shard
+      if: always()
+      run: bash scripts/ci-runtime-reset.sh docker
+  integration_coreless_docker:
+    name: Integration · integration/docker/coreless-lifecycle
+    needs: [source, integration_coreless_docker_shards]
+    if: ${{ always() && !cancelled() && needs.source.result == 'success' && contains(fromJSON(needs.source.outputs.integration), 'integration/docker/coreless-lifecycle') }}
+    runs-on: ubuntu-latest
+    steps:
+    - name: Require every Docker Coreless shard to pass
+      env:
+        SHARDS_RESULT: ${{ needs.integration_coreless_docker_shards.result }}
+      run: test "$SHARDS_RESULT" = success
+  integration_coreless_podman_shards:
+    name: Integration · Podman Coreless · ${{ matrix.shard }}
     needs: source
     if: ${{ needs.source.result == 'success' && contains(fromJSON(needs.source.outputs.integration), 'integration/podman/coreless-lifecycle')
       }}
     runs-on: ubuntu-26.04
     timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [foundation, identity-backend, application, core-capability]
     env:
       BASEHARBOR_TEST_RUNTIME: podman
       BASEHARBOR_RUNTIME_IMAGE: localhost/baseharbor-runtime:coreless-lifecycle
@@ -963,6 +1358,8 @@ jobs:
         fetch-depth: 0
     - name: Prepare verified rootless runtime
       run: bash scripts/ci-core-rootless-runtime.sh
+    - name: Install verified ORAS for Core bootstrap
+      run: bash scripts/ci-install-oras.sh
     - name: Set up Go
       uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
       with:
@@ -977,6 +1374,7 @@ jobs:
         CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.version=dev -X main.commit=${{ needs.source.outputs.candidate_sha }} -X main.date=unknown" -o "$out/baha" ./cmd/baha
         cp deploy/control-plane/Dockerfile.binary "$out/Dockerfile"
         podman build --pull -t "$BASEHARBOR_RUNTIME_IMAGE" "$out"
+        bash scripts/ci-local-oci-registry.sh publish "$BASEHARBOR_RUNTIME_IMAGE" localhost:5000/baseharbor-runtime:coreless-lifecycle
     - name: Verify fresh Core-less lifecycle, ownership-safe recovery and managed reuse
       env:
         CANDIDATE_SHA: ${{ needs.source.outputs.candidate_sha }}
@@ -984,7 +1382,20 @@ jobs:
         TAG: ${{ needs.source.outputs.tag }}
         BASEHARBOR_CONSUMER_REF: ${{ needs.source.outputs.consumer_ref }}
       run: python scripts/pre-release-integration.py --gate integration/podman/coreless-lifecycle --candidate "$CANDIDATE_SHA"
-        --demo "$DEMO_REF" --tag "$TAG" --output "$RUNNER_TEMP/coreless-lifecycle-podman"
+        --demo "$DEMO_REF" --tag "$TAG" --output "$RUNNER_TEMP/coreless-lifecycle-podman" --shard "${{ matrix.shard }}"
+    - name: Reset the isolated runtime after this shard
+      if: always()
+      run: bash scripts/ci-runtime-reset.sh podman
+  integration_coreless_podman:
+    name: Integration · integration/podman/coreless-lifecycle
+    needs: [source, integration_coreless_podman_shards]
+    if: ${{ always() && !cancelled() && needs.source.result == 'success' && contains(fromJSON(needs.source.outputs.integration), 'integration/podman/coreless-lifecycle') }}
+    runs-on: ubuntu-26.04
+    steps:
+    - name: Require every Podman Coreless shard to pass
+      env:
+        SHARDS_RESULT: ${{ needs.integration_coreless_podman_shards.result }}
+      run: test "$SHARDS_RESULT" = success
   integration_remote_target_docker:
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -1089,13 +1500,15 @@ jobs:
       env:
         BASEHARBOR_TEST_RUNTIME: docker
       run: bash .browser-core-source/scripts/ci-core-rootless-runtime.sh
+    - name: Install verified ORAS for Core bootstrap
+      run: bash .browser-core-source/scripts/ci-install-oras.sh
     - name: Build exact Core runtime and warm its declared provider images
       shell: bash
       run: |
         set -euo pipefail
         image="localhost/baseharbor-runtime:browser-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
         docker build -f .browser-core-source/deploy/control-plane/Dockerfile -t "$image" .browser-core-source
-        echo "BASEHARBOR_RUNTIME_IMAGE=$image" >> "$GITHUB_ENV"
+        bash .browser-core-source/scripts/ci-local-oci-registry.sh publish "$image" localhost:5000/baseharbor-runtime:browser
         awk '/^[[:space:]]+image:/ {print $2}' .browser-core-source/internal/runtime/assets/compose-single.yaml | sort -u | while read -r provider; do docker pull "$provider"; done
     - name: Pin the repository's native Keycloak image
       shell: bash
@@ -1304,13 +1717,15 @@ jobs:
       run: bash .browser-core-source/scripts/ci-core-rootless-runtime.sh
       env:
         BASEHARBOR_TEST_RUNTIME: podman
+    - name: Install verified ORAS for Core bootstrap
+      run: bash .browser-core-source/scripts/ci-install-oras.sh
     - name: Build exact Core runtime and warm its declared provider images
       shell: bash
       run: |
         set -euo pipefail
         image="localhost/baseharbor-runtime:browser-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
         docker build -f .browser-core-source/deploy/control-plane/Dockerfile -t "$image" .browser-core-source
-        echo "BASEHARBOR_RUNTIME_IMAGE=$image" >> "$GITHUB_ENV"
+        bash .browser-core-source/scripts/ci-local-oci-registry.sh publish "$image" localhost:5000/baseharbor-runtime:browser
         awk '/^[[:space:]]+image:/ {print $2}' .browser-core-source/internal/runtime/assets/compose-single.yaml | sort -u | while read -r provider; do docker pull "$provider"; done
     - name: Pin the repository's native Keycloak image
       shell: bash
@@ -1525,7 +1940,7 @@ jobs:
         set -euo pipefail
         image="localhost/baseharbor-runtime:browser-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
         docker build -f .browser-core-source/deploy/control-plane/Dockerfile -t "$image" .browser-core-source
-        echo "BASEHARBOR_RUNTIME_IMAGE=$image" >> "$GITHUB_ENV"
+        bash .browser-core-source/scripts/ci-local-oci-registry.sh publish "$image" localhost:5000/baseharbor-runtime:browser
         awk '/^[[:space:]]+image:/ {print $2}' .browser-core-source/internal/runtime/assets/compose-single.yaml | sort -u | while read -r provider; do docker pull "$provider"; done
     - name: Pin the repository's native Keycloak image
       shell: bash
@@ -1630,6 +2045,17 @@ jobs:
     - name: Stop owned test services and remove generated private keys
       if: always()
       run: bash scripts/browser/stop-fixture.sh
+
+  greenfield_native:
+    name: Greenfield · Docker + Podman · All built-in stacks
+    needs: [source]
+    if: ${{ always() && !cancelled() && needs.source.result == 'success' && needs.source.outputs.tag == 'v0.4.27' && inputs.only_gates == '' }}
+    uses: ./.github/workflows/nextjs-greenfield-e2e.yml
+    permissions:
+      contents: read
+    with:
+      candidate_ref: ${{ needs.source.outputs.candidate_sha }}
+
   checks:
     name: Pre-Release Checks
     needs:
@@ -1643,9 +2069,9 @@ jobs:
     - runtime_heavy_gates_docker
     - runtime_heavy_gates_podman
     - runtime_heavy_gates
-    - v0421_ha_groups_docker
-    - v0421_ha_groups_podman
-    - v0421_ha_groups
+    - ha_groups_docker
+    - ha_groups_podman
+    - ha_groups
     - reference_journey
     - integration_public_contracts
     - integration_configuration_policy
@@ -1657,12 +2083,14 @@ jobs:
     - integration_remote_target_docker
     - integration_remote_target_podman
     - integration_live_console
+    - greenfield_native
     if: ${{ always() }}
     runs-on: ubuntu-latest
     steps:
     - name: Require selected checks to succeed
       env:
         JOB_RESULTS: ${{ toJSON(needs) }}
+        ONLY_GATES: ${{ inputs.only_gates }}
       run: |
         python3 - <<'PYTHON'
         import json, os
@@ -1670,16 +2098,18 @@ jobs:
         source = jobs['source']
         assert source['result'] == 'success', 'source checks failed'
         out = source['outputs']
-        required = {'source', 'runtime_light_gates', 'runtime_heavy_gates', 'v0421_ha_groups'}
+        required = {'source', 'runtime_light_gates', 'runtime_heavy_gates', 'ha_groups'}
+        if out['tag'] == 'v0.4.27' and not os.environ.get('ONLY_GATES', ''):
+            required.add('greenfield_native')
         for key, count in [('adoption','adoption_count'), ('static_gates','static_count'),
                            ('runtime_light_gates_docker','light_docker_count'), ('runtime_light_gates_podman','light_podman_count'),
                            ('runtime_heavy_gates_docker','heavy_docker_count'), ('runtime_heavy_gates_podman','heavy_podman_count'),
-                           ('v0421_ha_groups_docker','ha_docker_count'), ('v0421_ha_groups_podman','ha_podman_count'),
+                           ('ha_groups_docker','ha_docker_count'), ('ha_groups_podman','ha_podman_count'),
                            ('reference_journey','journey_count')]:
             value = int(out[count])
             assert value >= 0, 'invalid selected count'
             if value: required.add(key)
-        if any(int(out[key]) for key in ['light_docker_count','light_podman_count','heavy_docker_count','heavy_podman_count','journey_count']):
+        if any(int(out[key]) for key in ['light_docker_execute_count','light_podman_execute_count','heavy_docker_execute_count','heavy_podman_execute_count','journey_count']):
             required.add('runtime_candidate')
         for gate in json.loads(out['integration']):
             _, runtime, name = gate.split('/')
@@ -1703,6 +2133,11 @@ jobs:
         required: true
         default: develop
         type: string
+      develop_sha:
+        description: Optional expected develop tip SHA; if supplied, it must equal the fetched tip
+        required: false
+        default: ''
+        type: string
       demo_ref:
         description: Exact baseharbor-demo commit SHA to validate
         required: true
@@ -1720,9 +2155,20 @@ jobs:
   push:
     branches:
     - release-candidate/**
+    - release/v*
     - validation/pre-release/**
   workflow_call:
     inputs:
+      develop_mode:
+        description: Run exact-source develop acceptance using existing consumer integration gates
+        required: false
+        default: false
+        type: boolean
+      console_ref:
+        description: Exact Console SHA (required for develop acceptance)
+        required: false
+        default: ''
+        type: string
       tag:
         required: true
         type: string
@@ -1740,3 +2186,20 @@ jobs:
         required: false
         default: ''
         type: string
+      release_mode:
+        description: Validate a promoted release tag rather than a pre-release candidate
+        required: false
+        default: false
+        type: boolean
+      develop_sha:
+        description: Exact develop tip captured by the release tag job
+        required: false
+        default: ''
+        type: string
+    outputs:
+      candidate_sha:
+        description: Exact BaseHarbor source SHA checked by this workflow
+        value: ${{ jobs.source_prepare.outputs.candidate_sha }}
+      develop_sha:
+        description: Exact develop SHA used by the ancestry guard
+        value: ${{ jobs.source_prepare.outputs.develop_sha }}

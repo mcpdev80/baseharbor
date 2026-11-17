@@ -68,6 +68,9 @@ func TestReconcileRabbitMQCredentialsUsesStdinAndSeparateClasses(t *testing.T) {
 		}
 	}
 	joinedArgs := strings.Join(fake.args, " ")
+	if !strings.Contains(joinedArgs, "su-exec rabbitmq sh -ceu") {
+		t.Fatalf("RabbitMQ credential reconciliation must run under the broker identity, got %q", joinedArgs)
+	}
 	for _, secret := range []string{"app-secret", "admin-secret", "internal-secret"} {
 		if strings.Contains(joinedArgs, secret) {
 			t.Fatalf("secret %q leaked into runtime command args: %q", secret, joinedArgs)

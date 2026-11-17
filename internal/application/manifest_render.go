@@ -208,6 +208,9 @@ func writeSecretRequirementsYAML(b *strings.Builder, field string, source []Secr
 	fmt.Fprintf(b, "  %s:\n", field)
 	for _, requirement := range requirements {
 		fmt.Fprintf(b, "    - name: %s\n", requirement.Name)
+		if requirement.Source != "" {
+			fmt.Fprintf(b, "      source: %s\n", requirement.Source)
+		}
 		if requirement.Generate != nil {
 			fmt.Fprintf(b, "      generate:\n        type: %s\n", requirement.Generate.Type)
 			switch requirement.Generate.Type {

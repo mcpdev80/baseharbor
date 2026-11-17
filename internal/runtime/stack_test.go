@@ -84,7 +84,7 @@ func TestEnsureFilesPreparesPostgreSQLBackedOpenBao27(t *testing.T) {
 	text := string(config)
 	for _, want := range []string{
 		`storage "postgresql"`,
-		"sslmode=verify-full",
+		"sslmode=verify-ca",
 		"tls_auto_reload          = true",
 		"X25519MLKEM768",
 	} {
@@ -111,9 +111,9 @@ func TestEnsureFilesPreparesPostgreSQLBackedOpenBao27(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, want := range []string{
-		`PGPASSWORD="$BASEHARBOR_POSTGRES_PASSWORD" psql`,
+		`PGPASSWORD="$BASEHARBOR_POSTGRES_PASSWORD" PGSSLMODE=verify-ca PGSSLROOTCERT=/run/baseharbor/postgres-ca/ca.pem psql`,
 		`--username "$BASEHARBOR_POSTGRES_USER" --dbname "$BASEHARBOR_POSTGRES_DB"`,
-		`PGPASSWORD="$BASEHARBOR_OPENBAO_DB_PASSWORD" psql`,
+		`PGPASSWORD="$BASEHARBOR_OPENBAO_DB_PASSWORD" PGSSLMODE=verify-ca PGSSLROOTCERT=/run/baseharbor/postgres-ca/ca.pem psql`,
 		`--username "$BASEHARBOR_OPENBAO_DB_USER" --dbname openbao`,
 	} {
 		if !strings.Contains(string(initScript), want) {
@@ -225,7 +225,7 @@ func TestEnsureServiceAccessMaterializesNativeTLSForPostgresAndOpenBao(t *testin
 	configText := string(config)
 	for _, wanted := range []string{
 		`storage "postgresql"`,
-		"sslmode=verify-full",
+		"sslmode=verify-ca",
 		"tls_auto_reload          = true",
 		"X25519MLKEM768",
 	} {
@@ -373,8 +373,9 @@ func TestEmbeddedComposeUsesNativeTLSFromFirstStart(t *testing.T) {
 		`"basebackup":{"checkpoint":"fast"}`,
 		"SSL_CERTIFICATE_FILE: /run/baseharbor/tls/server-cert.pem",
 		"SSL_PRIVATE_KEY_FILE: /run/baseharbor/tls-runtime/server-key.pem",
-		"install -d -o postgres -g postgres -m 0700 /run/baseharbor/tls-runtime",
-		"install -o postgres -g postgres -m 0600 /run/baseharbor/tls-source/server-key.pem /run/baseharbor/tls-runtime/server-key.pem",
+		"mkdir -p /run/baseharbor/tls-runtime",
+		"chmod 0600 /run/baseharbor/tls-runtime/server-key.pem /run/baseharbor/tls-runtime/etcd-client-key.pem",
+		"if [ \"$$(id -u)\" = 0 ]; then chown postgres:postgres /run/baseharbor/tls-runtime/server-key.pem /run/baseharbor/tls-runtime/etcd-client-key.pem; fi",
 		`until /bin/sh /run/baseharbor/openbao-init.sh; do`,
 		`attempts=$$((attempts+1))`,
 		`if [ "$${attempts}" -ge 90 ]; then`,
@@ -407,6 +408,31 @@ func TestEmbeddedComposeOrdersOpenBaoGatewayAfterHAMembers(t *testing.T) {
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("embedded OpenBao gateway dependency missing %q", want)
+		}
+	}
+}
+
+func TestRenderComposeForProfileDefaultsSingleAndHAAboveOptIn(t *testing.T) {
+	// The shipped DEFAULT renders single control-plane instances without any
+	// profile file: one OpenBao member, one PostgreSQL member, no HA members,
+	// no etcd, no mandatory cluster quorum.
+	single := renderComposeForProfile("baseharbor", false)
+	for _, forbidden := range []string{"openbao-member-2", "openbao-member-3", "postgres-member-2", "postgres-member-3", "postgres-etcd", "spilo", "member-2", "member-3"} {
+		if strings.Contains(single, forbidden) {
+			t.Fatalf("default (ha=false) compose must not contain HA element %q", forbidden)
+		}
+	}
+	for _, required := range []string{"openbao-member-1:", "postgres-member-1:", "docker.io/library/postgres:18-alpine", "docker.io/openbao/openbao:2.7.1"} {
+		if !strings.Contains(single, required) {
+			t.Fatalf("default (ha=false) compose must contain single element %q", required)
+		}
+	}
+
+	// HA renders the full ensemble only on explicit opt-in (ha=true).
+	ha := renderComposeForProfile("baseharbor", true)
+	for _, required := range []string{"openbao-member-1:", "openbao-member-2:", "openbao-member-3:", "postgres-member-1:", "postgres-member-2:", "postgres-member-3:", "postgres-etcd-1:"} {
+		if !strings.Contains(ha, required) {
+			t.Fatalf("opt-in HA (ha=true) compose must contain %q", required)
 		}
 	}
 }
@@ -499,8 +525,6 @@ func TestDataDirKeepsExplicitOverrideSelfContained(t *testing.T) {
 func TestEmbeddedComposeRunsControlPlaneServicesUnprivileged(t *testing.T) {
 	text := string(composeYAML)
 	for _, want := range []string{
-		"user: \"99:99\"",
-		"user: \"100\"",
 		"SKIP_CHOWN: \"1\"",
 		"/openbao/config:rw,noexec,nosuid,nodev,mode=1777",
 		"read_only: true",
@@ -511,6 +535,33 @@ func TestEmbeddedComposeRunsControlPlaneServicesUnprivileged(t *testing.T) {
 		if !strings.Contains(text, want) {
 			t.Fatalf("embedded runtime compose missing %q:\n%s", want, text)
 		}
+	}
+}
+
+func TestSinglePostgresInitializesFreshVolumesWithEntrypointCapabilities(t *testing.T) {
+	text := string(composeSingleYAML)
+	start := strings.Index(text, "  postgres-member-1:\n")
+	if start < 0 {
+		t.Fatal("single-instance PostgreSQL service missing")
+	}
+	var lines []string
+	for i, line := range strings.Split(text[start:], "\n") {
+		if i > 0 && strings.HasPrefix(line, "  ") && !strings.HasPrefix(line, "    ") {
+			break
+		}
+		lines = append(lines, line)
+	}
+	block := strings.Join(lines, "\n")
+	for _, want := range []string{
+		"    cap_drop:\n    - ALL\n    cap_add:\n    - CHOWN\n    - DAC_READ_SEARCH\n    - FOWNER\n    - SETGID\n    - SETUID\n",
+		"    security_opt:\n    - no-new-privileges:true",
+	} {
+		if !strings.Contains(block, want) {
+			t.Fatalf("single PostgreSQL service must grant only the entrypoint capabilities %q:\n%s", want, block)
+		}
+	}
+	if strings.Contains(block, "    user:") {
+		t.Fatal("single PostgreSQL service must leave effective UID to the image/runtime")
 	}
 }
 

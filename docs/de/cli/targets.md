@@ -6,6 +6,7 @@ Targets wählen Deployment-Ziel, Runtime und Zugriffsweg. Sie sind keine Capabil
 
 Die Auflösung verwendet zuerst globales `--target NAME`, dann das aktivierte Shell-Target, Organisations-/Plattform-Defaults und das konfigurierte Standardtarget. Vor Mutation zeigt `baha target show` Ziel und Herkunft.
 
+
 ## Lokaler Docker-Zugriff
 
 ```text
@@ -17,6 +18,17 @@ baha target delete
 baha target activate
 baha target deactivate
 ```
+
+## Grenze der lokalen Core-Isolation
+
+Ein Host besitzt derzeit **eine lokale Core-Management-Instanz**. Mehrere Targets mit demselben Access `local` teilen dessen Core-Laufzeit und Provider-/Deployment-Registry. Ein zweiter lokaler Target-Name erzeugt **keinen** isolierten Core. Eine widersprüchliche Access-Definition wird ohne Änderung abgelehnt:
+
+```text
+access "local" already exists with different provider/reference
+```
+
+Zuerst die registrierten Targets mit `baha target list` prüfen. Den bestehenden lokalen Access nur wiederverwenden, wenn der gemeinsame Core gewollt ist. Für eine isolierte Docker-/Podman-Installation einen **separaten Host** mit dem vorhandenen `baha node add` / `baha node connect`-Enrollment anbinden. Die lokale Access-Registry nicht überschreiben oder löschen, um Isolation zu erzwingen.
+
 
 Im Application-Repository mit funktionierender Runtime:
 
@@ -80,10 +92,12 @@ baha target create docker-dev \
 Entfernte Docker-/Podman-Hosts werden nicht mehr durch manuelles Erstellen des Connector-Access-Eintrags aufgenommen. Auf dem Core-System wird der geführte Node-Workflow verwendet:
 
 ```bash
-baha node add node-a
+baha node add node-a --runtime podman
 baha node list
 baha node status node-a
 ```
+
+Der Standardweg verwendet ein geschütztes Core-Verbindungsprofil mit verifizierten öffentlichen API-/Connector-Endpunkten und gepinnter CA. Die Tenant-UUID kommt ausschließlich aus der authentifizierten Operator-Mitgliedschaft, nicht aus einer manuellen Eingabe. Im erweiterten Pfad dürfen Endpunkte und CA individuell gesetzt werden, aber keine fremde Tenant-Zugehörigkeit. Bei fehlender oder mehrdeutiger öffentlicher TLS-Identität wird sicher abgebrochen.
 
 `baha node add` erzeugt das Remote-Target und genau eine owner-only Enrollment-Datei mit kurzlebiger Einmal-Autorisierung. Diese Datei wird auf den Remote-Host kopiert und dort konsumiert:
 
@@ -129,6 +143,25 @@ baha --target docker-dev up -e dev
 
 Technische Bezeichner: `runtime_provider`.
 
+## Remote-Zugriff auf Core-lokales Docker/Podman
+
+Wenn Docker oder Podman auf demselben Host wie Core läuft, benötigt der Entwicklungsrechner keinen Node Connector. Er verwendet ein Target mit dem Access-Provider `baseharbor-core` sowie dem Namen und der Runtime der Core-Installation. Die `--tenant-id` muss zur tatsächlichen Operator-Mitgliedschaft passen und wird anhand des hinterlegten HTTPS-/OIDC-Profils und des aktiven Core geprüft. Die lokale Runtime des Entwicklungsrechners bleibt ungenutzt.
+
+```bash
+baha target create vm-core --runtime-provider docker --access vm-core-management --access-provider baseharbor-core --reference vm-core --tenant-id 11111111-1111-4111-8111-111111111111
+baha use vm-core
+```
+
+Vor `baha use` sind `BASEHARBOR_CONNECTION_PROFILE` und eine gültige Operator-Sitzung erforderlich. Das Target legt nur eine Client-Route an. Quellprüfung, Zustimmung und Anwendungsablauf bleiben beim Core.
+
+## Geführte Rootless-Docker-Einrichtung beim ersten Start
+
+Für ein neues, noch nicht konfiguriertes lokales Docker-Target prüft `baha up` den ausgewählten Rootless-Daemon vor dem Download des Core-Images. Ist der Socket nicht erreichbar, erklärt BaseHarbor das Problem und den konkreten Reparaturplan. Dazu können die Installation des Ubuntu-/Debian-Pakets `uidmap` mit `sudo`, die Konfiguration per `dockerd-rootless-setuptool.sh install --force` und das Aktivieren des systemd-Benutzerdienstes gehören. **Vor Systemänderungen ist eine gesonderte ausdrückliche Zustimmung erforderlich** (Vorgabe: Nein); `--yes` erlaubt keine stille Rechteerweiterung.
+
+System-Docker bleibt unverändert und wird nicht automatisch als Ersatz verwendet. Nach der Einrichtung stellt BaseHarbor den ursprünglichen Docker-Kontext wieder her und prüft den tatsächlich ausgewählten Rootless-Endpunkt. Bereits vorhandene Benutzerdienste werden gestartet statt neu installiert. Explizite Docker-Endpoints/-Kontexte, Remote-Targets und Podman bleiben von dieser lokalen Reparatur unberührt.
+
+Die geführte Reparatur unterstützt derzeit Ubuntu/Debian unter Linux mit einer aktiven systemd-Benutzersitzung, installiertem Rootless-Setup-Tool und bereits zugewiesenen, nicht überlappenden Sub-UID-/Sub-GID-Bereichen von mindestens 65536 IDs in `/etc/subuid` und `/etc/subgid`. Fehlende Zuordnungen oder Setup-Werkzeuge meldet BaseHarbor mit Hinweisen, ohne den Host zu verändern. Nichtinteraktive Aufrufe führen weder `sudo` noch eine Installation aus. Bei Fehlern gibt es keinen Wechsel zu Rootful-Docker.
+
 ## Lokale Docker-Engine auswählen
 
 Rootless-Docker ist der Standard. Vor jeder Lifecycle-Aktion löst der Provider genau einen Unix-Socket auf und verifiziert ihn. Compose, Inspektion, Exec, Volume-Recovery und Cleanup verwenden danach `docker --host SOCKET`. Eine nicht erreichbare oder unerwartet Rootful laufende Engine führt zum Abbruch; es gibt keinen Wechsel zu System-Docker.
@@ -147,3 +180,11 @@ Die Leseergebnisse enthalten `docker_engine.endpoint`, `mode`, `daemon_id`, `sel
 Die erste eigene Lifecycle-Aktion speichert eine geschützte Bindung `runtime/docker-engine.json` im Target-Zustandsverzeichnis. Weitere CLI- und MCP-Aktionen verwenden diese Bindung auch bei unterschiedlichen geerbten Docker-Kontexten. Ein geänderter Endpoint, Modus oder eine andere Daemon-ID verhindert Änderungen, einen zweiten Bootstrap und Cleanup. Vorhandener Core-Zustand ohne Bindung verlangt nachweislich eigene Ressourcen auf der gewählten Engine. Ist System-Docker erreichbar, verhindern dort vorhandene Ressourcen desselben Targets ebenfalls einen zweiten Core-Bootstrap auf Rootless-Docker.
 
 Vorhandene Rootful-Installationen bleiben erhalten. Ihre Wartung erfordert die explizite Target-Konfiguration `docker-endpoint: unix:///var/run/docker.sock` und `docker-mode: rootful`. Dafür gibt es auch die Target-create-Optionen `--docker-endpoint` und `--docker-mode` sowie die Machine-/MCP-Felder `docker_endpoint` und `docker_mode`. Das ist eine ausdrückliche Wartungsentscheidung, keine Migration. Geschützten Zustand nicht löschen und den Socket eines gebundenen Targets nicht ändern, um Daten zu verschieben. Für eine getrennte Installation ein eigenes Target verwenden.
+
+## Editierbare Deployment-Policies
+
+Neue Targets können mit `baha target create NAME ... --deployment-preset development|test|staging|production|custom` editierbare Best-Practice-Vorlagen verwenden. Der Wizard schlägt `development` vor; Abweichungen müssen bewusst gewählt werden. Bestehende Targets bekommen durch das Upgrade keine neuen Regeln.
+
+`baha target policy show NAME` zeigt die gespeicherte Policy. Mit `baha target policy set NAME --deployment-preset test` wird ein Preset neu angewendet. Einzelne Werte lassen sich ohne Zurücksetzen der anderen Vorgaben ändern, z. B. mit `baha target policy set NAME --deployment-dirty yes`. Weitere Optionen: `--deployment-branches`, `--deployment-commit`, `--deployment-remote-commit`, `--deployment-approval`, `--deployment-image-digest`. `--deployment-preset none` entfernt eine lokale Target-Policy ausdrücklich.
+
+Änderungen laufen über den geschützten Konfigurations-Owner mit Compare-and-Swap. Laufzeit, Tenant, Zugriffsrechte und Deployments bleiben unberührt. Die Funktion gilt derzeit nur für Targets, die lokal zu Core gehören. Änderungen an entfernten Targets werden bis zu einer authentifizierten Core-Operator-API abgewiesen. Lokale Workstation-Dateien dürfen die Core-Policy nicht ersetzen. Ohne vom Core bestätigte Herkunftsdaten werden restriktive Deployments abgewiesen.

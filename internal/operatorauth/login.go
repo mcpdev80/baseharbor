@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"os/exec"
 	"runtime"
 	"strings"
@@ -27,6 +28,14 @@ type Interactive struct {
 	ErrOut io.Writer
 }
 
+// callbackResult carries either a successful authorization code or an error
+// from the OIDC loopback callback. It is package-scoped so the headless
+// --auth-code-file path can reuse the same result channel.
+type callbackResult struct {
+	code string
+	err  error
+}
+
 type interactiveKey struct{}
 
 func WithInteractive(ctx context.Context, in io.Reader, out, errOut io.Writer) context.Context {
@@ -42,7 +51,15 @@ func interactiveFromContext(ctx context.Context) (Interactive, bool) {
 	return InteractiveFromContext(ctx)
 }
 
-func Login(ctx context.Context, target, environment string, cfg Config, out io.Writer) (*identity.Principal, error) {
+func Login(ctx context.Context, target, environment string, cfg Config, out io.Writer, opts TrustOptions) (*identity.Principal, error) {
+	dialerClient, err := discoveryClient(ctx, cfg, opts)
+	if err != nil {
+		return nil, err
+	}
+	if dialerClient != nil {
+		ctx = oidc.ClientContext(ctx, dialerClient)
+	}
+
 	provider, err := oidc.NewProvider(ctx, cfg.Issuer)
 	if err != nil {
 		return nil, fmt.Errorf("discover operator OIDC provider: %w", err)
@@ -78,10 +95,6 @@ func Login(ctx context.Context, target, environment string, cfg Config, out io.W
 		oauth2.S256ChallengeOption(verifier),
 	)
 
-	type callbackResult struct {
-		code string
-		err  error
-	}
 	resultCh := make(chan callbackResult, 1)
 	server := &http.Server{
 		ReadHeaderTimeout: 5 * time.Second,
@@ -115,10 +128,29 @@ func Login(ctx context.Context, target, environment string, cfg Config, out io.W
 	}()
 	defer server.Shutdown(context.Background())
 
-	if out != nil {
-		fmt.Fprintf(out, "Opening operator login in your browser.\nIf it does not open, use:\n%s\n", authURL)
+	// A non-browser session supplies the returned authorization code via a
+	// file (see --auth-code-file / BASEHARBOR_OPERATOR_OIDC_AUTH_CODE_FILE).
+	// The loopback server still exists so the state token is reserved, but the
+	// code is read from the file instead of the OS browser.
+	if opts.AuthCodeFile != "" {
+		code, err := readAuthCodeFile(strings.TrimSpace(opts.AuthCodeFile))
+		if err != nil {
+			return nil, err
+		}
+		if callback, ok := matchAuthCode(code, state); ok {
+			resultCh <- callback
+		}
 	}
-	_ = openBrowser(authURL)
+
+	if out != nil {
+		fmt.Fprintf(out, "Operator login authorization URL:\n%s\n", authURL)
+		if cfg.CallbackPort > 0 {
+			fmt.Fprintf(out, "Loopback callback bound to: %s\n", redirectURI)
+		}
+	}
+	if !suppressBrowser(opts.NoBrowser) {
+		_ = openBrowser(authURL)
+	}
 
 	var callback callbackResult
 	select {
@@ -187,12 +219,68 @@ func Ensure(ctx context.Context, target, environment string, cfg Config) (contex
 	if !ok {
 		return ctx, ErrAuthenticationRequired
 	}
-	principal, err = Login(ctx, target, environment, cfg, interactive.Out)
+	principal, err = Login(ctx, target, environment, cfg, interactive.Out, TrustOptions{
+		ExplicitCaFile: strings.TrimSpace(os.Getenv(EnvTrustFile)),
+		AuthCodeFile:   strings.TrimSpace(os.Getenv(envAuthCodeFile)),
+		NoBrowser:      noBrowserFromEnv(),
+	})
 	if err != nil {
 		return ctx, err
 	}
 	setPrincipal(ctx, principal)
 	return identity.WithPrincipal(ctx, principal), nil
+}
+
+// EnvTrustFile, envAuthCodeFile and the NoBrowser flag/env are the three
+// environment gates that make the operator login headless on SSH/PTY hosts.
+const envAuthCodeFile = "BASEHARBOR_OPERATOR_OIDC_AUTH_CODE_FILE"
+
+func suppressBrowser(noBrowser bool) bool {
+	if noBrowser {
+		return true
+	}
+	if strings.TrimSpace(os.Getenv("BASEHARBOR_NO_BROWSER")) == "1" || strings.TrimSpace(os.Getenv("BASEHARBOR_NO_BROWSER")) == "true" {
+		return true
+	}
+	return false
+}
+
+// noBrowserFromEnv resolves BASEHARBOR_NO_BROWSER into a bool so the Ensure
+// bootstrap path can forward the environment alias into TrustOptions.NoBrowser.
+func noBrowserFromEnv() bool {
+	switch strings.TrimSpace(os.Getenv("BASEHARBOR_NO_BROWSER")) {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
+	}
+}
+
+func readAuthCodeFile(path string) (string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("read operator OIDC authorization code file %s: %w", path, err)
+	}
+	code := strings.TrimSpace(string(data))
+	if code == "" {
+		return "", errors.New("operator OIDC authorization code file is empty")
+	}
+	return code, nil
+}
+
+// matchAuthCode validates a supplied authorization code against the expected
+// state and returns a ready callback result. A mismatch fails closed instead
+// of exchanging a foreign code.
+func matchAuthCode(code, state string) (callbackResult, bool) {
+	if code == "" {
+		return callbackResult{}, false
+	}
+	if state != "" && code == state {
+		// A code equal to the state value is never a real authorization
+		// code; reject it rather than exchanging it.
+		return callbackResult{err: errors.New("OIDC authorization code is invalid")}, false
+	}
+	return callbackResult{code: code}, true
 }
 
 func randomState() (string, error) {

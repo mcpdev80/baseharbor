@@ -110,7 +110,7 @@ func TestManagedIdentityCallbackOriginsFollowEffectiveTargetGateway(t *testing.T
 }
 
 func TestSelectiveIdentityOAuthFixtureUsesValidSourceOnlyInitialization(t *testing.T) {
-	configureTestTarget(t)
+	configureTestTargetWithOwner(t)
 	t.Chdir(t.TempDir())
 	if err := os.WriteFile("compose.yaml", []byte(corelessHTTPWorkload), 0600); err != nil {
 		t.Fatal(err)

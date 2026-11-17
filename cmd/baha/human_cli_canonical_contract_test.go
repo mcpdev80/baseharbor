@@ -1,8 +1,12 @@
 package main
 
 import (
+	"context"
+	"io"
 	"strings"
 	"testing"
+
+	"github.com/mcpdev80/baseharbor/internal/cli"
 )
 
 func TestCanonicalHumanCommandsAreDiscoverable(t *testing.T) {
@@ -26,6 +30,37 @@ func TestCanonicalHumanCommandsAreDiscoverable(t *testing.T) {
 		if !commands[name] {
 			t.Errorf("advanced namespace %q not discoverable", name)
 		}
+	}
+}
+
+func TestCanonicalLogsCommandIsDiscoverable(t *testing.T) {
+	root := rootCommand()
+	commands := map[string]*cli.Command{}
+	for _, cmd := range root.Children {
+		if cmd == nil {
+			continue
+		}
+		commands[cmd.Name] = cmd
+	}
+	logs, ok := commands["logs"]
+	if !ok {
+		t.Fatal("top-level 'baha logs' shorthand is missing; users fall back to the unrelated 'login' suggestion")
+	}
+	if logs.Run == nil {
+		t.Fatal("top-level 'baha logs' shorthand has no handler")
+	}
+	if logs.Summary == "" {
+		t.Fatal("top-level 'baha logs' shorthand lacks a public purpose")
+	}
+	// The shorthand must behave like the explicit app command: outside an
+	// application repository it resolves an application deployment and reports a
+	// concrete remediation instead of an unknown-command/login suggestion.
+	err := logs.Run(context.Background(), nil, io.Discard, io.Discard)
+	if err == nil {
+		t.Fatal("expected a resolution error outside an application repository")
+	}
+	if strings.Contains(err.Error(), "unknown command") {
+		t.Fatalf("top-level 'baha logs' still falls through to unknown-command: %v", err)
 	}
 }
 

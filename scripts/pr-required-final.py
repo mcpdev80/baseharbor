@@ -5,7 +5,11 @@ import json
 import os
 from pathlib import Path
 
-BASE_JOBS = ('workflow_policy', 'pr_plan', 'pr_focused', 'pr_validations')
+BASE_JOBS = ('workflow_policy', 'source_format', 'pr_plan', 'pr_focused', 'pr_validations')
+CORELESS_LIFECYCLE_GATES = {
+    'integration/docker/coreless-lifecycle',
+    'integration/podman/coreless-lifecycle',
+}
 
 
 def verify(plan, needs, *, head=None, integration=None):
@@ -29,12 +33,27 @@ def verify(plan, needs, *, head=None, integration=None):
     if not gates and not checks:
         errors.append('no selected checks')
     required = set(BASE_JOBS)
+    if set(gates) & CORELESS_LIFECYCLE_GATES:
+        required.update(('pr_selected_integration', 'pr_demo_pin'))
+    deferred = plan.get('deferred_integration_gates')
+    if deferred is not None:
+        if not isinstance(deferred, list) or not all(isinstance(gate, str) for gate in deferred):
+            errors.append('invalid deferred integration gates')
+            deferred = []
+        allowed_deferred = {'integration/static/public-contracts'}
+        unknown_deferred = set(deferred) - allowed_deferred
+        if unknown_deferred:
+            errors.append('unsupported deferred gate: ' + ', '.join(sorted(unknown_deferred)))
+    if any(check['id'] in ('go-unit-tests', 'cli-package-tests') for check in checks):
+        required.add('pr_unit_shards')
     for gate in gates:
         parts = gate.split('/')
         if len(parts) == 3 and parts[0] == 'atomic' and parts[1] in ('docker', 'podman'):
             required.update(('pr_candidate', 'pr_runner_interface', 'pr_runtime_selected'))
         elif gate == 'integration/static/public-contracts':
             required.add('pr_public_contracts')
+        elif gate in CORELESS_LIFECYCLE_GATES:
+            pass
         else:
             errors.append('selected gate has no workflow executor: ' + gate)
     if 'pr_runtime_selected' in required or 'pr_public_contracts' in required:

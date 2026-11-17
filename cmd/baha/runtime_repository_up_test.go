@@ -13,7 +13,7 @@ import (
 )
 
 func TestRepositoryUpRejectsAuthoredIdentityBeforeManagementInitialization(t *testing.T) {
-	configureTestTarget(t)
+	configureTestTargetEmpty(t)
 	t.Chdir(t.TempDir())
 	if err := os.WriteFile("baseharbor.yaml", []byte("version: 1\napp:\n  name: invalid-input\n  environment: dev\n  id: developer-authored\n"), 0600); err != nil {
 		t.Fatal(err)

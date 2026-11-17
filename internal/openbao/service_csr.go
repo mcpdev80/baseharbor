@@ -16,11 +16,22 @@ import (
 
 const corePKIRoleCommand = `exec bao write baseharbor-pki/roles/baseharbor-core allow_any_name=true allow_localhost=true allow_ip_sans=false allowed_uri_sans="spiffe://baseharbor/platform/core/*" enforce_hostnames=false key_type=any key_usage=DigitalSignature client_flag=false server_flag=true use_csr_common_name=false use_csr_sans=true ttl=24h max_ttl=24h generate_lease=true`
 
+// Workstation certificates are long-lived identities (up to five years). Do
+// not tie their revocation to the short-lived manager token used to issue
+// them: OpenBao would revoke the sign lease when that token expires.
+const workstationPKIRoleCommand = `exec bao write baseharbor-pki/roles/baseharbor-workstations allow_any_name=true allow_localhost=false allow_ip_sans=false allowed_uri_sans="spiffe://baseharbor/workstations/*" enforce_hostnames=false key_type=any key_usage=DigitalSignature client_flag=true server_flag=false use_csr_common_name=false use_csr_sans=true ttl=43800h max_ttl=43800h generate_lease=false`
+
 const nodePKIRoleCommand = `exec bao write baseharbor-pki/roles/baseharbor-nodes allow_any_name=true allow_localhost=false allow_ip_sans=false allowed_uri_sans="spiffe://baseharbor/platform/connectors/*" enforce_hostnames=false key_type=any key_usage=DigitalSignature client_flag=true server_flag=false use_csr_common_name=false use_csr_sans=true ttl=24h max_ttl=24h generate_lease=true`
 
 // SignCSR uses the signing endpoint: the client key never enters Core/OpenBao.
 func (i *ServiceIssuer) SignCSR(ctx context.Context, request serviceaccess.CSRSigningRequest) (serviceaccess.IssuedCertificate, error) {
 	return i.signScopedCSR(ctx, request, "connectors", "baseharbor-nodes", x509.ExtKeyUsageClientAuth)
+}
+
+// SignWorkstationCSR is a dedicated client-only PKI boundary. It cannot
+// issue Core or Connector certificates and never returns a private key.
+func (i *ServiceIssuer) SignWorkstationCSR(ctx context.Context, request serviceaccess.CSRSigningRequest) (serviceaccess.IssuedCertificate, error) {
+	return i.signScopedCSR(ctx, request, "workstations", "baseharbor-workstations", x509.ExtKeyUsageClientAuth)
 }
 
 // SignCoreCSR signs a Core-owned key with server-only usage. It is deliberately
@@ -39,11 +50,17 @@ func (i *ServiceIssuer) signScopedCSR(ctx context.Context, request serviceaccess
 	csr, err := request.Validate()
 	if namespace == "core" {
 		csr, err = request.ValidateCore()
+	} else if namespace == "workstations" {
+		csr, err = request.ValidateWorkstation()
 	}
 	if err != nil {
 		return serviceaccess.IssuedCertificate{}, err
 	}
-	if !strings.HasPrefix(request.Identity, "spiffe://baseharbor/platform/"+namespace+"/") {
+	expectedPrefix := "spiffe://baseharbor/platform/" + namespace + "/"
+	if namespace == "workstations" {
+		expectedPrefix = "spiffe://baseharbor/workstations/"
+	}
+	if !strings.HasPrefix(request.Identity, expectedPrefix) {
 		return serviceaccess.IssuedCertificate{}, errors.New("node CSR is outside the managed connector identity namespace")
 	}
 	token, err := managerToken(ctx, i.executor, i.files)
@@ -59,7 +76,8 @@ func (i *ServiceIssuer) signScopedCSR(ctx context.Context, request serviceaccess
 		return serviceaccess.IssuedCertificate{}, errors.New("managed authority could not sign the node CSR")
 	}
 	var reply struct {
-		Data struct {
+		LeaseID string `json:"lease_id"`
+		Data    struct {
 			Certificate string   `json:"certificate"`
 			PrivateKey  string   `json:"private_key"`
 			IssuingCA   string   `json:"issuing_ca"`
@@ -70,6 +88,9 @@ func (i *ServiceIssuer) signScopedCSR(ctx context.Context, request serviceaccess
 	}
 	if json.Unmarshal([]byte(out), &reply) != nil || reply.Data.PrivateKey != "" || reply.Data.IssuingCA == "" || reply.Data.Serial == "" {
 		return serviceaccess.IssuedCertificate{}, errors.New("managed CSR signing returned invalid public material")
+	}
+	if namespace == "workstations" && reply.LeaseID != "" {
+		return serviceaccess.IssuedCertificate{}, errors.New("managed workstation certificate is tied to a revocable signing lease")
 	}
 	block, rest := pem.Decode([]byte(reply.Data.Certificate))
 	if block == nil || block.Type != "CERTIFICATE" || strings.TrimSpace(string(rest)) != "" {

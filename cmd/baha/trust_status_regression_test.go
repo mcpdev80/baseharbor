@@ -114,7 +114,7 @@ func TestTrustStatusRetainsOwnedRecordsWithoutCore(t *testing.T) {
 }
 
 func TestTrustStatusUnreadableStateNotReportedAbsent(t *testing.T) {
-	target := configureTestTarget(t)
+	target := configureTestTargetEmpty(t)
 	root, err := targetRuntimeStateRoot(target)
 	if err != nil {
 		t.Fatal(err)

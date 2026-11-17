@@ -15,6 +15,10 @@ var (
 type Config struct {
 	Issuer    string
 	Audiences []string
+	// TrustFile, when set, adds a CA certificate to the discovery trust pool
+	// on top of the system trust pool (additive only). It is used to verify a
+	// managed CA the issuer bootstrapped without OS system-trust surgery.
+	TrustFile string
 }
 
 // Validate rejects incomplete or insecure OIDC configuration.

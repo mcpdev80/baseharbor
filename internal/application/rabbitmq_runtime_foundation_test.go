@@ -36,7 +36,6 @@ func TestRabbitMQRuntimeFoundationIsApplicationScopedAndPersistent(t *testing.T)
 	}
 	for _, want := range []string{
 		"rabbitmq-jobs:",
-		"user: \"rabbitmq\"",
 		"docker.io/library/rabbitmq:4.3.6-alpine",
 		"RABBITMQ_DEFAULT_USER: ${RABBITMQ_JOBS_BOOTSTRAP_USER}",
 		"RABBITMQ_DEFAULT_PASS: ${RABBITMQ_JOBS_BOOTSTRAP_PASSWORD}",
