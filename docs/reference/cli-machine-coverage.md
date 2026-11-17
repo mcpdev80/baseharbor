@@ -32,6 +32,11 @@ Inspect current data with `baha agent describe -o json` (`cli_coverage`). Update
 | `baha app list` | semantic | CLI -o json / typed MCP result | baseharbor.app.list |  |
 | `baha app logs` | excluded |  |  | Raw/follow runtime streams can include application secrets and require a streaming transport; status, doctor and evidence provide bounded secret-safe observation. |
 | `baha app new` | semantic | CLI -o json / typed MCP result | baseharbor.app.new |  |
+| `baha app perses` | presentation |  |  | Command group; invoke its supported subcommands. |
+| `baha app perses disable` | presentation |  |  | Guided human opt-out of the optional Perses surface; it folds into the manifest services.observability selection and the apply/preflight flow, which carry their own typed coverage, so no separate MCP operation is exposed. |
+| `baha app perses enable` | presentation |  |  | Guided human enablement of the optional Perses surface; it folds into the manifest services.observability selection and the apply/preflight flow, which carry their own typed coverage, so no separate MCP operation is exposed. |
+| `baha app perses remove` | presentation |  |  | Guided human retirement of the owned Perses surface; manifest convergence plus an ownership-safe removal plan whose runtime retirement lands in the release window; no separate MCP operation is exposed. |
+| `baha app perses status` | presentation |  |  | Repository-bound presentation of the app.perses.status read model for the current deployment; machine clients inspect app status instead. |
 | `baha app plan` | semantic | CLI -o json / typed MCP result | baseharbor.plan |  |
 | `baha app preflight` | semantic | CLI -o json / typed MCP result | baseharbor.app.preflight |  |
 | `baha app prune` | semantic | CLI -o json / typed MCP result | baseharbor.app.prune | Registry-only removal of a dangling deployment record whose source repository is gone; never loads source or runtime, and refuses when source is present or multiple records match. |

@@ -34,6 +34,11 @@ Exakte Optionen stehen in `baha COMMAND --help`. [Globale Optionen](global-optio
 | `baha app list` | List registered deployments for the effective target | `baha app list [--all-targets]` | [↗](applications.md) |
 | `baha app logs` | Show logs for the current application workload | `baha app logs [SERVICE] [--follow] [--app NAME]` | [↗](applications.md) |
 | `baha app new` | Create a new ecosystem-native application from a BaseHarbor contract | `baha app new [NAME] [--directory PARENT] [--stack go\|nextjs\|python\|quarkus \| --stack-profile NAME] [--emit-backstage --backstage-owner OWNER [--backstage-lifecycle LIFECYCLE]] [-e ENV\|--environment ENV] [--http] [--sql] [--cache] [--key-value] [--document-db] [--queue] [--pubsub] [--stream] [--s3] [--secrets] [--require-secret NAME]... [--telemetry] [--all] [-o json\|--output json]` | [↗](applications.md) |
+| `baha app perses` | Guide enable/status/disable and ownership-safe removal of the optional Perses surface | `baha app perses <command> [NAME] [--json]` | [↗](applications.md) |
+| `baha app perses disable` | Deselect the optional Perses management-ui surface | `baha app perses disable [NAME] [--json]` | [↗](applications.md) |
+| `baha app perses enable` | Select the optional Perses management-ui surface | `baha app perses enable [NAME] [--json]` | [↗](applications.md) |
+| `baha app perses remove` | Ownership-safe retirement of the owned Perses surface | `baha app perses remove [NAME] [--json]` | [↗](applications.md) |
+| `baha app perses status` | Report the Perses three-state contract | `baha app perses status [NAME] [--json]` | [↗](applications.md) |
 | `baha app plan` | Show desired resources without changing anything | `baha app plan [NAME] [-o json\|--output json]` | [↗](applications.md) |
 | `baha app preflight` | Validate an application before mutation | `baha app preflight [NAME]` | [↗](applications.md) |
 | `baha app prune` | Remove a dangling deployment record whose source repository is gone | `baha app prune <name>` | [↗](applications.md) |

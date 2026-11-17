@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Separate PR-local qualification from cross-repository integration debt.
+"""Keep executable native PR gates selected and defer only cross-repo debt.
 
 The trusted PR planner still discovers every required release gate.  Only the
 PR execution stage is changed: cross-repo gates are recorded, never reported
@@ -10,6 +10,10 @@ import json
 from pathlib import Path
 
 CROSS_REPO_STATIC = "integration/static/public-contracts"
+CORELESS_LIFECYCLE_GATES = {
+    "integration/docker/coreless-lifecycle",
+    "integration/podman/coreless-lifecycle",
+}
 
 
 def stage(plan):
@@ -29,17 +33,22 @@ def stage(plan):
         raise ValueError("no independently executable PR validation checks")
     for gate in gates:
         parts = gate.split("/")
-        if gate != CROSS_REPO_STATIC and not (
+        if gate not in (CROSS_REPO_STATIC, *CORELESS_LIFECYCLE_GATES) and not (
             len(parts) == 3 and parts[0] == "atomic" and parts[1] in ("docker", "podman")
         ):
             raise ValueError("unclassified gate cannot be deferred: " + gate)
     deps = plan.get("required_consumer_dependencies")
     if not isinstance(deps, list) or any(x not in ("core", "demo", "console", "connector") for x in deps):
         raise ValueError("invalid consumer dependency graph")
+    # Atomic runtime and Coreless gates have real PR executors. Deferring them
+    # would conceal successful native evidence and contradict the final verifier.
+    # Only the cross-repository static integration remains deferred.
+    selected = [gate for gate in gates if gate != CROSS_REPO_STATIC]
+    deferred = [gate for gate in gates if gate == CROSS_REPO_STATIC]
     output = dict(plan)
-    output["deferred_integration_gates"] = list(gates)
+    output["deferred_integration_gates"] = deferred
     output["deferred_consumer_dependencies"] = list(deps)
-    output["selected_gates"] = []
+    output["selected_gates"] = selected
     output["pr_qualification_scope"] = "self-contained-v1"
     # Never overwrite unresolved_coverage or claim that deferred gates passed.
     return output
