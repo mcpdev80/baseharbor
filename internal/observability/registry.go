@@ -273,26 +273,19 @@ func ParseRuntimeTarget(target string) (project, service string, ok bool) {
 	return project, service, true
 }
 
-// PruneSignals removes the named signal kinds of one source identity without
-// touching its other signals. Registry entries are read-modify-written as a
-// whole file, so this is the mechanism a caller uses when exactly one signal of
-// an identity is no longer valid while the rest of the registration stands.
+// PruneProviderSignals removes the named signal kinds from exactly one source
+// identity without touching its other signals. Registry entries are read-
+// modify-written as a whole file, so this is the mechanism a caller uses when
+// one signal of one identity is no longer valid while the rest of the
+// registration stands.
 //
-// PruneOwnedProviderSignals is the additive counterpart of
-// PruneOwnedProviderInstances: instead of dropping whole identities of a
-// provider class, it removes only the named signal kinds from the identities
-// this caller owns. Ownership is decided by the exact class, scope and owner
-// application match that PruneOwnedProviderInstances already applies, so a
-// shared or foreign registration with the same ID keeps its signals. This is
-// how a workload reclaims its own trace signals without disturbing the metrics
-// and log signals other components registered under the same identity.
-func PruneSignals(id string, kinds ...SignalKind) error {
-	return pruneSignals(func(source SignalSource) bool { return source.ID == id }, kinds)
-}
-
-func PruneOwnedProviderSignals(provider capability.ProviderKind, class SourceClass, scope capability.ProviderScope, ownerApplication string, kinds ...SignalKind) error {
+// The predicate carries the full registration key: RegisterProviderSignals
+// replaces entries by ID plus provider, so IDs are only unique per provider.
+// Matching the provider as well keeps a same-ID registration made by another
+// provider, environment or owner application untouched.
+func PruneProviderSignals(id string, provider capability.ProviderKind, kinds ...SignalKind) error {
 	return pruneSignals(func(source SignalSource) bool {
-		return source.Provider == provider && source.Class == class && source.Scope == scope && source.OwnerApplication == ownerApplication
+		return source.ID == id && source.Provider == provider
 	}, kinds)
 }
 
@@ -383,14 +376,49 @@ func UpdateSignal(source SignalSource) error {
 	})
 }
 
+// ReconcileSignals replaces every signal of one source identity with the
+// desired set, in one atomic registry mutation.
+//
+// Registry IDs are only unique per provider: RegisterProviderSignals keys
+// entry replacement on ID plus provider, so the same identity string can
+// legitimately exist under two providers (for example a shared collector
+// source and an external-OTLP registration). Reconciliation therefore scopes
+// removal to the providers the identity is owned by, and a same-ID
+// registration under another provider is never touched.
 func ReconcileSignals(id string, desired []SignalSource) error {
+	owned := map[capability.ProviderKind]struct{}{}
+	for i := range desired {
+		if desired[i].Provider == "" {
+			return fmt.Errorf("observability signal reconciliation source %q has no provider", id)
+		}
+		owned[desired[i].Provider] = struct{}{}
+	}
+	return ReconcileProviderSignals(id, owned, desired)
+}
+
+// ReconcileProviderSignals is the explicit-ownership form of ReconcileSignals:
+// the owned set names every provider whose registrations of this ID the caller
+// replaces, independently of the desired set. A caller whose policy disables
+// all of an identity's signals passes an empty desired set together with the
+// provider it manages - the stale signals of exactly that provider are then
+// reclaimed while same-ID registrations of foreign providers stay untouched.
+// Each desired signal's provider must be inside the owned set.
+func ReconcileProviderSignals(id string, owned map[capability.ProviderKind]struct{}, desired []SignalSource) error {
 	id = strings.TrimSpace(id)
 	if id == "" {
 		return errors.New("observability signal reconciliation requires id")
 	}
+	for kind := range owned {
+		if kind == "" {
+			return fmt.Errorf("observability signal reconciliation id %q names an empty provider", id)
+		}
+	}
 	for i := range desired {
 		if desired[i].ID != id {
 			return fmt.Errorf("observability signal reconciliation id %q does not match source id %q", id, desired[i].ID)
+		}
+		if _, ok := owned[desired[i].Provider]; !ok {
+			return fmt.Errorf("observability signal reconciliation source %q has a provider outside the owned set", id)
 		}
 		if err := desired[i].Validate(); err != nil {
 			return err
@@ -403,13 +431,38 @@ func ReconcileSignals(id string, desired []SignalSource) error {
 	return mutate(path, func(sources []SignalSource) ([]SignalSource, error) {
 		out := sources[:0]
 		for _, source := range sources {
-			if source.ID != id {
-				out = append(out, source)
+			if _, taken := owned[source.Provider]; source.ID == id && taken {
+				continue
 			}
+			out = append(out, source)
 		}
 		out = append(out, desired...)
 		return out, nil
 	})
+}
+
+// RegistryHasSignal reports whether the registry still carries one exact
+// signal registration. Unlike the placement-filtered listings it sees every
+// provider and owner under an ID, so reconciliation and prune contracts - and
+// their tests - assert retention and reclamation through it.
+func RegistryHasSignal(id string, provider capability.ProviderKind, kind SignalKind) (bool, error) {
+	path, err := registryPath()
+	if err != nil {
+		return false, err
+	}
+	sources, err := read(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	for _, source := range sources {
+		if source.ID == id && source.Provider == provider && source.Kind == kind {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func Remove(id string) error {

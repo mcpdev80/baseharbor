@@ -33,6 +33,70 @@ func writeTestRuntimeOTLPBinding(t *testing.T, m Manifest, provider, hostEndpoin
 	}
 }
 
+// The runtime-component reconcile is the production caller of the
+// provider-explicit reconciliation: with every collection policy disabled its
+// desired set is empty, and it must still reclaim the component's stale
+// registrations under its own provider. A shared registration another provider
+// owns under the SAME ID stays alive through that transition.
+func TestRuntimeComponentReconcileEmptyDesiredKeepsForeignSameID(t *testing.T) {
+	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
+	m := workloadOnlyTraceManifest("component-sameid")
+	componentID := "shared-collector:component-sameid"
+	foreign := observability.SignalSource{
+		ID: componentID, Kind: observability.SignalTraces,
+		Provider: capability.ProviderOTelCollector, Class: observability.SourcePlatformProvider,
+		Scope: capability.ScopeShared, Target: "foreign", Protocol: "otlp",
+		Mode: capability.ObservabilityNative, Verification: capability.ObservabilityVerifyNone,
+	}
+	if err := observability.UpdateSignal(foreign); err != nil {
+		t.Fatal(err)
+	}
+	component := RuntimeComponentObservability{
+		ID: componentID, Provider: capability.ProviderRuntimeBroker,
+		Class: observability.SourceApplicationProvider, Scope: capability.ScopeApplication,
+		OwnerApplication: m.Name,
+		MetricsNetwork:   "baseharbor-test-net", MetricsTarget: "runtime://collector/metrics", MetricsPath: "/metrics",
+		LogsTarget: "runtime://collector/logs", TracesTarget: "runtime://collector",
+	}
+	// Enabled policies register the component's signals alongside the foreign
+	// same-ID trace registration.
+	if err := ReconcileRuntimeComponentObservability(m, component); err != nil {
+		t.Fatal(err)
+	}
+	live, err := observability.RegistryHasSignal(componentID, capability.ProviderRuntimeBroker, observability.SignalTraces)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !live {
+		t.Fatal("fixture: enabled policies must register the component's trace signal")
+	}
+
+	// Disabling every collection policy empties the desired set: the stale
+	// component registrations must go, the foreign provider's signal must not.
+	t.Setenv(MetricsEnabledEnv, "false")
+	t.Setenv(LogsEnabledEnv, "false")
+	t.Setenv(TracesEnabledEnv, "false")
+	if err := ReconcileRuntimeComponentObservability(m, component); err != nil {
+		t.Fatal(err)
+	}
+	for _, kind := range []observability.SignalKind{observability.SignalMetrics, observability.SignalLogs, observability.SignalTraces} {
+		live, err := observability.RegistryHasSignal(componentID, capability.ProviderRuntimeBroker, kind)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if live {
+			t.Fatalf("disabled policies left the component's stale %v signal registered", kind)
+		}
+	}
+	live, err = observability.RegistryHasSignal(componentID, capability.ProviderOTelCollector, observability.SignalTraces)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !live {
+		t.Fatal("empty-desired component reconciliation co-deleted a foreign provider's same-ID signal")
+	}
+}
+
 func workloadOnlyTraceManifest(name string) Manifest {
 	m := WithWorkloadComponents(New(name, "dev", false, false, false), "api")
 	return WithOTLPTelemetry(m, "traces")
@@ -383,6 +447,72 @@ func TestWorkloadTracePruneKeepsForeignSources(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("foreign shared collector trace source was reclaimed by workload reconciliation: %+v", sources)
+	}
+}
+
+// Registry IDs are only unique per provider - RegisterProviderSignals replaces
+// by ID plus provider, and the Tempo lifecycle registers <provider>:<project>
+// signal sources of its own - so both workload mutation paths, the signal
+// reconciliation and the trace prune, must key on the provider as well. A
+// trace source another provider registered under the SAME ID stays alive
+// across a full reconcile and the later intent removal.
+func TestWorkloadTracePruneKeepsSameIDUnderOtherProvider(t *testing.T) {
+	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
+	m := workloadOnlyTraceManifest("prune-sameid")
+	project := RuntimeProjectName(m)
+	id := fmt.Sprintf("%s:%s", capability.ProviderExternalOTLP, project)
+	foreign := observability.SignalSource{
+		ID:       id,
+		Kind:     observability.SignalTraces,
+		Provider: capability.ProviderOTelCollector,
+		Class:    observability.SourcePlatformProvider,
+		Scope:    capability.ScopeShared,
+		Target:   "foreign", Protocol: "otlp",
+		Mode:         capability.ObservabilityNative,
+		Verification: capability.ObservabilityVerifySpan,
+	}
+	if err := observability.UpdateSignal(foreign); err != nil {
+		t.Fatal(err)
+	}
+
+	// Path one: the workload reconciles its trace source while the foreign
+	// same-ID registration exists - the reconcile may only replace signals it
+	// owns under the external receiver's provider.
+	external := "https://receiver.example.test:43189"
+	writeTestRuntimeOTLPBinding(t, m, string(capability.ProviderExternalOTLP), external, external)
+	if err := reconcileManagedRuntimeObservability(m, project); err != nil {
+		t.Fatal(err)
+	}
+	live, err := observability.RegistryHasSignal(id, capability.ProviderOTelCollector, observability.SignalTraces)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !live {
+		t.Fatal("same-ID trace source under another provider died during reconciliation")
+	}
+
+	// Path two: remove the OTLP intent - this workload's external-receiver
+	// identity must be reclaimed by the provider-keyed prune, and the foreign
+	// same-ID source must still live.
+	trimmed := m
+	trimmed.Telemetry = TelemetryRequirements{}
+	if err := reconcileApplicationTraceSource(trimmed, project, false); err != nil {
+		t.Fatal(err)
+	}
+
+	live, err = observability.RegistryHasSignal(id, capability.ProviderExternalOTLP, observability.SignalTraces)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if live {
+		t.Fatal("workload's own external-receiver trace identity survived the intent removal")
+	}
+	live, err = observability.RegistryHasSignal(id, capability.ProviderOTelCollector, observability.SignalTraces)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !live {
+		t.Fatal("same-ID trace source under another provider was co-deleted by the workload prune")
 	}
 }
 

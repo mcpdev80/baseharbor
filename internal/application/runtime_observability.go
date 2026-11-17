@@ -221,14 +221,18 @@ func otherReceiverKinds(receiver capability.ProviderKind) []capability.ProviderK
 
 // pruneWorkloadTraceSignals reclaims the trace signals of this workload's own
 // receiver identities. An identity is the receiver provider plus the exact
-// runtime project, so only the project the reconciliation belongs to is
-// affected: a shared receiver instance, another application's registrations and
-// this application's other environments all keep their trace verification. The
-// metrics and log signals of the reclaimed identities stay registered, which is
-// what a receiver transition or a disabled trace policy must leave behind.
+// runtime project, and the project alone is not a complete key: the Tempo
+// provider registers <provider>:<project> signal sources of its own, so the
+// prune removes trace signals only under the receiver's provider key as well.
+// A same-ID registration owned by another provider or application keeps its
+// signals. Only the project the reconciliation belongs to is affected: a
+// shared receiver instance, another application's registrations and this
+// application's other environments all keep their trace verification. The
+// metrics and log signals of the reclaimed identities stay registered, which
+// is what a receiver transition or a disabled trace policy must leave behind.
 func pruneWorkloadTraceSignals(project string, receivers []capability.ProviderKind) error {
 	for _, receiver := range receivers {
-		if err := observability.PruneSignals(fmt.Sprintf("%s:%s", receiver, project), observability.SignalTraces); err != nil {
+		if err := observability.PruneProviderSignals(fmt.Sprintf("%s:%s", receiver, project), receiver, observability.SignalTraces); err != nil {
 			return err
 		}
 	}
