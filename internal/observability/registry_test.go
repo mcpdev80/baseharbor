@@ -111,6 +111,68 @@ func TestRegisterProviderSignalsRejectsUndeclaredOrUnsupportedRuntimeSignal(t *t
 	}
 }
 
+// ReconcileProviderSignals keeps same-ID registrations of foreign providers
+// and other signal kinds alive even when the caller's desired set is empty -
+// the disabled-policy case. ReconcileSignals derives ownership from desired
+// and can only do that for non-empty sets, so callers whose policy may
+// legitimately disable every signal pass the provider explicitly; see
+// TestRuntimeComponentReconcileEmptyDesiredKeepsForeignSameID for that path.
+func TestReconcileProviderSignalsEmptyDesiredPrunesOnlyOwnedProvider(t *testing.T) {
+	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
+	const id = "tempo:reconcile-empty"
+	seed := func(provider capability.ProviderKind, kind SignalKind, class SourceClass, owner string) {
+		t.Helper()
+		if err := UpdateSignal(SignalSource{
+			ID: id, Kind: kind, Provider: provider, Class: class,
+			Scope: func() capability.ProviderScope {
+				if class == SourcePlatformProvider {
+					return capability.ScopeShared
+				}
+				return capability.ScopeApplication
+			}(),
+			OwnerApplication: owner, Target: "seed", Protocol: "otlp",
+			Mode: capability.ObservabilityNative, Verification: capability.ObservabilityVerifyNone,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ownedProvider := capability.ProviderKind("owned-provider")
+	foreignProvider := capability.ProviderKind("foreign-provider")
+	seed(ownedProvider, SignalTraces, SourceApplicationProvider, "owner-a")
+	seed(ownedProvider, SignalLogs, SourceApplicationProvider, "owner-a")
+	seed(foreignProvider, SignalTraces, SourcePlatformProvider, "")
+
+	// The caller owns the ID under ownedProvider and its policy now allows no
+	// signals at all: both of its registrations must go, the foreign one stays.
+	if err := ReconcileProviderSignals(id, map[capability.ProviderKind]struct{}{ownedProvider: {}}, nil); err != nil {
+		t.Fatal(err)
+	}
+	for kind, want := range map[SignalKind]bool{SignalTraces: false, SignalLogs: false} {
+		got, err := RegistryHasSignal(id, ownedProvider, kind)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got != want {
+			t.Fatalf("owned provider signal %v present=%v, want %v", kind, got, want)
+		}
+	}
+	got, err := RegistryHasSignal(id, foreignProvider, SignalTraces)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got {
+		t.Fatal("foreign provider's same-ID signal died in an empty-desired reconciliation")
+	}
+
+	// A non-empty desired set must reject providers outside the owned key.
+	stray := SignalSource{ID: id, Kind: SignalMetrics, Provider: foreignProvider, Class: SourceApplicationProvider,
+		Scope: capability.ScopeApplication, OwnerApplication: "owner-a", Target: "seed", Protocol: "otlp",
+		Mode: capability.ObservabilityNative, Verification: capability.ObservabilityVerifyNone}
+	if err := ReconcileProviderSignals(id, map[capability.ProviderKind]struct{}{ownedProvider: {}}, []SignalSource{stray}); err == nil {
+		t.Fatal("empty-desired ownership boundary accepted a foreign-provider signal")
+	}
+}
+
 func TestSignalSourceAcceptsApplicationClass(t *testing.T) {
 	source := SignalSource{
 		ID:               "application:demo",
