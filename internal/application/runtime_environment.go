@@ -226,15 +226,8 @@ func ensureDesiredRuntimeValues(values map[string]string, m Manifest) error {
 			excluded[port] = struct{}{}
 		}
 	}
-	if m.Services.Perses {
-		if values[PersesUIHostPortEnv] == "" {
-			port, err := allocateLoopbackPort(excluded)
-			if err != nil {
-				return err
-			}
-			values[PersesUIHostPortEnv] = strconv.Itoa(port)
-			excluded[port] = struct{}{}
-		}
+	if err := ensurePersesRuntimePortValue(values, m, excluded); err != nil {
+		return err
 	}
 	for _, bucket := range ObjectStorageBucketNames(m) {
 		accessKey := s3RuntimeKey(bucket, "ACCESS_KEY_ID")
@@ -254,6 +247,19 @@ func ensureDesiredRuntimeValues(values map[string]string, m Manifest) error {
 			values[secretKey] = value
 		}
 	}
+	return nil
+}
+
+func ensurePersesRuntimePortValue(values map[string]string, m Manifest, excluded map[int]struct{}) error {
+	if !m.Services.Perses || values[PersesUIHostPortEnv] != "" {
+		return nil
+	}
+	port, err := allocateLoopbackPort(excluded)
+	if err != nil {
+		return err
+	}
+	values[PersesUIHostPortEnv] = strconv.Itoa(port)
+	excluded[port] = struct{}{}
 	return nil
 }
 
