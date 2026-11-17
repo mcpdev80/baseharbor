@@ -67,6 +67,19 @@ func assertWorkloadSnapshot(t *testing.T, sources []observability.MetricsSource,
 	t.Fatalf("runtime-sources.json has no workload source %q: %+v", id, sources)
 }
 
+// assertNoWorkloadComposeNetwork scans the real provider Compose file and fails
+// if the snapshot-only workload provider network is attached to Prometheus.
+func assertNoWorkloadComposeNetwork(t *testing.T, files metrics.ProviderFiles, network string) {
+	t.Helper()
+	data, err := os.ReadFile(files.Compose)
+	if err != nil {
+		t.Fatalf("read provider compose file: %v", err)
+	}
+	if strings.Contains(string(data), network) {
+		t.Fatalf("snapshot-only workload network %q was attached to Prometheus Compose: %s", network, data)
+	}
+}
+
 func assertNoWorkloadScrapeTarget(t *testing.T, files metrics.ProviderFiles, sourceID string) {
 	t.Helper()
 	entries, err := os.ReadDir(files.TargetsDir)
@@ -98,6 +111,7 @@ func TestWorkloadOnlyRegistersSharedSnapshotOnDeploy(t *testing.T) {
 	sources := providerSnapshot(t, providerFiles)
 	assertWorkloadSnapshot(t, sources, m, runtimeFiles.Project)
 	assertNoWorkloadScrapeTarget(t, providerFiles, sourceID)
+	assertNoWorkloadComposeNetwork(t, providerFiles, application.MetricsProviderNetworkNameForNamespace(m, ""))
 
 	if err := metrics.VerifyProviderSourcesAt(context.Background(), m, stateDir, ""); err != nil {
 		t.Fatalf("verify deployed workload-only provider snapshot: %v", err)
@@ -116,6 +130,11 @@ func TestServiceAppKeepsRuntimeSourceRegistrationOnDeploy(t *testing.T) {
 	sources := providerSnapshot(t, providerFiles)
 	assertWorkloadSnapshot(t, sources, m, runtimeFiles.Project)
 	assertNoWorkloadScrapeTarget(t, providerFiles, sourceID)
+	if data, err := os.ReadFile(providerFiles.Compose); err != nil {
+		t.Fatalf("read provider compose file: %v", err)
+	} else if !strings.Contains(string(data), application.MetricsProviderNetworkNameForNamespace(m, "")) {
+		t.Fatal("service application metrics network was not attached to Prometheus Compose")
+	}
 
 	if err := metrics.VerifyProviderSourcesAt(context.Background(), m, stateDir, ""); err != nil {
 		t.Fatalf("verify service app provider snapshot: %v", err)
