@@ -256,6 +256,36 @@ func TestWorkloadTraceSourceReclaimsBothReceiversWhenUnbound(t *testing.T) {
 	}
 }
 
+// Removing the OTLP trace intent after a managed deployment must reclaim the
+// collector identity that earlier apply registered: no other cleanup path keys
+// on it once the manifest no longer requests OTLP delivery.
+func TestWorkloadTraceSignalReclaimedWhenOTLPIntentRemoved(t *testing.T) {
+	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
+	m := workloadOnlyTraceManifest("trace-intent-off")
+	project := RuntimeProjectName(m)
+	writeTestRuntimeOTLPBinding(t, m, string(capability.ProviderOTelCollector), "https://127.0.0.1:43183", "https://otel-collector:4318")
+	if err := reconcileManagedRuntimeObservability(m, project); err != nil {
+		t.Fatal(err)
+	}
+	collectorID := fmt.Sprintf("%s:%s", capability.ProviderOTelCollector, project)
+	if got := traceIDs(traceSources(t, m)); got[collectorID] != capability.ProviderOTelCollector {
+		t.Fatalf("fixture did not register the collector identity: %v", got)
+	}
+
+	// The authored manifest drops the telemetry block entirely.
+	trimmed := m
+	trimmed.Telemetry = TelemetryRequirements{}
+	if HasOTLPTelemetry(trimmed) {
+		t.Fatal("fixture must no longer declare OTLP intent")
+	}
+	if err := reconcileApplicationTraceSource(trimmed, project, false); err != nil {
+		t.Fatal(err)
+	}
+	if got := traceIDs(traceSources(t, trimmed)); got[collectorID] != "" {
+		t.Fatalf("collector trace identity survived the OTLP intent removal: %v", got)
+	}
+}
+
 // Receiver identities are project-scoped, so disabling trace collection in one
 // environment must not reclaim another environment's trace verification.
 func TestReceiverTracePruneIsScopedToReconciledProject(t *testing.T) {
