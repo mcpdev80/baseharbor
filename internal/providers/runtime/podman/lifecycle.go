@@ -654,59 +654,83 @@ func (p PodmanProvider) InspectProjectResources(ctx context.Context, project str
 	if len(resources) == 0 {
 		return nil, nil
 	}
-	found := map[string]struct{}{}
+
+	// The embedded Compose runtime already implements strict, batched ownership
+	// inspection. Check requested names first: a foreign container occupying the
+	// exact name must be rejected before attempting Quadlet name resolution.
+	direct, err := p.Compose.InspectProjectResources(ctx, project, resources)
+	if err != nil {
+		return nil, err
+	}
+	found := make(map[string]struct{}, len(direct))
+	for _, resource := range direct {
+		found[resource.Kind+"\x00"+strings.TrimSpace(resource.Name)] = struct{}{}
+	}
+
+	// Quadlet may use a different real container name than the Compose-style
+	// project-service-1 alias. Resolve all missing aliases from one inventory,
+	// then verify the actual names with the same fail-closed batch inspector.
+	var unresolved []ProjectResource
 	for _, resource := range resources {
-		name := strings.TrimSpace(resource.Name)
-		if name == "" {
-			return nil, errors.New("resource name is required")
+		if resource.Kind != "container" {
+			continue
 		}
-		switch resource.Kind {
-		case "container", "network", "volume":
-		default:
-			return nil, fmt.Errorf("unsupported runtime resource kind %q", resource.Kind)
+		if _, ok := found[resource.Kind+"\x00"+strings.TrimSpace(resource.Name)]; ok {
+			continue
 		}
-		actualName := name
-		var exists bool
-		var err error
-		if resource.Kind == "container" {
-			actualName, exists, err = p.resolveOwnedContainerResourceName(ctx, project, name)
-		} else {
-			exists, err = quadletRuntimeResourceExists(ctx, resource.Kind, name)
+		if _, ok := composeContainerServiceFromExpectedName(project, resource.Name); ok {
+			unresolved = append(unresolved, resource)
 		}
+	}
+	if len(unresolved) > 0 {
+		containers, err := p.ListRuntimeContainers(ctx)
 		if err != nil {
 			return nil, err
 		}
-		if !exists {
-			continue
+		aliases := make(map[string]string, len(unresolved))
+		var actual []ProjectResource
+		for _, resource := range unresolved {
+			service, _ := composeContainerServiceFromExpectedName(project, resource.Name)
+			for _, container := range containers {
+				if container.Project != project || container.Service != service {
+					continue
+				}
+				if aliases[resource.Name] != "" && aliases[resource.Name] != container.Name {
+					return nil, fmt.Errorf("multiple Podman containers match owned service %s/%s", project, service)
+				}
+				aliases[resource.Name] = container.Name
+			}
+			if actualName := aliases[resource.Name]; actualName != "" {
+				actual = append(actual, ProjectResource{Kind: "container", Name: actualName})
+			}
 		}
-		var template string
-		switch resource.Kind {
-		case "container":
-			template = `{{.Name}}|{{ index .Config.Labels "com.docker.compose.project" }}|{{ index .Config.Labels "io.podman.compose.project" }}`
-		default:
-			template = `{{.Name}}|{{ index .Labels "com.docker.compose.project" }}|{{ index .Labels "io.podman.compose.project" }}`
+		if len(actual) > 0 {
+			verified, err := p.Compose.InspectProjectResources(ctx, project, actual)
+			if err != nil {
+				return nil, err
+			}
+			verifiedNames := make(map[string]struct{}, len(verified))
+			for _, resource := range verified {
+				verifiedNames[resource.Name] = struct{}{}
+			}
+			for _, resource := range unresolved {
+				if actualName := aliases[resource.Name]; actualName != "" {
+					if _, ok := verifiedNames[actualName]; !ok {
+						return nil, fmt.Errorf("resolved Podman container %s disappeared during ownership verification", actualName)
+					}
+					found["container\x00"+strings.TrimSpace(resource.Name)] = struct{}{}
+				}
+			}
 		}
-		out, err := p.DirectOutput(ctx, resource.Kind, "inspect", "--format", template, actualName)
-		if err != nil {
-			return nil, fmt.Errorf("inspect %s ownership: %w", resource.Kind, err)
-		}
-		parts := strings.Split(strings.TrimSpace(out), "|")
-		if len(parts) != 3 {
-			return nil, fmt.Errorf("inspect %s %s ownership returned invalid result", resource.Kind, name)
-		}
-		owner := firstRuntimeLabel(parts[1], parts[2])
-		if owner != project {
-			return nil, fmt.Errorf("%w: %s %s is not owned by project %s", ErrResourceOwnership, resource.Kind, name, project)
-		}
-		found[resource.Kind+"\x00"+name] = struct{}{}
 	}
-	existing := make([]ProjectResource, 0, len(found))
+
+	result := make([]ProjectResource, 0, len(found))
 	for _, resource := range resources {
 		if _, ok := found[resource.Kind+"\x00"+strings.TrimSpace(resource.Name)]; ok {
-			existing = append(existing, resource)
+			result = append(result, resource)
 		}
 	}
-	return existing, nil
+	return result, nil
 }
 
 func podmanSystemdUnitLabel(value string) string {
@@ -715,6 +739,37 @@ func podmanSystemdUnitLabel(value string) string {
 		return ""
 	}
 	return value
+}
+
+// parsePodmanContainerUnits rejects missing, duplicate and unexpected rows before
+// any service is stopped. The first column is the concrete Podman container name.
+func parsePodmanContainerUnits(output string, owned []RuntimeContainer) (map[string]string, error) {
+	expected := make(map[string]struct{}, len(owned))
+	for _, container := range owned {
+		expected[container.Name] = struct{}{}
+	}
+	result := make(map[string]string, len(owned))
+	for _, row := range strings.Split(strings.TrimSpace(output), "\n") {
+		if row == "" {
+			continue
+		}
+		parts := strings.SplitN(row, "|", 2)
+		if len(parts) != 2 {
+			return nil, fmt.Errorf("invalid Quadlet unit inspection row %q", row)
+		}
+		name := strings.TrimPrefix(strings.TrimSpace(parts[0]), "/")
+		if _, ok := expected[name]; !ok {
+			return nil, fmt.Errorf("unexpected Quadlet container inspection %q", name)
+		}
+		if _, exists := result[name]; exists {
+			return nil, fmt.Errorf("duplicate Quadlet container inspection %q", name)
+		}
+		result[name] = podmanSystemdUnitLabel(parts[1])
+	}
+	if len(result) != len(expected) {
+		return nil, fmt.Errorf("incomplete Quadlet unit inspection: got %d of %d containers", len(result), len(expected))
+	}
+	return result, nil
 }
 
 func (p PodmanProvider) StopOwnedProjectContainers(ctx context.Context, project string) error {
@@ -727,31 +782,40 @@ func (p PodmanProvider) StopOwnedProjectContainers(ctx context.Context, project 
 		return err
 	}
 
+	var owned []RuntimeContainer
+	for _, container := range containers {
+		if container.Project == project && container.Running {
+			owned = append(owned, container)
+		}
+	}
 	var units []string
 	var direct []RuntimeContainer
 	seenUnits := map[string]struct{}{}
-	for _, container := range containers {
-		if container.Project != project || !container.Running {
-			continue
+	if len(owned) > 0 {
+		args := []string{"container", "inspect", "--format", `{{.Name}}|{{ index .Config.Labels "PODMAN_SYSTEMD_UNIT" }}`}
+		for _, container := range owned {
+			args = append(args, container.Name)
 		}
-		unitOut, inspectErr := p.DirectOutput(ctx,
-			"container", "inspect", "--format",
-			`{{ index .Config.Labels "PODMAN_SYSTEMD_UNIT" }}`,
-			container.Name,
-		)
+		unitOutput, inspectErr := p.DirectOutput(ctx, args...)
 		if inspectErr != nil {
-			return fmt.Errorf("inspect Quadlet unit for %s/%s (%s): %w", project, container.Service, container.Name, inspectErr)
+			return fmt.Errorf("inspect Quadlet units for project %s: %w", project, inspectErr)
 		}
-		unit := podmanSystemdUnitLabel(unitOut)
-		if unit == "" {
-			direct = append(direct, container)
-			continue
+		unitByName, parseErr := parsePodmanContainerUnits(unitOutput, owned)
+		if parseErr != nil {
+			return parseErr
 		}
-		if _, seen := seenUnits[unit]; seen {
-			continue
+		for _, container := range owned {
+			unit := unitByName[container.Name]
+			if unit == "" {
+				direct = append(direct, container)
+				continue
+			}
+			if _, seen := seenUnits[unit]; seen {
+				continue
+			}
+			seenUnits[unit] = struct{}{}
+			units = append(units, unit)
 		}
-		seenUnits[unit] = struct{}{}
-		units = append(units, unit)
 	}
 	sort.Strings(units)
 

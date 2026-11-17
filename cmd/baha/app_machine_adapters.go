@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"reflect"
 	"slices"
 	"strings"
@@ -276,6 +277,7 @@ type appMachineProposalAuthorityError struct {
 	Cause              error
 	AuthorityCode      string
 	AuthorityCauseCode string
+	Resolution         *applicationResolutionDiagnostic
 }
 
 func (e *appMachineProposalAuthorityError) Error() string {
@@ -286,6 +288,10 @@ func (e *appMachineProposalAuthorityError) Error() string {
 			message += "/" + e.AuthorityCauseCode
 		}
 		message += ")"
+	}
+	if e.Resolution != nil {
+		message += fmt.Sprintf(" (resolution=%s consumer=%q instance=%q requirement=%q)",
+			e.Resolution.Code, e.Resolution.Consumer, e.Resolution.InstanceID, e.Resolution.Requirement)
 	}
 	return message
 }
@@ -330,6 +336,10 @@ func appMachineProposalAuthorityFailure(stage string, err error) error {
 	if errors.As(err, &authority) && authority != nil {
 		classified.AuthorityCode = string(authority.Code)
 		classified.AuthorityCauseCode = authority.CauseCode
+		if diagnostic, ok := authority.Details.(applicationResolutionDiagnostic); ok {
+			copy := diagnostic
+			classified.Resolution = &copy
+		}
 	}
 	return classified
 }
@@ -476,11 +486,11 @@ func appMachineChangeDesired(ctx context.Context, req appMachineDesiredChangeReq
 		fresh.PlanRevision != req.Proposal.PlanRevision {
 		return application.ProviderChangeResult{}, &appMachineError{Code: "conflict"}
 	}
-	// Compare the public plan values after the proposal's JSON round-trip;
-	// omitted optional empty collections must not create artificial drift.
-	freshPlan, freshErr := json.Marshal(fresh.Plan)
-	proposedPlan, proposedErr := json.Marshal(req.Proposal.Plan)
-	if freshErr != nil || proposedErr != nil || string(freshPlan) != string(proposedPlan) {
+	// Revalidation can resample remaining-validity countdowns between consent
+	// and apply. Compare the plans with the same stable projection used by their
+	// consent digest; absolute bounds and expired/not-yet-valid outcomes remain
+	// bound, while a display countdown alone cannot invalidate approval.
+	if !application.ProviderImpactPlansEquivalent(fresh.Plan, req.Proposal.Plan) {
 		return application.ProviderChangeResult{}, &appMachineError{Code: "conflict"}
 	}
 	if !slices.Equal(fresh.Requirements, req.Proposal.Requirements) ||
