@@ -11,6 +11,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/testsupport/runtimeprovider"
 	"github.com/mcpdev80/baseharbor/internal/testsupport/serviceissuer"
+	"go.yaml.in/yaml/v3"
 )
 
 // persesRuntimeManifest builds a minimal, valid application manifest that
@@ -68,6 +69,31 @@ func TestPersesComposeRenderedWhenSelected(t *testing.T) {
 	}
 	if !strings.Contains(rendered, PersesRuntimeVolumeName(selectedFiles.ResourceProject, persesService)) {
 		t.Fatalf("selected Perses must declare a managed data volume:\n%s", rendered)
+	}
+	var compose struct {
+		Services map[string]struct {
+			Volumes []string `yaml:"volumes"`
+		} `yaml:"services"`
+		Volumes map[string]struct {
+			Name string `yaml:"name"`
+		} `yaml:"volumes"`
+	}
+	if err := yaml.Unmarshal([]byte(rendered), &compose); err != nil {
+		t.Fatalf("decode selected Perses compose: %v", err)
+	}
+	volumeKey := persesService + "-data"
+	volume, ok := compose.Volumes[volumeKey]
+	if !ok || volume.Name != PersesRuntimeVolumeName(selectedFiles.ResourceProject, persesService) {
+		t.Fatalf("selected Perses volume declaration = %+v, want %q -> %q", volume, volumeKey, PersesRuntimeVolumeName(selectedFiles.ResourceProject, persesService))
+	}
+	mounted := false
+	for _, mount := range compose.Services[persesService].Volumes {
+		if mount == volumeKey+":/persistence" {
+			mounted = true
+		}
+	}
+	if !mounted {
+		t.Fatalf("Perses service mounts %q for persistence, want %q:\n%s", compose.Services[persesService].Volumes, volumeKey+":/persistence", rendered)
 	}
 
 	deselected := persesRuntimeManifest(t, false)
@@ -262,4 +288,3 @@ func TestPersesRuntimeSmokeDockerIsolated(t *testing.T) {
 // persesRuntimeEnvironment is a package helper so tests can build a minimal
 // valid runtime env for the surface contract without a container.
 type persesRuntimeEnvironment = map[string]string
-

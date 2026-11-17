@@ -391,12 +391,12 @@ func RuntimeComposeYAMLForProject(m Manifest, resourceProject string) (string, e
 			fmt.Fprintf(&b, "  %s:\n    name: %s_%s\n", volume, resourceProject, volume)
 		}
 	}
-	b.WriteString("\nnetworks:\n  default:\n")
-	fmt.Fprintf(&b, "    name: %s\n", ApplicationBackendNetworkNameForProject(resourceProject))
 	if m.Services.Perses {
 		service := runtimeServiceName("perses", defaultServiceInstance)
-		fmt.Fprintf(&b, "  %s:\n    name: %s\n", service, PersesRuntimeVolumeName(resourceProject, service))
+		fmt.Fprintf(&b, "  %s-data:\n    name: %s\n", service, PersesRuntimeVolumeName(resourceProject, service))
 	}
+	b.WriteString("\nnetworks:\n  default:\n")
+	fmt.Fprintf(&b, "    name: %s\n", ApplicationBackendNetworkNameForProject(resourceProject))
 	for _, instance := range cacheInstances {
 		if valkeyMemberCount(m, instance) > 1 {
 			fmt.Fprintf(&b, "  %s-ha:\n    internal: true\n", valkeyMemberServiceName(instance, 0))

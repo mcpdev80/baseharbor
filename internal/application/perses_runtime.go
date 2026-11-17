@@ -55,7 +55,7 @@ func writePersesUIComposeService(b *strings.Builder, m Manifest, resourceProject
 	b.WriteString("    volumes:\n")
 	b.WriteString("      - ./providers/management-ui/perses/server.cert:/certs/server.cert:ro\n")
 	b.WriteString("      - ./providers/management-ui/perses/server.key:/certs/server.key:ro\n")
-	fmt.Fprintf(b, "      - %s:/persistence\n", PersesRuntimeVolumeName(resourceProject, service))
+	fmt.Fprintf(b, "      - %s-data:/persistence\n", service)
 	b.WriteString("    networks:\n")
 	b.WriteString("      default:\n")
 	fmt.Fprintf(b, "        aliases:\n          - %q\n", devaccess.ApplicationAlias(m.Name, service))
