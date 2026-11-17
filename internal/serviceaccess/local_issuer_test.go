@@ -161,6 +161,17 @@ func TestLocalIssuerMissingCRLFailsClosed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if err := os.Remove(filepath.Join(i.Dir, "revocations.pem")); err != nil {
+		t.Fatal(err)
+	}
+	// Reopening an existing authority must not silently repair missing
+	// revocation state; consumers remain fail-closed until explicit recovery.
+	if _, err := EnsureLocalIssuer(i.Dir); err != nil {
+		t.Fatal("existing authority should remain loadable for diagnosis:", err)
+	}
+	if _, err := os.Stat(filepath.Join(i.Dir, "revocations.pem")); !os.IsNotExist(err) {
+		t.Fatal("existing missing CRL was silently repaired")
+	}
 	leaf, err := i.Issue(context.Background(), CertificateRequest{CommonName: "client", TTL: time.Hour})
 	if err != nil {
 		t.Fatal(err)
@@ -199,6 +210,9 @@ func mustLoadCA(t *testing.T, i *LocalIssuer) *x509.Certificate {
 func TestLocalIssuerRevokedStatusMissingCRLReturnsError(t *testing.T) {
 	i, err := EnsureLocalIssuer(filepath.Join(t.TempDir(), "pki"))
 	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(filepath.Join(i.Dir, "revocations.pem")); err != nil {
 		t.Fatal(err)
 	}
 	leaf, err := i.Issue(context.Background(), CertificateRequest{CommonName: "client", TTL: time.Hour})

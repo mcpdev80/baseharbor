@@ -210,6 +210,8 @@ class WorkflowWiring(unittest.TestCase):
         self.assertIn("inputs.gate == 'observability'", setup['if'])
         gate = next(s for s in steps if s.get('id') == 'runtime_gate')
         self.assertIn("inputs.gate == 'observability' && 25", gate['timeout-minutes'])
+        self.assertIn("inputs.runtime == 'podman'", gate['timeout-minutes'])
+        self.assertIn("inputs.gate == 'guided' && 30", gate['timeout-minutes'])
         self.assertIn("inputs.gate == 'guided' && 12", gate['timeout-minutes'])
         condition = 'if [ "$GATE" = observability ] && [ "$GITHUB_EVENT_NAME" = pull_request ]; then'
         block = 'set -euo pipefail\n' + condition + gate['run'].split(condition, 1)[1]

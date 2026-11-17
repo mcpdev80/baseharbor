@@ -411,10 +411,17 @@ func TestAppMachineAdaptersProposeConsentApplyEndToEnd(t *testing.T) {
 			prefs[1].Requirement != analytics || prefs[0].InstanceID != "db-a" || prefs[1].InstanceID != "db-b" {
 			t.Fatalf("authority lost typed intent: %+v %+v", reqs, prefs)
 		}
+		countdown := int64(3600 - planCalls)
 		return application.ProviderImpactPlan{
 			Version: application.ProviderImpactVersion, Target: target, PlanID: "change-42",
 			Revision: "change-rev-42", Complete: true, ConfirmationsRequired: 2, Destructive: true,
-			Impacts: []application.ProviderImpact{{InstanceID: "db-a", Operation: "provide"}, {InstanceID: "db-b", Operation: "provide"}},
+			Impacts: []application.ProviderImpact{
+				{InstanceID: "db-a", Operation: "provide", Materials: []application.MaterialConsequence{{
+					Before:  application.ProviderMaterial{ID: "db-a/cert", ExpiresAt: "2036-11-13T06:13:11Z"},
+					Meaning: "within observed time window", RemainingValiditySeconds: &countdown,
+				}}},
+				{InstanceID: "db-b", Operation: "provide"},
+			},
 		}, nil
 	}
 	proposal, err := appMachinePropose(context.Background(), desired, read, choices, planner)

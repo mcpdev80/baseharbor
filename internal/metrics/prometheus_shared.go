@@ -228,7 +228,9 @@ func registrationForAt(m application.Manifest, namespace string) sourceRegistrat
 	registration := sourceRegistration{
 		Application: m.Name,
 		Environment: m.Environment,
-		Network:     application.MetricsProviderNetworkNameForNamespace(m, namespace),
+	}
+	if application.HasMetricsSources(m) || application.HasRuntimeMetricsPermissions(m) {
+		registration.Network = application.MetricsProviderNetworkNameForNamespace(m, namespace)
 	}
 	if application.HasRuntimeMetricsPermissions(m) {
 		registration.RuntimeVolume = application.MetricsRuntimeTargetVolumeNameForNamespace(m, namespace)

@@ -1,5 +1,7 @@
 # Release notes
 
+[v0.4.28](v0.4.28.md) — consistent CLI command semantics and optional Perses observability integration.
+
 [v0.4.27](v0.4.27.md) — remote workstation onboarding, environment policies and safer application operations.
 
 [v0.4.26](v0.4.26.md) — application needs wizard, Edit, Footprint and targeted development checks.

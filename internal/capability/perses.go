@@ -44,14 +44,13 @@ var PersesManagementUIInterface = ProviderInterface{
 // deliberately NOT an IntegrationDescriptor and therefore declaring no
 // application capability kind (Metrics, Logs, Traces, ...).
 //
-// Luna REQUEST_CHANGES (act-luna-1575-r1.md, PR #1575) rejected the r2
-// IntegrationDescriptor because binding Perses to the Metrics capability kind
-// supplied a fake capability claim the task forbids: Perses never IMPLEMENTS a
-// metrics/logs/traces capability on its own, it only visualises the surface the
-// backend data owner already ships. A valid IntegrationDescriptor must declare a
-// real capability, so a genuine capability claim is impossible without lying.
-//
-// Instead this contract carries only what is genuinely true:
+// The Perses management surface is deliberately NOT an IntegrationDescriptor:
+// binding it to a capability kind would supply a capability claim the contract
+// forbids, because Perses never IMPLEMENTS a metrics/logs/traces capability on
+// its own — it only visualises the surface the backend data owner already ships.
+// A real capability kind (Metrics, Logs, Traces, ...) would be a false claim,
+// so this contract uses a purpose-specific management-tool/surface type that
+// declares no capability kind and carries only what is genuinely true:
 //
 //   - the Perses management provider kind (PersesProviderKind),
 //   - the product version axis, which is DISTINCT from any provider
@@ -301,19 +300,11 @@ func PersesManagementSurfaceUnprovisioned() PersesManagementSurface {
 	}
 }
 
-// hostProviderMetricsNativeVerified reports whether the shipped reference
-// provider catalog declares a real, native, backend-verified host/provider
-// metrics signal — the openmetrics /metrics endpoint the OTel collector scrapes
-// (baseharbor/opentelemetry-collector, collector-metrics). It is a read-only
-// scan of the static reference descriptors; it never runs a backend probe and
-// never builds the enable-path resolver (that is a parallel owner task,
-// 0428-080).
-//
-// This is the "matching native host/container signal" witness Luna r3
-// (act-luna-r3, PR #1602) requires: the host/container dashboards may only report
-// positive availability when a verified current native metrics signal actually
-// exists in the shipped contract, never when the positive result is self-confirmed
-// by the same manifest declaration it is meant to establish.
+// hostProviderMetricsNativeVerified reports that the shipped reference provider
+// catalog declares a real, native, backend-verified host/provider metrics
+// signal (the "collector-metrics" observability signal). It is the witness the
+// host/container dashboards require so a positive availability verdict is never
+// self-confirmed by the same manifest declaration it is meant to establish.
 func hostProviderMetricsNativeVerified() bool {
 	for _, descriptor := range ReferenceIntegrations() {
 		for _, signal := range descriptor.Observability.Signals {
@@ -342,40 +333,16 @@ func hostProviderMetricsNativeVerified() bool {
 //   - the shipped reference provider catalog declares a real, native,
 //     backend-verified host/provider metrics signal (hostProviderMetricsNativeVerified).
 //
-// Any missing axis resolves to the empty status, which the dashboard reports as
-// unavailable-preserving (no fabricated panel, no silent availability claim),
-// exactly like the valkey and identity-r2 precedents. This keeps runtime
-// availability bound to authoritative manifest selection AND an actual verified
-// host/container metric signal, never to a static catalog or a self-confirmed
-// manifest declaration.
-//
-// The manifest fields are passed explicitly to avoid the capability/application
-// import cycle; the caller (app_status_result.go) resolves them from the
-// manifest in its own package.
-//
-// Note: this resolver provides the signal witness only. It does NOT scope access
-// by the actual Target/tenant permissions — that ownership/authorization witness
-// for the current Target is a parallel owner thread (0428-080, the unaccepted
-// selection/enable path) and is out of scope for this lane (FÄCHERREGEL). Where
-// Target/authorization scoping is not yet resolvable here, availability stays
-// bound to the signal witness below; it is never silently claimed available on
-// manifest selection alone.
+// Any missing axis resolves to the empty status, which the dashboard reports
+// as unavailable-preserving.
 func ResolveHostDashboardSignalStatus(observabilityManagementUI bool, persesSelected bool) ObservabilitySupportStatus {
 	if !observabilityManagementUI || !persesSelected {
-		// No selected observability backend + Perses surface: fail closed. The
-		// empty status maps to unavailable-preserving in the dashboard.
 		return ""
 	}
 	if ValidatePersesRelease(PersesDefaultRelease) != nil {
-		// Selected but the pinned release contract does not validate: fail
-		// closed.
 		return ""
 	}
 	if !hostProviderMetricsNativeVerified() {
-		// No real, native, backend-verified host/provider metrics signal in the
-		// shipped contract: fail closed. The host dashboard must not report
-		// positive availability that the same manifest declaration cannot
-		// establish without an actual verified metric signal.
 		return ""
 	}
 	return ObservabilitySupported

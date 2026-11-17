@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,9 +11,12 @@ import (
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/applicationsecret"
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/coreinstallation"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+	"github.com/mcpdev80/baseharbor/internal/runtimebroker"
 )
 
 // Run after the fresh no-Core gate, in a separate process on the same isolated
@@ -24,7 +28,7 @@ func TestApplicationCapabilityLifecycleExistingCore(t *testing.T) {
 	ctx, cancel := context.WithTimeout(machineNoninteractiveContext(context.Background()), 25*time.Minute)
 	defer cancel()
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
-	target := configureTestTarget(t)
+	target := configureTestTargetEmpty(t)
 	if os.Getenv("BASEHARBOR_TEST_RUNTIME") == "podman" {
 		cfg, err := deployment.LoadConfig()
 		if err != nil {
@@ -73,7 +77,7 @@ func TestApplicationCapabilityLifecycleExistingCore(t *testing.T) {
 			case "sql", "sql-second":
 				m.Services.SQL = true
 			case "secrets":
-				m.Services.Secrets = true
+				m = application.WithGeneratedSecret(m, "API_TOKEN", "hex", 32)
 			case "identity":
 				m = application.WithIdentity(m)
 			case "https":
@@ -102,6 +106,16 @@ func TestApplicationCapabilityLifecycleExistingCore(t *testing.T) {
 					t.Fatalf("HTTPS inputs: %v\n%s", err, out.String())
 				}
 			}
+			var secretsBaseline map[string]bhruntime.RuntimeContainer
+			if kind == "secrets" {
+				// Include the running Core and previously qualified SQL sibling
+				// applications. The Secrets lifecycle must leave every one intact.
+				containers, err := runtime.ListRuntimeContainers(ctx)
+				if err != nil {
+					t.Fatalf("inventory Core/provider baseline before Secrets workload: %v", err)
+				}
+				secretsBaseline = runtimeContainerSnapshotSet(containers)
+			}
 			for _, command := range [][]string{{"app", "apply", "--skip-memory-preflight"}, {"app", "status", "--json"}, {"app", "doctor", "--json"}} {
 				out.Reset()
 				commandCtx := ctx
@@ -127,6 +141,9 @@ func TestApplicationCapabilityLifecycleExistingCore(t *testing.T) {
 			current, err := coreinstallation.Load(coreRoot)
 			if err != nil || current.ID != first.ID {
 				t.Fatalf("existing Core was replaced: %v", err)
+			}
+			if kind == "secrets" {
+				qualifyCoreBackedSecretsLifecycle(t, ctx, runtime, resolved, current, secretsBaseline)
 			}
 			if kind == "sql" {
 				sqlFirst = resolved
@@ -204,5 +221,211 @@ func TestApplicationCapabilityLifecycleExistingCore(t *testing.T) {
 		}) {
 			return
 		}
+	}
+}
+
+// This lifecycle reuses the installation already created by this acceptance.
+// Core owns OpenBao independently, so app capability removal and stop must
+// preserve the complete pre-existing Core/provider runtime baseline.
+func qualifyCoreBackedSecretsLifecycle(t *testing.T, ctx context.Context, runtime bhruntime.RuntimeProvider, initial resolvedApplication, initialOwner coreinstallation.State, baseline map[string]bhruntime.RuntimeContainer) {
+	t.Helper()
+	root, err := targetRuntimeStateRoot(initial.Target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	inventory, err := bhruntime.ExistingControlPlaneRuntimeInventory(root, bhruntime.SharedProjectName(initial.Target.Name))
+	if err != nil {
+		t.Fatalf("inspect existing Core provider inventory: %v", err)
+	}
+	actual, err := runtime.InspectProjectResources(ctx, inventory.Files.Project, inventory.Resources)
+	if err != nil {
+		t.Fatalf("inspect existing Core provider resources: %v", err)
+	}
+	var retainedVolumes []bhruntime.ProjectResource
+	for _, resource := range actual {
+		if resource.Kind == "volume" {
+			retainedVolumes = append(retainedVolumes, resource)
+		}
+	}
+	if len(retainedVolumes) == 0 {
+		t.Fatal("existing Core Secrets provider has no actual owned data volume")
+	}
+	data, err := os.ReadFile(inventory.Files.Env)
+	if err != nil {
+		t.Fatalf("read existing Core provider configuration: %v", err)
+	}
+	envDigest := sha256.Sum256(data)
+	secretDigest := coreBackedApplicationSecretDigest(t, ctx, runtime, inventory, initial)
+	assertCoreBackedSecretsState(t, ctx, runtime, inventory, initial, initialOwner, baseline, retainedVolumes, envDigest, true, true, true)
+
+	manifestPath := initial.ManifestPath
+	for _, enabled := range []bool{false, true} {
+		updated := initial.Manifest
+		updated.Services.Secrets = enabled
+		if !enabled {
+			updated.Secrets = application.SecretRequirements{}
+		}
+		if err := writeInitializedAuthoredManifest(t, manifestPath, updated, 0600); err != nil {
+			t.Fatalf("write Core-backed Secrets intent enabled=%t: %v", enabled, err)
+		}
+		var out bytes.Buffer
+		if err := runWithIO(coreBootstrapFixtureConsent(t, ctx), []string{"app", "apply", "--skip-memory-preflight"}, &out, &out); err != nil {
+			t.Fatalf("Core-backed Secrets apply enabled=%t: %v\n%s", enabled, err, out.String())
+		}
+		current, err := resolveApplication(ctx, application.Store{}, nil, "status")
+		if err != nil {
+			t.Fatalf("resolve Core-backed Secrets phase enabled=%t: %v", enabled, err)
+		}
+		status, _, err := collectResolvedApplicationStatus(ctx, current)
+		if err != nil || !status.Ready || current.Manifest.ApplicationID != initial.Manifest.ApplicationID || current.DeploymentIdentity != initial.DeploymentIdentity {
+			t.Fatalf("Core-backed Secrets phase enabled=%t lost app readiness/identity: %+v %v", enabled, status, err)
+		}
+		assertCoreBackedSecretsState(t, ctx, runtime, inventory, current, initialOwner, baseline, retainedVolumes, envDigest, enabled, enabled, true)
+		if enabled && coreBackedApplicationSecretDigest(t, ctx, runtime, inventory, current) != secretDigest {
+			t.Fatal("Secrets re-add lost or regenerated the retained application secret")
+		}
+	}
+
+	// app down removes the application workload and broker, preserves application
+	// data, and records a verified runtime-retired owner. Core's provider remains
+	// protected by its independent installation owner.
+	if err := stopSelectiveApplicationWithConsent(ctx, &bytes.Buffer{}); err != nil {
+		t.Fatalf("retire Core-backed Secrets application runtime: %v", err)
+	}
+	retired, err := resolveApplication(ctx, application.Store{}, nil, "status")
+	if err != nil {
+		t.Fatalf("resolve retired Core-backed Secrets owner: %v", err)
+	}
+	status, _, err := collectResolvedApplicationStatus(ctx, retired)
+	if err != nil || status.State != "stopped" || status.Ready || retired.Manifest.ApplicationID != initial.Manifest.ApplicationID || retired.DeploymentIdentity != initial.DeploymentIdentity {
+		t.Fatalf("Core-backed Secrets retirement lost canonical stopped owner: %+v %v", status, err)
+	}
+	record, err := deployment.LoadDeploymentRecord(retired.DeploymentIdentity)
+	if err != nil || record.Observed.State != "runtime-retired" || record.Observed.Ready || record.Applied.GeneratedState["previous_intent"] != "" || record.Applied.GeneratedState["retired_intent"] == "" {
+		t.Fatalf("Core-backed Secrets retirement receipt/owner is invalid: %+v %v", record, err)
+	}
+	result, err := applicationDestroyResult(retired, false)
+	if err != nil || !result.OwnerPreserved || result.DataDeleted == nil || *result.DataDeleted || result.ProviderChangeResult == nil {
+		t.Fatalf("Core-backed Secrets retirement result: %+v %v", result, err)
+	}
+	// app down removes the entire app-owned Compose project after stopping it,
+	// so the broker container is absent (while its generated application secret
+	// remains available from the independent Core provider).
+	assertCoreBackedSecretsState(t, ctx, runtime, inventory, retired, initialOwner, baseline, retainedVolumes, envDigest, false, false, false)
+	if coreBackedApplicationSecretDigest(t, ctx, runtime, inventory, retired) != secretDigest {
+		t.Fatal("app down lost the retained Core-backed application secret")
+	}
+	if err := writeInitializedAuthoredManifest(t, manifestPath, initial.Manifest, 0600); err != nil {
+		t.Fatalf("restore Core-backed Secrets intent for reactivation: %v", err)
+	}
+	var out bytes.Buffer
+	if err := runWithIO(coreBootstrapFixtureConsent(t, ctx), []string{"app", "apply", "--skip-memory-preflight"}, &out, &out); err != nil {
+		t.Fatalf("reactivate Core-backed Secrets application: %v\n%s", err, out.String())
+	}
+	reactivated, err := resolveApplication(ctx, application.Store{}, nil, "status")
+	if err != nil || reactivated.Manifest.ApplicationID != initial.Manifest.ApplicationID || reactivated.DeploymentIdentity != initial.DeploymentIdentity {
+		t.Fatalf("Secrets reactivation regenerated canonical app/deployment owner: %v", err)
+	}
+	status, _, err = collectResolvedApplicationStatus(ctx, reactivated)
+	if err != nil || !status.Ready {
+		t.Fatalf("reactivated Core-backed Secrets workload is not ready: %+v %v", status, err)
+	}
+	if coreBackedApplicationSecretDigest(t, ctx, runtime, inventory, reactivated) != secretDigest {
+		t.Fatal("runtime retirement/reactivation lost the original application secret")
+	}
+	assertCoreBackedSecretsState(t, ctx, runtime, inventory, reactivated, initialOwner, baseline, retainedVolumes, envDigest, true, true, true)
+}
+
+func coreBackedApplicationSecretDigest(t *testing.T, ctx context.Context, runtime bhruntime.RuntimeProvider, inventory bhruntime.ControlPlaneRuntimeInventory, resolved resolvedApplication) [32]byte {
+	t.Helper()
+	files := application.RuntimeFilesFor(resolved.Store, resolved.Manifest)
+	service := applicationsecret.NewForApplicationRuntime(resolved.Store, runtime, inventory.Files, resolved.Manifest, files)
+	value, err := service.Get(ctx, resolved.Manifest.Name, "API_TOKEN")
+	if err != nil || len(value) == 0 {
+		clear(value)
+		t.Fatalf("generated application secret is not readable through its owned Core scope: %v", err)
+	}
+	digest := sha256.Sum256(value)
+	clear(value)
+	return digest
+}
+
+func assertCoreBackedSecretsState(t *testing.T, ctx context.Context, runtime bhruntime.RuntimeProvider, inventory bhruntime.ControlPlaneRuntimeInventory, resolved resolvedApplication, initialOwner coreinstallation.State, baseline map[string]bhruntime.RuntimeContainer, volumes []bhruntime.ProjectResource, envDigest [32]byte, brokerExists, brokerRunning, workloadExpected bool) {
+	t.Helper()
+	containers, err := runtime.ListRuntimeContainers(ctx)
+	if err != nil {
+		t.Fatalf("inspect runtime during Core-backed Secrets lifecycle: %v", err)
+	}
+	_, changed := runtimeContainerBaselineDiff(containers, baseline)
+	if len(changed) != 0 {
+		t.Fatalf("Core/provider baseline changed during Secrets lifecycle: %v", changed)
+	}
+	root, err := targetRuntimeStateRoot(resolved.Target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	owner, err := coreinstallation.Load(root)
+	if err != nil || owner.ID != initialOwner.ID || owner.Spec != initialOwner.Spec || owner.Ready != initialOwner.Ready {
+		t.Fatalf("Core installation owner changed during Secrets lifecycle: before=%+v after=%+v err=%v", initialOwner, owner, err)
+	}
+	actual, err := runtime.InspectProjectResources(ctx, inventory.Files.Project, inventory.Resources)
+	if err != nil {
+		t.Fatalf("inspect Core provider inventory during Secrets lifecycle: %v", err)
+	}
+	// The canonical resource inventory also includes profile-only helpers and
+	// successful one-shot jobs such as postgres-init. They are retained in the
+	// owner inventory for lifecycle/recovery, but are not expected to exist as
+	// persistent containers on every runtime. Require all continuous Core
+	// services here; the full runtime baseline below still catches changes to
+	// every container actually present before the Secrets lifecycle.
+	continuousServices := append(
+		inventory.ContinuousServices(inventory.SQLServices),
+		inventory.ContinuousServices(inventory.SecretsServices)...,
+	)
+	for _, service := range continuousServices {
+		resource := bhruntime.ProjectResource{
+			Kind: "container",
+			Name: inventory.Files.Project + "-" + service + "-1",
+		}
+		if !application.ResourceNamedExists(actual, resource) {
+			t.Fatalf("continuous Core provider container disappeared during Secrets lifecycle: %s", resource.Name)
+		}
+	}
+	for _, volume := range volumes {
+		if !application.ResourceNamedExists(actual, volume) {
+			t.Fatalf("Core provider data volume disappeared during Secrets lifecycle: %s", volume.Name)
+		}
+	}
+	data, err := os.ReadFile(inventory.Files.Env)
+	if err != nil || sha256.Sum256(data) != envDigest {
+		t.Fatalf("Core provider configuration changed during Secrets lifecycle: %v", err)
+	}
+	files := application.RuntimeFilesFor(resolved.Store, resolved.Manifest)
+	brokerProject := runtimebroker.ProjectNameForRuntime(resolved.Manifest, files)
+	brokerResource := bhruntime.ProjectResource{Kind: "container", Name: brokerProject + "-broker-1"}
+	brokerCount, runningBrokerCount, workloadCount := 0, 0, 0
+	baselineIDs := make(map[string]struct{}, len(baseline))
+	for id := range baseline {
+		baselineIDs[id] = struct{}{}
+	}
+	for _, container := range runtimeContainersNotInBaseline(containers, baselineIDs) {
+		if bhruntime.ContainerMatchesProjectResource(runtime.Kind(), container, brokerProject, brokerResource) {
+			brokerCount++
+			if container.Running {
+				runningBrokerCount++
+			}
+			continue
+		}
+		workload := bhruntime.ProjectResource{Kind: "container", Name: files.Project + "-api-1"}
+		if bhruntime.ContainerMatchesProjectResource(runtime.Kind(), container, files.Project, workload) {
+			workloadCount++
+			continue
+		}
+		t.Fatalf("Secrets application materialized unexpected runtime project=%s service=%s", container.Project, container.Service)
+	}
+	if (brokerExists && brokerCount != 1) || (!brokerExists && brokerCount != 0) ||
+		(brokerRunning && runningBrokerCount != 1) || (!brokerRunning && runningBrokerCount != 0) ||
+		(workloadExpected && workloadCount != 1) || (!workloadExpected && workloadCount != 0) {
+		t.Fatalf("Core-backed Secrets runtime differs from request: workload=%d broker=%d running-broker=%d expected-workload=%t expected-broker-exists=%t expected-broker-running=%t", workloadCount, brokerCount, runningBrokerCount, workloadExpected, brokerExists, brokerRunning)
 	}
 }
