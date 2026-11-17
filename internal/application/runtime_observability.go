@@ -55,19 +55,37 @@ func reconcileManagedRuntimeObservability(m Manifest, project string) error {
 	if err := reconcileRuntimeProviderObservability(m, project, "valkey", capability.ProviderValkey, capability.ValkeyIntegration, valkeyInstances, logsEnabled, tracesEnabled); err != nil {
 		return err
 	}
-	return reconcileApplicationMetricsSource(m, project, logsEnabled, tracesEnabled)
+	if err := reconcileApplicationMetricsSource(m, project, logsEnabled, tracesEnabled); err != nil {
+		return err
+	}
+	return reconcileApplicationTraceSource(m, project, tracesEnabled)
 }
 
 // reconcileApplicationMetricsSource records the workload's runtime identity in
 // the shared provider snapshot even when the app has no declared metrics
 // endpoint. Its runtime target is symbolic, so it must not become a Prometheus
 // file_sd scrape target or require a provider network connection.
+//
+// A trace signal never belongs to this Prometheus-owned identity: Prometheus
+// ingests metrics, not spans. The workload's native trace signal is registered
+// under the OTLP receiver its telemetry policy actually selects, in its own
+// reconciliation below, so span verification reaches an adapter that can export
+// to a real receiver instead of failing on a metrics backend.
 func reconcileApplicationMetricsSource(
 	m Manifest,
 	project string,
 	logsEnabled bool,
 	tracesEnabled bool,
 ) error {
+	// The legacy Prometheus-attributed trace signal is reclaimed before any
+	// metrics-policy decision: earlier releases registered it whenever the
+	// metrics policy was enabled, so disabling metrics afterwards must not
+	// leave behind a trace source no adapter can serve. Only that signal kind
+	// is removed; the metrics and log signals of the same workload identity are
+	// reconciled below and stay intact.
+	if err := pruneWorkloadTraceSignals(project, []capability.ProviderKind{capability.ProviderPrometheus}); err != nil {
+		return err
+	}
 	metricsPolicy, err := MetricsPolicy(m)
 	if err != nil {
 		return err
@@ -107,25 +125,109 @@ func reconcileApplicationMetricsSource(
 			Verification:       capability.ObservabilityVerifyBackend,
 		})
 	}
-	if tracesEnabled {
-		desired = append(desired, observability.SignalSource{
-			ID:                 id,
-			Kind:               observability.SignalTraces,
-			Provider:           capability.ProviderPrometheus,
-			Class:              observability.SourceApplicationProvider,
-			Scope:              capability.ScopeApplication,
-			OwnerApplication:   m.Name,
-			Target:             observability.RuntimeTarget(project, "workload"),
-			Protocol:           "otlp",
-			Mode:               capability.ObservabilityNative,
-			SemanticConvention: "http",
-			Verification:       capability.ObservabilityVerifySpan,
-		})
-	}
 	if len(desired) == 0 {
 		return nil
 	}
 	return observability.ReconcileSignals(id, desired)
+}
+
+// reconcileApplicationTraceSource registers the workload's native trace signal
+// under the OTLP receiver that actually receives its spans. Prometheus is a
+// metrics backend and Tempo stores traces without receiving them, so naming
+// either of them here would leave span verification with a source no probe
+// adapter can serve. The receiver identity comes from the same deployment
+// policy the OTLP transport selection uses, so registry and exporter agree
+// before, during and after a managed/external receiver transition.
+func reconcileApplicationTraceSource(m Manifest, project string, tracesEnabled bool) error {
+	if !HasOTLPTelemetry(m) {
+		return nil
+	}
+	project = strings.TrimSpace(project)
+	if !tracesEnabled {
+		if TelemetryProviderForDeployment().Kind == capability.ProviderExternalOTLP {
+			// An external receiver delivers its spans without managed trace
+			// storage (see requiresManagedTraceStorage), so this reconciliation
+			// never registered a workload source under that receiver. Reclaiming
+			// its identity here would delete a signal the managed collector
+			// transport still provides. With the managed collector as the
+			// receiver, the disabled policy does reclaim this workload's own
+			// collector identity.
+			return nil
+		}
+		// The deployment stopped collecting provider traces. Reclaim the trace
+		// signal of this workload's own receiver identities so verification can
+		// never reach a stale registration; the metrics and log signals of those
+		// same identities stay registered.
+		return pruneWorkloadTraceSignals(project, workloadReceiverKinds)
+	}
+	receiver, err := workloadTraceReceiver(m)
+	if err != nil {
+		return err
+	}
+	// The consumer identity follows the receiver: an external replacement must
+	// not keep verifying through the managed collector, and returning to the
+	// managed transport must not keep verifying a retired external source.
+	// Only this workload's own receiver-owned identities are reclaimed, so a
+	// shared collector or external source registration of another application
+	// is never touched.
+	if err := pruneWorkloadTraceSignals(project, otherReceiverKinds(receiver)); err != nil {
+		return err
+	}
+	id := fmt.Sprintf("%s:%s", receiver, project)
+	desired := []observability.SignalSource{{
+		ID:                 id,
+		Kind:               observability.SignalTraces,
+		Provider:           receiver,
+		Class:              observability.SourceApplicationProvider,
+		Scope:              capability.ScopeApplication,
+		OwnerApplication:   m.Name,
+		Target:             observability.RuntimeTarget(project, "workload"),
+		Protocol:           "otlp",
+		Mode:               capability.ObservabilityNative,
+		SemanticConvention: "http",
+		Verification:       capability.ObservabilityVerifySpan,
+	}}
+	return observability.ReconcileSignals(id, desired)
+}
+
+// workloadTraceReceiver names the OTLP receiver the deployment policy selects
+// for this application's spans. The selection is the one every other component
+// reads, never a guess from leftover files, so the registry and the transport
+// cannot disagree across an apply, a replacement or a return.
+func workloadTraceReceiver(m Manifest) (capability.ProviderKind, error) {
+	return TelemetryProviderForDeployment().Kind, nil
+}
+
+// workloadReceiverKinds are the OTLP receiver identities a workload's native
+// trace signal can be registered under.
+var workloadReceiverKinds = []capability.ProviderKind{capability.ProviderOTelCollector, capability.ProviderExternalOTLP}
+
+// otherReceiverKinds returns the receiver identities a transition away from the
+// given receiver must reclaim, excluding the receiver that stays registered.
+func otherReceiverKinds(receiver capability.ProviderKind) []capability.ProviderKind {
+	var others []capability.ProviderKind
+	for _, kind := range workloadReceiverKinds {
+		if kind != receiver {
+			others = append(others, kind)
+		}
+	}
+	return others
+}
+
+// pruneWorkloadTraceSignals reclaims the trace signals of this workload's own
+// receiver identities. An identity is the receiver provider plus the exact
+// runtime project, so only the project the reconciliation belongs to is
+// affected: a shared receiver instance, another application's registrations and
+// this application's other environments all keep their trace verification. The
+// metrics and log signals of the reclaimed identities stay registered, which is
+// what a receiver transition or a disabled trace policy must leave behind.
+func pruneWorkloadTraceSignals(project string, receivers []capability.ProviderKind) error {
+	for _, receiver := range receivers {
+		if err := observability.PruneSignals(fmt.Sprintf("%s:%s", receiver, project), observability.SignalTraces); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func reconcileRuntimeProviderObservability(
