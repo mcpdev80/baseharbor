@@ -101,6 +101,15 @@ def within_7_days(previous_created_at, current_created_at):
     return 0 <= elapsed <= TTL_SECONDS
 
 
+def run_event_eligible(run, tag):
+    """Allow release-branch push runs only for this exact candidate tag."""
+    event = run.get("event")
+    if event in ("workflow_dispatch", "workflow_call"):
+        return True
+    return (event == "push" and tag != "develop" and
+            run.get("head_branch") == "release/" + tag + "-current")
+
+
 def canonical_hash(value):
     encoded = json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
     return hashlib.sha256(encoded).hexdigest()
@@ -328,7 +337,9 @@ def valid_manifest(manifest, *, run_id, tag, runtime, gate, fingerprint,
     source_run_created = manifest.get("source_run_created_at") or run_created_at
     source_artifact_created = manifest.get("source_artifact_created_at") or evidence_created_at
     qualified = manifest.get("qualified_at")
-    return (manifest.get("schema") == SCHEMA and
+    return (catalog_version != "unavailable" and bool(catalog_version) and
+            manifest.get("catalog_version") not in ("", "unavailable", None) and
+            manifest.get("schema") == SCHEMA and
             manifest.get("status") == "success" and
             str(manifest.get("run_id")) == str(run_id) and
             str(manifest.get("source_run_id", "" )).isdigit() and
@@ -443,7 +454,7 @@ def build_outputs(gates, tag, candidate_sha, demo_sha, current_run, token,
             continue
         if run.get("conclusion") not in ("success", "failure"):
             continue
-        if run.get("event") not in ("workflow_dispatch", "workflow_call"):
+        if not run_event_eligible(run, tag):
             continue
         if within_7_days(run.get("created_at"), actual_now):
             previous_runs.append(run)
@@ -611,34 +622,14 @@ def main():
         workflow_version, catalog_version = version_digests(
             args.candidate_sha, args.demo_ref, impact, core_cwd=base, demo_cwd=demo_cwd)
         current = request_json(args.repo, "actions/runs/" + str(args.run_id), args.token)
-        if current.get("event") not in ("workflow_dispatch", "workflow_call"):
+        if not run_event_eligible(current, args.tag):
             raise ValueError("current run is not a pre-release dispatch/call")
         current["repository"] = args.repo
         if not isinstance(current.get("workflow_id"), int):
             raise ValueError("current run has no workflow identity")
     except (KeyError, OSError, TypeError, ValueError, urllib.error.URLError,
-            subprocess.SubprocessError, json.JSONDecodeError):
-        workflow_version = canonical_hash(execution_tree_fingerprint(
-            args.candidate_sha, impact["execution_inputs"], cwd=base))
-        catalog_version = "unavailable"
-        rows = no_reuse_outputs(gates, args.tag, args.candidate_sha, args.demo_ref,
-                                workflow_version, catalog_version, impact,
-                                core_cwd=base, demo_cwd=demo_cwd if demo_cwd.exists() else None)
-        current = None
-    if current is None:
-        output = {
-            "static": [r for r in rows if r["runtime"] == "static"],
-            **{name + "_" + runtime: [r for r in rows if r["runtime"] == runtime and
-               ((r["gate"] in ("guided", "lifecycle", "policy", "connectivity", "reconciliation", "failure", "full-destroy")) == (name == "light"))]
-               for runtime in ("docker", "podman") for name in ("light", "heavy")},
-        }
-        for key, value in list(output.items()):
-            output[key + "_execute_count"] = sum(not row["reuse_from"] for row in value)
-        with open(args.output, "a", encoding="utf-8") as stream:
-            for key, value in output.items():
-                stream.write(key + "=" + json.dumps(value, separators=(",", ":")) + "\n")
-        print(json.dumps(output, sort_keys=True))
-        return
+            subprocess.SubprocessError, json.JSONDecodeError) as error:
+        raise SystemExit("cannot build complete Pre-Release reuse plan: " + str(error)) from error
     try:
         rows = build_outputs(gates, args.tag, args.candidate_sha, args.demo_ref,
                              current, args.token, workflow_version, catalog_version,

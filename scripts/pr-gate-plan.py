@@ -1151,6 +1151,10 @@ def targeted_plan(diff, requirements, mapping, repository='.',
                                                       CORE_754_TEST_HEAD))):
                 unresolved.append('core-754 test source differs from exact reviewed candidate')
             unresolved.append('core-754 MCP test content requires independent source qualification: ' + path)
+        elif path in ('internal/openbao/bootstrap_auth.go',
+                      'internal/openbao/bootstrap_auth_test.go'):
+            area = 'openbao-manager-login'
+            require(CODE_CHECKS + OPENBAO_CHECKS)
         elif path in ('cmd/baha/application_service_issuer.go',
                       'cmd/baha/application_service_issuer_test.go',
                       'internal/openbao/service_issuer.go', 'internal/openbao/service_issuer_test.go',
@@ -1407,8 +1411,8 @@ def targeted_plan(diff, requirements, mapping, repository='.',
             unresolved.append('application lifecycle/provider resolution impact needs targeted qualification: ' + path)
         elif path.startswith('internal/openbao/'):
             # Fail-closed OpenBao handling: no blanket path exemption.
-            # Only the reviewed bootstrap source files (bootstrap.go /
-            # bootstrap_test.go) receive resolved coverage.  Any other
+            # Only explicitly mapped OpenBao source files receive resolved
+            # coverage. Any other
             # added, deleted, renamed or unreviewed OpenBao production
             # file stays unresolved and requires independent diff review.
             area = 'openbao-unreviewed'
@@ -1442,6 +1446,18 @@ def targeted_plan(diff, requirements, mapping, repository='.',
             if not path.endswith('_test.go'):
                 require(CODE_CHECKS + CLI_CHECKS)
                 selected.update(('atomic/docker/lifecycle', 'atomic/podman/lifecycle'))
+        elif path in ('internal/runtime/service_stop.go',
+                      'internal/runtime/service_stop_test.go'):
+            # Podman selected-stop name planning is runtime-specific: its native
+            # acceptance must exercise the pinned-name backup path on Podman.
+            # Keep the Go package checks (including auto-discovered unit tests)
+            # and bind this narrow source/test pair to the existing Podman
+            # lifecycle gate only.
+            area = 'podman-selected-service-stop'
+            require(RUNTIME_PROVIDER_CHECKS)
+            if path == 'internal/runtime/service_stop.go':
+                require(CODE_CHECKS + CLI_CHECKS)
+            selected.add('atomic/podman/lifecycle')
         elif path.startswith('internal/runtime/') and path.endswith('.go') and not path.startswith('internal/runtime/resolver/'):
             area = 'runtime-package'
             require(RUNTIME_PROVIDER_CHECKS)
@@ -1532,7 +1548,8 @@ def targeted_plan(diff, requirements, mapping, repository='.',
               path.startswith('scripts/verify-') or
               (path.startswith('scripts/') and path.endswith(('.py', '.sh', '.json', '.md'))) or
               path in ('AGENTS.md', '.github/copilot-instructions.md') or
-              path.startswith('evidence-r27/') or path.startswith('evidence/')):
+              path.startswith('evidence-r27/') or path.startswith('evidence/') or
+              path.startswith('baseharbor-plan/evidence/')):
             area = 'ci-executor'
             require(CI_CHECKS)
         else:
@@ -1584,6 +1601,69 @@ def deduplicate_cli_package_validations(result):
     return result
 
 
+# Exact reviewed terminal-only follow-up, PR #1667. This is deliberately
+# head- and path-pinned: future Rootless Docker setup changes still require
+# their declared native Docker guided gate. The existing CLI unit, build,
+# vet and formatting checks verify the isolated sudo terminal adapter.
+SUDO_TTY_REVIEWED_HEAD = '7e7e3331abc527df86083b51fd48ce3b451a9b72'
+SUDO_TTY_REVIEWED_FILES = {
+    'cmd/baha/rootless_bootstrap.go': 'modified',
+    'cmd/baha/rootless_bootstrap_test.go': 'modified',
+    'scripts/pr-gate-coverage.json': 'modified',
+}
+
+
+def reviewed_sudo_tty_tree_matches(head, repository):
+    if head == SUDO_TTY_REVIEWED_HEAD:
+        return True
+    if not isinstance(head, str) or not re.fullmatch(r'[0-9a-f]{40}', head):
+        return False
+    try:
+        ancestor = subprocess.run(
+            ['git', '-C', str(repository), 'merge-base', '--is-ancestor',
+             SUDO_TTY_REVIEWED_HEAD, head], capture_output=True, check=False)
+        if ancestor.returncode:
+            return False
+        for path in SUDO_TTY_REVIEWED_FILES:
+            blobs = []
+            for commit in (SUDO_TTY_REVIEWED_HEAD, head):
+                result = subprocess.run(
+                    ['git', '-C', str(repository), 'rev-parse', commit + ':' + path],
+                    capture_output=True, text=True, check=False)
+                if result.returncode:
+                    return False
+                blobs.append(result.stdout.strip())
+            if blobs[0] != blobs[1]:
+                return False
+    except OSError:
+        return False
+    return True
+
+
+def narrow_reviewed_sudo_tty_plan(diff, result, repository='.'):
+    changes = diff.get('changes')
+    if (not reviewed_sudo_tty_tree_matches(diff.get('head_sha'), repository) or
+            diff.get('broad_required') is not False or
+            not isinstance(changes, list) or
+            len(changes) != len(SUDO_TTY_REVIEWED_FILES) or
+            {(row.get('path'), row.get('status')) for row in changes
+             if isinstance(row, dict)} != set(SUDO_TTY_REVIEWED_FILES.items()) or
+            result.get('coverage_status') != 'resolved' or
+            result.get('unresolved_coverage') != [] or
+            result.get('selected_gates') != ['atomic/docker/guided']):
+        return result
+    validations = {check['id']: check for check in result['required_validation_checks']}
+    for check in CLI_PACKAGE_CHECKS + WIZARD_BASE_CHECKS:
+        validations[check['id']] = check
+    result = dict(result)
+    result['selected_gates'] = []
+    result['required_validation_checks'] = [
+        validations[key] for key in sorted(validations)]
+    result['reasons'] = list(result.get('reasons', [])) + [
+        'Exact reviewed sudo terminal-only fix: full CLI Go tests instead of Docker Core guided runtime']
+    return result
+
+
 def plan(diff, requirements, mapping, repository='.', context_repository=None,
          context_target_branch=None, *, conservative_fallback=False):
     """Try targeted selection; production CI tests valid unknown impact broadly."""
@@ -1627,6 +1707,7 @@ def plan(diff, requirements, mapping, repository='.', context_repository=None,
                         result['unresolved_coverage'] = list(result['unresolved_coverage']) + [
                             'legacy runtime impact has no declared gate coverage: ' +
                             ', '.join(unowned)]
+    result = narrow_reviewed_sudo_tty_plan(diff, result, repository)
     if not conservative_fallback or result['coverage_status'] == 'resolved':
         return deduplicate_cli_package_validations(result)
     valid, _ = validated_diff(diff)

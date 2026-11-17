@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"reflect"
 
@@ -52,6 +53,9 @@ func authorizeApplicationProviderChanges(ctx context.Context, resolved resolvedA
 		return err
 	}
 	if current.ProviderPlan.Impact == nil || current.ProviderPlan.Impact.PlanID != plan.ProviderPlan.Impact.PlanID {
+		if out != nil {
+			fmt.Fprintln(out, "authorization mismatch: provider-plan-id-after-revalidation")
+		}
 		return providerImpactConsentError(*plan.ProviderPlan.Impact, &application.ProviderChangeError{Code: "stale-impact-consent"})
 	}
 	return validateApplicationProviderExecution(resolved, current.ProviderPlan.Impact)
