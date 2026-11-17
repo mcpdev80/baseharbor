@@ -17,7 +17,11 @@ func loginManager(ctx context.Context, executor Executor, files bhruntime.Files,
 	if err != nil {
 		return "", errors.New("encode OpenBao AppRole login request")
 	}
-	const attempts = 3
+	const (
+		attempts       = 6
+		initialBackoff = 250 * time.Millisecond
+		maxBackoff     = 2 * time.Second
+	)
 	for attempt := 0; attempt < attempts; attempt++ {
 		out, execErr := executor.ExecProjectInput(ctx, projectNameForFiles(files), files.Compose, files.Env, payload, serviceName,
 			"bao", "write", "-format=json", "auth/approle/login", "-")
@@ -38,7 +42,11 @@ func loginManager(ctx context.Context, executor Executor, files bhruntime.Files,
 		if attempt == attempts-1 || !isTransientAppRoleLoginTransportError(execErr) {
 			return "", fmt.Errorf("OpenBao AppRole login failed: %w", execErr)
 		}
-		timer := time.NewTimer(200 * time.Millisecond)
+		backoff := initialBackoff << attempt
+		if backoff > maxBackoff {
+			backoff = maxBackoff
+		}
+		timer := time.NewTimer(backoff)
 		select {
 		case <-ctx.Done():
 			timer.Stop()

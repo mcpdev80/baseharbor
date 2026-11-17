@@ -14,6 +14,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/devaccess"
 	"github.com/mcpdev80/baseharbor/internal/devgateway"
+	"github.com/mcpdev80/baseharbor/internal/observability"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
 
@@ -110,7 +111,60 @@ func (r *localKeycloakRealization) Apply(ctx context.Context) (KeycloakInstance,
 			}
 		}
 	}
+	if err := r.registerKeycloakSignals(); err != nil {
+		return KeycloakInstance{}, err
+	}
 	return r.instance(ctx, files, publicBase)
+}
+
+// registerKeycloakSignals wires the Keycloak provider's native openmetrics
+// signal into the observability signal registry the runtime fan-in reads. The
+// signal is declared in the Keycloak integration descriptor
+// (capability/reference.go) but the compose realizes it; this mirrors the Loki,
+// Tempo and OTel collector signal registration (logs/realization.go,
+// traces/tempo.go, telemetry/realization.go): the reference descriptor is the
+// path, the metrics policy is the gate. Without this registration the signal is
+// unreachable — perses_identity_witness can never match a real Keycloak metrics
+// source and identity_dashboard_eligible can never become true. Registration is
+// a no-op unless the deployment policy enables metrics collection, so a Target
+// without metrics collection keeps every gate fail-closed (no regression of the
+// 080 non-forgeability invariant).
+func (r *localKeycloakRealization) registerKeycloakSignals() error {
+	placement, err := application.ResolveProviderPlacement(r.app, capability.ProviderKeycloak)
+	if err != nil {
+		return err
+	}
+	metricsPolicy, err := application.MetricsPolicy(r.app)
+	if err != nil {
+		return err
+	}
+	class := observability.SourcePlatformProvider
+	if placement.Scope == capability.ScopeApplication {
+		class = observability.SourceApplicationProvider
+	}
+	metricsEnabled := (application.HasMetricsSources(r.app) || application.HasRuntimeMetricsPermissions(r.app)) && metricsPolicy.Enabled
+	if class == observability.SourceApplicationProvider {
+		metricsEnabled = metricsEnabled && metricsPolicy.Collect[application.MetricsSourceApplicationProvider]
+	} else {
+		metricsEnabled = metricsEnabled && metricsPolicy.Collect[application.MetricsSourcePlatformProvider]
+	}
+	signals := map[string]observability.ProviderSignalRuntime{}
+	if metricsEnabled {
+		signals["keycloak-metrics"] = observability.ProviderSignalRuntime{
+			Network: r.files.ConsumerNetwork,
+			Target:  "keycloak:9000",
+		}
+	}
+	return observability.RegisterProviderSignals(observability.ProviderSignalRegistration{
+		ID:               "keycloak-metrics",
+		Descriptor:       capability.KeycloakIntegration,
+		Class:            class,
+		Scope:            placement.Scope,
+		SharingBoundary:  placement.SharingBoundary,
+		OwnerApplication: r.app.Name,
+		Enabled:          map[observability.SignalKind]bool{observability.SignalMetrics: metricsEnabled},
+		Signals:          signals,
+	})
 }
 
 func (r *localKeycloakRealization) Existing(ctx context.Context) (KeycloakInstance, error) {
