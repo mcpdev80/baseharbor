@@ -73,7 +73,7 @@ func TestDurableValkeyManagementUIRuntimeAcceptanceInCI(t *testing.T) {
 		time.Sleep(time.Second)
 	}
 
-	surfaces, err := ApplicationManagementUISurfaces(m, files)
+	surfaces, _, err := ApplicationManagementUISurfaces(m, files)
 	if err != nil {
 		t.Fatal(err)
 	}
