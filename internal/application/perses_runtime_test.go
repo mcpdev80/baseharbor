@@ -194,17 +194,18 @@ func TestPersesTLSFilesProjectedAndConsumed(t *testing.T) {
 		if filepath.Clean(hostPath) != filepath.Clean(filepath.Join(dir, filepath.Base(hostPath))) {
 			t.Fatalf("Perses %s mount %q must resolve into the projection dir %q", name, hostRel, dir)
 		}
-		// The server consumes each mount via the TLS environment settings.
-		flagEnv := map[string]string{
-			"/certs/server.cert": "PERSES_TLS_CERT_FILE: " + containerPath,
-			"/certs/server.key":  "PERSES_TLS_KEY_FILE: " + containerPath,
+		// The server consumes each mount via the TLS command flags.
+		containerFlag := map[string]string{
+			"/certs/server.cert": "--web.tls-cert-file=" + containerPath,
+			"/certs/server.key":  "--web.tls-key-file=" + containerPath,
 		}[containerPath]
-		if flagEnv == "" || !strings.Contains(rendered, flagEnv) {
-			t.Fatalf("Perses service must consume the mounted path via %q:\n%s", flagEnv, rendered)
+		if containerFlag == "" || !strings.Contains(rendered, containerFlag) {
+			t.Fatalf("Perses service must consume the mounted path via %q:\n%s", containerFlag, rendered)
 		}
 	}
-	if !strings.Contains(rendered, "PERSES_TLS_CERT_FILE:") || !strings.Contains(rendered, "PERSES_TLS_KEY_FILE:") {
-		t.Fatalf("Perses service must enable HTTPS with both TLS settings:\n%s", rendered)
+	if !strings.Contains(rendered, "--web.tls-cert-file=/certs/server.cert") ||
+		!strings.Contains(rendered, "--web.tls-key-file=/certs/server.key") {
+		t.Fatalf("Perses service must enable HTTPS with both TLS flags:\n%s", rendered)
 	}
 
 	certData, err := os.ReadFile(filepath.Join(dir, "server.cert"))

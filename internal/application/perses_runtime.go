@@ -57,14 +57,15 @@ func writePersesUIComposeService(b *strings.Builder, m Manifest, resourceProject
 	// "verified": the three-state contract stays configured_unverified. The
 	// surface is HTTPS per the accepted contract (PersesManagementUIInterface
 	// protocol "https"): EnsurePersesManagementUI projects the serviceaccess
-	// TLS material and these environment settings make the server consume it.
+	// TLS material and the entrypoint below hands the server exactly the
+	// mounted /certs paths. The image default CMD serves plain HTTP, and the
+	// perses web flags are flag-only (the PERSES_ environment namespace drives
+	// the config file keys, not --web.*), so the command line is overridden.
 	// The distroless nonroot image cannot read 0600 bind mounts, which is why
 	// the projection uses projectUIReadableFile (0644) copies like the other
 	// managed UIs.
-	b.WriteString("    environment:\n")
-	fmt.Fprintf(b, "      PERSES_LISTEN_ADDRESS: \"0.0.0.0:%d\"\n", persesUIContainerTLSPort)
-	b.WriteString("      PERSES_TLS_CERT_FILE: /certs/server.cert\n")
-	b.WriteString("      PERSES_TLS_KEY_FILE: /certs/server.key\n")
+	b.WriteString("    entrypoint: [\"/bin/perses\"]\n")
+	fmt.Fprintf(b, "    command: [\"--config=/etc/perses/config.yaml\", \"--web.listen-address=0.0.0.0:%d\", \"--web.tls-cert-file=/certs/server.cert\", \"--web.tls-key-file=/certs/server.key\", \"--log.level=error\"]\n", persesUIContainerTLSPort)
 	b.WriteString("    ports:\n")
 	fmt.Fprintf(b, "      - \"127.0.0.1:${%s}:%d\"\n", PersesUIHostPortEnv, persesUIContainerTLSPort)
 	b.WriteString("    volumes:\n")
