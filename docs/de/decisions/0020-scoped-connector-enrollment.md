@@ -33,6 +33,19 @@ Rückgabe der gleichen Leugnung. Verbrauch behält einen Digest der unterzeichne
 Signierungsfehler erfordert eine neue Autorisierung: das verbrauchte Credential ist nicht
 wiederhergestellt, auch nach einem Neustart des Prozesses oder einem mehrdeutigen Ansprechfehler.
 
+Verbrauch und Identitätseintragung sind zwei Phasen einer Einschreibung, die in
+getrennten Transaktionen verpflichtet werden. Zwischen ihnen ist der Zuschuss
+dauerhaft verbraucht, während die Knotenidentität noch nicht eingetragen ist. Das
+Fenster ist absichtlich und bleibt fail-closed: keine aktive Identität existiert,
+bevor die zweite Phase verpflichtet, der one-use Zuschuss ist nie wiederhergestellt
+und die einzige Erholung ist ein frisches Create oder CreateRenewal; Enroll
+widerruft außerdem das Zertifikat das es unterzeichnet hat wenn die zweite Phase
+fehlschlägt. Die previous_certificate_serial Klausel im Verbrauch und das
+serial-is-null Wache beim Identitätsschreiben halten einen konkurrierenden Antrag
+vom serial schreiben fern, so hinterlässt eine halb fertige Einschreibung einen
+toten Zuschuss, nie eine teilweise Identität oder eine zweite Identität für einen
+Knoten. Siehe ADR 0020.
+
 Kern überprüft das Ergebnis gegen sein maßgebliches Vertrauensbündel, CSR Public Key,
 scoped URI, client-only Schlüssel-Nutzung, serielle und Ablauf. Eine CA zurückgegeben neben einem Blatt
 Das PEM-Parsing lehnt zusätzliche Anträge ab.
