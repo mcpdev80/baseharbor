@@ -166,11 +166,6 @@ func collectApplicationStatusResult(ctx context.Context, store application.Store
 			OperatorAuth:              collectOperatorAuthObservation(ctx, resolved.Target.Name, resolved.Manifest.Environment),
 			Perses:                    persesStatus,
 			IdentityDashboardEligible: identityBackendAvailable}, nil
-	if hasRemoteApplicationTarget(resolved) {
-		return applicationStatusResult{StatusResult: result, ApplicationID: resolved.Manifest.ApplicationID,
-			DeploymentID: resolved.DeploymentIdentity.DeploymentID,
-			OperatorAuth: collectOperatorAuthObservation(ctx, resolved.Target.Name, resolved.Manifest.Environment),
-			Perses:       persesStatus}, nil
 	}
 	tlsStatus, tlsObservation, tlsErr := collectApplicationTLSObservation(resolved)
 	if tlsErr != nil || (tlsObservation != nil && !tlsObservation.Healthy) {
@@ -276,20 +271,5 @@ func collectApplicationStatusResult(ctx context.Context, store application.Store
 		tlsStatus:                 tlsStatus,
 		tlsErr:                    tlsErr,
 		serviceTLSErr:             serviceTLSErr,
-		StatusResult:    result,
-		ApplicationID:   resolved.Manifest.ApplicationID,
-		DeploymentID:    resolved.DeploymentIdentity.DeploymentID,
-		OperatorAuth:    collectOperatorAuthObservation(ctx, resolved.Target.Name, resolved.Manifest.Environment),
-		Availability:    availabilityResults,
-		TLS:             tlsObservation,
-		ServiceTLS:      serviceTLS,
-		RuntimeArtifact: runtimeArtifact,
-		RuntimeDocsURL:  runtimeDocsURL,
-		ApplicationURLs: applicationAccessURLs(resolved, result.Ready),
-		ManagementUI:    managementUI,
-		Perses:          persesStatus,
-		tlsStatus:       tlsStatus,
-		tlsErr:          tlsErr,
-		serviceTLSErr:   serviceTLSErr,
 	}, nil
 }
