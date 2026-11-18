@@ -39,7 +39,7 @@ func acknowledgeProviderImpact(ctx context.Context, in io.Reader, out io.Writer,
 
 func printProviderImpact(out io.Writer, plan application.ProviderImpactPlan) error {
 	if plan.Attention != "" {
-		fmt.Fprintln(out, "Warning: review the concrete consequences and required acknowledgements below.")
+		fmt.Fprintln(out, application.ProviderImpactConsentCatalog().ProviderImpactLead)
 	}
 	encoder := json.NewEncoder(out)
 	encoder.SetIndent("", "  ")
@@ -79,9 +79,9 @@ func readProviderImpactAcknowledgements(reader *bufio.Reader, out io.Writer, pla
 	for stage := 1; stage <= plan.ConfirmationsRequired; stage++ {
 		label := "Confirm the displayed provider changes"
 		if plan.Destructive {
-			label = "Warning: confirm the displayed changes and permanent data deletion"
+			label = application.ProviderImpactConsentCatalog().ProviderDestructiveConfirm
 		} else if plan.ConfirmationsRequired == 2 {
-			label = "Warning: confirm the displayed outcome without a working alternative"
+			label = application.ProviderImpactConsentCatalog().ProviderTwoStageConfirm
 		}
 		fmt.Fprintf(out, "%s (%d/%d, plan %s)? [y/N]: ", label, stage, plan.ConfirmationsRequired, plan.PlanID)
 		answer, err := reader.ReadString('\n')
@@ -101,7 +101,7 @@ func readProviderImpactAcknowledgements(reader *bufio.Reader, out io.Writer, pla
 	// The two consequence acknowledgements do not grant data deletion. Collect
 	// that separate decision only after every required plan stage was accepted.
 	if plan.Destructive {
-		fmt.Fprintf(out, "Warning: separately authorize permanent deletion of the displayed owned data (plan %s)? [y/N]: ", plan.PlanID)
+		fmt.Fprintf(out, application.ProviderImpactConsentCatalog().ProviderDestructiveDataConsentPrompt, plan.PlanID)
 		answer, err := reader.ReadString('\n')
 		if err != nil && !errors.Is(err, io.EOF) {
 			return consent, err

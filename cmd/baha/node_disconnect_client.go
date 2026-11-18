@@ -155,7 +155,8 @@ func runNodeDisconnectWithImpact(ctx context.Context, target string, format cliO
 		return err
 	}
 	if format != outputJSON {
-		fmt.Fprintln(out, "Warning: review node access loss and all known Core/local recovery owners.")
+		labels := application.ProviderImpactConsentCatalog()
+		fmt.Fprintln(out, labels.NodeDisconnectImpact)
 		if err := writeJSON(out, plan); err != nil {
 			return err
 		}

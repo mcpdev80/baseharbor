@@ -32,8 +32,9 @@ func removeExternalProviderWithImpact(ctx context.Context, id string, in io.Read
 		return application.ExternalProviderRemovalResult{}, err
 	}
 	if out != nil {
+		labels := application.ProviderImpactConsentCatalog()
 		if plan.Scope.Attention != "" {
-			fmt.Fprintln(out, "Warning: review all Target bindings and the unknown live access consequences.")
+			fmt.Fprintln(out, labels.ExternalProviderRemovalImpact)
 		}
 		encoder := json.NewEncoder(out)
 		encoder.SetIndent("", "  ")
