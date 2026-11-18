@@ -40,10 +40,13 @@ func RecordProviderChangeResult(plan ProviderImpactPlan, outcomes []ProviderExec
 			// The guard blocks only when the continuation requires dependency
 			// evidence AND that evidence is missing (len==0) or stale. Go binds
 			// `&&` above `||`, so the operands must be parenthesized: without the
-			// parentheses this parsed as `(A && len==0) || !match`, which
-			// collapsed to a single operand and either silenced the
-			// actual-disposition-differs branch or mislabeled a realized-but-
-			// different disposition as continuation-dependency-unverified.
+			// parentheses this parsed as `(A && len==0) || !match`, which collapsed
+			// to its second operand and mislabeled a non-continuation applied
+			// receipt that carried a stray continuation edge as
+			// "continuation-dependency-unverified" instead of applying it. Under the
+			// correct guard A is false for a non-continuation op, so the receipt
+			// applies cleanly (status=applied); the stray edge is irrelevant to an
+			// op that has no approved continuation to verify.
 			if continuationRequiresDependencyEvidence(imp) && (len(imp.ContinuationDependencies) == 0 || !continuationDependencyOutcomesMatch(out.ContinuationDependencies, imp.ContinuationDependencies, plan.Impacts)) {
 				out.Status = "failed"
 				out.ErrorCode = "continuation-dependency-unverified"

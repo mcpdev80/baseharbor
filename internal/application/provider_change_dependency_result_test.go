@@ -4,50 +4,78 @@ import (
 	"testing"
 )
 
-// TestProviderResultGuardBlocksSingleOperand covers BOTH operands of the
-// receipt-verification guard in provider_change_result.go:40. The guard must
-// block an applied outcome when the continuation requires dependency evidence
-// AND the dependency evidence is either missing (len==0) or stale
-// (outcomes do not match). A single-operand collapse — Go binds `&&` above
-// `||`, so `(A && len==0) || !match` — mislabels a non-continuation applied
-// receipt whose actual realization differs as
-// "continuation-dependency-unverified" instead of "actual-disposition-differs".
-// That happens when A is false and the applied receipt carries an unplanned
-// continuation edge (C true): the buggy guard fires on its second operand
-// alone with the wrong code, instead of the intended guard `A && (len==0 ||
-// !match)` which cannot fire when A is false and falling through to
-// actual-disposition-differs.
-func TestProviderResultGuardBlocksSingleOperand(t *testing.T) {
-	s, u, o := impactFixture(t)
-	// A stop impact: no replacement After, no transition with dependencies, so
-	// continuationRequiresDependencyEvidence is false.
-	plan, err := DescribeProviderChanges(s, u, []ProviderChangeRequest{{InstanceID: "identity", Operation: "stop"}}, o)
-	if err != nil {
-		t.Fatal(err)
-	}
-	imp := plan.Impacts[0]
-	if continuationRequiresDependencyEvidence(imp) {
-		t.Fatal("stop impact must not require dependency evidence")
-	}
-	actual := appliedOutcome(imp)
-	// The applied receipt carries an UNPLANNED continuation edge (the approved
-	// stop planned no dependency graph). continuationDependencyOutcomesMatch
-	// is now false, so the buggy guard `A && len==0 || !match` fires on its
-	// second operand with the WRONG code, because A is false and the intended
-	// guard `A && (len==0 || !match)` must NOT fire on this operand at all.
-	// The correct code is actual-disposition-differs: the realized receipt
-	// differs from the approved plan, not a continuation-dependency gap.
-	actual.ContinuationDependencies = []ProviderDependencyEvidence{
-		{Realization: ProviderRealization{InstanceID: "ghost", Supported: true, Verified: true, Evidence: "e", State: ProviderRunning}, Dependencies: []string{}},
-	}
-	result, err := RecordProviderChangeResult(plan, []ProviderExecutionOutcome{actual})
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Logf("status=%v code=%v", result.Outcomes[0].Status, result.Outcomes[0].ErrorCode)
-	if result.Outcomes[0].Status != "applied" {
-		t.Fatalf("non-continuation applied receipt wrongly blocked by collapsed guard: got status=%q code=%q, want applied", result.Outcomes[0].Status, result.Outcomes[0].ErrorCode)
-	}
+// TestProviderResultNonContinuationBehaviourPin pins the CURRENT semantics of
+// the receipt-verification guard in provider_change_result.go:47 (the
+// parenthesised form `continuationRequiresDependencyEvidence(imp) &&
+// (len(imp.ContinuationDependencies) == 0 || !continuationDependencyOutcomesMatch(...))`,
+// already accepted in fix-1). It is a behaviour-pin, NOT a fail-closed
+// invariant: it records what the correct code does TODAY so that any LATER
+// switch of the non-continuation branch to a fail-closed `unexpected edge`
+// status is an explicit, visible assertion change rather than a silent drift.
+//
+// Two side-by-side operands of the same guard:
+//   - non_continuation: a stop impact (continuationRequiresDependencyEvidence
+//     == false, A false). An applied receipt that carries an UNPLANNED
+//     continuation edge on an instance the approved stop never planned. Under
+//     the CORRECT guard the guard is false for A==false and the receipt
+//     applies cleanly (status=applied). The stray edge is irrelevant to a
+//     non-continuation op. This is the behaviour the current code is pinned to.
+//     (Under the pre-fix-1 collapsed guard `(A && len==0) || !match` this same
+//     case fired on its second operand and was mislabelled
+//     `continuation-dependency-unverified`; the pin therefore still catches a
+//     regression of the precedence fix, but its stated intent is the pinned
+//     CURRENT behaviour, not the fix itself.)
+//   - continuation_without_evidence: a replacement impact that requires a
+//     dependency graph (A true) with NO evidence supplied. The guard must
+//     block it as `continuation-dependency-unverified`. This pins the
+//     continuation operand independently of the non-continuation one.
+func TestProviderResultNonContinuationBehaviourPin(t *testing.T) {
+	t.Run("non_continuation", func(t *testing.T) {
+		s, u, o := impactFixture(t)
+		// A stop impact: no replacement After, no transition with dependencies,
+		// so continuationRequiresDependencyEvidence is false.
+		plan, err := DescribeProviderChanges(s, u, []ProviderChangeRequest{{InstanceID: "identity", Operation: "stop"}}, o)
+		if err != nil {
+			t.Fatal(err)
+		}
+		imp := plan.Impacts[0]
+		if continuationRequiresDependencyEvidence(imp) {
+			t.Fatal("stop impact must not require dependency evidence")
+		}
+		actual := appliedOutcome(imp)
+		// The applied receipt carries an UNPLANNED continuation edge (the
+		// approved stop planned no dependency graph). Under the correct guard
+		// the guard cannot fire when A is false, so the receipt applies
+		// cleanly — the pinned CURRENT semantics.
+		actual.ContinuationDependencies = []ProviderDependencyEvidence{
+			{Realization: ProviderRealization{InstanceID: "ghost", Supported: true, Verified: true, Evidence: "e", State: ProviderRunning}, Dependencies: []string{}},
+		}
+		result, err := RecordProviderChangeResult(plan, []ProviderExecutionOutcome{actual})
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Logf("non-continuation receipt applied cleanly: status=%v code=%v", result.Outcomes[0].Status, result.Outcomes[0].ErrorCode)
+		if result.Outcomes[0].Status != "applied" {
+			t.Fatalf("non-continuation receipt must apply under current semantics: got status=%q code=%q, want applied", result.Outcomes[0].Status, result.Outcomes[0].ErrorCode)
+		}
+	})
+	t.Run("continuation_without_evidence", func(t *testing.T) {
+		cdS, cdU, cdO, cdReq := continuationDependencyFixture(t)
+		cdPlan, err := DescribeProviderChanges(cdS, cdU, []ProviderChangeRequest{cdReq}, cdO)
+		if err != nil || !cdPlan.Complete {
+			t.Fatalf("fixture: %+v %v", cdPlan, err)
+		}
+		cdActual := appliedOutcome(cdPlan.Impacts[0])
+		cdActual.ContinuationDependencies = nil // no evidence supplied
+		cdResult, err := RecordProviderChangeResult(cdPlan, []ProviderExecutionOutcome{cdActual})
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Logf("continuation without evidence blocked: status=%v code=%v", cdResult.Outcomes[0].Status, cdResult.Outcomes[0].ErrorCode)
+		if cdResult.Outcomes[0].ErrorCode != "continuation-dependency-unverified" {
+			t.Fatalf("continuation without evidence must be blocked: got status=%q code=%q, want continuation-dependency-unverified", cdResult.Outcomes[0].Status, cdResult.Outcomes[0].ErrorCode)
+		}
+	})
 }
 
 func TestProviderResultRequiresFreshEntireContinuationGraph(t *testing.T) {
