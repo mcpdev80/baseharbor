@@ -155,7 +155,8 @@ func authorizeApplicationRestore(ctx context.Context, resolved resolvedApplicati
 	if out == nil {
 		out = io.Discard
 	}
-	fmt.Fprintln(out, "Achtung: restore can overwrite newer owned data. Confirm this exact archive/owner plan twice and separately authorize data deletion; ordinary approval supplies none of these decisions.")
+	labels := application.ProviderImpactConsentCatalog()
+	fmt.Fprintln(out, labels.ApplicationRestoreImpact)
 	if err := writeJSON(out, p); err != nil {
 		return err
 	}

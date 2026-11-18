@@ -2,6 +2,45 @@ package application
 
 import "fmt"
 
+// ProviderImpactConsentLabels is the minimal i18n surface for the CLI's
+// destructive / consent-gated paths. The regression these labels fix is the
+// rendered CLI string: every label below is the English catalog value that the
+// CLI must print instead of a hardcoded German fallback. The wire model value
+// ProviderImpactPlan.Attention ("Achtung") stays language-neutral and is
+// untouched here — this is a presentation-layer catalog only.
+type ProviderImpactConsentLabels struct {
+	ControlPlaneStopImpact               string
+	NodeDisconnectImpact                 string
+	TargetDefinitionChangeImpact         string
+	ApplicationStopImpact                string
+	RuntimeDestroyImpactDestructive      string
+	RuntimeDestroyImpactNonDestructive   string
+	ProviderImpactLead                   string
+	ProviderDestructiveConfirm           string
+	ProviderTwoStageConfirm              string
+	ProviderDestructiveDataConsentPrompt string
+	ApplicationRestoreImpact             string
+	ExternalProviderRemovalImpact        string
+}
+
+// ProviderImpactConsentCatalog returns the shipped English consent labels.
+func ProviderImpactConsentCatalog() ProviderImpactConsentLabels {
+	return ProviderImpactConsentLabels{
+		ControlPlaneStopImpact:               "Warning: review this selected Core stop, affected consumers and retained recovery locations.",
+		NodeDisconnectImpact:                 "Warning: review node access loss and all known Core/local recovery owners.",
+		TargetDefinitionChangeImpact:         "Warning: review this Target access change, retained data and actual recovery location.",
+		ApplicationStopImpact:                "Warning: review the current application stop, affected consumers and retained recovery locations.",
+		RuntimeDestroyImpactDestructive:      "Warning: permanent destruction requires two current-plan confirmations and separate data-deletion consent.",
+		RuntimeDestroyImpactNonDestructive:   "Warning: selected runtime removal requires two current-plan confirmations; persistent data and protected owners remain.",
+		ProviderImpactLead:                   "Warning: review the concrete consequences and required acknowledgements below.",
+		ProviderDestructiveConfirm:           "Warning: confirm the displayed changes and permanent data deletion",
+		ProviderTwoStageConfirm:              "Warning: confirm the displayed outcome without a working alternative",
+		ProviderDestructiveDataConsentPrompt: "Warning: separately authorize permanent deletion of the displayed owned data (plan %s)? [y/N]: ",
+		ApplicationRestoreImpact:             "Warning: restore can overwrite newer owned data. Confirm this exact archive/owner plan twice and separately authorize data deletion; ordinary approval supplies none of these decisions.",
+		ExternalProviderRemovalImpact:        "Warning: review all Target bindings and the unknown live access consequences.",
+	}
+}
+
 type ProviderChangeError struct{ Code string }
 
 func (e *ProviderChangeError) Error() string { return "provider change: " + e.Code }
