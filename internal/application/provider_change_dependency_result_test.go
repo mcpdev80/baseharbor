@@ -1,6 +1,54 @@
 package application
 
-import "testing"
+import (
+	"testing"
+)
+
+// TestProviderResultGuardBlocksSingleOperand covers BOTH operands of the
+// receipt-verification guard in provider_change_result.go:40. The guard must
+// block an applied outcome when the continuation requires dependency evidence
+// AND the dependency evidence is either missing (len==0) or stale
+// (outcomes do not match). A single-operand collapse — Go binds `&&` above
+// `||`, so `(A && len==0) || !match` — mislabels a non-continuation applied
+// receipt whose actual realization differs as
+// "continuation-dependency-unverified" instead of "actual-disposition-differs".
+// That happens when A is false and the applied receipt carries an unplanned
+// continuation edge (C true): the buggy guard fires on its second operand
+// alone with the wrong code, instead of the intended guard `A && (len==0 ||
+// !match)` which cannot fire when A is false and falling through to
+// actual-disposition-differs.
+func TestProviderResultGuardBlocksSingleOperand(t *testing.T) {
+	s, u, o := impactFixture(t)
+	// A stop impact: no replacement After, no transition with dependencies, so
+	// continuationRequiresDependencyEvidence is false.
+	plan, err := DescribeProviderChanges(s, u, []ProviderChangeRequest{{InstanceID: "identity", Operation: "stop"}}, o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	imp := plan.Impacts[0]
+	if continuationRequiresDependencyEvidence(imp) {
+		t.Fatal("stop impact must not require dependency evidence")
+	}
+	actual := appliedOutcome(imp)
+	// The applied receipt carries an UNPLANNED continuation edge (the approved
+	// stop planned no dependency graph). continuationDependencyOutcomesMatch
+	// is now false, so the buggy guard `A && len==0 || !match` fires on its
+	// second operand with the WRONG code, because A is false and the intended
+	// guard `A && (len==0 || !match)` must NOT fire on this operand at all.
+	// The correct code is actual-disposition-differs: the realized receipt
+	// differs from the approved plan, not a continuation-dependency gap.
+	actual.ContinuationDependencies = []ProviderDependencyEvidence{
+		{Realization: ProviderRealization{InstanceID: "ghost", Supported: true, Verified: true, Evidence: "e", State: ProviderRunning}, Dependencies: []string{}},
+	}
+	result, err := RecordProviderChangeResult(plan, []ProviderExecutionOutcome{actual})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("status=%v code=%v", result.Outcomes[0].Status, result.Outcomes[0].ErrorCode)
+	if result.Outcomes[0].Status != "applied" {
+		t.Fatalf("non-continuation applied receipt wrongly blocked by collapsed guard: got status=%q code=%q, want applied", result.Outcomes[0].Status, result.Outcomes[0].ErrorCode)
+	}
+}
 
 func TestProviderResultRequiresFreshEntireContinuationGraph(t *testing.T) {
 	for _, mode := range []string{"replacement", "consumer-action"} {

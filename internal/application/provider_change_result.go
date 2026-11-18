@@ -37,7 +37,14 @@ func RecordProviderChangeResult(plan ProviderImpactPlan, outcomes []ProviderExec
 			}
 			// Partial/unexpected effects must stay visible instead of being called a
 			// successful execution of the proposed plan.
-			if continuationRequiresDependencyEvidence(imp) && len(imp.ContinuationDependencies) == 0 || !continuationDependencyOutcomesMatch(out.ContinuationDependencies, imp.ContinuationDependencies, plan.Impacts) {
+			// The guard blocks only when the continuation requires dependency
+			// evidence AND that evidence is missing (len==0) or stale. Go binds
+			// `&&` above `||`, so the operands must be parenthesized: without the
+			// parentheses this parsed as `(A && len==0) || !match`, which
+			// collapsed to a single operand and either silenced the
+			// actual-disposition-differs branch or mislabeled a realized-but-
+			// different disposition as continuation-dependency-unverified.
+			if continuationRequiresDependencyEvidence(imp) && (len(imp.ContinuationDependencies) == 0 || !continuationDependencyOutcomesMatch(out.ContinuationDependencies, imp.ContinuationDependencies, plan.Impacts)) {
 				out.Status = "failed"
 				out.ErrorCode = "continuation-dependency-unverified"
 			} else if !outcomeMatchesImpact(out, imp, plan.Impacts) {
