@@ -45,17 +45,13 @@ func TestPersesReleaseVersionIsRealizationMetadataNotProviderVersion(t *testing.
 }
 
 // TestPersesIsNotAnApplicationCapability asserts Perses is a management
-// surface, never an application-capability provider. r2 (wrongly) moved the
-// exported representation onto a valid IntegrationDescriptor that reused the
-// single observability capability owner (Metrics + the versioned MetricsV1
-// specification); Luna REQUEST_CHANGES rejected that because it supplied a fake
-// Metrics capability claim. r4 replaced the representation with a distinct
-// management-tool/surface contract that declares NO capability kind and names
-// only the real observability owner (Prometheus) as an owner reference. The
-// intent is unchanged and now asserted in its positive form: the contract
-// carries the observability management-ui interface and the real owner, has no
-// fake capability claim, and never appears in the shipped reference provider
-// catalog.
+// surface, never an application-capability provider. The contract is a distinct
+// management-tool/surface representation that declares NO capability kind (an
+// IntegrationDescriptor would falsely bind Perses to a Metrics/Logs/Traces
+// capability, but Perses only visualises the surface the backend data owner
+// already ships). The intent asserted here: the contract carries the
+// observability management-ui interface and the real owner, has no fake
+// capability claim, and never appears in the shipped reference provider catalog.
 func TestPersesIsNotAnApplicationCapability(t *testing.T) {
 	contract := capability.PersesManagementSurfaceContract
 	// It declares no capability kind at all: it is a management surface, never
