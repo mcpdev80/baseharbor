@@ -142,7 +142,7 @@ service requires the existing Target/deployment consequence authority. Both
 `runtime.operate` and the individual machine operations accept
 `provider_change_consent` with the current displayed scope `plan_id`, `first`
 and `second` acknowledgements. Unknown cross-consumer, transient-data, access,
-renewal and recovery effects require **Warning** and both acknowledgements;
+renewal and recovery effects require **Achtung** and both acknowledgements;
 ordinary operation approval does not replace either stage. Changed native
 state, Target binding or recovery-owner bytes invalidate the prior plan.
 

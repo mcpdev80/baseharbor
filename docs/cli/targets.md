@@ -46,7 +46,7 @@ Use `baha target show` to inspect the effective Target and provenance before mut
 
 ## Detach and restore a Target definition
 
-`baha target delete NAME` removes the selected configuration entry after **Warning**
+`baha target delete NAME` removes the selected configuration entry after **Achtung**
 and two explicit acknowledgements of its current impact plan. Existing deployments,
 provider bindings, native processes, volumes, data and access definitions remain.
 The command preserves a protected copy of the original Target and access references
@@ -122,7 +122,7 @@ baha node disconnect node-a --yes
 
 Disconnect revokes Connector admission and submits its current certificate for issuer revocation. It preserves the Target definition, node registration, provider bindings and deployment recovery owners. Native workloads, provider data and foreign infrastructure are not destroyed; retained material does not prove continued service access.
 
-Review the current concrete plan before confirming. `--yes` and MCP `approval=true` provide ordinary operation approval only. Unknown remote consequences and loss of control access require **Warning** and two independently explicit acknowledgements of that plan. JSON clients supply `BASEHARBOR_PROVIDER_CHANGE_CONSENT` for a trusted CLI invocation; MCP uses `provider_change_consent`. Missing consent returns the structured plan without revocation. Core HTTP callers obtain the authoritative plan through `POST /api/v1/connectors/disconnect-plan` and acknowledge its current scope ID through `POST /api/v1/connectors/disconnect`; the plan route never executes supplied consent.
+Review the current concrete plan before confirming. `--yes` and MCP `approval=true` provide ordinary operation approval only. Unknown remote consequences and loss of control access require **Achtung** and two independently explicit acknowledgements of that plan. JSON clients supply `BASEHARBOR_PROVIDER_CHANGE_CONSENT` for a trusted CLI invocation; MCP uses `provider_change_consent`. Missing consent returns the structured plan without revocation. Core HTTP callers obtain the authoritative plan through `POST /api/v1/connectors/disconnect-plan` and acknowledge its current scope ID through `POST /api/v1/connectors/disconnect`; the plan route never executes supplied consent.
 
 The result separates admission revocation, certificate revocation, retained owners and unverified remote data/access. A partial issuer or recovery failure remains partial and retains the owner needed for a newly reviewed retry. CLI/MCP aggregate known local recovery owners with the authenticated Core plan; direct Core HTTP covers its own authoritative owners. Reconnection needs existing authorized enrollment/renewal and never bypasses mTLS.
 

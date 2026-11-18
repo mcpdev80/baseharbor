@@ -100,7 +100,7 @@
     "Public, symlinked, hardlinked and missing runtime owners cannot be reported verified or delivered to workloads; incomplete retained delivery cannot be silently rewritten.",
     "Managed TLS client files remain byte-for-byte owned for recovery but their references are removed from external delivery; selecting managed delivery clears external authorization projections.",
     "OIDC group/other-writable CA modes 0620, 0602 and 0666 are rejected; after-prepare chmod fails revalidation and preserves all original deliveries; positive readable 0644 CA HTTPS fixture remains green.",
-    "Unsupported Identity replacement displays concrete source/destination effects with Warning and two current confirmations before technical admission; missing/partial/stale confirmations and unsupported execution preserve the original registry.",
+    "Unsupported Identity replacement displays concrete source/destination effects with Achtung and two current confirmations before technical admission; missing/partial/stale confirmations and unsupported execution preserve the original registry.",
     "Registered native external BYO can be planned without provisioning or registry mutation; absent adapter remains an explicit execution error. Initial selection does not invent an existing consumer replacement."
   ],
   "preserved_failed_source_attempts": [

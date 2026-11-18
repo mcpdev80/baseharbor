@@ -199,7 +199,7 @@ is v0.4.26; #777 profile/host contracts below remain specification only.
 Developers may add, change, replace, disable and remove functionality, including
 choosing no continuation or complete deletion. Missing alternatives are disclosed
 consequences, not a permanent policy veto. An alternative-less, unknown or
-destructive outcome displays **Warning** and requires **two independently explicit
+destructive outcome displays **Achtung** and requires **two independently explicit
 acknowledgements of the concrete current plan**. Data deletion additionally needs
 the existing distinct destructive authorization. Ordinary apply consent does not
 implicitly acknowledge either stage or delete data.
@@ -219,7 +219,7 @@ The existing plan/preflight/confirmation/apply/verify authorities execute it.
 | materials | Individual current material and location, recovery references, intended retained/transferred/deleted/revoked/expired/invalidated/nonrecoverable/unknown disposition and destination/access |
 | prerequisites | Concrete handoff, rebind or adapter-specific verification, support/evidence and consequence if unverified; no fictional fallback |
 | effects | Applicable actual before/after availability, consistency, durability, retention, protocol, policy/TLS/HA, delivery, routing, reconnection or recovery changes from the adapter |
-| complete | Knowledge completeness; false requires Warning/both acknowledgement fields and does not prohibit the informed choice |
+| complete | Knowledge completeness; false requires Achtung/both acknowledgement fields and does not prohibit the informed choice |
 | plan_id / revision | Deterministic digest of consequences plus relevant binding/ownership/dependency state and existing-owner revision; materially changed facts invalidate old consent |
 | confirmations_required / destructive | One ordinary stage, or two for alternative-less/unknown/destructive effects; explicit data-deletion consent remains separate |
 
@@ -304,7 +304,7 @@ The aggregate PlanID binds the registration owner/content revision, all Target
 plans and their actual consequences. Leaf consent cannot approve the whole scope;
 changed registration, Target membership, binding or consequence requires fresh
 consent. Countdown samples alone do not invalidate unchanged absolute validity.
-Unknown/incomplete or destructive scope shows **Warning** and uses the same two
+Unknown/incomplete or destructive scope shows **Achtung** and uses the same two
 acknowledgements and separate destructive consent as single-Target changes.
 
 `ProviderScopeOwner.destructive` marks permanent deletion of the aggregate owner

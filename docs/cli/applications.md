@@ -208,7 +208,7 @@ existing system identity and protected provider state.
 
 Intentional provider changes show affected consumers, lost functions, selected
 continuation and retained/deleted material. Alternative-less, destructive or
-unknown consequences display **Warning** and require two explicit acknowledgements
+unknown consequences display **Achtung** and require two explicit acknowledgements
 of the current plan. Ordinary `--yes` supplies neither these acknowledgements nor
 data-deletion consent. Actual authority, ownership and post-mutation verification
 remain required. Failed or interrupted execution stays partial and retryable.

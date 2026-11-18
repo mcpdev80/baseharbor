@@ -25,7 +25,7 @@
     "behavior": [
       "applicationDestructionPlan composes selected deployment owner, existing retirement ProviderPlan, protected file references and permanent/retained effects into provider-impact-scope/v1.",
       "buildApplicationDestructionPlan authorizes destroy, revalidates current source/Target, loads exact existing deployment owner, uses existing retirement union/impact, observes protected deployment files, and binds record/config revisions to scope; knowledge remains incomplete.",
-      "authorizeApplicationDestruction presents Warning, collects current outer-scope first/second and separate reset delete_data consent through existing CLI/JSON/MCP context, validates scope, then rebuilds/revalidates before mutation. Generic --yes and embedded leaf approval cannot authorize full reset.",
+      "authorizeApplicationDestruction presents Achtung, collects current outer-scope first/second and separate reset delete_data consent through existing CLI/JSON/MCP context, validates scope, then rebuilds/revalidates before mutation. Generic --yes and embedded leaf approval cannot authorize full reset.",
       "Remote destroy calls this authority before DestroyApplication. Default remote destroy records pending retirement, preserves original protected publication/deployment/credentials, releases references only after actual verified container removal and records partial consequence receipt. Full reset uses separate deletion consent then existing cleanup.",
       "restoreRemoteApplication uses retired_intent for runtime-retired owner and pins actual retained backend_placements before remote lifecycle validation.",
       "Repeated remote apply uses recordAppliedDeployment after verified immutable runtime apply, permitting retained-owner reactivation.",
