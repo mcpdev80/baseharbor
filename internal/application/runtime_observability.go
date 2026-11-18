@@ -55,7 +55,7 @@ func reconcileManagedRuntimeObservability(m Manifest, project string) error {
 	if err := reconcileRuntimeProviderObservability(m, project, "valkey", capability.ProviderValkey, capability.ValkeyIntegration, valkeyInstances, logsEnabled, tracesEnabled); err != nil {
 		return err
 	}
-	if err := reconcileApplicationMetricsSource(m, project, logsEnabled, tracesEnabled); err != nil {
+	if err := reconcileApplicationMetricsSource(m, project); err != nil {
 		return err
 	}
 	return reconcileApplicationTraceSource(m, project, tracesEnabled)
@@ -64,26 +64,28 @@ func reconcileManagedRuntimeObservability(m Manifest, project string) error {
 // reconcileApplicationMetricsSource records the workload's runtime identity in
 // the shared provider snapshot even when the app has no declared metrics
 // endpoint. Its runtime target is symbolic, so it must not become a Prometheus
-// file_sd scrape target or require a provider network connection.
+// file_sd scrape target or require a provider network connection. Application
+// workload logs are collected through their application source; Prometheus is
+// not a runtime log producer, so it must not claim a provider log source for
+// the workload identity.
 //
 // A trace signal never belongs to this Prometheus-owned identity: Prometheus
 // ingests metrics, not spans. The workload's native trace signal is registered
 // under the OTLP receiver its telemetry policy actually selects, in its own
 // reconciliation below, so span verification reaches an adapter that can export
 // to a real receiver instead of failing on a metrics backend.
-func reconcileApplicationMetricsSource(
-	m Manifest,
-	project string,
-	logsEnabled bool,
-	tracesEnabled bool,
-) error {
+func reconcileApplicationMetricsSource(m Manifest, project string) error {
 	// The legacy Prometheus-attributed trace signal is reclaimed before any
-	// metrics-policy decision: earlier releases registered it whenever the
-	// metrics policy was enabled, so disabling metrics afterwards must not
-	// leave behind a trace source no adapter can serve. Only that signal kind
-	// is removed; the metrics and log signals of the same workload identity are
-	// reconciled below and stay intact.
+	// metrics-policy decision, and the equally invalid Prometheus-attributed
+	// workload log source is reclaimed before any policy decision. Logs emitted
+	// by the workload are collected under the application source; the Prometheus
+	// workload identity has no separate runtime service that can emit provider
+	// logs. Metrics are preserved when their collection policy is disabled.
 	if err := pruneWorkloadTraceSignals(project, []capability.ProviderKind{capability.ProviderPrometheus}); err != nil {
+		return err
+	}
+	id := fmt.Sprintf("%s:%s", capability.ProviderPrometheus, strings.TrimSpace(project))
+	if err := observability.PruneProviderSignals(id, capability.ProviderPrometheus, observability.SignalLogs); err != nil {
 		return err
 	}
 	metricsPolicy, err := MetricsPolicy(m)
@@ -93,7 +95,6 @@ func reconcileApplicationMetricsSource(
 	if !metricsPolicy.Enabled || !metricsPolicy.Collect[MetricsSourceApplicationProvider] {
 		return nil
 	}
-	id := fmt.Sprintf("%s:%s", capability.ProviderPrometheus, strings.TrimSpace(project))
 	desired := []observability.SignalSource{
 		{
 			ID:               id,
@@ -110,21 +111,7 @@ func reconcileApplicationMetricsSource(
 			Verification:     capability.ObservabilityVerifyNone,
 		},
 	}
-	if logsEnabled {
-		desired = append(desired, observability.SignalSource{
-			ID:                 id,
-			Kind:               observability.SignalLogs,
-			Provider:           capability.ProviderPrometheus,
-			Class:              observability.SourceApplicationProvider,
-			Scope:              capability.ScopeApplication,
-			OwnerApplication:   m.Name,
-			Target:             observability.RuntimeTarget(project, "workload"),
-			Protocol:           "stdout-stderr",
-			Mode:               capability.ObservabilityRuntime,
-			SemanticConvention: "baseharbor.runtime.logs",
-			Verification:       capability.ObservabilityVerifyBackend,
-		})
-	}
+
 	if len(desired) == 0 {
 		return nil
 	}
