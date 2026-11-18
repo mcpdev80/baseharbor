@@ -519,8 +519,8 @@ func TestWorkloadTracePruneKeepsSameIDUnderOtherProvider(t *testing.T) {
 // The legacy Prometheus-attributed workload trace signal predates this
 // reconciliation and must be reclaimed even when the metrics policy is
 // disabled - that is the state a later deployment can reach after the earlier
-// release registered it. Its metrics and logs signals remain registered: this
-// reclaims the trace signal only.
+// release registered it. The invalid provider-log identity for the application
+// workload is reclaimed at the same time; its metrics signal remains.
 func TestLegacyPrometheusTraceSignalIsReclaimedWithoutMetricsPolicy(t *testing.T) {
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
 	t.Setenv(MetricsEnabledEnv, "false")
@@ -565,6 +565,15 @@ func TestLegacyPrometheusTraceSignalIsReclaimedWithoutMetricsPolicy(t *testing.T
 	if got := traceIDs(traceSources(t, m))[legacyID]; got != capability.ProviderPrometheus {
 		t.Fatalf("legacy fixture is not in place: %v", got)
 	}
+	if err := observability.UpdateSignal(observability.SignalSource{
+		ID: legacyID, Kind: observability.SignalLogs, Provider: capability.ProviderPrometheus,
+		Class: observability.SourceApplicationProvider, Scope: capability.ScopeApplication,
+		OwnerApplication: m.Name, Target: observability.RuntimeTarget(project, "workload"),
+		Protocol: "stdout-stderr", Mode: capability.ObservabilityRuntime,
+		Verification: capability.ObservabilityVerifyBackend,
+	}); err != nil {
+		t.Fatal(err)
+	}
 
 	// Reconcile with the metrics policy disabled: this is the path that used to
 	// return before reaching any signal reconciliation.
@@ -602,7 +611,23 @@ func TestLegacyPrometheusTraceSignalIsReclaimedWithoutMetricsPolicy(t *testing.T
 	}
 	for _, source := range logged {
 		if source.ID == legacyID {
-			t.Fatalf("metrics-disabled reclaim removed the workload's log signal: %+v", logged)
+			t.Fatalf("legacy Prometheus workload log source survived reconciliation: %+v", logged)
+		}
+	}
+
+	// Re-enabling metrics must recreate only the metrics signal; Prometheus
+	// still cannot produce workload logs.
+	t.Setenv(MetricsEnabledEnv, "true")
+	if err := reconcileManagedRuntimeObservability(m, project); err != nil {
+		t.Fatal(err)
+	}
+	logged, err = observability.List(observability.SignalLogs, loggedPlacement, []string{m.Name}, true, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, source := range logged {
+		if source.ID == legacyID {
+			t.Fatalf("metrics-enabled reconciliation recreated the invalid Prometheus workload log source: %+v", logged)
 		}
 	}
 }
@@ -734,7 +759,7 @@ func TestWorkloadTraceSourceRequiresMaterializedReceiver(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := reconcileApplicationMetricsSource(m, project, false, false); err != nil {
+	if err := reconcileApplicationMetricsSource(m, project); err != nil {
 		t.Fatal(err)
 	}
 	if got := traceIDs(traceSources(t, m)); got[legacyID] != "" {
