@@ -2,6 +2,8 @@ package application
 
 import (
 	"context"
+	"crypto/x509"
+	"encoding/pem"
 	"os"
 	"path/filepath"
 	"strings"
@@ -121,6 +123,139 @@ func TestPersesRuntimeFilesProjectProviderFiles(t *testing.T) {
 	deselectedFiles := persesRuntimeFiles(t, deselected)
 	if _, err := os.Stat(filepath.Join(PersesManagementUIPath(deselectedFiles), "persistence")); err == nil {
 		t.Fatalf("deselected Perses must not project provider files:\n%+v", deselectedFiles)
+	}
+}
+
+// persesComposeFragment renders the compose definition and returns its service
+// block. The production renderer normalizes YAML quoting (mounts and port specs
+// can arrive quoted), so the Perses assertions must parse the services they
+// target instead of the whole document.
+func persesComposeFragment(t *testing.T, m Manifest, files RuntimeFiles) string {
+	t.Helper()
+	rendered, err := RuntimeComposeYAMLForProject(m, files.ResourceProject)
+	if err != nil {
+		t.Fatalf("render selected Perses compose: %v", err)
+	}
+	services, ok := strings.CutPrefix(rendered, "services:\n")
+	if !ok {
+		t.Fatalf("unexpected compose document shape:\n%s", rendered)
+	}
+	if end := strings.Index(services, "\nvolumes:\n"); end >= 0 {
+		services = services[:end]
+	}
+	return services
+}
+
+// TestPersesTLSFilesProjectedAndConsumed is the CODEX-REVIEW #1592 regression:
+// every TLS file the Perses compose service mounts must exist in the runtime
+// projection, and the rendered service must configure the Perses server to
+// consume it over HTTPS (matching the contract's observability management-ui
+// protocol). Fail-closed: the projected private key must stay 0600 while the
+// bind-mounted copy the distroless nonroot container reads must be readable.
+func TestPersesTLSFilesProjectedAndConsumed(t *testing.T) {
+	m := persesRuntimeManifest(t, true)
+	files := persesRuntimeFiles(t, m)
+	rendered := persesComposeFragment(t, m, files)
+	dir := PersesManagementUIPath(files)
+	// The compose bind-mounts are 0644 copies of the 0600 PKI material (the
+	// distroless nonroot container cannot read 0600 binds), exactly the
+	// approved serviceaccess projection used by the neighbouring UIs.
+	const projectedKeyMode os.FileMode = 0o644
+
+	var certMount, keyMount string
+	for _, line := range strings.Split(rendered, "\n") {
+		trimmed := strings.TrimPrefix(strings.Trim(strings.TrimSpace(line), `"'`), "- ")
+		switch {
+		case strings.HasPrefix(trimmed, "./providers/management-ui/perses/server.cert:"):
+			certMount = trimmed
+		case strings.HasPrefix(trimmed, "./providers/management-ui/perses/server.key:"):
+			keyMount = trimmed
+		}
+	}
+	if certMount == "" || keyMount == "" {
+		t.Fatalf("Perses compose must mount the projected TLS files (cert %q, key %q):\n%s", certMount, keyMount, rendered)
+	}
+	for name, mount := range map[string]string{"certificate": certMount, "key": keyMount} {
+		if mount == "" {
+			t.Fatalf("Perses compose must mount the projected %s file:\n%s", name, rendered)
+		}
+		parts := strings.SplitN(mount, ":", 2)
+		hostRel, mountRest := parts[0], parts[1]
+		containerPath := strings.SplitN(mountRest, ":", 2)[0]
+		if !strings.HasPrefix(hostRel, "./") {
+			t.Fatalf("Perses %s mount source %q must be compose-relative ./...", name, hostRel)
+		}
+		hostPath := filepath.Join(files.Dir, strings.TrimPrefix(hostRel, "./"))
+		info, err := os.Stat(hostPath)
+		if err != nil || info.IsDir() {
+			t.Fatalf("Perses %s mount source must exist as a file (%q): %v", name, hostPath, err)
+		}
+		// The compose mounts must be exactly the projected files.
+		if filepath.Clean(hostPath) != filepath.Clean(filepath.Join(dir, filepath.Base(hostPath))) {
+			t.Fatalf("Perses %s mount %q must resolve into the projection dir %q", name, hostRel, dir)
+		}
+		// The server consumes each mount via the TLS environment settings.
+		flagEnv := map[string]string{
+			"/certs/server.cert": "PERSES_TLS_CERT_FILE: " + containerPath,
+			"/certs/server.key":  "PERSES_TLS_KEY_FILE: " + containerPath,
+		}[containerPath]
+		if flagEnv == "" || !strings.Contains(rendered, flagEnv) {
+			t.Fatalf("Perses service must consume the mounted path via %q:\n%s", flagEnv, rendered)
+		}
+	}
+	if !strings.Contains(rendered, "PERSES_TLS_CERT_FILE:") || !strings.Contains(rendered, "PERSES_TLS_KEY_FILE:") {
+		t.Fatalf("Perses service must enable HTTPS with both TLS settings:\n%s", rendered)
+	}
+
+	certData, err := os.ReadFile(filepath.Join(dir, "server.cert"))
+	if err != nil {
+		t.Fatalf("read projected Perses certificate: %v", err)
+	}
+	keyData, err := os.ReadFile(filepath.Join(dir, "server.key"))
+	if err != nil {
+		t.Fatalf("read projected Perses key: %v", err)
+	}
+	if len(certData) == 0 || len(keyData) == 0 {
+		t.Fatal("projected Perses TLS files must not be empty")
+	}
+	keyInfo, err := os.Stat(filepath.Join(dir, "server.key"))
+	if err != nil {
+		t.Fatalf("stat projected Perses key: %v", err)
+	}
+	if keyInfo.Mode().Perm() != projectedKeyMode {
+		t.Fatalf("projected Perses key must be the readable bind-mount copy %v, got %v", projectedKeyMode, keyInfo.Mode().Perm())
+	}
+	pkiKeyInfo, err := os.Stat(filepath.Join(dir, "pki", "server-key.pem"))
+	if err != nil {
+		t.Fatalf("stat Perses PKI working key: %v", err)
+	}
+	if pkiKeyInfo.Mode().Perm() != 0o600 {
+		t.Fatalf("Perses PKI working key must stay private 0600, got %v", pkiKeyInfo.Mode().Perm())
+	}
+	certBlock, _ := pem.Decode(certData)
+	if certBlock == nil {
+		t.Fatal("projected Perses certificate must be PEM")
+	}
+	cert, err := x509.ParseCertificate(certBlock.Bytes)
+	if err != nil {
+		t.Fatalf("parse projected Perses certificate: %v", err)
+	}
+	names := map[string]bool{"localhost": false, "127.0.0.1": false, "perses": false}
+	for _, san := range cert.DNSNames {
+		names[san] = true
+	}
+	for _, ip := range cert.IPAddresses {
+		if ip.String() == "127.0.0.1" {
+			names["127.0.0.1"] = true
+		}
+	}
+	for name, covered := range names {
+		if !covered {
+			t.Fatalf("Perses certificate must cover loopback name %q (contract protocol https): %+v", name, cert.DNSNames)
+		}
+	}
+	if cert.NotAfter.Before(time.Now()) {
+		t.Fatal("projected Perses certificate must not be expired")
 	}
 }
 
