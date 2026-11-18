@@ -64,8 +64,16 @@ func writePersesUIComposeService(b *strings.Builder, m Manifest, resourceProject
 	// The distroless nonroot image cannot read 0600 bind mounts, which is why
 	// the projection uses projectUIReadableFile (0644) copies like the other
 	// managed UIs.
+	// Perses extracts the configured plugin archives (for example the shipped
+	// UI) into /etc/perses/plugins at runtime; with read_only:true that path is
+	// unwritable and the extraction fails (GET /api/v1/plugins would return 0
+	// modules). The image ships the directory owned by uid/gid 1000, so an
+	// isolated writable tmpfs at exactly that path with mode 1777 lets the
+	// nonroot process extract the archives while the root filesystem stays
+	// read-only.
 	b.WriteString("    entrypoint: [\"/bin/perses\"]\n")
 	fmt.Fprintf(b, "    command: [\"--config=/etc/perses/config.yaml\", \"--web.listen-address=0.0.0.0:%d\", \"--web.tls-cert-file=/certs/server.cert\", \"--web.tls-key-file=/certs/server.key\", \"--log.level=error\"]\n", persesUIContainerTLSPort)
+	b.WriteString("    tmpfs:\n      - /etc/perses/plugins:rw,noexec,nosuid,nodev,mode=1777\n")
 	b.WriteString("    ports:\n")
 	fmt.Fprintf(b, "      - \"127.0.0.1:${%s}:%d\"\n", PersesUIHostPortEnv, persesUIContainerTLSPort)
 	b.WriteString("    volumes:\n")

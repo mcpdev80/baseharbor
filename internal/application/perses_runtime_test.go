@@ -2,8 +2,12 @@ package application
 
 import (
 	"context"
+	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
+	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -402,12 +406,14 @@ func TestPersesRuntimeSmokeDockerIsolated(t *testing.T) {
 	// The single Perses UI container must become running within the deadline.
 	deadline := time.Now().Add(90 * time.Second)
 	running := false
+	hostPort := 0
 	for time.Now().Before(deadline) {
 		states, err := runtime.ServiceStatesProjectFilesEnv(ctx, files.Project, files.Dir, nil, files.Compose)
 		if err == nil {
 			for _, s := range states {
-				if strings.HasPrefix(s.Service, "perses") && s.State == "running" {
+				if strings.HasPrefix(s.Service, "perses") && s.State == "running" && len(s.Publishers) > 0 {
 					running = true
+					hostPort = s.Publishers[0].PublishedPort
 				}
 			}
 		}
@@ -419,6 +425,70 @@ func TestPersesRuntimeSmokeDockerIsolated(t *testing.T) {
 	if !running {
 		t.Fatal("Perses UI container never became running")
 	}
+	if hostPort == 0 {
+		t.Fatal("Perses UI container did not publish a loopback port for the plugin extraction probe")
+	}
+
+	// The reviewed acceptance requires real plugin availability at runtime:
+	// Perses 0.55.1 extracts the shipped plugin archives into /etc/perses/plugins
+	// and serves the loaded modules from GET /api/v1/plugins. Under a read-only
+	// root filesystem without a writable extraction target the extraction fails
+	// (the server starts, but the endpoint reports 0 modules). The writable
+	// tmpfs projection added to the Perses service makes the path extractable;
+	// the endpoint must therefore report the shipped UI plugin.
+	body := fetchPersesHTTPS(t, ctx, hostPort)
+	if !strings.Contains(body, "BarChart") && !strings.Contains(body, "Dashboard") && !strings.Contains(body, "panels") {
+		t.Fatalf("Perses GET /api/v1/plugins must report the shipped UI plugin after extraction, got body:\n%s", body)
+	}
+}
+
+// fetchPersesHTTPS performs an HTTPS GET to the running Perses UI over the
+// loopback host port. It trusts the loopback-only bind and the projected
+// serviceaccess certificate so the isolated smoke can assert the shipped UI
+// plugin actually loads after the extraction target is writable.
+func fetchPersesHTTPS(t *testing.T, ctx context.Context, port int) string {
+	t.Helper()
+	url := fmt.Sprintf("https://127.0.0.1:%d/api/v1/plugins", port)
+	deadline := time.Now().Add(30 * time.Second)
+	var lastErr error
+	for time.Now().Before(deadline) {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+		if err != nil {
+			t.Fatalf("build perses probe request: %v", err)
+		}
+		resp, err := httpsInsecureClient.Do(req)
+		if err == nil {
+			defer resp.Body.Close()
+			data, readErr := io.ReadAll(resp.Body)
+			if readErr != nil {
+				lastErr = readErr
+			} else if resp.StatusCode != http.StatusOK {
+				lastErr = fmt.Errorf("GET %s -> HTTP %d: %s", url, resp.StatusCode, string(data))
+			} else {
+				return string(data)
+			}
+		} else {
+			lastErr = err
+		}
+		time.Sleep(2 * time.Second)
+	}
+	t.Fatalf("perses plugin probe never succeeded (%s): %v", url, lastErr)
+	return ""
+}
+
+// httpsInsecureClient talks to the loopback-only Perses over HTTPS with the
+// projected certificate trusted, so the smoke can assert the loaded plugin
+// modules without a real CA chain.
+var httpsInsecureClient = &http.Client{
+	Transport: &http.Transport{
+		TLSClientConfig: &tls.Config{
+			RootCAs: func() *x509.CertPool {
+				pool := x509.NewCertPool()
+				return pool
+			}(),
+			InsecureSkipVerify: true,
+		},
+	},
 }
 
 // persesRuntimeEnvironment is a package helper so tests can build a minimal
