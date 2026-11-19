@@ -34,22 +34,19 @@ Signierungsfehler erfordert eine neue Autorisierung: das verbrauchte Credential 
 wiederhergestellt, auch nach einem Neustart des Prozesses oder einem mehrdeutigen Ansprechfehler.
 
 Verbrauch und Identitätseintragung sind zwei Phasen einer Einschreibung, die in
-getrennten Transaktionen verpflichtet werden. Zwischen ihnen ist der Grant
-dauerhaft verbraucht, während die Knotenidentität noch nicht eingetragen ist. Das
-Fenster ist absichtlich und bleibt fail-closed: keine aktive Identität existiert,
-bevor die zweite Phase verpflichtet, der one-use Grant ist nie wiederhergestellt
-und die einzige Erholung ist ein frisches Create oder CreateRenewal; Enroll
-widerruft außerdem das Zertifikat das es unterzeichnet hat wenn die zweite Phase
-fehlschlägt. Die previous_certificate_serial Klausel im Verbrauch und das
-serial-is-null Wache beim Identitätsschreiben halten einen konkurrierenden Antrag
-vom serial schreiben fern, so hinterlässt eine halb fertige Einschreibung einen
-toten Grant, nie eine teilweise Identität oder eine zweite Identität für einen
-Knoten. Siehe ADR 0020.
-
-Der Verbrauch lehnt denselben Versuch ab, erneut zu konsumieren: Falschumfang, abgelaufene Genehmigung und bereits verbrauchter Grant fuehren zur gleichen
-Verweigerung (denial). Der verbrauchte Grant ist danach tot, nie wiederhergestellt;
-die einzige Erholung bleibt ein frischer Create oder CreateRenewal.
-Kern überprüft das Ergebnis gegen sein maßgebliches Vertrauensbündel, CSR Public Key,
+getrennten Transaktionen verpflichtet werden. Der eine-use Grant zwischen die
+Phasen gestellt ist dauerhaft verbraucht, während die Knotenidentität noch nicht
+eingetragen ist. Das Fenster ist absichtlich und bleibt fail-closed: keine aktive
+Identität existiert bevor die zweite Phase verpflichtet, der one-use Grant ist
+nie wiederhergestellt und die einzige Erholung ist ein frisches Create oder
+CreateRenewal; Enroll widerruft außerdem das Zertifikat das es unterzeichnet hat
+wenn die zweite Phase fehlschlägt. previous_certificate_serial im Verbrauch und
+serial-is-null im Identitätsschreiben halten einen konkurrierenden Antrag vom
+serial-write fern, so hinterlässt eine halb fertige Einschreibung einen toten
+Grant — nie eine teilweise Identität oder eine zweite Identität für einen Knoten.
+Der gleiche Versuch erneut zu konsumieren schlägt fehl: Falschumfang, abgelaufene
+Genehmigung oder ein bereits verbrauchter Grant führen zur gleichen Verweigerung
+(denial). Kern überprüft das Ergebnis gegen sein maßgebliches Vertrauensbündel, CSR Public Key,
 scoped URI, client-only Schlüssel-Nutzung, serielle und Ablauf. Eine CA zurückgegeben neben einem Blatt
 Das PEM-Parsing lehnt zusätzliche Anträge ab.
 private Schlüssel und führende / Trailing Material. CSR und Manager Anmeldeinformationen Reisen
