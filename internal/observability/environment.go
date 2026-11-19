@@ -80,12 +80,30 @@ func applicationMetricsSourceEnvironment(id string) (string, bool) {
 // anchor, or an empty remainder fails closed so it stays invisible at every
 // caller.
 func projectTokenFromID(source SignalSource) (string, bool) {
-	for _, candidate := range []string{source.ID, source.Target} {
-		if env, derived := trailingProjectEnvironment(source, candidate); derived {
-			return env, true
+	// Derive the environment from BOTH candidate sides (ID first, then Target)
+	// independently, then reconcile them. A source that resolves to two
+	// DIFFERENT environments across its ID and Target must fail closed: assigning
+	// it to either would permit cross-environment listing (a caller would see a
+	// source whose environment is not the one it asked for). The existing
+	// "ID then Target" ordering is replaced by an explicit comparison, not a
+	// first-match shortcut.
+	idEnv, idOK := trailingProjectEnvironment(source, source.ID)
+	targetEnv, targetOK := trailingProjectEnvironment(source, source.Target)
+	switch {
+	case idOK && targetOK:
+		// Both sides canonical but disagree on the environment: fail closed so no
+		// caller can list this source under either environment.
+		if idEnv != targetEnv {
+			return "", false
 		}
+		return idEnv, true
+	case idOK:
+		return idEnv, true
+	case targetOK:
+		return targetEnv, true
+	default:
+		return "", false
 	}
-	return "", false
 }
 
 // trailingProjectEnvironment isolates the deployment environment of a canonical

@@ -471,6 +471,97 @@ func TestRoute5MutationAnchorDestruction(t *testing.T) {
 	}
 }
 
+// Contradicting canonical sides fail closed (security: cross-environment
+// listing). A source whose ID and Target are BOTH canonical but resolve to
+// DIFFERENT environments must yield no environment — the caller must not be
+// able to list it under either environment. The matching-side case (ID and
+// Target agree) stays visible, so the fail-closed rule does not over-reach and
+// break the normal provider-log path.
+func TestRoute5ContradictingCanonicalSidesFailClosed(t *testing.T) {
+	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
+	placement := capability.ProviderPlacement{Scope: capability.ScopeApplication}
+
+	const projectDev = "bh-prod-my-app-dev"
+	const projectStage = "bh-prod-my-app-stage"
+
+	// (a) contradictory: ID ends in '-dev', Target carries '-stage' under the
+	// same anchor. Both resolve, but to different environments -> fail closed.
+	contradictory := SignalSource{
+		ID:               "loki:" + projectDev + ":loki",
+		Kind:             SignalLogs,
+		Provider:         capability.ProviderLoki,
+		Class:            SourceApplicationProvider,
+		Scope:            capability.ScopeApplication,
+		OwnerApplication: "my-app",
+		Network:          "net-bh-prod-my-app-dev-logs",
+		Target:           RuntimeTarget(projectStage, "loki"),
+		Protocol:         "syslog-rfc5424",
+	}
+	if env, ok := projectTokenFromID(contradictory); ok || env != "" {
+		t.Fatalf("contradictory canonical sides: projectTokenFromID(env)=%q ok=%v, want ok=false", env, ok)
+	}
+	if err := UpdateSignal(contradictory); err != nil {
+		t.Fatal(err)
+	}
+	devListed, err := ListLogs(placement, []string{"my-app"}, true, false, "dev")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(devListed) != 0 {
+		t.Fatalf("contradictory source must be invisible to a 'dev' caller, got %d: %v", len(devListed), ids(devListed))
+	}
+	stageListed, err := ListLogs(placement, []string{"my-app"}, true, false, "stage")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(stageListed) != 0 {
+		t.Fatalf("contradictory source must be invisible to a 'stage' caller, got %d: %v", len(stageListed), ids(stageListed))
+	}
+
+	// (b) matching sides stay visible: ID and Target agree on '-dev'.
+	matching := SignalSource{
+		ID:               "loki:" + projectDev + ":loki",
+		Kind:             SignalLogs,
+		Provider:         capability.ProviderLoki,
+		Class:            SourceApplicationProvider,
+		Scope:            capability.ScopeApplication,
+		OwnerApplication: "my-app",
+		Network:          "net-bh-prod-my-app-dev-logs",
+		Target:           RuntimeTarget(projectDev, "loki"),
+		Protocol:         "syslog-rfc5424",
+	}
+	if env, ok := projectTokenFromID(matching); !ok || env != "dev" {
+		t.Fatalf("matching canonical sides: projectTokenFromID(env)=%q ok=%v, want env=dev ok=true", env, ok)
+	}
+	if err := UpdateSignal(matching); err != nil {
+		t.Fatal(err)
+	}
+	devMatching, err := ListLogs(placement, []string{"my-app"}, true, false, "dev")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(devMatching) != 1 {
+		t.Fatalf("matching-source caller must see the agreeing source, got %d: %v", len(devMatching), ids(devMatching))
+	}
+
+	// (c) target-only still works: only the Target side is derivable, so it is
+	// used and returns 'dev' (this must not break under the new comparison).
+	targetOnly := SignalSource{
+		ID:               "loki",
+		Kind:             SignalLogs,
+		Provider:         capability.ProviderLoki,
+		Class:            SourceApplicationProvider,
+		Scope:            capability.ScopeApplication,
+		OwnerApplication: "my-app",
+		Network:          "net-bh-prod-my-app-dev-logs",
+		Target:           RuntimeTarget(projectDev, "loki"),
+		Protocol:         "syslog-rfc5424",
+	}
+	if env, ok := projectTokenFromID(targetOnly); !ok || env != "dev" {
+		t.Fatalf("target-only: projectTokenFromID(env)=%q ok=%v, want env=dev ok=true", env, ok)
+	}
+}
+
 func ids(sources []SignalSource) []string {
 	out := make([]string, 0, len(sources))
 	for _, s := range sources {
