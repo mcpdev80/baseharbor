@@ -143,6 +143,47 @@ func TestResolveWorkspaceLocalDirectoryWithSubPaths(t *testing.T) {
 	}
 }
 
+func TestResolveWorkspaceRejectsSubpathSymlinkEscapes(t *testing.T) {
+	for _, sourceType := range []SourceKind{SourceLocal, SourceRepository} {
+		t.Run(string(sourceType), func(t *testing.T) {
+			base := t.TempDir()
+			manifest := writeTestManifest(t, base)
+			root := filepath.Join(base, "source")
+			if err := os.MkdirAll(filepath.Join(root, "services"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			outside := filepath.Join(base, "outside")
+			if err := os.MkdirAll(outside, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink(outside, filepath.Join(root, "services", "api")); err != nil {
+				t.Skipf("symlink not supported: %v", err)
+			}
+			source := SourceDefinition{ID: "backend", Type: sourceType}
+			if sourceType == SourceLocal {
+				source.Path = root
+			} else {
+				source.Repository = "https://git.example/backend.git"
+			}
+			model := SourceModel{
+				SchemaVersion: SourceModelVersion,
+				Application:   "shop",
+				Sources:       []SourceDefinition{source},
+				Components:    []ComponentSource{{Component: "api", Source: source.ID, SubPath: "services/api"}},
+			}
+			mapping := WorkspaceMapping{
+				SchemaVersion: WorkspaceMappingVersion,
+				Application:   "shop",
+				Manifest:      manifest,
+				Sources:       map[string]string{source.ID: root},
+			}
+			if _, err := ResolveWorkspace(manifest, model, mapping); err == nil || !strings.Contains(err.Error(), "symbolic link") {
+				t.Fatalf("subpath symlink escape accepted: %v", err)
+			}
+		})
+	}
+}
+
 func TestRemoveSourceRejectsLastSourceAndReportsReferences(t *testing.T) {
 	model := SourceModel{
 		SchemaVersion: SourceModelVersion,
