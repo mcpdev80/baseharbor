@@ -148,41 +148,48 @@ func BuildPersesGateway(requirements PersesGatewayRequirements) (PersesGatewayPl
 		return PersesGatewayPlan{}, fmt.Errorf("Perses management gateway token authentication requires %s", EnvAuthTokenFile)
 	}
 	denied := []string{capability.PersesProxyPrefix}
-	// Perses binds the loopback of a network namespace its gateway container
-	// joins (compose network_mode): the port can never be host-forwarded and
-	// the gateway reaches it. The gateway upstream is the service DNS name;
-	// inside the shared namespace that name resolves to a container address,
-	// never to Perses' bind, so a service-name upstream is the only accepted
-	// form. A loopback-literal upstream would strand the peer that does not
-	// join the namespace, and a routable literal makes Perses itself
-	// reachable, so both fail closed here.
+	// Two supported topologies, both fail-closed:
+	//   - shared namespace (the gateway adapter default): Perses binds the
+	//     loopback of the network namespace its gateway container joins
+	//     (compose network_mode), the gateway upstream is the Perses service
+	//     address, and the Perses port can never be host-forwarded;
+	//   - namespace-local loopback: only when the caller names the exact
+	//     upstream the bind matches (a deployment sharing one namespace end
+	//     to end); the service definition then publishes no network_mode and
+	//     no ports at all.
+	// A mismatched loopback pair strands the peer and a routable literal bind
+	// makes Perses itself reachable; both fail closed here.
 	upstreamURL, err := url.Parse(upstream)
 	if err != nil {
 		return PersesGatewayPlan{}, fmt.Errorf("parse normalized Perses gateway upstream: %w", err)
 	}
 	upstreamHost := strings.TrimSuffix(strings.TrimPrefix(upstreamURL.Hostname(), "["), "]")
+	sharedNetwork := true
 	if addr, addrErr := netip.ParseAddr(upstreamHost); addrErr == nil && addr.Unmap().IsLoopback() {
-		return PersesGatewayPlan{}, fmt.Errorf("Perses gateway upstream %q is a loopback literal: loopback is private to one network namespace, so the gateway can only reach Perses through its service address while Perses binds loopback of the namespace the two share", requirements.Upstream)
+		sharedNetwork = false
 	}
 	bindAddress := strings.TrimSpace(requirements.PersesBindAddress)
 	switch bindAddress {
 	case "", "127.0.0.1", "localhost":
 		bindAddress = "127.0.0.1"
 	default:
-		if !validPersesBindAddress(bindAddress) {
+		if addr, addrErr := netip.ParseAddr(bindAddress); addrErr == nil && addr.Unmap().IsLoopback() {
+			if !strings.EqualFold(upstreamHost, bindAddress) {
+				return PersesGatewayPlan{}, fmt.Errorf("Perses bind address %q is loopback of a namespace the gateway does not join and does not match the upstream host %q: the peer can never reach it", bindAddress, upstreamHost)
+			}
+			sharedNetwork = false
+		} else if !validPersesBindAddress(bindAddress) {
 			return PersesGatewayPlan{}, fmt.Errorf("Perses bind address %q is not a literal address or service address", bindAddress)
+		} else {
+			sharedNetwork = false
 		}
-		if addr, addrErr := netip.ParseAddr(bindAddress); addrErr == nil && !addr.Unmap().IsLoopback() {
-			return PersesGatewayPlan{}, fmt.Errorf("Perses bind address %q is a routable literal: BaseHarbor renders Perses on the loopback of the shared gateway namespace only", bindAddress)
-		}
-		bindAddress = "127.0.0.1"
 	}
 	plan := PersesGatewayPlan{
 		Policy:                requirements.Policy,
 		DeniedPaths:           denied,
 		RequireClientIdentity: authentication == AuthenticationMTLS,
 		UpstreamBindAddress:   bindAddress,
-		SharedGatewayNetwork:  true,
+		SharedGatewayNetwork:  sharedNetwork,
 	}
 	spec := HTTPGatewaySpec{
 		ServiceName:            PersesGatewayServiceName,
@@ -400,14 +407,19 @@ func PersesComposeServices(ctx context.Context, plan PersesGatewayPlan, files HT
 	b.WriteString("    read_only: true\n")
 	b.WriteString("    cap_drop: [\"ALL\"]\n")
 	b.WriteString("    security_opt: [\"no-new-privileges:true\"]\n")
-	if !plan.SharedGatewayNetwork || strings.TrimSpace(plan.UpstreamBindAddress) != "127.0.0.1" {
-		return "", errors.New("Perses service rendering requires the shared-namespace loopback binding the plan verifies")
+	if !plan.SharedGatewayNetwork && (strings.TrimSpace(plan.UpstreamBindAddress) == "" || strings.TrimSpace(plan.UpstreamBindAddress) == "0.0.0.0") {
+		return "", errors.New("Perses service rendering requires the bind address the plan verifies")
 	}
-	// The loopback bind is only meaningful inside the namespace the gateway
-	// joins, and it is what keeps the Perses port unforwardable on the host.
-	// Deliberately no `ports:` and no `networks:` block for Perses: the gateway
-	// is the only reachable address.
-	fmt.Fprintf(&b, "    network_mode: %s\n", strconv.Quote("service:"+gatewayName))
+	if plan.SharedGatewayNetwork {
+		// The loopback bind is only meaningful inside the namespace the gateway
+		// joins, and it is what keeps the Perses port unforwardable on the
+		// host. Deliberately no `ports:` and no `networks:` block for Perses.
+		fmt.Fprintf(&b, "    network_mode: %s\n", strconv.Quote("service:"+gatewayName))
+	} else {
+		// Namespace-local loopback: no published port, no expose, no network —
+		// nothing can route to Perses from outside its own namespace.
+		b.WriteString("    networks: []\n")
+	}
 	b.WriteString("    tmpfs:\n")
 	b.WriteString("      - /tmp:rw,noexec,nosuid,nodev\n")
 	b.WriteString("      - /etc/perses/database:rw,noexec,nosuid,nodev\n")

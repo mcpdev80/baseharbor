@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/devaccess"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
@@ -25,6 +26,18 @@ const PersesUIHostPortEnv = "BASEHARBOR_PERSES_UI_HOST_PORT"
 // :8080 for plain HTTP; the TLS environment settings below make the server
 // listen for HTTPS on the same port.
 const persesUIContainerTLSPort = 8080
+
+// PersesConfigHostPath returns the deployment-relative host file the
+// realization materializes with the deterministic rendering of the validated
+// security policy. The compose service bind-mounts it read-only at
+// serviceaccess.PersesConfigContainerPath, so the --config flag always names a
+// file with a proven producer; a rendering with absent or drifted contents
+// fails the deployment closed instead of serving the anonymous upstream
+// default. Perses writes only under /etc/perses/database and the mounted
+// plugins tmpfs, so the read-only mount of /etc/perses itself is safe.
+func PersesConfigHostPath(runtimeDir string) string {
+	return filepath.Join(runtimeDir, "providers", "management-ui", "perses", "config.yaml")
+}
 
 // Perses is an OPTIONAL, provider-owned visualization surface that realizes the
 // observability management-ui seam defined by the accepted Perses contract
@@ -64,21 +77,26 @@ func writePersesUIComposeService(b *strings.Builder, m Manifest, resourceProject
 	// The distroless nonroot image cannot read 0600 bind mounts, which is why
 	// the projection uses projectUIReadableFile (0644) copies like the other
 	// managed UIs.
-	// Perses extracts the configured plugin archives (for example the shipped
-	// UI) into /etc/perses/plugins at runtime; with read_only:true that path is
-	// unwritable and the extraction fails (GET /api/v1/plugins would return 0
-	// modules). The image ships the directory owned by uid/gid 1000, so an
-	// isolated writable tmpfs at exactly that path with mode 1777 lets the
-	// nonroot process extract the archives while the root filesystem stays
-	// read-only.
+	// The distroless nonroot image cannot read 0600 bind mounts, which is why
+	// the projection uses projectUIReadableFile (0644) copies like the other
+	// managed UIs.
+	//
+	// The --config file below is not optional: without a rendered file Perses
+	// serves the upstream anonymous default posture (security.enable_auth:
+	// false), which the accepted security contract forbids. The realization
+	// materializes the deterministic rendering of the validated policy next to
+	// its provider files and mounts it read-only (renderPersesUIComposeService
+	// fails closed when the file is absent); PersesConfigHostPath names the
+	// path the mount and the flag must agree on.
 	b.WriteString("    entrypoint: [\"/bin/perses\"]\n")
-	fmt.Fprintf(b, "    command: [\"--config=/etc/perses/config.yaml\", \"--web.listen-address=0.0.0.0:%d\", \"--web.tls-cert-file=/certs/server.cert\", \"--web.tls-key-file=/certs/server.key\", \"--log.level=error\"]\n", persesUIContainerTLSPort)
+	fmt.Fprintf(b, "    command: [\"--config=%s\", \"--web.listen-address=0.0.0.0:%d\", \"--web.tls-cert-file=/certs/server.cert\", \"--web.tls-key-file=/certs/server.key\", \"--log.level=error\"]\n", serviceaccess.PersesConfigContainerPath, persesUIContainerTLSPort)
 	b.WriteString("    tmpfs:\n      - /etc/perses/plugins:rw,noexec,nosuid,nodev,mode=1777\n")
 	b.WriteString("    ports:\n")
 	fmt.Fprintf(b, "      - \"127.0.0.1:${%s}:%d\"\n", PersesUIHostPortEnv, persesUIContainerTLSPort)
 	b.WriteString("    volumes:\n")
 	b.WriteString("      - ./providers/management-ui/perses/server.cert:/certs/server.cert:ro\n")
 	b.WriteString("      - ./providers/management-ui/perses/server.key:/certs/server.key:ro\n")
+	fmt.Fprintf(b, "      - ./providers/management-ui/perses/config.yaml:%s:ro\n", serviceaccess.PersesConfigMountDir)
 	fmt.Fprintf(b, "      - %s-data:/persistence\n", service)
 	b.WriteString("    networks:\n")
 	b.WriteString("      default:\n")
@@ -106,6 +124,19 @@ func EnsurePersesManagementUI(ctx context.Context, issuer serviceaccess.Issuer, 
 	}
 	dir := filepath.Join(files.Dir, "providers", "management-ui", "perses")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	// The mounted configuration is rendered from the validated security
+	// policy before anything else: a deployment whose policy cannot validate
+	// must not materialize a Perses service that would then serve the upstream
+	// anonymous default. The managed deployment validates the strict posture
+	// itself, so the rendering is deterministic by construction.
+	security := capability.DefaultPersesSecurityPolicy()
+	contents, err := serviceaccess.RenderPersesConfig(security)
+	if err != nil {
+		return err
+	}
+	if err := writeUIRuntimeProjection(filepath.Join(dir, "config.yaml"), []byte(contents)); err != nil {
 		return err
 	}
 	// Perses is a loopback-only HTTPS surface; the projection mirrors the
