@@ -336,3 +336,41 @@ func TestSaveRemovableSourceDetachesMappingOnly(t *testing.T) {
 		t.Fatalf("failed detach mutated persisted state: %#v %v", final, err)
 	}
 }
+
+func TestSaveRemovableSourceDoesNotChangeModelWhenMappingCannotBeLoaded(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	root := t.TempDir()
+	manifest := writeTestManifest(t, root)
+	model := SourceModel{
+		SchemaVersion: SourceModelVersion,
+		Application:   "shop",
+		Sources: []SourceDefinition{
+			{ID: "keep", Type: SourceRepository, Repository: "https://git.example/keep.git"},
+			{ID: "drop", Type: SourceRepository, Repository: "https://git.example/drop.git"},
+		},
+		Components: []ComponentSource{{Component: "api", Source: "drop"}},
+	}
+	if _, err := WriteSourceModel(manifest, model); err != nil {
+		t.Fatal(err)
+	}
+	mappingPath, err := WorkspaceMappingPath(manifest, "shop")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(mappingPath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(mappingPath, []byte("not-json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, _, _, err := SaveRemovableSource(manifest, "shop", model, "drop"); err == nil {
+		t.Fatal("removal succeeded with an invalid workspace mapping")
+	}
+	stored, _, err := LoadSourceModel(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(stored.Sources) != 2 || len(stored.Components) != 1 || stored.Components[0].Source != "drop" {
+		t.Fatalf("failed removal partially changed the source model: %#v", stored)
+	}
+}

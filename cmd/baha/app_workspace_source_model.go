@@ -139,8 +139,12 @@ func appWorkspaceSourceAddCommand() *cli.Command {
 					}
 					format = outputJSON
 				case "--source", "--local", "--oci":
+					option := args[i]
+					if i+1 >= len(args) {
+						return usageError(option+" requires a value", "Run 'baha app workspace source add --help'.")
+					}
 					i++
-					definition, err := sourceDefinitionFromFlags("source add", args[i], args[i-1])
+					definition, err := sourceDefinitionFromFlags("source add", args[i], option)
 					if err != nil {
 						return err
 					}

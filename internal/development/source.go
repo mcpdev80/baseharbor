@@ -457,7 +457,14 @@ func ResolveWorkspace(manifestPath string, model SourceModel, mapping WorkspaceM
 			resolved.Image = source.Image
 		case SourceLocal:
 			resolved.Identity = filepath.Clean(strings.TrimSpace(source.Path))
-			root := resolved.Identity
+			root := strings.TrimSpace(mapping.Sources[source.ID])
+			if root == "" {
+				root = resolved.Identity
+			}
+			root, err = filepath.Abs(root)
+			if err != nil {
+				return WorkspaceResolution{}, err
+			}
 			if err := validateLocalSourceLocation(source.ID, root); err != nil {
 				return WorkspaceResolution{}, err
 			}

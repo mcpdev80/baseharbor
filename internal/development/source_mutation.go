@@ -166,16 +166,19 @@ func SaveRemovableSource(manifestPath, application string, model SourceModel, so
 	if err != nil {
 		return "", "", nil, false, err
 	}
+	// Validate the developer-local mapping before changing the portable model.
+	// A malformed or mismatched mapping must not turn a failed remove into a
+	// partial model update that leaves the stale mapping behind.
+	mapping, mappingPath, mapErr := LoadWorkspaceMapping(manifestPath, application)
+	if mapErr != nil && !os.IsNotExist(mapErr) {
+		return "", mappingPath, nil, false, mapErr
+	}
 	sourceModelPath, err = WriteSourceModel(manifestPath, model)
 	if err != nil {
 		return "", "", nil, false, err
 	}
-	mapping, mappingPath, mapErr := LoadWorkspaceMapping(manifestPath, application)
 	if mapErr != nil {
-		if os.IsNotExist(mapErr) {
-			return sourceModelPath, mappingPath, detached, false, nil
-		}
-		return sourceModelPath, mappingPath, detached, false, mapErr
+		return sourceModelPath, mappingPath, detached, false, nil
 	}
 	if _, exists := mapping.Sources[sourceID]; exists {
 		delete(mapping.Sources, sourceID)

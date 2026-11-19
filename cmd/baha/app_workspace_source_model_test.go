@@ -130,6 +130,20 @@ func TestWorkspaceSourceModelWritesRequireUpdatePermission(t *testing.T) {
 	}
 }
 
+func TestWorkspaceSourceAddMissingIdentityValueReturnsUsageError(t *testing.T) {
+	for _, option := range []string{"--source", "--local", "--oci"} {
+		t.Run(option, func(t *testing.T) {
+			_, _, err := runWorkspaceSourceModelCLI(t, "source", "add", option)
+			if err == nil {
+				t.Fatalf("source add %s without a value succeeded", option)
+			}
+			if !strings.Contains(err.Error(), "requires a value") {
+				t.Fatalf("source add %s returned unexpected error: %v", option, err)
+			}
+		})
+	}
+}
+
 func TestWorkspaceInitAcceptsLocalDirectorySource(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(root, "config"))
@@ -552,17 +566,32 @@ func TestWorkspaceLocalSourceMappingOverridesPortablePath(t *testing.T) {
 	if _, errOut, err := runWorkspaceSourceModelCLI(t, "map", "mono", local, "--manifest", manifest); err != nil {
 		t.Fatalf("map on local source failed: %v\n%s", err, errOut.String())
 	}
+	model, _, err := development.LoadSourceModel(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mapping, _, err := development.LoadWorkspaceMapping(manifest, "shop")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolvedAfterMap, err := development.ResolveWorkspace(manifest, model, mapping)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(resolvedAfterMap.Components) != 1 || resolvedAfterMap.Components[0].Root != local {
+		t.Fatalf("resolve ignored the map-only local override: %#v", resolvedAfterMap.Components)
+	}
 	if _, errOut, err := runWorkspaceSourceModelCLI(t, "path", "mono", local, "--manifest", manifest); err != nil {
 		t.Fatalf("path override failed: %v\n%s", err, errOut.String())
 	}
-	mapping, _, err := development.LoadWorkspaceMapping(manifest, "shop")
+	mapping, _, err = development.LoadWorkspaceMapping(manifest, "shop")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if mapping.Sources["mono"] != local {
 		t.Fatalf("explicit override not stored: %#v", mapping.Sources)
 	}
-	model, _, err := development.LoadSourceModel(manifest)
+	model, _, err = development.LoadSourceModel(manifest)
 	if err != nil {
 		t.Fatal(err)
 	}
