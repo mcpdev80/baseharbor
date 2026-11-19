@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"path/filepath"
@@ -185,8 +186,21 @@ func verifyManagedMetricsAfterWorkload(ctx context.Context, out io.Writer, prepa
 		}
 		fmt.Fprintf(out, "[VERIFIED] metrics       %d source(s) scraped and ingested for %s\n", len(prepared.manifest.Metrics.Sources), prepared.manifest.Name)
 	}
-	if err := metricsprovider.VerifyProviderSourcesAt(ctx, prepared.manifest, prepared.dataDir, prepared.namespace); err != nil {
-		return err
+	stateErr := metricsprovider.VerifyProviderSourcesAt(ctx, prepared.manifest, prepared.dataDir, prepared.namespace)
+	var compositionErr *metricsprovider.CompositionStateError
+	if errors.As(stateErr, &compositionErr) {
+		// hunt-918 befund 6: surface the null-target reason to the operator as
+		// an explicit composition state, not as a convergence error.
+		fmt.Fprintf(out, "[STATE] metrics          %s for %s\n", compositionErr.State(), prepared.manifest.Name)
+		stateErr = nil
+	} else if stateErr != nil {
+		return stateErr
+	}
+	// Always surface the operator-facing composition state (positive target
+	// count or the documented zero-count message) so cmd/baha prints the real
+	// Prometheus placement instead of a generic convergence line.
+	if state, compErr := metricsprovider.ProviderSourcesCompositionState(ctx, prepared.manifest, prepared.dataDir, prepared.namespace); compErr == nil && state != "" {
+		fmt.Fprintf(out, "[STATE] metrics          %s for %s\n", state, prepared.manifest.Name)
 	}
 	if prepared.placementChanged {
 		if err := cleanupRegisteredMetricsPlacement(ctx, prepared); err != nil {

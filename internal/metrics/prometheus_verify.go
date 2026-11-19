@@ -118,6 +118,26 @@ func VerifyProviderSourcesAt(ctx context.Context, m application.Manifest, dataDi
 	return verifyProviderSourcesAt(ctx, m, dataDir, namespace, queryUp)
 }
 
+// CompositionStateError is an informational result, not a hard failure. It is
+// returned by verifyProviderSourcesAt when the Prometheus provider composition
+// has one or more provider sources but a zero effective scrape-target count
+// (every source is Verification == ObservabilityVerifyNone). It carries the
+// operator-facing state string so the operator sees the null-target reason
+// instead of silent nil, without turning the documented expected-zero state
+// into a convergence error.
+type CompositionStateError struct {
+	state string
+}
+
+func (e *CompositionStateError) Error() string {
+	return "metrics provider composition: " + e.state
+}
+
+// State returns the operator-facing composition state string.
+func (e *CompositionStateError) State() string {
+	return e.state
+}
+
 // ProviderSourcesCompositionState returns the observable state of the Prometheus
 // provider composition for m (see ProviderCompositionState). It surfaces the
 // effective scrape target count even when it is zero because every provider
@@ -194,6 +214,14 @@ func verifyProviderSourcesAt(ctx context.Context, m application.Manifest, dataDi
 	}
 	if len(sources) == 0 && len(applicationSources) == 0 {
 		return nil
+	}
+	// hunt-918 befund 6 counter: if there are provider sources but the
+	// composition has zero effective scrape targets and there are no
+	// application sources to verify, surface the explicit null-target state to
+	// the operator instead of returning silent nil. The verification:none skips
+	// above remain correct; this only makes the expected-zero count visible.
+	if len(sources) > 0 && len(applicationSources) == 0 && EffectiveProviderTargetCount(sources) == 0 {
+		return &CompositionStateError{state: ProviderCompositionState(sources)}
 	}
 	files, err := ExistingProviderFilesAt(dataDir, namespace, m)
 	if err != nil {
