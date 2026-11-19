@@ -85,7 +85,7 @@ func TestApplicationClassLogSourceSurvivesManagedReconcile(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !found {
-		providerSources, listErr := observability.ListLogs(placement, []string{m.Name}, true, true)
+		providerSources, listErr := observability.ListLogs(placement, []string{m.Name}, true, true, "")
 		t.Fatalf("application-class reconcile lost the reference-class source; listings after the round: %#v (err %v)", providerSources, listErr)
 	}
 }
@@ -286,7 +286,7 @@ func TestApplicationClassLogSourceReferenceClassCounterCheck(t *testing.T) {
 	}
 
 	shared := capability.ProviderPlacement{Scope: capability.ScopeShared, Ownership: capability.OwnershipBaseHarbor}
-	sources, err := observability.ListLogs(shared, nil, false, true)
+	sources, err := observability.ListLogs(shared, nil, false, true, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -301,7 +301,7 @@ func TestApplicationClassLogSourceReferenceClassCounterCheck(t *testing.T) {
 	if err := logs.ReconcileApplicationLogSource(m, project, nil); err != nil {
 		t.Fatal(err)
 	}
-	sources, err = observability.ListLogs(shared, nil, false, true)
+	sources, err = observability.ListLogs(shared, nil, false, true, "")
 	if err != nil {
 		t.Fatal(err)
 	}

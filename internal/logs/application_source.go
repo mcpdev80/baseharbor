@@ -182,7 +182,7 @@ func ListWorkloadLogSources(placement capability.ProviderPlacement, m applicatio
 		return nil, err
 	}
 	return observability.List(observability.SignalLogs, placement, []string{m.Name},
-		policy.Enabled && policy.Collect[application.LogsSourceApplication], false, false)
+		policy.Enabled && policy.Collect[application.LogsSourceApplication], false, false, m.Environment)
 }
 
 // ConvergeManagedLogsForReconcile is the collector-side entry of the
