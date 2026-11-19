@@ -25,7 +25,7 @@ func ManagedRuntimeProviderServiceNames(m Manifest) []string {
 	return services
 }
 
-func reconcileManagedRuntimeObservability(m Manifest, project string) error {
+func reconcileManagedRuntimeObservability(m Manifest, project, repositoryRoot string) error {
 	logsPolicy, err := LogsPolicy(m)
 	if err != nil {
 		return err
@@ -58,7 +58,149 @@ func reconcileManagedRuntimeObservability(m Manifest, project string) error {
 	if err := reconcileApplicationMetricsSource(m, project); err != nil {
 		return err
 	}
+	// The application-class log writer is its own boundary inside this
+	// package: the workload's stream is registered directly against the
+	// signal registry (internal/logs documents the identity contract it
+	// shares with the driver's Bind path). It runs before any metrics or
+	// traces policy decision, and a disabled logs policy reclaims the signal
+	// instead of leaving a stale source behind.
+	if err := reconcileApplicationLogSource(m, project, repositoryRoot); err != nil {
+		return err
+	}
 	return reconcileApplicationTraceSource(m, project, tracesEnabled)
+}
+
+// ReconcileManagedRuntimeObservability is the exported form of the render-time
+// reconciliation boundary (runtime_postgres.go calls the unexported one on
+// every managed Compose render). The cross-package writer regression of card
+// 0428-122 drives exactly this entry: the application-class log signal must
+// survive repeated renders. repositoryRoot resolves an implicit Compose
+// workload's actual service set (see selectedWorkloadServiceNames); an empty
+// value keeps the manifest selection so the identity never depends on a
+// checkout being present.
+func ReconcileManagedRuntimeObservability(m Manifest, project, repositoryRoot string) error {
+	return reconcileManagedRuntimeObservability(m, project, repositoryRoot)
+}
+
+// selectedWorkloadServiceNames is the ACTUALLY active workload service set of
+// this deployment, resolved in the same order MaterializeWorkload reads it:
+//
+//  1. the services its manifest declares as explicit Workload.Components,
+//  2. the non-managed Compose services of the deployment's workload when the
+//     manifest declares none (an implicit Compose workload): selectWorkloadServices
+//     selects ALL available non-managed services when requested is empty, so the
+//     render-time identity must record that same set and not the synthetic
+//     singleton "workload",
+//  3. the single canonical workload service where no Compose source exists to
+//     resolve a set from.
+//
+// Steps 2 and 3 keep the render-time identity from drifting from the collector
+// label: when a workload compose source is resolvable from repositoryRoot it is
+// the single source of truth for the implicit set, mirroring selectWorkloadServices;
+// when none is present the manifest selection stands, so the identity never
+// depends on a checkout being present.
+func selectedWorkloadServiceNames(m Manifest, repositoryRoot string) ([]string, error) {
+	declared := WorkloadComponentNames(m)
+	if len(declared) > 0 {
+		return declared, nil
+	}
+	if selected, ok, err := implicitComposeWorkloadServices(m, repositoryRoot); err != nil {
+		return nil, err
+	} else if ok {
+		return selected, nil
+	}
+	return []string{"workload"}, nil
+}
+
+// implicitComposeWorkloadServices resolves the workload service set of an
+// implicit Compose workload (a manifest with no explicit Workload.Components)
+// from the conventional compose source in repositoryRoot. It returns the
+// actually selected non-managed services, a false when no workload compose
+// source exists so the caller keeps its manifest selection, and an error only
+// when the compose source is present but unreadable or invalid - never when it
+// simply is not there. This mirrors selectWorkloadServices so registry identity
+// and MaterializeWorkload cannot drift for the same manifest.
+func implicitComposeWorkloadServices(m Manifest, repositoryRoot string) ([]string, bool, error) {
+	composePath, found, err := ResolveWorkloadCompose(repositoryRoot)
+	if err != nil {
+		return nil, false, err
+	}
+	if !found {
+		return nil, false, nil
+	}
+	services, err := composeServiceNames(composePath)
+	if err != nil {
+		return nil, false, err
+	}
+	selected, err := selectWorkloadServices(m, services, nil)
+	if err != nil {
+		return nil, false, err
+	}
+	return selected, true, nil
+}
+
+// reconcileApplicationLogSource writes the class-application log signals of
+// this deployment's workload services into the shared observability registry.
+// The collector has always labelled the workload's stream
+// baseharbor_source_class="application" (internal/logs/render.go, both the
+// syslog listener and the journald source), and #1680's reclaim proved no
+// provider class may own that stream - but no writer ever stamped the class
+// on a log signal, so the documented normalized class existed only in the
+// contract and every application-class listing stayed silently empty
+// (card 0428-122). This is the render-time writer for BOTH transports.
+//
+// The service dimension is part of the identity: each workload service of the
+// deployment gets its own source, and the desired set is the ACTUALLY active
+// service set this render resolved. Services that are no longer in it lose
+// exactly their own entry, so a repeated render neither accumulates stale keys
+// nor swallows a service that appeared in the meantime.
+func reconcileApplicationLogSource(m Manifest, project, repositoryRoot string) error {
+	policy, err := LogsPolicy(m)
+	if err != nil {
+		return err
+	}
+	if !policy.Enabled || !policy.Collect[LogsSourceApplication] {
+		return observability.ReconcileMatching(observability.ApplicationLogBoundary(m.Name, m.Environment), nil)
+	}
+	desired, err := selectedApplicationLogSources(m, project, repositoryRoot)
+	if err != nil {
+		return err
+	}
+	return observability.ReconcileMatching(observability.ApplicationLogBoundary(m.Name, m.Environment), desired)
+}
+
+// selectedApplicationLogSources builds the desired class-application log
+// signals of this deployment from the workload services its manifest
+// declares. The identity (ID, Target, provider, protocol) is the one the
+// collector and the driver Bind path use, assembled here so the render-time
+// writer keeps this package's service selection while the log writer owns the
+// identity contract.
+func selectedApplicationLogSources(m Manifest, project string, repositoryRoot string) ([]observability.SignalSource, error) {
+	services, err := selectedWorkloadServiceNames(m, repositoryRoot)
+	if err != nil {
+		return nil, err
+	}
+	desired := make([]observability.SignalSource, 0, len(services))
+	for _, service := range services {
+		source := observability.SignalSource{
+			ID:                 observability.ApplicationLogSourceID(m.Name, m.Environment, service),
+			Kind:               observability.SignalLogs,
+			Provider:           capability.ProviderLoki,
+			Class:              observability.SourceApplication,
+			Scope:              capability.ScopeApplication,
+			OwnerApplication:   m.Name,
+			Target:             observability.RuntimeTarget(project, service),
+			Protocol:           "stdout-stderr",
+			Mode:               capability.ObservabilityRuntime,
+			SemanticConvention: "baseharbor.runtime.logs",
+			Verification:       capability.ObservabilityVerifyBackend,
+		}
+		if err := source.Validate(); err != nil {
+			return nil, fmt.Errorf("application log source %q: %w", service, err)
+		}
+		desired = append(desired, source)
+	}
+	return desired, nil
 }
 
 // reconcileApplicationMetricsSource records the workload's runtime identity in

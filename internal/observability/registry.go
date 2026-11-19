@@ -445,6 +445,45 @@ func ReconcileProviderSignals(id string, owned map[capability.ProviderKind]struc
 	})
 }
 
+// ReconcileMatching replaces exactly the registry entries a caller-owned
+// predicate selects with the desired set, in one atomic mutation. It is the
+// predicate form of ReconcileProviderSignals for identity spaces that are not
+// keyed on ID plus provider: the class-application workload log signals are one
+// such space, where the reconciliation boundary is the ID prefix of an
+// application/environment, so neither the ID-keyed reconciles nor a provider
+// claim (which would delete the metrics twin of the same workload) fit.
+// Entries the predicate does not select are never touched, and every desired
+// source must satisfy the predicate itself - a caller cannot widen the boundary
+// of what it replaces by passing foreign entries alongside its own.
+func ReconcileMatching(owned func(SignalSource) bool, desired []SignalSource) error {
+	if owned == nil {
+		return errors.New("observability signal reconciliation requires a predicate")
+	}
+	for i := range desired {
+		if err := desired[i].Validate(); err != nil {
+			return err
+		}
+		if !owned(desired[i]) {
+			return fmt.Errorf("observability signal reconciliation source %q lies outside the owned predicate", desired[i].ID)
+		}
+	}
+	path, err := registryPath()
+	if err != nil {
+		return err
+	}
+	return mutate(path, func(sources []SignalSource) ([]SignalSource, error) {
+		out := sources[:0]
+		for _, source := range sources {
+			if owned(source) {
+				continue
+			}
+			out = append(out, source)
+		}
+		out = append(out, desired...)
+		return out, nil
+	})
+}
+
 // RegistryHasSignal reports whether the registry still carries one exact
 // signal registration. Unlike the placement-filtered listings it sees every
 // provider and owner under an ID, so reconciliation and prune contracts - and
@@ -561,10 +600,6 @@ func List(kind SignalKind, placement capability.ProviderPlacement, applications 
 
 func ListLogs(placement capability.ProviderPlacement, applications []string, includeApplicationProviders, includePlatformProviders bool, requestedEnvironment string) ([]SignalSource, error) {
 	return List(SignalLogs, placement, applications, false, includeApplicationProviders, includePlatformProviders, requestedEnvironment)
-}
-
-func ListTraces(placement capability.ProviderPlacement, applications []string, includeApplicationProviders, includePlatformProviders bool, requestedEnvironment string) ([]SignalSource, error) {
-	return List(SignalTraces, placement, applications, false, includeApplicationProviders, includePlatformProviders, requestedEnvironment)
 }
 
 func ApplicationMetricsSourceID(application, environment, source string) string {
