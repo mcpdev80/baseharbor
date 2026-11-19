@@ -105,17 +105,28 @@ func syncProviderTargets(dir string, sources []observability.MetricsSource) erro
 	}
 	// Reconcile the two target namespaces on every sync.
 	//
-	// provider-- / provider-secure-- : delete any file no longer selected.
 	// application-- : retain exactly the files for the currently selected
 	//   application-class sources; delete every other file in this namespace.
-	// Files in neither namespace (foreign provider files, runtime-target files,
-	// anything owned by another writer) are left untouched.
+	// provider-- / provider-secure-- : the current sync owns a provider file
+	// only when it can prove it by name (it matches one of the currently
+	// selected provider-class sources). An application-only sync has no provider
+	// sources of its own, so it must not touch the provider namespace at all —
+	// a foreign provider-- / provider-secure-- file owned by another sync is
+	// left byte-for-byte intact. Files in neither namespace (runtime-target
+	// files, anything else owned by another writer) are left untouched.
 	appKeep := map[string]struct{}{}
 	for _, source := range sources {
 		if fn := appTargetFileName(source); fn != "" {
 			appKeep[fn] = struct{}{}
 		}
 	}
+	providerSources := make([]observability.MetricsSource, 0, len(sources))
+	for _, source := range sources {
+		if source.Class != observability.SourceApplication {
+			providerSources = append(providerSources, source)
+		}
+	}
+	ownProviderNamespace := len(providerSources) > 0
 	for _, entry := range entries {
 		name := entry.Name()
 		if entry.IsDir() || !strings.HasSuffix(name, ".json") {
@@ -129,10 +140,16 @@ func syncProviderTargets(dir string, sources []observability.MetricsSource) erro
 				}
 			}
 		case strings.HasPrefix(name, "provider--") || strings.HasPrefix(name, "provider-secure--"):
-			if !providerSourcePresent(sources, name) {
-				if err := os.Remove(filepath.Join(dir, name)); err != nil && !errors.Is(err, os.ErrNotExist) {
-					return err
-				}
+			// An application-only sync cannot own any provider file, so it must
+			// never delete a provider-prefixed file. When the sync does own
+			// provider sources, delete only files it can prove it produced
+			// (name matches a currently selected provider-class source); every
+			// other provider file is foreign and left untouched.
+			if !ownProviderNamespace || !providerSourcePresent(providerSources, name) {
+				continue
+			}
+			if err := os.Remove(filepath.Join(dir, name)); err != nil && !errors.Is(err, os.ErrNotExist) {
+				return err
 			}
 		}
 	}
