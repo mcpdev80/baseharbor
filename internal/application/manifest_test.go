@@ -153,9 +153,10 @@ func TestManifestPersesManagementUIRoundTripFailsClosedWithoutMetrics(t *testing
 	}
 }
 
-func TestManifestPersesSelectionRoundTripWithoutManagementUI(t *testing.T) {
+func TestManifestPersesSelectionRequiresManagementUI(t *testing.T) {
 	// Case (perses=true, management_ui=ohne): this is the INVALID selection. It
-	// must fail closed validation (no still-nil path), never serialize losslessly.
+	// must fail closed validation (no silent-nil path), never serialize
+	// losslessly.
 	m := New("demo", "dev", false, false, false)
 	m.Services.SQL = true
 	m.Services.Perses = true
@@ -165,7 +166,7 @@ func TestManifestPersesSelectionRoundTripWithoutManagementUI(t *testing.T) {
 	}
 }
 
-func TestManifestPersesSelectionRoundTripWithManagementUIStill(t *testing.T) {
+func TestManifestPersesSelectionRoundTripWithManagementUI(t *testing.T) {
 	// Case (perses=true, management_ui=true): the VALID selection must round-trip
 	// losslessly — the YAML must not drop the perses field inside the management_ui
 	// block.
