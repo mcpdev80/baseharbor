@@ -311,17 +311,28 @@ func persesLokiDatasourceSources(files ProviderFiles, m application.Manifest) ([
 	return authorized, nil
 }
 
-// persesLokiDatasourceQuery is the exact datasource-health query: the Loki
-// stream matcher over the union of the authorized provider log-series, so one
-// probe answers for every source the datasource visualises. A probe error is
-// propagated; a clean answer is the verified/down verdict.
+// persesLokiDatasourceQuery runs one Loki stream-query per authorized provider
+// log-series and reports per-source availability. Each source gets its own
+// single selector {baseharbor_application=...,baseharbor_service=...}: LogQL
+// allows exactly one log stream selector per query and forbids duplicate label
+// names within that selector, so the per-backend backend-witness is one query
+// per source, never a comma-listed or 'or'-composed selector (see
+// https://grafana.com/docs/loki/latest/query/log_queries/). A probe error on any
+// source is propagated; a source that returns no matching stream is reported as
+// unavailable for that source rather than swallowed.
 func persesLokiDatasourceQuery(ctx context.Context, endpoint string, sources []observability.SignalSource, probe lokiQueryProbe) (bool, error) {
-	matchers := make([]string, 0, len(sources))
+	matchedAny := false
 	for _, source := range sources {
-		matchers = append(matchers, fmt.Sprintf(`baseharbor_application=%q,baseharbor_service=%q`, source.OwnerApplication, logServiceLabel(source)))
+		query := fmt.Sprintf(`{baseharbor_application=%q,baseharbor_service=%q}`, source.OwnerApplication, logServiceLabel(source))
+		matched, err := probe.queryStream(ctx, endpoint, query)
+		if err != nil {
+			return false, fmt.Errorf("perses Loki datasource query for source %s: %w", source.ID, err)
+		}
+		if matched {
+			matchedAny = true
+		}
 	}
-	query := "{" + strings.Join(matchers, ",") + "}"
-	return probe.queryStream(ctx, endpoint, query)
+	return matchedAny, nil
 }
 
 // logServiceLabel returns the baseharbor_service matcher for a materialized log

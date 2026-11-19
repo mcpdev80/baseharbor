@@ -2,17 +2,27 @@ package logs_test
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
+	"math/big"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
@@ -369,7 +379,270 @@ func TestPersesLokiDatasourceVerifyBindsServiceAccessClient(t *testing.T) {
 	}
 }
 
-// TestPersesLokiDatasourceGoldenFiles pins the marshalled datasource against a
+// recordingQueryCaptureServer answers the Loki query_range API over HTTPS (using
+// the same throwaway CA materialized by materializeLokiServiceAccessPKI) for
+// every query it receives and records each query it saw (one entry per
+// queryStream call), answering per-selector (every selector returns a matching
+// stream) so a healthy Loki reports all sources.
+// recordingQueryCaptureServer answers the Loki query_range API for every query it
+// receives and records each query it saw (one entry per queryStream call),
+// answering per-selector (every selector returns a matching stream) so a healthy
+// Loki reports all sources. The responder decides per-request whether a stream
+// matches so a per-source availability case can be exercised.
+func recordingQueryCaptureServer(t *testing.T, dir string, responder func(raw string) bool) (*httptest.Server, *[]string) {
+	t.Helper()
+	var mu sync.Mutex
+	var calls []string
+	serverCerts, err := tls.LoadX509KeyPair(filepath.Join(dir, "server-cert.pem"), filepath.Join(dir, "server-key.pem"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	caPEM, err := os.ReadFile(filepath.Join(dir, "ca.pem"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	roots := x509.NewCertPool()
+	if !roots.AppendCertsFromPEM(caPEM) {
+		t.Fatal("no CA certs")
+	}
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasSuffix(r.URL.Path, "/loki/api/v1/query_range") {
+			http.NotFound(w, r)
+			return
+		}
+		mu.Lock()
+		calls = append(calls, r.URL.RawQuery)
+		mu.Unlock()
+		if responder != nil && !responder(r.URL.RawQuery) {
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{"status":"success","data":{"resultType":"streams","result":[]}}`)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"status":"success","data":{"resultType":"streams","result":[{"metric":{"__name__":"loki"},"values":[["1670000000000","1"]]}]}}`)
+	}))
+	server.TLS = &tls.Config{Certificates: []tls.Certificate{serverCerts}, RootCAs: roots, MinVersion: tls.VersionTLS12}
+	server.StartTLS()
+	t.Cleanup(server.Close)
+	return server, &calls
+}
+
+// materializeLokiServiceAccessPKI writes a managed mTLS key pair (CA + server
+// leaf) under the provider's service-access pki dir so the Loki health path can
+// build its service-access client and reach the fake query server. It uses a
+// throwaway self-signed CA valid for the test only; no issuer state is required.
+func materializeLokiServiceAccessPKI(t *testing.T, files logs.ProviderFiles) {
+	t.Helper()
+	dir := filepath.Join(files.Dir, "service-access", "pki")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatalf("create service-access pki dir: %v", err)
+	}
+	caKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ca := &x509.Certificate{
+		SerialNumber:          big.NewInt(1),
+		Subject:               pkix.Name{CommonName: "BaseHarbor Test Loki CA"},
+		NotBefore:             time.Now().Add(-time.Hour),
+		NotAfter:              time.Now().Add(24 * time.Hour),
+		IsCA:                  true,
+		BasicConstraintsValid: true,
+		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
+	}
+	caDER, err := x509.CreateCertificate(rand.Reader, ca, ca, &caKey.PublicKey, caKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	caPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: caDER})
+	if err := os.WriteFile(filepath.Join(dir, "ca.pem"), caPEM, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	serverKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := &x509.Certificate{
+		SerialNumber: big.NewInt(2),
+		Subject:      pkix.Name{CommonName: "loki"},
+		NotBefore:    time.Now().Add(-time.Hour),
+		NotAfter:     time.Now().Add(24 * time.Hour),
+		DNSNames:     []string{"localhost"},
+		KeyUsage:     x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+	}
+	serverDER, err := x509.CreateCertificate(rand.Reader, server, ca, &serverKey.PublicKey, caKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	serverCertPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: serverDER})
+	serverKeyDER, err := x509.MarshalPKCS8PrivateKey(serverKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	serverKeyPEM := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: serverKeyDER})
+	if err := os.WriteFile(filepath.Join(dir, "server-cert.pem"), serverCertPEM, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "server-key.pem"), serverKeyPEM, 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestPersesLokiDatasourceMultiSourceQueryOneSelectorPerSource asserts the
+// multi-source health contract: one queryStream call per authorized source, each
+// carrying exactly one Loki stream selector with a single baseharbor_application
+// + baseharbor_service pair (no duplicate label name in a selector, no 'or'
+// between selectors — see
+// https://grafana.com/docs/loki/latest/query/log_queries/). Two sources with
+// different application/service values produce two recorded queries, and a source
+// that returns no matching stream is reported without hiding the other source.
+func TestPersesLokiDatasourceMultiSourceQueryOneSelectorPerSource(t *testing.T) {
+	m := lokiTestManifest(t)
+	sources := []observability.SignalSource{
+		lokiTestLogSource("loki:perses-loki-demo:api", "perses-loki-demo", "api"),
+		lokiTestLogSource("loki:perses-loki-demo:worker", "perses-loki-demo", "worker"),
+	}
+	files := lokiMaterializeProvider(t, m, sources...)
+	materializeLokiServiceAccessPKI(t, files)
+	server, calls := recordingQueryCaptureServer(t, filepath.Join(files.Dir, "service-access", "pki"), nil)
+	host, portStr, err := net.SplitHostPort(strings.TrimPrefix(server.URL, "https://"))
+	if err != nil {
+		t.Fatalf("probe port: %v", err)
+	}
+	_ = host
+	port, err := strconv.Atoi(portStr)
+	if err != nil {
+		t.Fatalf("probe port: %v", err)
+	}
+	if err := rewriteLokiPort(t, m, port); err != nil {
+		t.Fatalf("rewrite port: %v", err)
+	}
+	if err := logs.VerifyPersesLokiDatasourceHealth(context.Background(), m); err != nil {
+		t.Fatalf("health must pass for a healthy multi-source Loki: %v", err)
+	}
+	// (i) Two authorized sources => two calls, each one valid one-pair selector.
+	if len(*calls) != len(sources) {
+		t.Fatalf("expected %d queryStream calls (one per source), got %d: %v", len(sources), len(*calls), *calls)
+	}
+	for _, raw := range *calls {
+		decoded, err := url.QueryUnescape(raw)
+		if err != nil {
+			t.Fatalf("decode recorded query: %v", err)
+		}
+		query := decoded
+		// (ii) no duplicate label name within a selector: baseharbor_application
+		// must appear exactly once per recorded query.
+		if strings.Count(query, "baseharbor_application") != 1 {
+			t.Fatalf("recorded query repeats a label name within one selector (LogQL forbids it):\n%s", query)
+		}
+		// (iii) no 'or' between two stream selectors in any recorded query.
+		if strings.Contains(query, " or ") {
+			t.Fatalf("recorded query must not combine stream selectors with 'or' (LogQL allows one selector per query):\n%s", query)
+		}
+		// each recorded query names exactly one application and one service.
+		if !strings.Contains(query, "baseharbor_service=\"api\"") && !strings.Contains(query, "baseharbor_service=\"worker\"") {
+			t.Fatalf("recorded query does not name a baseharbor_service:\n%s", query)
+		}
+	}
+}
+
+// TestPersesLokiDatasourceMultiSourcePartialMatchability asserts the per-source
+// health semantics: when one authorized source yields no matching stream while
+// the other does, the health check still passes (one source verified) and the
+// non-matching source is not silently reported as healthy — both per-source
+// queries are still recorded with a single valid selector each.
+func TestPersesLokiDatasourceMultiSourcePartialMatchability(t *testing.T) {
+	m := lokiTestManifest(t)
+	sources := []observability.SignalSource{
+		lokiTestLogSource("loki:perses-loki-demo:api", "perses-loki-demo", "api"),
+		lokiTestLogSource("loki:perses-loki-demo:worker", "perses-loki-demo", "worker"),
+	}
+	files := lokiMaterializeProvider(t, m, sources...)
+	materializeLokiServiceAccessPKI(t, files)
+	// The "worker" source returns an empty result (no matching stream); the
+	// "api" source returns a matching stream.
+	server, calls := recordingQueryCaptureServer(t, filepath.Join(files.Dir, "service-access", "pki"), func(raw string) bool {
+		decoded, err := url.QueryUnescape(raw)
+		if err != nil {
+			return true
+		}
+		return !strings.Contains(decoded, `baseharbor_service="worker"`)
+	})
+	host, portStr, err := net.SplitHostPort(strings.TrimPrefix(server.URL, "https://"))
+	if err != nil {
+		t.Fatalf("probe port: %v", err)
+	}
+	_ = host
+	port, err := strconv.Atoi(portStr)
+	if err != nil {
+		t.Fatalf("probe port: %v", err)
+	}
+	if err := rewriteLokiPort(t, m, port); err != nil {
+		t.Fatalf("rewrite port: %v", err)
+	}
+	// Partial availability (one source verified) is still healthy.
+	if err := logs.VerifyPersesLokiDatasourceHealth(context.Background(), m); err != nil {
+		t.Fatalf("health must pass when at least one source is verified: %v", err)
+	}
+	if len(*calls) != 2 {
+		t.Fatalf("expected 2 per-source queries, got %d", len(*calls))
+	}
+	for _, raw := range *calls {
+		decoded, err := url.QueryUnescape(raw)
+		if err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		if strings.Count(decoded, "baseharbor_application") != 1 || strings.Contains(decoded, " or ") {
+			t.Fatalf("per-source query must be one valid single selector, got %q", decoded)
+		}
+	}
+}
+
+// TestPersesLokiDatasourceMultiSourceNoneMatchFailsClosed asserts the fail-closed
+// contract: when NO authorized source yields a matching stream, the health check
+// returns an error (never a false healthy), and every per-source query was still
+// a single valid selector.
+func TestPersesLokiDatasourceMultiSourceNoneMatchFailsClosed(t *testing.T) {
+	m := lokiTestManifest(t)
+	sources := []observability.SignalSource{
+		lokiTestLogSource("loki:perses-loki-demo:api", "perses-loki-demo", "api"),
+		lokiTestLogSource("loki:perses-loki-demo:worker", "perses-loki-demo", "worker"),
+	}
+	files := lokiMaterializeProvider(t, m, sources...)
+	materializeLokiServiceAccessPKI(t, files)
+	server, calls := recordingQueryCaptureServer(t, filepath.Join(files.Dir, "service-access", "pki"), func(string) bool {
+		return false // no source matches
+	})
+	host, portStr, err := net.SplitHostPort(strings.TrimPrefix(server.URL, "https://"))
+	if err != nil {
+		t.Fatalf("probe port: %v", err)
+	}
+	_ = host
+	port, err := strconv.Atoi(portStr)
+	if err != nil {
+		t.Fatalf("probe port: %v", err)
+	}
+	if err := rewriteLokiPort(t, m, port); err != nil {
+		t.Fatalf("rewrite port: %v", err)
+	}
+	if err := logs.VerifyPersesLokiDatasourceHealth(context.Background(), m); err == nil {
+		t.Fatal("health must fail closed when no source produces a matching stream")
+	}
+	if len(*calls) != 2 {
+		t.Fatalf("expected 2 per-source queries even on full miss, got %d", len(*calls))
+	}
+	for _, raw := range *calls {
+		decoded, err := url.QueryUnescape(raw)
+		if err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		if strings.Count(decoded, "baseharbor_application") != 1 || strings.Contains(decoded, " or ") {
+			t.Fatalf("per-source query must be one valid single selector, got %q", decoded)
+		}
+	}
+}
+
 // committed golden file, so the Perses-native output is a stable, reviewed
 // witness. The golden config carries the materialized endpoint of the fixture.
 func TestPersesLokiDatasourceGoldenFiles(t *testing.T) {
