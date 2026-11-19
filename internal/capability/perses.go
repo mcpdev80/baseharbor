@@ -317,3 +317,51 @@ func PersesManagementSurfaceUnprovisioned() PersesManagementSurface {
 		Reachability:            PersesReachabilityUnverified,
 	}
 }
+
+// hostProviderMetricsNativeVerified reports that the shipped reference provider
+// catalog declares a real, native, backend-verified host/provider metrics
+// signal (the "collector-metrics" observability signal). It is the witness the
+// host/container dashboards require so a positive availability verdict is never
+// self-confirmed by the same manifest declaration it is meant to establish.
+func hostProviderMetricsNativeVerified() bool {
+	for _, descriptor := range ReferenceIntegrations() {
+		for _, signal := range descriptor.Observability.Signals {
+			if signal.Name != "collector-metrics" {
+				continue
+			}
+			return signal.Kind == ObservabilityMetrics &&
+				signal.Status == ObservabilitySupported &&
+				signal.Mode == ObservabilityNative &&
+				signal.Verification == ObservabilityVerifyBackend
+		}
+	}
+	return false
+}
+
+// ResolveHostDashboardSignalStatus maps the manifest truth to the authoritative
+// resolved observability-signal verdict the Perses host/container dashboards
+// consume. It is a read-only resolver: it never runs a backend probe and never
+// builds the enable-path resolver (that is a parallel owner task, 0428-080).
+//
+// Fail closed on BOTH axes. The host dashboard is realized as "supported" only
+// when:
+//   - the manifest authoritatively declares the observability backend selected
+//     AND the Perses surface pinned (observabilityManagementUI && persesSelected
+//     and the pinned Perses release validates); AND
+//   - the shipped reference provider catalog declares a real, native,
+//     backend-verified host/provider metrics signal (hostProviderMetricsNativeVerified).
+//
+// Any missing axis resolves to the empty status, which the dashboard reports
+// as unavailable-preserving.
+func ResolveHostDashboardSignalStatus(observabilityManagementUI bool, persesSelected bool) ObservabilitySupportStatus {
+	if !observabilityManagementUI || !persesSelected {
+		return ""
+	}
+	if ValidatePersesRelease(PersesDefaultRelease) != nil {
+		return ""
+	}
+	if !hostProviderMetricsNativeVerified() {
+		return ""
+	}
+	return ObservabilitySupported
+}
