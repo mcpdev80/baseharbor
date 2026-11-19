@@ -59,8 +59,12 @@ func applicationLogSource(m application.Manifest, project, service string) (obse
 	if strings.TrimSpace(project) == "" {
 		return observability.SignalSource{}, fmt.Errorf("application log source %q requires its runtime project", service)
 	}
+	// The ID names the workload identity ("workload"), never the concrete
+	// service, so the registry holds exactly one class-application log signal
+	// per application/environment. The Target carries the caller's concrete
+	// service, which is what the collector labels the stream with.
 	source := observability.SignalSource{
-		ID:                 observability.ApplicationLogSourceID(m.Name, m.Environment, service),
+		ID:                 observability.ApplicationLogSourceID(m.Name, m.Environment, applicationLogServiceName),
 		Kind:               observability.SignalLogs,
 		Provider:           capability.ProviderLoki,
 		Class:              observability.SourceApplication,
@@ -108,25 +112,22 @@ func ReconcileApplicationLogSource(m application.Manifest, project string, servi
 	}
 	desired := []observability.SignalSource{}
 	if policy.Enabled && policy.Collect[application.LogsSourceApplication] {
-		named := false
+		// Exactly one signal per application/environment: the first resolved
+		// service names the stream the collector ingests, an empty service
+		// set keeps the canonical workload token. Repeating the same intent
+		// replaces (idempotent); it never accumulates.
+		service := applicationLogServiceName
 		for _, candidate := range services {
-			if candidate = strings.TrimSpace(candidate); candidate == "" {
-				continue
+			if candidate = strings.TrimSpace(candidate); candidate != "" {
+				service = candidate
+				break
 			}
-			named = true
-			source, err := applicationLogSource(m, project, candidate)
-			if err != nil {
-				return err
-			}
-			desired = append(desired, source)
 		}
-		if !named {
-			source, err := applicationLogSource(m, project, applicationLogServiceName)
-			if err != nil {
-				return err
-			}
-			desired = append(desired, source)
+		source, err := applicationLogSource(m, project, service)
+		if err != nil {
+			return err
 		}
+		desired = append(desired, source)
 	}
 	return observability.ReconcileMatching(applicationLogBoundary(m), desired)
 }

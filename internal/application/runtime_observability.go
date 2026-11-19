@@ -95,6 +95,10 @@ func reconcileApplicationLogSource(m Manifest, project string) error {
 	}
 	desired := []observability.SignalSource{}
 	if policy.Enabled && policy.Collect[LogsSourceApplication] {
+		// The render-time boundary names the workload identity itself, so the
+		// ID service token and the Target service token agree on "workload":
+		// one signal per application/environment, never a service-dependent
+		// drift between registry and collector.
 		source := observability.SignalSource{
 			ID:                 observability.ApplicationLogSourceID(m.Name, m.Environment, "workload"),
 			Kind:               observability.SignalLogs,
