@@ -108,7 +108,7 @@ func assertTraceSourceProviders(t *testing.T, m Manifest, want map[string]capabi
 	if err != nil {
 		t.Fatal(err)
 	}
-	sources, err := observability.ListTraces(placement, []string{m.Name}, true, true)
+	sources, err := observability.ListTraces(placement, []string{m.Name}, true, true, m.Environment)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -159,7 +159,7 @@ func TestWorkloadTraceSourceNeverAttributedToPrometheus(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			metrics, err := observability.ListMetrics(placement, []string{m.Name}, true, true)
+			metrics, err := observability.ListMetrics(placement, []string{m.Name}, true, true, m.Environment)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -199,7 +199,7 @@ func TestWorkloadTraceSourceFollowsTelemetryReplacement(t *testing.T) {
 		t.Fatal(err)
 	}
 	externalID := fmt.Sprintf("%s:%s", capability.ProviderExternalOTLP, project)
-	sources, err := observability.ListTraces(mustPlacement(t, m), []string{m.Name}, true, true)
+	sources, err := observability.ListTraces(mustPlacement(t, m), []string{m.Name}, true, true, m.Environment)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -218,7 +218,7 @@ func TestWorkloadTraceSourceFollowsTelemetryReplacement(t *testing.T) {
 	if err := reconcileManagedRuntimeObservability(m, project); err != nil {
 		t.Fatal(err)
 	}
-	sources, err = observability.ListTraces(mustPlacement(t, m), []string{m.Name}, true, true)
+	sources, err = observability.ListTraces(mustPlacement(t, m), []string{m.Name}, true, true, m.Environment)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -245,7 +245,7 @@ func mustPlacement(t *testing.T, m Manifest) capability.ProviderPlacement {
 
 func traceSources(t *testing.T, m Manifest) []observability.SignalSource {
 	t.Helper()
-	sources, err := observability.ListTraces(mustPlacement(t, m), []string{m.Name}, true, true)
+	sources, err := observability.ListTraces(mustPlacement(t, m), []string{m.Name}, true, true, m.Environment)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -429,7 +429,7 @@ func TestWorkloadTracePruneKeepsForeignSources(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sources, err := observability.ListTraces(placement, []string{m.Name, ""}, true, true)
+	sources, err := observability.ListTraces(placement, []string{m.Name, ""}, true, true, m.Environment)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -588,7 +588,7 @@ func TestLegacyPrometheusTraceSignalIsReclaimedWithoutMetricsPolicy(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	logged, err := observability.List(observability.SignalLogs, loggedPlacement, []string{m.Name}, false, true, true)
+	logged, err := observability.List(observability.SignalLogs, loggedPlacement, []string{m.Name}, false, true, true, m.Environment)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -596,7 +596,7 @@ func TestLegacyPrometheusTraceSignalIsReclaimedWithoutMetricsPolicy(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	metrics, err := observability.List(observability.SignalMetrics, metricsPlacement, []string{m.Name}, false, true, true)
+	metrics, err := observability.List(observability.SignalMetrics, metricsPlacement, []string{m.Name}, false, true, true, m.Environment)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -621,7 +621,7 @@ func TestLegacyPrometheusTraceSignalIsReclaimedWithoutMetricsPolicy(t *testing.T
 	if err := reconcileManagedRuntimeObservability(m, project); err != nil {
 		t.Fatal(err)
 	}
-	logged, err = observability.List(observability.SignalLogs, loggedPlacement, []string{m.Name}, false, true, true)
+	logged, err = observability.List(observability.SignalLogs, loggedPlacement, []string{m.Name}, false, true, true, m.Environment)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -654,7 +654,7 @@ func TestWorkloadReceiverTraceSignalsReclaimedWhenTracesDisabled(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		logged, err := observability.List(observability.SignalLogs, loggedPlacement, []string{m.Name}, false, true, true)
+		logged, err := observability.List(observability.SignalLogs, loggedPlacement, []string{m.Name}, false, true, true, m.Environment)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -666,7 +666,7 @@ func TestWorkloadReceiverTraceSignalsReclaimedWhenTracesDisabled(t *testing.T) {
 		if got := traceIDs(traceSources(t, m)); got[collectorID] != "" {
 			t.Fatalf("collector trace signal survived disabled trace collection: %v", got)
 		}
-		loggedAfter, err := observability.List(observability.SignalLogs, loggedPlacement, []string{m.Name}, false, true, true)
+		loggedAfter, err := observability.List(observability.SignalLogs, loggedPlacement, []string{m.Name}, false, true, true, m.Environment)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -677,7 +677,7 @@ func TestWorkloadReceiverTraceSignalsReclaimedWhenTracesDisabled(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		metricsAfter, err := observability.List(observability.SignalMetrics, metricsPlacement, []string{m.Name}, false, true, true)
+		metricsAfter, err := observability.List(observability.SignalMetrics, metricsPlacement, []string{m.Name}, false, true, true, m.Environment)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -769,7 +769,7 @@ func TestWorkloadTraceSourceRequiresMaterializedReceiver(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	metrics, err := observability.List(observability.SignalMetrics, metricsPlacement, []string{m.Name}, false, true, true)
+	metrics, err := observability.List(observability.SignalMetrics, metricsPlacement, []string{m.Name}, false, true, true, m.Environment)
 	if err != nil {
 		t.Fatal(err)
 	}

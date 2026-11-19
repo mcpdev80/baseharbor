@@ -55,11 +55,22 @@ func providerImpactConsentError(plan application.ProviderImpactPlan, err error) 
 	return classified
 }
 
+// providerImpactAttentionLead renders the structured attention marker as the
+// prose "Warning: " lead the consent catalog uses. Every stage that
+// acknowledges consequences prints the same marker; the gate itself keys on
+// attention presence, so the lead never changes semantics.
+func providerImpactAttentionLead(plan application.ProviderImpactPlan) string {
+	if plan.Attention == "" {
+		return ""
+	}
+	return "Warning: "
+}
+
 func readProviderApplyAcknowledgement(reader *bufio.Reader, out io.Writer, plan application.ProviderImpactPlan) (application.ProviderChangeConsent, error) {
 	consent := application.ProviderChangeConsent{PlanID: plan.PlanID}
-	label := "Apply these changes?"
+	label := providerImpactAttentionLead(plan) + "Apply these changes?"
 	if plan.Destructive {
-		label = "Apply these changes and permanently delete the listed data?"
+		label = providerImpactAttentionLead(plan) + "Apply these changes and permanently delete the listed data?"
 	}
 	accepted, err := promptYesNo(reader, out, label, false)
 	if err != nil || !accepted {
@@ -77,7 +88,7 @@ func readProviderApplyAcknowledgement(reader *bufio.Reader, out io.Writer, plan 
 func readProviderImpactAcknowledgements(reader *bufio.Reader, out io.Writer, plan application.ProviderImpactPlan) (application.ProviderChangeConsent, error) {
 	consent := application.ProviderChangeConsent{PlanID: plan.PlanID}
 	for stage := 1; stage <= plan.ConfirmationsRequired; stage++ {
-		label := "Confirm the displayed provider changes"
+		label := providerImpactAttentionLead(plan) + "Confirm the displayed provider changes"
 		if plan.Destructive {
 			label = application.ProviderImpactConsentCatalog().ProviderDestructiveConfirm
 		} else if plan.ConfirmationsRequired == 2 {

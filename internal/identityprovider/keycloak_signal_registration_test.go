@@ -54,6 +54,7 @@ func TestKeycloakSignalRegistrationRegistersNativeMetricsSignal(t *testing.T) {
 		false,
 		true,
 		true,
+		app.Environment,
 	)
 	if err != nil {
 		t.Fatalf("List: %v", err)
@@ -102,6 +103,7 @@ func TestKeycloakSignalRegistrationFailsClosedWithoutMetrics(t *testing.T) {
 		false,
 		true,
 		true,
+		app.Environment,
 	)
 	if err != nil {
 		t.Fatalf("List: %v", err)
