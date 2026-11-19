@@ -56,7 +56,7 @@ func ComposeProviderImpactScope(owner ProviderScopeOwner, plans []ProviderImpact
 		}
 	}
 	if !s.Complete || s.Destructive || s.ConfirmationsRequired == 2 {
-		s.Attention = "Achtung"
+		s.Attention = "Warning"
 		s.ConfirmationsRequired = 2
 	}
 	if err := validateScopeStrings(s); err != nil {

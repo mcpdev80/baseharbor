@@ -4,7 +4,7 @@
   "revision": "existing-owner-revision",
   "plan_id": "fixture-plan",
   "complete": false,
-  "attention": "Achtung",
+  "attention": "Warning",
   "confirmations_required": 2,
   "destructive": true,
   "impacts": []
