@@ -455,43 +455,9 @@ func RenameEnvironment(target, oldName, newName string) (EnvironmentRecord, erro
 					return fmt.Errorf("inspect destination %q: %w", newPath, rErr)
 				}
 			}
-			record := EnvironmentRecord{Target: source.Target, Name: newName, Identity: source.Identity}
-			data, wErr := json.MarshalIndent(record, "", "  ")
-			if wErr != nil {
-				return fmt.Errorf("encode environment identity: %w", wErr)
-			}
-			tmp, wErr := os.CreateTemp(newHome, ".environment-*")
-			if wErr != nil {
-				return fmt.Errorf("create temp environment identity: %w", wErr)
-			}
-			tmpName := tmp.Name()
-			defer os.Remove(tmpName)
-			if wErr = tmp.Chmod(0600); wErr != nil {
-				tmp.Close()
-				return fmt.Errorf("chmod environment identity: %w", wErr)
-			}
-			if _, wErr = tmp.Write(data); wErr != nil {
-				tmp.Close()
-				return fmt.Errorf("write environment identity: %w", wErr)
-			}
-			if wErr = tmp.Close(); wErr != nil {
-				return fmt.Errorf("close environment identity: %w", wErr)
-			}
-			// No-replace install: the rename must not replace an identity a
-			// concurrent creator may have written to newPath between the lock
-			// acquisition and here. os.Rename is unconditional, so instead write
-			// the new record with O_CREATE|O_EXCL to the final path via a temp
-			// link swap only when the destination is still absent/ours. We keep
-			// the temp-then-rename shape for the absent case (atomic on all
-			// supported Unix paths) but only after confirming under the lock that
-			// newPath does not now hold a foreign identity (checked above).
-			if wErr = os.Rename(tmpName, newPath); wErr != nil {
-				return fmt.Errorf("persist environment identity: %w", wErr)
-			}
-			// Remove the old identity record so the identity lives at exactly one
-			// path (oldPath is already the record file).
-			if rErr := os.Remove(oldPath); rErr != nil && !errors.Is(rErr, os.ErrNotExist) {
-				return fmt.Errorf("remove stale old environment record: %w", rErr)
+			record, rErr := persistRenamedEnvironmentIdentity(oldPath, newHome, newPath, newName, source)
+			if rErr != nil {
+				return rErr
 			}
 			moved = record
 			return nil
@@ -510,6 +476,40 @@ func RenameEnvironment(target, oldName, newName string) (EnvironmentRecord, erro
 		// holder. Mirrors the non-blocking lock discipline: refuse, never block.
 		time.Sleep(time.Millisecond)
 	}
+}
+
+func persistRenamedEnvironmentIdentity(oldPath, newHome, newPath, newName string, source EnvironmentRecord) (EnvironmentRecord, error) {
+	record := EnvironmentRecord{Target: source.Target, Name: newName, Identity: source.Identity}
+	data, err := json.MarshalIndent(record, "", "  ")
+	if err != nil {
+		return EnvironmentRecord{}, fmt.Errorf("encode environment identity: %w", err)
+	}
+	tmp, err := os.CreateTemp(newHome, ".environment-*")
+	if err != nil {
+		return EnvironmentRecord{}, fmt.Errorf("create temp environment identity: %w", err)
+	}
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName)
+	if err := tmp.Chmod(0600); err != nil {
+		tmp.Close()
+		return EnvironmentRecord{}, fmt.Errorf("chmod environment identity: %w", err)
+	}
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		return EnvironmentRecord{}, fmt.Errorf("write environment identity: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return EnvironmentRecord{}, fmt.Errorf("close environment identity: %w", err)
+	}
+	// The destination was checked under the registry lock before this atomic
+	// install; do not overwrite any different identity already there.
+	if err := os.Rename(tmpName, newPath); err != nil {
+		return EnvironmentRecord{}, fmt.Errorf("persist environment identity: %w", err)
+	}
+	if err := os.Remove(oldPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return EnvironmentRecord{}, fmt.Errorf("remove stale old environment record: %w", err)
+	}
+	return record, nil
 }
 
 // EnvironmentID returns just the durable identity of a (Target, environment)
