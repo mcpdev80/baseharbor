@@ -107,32 +107,25 @@ func syncProviderTargets(dir string, sources []observability.MetricsSource) erro
 	// writer owns, then rewrite the rooms from the current source list on the
 	// next loop. The two rooms belong to two distinct writers:
 	//
-	// provider-- / provider-secure-- : the room THIS sync owns — the only
-	//   production writer of these files (prometheus_files.go:83). Every run
-	//   of this sync is a provider sync (both production call sites fold in
-	//   the provider sources), so the provider room is a complete rewrite of
-	//   a BaseHarbor-owned dir (normalized back to the container projection
-	//   afterwards). A deselected source leaves no orphan file in the active
-	//   provider glob.
-	// application-- : the room owned by an application-class source; a
-	//   provider-only sync leaves this room untouched, so an application file
-	//   owned by another sync is never rewritten or deleted.
+	// provider-- / provider-secure-- : this sync OWNS and ALWAYS sweeps this
+	//   room — it is the only production writer of these files
+	//   (prometheus_files.go:83), and the room is a complete rewrite of a
+	//   BaseHarbor-owned dir (normalized back to the container projection
+	//   afterwards). Every run removes every provider file in the room; a
+	//   deselected source therefore leaves no orphan file in the active
+	//   provider glob, regardless of what the current list carries.
+	// application-- : the room owned by an application-class source; this
+	//   provider sync never touches this room, so an application file owned
+	//   by another sync is never rewritten or deleted.
 	// Files in neither prefix-room (runtime-target files, anything else owned
 	// by another writer) are left untouched.
 	hasApplication := false
-	hasProvider := false
 	for _, source := range sources {
 		if source.Class == observability.SourceApplication {
 			hasApplication = true
-			continue
+			break
 		}
-		hasProvider = true
 	}
-	// The provider room is swept whenever this sync owns provider sources or
-	// reconciles the room (an empty source list still sweeps it: a fully
-	// deselected provider room must leave no orphan file). The application
-	// room is swept only when the sync carries application sources, so an
-	// application-only sync never rewrites the foreign provider room.
 	for _, entry := range entries {
 		name := entry.Name()
 		if entry.IsDir() || !strings.HasSuffix(name, ".json") {
@@ -144,10 +137,8 @@ func syncProviderTargets(dir string, sources []observability.MetricsSource) erro
 				return err
 			}
 		case strings.HasPrefix(name, "provider--") || strings.HasPrefix(name, "provider-secure--"):
-			if hasProvider || len(sources) == 0 {
-				if err := os.Remove(filepath.Join(dir, name)); err != nil && !errors.Is(err, os.ErrNotExist) {
-					return err
-				}
+			if err := os.Remove(filepath.Join(dir, name)); err != nil && !errors.Is(err, os.ErrNotExist) {
+				return err
 			}
 		}
 	}

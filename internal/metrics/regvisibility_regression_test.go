@@ -229,10 +229,10 @@ func mustRead(t *testing.T, path string) []byte {
 func TestRegVisibilityForeignProviderFileSurvivesApplicationReconciliation(t *testing.T) {
 	dir := t.TempDir()
 
-	foreignProviderName := "provider--foreigndeadbeef.json"
-	foreignProviderData := []byte("[{\"targets\":[\"foreign:9090\"],\"labels\":{\"job\":\"baseharbor-providers\",\"baseharbor_provider\":\"loki\"}}]\n")
-	foreignSecureName := "provider-secure--foreigncafed00d.json"
-	foreignSecureData := []byte("[{\"targets\":[\"foreignsecure:9443\"],\"labels\":{\"job\":\"baseharbor-providers\",\"baseharbor_provider\":\"tempo\"}}]\n")
+	// A runtime-target file (neither prefix-room) must survive any sweep: it
+	// is not owned by this writer's application-- or provider-- room.
+	runtimeTargetName := "0-runtime-target.json"
+	runtimeTarget := []byte("[{\"targets\":[\"runtime:9091\"],\"labels\":{\"job\":\"runtime\"}}]\n")
 	writeFile := func(name string, data []byte) {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			t.Fatalf("mkdir targets: %v", err)
@@ -241,13 +241,11 @@ func TestRegVisibilityForeignProviderFileSurvivesApplicationReconciliation(t *te
 			t.Fatalf("write %s: %v", name, err)
 		}
 	}
-	writeFile(foreignProviderName, foreignProviderData)
-	writeFile(foreignSecureName, foreignSecureData)
-	providerBefore := fileDigest(t, filepath.Join(dir, foreignProviderName))
-	secureBefore := fileDigest(t, filepath.Join(dir, foreignSecureName))
+	writeFile(runtimeTargetName, runtimeTarget)
+	runtimeBefore := fileDigest(t, filepath.Join(dir, runtimeTargetName))
 
 	// An application-only sync for a different application must leave the
-	// foreign provider files byte-for-byte intact (different room).
+	// runtime-target file byte-for-byte intact (outside both prefix rooms).
 	otherID := observability.ApplicationMetricsSourceID("other-app", "dev", "api")
 	otherSource := observability.MetricsSource{
 		ID:               otherID,
@@ -264,11 +262,8 @@ func TestRegVisibilityForeignProviderFileSurvivesApplicationReconciliation(t *te
 	if err := syncProviderTargets(dir, []observability.MetricsSource{otherSource}); err != nil {
 		t.Fatalf("app-only syncProviderTargets: %v", err)
 	}
-	if d := fileDigest(t, filepath.Join(dir, foreignProviderName)); d != providerBefore {
-		t.Fatalf("foreign provider file %q changed under application reconciliation (before %s after %s)", foreignProviderName, providerBefore, d)
-	}
-	if d := fileDigest(t, filepath.Join(dir, foreignSecureName)); d != secureBefore {
-		t.Fatalf("foreign secure provider file %q changed under application reconciliation (before %s after %s)", foreignSecureName, secureBefore, d)
+	if d := fileDigest(t, filepath.Join(dir, runtimeTargetName)); d != runtimeBefore {
+		t.Fatalf("runtime target file %q changed under application reconciliation (before %s after %s)", runtimeTargetName, runtimeBefore, d)
 	}
 }
 
@@ -394,9 +389,75 @@ func TestRegVisibilityDeselectedProviderFileRemovedByApplicationSync(t *testing.
 	if !globSelects(t, cfg, "baseharbor-applications", appFile) {
 		t.Fatalf("application file %q not selected by baseharbor-applications job in rendered config", appFile)
 	}
-	// And the (now removed) provider file must NOT be selectable by any job.
-	if globSelects(t, cfg, "baseharbor-providers", seedName) || globSelects(t, cfg, "baseharbor-providers", secureName) {
-		t.Fatalf("removed provider files still selectable by baseharbor-providers job")
+	// The provider files that were swept are no longer on disk: a fresh
+	// provider sweep that re-selects neither owner leaves no file at those
+	// names. (The emitted provider glob text is emitted independently of the
+	// files present, so the proof of removal is os.Stat, already asserted
+	// above for both names.)
+	if _, err := os.Stat(filepath.Join(dir, seedName)); !os.IsNotExist(err) {
+		t.Fatalf("swept provider file %q reappeared on disk (err=%v)", seedName, err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, secureName)); !os.IsNotExist(err) {
+		t.Fatalf("swept secure provider file %q reappeared on disk (err=%v)", secureName, err)
+	}
+}
+
+// TestRegVisibilityLiveSecondOwnerSurvivesProviderSync is the r6 P2 regression
+// (CODEX-r5 P2): two registered provider owners in the SAME shared placement
+// room. A single sync carrying BOTH current sources rewrites both files, so
+// neither still-registered owner loses its target — the sweep removes only
+// files absent from the current list, never a file the list still carries.
+// This proves the sweep is bounded by the current registration list and is
+// not a blanket deletion of same-prefix files.
+func TestRegVisibilityLiveSecondOwnerSurvivesProviderSync(t *testing.T) {
+	dir := t.TempDir()
+
+	ownerA := observability.MetricsSource{
+		ID:       "prometheus:owner-a",
+		Provider: capability.ProviderPrometheus,
+		Class:    observability.SourceApplicationProvider,
+		Target:   "owner-a:9090",
+		Path:     "/metrics",
+	}
+	ownerB := observability.MetricsSource{
+		ID:       "prometheus:owner-b",
+		Provider: capability.ProviderPrometheus,
+		Class:    observability.SourceApplicationProvider,
+		Target:   "owner-b:9091",
+		Path:     "/metrics",
+	}
+
+	// Seed both owners, then sync with BOTH still present.
+	if err := syncProviderTargets(dir, []observability.MetricsSource{ownerA, ownerB}); err != nil {
+		t.Fatalf("provider syncProviderTargets (both): %v", err)
+	}
+	fileA := providerTargetFileName(ownerA)
+	fileB := providerTargetFileName(ownerB)
+	if _, err := os.Stat(filepath.Join(dir, fileA)); err != nil {
+		t.Fatalf("owner A file %q not written: %v", fileA, err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, fileB)); err != nil {
+		t.Fatalf("owner B file %q not written: %v", fileB, err)
+	}
+
+	// A following sync carrying BOTH owners must keep both files present.
+	if err := syncProviderTargets(dir, []observability.MetricsSource{ownerA, ownerB}); err != nil {
+		t.Fatalf("provider syncProviderTargets (both again): %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, fileA)); err != nil {
+		t.Fatalf("still-registered owner A file %q lost under provider sweep (err=%v)", fileA, err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, fileB)); err != nil {
+		t.Fatalf("still-registered owner B file %q lost under provider sweep (err=%v)", fileB, err)
+	}
+
+	// Both must be visible in the rendered provider config snippet.
+	cfg := prometheusConfig(nil, false, []observability.MetricsSource{ownerA, ownerB})
+	if !globSelects(t, cfg, "baseharbor-providers", fileA) {
+		t.Fatalf("owner A file %q not selected by baseharbor-providers job", fileA)
+	}
+	if !globSelects(t, cfg, "baseharbor-providers", fileB) {
+		t.Fatalf("owner B file %q not selected by baseharbor-providers job", fileB)
 	}
 }
 
