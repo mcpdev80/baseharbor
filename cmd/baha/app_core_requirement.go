@@ -65,22 +65,44 @@ func applicationLifecycleSnapshotContext(ctx context.Context, resolved resolvedA
 		requested[capability.Requirement{Kind: capability.Secrets, Name: "default"}] = true
 	}
 	var preferences []application.ProviderPreference
-	actualBindings := []capability.ProviderBinding{}
+	actualBindings := make([]capability.ProviderBinding, 0, len(planned.Bindings))
+	knownBindings := make(map[capability.ProviderBinding]bool, len(planned.Bindings))
 	for _, binding := range planned.Bindings {
 		if binding.ApplicationID != resolved.Manifest.ApplicationID || binding.Environment != resolved.Manifest.Environment {
 			actualBindings = append(actualBindings, binding)
+			knownBindings[binding] = true
 			continue
 		}
 		requirement := capability.Requirement{Kind: binding.Resource.Kind, Name: binding.Resource.Name}
 		if requested[requirement] {
 			preferences = append(preferences, application.ProviderPreference{Requirement: requirement, InstanceID: binding.ProviderInstanceID, ProviderKind: binding.Resource.Provider})
 		}
+		// Keep a binding only if the selected provider is already applied. A
+		// newly selected replacement remains a preference until the normal
+		// acknowledged apply publishes it; the old binding is handled by the
+		// replacement planners below.
 		for _, old := range registry.Bindings {
 			if old == binding {
 				actualBindings = append(actualBindings, binding)
+				knownBindings[binding] = true
 				break
 			}
 		}
+	}
+	// A removed capability may still have an applied binding in Target state.
+	// Preserve that binding as retained ownership without reviving it as desired
+	// intent. For still-requested capabilities, the projected provider above is
+	// the desired selection and the change planners compare it with actual state.
+	for _, binding := range registry.Bindings {
+		if binding.ApplicationID != resolved.Manifest.ApplicationID || binding.Environment != resolved.Manifest.Environment {
+			continue
+		}
+		requirement := capability.Requirement{Kind: binding.Resource.Kind, Name: binding.Resource.Name}
+		if requested[requirement] || knownBindings[binding] {
+			continue
+		}
+		actualBindings = append(actualBindings, binding)
+		knownBindings[binding] = true
 	}
 	planned.Bindings = actualBindings
 	snapshot := application.ResolutionSnapshot{DependencyRoots: []string{}, Target: resolved.Target.Name, Registry: planned, Facts: map[string]application.ProviderFact{}}
@@ -172,7 +194,7 @@ func classifyApplicationResolutionError(err error) error {
 	resource := resolution.InstanceID
 	next := "Reconcile the existing Target provider binding and dependency inventory before retrying; no provider was mutated."
 	causeCode := "provider_resolution_" + strings.ReplaceAll(resolution.Code, "-", "_")
-	if resolution.Consumer != "" {
+	if resolution.Consumer != "" && resolution.Code == "missing-dependency" {
 		// The union resolver attributes a failed edge to the authoritative
 		// consumer that references it. A stale reference left by another
 		// application's record is therefore reported as the concrete conflict
@@ -181,6 +203,11 @@ func classifyApplicationResolutionError(err error) error {
 		resource = resolution.Consumer
 		next = fmt.Sprintf("Consumer %q references provider realization %q, which no longer exists on the Target. Restore that realization or release the named consumer through its own lifecycle owner, then rerun the last command; no provider was mutated.",
 			resolution.Consumer, resolution.InstanceID)
+	} else if resolution.Consumer != "" {
+		// ResolveProviderPlan annotates all resolver failures with their owner,
+		// not only missing dependency edges. Keep conflict/incompatibility
+		// causes precise instead of misreporting them as stale consumers.
+		next = fmt.Sprintf("Resolve provider selection for consumer %q and retry; no provider was mutated.", resolution.Consumer)
 	}
 	switch resolution.Code {
 	case "missing", "missing-dependency":
@@ -200,7 +227,21 @@ func classifyApplicationResolutionError(err error) error {
 	case "foreign", "foreign-target":
 		code = machine.ErrorOwnershipAmbiguous
 	}
-	return &machine.Error{Code: code, CauseCode: causeCode, Message: err.Error(), Resource: resource, Next: next, Cause: err}
+	diagnostic := applicationResolutionDiagnostic{
+		Code: resolution.Code, Consumer: resolution.Consumer, InstanceID: resolution.InstanceID,
+		Requirement: string(resolution.Requirement.Kind) + "/" + resolution.Requirement.Name,
+	}
+	return &machine.Error{Code: code, CauseCode: causeCode, Message: err.Error(), Resource: resource, Next: next, Details: diagnostic, Cause: err}
+}
+
+// applicationResolutionDiagnostic contains only stable resolver identifiers.
+// It lets proposal failures retain the actual failing edge without exposing
+// filesystem paths, registry payloads, or runtime credentials.
+type applicationResolutionDiagnostic struct {
+	Code        string `json:"resolution_code"`
+	Consumer    string `json:"consumer,omitempty"`
+	InstanceID  string `json:"instance_id,omitempty"`
+	Requirement string `json:"requirement,omitempty"`
 }
 
 func requireResolvedApplicationCore(ctx context.Context, resolved resolvedApplication, in io.Reader, out io.Writer) error {
@@ -248,11 +289,17 @@ type applicationLifecyclePlan struct {
 }
 
 func buildResolvedApplicationPlan(ctx context.Context, resolved resolvedApplication) (applicationLifecyclePlan, error) {
+	return buildResolvedApplicationPlanWithFacts(ctx, resolved, observeApplicationProviderFacts(ctx, resolved))
+}
+
+// buildResolvedApplicationPlanWithFacts lets callers that already took a
+// provider observation use the same fresh facts for their snapshot and plan.
+func buildResolvedApplicationPlanWithFacts(ctx context.Context, resolved resolvedApplication, observations map[string]application.ProviderFact) (applicationLifecyclePlan, error) {
 	plan, err := application.BuildPlan(resolved.Manifest)
 	if err != nil {
 		return applicationLifecyclePlan{}, err
 	}
-	snapshot, preferences, err := applicationLifecycleSnapshotContext(ctx, resolved, observeApplicationProviderFacts(ctx, resolved))
+	snapshot, preferences, err := applicationLifecycleSnapshotContext(ctx, resolved, observations)
 	if err != nil {
 		return applicationLifecyclePlan{}, err
 	}

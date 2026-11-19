@@ -54,6 +54,17 @@ func (r *newWizardPromptReader) Read(dst []byte) (int, error) {
 	return copy(dst, answer+"\n"), nil
 }
 
+func TestAppNewLifecycleExecutorBindsExactCandidateFlag(t *testing.T) {
+	digest := strings.Repeat("a", 64)
+	ctx, remaining := appNewLifecycleArgs(context.Background(), []string{"--confirm-candidate", digest})
+	if len(remaining) != 0 {
+		t.Fatalf("candidate confirmation was not removed from apply arguments: %#v", remaining)
+	}
+	if got := candidateConsentOverride(ctx); got != digest {
+		t.Fatalf("candidate confirmation was not bound to lifecycle context: got %q", got)
+	}
+}
+
 func TestAppNewWizardRunExplicitlyConfirmsExactCandidate(t *testing.T) {
 	t.Setenv("BASEHARBOR_STATE_DIR", filepath.Join(t.TempDir(), "state"))
 	configureTestTarget(t)

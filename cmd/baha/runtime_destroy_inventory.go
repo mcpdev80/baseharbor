@@ -181,7 +181,7 @@ func preservedTargetRecovery(ctx context.Context, target deployment.ResolvedTarg
 	} else if err != nil {
 		return fullDestroyResult{}, err
 	}
-	return fullDestroyResult{Status: "DELETE", Target: target.Name, Resource: "external recovery file", Detail: path + "; removed after the acknowledged installation destroy"}, nil
+	return fullDestroyResult{Status: "PRESERVED", Target: target.Name, Resource: "external recovery file", Detail: path + "; operator-held recovery material is retained after installation destroy"}, nil
 }
 
 func targetRecoveryFilePath(target deployment.ResolvedTarget) (string, error) {

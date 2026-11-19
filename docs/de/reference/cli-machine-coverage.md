@@ -34,8 +34,18 @@ Aktuelle Daten liefert `baha agent describe -o json` (`cli_coverage`). Nach Code
 | `baha app logs` | ausgeschlossen |  |  | Raw/follow runtime streams can include application secrets and require a streaming transport; status, doctor and evidence provide bounded secret-safe observation. |
 | `baha app new` | semantisch | CLI -o json / typed MCP result | baseharbor.app.new |  |
 | `baha app plan` | semantisch | CLI -o json / typed MCP result | baseharbor.plan |  |
+| `baha app perses` | praesentation |  |  | Command group; invoke its supported subcommands. |
+| `baha app perses disable` | semantisch | CLI -o json / typed MCP result | baseharbor.app.perses.disable |  |
+| `baha app perses enable` | semantisch | CLI -o json / typed MCP result | baseharbor.app.perses.enable |  |
+| `baha app perses remove` | semantisch | CLI -o json / typed MCP result | baseharbor.app.perses.remove |  |
+| `baha app perses status` | semantisch | CLI -o json / typed MCP result | baseharbor.app.perses.status |  |
 | `baha app preflight` | semantisch | CLI -o json / typed MCP result | baseharbor.app.preflight |  |
 | `baha app prune` | semantisch | CLI -o json / typed MCP result | baseharbor.app.prune |  |
+| `baha app perses` | Darstellung |  |  | Command group; invoke its supported subcommands. |
+| `baha app perses disable` | Darstellung |  |  | Guided human opt-out of the optional Perses surface; it folds into the manifest services.observability selection and the apply/preflight flow, which carry their own typed coverage, so no separate MCP operation is exposed. |
+| `baha app perses enable` | Darstellung |  |  | Guided human enablement of the optional Perses surface; it folds into the manifest services.observability selection and apply/preflight flow, which carry their own typed coverage, so no separate MCP operation is exposed. |
+| `baha app perses remove` | Darstellung |  |  | Guided human retirement of the owned Perses surface; manifest convergence plus an ownership-safe removal plan whose runtime retirement lands in the release window; no separate MCP operation is exposed. |
+| `baha app perses status` | Darstellung |  |  | Repository-bound presentation of the app.perses.status read model for the current deployment; machine clients inspect app status instead. |
 | `baha app restore` | semantisch | CLI -o json / typed MCP result | baseharbor.restore |  |
 | `baha app runtime-identity` | Darstellung |  |  | Command group; invoke its supported subcommands. |
 | `baha app runtime-identity revoke` | semantisch | CLI -o json / typed MCP result | baseharbor.runtime-identity.revoke |  |

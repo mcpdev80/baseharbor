@@ -25,16 +25,18 @@ type runtimeArtifactObservation struct {
 
 type applicationStatusResult struct {
 	application.StatusResult
-	ApplicationID   string                                       `json:"application_id"`
-	DeploymentID    string                                       `json:"deployment_id"`
-	TLS             *applicationTLSObservation                   `json:"tls,omitempty"`
-	ServiceTLS      []application.BackendTLSLifecycleObservation `json:"service_tls,omitempty"`
-	RuntimeArtifact *runtimeArtifactObservation                  `json:"runtime_artifact,omitempty"`
-	RuntimeDocsURL  string                                       `json:"runtime_docs_url,omitempty"`
-	ApplicationURLs []string                                     `json:"application_urls,omitempty"`
-	ManagementUI    []application.ManagementUISurface            `json:"management_ui,omitempty"`
-	OperatorAuth    operatorAuthObservation                      `json:"operator_auth"`
-	Availability    []availability.NegotiationResult             `json:"availability,omitempty"`
+	ApplicationID            string                                                          `json:"application_id"`
+	DeploymentID             string                                                          `json:"deployment_id"`
+	TLS                      *applicationTLSObservation                                      `json:"tls,omitempty"`
+	ServiceTLS               []application.BackendTLSLifecycleObservation                    `json:"service_tls,omitempty"`
+	RuntimeArtifact          *runtimeArtifactObservation                                     `json:"runtime_artifact,omitempty"`
+	RuntimeDocsURL           string                                                          `json:"runtime_docs_url,omitempty"`
+	ApplicationURLs          []string                                                        `json:"application_urls,omitempty"`
+	ManagementUI             []application.ManagementUISurface                               `json:"management_ui,omitempty"`
+	OperatorAuth             operatorAuthObservation                                         `json:"operator_auth"`
+	Availability             []availability.NegotiationResult                                `json:"availability,omitempty"`
+	Perses                   *capability.PersesStatus                                        `json:"perses,omitempty"`
+	HostContainersDashboards map[string]metricsprovider.PersesHostDashboardAvailabilityEntry `json:"host_containers_dashboards,omitempty"`
 
 	tlsStatus     *applicationTLSStatus
 	tlsErr        error
@@ -133,10 +135,22 @@ func collectApplicationStatusResult(ctx context.Context, store application.Store
 	if err != nil {
 		return applicationStatusResult{}, err
 	}
+	// The Perses three-state contract is manifest-declaration truth, exposed on
+	// every status JSON — local AND remote-target faces — regardless of the
+	// applied/stopped/not_applied runtime face: not_configured |
+	// configured_unverified | verified. Pin validation alone can never map into
+	// verified — only a real Perses health probe could. Computed before the
+	// remote-target early return below so remote-status --json also carries it.
+	persesStatus := capability.PersesStatusNow(resolved.Manifest.Services.ObservabilityManagementUI && resolved.Manifest.Services.Perses)
+	resolvedHostSignalStatus := capability.ResolveHostDashboardSignalStatus(
+		resolved.Manifest.Services.ObservabilityManagementUI, resolved.Manifest.Services.Perses)
 	if hasRemoteApplicationTarget(resolved) {
 		return applicationStatusResult{StatusResult: result, ApplicationID: resolved.Manifest.ApplicationID,
 			DeploymentID: resolved.DeploymentIdentity.DeploymentID,
-			OperatorAuth: collectOperatorAuthObservation(ctx, resolved.Target.Name, resolved.Manifest.Environment)}, nil
+			OperatorAuth: collectOperatorAuthObservation(ctx, resolved.Target.Name, resolved.Manifest.Environment),
+			Perses:       persesStatus,
+			HostContainersDashboards: metricsprovider.PersesHostDashboardAvailability(
+				resolvedHostSignalStatus)}, nil
 	}
 	tlsStatus, tlsObservation, tlsErr := collectApplicationTLSObservation(resolved)
 	if tlsErr != nil || (tlsObservation != nil && !tlsObservation.Healthy) {
@@ -157,7 +171,7 @@ func collectApplicationStatusResult(ctx context.Context, store application.Store
 	var managementUI []application.ManagementUISurface
 	if result.State != "not_applied" {
 		if files, filesErr := application.ExistingRuntimeFiles(resolved.Store, resolved.Manifest); filesErr == nil {
-			managementUI, _ = application.ApplicationManagementUISurfaces(resolved.Manifest, files)
+			managementUI, _, _ = application.ApplicationManagementUISurfaces(resolved.Manifest, files)
 		}
 		if identityUI, identityErr := identityprovider.KeycloakManagementSurfaces(resolved.Manifest, resolved.TargetStateRoot, resolved.Target.Name); identityErr == nil {
 			managementUI = append(managementUI, identityUI...)
@@ -226,19 +240,21 @@ func collectApplicationStatusResult(ctx context.Context, store application.Store
 		}
 	}
 	return applicationStatusResult{
-		StatusResult:    result,
-		ApplicationID:   resolved.Manifest.ApplicationID,
-		DeploymentID:    resolved.DeploymentIdentity.DeploymentID,
-		OperatorAuth:    collectOperatorAuthObservation(ctx, resolved.Target.Name, resolved.Manifest.Environment),
-		Availability:    availabilityResults,
-		TLS:             tlsObservation,
-		ServiceTLS:      serviceTLS,
-		RuntimeArtifact: runtimeArtifact,
-		RuntimeDocsURL:  runtimeDocsURL,
-		ApplicationURLs: applicationAccessURLs(resolved, result.Ready),
-		ManagementUI:    managementUI,
-		tlsStatus:       tlsStatus,
-		tlsErr:          tlsErr,
-		serviceTLSErr:   serviceTLSErr,
+		StatusResult:             result,
+		ApplicationID:            resolved.Manifest.ApplicationID,
+		DeploymentID:             resolved.DeploymentIdentity.DeploymentID,
+		OperatorAuth:             collectOperatorAuthObservation(ctx, resolved.Target.Name, resolved.Manifest.Environment),
+		Availability:             availabilityResults,
+		TLS:                      tlsObservation,
+		ServiceTLS:               serviceTLS,
+		RuntimeArtifact:          runtimeArtifact,
+		RuntimeDocsURL:           runtimeDocsURL,
+		ApplicationURLs:          applicationAccessURLs(resolved, result.Ready),
+		ManagementUI:             managementUI,
+		Perses:                   persesStatus,
+		HostContainersDashboards: metricsprovider.PersesHostDashboardAvailability(resolvedHostSignalStatus),
+		tlsStatus:                tlsStatus,
+		tlsErr:                   tlsErr,
+		serviceTLSErr:            serviceTLSErr,
 	}, nil
 }

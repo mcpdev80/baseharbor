@@ -262,9 +262,6 @@ func (c appProviderChoice) Select(id string) (appProviderChoice, error) {
 		c.PreferredInstanceID = ""
 		return c, nil
 	}
-	if c.BoundInstanceID != "" && id != c.BoundInstanceID {
-		return c, fmt.Errorf("existing binding to %q conflicts with requested instance %q", c.BoundInstanceID, id)
-	}
 	for _, candidate := range c.Candidates {
 		if candidate.Instance.ID == id {
 			c.PreferredInstanceID = id

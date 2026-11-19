@@ -85,6 +85,9 @@ networks:
 	}
 
 	db := got.Files["baseharbor-demo-db.container"]
+	if !strings.Contains(db, "ContainerName=baseharbor-demo-db\n") || got.Containers["db"] != "baseharbor-demo-db" {
+		t.Fatalf("default container identity changed:\n%s", db)
+	}
 	for _, want := range []string{
 		"Image=docker.io/library/postgres:18-alpine",
 		"User=postgres",
@@ -143,6 +146,68 @@ networks:
 		if !strings.Contains(worker, want) {
 			t.Fatalf("worker Quadlet missing %q:\n%s", want, worker)
 		}
+	}
+}
+
+func TestRenderComposeProjectQuadletsPreservesPinnedContainerName(t *testing.T) {
+	compose := filepath.Join(t.TempDir(), "compose.yaml")
+	if err := os.WriteFile(compose, []byte(`services:
+  web:
+    image: docker.io/library/alpine:3.22
+    container_name: linkding-pinned-web
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := RenderComposeProjectQuadlets(compose, "", "baseharbor-pinned")
+	if err != nil {
+		t.Fatal(err)
+	}
+	unit := got.Files["baseharbor-pinned-web.container"]
+	if !strings.Contains(unit, "ContainerName=linkding-pinned-web\n") {
+		t.Fatalf("Quadlet did not preserve Compose container_name:\n%s", unit)
+	}
+	if got.Containers["web"] != "linkding-pinned-web" {
+		t.Fatalf("rendered container identity = %q, want pinned Compose name", got.Containers["web"])
+	}
+}
+
+func TestRenderComposeProjectQuadletMapsExactSupplementaryJournalGroup(t *testing.T) {
+	root := t.TempDir()
+	compose := filepath.Join(root, "compose.yaml")
+	data := `services:
+  alloy:
+    image: grafana/alloy:latest
+    user: "473:473"
+    group_add: ["470"]
+    x-baseharbor-podman-gid-map: "+g470:@999:1"
+    read_only: true
+    volumes:
+      - /var/log/journal:/var/log/journal:ro
+`
+	if err := os.WriteFile(compose, []byte(data), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := RenderComposeProjectQuadlets(compose, "", "baseharbor-logs")
+	if err != nil {
+		t.Fatal(err)
+	}
+	unit := got.Files["baseharbor-logs-alloy.container"]
+	for _, want := range []string{
+		"User=473",
+		"Group=473",
+		"GroupAdd=470",
+		"GIDMap=+g470:@999:1",
+		"ReadOnly=true",
+		"Volume=/var/log/journal:/var/log/journal:ro",
+	} {
+		if !strings.Contains(unit, want) {
+			t.Errorf("Alloy Quadlet missing %q:\n%s", want, unit)
+		}
+	}
+	if strings.Contains(unit, "User=0") || strings.Contains(unit, "GroupAdd=keep-groups") {
+		t.Fatalf("journal access must preserve UID 473 and grant only the journal GID:\n%s", unit)
 	}
 }
 

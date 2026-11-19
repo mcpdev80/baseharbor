@@ -130,6 +130,10 @@ func EnsureProviderFilesForModeAt(ctx context.Context, issuer serviceaccess.Issu
 }
 
 func ensureProviderFilesForModeAt(ctx context.Context, issuer serviceaccess.Issuer, dataDir, namespace string, m application.Manifest, mode bhruntime.LogCollectionMode, storage *objectstorage.PlatformBucket) (ProviderFiles, error) {
+	journalMapping, err := journalGroupMappingForMode(string(mode))
+	if err != nil {
+		return ProviderFiles{}, err
+	}
 	if application.ComponentHA(m, "logs") && storage == nil {
 		return ProviderFiles{}, errors.New("Loki HA requires an explicitly prepared object-storage binding")
 	}
@@ -162,7 +166,7 @@ func ensureProviderFilesForModeAt(ctx context.Context, issuer serviceaccess.Issu
 	if err != nil {
 		return ProviderFiles{}, err
 	}
-	providerSources, err := providerLogSources(p, registrations)
+	providerSources, err := providerLogSources(p, registrations, m.Environment)
 	if err != nil {
 		return ProviderFiles{}, err
 	}
@@ -240,7 +244,7 @@ func ensureProviderFilesForModeAt(ctx context.Context, issuer serviceaccess.Issu
 			return ProviderFiles{}, err
 		}
 	}
-	if err := os.WriteFile(files.Compose, []byte(providerComposeYAMLForModeAndAccess(p, registrations, mode, accessFiles, platformSyslogPort, storageNetwork)), 0o600); err != nil {
+	if err := os.WriteFile(files.Compose, []byte(providerComposeYAMLForModeAndAccess(p, registrations, mode, accessFiles, platformSyslogPort, storageNetwork, journalMapping)), 0o600); err != nil {
 		return ProviderFiles{}, err
 	}
 	return files, nil

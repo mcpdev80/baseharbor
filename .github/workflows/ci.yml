@@ -14,6 +14,8 @@ on:
     branches:
       - develop
       - main
+      # Stacked development PRs target a lane-* branch and receive the same PR CI.
+      - 'lane-*'
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -137,7 +139,7 @@ jobs:
           mkdocs build --strict --config-file mkdocs.de.yml
           bash scripts/documentation-audit.sh
 
-      - name: Validate v0.4.21 release readiness
+      - name: Validate release readiness
         shell: bash
         run: bash scripts/v0.4.21-readiness.sh
 
@@ -422,11 +424,12 @@ jobs:
         run: bash scripts/ci-runtime-reset.sh docker
 
   pr_native_impact:
-    name: PR · Native impact selection
-    if: github.event_name == 'pull_request' && github.base_ref == 'develop' && github.event.pull_request.draft == false
+    name: PR · Native gate plan
+    if: github.event_name == 'pull_request' && (github.base_ref == 'develop' || startsWith(github.base_ref, 'lane-')) && github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     outputs:
       required: ${{ steps.select.outputs.required }}
+      matrix: ${{ steps.select.outputs.matrix }}
     steps:
       - name: Checkout trusted develop policy
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -440,35 +443,47 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_REF: ${{ github.base_ref }}
         run: |
           set -euo pipefail
           git fetch --no-tags origin "$HEAD_SHA"
-          changed="$(git diff --name-only --diff-filter=ACDMRT "$BASE_SHA" "$HEAD_SHA")"
-          required="$(printf '%s\n' "$changed" | bash scripts/ci-single-default-impact.sh)"
-          # Conservative fallback: unknown CLI source edits must run rather than silently skip.
-          if [ "$required" != true ] && printf '%s\n' "$changed" | grep -Eq '^cmd/baha/.*\.go$'; then
-            required=true
+          git diff --name-only --diff-filter=ACDMRT "$BASE_SHA" "$HEAD_SHA" > "$RUNNER_TEMP/changed-paths"
+          if git cat-file -e "$BASE_SHA:scripts/pr-native-gate-plan.py" 2>/dev/null; then
+            git show "$BASE_SHA:scripts/pr-native-gate-plan.py" > "$RUNNER_TEMP/pr-native-gate-plan.py"
+            git show "$BASE_SHA:scripts/validate-pr-gate-coverage.py" > "$RUNNER_TEMP/validate-pr-gate-coverage.py"
+            git show "$BASE_SHA:scripts/pr-gate-coverage.json" > "$RUNNER_TEMP/pr-gate-coverage.json"
+            git show "$BASE_SHA:scripts/release-requirements.json" > "$RUNNER_TEMP/release-requirements.json"
+            matrix="$(python3 "$RUNNER_TEMP/pr-native-gate-plan.py" \
+              --changed-paths-file "$RUNNER_TEMP/changed-paths" \
+              --coverage "$RUNNER_TEMP/pr-gate-coverage.json" \
+              --requirements "$RUNNER_TEMP/release-requirements.json")"
+          else
+            matrix='{"include":[]}'
+            echo "::warning::The PR base ($BASE_REF) does not contain the trusted native gate planner; no native runtime checks can be selected yet."
+            echo "Warning: native gate planner missing from base $BASE_REF; native runtime checks were not selected." >> "$GITHUB_STEP_SUMMARY"
           fi
+          required="$(python3 -c 'import json,sys; print("true" if json.load(sys.stdin)["include"] else "false")' <<< "$matrix")"
           echo "required=$required" >> "$GITHUB_OUTPUT"
-          echo "Native runtime acceptance required: $required" >> "$GITHUB_STEP_SUMMARY"
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+          {
+            echo "Native gates selected: $required"
+            echo '```json'
+            echo "$matrix"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
-  pr_native_destroy:
-    name: PR · Native destroy retry · ${{ matrix.runtime }}
+  pr_native_selected:
+    name: PR · Native · ${{ matrix.id }}
     needs: pr_native_impact
-    if: github.event_name == 'pull_request' && github.base_ref == 'develop' && github.event.pull_request.draft == false && needs.pr_native_impact.outputs.required == 'true'
+    if: github.event_name == 'pull_request' && (github.base_ref == 'develop' || startsWith(github.base_ref, 'lane-')) && github.event.pull_request.draft == false && needs.pr_native_impact.outputs.required == 'true'
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - runtime: docker
-            runner: ubuntu-latest
-          - runtime: podman
-            runner: ubuntu-26.04
-    runs-on: ${{ matrix.runner }}
+      matrix: ${{ fromJSON(needs.pr_native_impact.outputs.matrix) }}
+    runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
     timeout-minutes: 45
     env:
       BASEHARBOR_TEST_RUNTIME: ${{ matrix.runtime }}
-      BASEHARBOR_SINGLE_DEFAULT_NATIVE_ACCEPTANCE: "1"
+      NATIVE_GATE_ID: ${{ matrix.id }}
     steps:
       - name: Checkout exact PR integration candidate
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -484,87 +499,19 @@ jobs:
         run: bash scripts/ci-core-rootless-runtime.sh
       - name: Install verified ORAS for native Core bootstrap
         run: bash scripts/ci-install-oras.sh
-      - name: Verify actual native destroy and retry, fail on SKIP
+      - name: Run selected native gate
         shell: bash
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          bash scripts/ci-native-installation-destroy.sh
-      - name: Prove Greenfield Core and relevant remote onboarding on actual engine
-        env:
-          BASEHARBOR_GREENFIELD_NATIVE_ACCEPTANCE: "1"
-          BASEHARBOR_CI_RUNTIME_INTEGRATION: "1"
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          git fetch --no-tags origin "$BASE_SHA" "$HEAD_SHA"
-          test_regex='^TestGreenfieldIsolatedCoreNativeInCI$'
-          onboarding_required=false
-          if git diff --name-only --diff-filter=ACMRT "$BASE_SHA" "$HEAD_SHA" | grep -Eq '^(cmd/baha/(onboarding|serve_managed_tls|workstation_|management_remote_)|internal/(onboardingbundle/|workstationenrollment/|controlplaneruntime/workstation_auth))'; then
-            onboarding_required=true
-            export BASEHARBOR_ONBOARDING_NATIVE_ACCEPTANCE=1
-            test_regex='^(TestGreenfieldIsolatedCoreNativeInCI|TestWorkstationOnboardingRemoteNativeInCI)$'
-          fi
-          if [ "$onboarding_required" = true ]; then
-            go build -o "$RUNNER_TEMP/baha-onboarding-native" ./cmd/baha
-            export BASEHARBOR_CI_BAHA_BINARY="$RUNNER_TEMP/baha-onboarding-native"
-          fi
-          if ! go test -p 1 ./cmd/baha -run "$test_regex" -count=1 -timeout 20m -json | tee greenfield.jsonl; then
-            if [ "$onboarding_required" = true ]; then
-              journalctl --user --no-pager -o cat -n 800 2>/dev/null | grep 'baseharbor-workstation-enroll:' | tail -n 12 || true
-            fi
-            exit 1
-          fi
-          git rev-parse HEAD > greenfield.jsonl.sha
-          if [ "$onboarding_required" = true ]; then
-            python3 scripts/ci-onboarding-native-proof.py --input greenfield.jsonl --test TestWorkstationOnboardingRemoteNativeInCI
-          fi
-      - name: Publish exact Greenfield report
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: greenfield-proof-${{ matrix.runtime }}
-          path: |
-            greenfield.jsonl
-            greenfield.jsonl.sha
-          if-no-files-found: error
-          retention-days: 1
+          bash scripts/ci-native-pr-gate.sh "$NATIVE_GATE_ID"
       - name: Cleanup native runtime
         if: always()
         run: bash scripts/ci-runtime-reset.sh "${{ matrix.runtime }}"
 
-  pr_native_greenfield_proof:
-    name: PR · Native Greenfield two-engine proof
-    needs: [pr_native_impact, pr_native_destroy]
-    if: github.event_name == 'pull_request' && github.base_ref == 'develop' && github.event.pull_request.draft == false && needs.pr_native_impact.outputs.required == 'true' && needs.pr_native_destroy.result == 'success'
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ github.sha }}
-          persist-credentials: false
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
-        with:
-          name: greenfield-proof-docker
-          path: greenfield/docker
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
-        with:
-          name: greenfield-proof-podman
-          path: greenfield/podman
-      - name: Verify both exact-head native reports and teardown
-        shell: bash
-        run: |
-          set -euo pipefail
-          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          python3 scripts/ci-greenfield-isolation-proof.py --sha "$GITHUB_SHA" --docker greenfield/docker/greenfield.jsonl --podman greenfield/podman/greenfield.jsonl
-
   source_format:
     name: PR · Source format
-    if: github.event_name == 'pull_request' && github.base_ref == 'develop' && github.event.pull_request.draft == false
+    if: github.event_name == 'pull_request' && (github.base_ref == 'develop' || startsWith(github.base_ref, 'lane-')) && github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -602,9 +549,166 @@ jobs:
           fi
           bash scripts/source-readability-audit.sh
 
+  main_release_source:
+    name: PR · Main release source
+    if: github.event_name == 'pull_request' && github.base_ref == 'main' && github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: '3.14'
+      - name: Install documentation validation dependencies
+        run: python -m pip install --disable-pip-version-check -r requirements-docs.txt
+      - name: Check source format, readability, and build
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
+          files="$(gofmt -l cmd internal spec contracts)"
+          test -z "$files" || { echo "$files" >&2; exit 1; }
+          bash scripts/source-readability-audit.sh
+          go build ./...
+          go vet ./...
+      - name: Run all discovered Python validation tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t tests < <(find scripts -maxdepth 1 -type f -name 'test_*.py' -print | sort)
+          test "${#tests[@]}" -gt 0
+          for test_file in "${tests[@]}"; do
+            python3 "$test_file"
+          done
+      - name: Validate documentation
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdocs build --strict --config-file mkdocs.yml
+          mkdocs build --strict --config-file mkdocs.de.yml
+          bash scripts/documentation-audit.sh
+
+  main_release_go_shards:
+    name: PR · Main release Go · ${{ matrix.shard }}
+    if: github.event_name == 'pull_request' && github.base_ref == 'main' && github.event.pull_request.draft == false
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [cli-0, cli-1, cli-2, cli-3, packages, owner]
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Execute discovered Go tests in canonical shards with isolated PostgreSQL
+        run: bash scripts/pr-unit-database.sh "${{ matrix.shard }}"
+
+  main_release_selected:
+    name: PR · Main release checks
+    needs: [workflow_policy, main_release_source, main_release_go_shards, main_release_prerelease]
+    if: always() && github.event_name == 'pull_request' && github.base_ref == 'main' && github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require all main-target release checks
+        env:
+          POLICY: ${{ needs.workflow_policy.result }}
+          SOURCE: ${{ needs.main_release_source.result }}
+          GO_SHARDS: ${{ needs.main_release_go_shards.result }}
+          PRE_RELEASE: ${{ needs.main_release_prerelease.result }}
+          PRE_RELEASE_REQUIRED: ${{ startsWith(github.head_ref, 'release/') }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$POLICY" = success
+          test "$SOURCE" = success
+          test "$GO_SHARDS" = success
+          if [ "$PRE_RELEASE_REQUIRED" = true ]; then
+            test "$PRE_RELEASE" = success
+          else
+            test "$PRE_RELEASE" = skipped
+          fi
+
+  main_release_prerelease:
+    name: PR · Exact full Pre-Release
+    if: github.event_name == 'pull_request' && github.base_ref == 'main' && startsWith(github.head_ref, 'release/') && github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Wait for and verify the exact full Pre-Release run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+          EXPECTED_BRANCH: ${{ github.head_ref }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 170); do
+            runs="$(gh api "repos/$REPOSITORY/actions/workflows/pre-release.yml/runs?head_sha=$EXPECTED_HEAD&per_page=100")"
+            run_id="$(jq -r --arg sha "$EXPECTED_HEAD" --arg branch "$EXPECTED_BRANCH" '
+              [.workflow_runs[] | select(.event == "push" and .head_sha == $sha and .head_branch == $branch)] | first | .id // empty
+            ' <<< "$runs")"
+            if [ -z "$run_id" ]; then
+              echo "No Pre-Release dispatch for exact PR head $EXPECTED_HEAD yet; waiting."
+              sleep 120
+              continue
+            fi
+            run="$(gh api "repos/$REPOSITORY/actions/runs/$run_id")"
+            status="$(jq -r '.status' <<< "$run")"
+            conclusion="$(jq -r '.conclusion // ""' <<< "$run")"
+            if [ "$status" != completed ]; then
+              echo "Exact Pre-Release run $run_id is $status; waiting."
+              sleep 120
+              continue
+            fi
+            if [ "$conclusion" != success ]; then
+              echo "Exact Pre-Release run $run_id concluded $conclusion." >&2
+              exit 1
+            fi
+            jobs="$(gh api "repos/$REPOSITORY/actions/runs/$run_id/jobs?per_page=100")"
+            for required in \
+              'Source · Candidate and Gate Plan' \
+              'runtime light gates · All runtime results' \
+              'runtime heavy gates · All runtime results' \
+              'HA groups · All runtime results' \
+              'Greenfield · Docker + Podman · All built-in stacks' \
+              'Pre-Release Checks'; do
+              matches="$(jq -r --arg name "$required" '[.jobs[] | select(.name == $name)] | length' <<< "$jobs")"
+              test "$matches" = 1 || { echo "Expected exactly one required job: $required" >&2; exit 1; }
+              result="$(jq -r --arg name "$required" '.jobs[] | select(.name == $name) | .conclusion // ""' <<< "$jobs")"
+              test "$result" = success || { echo "$required concluded $result" >&2; exit 1; }
+            done
+            echo "Full Pre-Release run $run_id passed for exact head $EXPECTED_HEAD."
+            exit 0
+          done
+          echo "Timed out waiting for a successful full Pre-Release run on $EXPECTED_HEAD." >&2
+          exit 1
+
   pr_plan:
     name: PR · Trusted Plan
-    if: github.event_name == 'pull_request' && github.base_ref == 'develop' && github.event.pull_request.draft == false
+    if: github.event_name == 'pull_request' && (github.base_ref == 'develop' || startsWith(github.base_ref, 'lane-')) && github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     timeout-minutes: 8
     permissions:
@@ -617,11 +721,14 @@ jobs:
       consumer_mode: ${{ steps.plan.outputs.consumer_mode }}
       runtime_matrix: ${{ steps.incremental.outputs.runtime_matrix || steps.plan.outputs.runtime_matrix }}
       runtime_required: ${{ steps.plan.outputs.runtime_required }}
+      integration_matrix: ${{ steps.plan.outputs.integration_matrix }}
+      integration_required: ${{ steps.plan.outputs.integration_required }}
       owner_node_required: ${{ steps.owner_node.outputs.required }}
       demo_ref: ${{ steps.demo_source.outputs.sha }}
       public_contracts_required: ${{ steps.plan.outputs.public_contracts_required }}
       trusted_base_sha: ${{ steps.plan.outputs.trusted_base_sha }}
       controller_sha: ${{ steps.plan.outputs.controller_sha }}
+      candidate_advisory_required: ${{ steps.plan.outputs.candidate_advisory_required }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -650,11 +757,18 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           INTEGRATION_SHA: ${{ github.sha }}
-          MIGRATION_CONTROLLER: a6756c5cd0f2a8ec43b0b7f777bf215bff2b9248
+          BASE_REF: ${{ github.base_ref }}
+          # Merged lane-compatible planner; old lane bases fall back to this immutable commit.
+          MIGRATION_CONTROLLER: 85965486154284d4ae7974573f504002335d4523
         run: |
           set -euo pipefail
-          git fetch --no-tags origin "$BASE_SHA" "$HEAD_SHA" "$INTEGRATION_SHA" refs/heads/develop:refs/remotes/origin/pr-target-tip
-          target_tip="$(git rev-parse refs/remotes/origin/pr-target-tip)"
+          git fetch --no-tags origin "$BASE_SHA" "$HEAD_SHA" "$INTEGRATION_SHA"
+          if [ "$BASE_REF" = develop ]; then
+            git fetch --no-tags origin refs/heads/develop:refs/remotes/origin/pr-target-tip
+            target_tip="$(git rev-parse refs/remotes/origin/pr-target-tip)"
+          else
+            target_tip="$BASE_SHA"
+          fi
           # Bootstrap only from the candidate's base parent after proving it
           # belongs to the fetched target history and follows the event base.
           # The event base itself may predate the current resolver interface.
@@ -678,6 +792,17 @@ jobs:
           else
             python3 scripts/pr-diff-base.py --target-base "$effective_base" --head "$HEAD_SHA" --integration "$INTEGRATION_SHA" > "$RUNNER_TEMP/pr-diff.json"
           fi
+          candidate_advisory_required="$(python3 - "$RUNNER_TEMP/pr-diff.json" <<'PYTHON'
+          import json
+          import sys
+          plan = json.load(open(sys.argv[1]))
+          paths = {change[key] for change in plan.get('changes', [])
+                   for key in ('path', 'old_path', 'new_path') if key in change}
+          print(str(any(path.startswith('.github/workflows/') or path.startswith('scripts/')
+                        for path in paths)).lower())
+          PYTHON
+          )"
+          echo "candidate_advisory_required=$candidate_advisory_required" >> "$GITHUB_OUTPUT"
           # One immutable, locally checked controller deploys the simplification.
           # Once merged, ordinary trusted-target policy is used automatically.
           git fetch --no-tags origin "$MIGRATION_CONTROLLER"
@@ -686,7 +811,9 @@ jobs:
             controller="$MIGRATION_CONTROLLER"
           fi
           echo "controller_sha=$controller" >> "$GITHUB_OUTPUT"
-          git show "$controller:scripts/pr-gate-plan.py" > "$RUNNER_TEMP/pr-gate-plan.py"
+          for policy_file in pr-gate-plan.py validate-pr-gate-coverage.py pr-gate-coverage.json; do
+            git show "$controller:scripts/$policy_file" > "$RUNNER_TEMP/$policy_file"
+          done
           git show "$controller:scripts/pr-check-runner.py" > "$RUNNER_TEMP/pr-check-runner.py"
           python3 "$RUNNER_TEMP/pr-gate-plan.py" --diff "$RUNNER_TEMP/pr-diff.json" --requirements scripts/release-requirements.json --mapping scripts/pr-gate-map-v1.json > pr-plan.json
           python3 -c 'import json; p=json.load(open("pr-plan.json")); print("::warning::No narrow mapping: conservative checks selected.") if p.get("fallback_used") else None'
@@ -704,10 +831,12 @@ jobs:
           # Cross-repository dependencies remain recorded in pr-plan.json, but
           # cannot gate independent PR merges. develop/release owns integration.
           echo "consumer_mode=none" >> "$GITHUB_OUTPUT"
-          git fetch --no-tags origin 45500525aa65957a22e6076ac28fe5cb6c6f9610
-          git show 45500525aa65957a22e6076ac28fe5cb6c6f9610:scripts/pr-selected-runtime-matrix.py > "$RUNNER_TEMP/pr-selected-runtime-matrix.py"
+          git show "$controller:scripts/pr-selected-runtime-matrix.py" > "$RUNNER_TEMP/pr-selected-runtime-matrix.py"
           python3 "$RUNNER_TEMP/pr-selected-runtime-matrix.py" --plan pr-plan.json --requirements scripts/release-requirements.json > "$RUNNER_TEMP/pr-runtime-matrix.json"
           echo "runtime_matrix=$(python3 -c 'import json,sys; print(json.dumps({"include":json.load(open(sys.argv[1]))["include"]},separators=(",",":")))' "$RUNNER_TEMP/pr-runtime-matrix.json")" >> "$GITHUB_OUTPUT"
+          echo "integration_matrix=$(python3 -c 'import json,sys; p=json.load(open(sys.argv[1])); print(json.dumps({"include":p.get("integration_include",[{"id":"not-required","runtime":"static","gate":"not-required"}])},separators=(",",":")))' "$RUNNER_TEMP/pr-runtime-matrix.json")" >> "$GITHUB_OUTPUT"
+          integration_required="$(python3 -c 'import json,sys; print("true" if json.load(open(sys.argv[1])).get("integration_required",False) else "false")' "$RUNNER_TEMP/pr-runtime-matrix.json")"
+          echo "integration_required=$integration_required" >> "$GITHUB_OUTPUT"
           # Bootstrap only from this immutable Maintainer-authored commit until
           # pr-stage-boundary.py is in trusted develop. Never execute a PR copy.
           stage_controller="$controller"
@@ -717,10 +846,13 @@ jobs:
           fi
           git show "$stage_controller:scripts/pr-stage-boundary.py" > "$RUNNER_TEMP/pr-stage-boundary.py"
           python3 "$RUNNER_TEMP/pr-stage-boundary.py" --plan pr-plan.json
-          # PR results require all self-contained validations, not the
-          # cross-repo gates. Those remain visible as deferred integration.
-          echo "runtime_required=false" >> "$GITHUB_OUTPUT"
+          # Dispatch only the supported atomic runtime gates resolved by the
+          # trusted planner. Unsupported integration gates remain deferred.
+          runtime_required="$(python3 -c 'import json,sys; print("true" if json.load(open(sys.argv[1]))["required"] else "false")' "$RUNNER_TEMP/pr-runtime-matrix.json")"
+          echo "runtime_required=$runtime_required" >> "$GITHUB_OUTPUT"
           echo "public_contracts_required=false" >> "$GITHUB_OUTPUT"
+      - name: Preserve exact verified diff for advisory candidate checks
+        run: cp "$RUNNER_TEMP/pr-diff.json" pr-diff.json
       - name: Pin immutable Demo source for safe native result reuse
         id: demo_source
         env:
@@ -729,7 +861,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [ "${{ steps.plan.outputs.runtime_required }}" != true ] && [ "${{ steps.plan.outputs.public_contracts_required }}" != true ]; then
+          if [ "${{ steps.plan.outputs.runtime_required }}" != true ] && [ "${{ steps.plan.outputs.integration_required }}" != true ] && [ "${{ steps.plan.outputs.public_contracts_required }}" != true ]; then
             echo "sha=" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -770,8 +902,10 @@ jobs:
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: trusted-pr-plan
-          path: pr-plan.json
-          retention-days: 30
+          path: |
+            pr-plan.json
+            pr-diff.json
+          retention-days: 7
 
       - name: Route only required Go tests into mandatory parallel shards
         id: unit_split
@@ -836,7 +970,7 @@ jobs:
   pr_runner_interface:
     name: PR · Runner Interface
     needs: pr_plan
-    if: github.event_name == 'pull_request' && github.base_ref == 'develop' && github.event.pull_request.draft == false && needs.pr_plan.outputs.runtime_required == 'true'
+    if: github.event_name == 'pull_request' && (github.base_ref == 'develop' || startsWith(github.base_ref, 'lane-')) && github.event.pull_request.draft == false && needs.pr_plan.outputs.runtime_required == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -860,7 +994,7 @@ jobs:
     needs: pr_plan
     outputs:
       demo_ref: ${{ steps.resolve.outputs.demo_ref }}
-    if: github.event_name == 'pull_request' && github.base_ref == 'develop' && github.event.pull_request.draft == false && needs.pr_plan.outputs.consumer_mode == 'ecosystem'
+    if: github.event_name == 'pull_request' && (github.base_ref == 'develop' || startsWith(github.base_ref, 'lane-')) && github.event.pull_request.draft == false && needs.pr_plan.outputs.consumer_mode == 'ecosystem'
     runs-on: ubuntu-latest
     timeout-minutes: 8
     permissions:
@@ -885,14 +1019,14 @@ jobs:
           name: pr-consumer-pins
           path: ${{ runner.temp }}/pr-consumer-pins.json
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 7
 
   pr_demo_pin:
     name: PR · Demo Pin
     needs: pr_plan
     outputs:
       demo_ref: ${{ steps.verify.outputs.demo_ref }}
-    if: github.event_name == 'pull_request' && github.base_ref == 'develop' && github.event.pull_request.draft == false && (needs.pr_plan.outputs.runtime_required == 'true' || needs.pr_plan.outputs.public_contracts_required == 'true')
+    if: github.event_name == 'pull_request' && (github.base_ref == 'develop' || startsWith(github.base_ref, 'lane-')) && github.event.pull_request.draft == false && (needs.pr_plan.outputs.runtime_required == 'true' || needs.pr_plan.outputs.integration_required == 'true' || needs.pr_plan.outputs.public_contracts_required == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 8
     permissions:
@@ -930,12 +1064,12 @@ jobs:
           name: verified-pr-demo-pin
           path: ${{ runner.temp }}/verified-demo.sha
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 7
 
   pr_candidate:
     name: PR · Exact Candidate
     needs: pr_plan
-    if: github.event_name == 'pull_request' && github.base_ref == 'develop' && github.event.pull_request.draft == false && needs.pr_plan.outputs.runtime_required == 'true' && github.event.pull_request.user.id == github.event.repository.owner.id && github.event.pull_request.head.repo.id == github.event.repository.id
+    if: github.event_name == 'pull_request' && (github.base_ref == 'develop' || startsWith(github.base_ref, 'lane-')) && github.event.pull_request.draft == false && needs.pr_plan.outputs.runtime_required == 'true' && github.event.pull_request.user.id == github.event.repository.owner.id && github.event.pull_request.head.repo.id == github.event.repository.id
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -969,12 +1103,43 @@ jobs:
           name: pr-exact-candidate-${{ github.event.pull_request.head.sha }}
           path: ${{ runner.temp }}/pr-exact-candidate
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 7
+
+  pr_candidate_advisory:
+    name: PR · Candidate-added checks (advisory)
+    needs: pr_plan
+    if: github.event_name == 'pull_request' && (github.base_ref == 'develop' || startsWith(github.base_ref, 'lane-')) && github.event.pull_request.draft == false && needs.pr_plan.outputs.candidate_advisory_required == 'true'
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: trusted-pr-plan
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Run candidate-added validation checks outside the required plan
+        shell: bash
+        run: >-
+          python3 scripts/pr-candidate-advisory.py
+          --base-plan pr-plan.json
+          --diff pr-diff.json
+          --repository .
+          --summary "$GITHUB_STEP_SUMMARY"
 
   pr_focused:
     name: PR · Focused Python
     needs: pr_plan
-    if: github.event_name == 'pull_request' && github.base_ref == 'develop' && github.event.pull_request.draft == false
+    if: github.event_name == 'pull_request' && (github.base_ref == 'develop' || startsWith(github.base_ref, 'lane-')) && github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -1002,10 +1167,11 @@ jobs:
           python3 scripts/test_pr_go_unit_shard.py
           python3 scripts/test_pr_runtime_source.py
           python3 scripts/test_pr_gate_dependencies.py
+          python3 scripts/test_pr_native_gate_plan.py
           python3 scripts/test_pr_incremental_reuse.py
           python3 scripts/test_pr_draft_go_packages.py
           python3 scripts/test_pr_runtime_workflow_shape.py
-          git fetch --no-tags origin 45500525aa65957a22e6076ac28fe5cb6c6f9610
+          git fetch --no-tags origin 088f6ef41144a0aeecbcff2586ba57cff9597608
           python3 scripts/test_pr_selected_runtime_matrix.py
           python3 scripts/test_ecosystem_release_pins.py
           python3 scripts/test_develop_ecosystem_source.py
@@ -1016,7 +1182,7 @@ jobs:
   pr_unit_shards:
     name: PR · Go unit · ${{ matrix.shard }}
     needs: pr_plan
-    if: github.event_name == 'pull_request' && github.base_ref == 'develop' && github.event.pull_request.draft == false && needs.pr_plan.outputs.unit_scope != 'none'
+    if: github.event_name == 'pull_request' && (github.base_ref == 'develop' || startsWith(github.base_ref, 'lane-')) && github.event.pull_request.draft == false && needs.pr_plan.outputs.unit_scope != 'none'
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.pr_plan.outputs.unit_matrix) }}
@@ -1039,7 +1205,7 @@ jobs:
   pr_validations:
     name: PR · Validation · ${{ matrix.check }}
     needs: pr_plan
-    if: github.event_name == 'pull_request' && github.base_ref == 'develop' && github.event.pull_request.draft == false
+    if: github.event_name == 'pull_request' && (github.base_ref == 'develop' || startsWith(github.base_ref, 'lane-')) && github.event.pull_request.draft == false
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.pr_plan.outputs.matrix) }}
@@ -1128,12 +1294,12 @@ jobs:
             resolver-vet) go vet ./internal/runtime/resolver/ ;;
             resolver-consumer-build) go build -o "$RUNNER_TEMP/baha-resolver" ./cmd/baha ;;
             pr-planner-tests)
-              python3 -m unittest scripts/test_pr_gate_plan.py ;;
+              python3 -m unittest scripts/test_pr_gate_plan.py scripts/test_pre_release_runtime_reuse.py ;;
             ci-policy) bash scripts/ci-workflow-policy.sh ;;
             ci-actionlint) go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -shellcheck= ;;
             ci-executor-tests|authority-package-tests|delivery-package-tests|deployment-package-tests|broker-package-tests|cli-package-tests|identity-provider-package-tests)
               if [ "$VALIDATION" = ci-executor-tests ]; then
-                git fetch --no-tags origin 45500525aa65957a22e6076ac28fe5cb6c6f9610
+                git fetch --no-tags origin 088f6ef41144a0aeecbcff2586ba57cff9597608
               fi
               git fetch --no-tags origin "$BASE_SHA"
               git show "$BASE_SHA":scripts/pr-check-runner.py > "$RUNNER_TEMP/pr-check-runner.py"
@@ -1161,7 +1327,7 @@ jobs:
   pr_public_contracts:
     name: PR · Public Contracts
     needs: [pr_plan, pr_demo_pin]
-    if: always() && github.event_name == 'pull_request' && github.base_ref == 'develop' && github.event.pull_request.draft == false && needs.pr_plan.outputs.public_contracts_required == 'true' && needs.pr_demo_pin.result == 'success'
+    if: always() && github.event_name == 'pull_request' && (github.base_ref == 'develop' || startsWith(github.base_ref, 'lane-')) && github.event.pull_request.draft == false && needs.pr_plan.outputs.public_contracts_required == 'true' && needs.pr_demo_pin.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -1192,10 +1358,9 @@ jobs:
   pr_runtime_selected:
     name: PR · Selected Runtime
     needs: [pr_plan, pr_candidate, pr_demo_pin, pr_consumer_pins, pr_runner_interface]
-    if: always() && github.event_name == 'pull_request' && github.base_ref == 'develop' && github.event.pull_request.draft == false && needs.pr_plan.outputs.runtime_required == 'true' && needs.pr_candidate.result == 'success' && needs.pr_runner_interface.result == 'success' && (needs.pr_demo_pin.result == 'success' || needs.pr_consumer_pins.result == 'success')
+    if: always() && github.event_name == 'pull_request' && (github.base_ref == 'develop' || startsWith(github.base_ref, 'lane-')) && github.event.pull_request.draft == false && needs.pr_plan.outputs.runtime_required == 'true' && needs.pr_candidate.result == 'success' && needs.pr_runner_interface.result == 'success' && (needs.pr_demo_pin.result == 'success' || needs.pr_consumer_pins.result == 'success')
     strategy:
       fail-fast: false
-      max-parallel: 2
       matrix: ${{ fromJSON(needs.pr_plan.outputs.runtime_matrix) }}
     uses: ./.github/workflows/pre-release-runtime-suite.yml
     permissions:
@@ -1209,10 +1374,27 @@ jobs:
       candidate_artifact: pr-exact-candidate-${{ github.event.pull_request.head.sha }}
       reuse_from: ${{ matrix.reuse_from || '' }}
 
+  pr_selected_integration:
+    name: PR · Selected Core-less · ${{ matrix.runtime }}
+    needs: [pr_plan, pr_demo_pin]
+    if: always() && github.event_name == 'pull_request' && (github.base_ref == 'develop' || startsWith(github.base_ref, 'lane-')) && github.event.pull_request.draft == false && needs.pr_plan.outputs.integration_required == 'true' && needs.pr_plan.result == 'success' && needs.pr_demo_pin.result == 'success'
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.pr_plan.outputs.integration_matrix) }}
+    uses: ./.github/workflows/targeted-integration.yml
+    permissions:
+      contents: read
+    with:
+      gate: ${{ matrix.id }}
+      ref: ${{ github.sha }}
+      runtime: ${{ matrix.runtime }}
+      demo_ref: ${{ needs.pr_demo_pin.outputs.demo_ref }}
+      tag: pr-${{ github.event.pull_request.number }}
+
   pr_owner_node_native:
     name: PR · Native Keycloak/Core · ${{ matrix.runtime }}
     needs: [pr_plan]
-    if: github.event_name == 'pull_request' && github.base_ref == 'develop' && github.event.pull_request.draft == false && needs.pr_plan.outputs.owner_node_required == 'true'
+    if: github.event_name == 'pull_request' && (github.base_ref == 'develop' || startsWith(github.base_ref, 'lane-')) && github.event.pull_request.draft == false && needs.pr_plan.outputs.owner_node_required == 'true'
     runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
     timeout-minutes: 48
     strategy:
@@ -1246,10 +1428,12 @@ jobs:
         if: always()
         run: bash scripts/ci-runtime-reset.sh ${{ matrix.runtime }}
 
+  # Keep candidate-added/advisory jobs out of this dependency list. The base
+  # plan alone defines the jobs that can block PR Selected Checks.
   pr_selected_final:
     name: PR Selected Checks
-    needs: [workflow_policy, source_format, pr_plan, pr_focused, pr_validations, pr_candidate, pr_consumer_pins, pr_demo_pin, pr_runner_interface, pr_runtime_selected, pr_public_contracts, pr_owner_node_native, pr_native_impact, pr_native_destroy, pr_native_greenfield_proof, pr_unit_shards]
-    if: always() && github.event_name == 'pull_request' && github.base_ref == 'develop' && github.event.pull_request.draft == false
+    needs: [workflow_policy, source_format, pr_plan, pr_focused, pr_validations, pr_candidate, pr_consumer_pins, pr_demo_pin, pr_runner_interface, pr_runtime_selected, pr_selected_integration, pr_public_contracts, pr_owner_node_native, pr_native_impact, pr_native_selected, pr_unit_shards]
+    if: always() && github.event_name == 'pull_request' && (github.base_ref == 'develop' || startsWith(github.base_ref, 'lane-')) && github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -1269,7 +1453,7 @@ jobs:
         env:
           NATIVE_SELECTION: ${{ needs.pr_native_impact.result }}
           NATIVE_REQUIRED: ${{ needs.pr_native_impact.outputs.required }}
-          NATIVE_RESULT: ${{ needs.pr_native_destroy.result }}
+          NATIVE_RESULT: ${{ needs.pr_native_selected.result }}
         run: |
           set -euo pipefail
           test "$NATIVE_SELECTION" = success
@@ -1344,7 +1528,7 @@ jobs:
 
   pr_draft_focused:
     name: PR · Draft source and routing
-    if: github.event_name == 'pull_request' && github.base_ref == 'develop' && github.event.pull_request.draft == true
+    if: github.event_name == 'pull_request' && (github.base_ref == 'develop' || startsWith(github.base_ref, 'lane-')) && github.event.pull_request.draft == true
     runs-on: ubuntu-latest
     timeout-minutes: 12
     permissions:
@@ -1398,7 +1582,7 @@ jobs:
 
   pr_draft_go_shards:
     name: PR · Draft Go · ${{ matrix.shard }}
-    if: github.event_name == 'pull_request' && github.base_ref == 'develop' && github.event.pull_request.draft == true
+    if: github.event_name == 'pull_request' && (github.base_ref == 'develop' || startsWith(github.base_ref, 'lane-')) && github.event.pull_request.draft == true
     strategy:
       fail-fast: false
       matrix:

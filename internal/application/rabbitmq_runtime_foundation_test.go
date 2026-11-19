@@ -30,7 +30,7 @@ func TestRabbitMQRuntimeFoundationIsApplicationScopedAndPersistent(t *testing.T)
 		t.Fatalf("RabbitMQ placement = %#v", placement)
 	}
 
-	compose, err := RuntimeComposeYAMLForProject(m, "bh-events")
+	compose, err := RuntimeComposeYAMLForProject(m, RuntimeFiles{ResourceProject: "bh-events"})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -61,7 +61,7 @@ func ProjectManagedRuntime(files RuntimeFiles, m Manifest) (ManagedRuntimeProjec
 	if !remoteRuntimeProjectName.MatchString(resourceProject) {
 		return ManagedRuntimeProjection{}, errors.New("invalid Core resource project identity")
 	}
-	expected, err := RuntimeComposeYAMLForProject(m, resourceProject)
+	expected, err := RuntimeComposeYAMLForProject(m, files)
 	if err != nil {
 		return ManagedRuntimeProjection{}, err
 	}
