@@ -67,9 +67,6 @@ func TestPersesProductionComposeIsGatewayOnlyExposure(t *testing.T) {
 			t.Fatalf("regression (a): the gateway may only publish on loopback, got %q", published)
 		}
 	}
-	// The legacy direct-publish writer must have no production caller left
-	// (B1): this is the grep-witness encoded as a test.
-	t.Helper()
 }
 
 // TestPersesProductionComposeFailsClosedWithoutKeyMaterial is regression (b):
