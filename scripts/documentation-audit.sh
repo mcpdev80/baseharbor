@@ -159,7 +159,7 @@ done
 python scripts/check_docs_locale_parity.py
 python scripts/check_de_translation_integrity.py
 python scripts/check_local_remote_team_workflow.py
-python3 scripts/test_ci_consumption_examples.py
+python3 scripts/ci_consumption_examples_test.py
 
 if [ -d site/de ]; then
   python scripts/documentation-language-audit.py --built-site
