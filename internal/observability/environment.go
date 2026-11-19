@@ -37,6 +37,15 @@ func SourceEnvironment(source SignalSource) (environment string, ok bool) {
 			return env, true
 		}
 	}
+	// application-scoped logs: explicit environment segment in the log ID grammar
+	// (application:logs:<app>:<env>:<service>). Without this the central
+	// environment filter drops every class-application log source, because an
+	// app-scoped source with an unresolvable environment fails closed.
+	if source.Class == SourceApplication && source.Kind == SignalLogs {
+		if env, derived := applicationLogSourceEnvironment(source.ID); derived {
+			return env, true
+		}
+	}
 	// application-scoped providers: trailing project token of the project name.
 	if source.Class == SourceApplicationProvider {
 		if env, derived := projectTokenFromID(source); derived {
@@ -54,6 +63,27 @@ func SourceEnvironment(source SignalSource) (environment string, ok bool) {
 // canonical application-metrics ID grammar (application:metrics:<app>:<env>:<src>).
 func applicationMetricsSourceEnvironment(id string) (string, bool) {
 	const prefix = "application:metrics:"
+	if !strings.HasPrefix(id, prefix) {
+		return "", false
+	}
+	parts := strings.Split(strings.TrimPrefix(id, prefix), ":")
+	if len(parts) != 3 {
+		return "", false
+	}
+	env := strings.TrimSpace(parts[1])
+	if env == "" {
+		return "", false
+	}
+	return env, true
+}
+
+// applicationLogSourceEnvironment returns the environment segment of the
+// canonical application-logs ID grammar (application:logs:<app>:<env>:<service>),
+// the logs twin of applicationMetricsSourceEnvironment. The central environment
+// filter depends on it: a class-application log source with an unresolvable
+// environment would fail closed at every app-scoped listing and be invisible.
+func applicationLogSourceEnvironment(id string) (string, bool) {
+	const prefix = "application:logs:"
 	if !strings.HasPrefix(id, prefix) {
 		return "", false
 	}
