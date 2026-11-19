@@ -30,7 +30,7 @@ func TestSelectiveIdentityRuntimeAddRemoveReAdd(t *testing.T) {
 	ctx, cancel := context.WithTimeout(machineNoninteractiveContext(context.Background()), 15*time.Minute)
 	defer cancel()
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
-	target := configureTestTarget(t)
+	target := configureTestTargetEmpty(t)
 	if os.Getenv("BASEHARBOR_TEST_RUNTIME") == "podman" {
 		cfg, err := deployment.LoadConfig()
 		if err != nil {
@@ -52,6 +52,11 @@ func TestSelectiveIdentityRuntimeAddRemoveReAdd(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertCorelessHost(t, ctx, provider, target)
+	baselineContainers, err := provider.ListRuntimeContainers(ctx)
+	if err != nil {
+		t.Fatal("inventory isolated runtime baseline", err)
+	}
+	baselineIDs := runtimeContainerIDSet(baselineContainers)
 	t.Chdir(t.TempDir())
 	if err := os.WriteFile("compose.yaml", []byte(corelessHTTPWorkload), 0600); err != nil {
 		t.Fatal(err)
@@ -91,8 +96,10 @@ func TestSelectiveIdentityRuntimeAddRemoveReAdd(t *testing.T) {
 		if err := removeApplicationGatewayOwners(cleanupCtx, provider, initialized, "app/"+initialized.Manifest.Name+"/"+initialized.Manifest.Environment, "shared/keycloak"); err != nil {
 			t.Errorf("isolated Identity gateway cleanup: %v", err)
 		}
-		if containers, err := provider.ListRuntimeContainers(cleanupCtx); err != nil || len(containers) != 0 {
-			t.Errorf("isolated native cleanup did not remove all test containers: count=%d inspection=%v", len(containers), err)
+		if containers, err := provider.ListRuntimeContainers(cleanupCtx); err != nil {
+			t.Errorf("inspect isolated native cleanup: %v", err)
+		} else if remaining := runtimeContainersNotInBaseline(containers, baselineIDs); len(remaining) != 0 {
+			t.Errorf("isolated native cleanup retained test containers: %v", remaining)
 		}
 	})
 	var originalEnv [32]byte
@@ -108,10 +115,13 @@ func TestSelectiveIdentityRuntimeAddRemoveReAdd(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		applyCtx := ctx
+		applyCtx, candidateDigest := withConfirmCandidateDigestForResolved(ctx, resolved)
+		if resolved.FromRepository && candidateDigest == "" {
+			t.Fatal("repository candidate has no verifiable confirmation digest")
+		}
 		if plan.ProviderPlan.Impact != nil {
 			impact := plan.ProviderPlan.Impact
-			applyCtx = withProviderChangeConsent(ctx, &application.ProviderChangeConsent{PlanID: impact.PlanID, First: true, Second: true})
+			applyCtx = withProviderChangeConsent(applyCtx, &application.ProviderChangeConsent{PlanID: impact.PlanID, First: true, Second: true})
 		}
 		out.Reset()
 		if err := runWithIO(applyCtx, []string{"app", "apply", "--skip-memory-preflight"}, &out, &out); err != nil {
@@ -183,6 +193,9 @@ func TestSelectiveIdentityRuntimeAddRemoveReAdd(t *testing.T) {
 			t.Fatal(err)
 		}
 		for _, container := range containers {
+			if _, existed := baselineIDs[container.ID]; existed {
+				continue
+			}
 			matched := false
 			for _, resource := range resources {
 				if resource.Kind == "container" && bhruntime.ContainerMatchesProjectResource(provider.Kind(), container, files.Project, resource) {
@@ -247,4 +260,36 @@ func selectiveIdentityOAuthRuntimeIntent(enabled bool) string {
 		content += "identity:\n  callback_paths:\n    - /oauth/callback\nexposure:\n  http:\n    - name: oauth\n      service: api\n      port: 8080\n      protocol: https\n      visibility: public\n"
 	}
 	return content
+}
+
+func runtimeContainerIDSet(containers []bhruntime.RuntimeContainer) map[string]struct{} {
+	ids := make(map[string]struct{}, len(containers))
+	for _, container := range containers {
+		if container.ID != "" {
+			ids[container.ID] = struct{}{}
+		}
+	}
+	return ids
+}
+
+func runtimeContainersNotInBaseline(containers []bhruntime.RuntimeContainer, baseline map[string]struct{}) []bhruntime.RuntimeContainer {
+	remaining := make([]bhruntime.RuntimeContainer, 0, len(containers))
+	for _, container := range containers {
+		if _, existed := baseline[container.ID]; !existed {
+			remaining = append(remaining, container)
+		}
+	}
+	return remaining
+}
+
+func TestRuntimeContainersNotInBaseline(t *testing.T) {
+	baseline := runtimeContainerIDSet([]bhruntime.RuntimeContainer{{ID: "registry"}})
+	current := []bhruntime.RuntimeContainer{
+		{ID: "registry", Name: "baseharbor-pre-release-registry"},
+		{ID: "new-app", Name: "isolated-app-api-1"},
+	}
+	remaining := runtimeContainersNotInBaseline(current, baseline)
+	if len(remaining) != 1 || remaining[0].ID != "new-app" {
+		t.Fatalf("unexpected containers outside runtime baseline: %+v", remaining)
+	}
 }

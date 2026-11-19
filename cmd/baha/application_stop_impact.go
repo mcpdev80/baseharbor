@@ -186,13 +186,14 @@ func authorizeApplicationStop(ctx context.Context, resolved resolvedApplication,
 	if out == nil {
 		out = io.Discard
 	}
-	fmt.Fprintln(out, "Achtung: review the current application stop, affected consumers and retained recovery locations.")
+	labels := application.ProviderImpactConsentCatalog()
+	fmt.Fprintln(out, labels.ApplicationStopImpact)
 	if err := writeJSON(out, plan); err != nil {
 		return plan, err
 	}
 	in := applicationInput(ctx, nil)
 	if consent == nil && !noInput(ctx) && in != nil && readerIsTerminal(in) {
-		presentation := application.ProviderImpactPlan{PlanID: plan.Scope.PlanID, ConfirmationsRequired: plan.Scope.ConfirmationsRequired}
+		presentation := application.ProviderImpactPlan{PlanID: plan.Scope.PlanID, Attention: plan.Scope.Attention, ConfirmationsRequired: plan.Scope.ConfirmationsRequired}
 		value, err := readProviderImpactAcknowledgements(bufio.NewReader(in), out, presentation)
 		if err != nil {
 			return plan, err

@@ -130,6 +130,13 @@ func Classify(err error) *Error {
 			return Wrap(ErrorPolicyDenied, err, "Review permissions or policy and retry.", false)
 		}
 	}
+	// A configured BaseHarbor config root whose authoritative config.yaml is
+	// missing or empty is a concrete, actionable misconfiguration the user must
+	// fix — never the generic internal_error fallthrough. Route it to
+	// ErrorSourceMissing while keeping the human-readable message.
+	if errors.Is(err, apierror.ErrConfigMissing) || errors.Is(err, apierror.ErrConfigEmpty) {
+		return Wrap(ErrorSourceMissing, err, "Configure or repair the BaseHarbor config.yaml at the populated config root and retry.", false)
+	}
 	var actionable interface{ NextAction() string }
 	if errors.As(err, &actionable) {
 		return Wrap(ErrorInternal, err, actionable.NextAction(), false)
