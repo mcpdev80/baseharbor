@@ -309,3 +309,90 @@ func TestRepositoryDesiredStateFingerprintTracksLocalSourceFiles(t *testing.T) {
 	}
 	assertChanged(current, "file deletion")
 }
+
+func TestRepositoryTreeFingerprintDoesNotFollowSymlinks(t *testing.T) {
+	root := t.TempDir()
+	outside := t.TempDir()
+	secret := filepath.Join(outside, "secret.txt")
+	if err := os.WriteFile(secret, []byte("must-not-be-read"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(root, "external-file")
+	if err := os.Symlink(secret, link); err != nil {
+		t.Skipf("symlink not supported: %v", err)
+	}
+	if err := os.Symlink(filepath.Join(outside, "missing-target"), filepath.Join(root, "dangling")); err != nil {
+		t.Skipf("symlink not supported: %v", err)
+	}
+	if err := os.Symlink(outside, filepath.Join(root, "external-directory")); err != nil {
+		t.Skipf("symlink not supported: %v", err)
+	}
+
+	fingerprintParts := func() map[string]string {
+		t.Helper()
+		parts := map[string]string{}
+		err := writeRepositoryTreeFingerprint(context.Background(), func(name string, data []byte) {
+			parts[name] = string(data)
+		}, "source", root)
+		if err != nil {
+			t.Fatalf("fingerprint symlink tree: %v", err)
+		}
+		return parts
+	}
+	first := fingerprintParts()
+	if got := first["source/external-file"]; got != "symlink:"+secret {
+		t.Fatalf("external file link fingerprint = %q, want link metadata only", got)
+	}
+	if got := first["source/dangling"]; !strings.HasPrefix(got, "symlink:") {
+		t.Fatalf("dangling symlink was not fingerprinted: %q", got)
+	}
+	if strings.Contains(strings.Join(values(first), "\n"), "must-not-be-read") {
+		t.Fatal("fingerprint included bytes from a symlink target outside the source root")
+	}
+	if err := os.WriteFile(secret, []byte("changed outside content"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if second := fingerprintParts(); !equalFingerprintParts(first, second) {
+		t.Fatalf("changing external symlink target content changed fingerprint inputs: %#v != %#v", first, second)
+	}
+	if err := os.Remove(link); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(outside, "other-secret"), link); err != nil {
+		t.Fatal(err)
+	}
+	third := fingerprintParts()
+	if equalFingerprintParts(first, third) {
+		t.Fatal("retargeting symlink did not change fingerprint inputs")
+	}
+	if err := os.Remove(link); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(link, []byte("symlink:"+filepath.Join(outside, "other-secret")), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	fourth := fingerprintParts()
+	if equalFingerprintParts(third, fourth) {
+		t.Fatal("changing a symlink into a regular file with the same target text did not change fingerprint inputs")
+	}
+}
+
+func values(parts map[string]string) []string {
+	result := make([]string, 0, len(parts))
+	for _, value := range parts {
+		result = append(result, value)
+	}
+	return result
+}
+
+func equalFingerprintParts(left, right map[string]string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for name, value := range left {
+		if right[name] != value {
+			return false
+		}
+	}
+	return true
+}
