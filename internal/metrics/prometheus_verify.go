@@ -143,13 +143,14 @@ func verifyProviderSourcesAt(ctx context.Context, m application.Manifest, dataDi
 		allowedApplications,
 		policy.Collect[application.MetricsSourceApplicationProvider],
 		policy.Collect[application.MetricsSourcePlatformProvider],
+		m.Environment,
 	)
 	if err != nil {
 		return err
 	}
 	var applicationSources []observability.MetricsSource
 	if policy.Collect[application.MetricsSourceApplication] {
-		applicationSources, err = observability.ListApplicationMetrics(placement, allowedApplications)
+		applicationSources, err = observability.ListApplicationMetrics(placement, allowedApplications, m.Environment)
 		if err != nil {
 			return err
 		}
