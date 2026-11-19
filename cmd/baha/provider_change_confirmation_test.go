@@ -83,6 +83,104 @@ func TestProviderImpactConsequenceHintIsEnglishOutputAndContractMarker(t *testin
 	}
 }
 
+// Regression for card 0428-126 (hunt-918 Befund 5): every stage that collects
+// an acknowledgement of displayed consequences prints the structured attention
+// marker as the "Warning:" prose lead. Before this fix the single-confirmation
+// non-destructive stage and both apply-stage labels were hardcoded without the
+// marker, so a consumer that keys on the marker missed those stages. The gate
+// itself keys on attention presence (internal/application/provider_change_
+// consent.go), so printing the lead changes presentation only, never semantics.
+func TestProviderImpactMarkerPrintedOnEveryAcknowledgingStage(t *testing.T) {
+	attentionPlans := []application.ProviderImpactPlan{
+		// The stage the akte names: single confirmation, non-destructive.
+		{Version: application.ProviderImpactVersion, PlanID: "plan-current", Attention: "Warning", ConfirmationsRequired: 1},
+		// Two-stage non-destructive and destructive stages (catalog labels already carried the marker).
+		{Version: application.ProviderImpactVersion, PlanID: "plan-current", Attention: "Warning", ConfirmationsRequired: 2},
+		{Version: application.ProviderImpactVersion, PlanID: "plan-current", Attention: "Warning", ConfirmationsRequired: 2, Destructive: true},
+	}
+	for _, plan := range attentionPlans {
+		var out bytes.Buffer
+		if _, err := readProviderImpactAcknowledgements(bufio.NewReader(strings.NewReader("yes\nyes\nyes\n")), &out, plan); err != nil {
+			t.Fatal(err)
+		}
+		for _, line := range strings.Split(out.String(), "\n") {
+			if line == "" {
+				continue
+			}
+			if !strings.HasPrefix(line, "Warning: ") {
+				t.Errorf("acknowledgement stage printed no marker: %q", line)
+			}
+		}
+	}
+	for _, plan := range []application.ProviderImpactPlan{
+		{Version: application.ProviderImpactVersion, PlanID: "plan-current", Attention: "Warning", ConfirmationsRequired: 1},
+		{Version: application.ProviderImpactVersion, PlanID: "plan-current", Attention: "warning; no destination; deletion", ConfirmationsRequired: 2, Destructive: true},
+	} {
+		var out bytes.Buffer
+		if _, err := readProviderApplyAcknowledgement(bufio.NewReader(strings.NewReader("yes\n")), &out, plan); err != nil {
+			t.Fatal(err)
+		}
+		if !strings.HasPrefix(out.String(), "Warning: Apply these changes") {
+			t.Errorf("apply-stage label lost the marker: %q", out.String())
+		}
+	}
+	// Presentation stays neutral when no acknowledgement is required: plans
+	// without an attention marker keep the plain labels, and consent validation
+	// is unaffected by the lead (semantics unchanged, marker-only).
+	var plain bytes.Buffer
+	consent, err := readProviderImpactAcknowledgements(bufio.NewReader(strings.NewReader("yes\n")), &plain, application.ProviderImpactPlan{Version: application.ProviderImpactVersion, PlanID: "plan-current", ConfirmationsRequired: 1})
+	if err != nil || !consent.First {
+		t.Fatalf("marker-less stage changed behaviour: %v %v", consent, err)
+	}
+	if !strings.HasPrefix(plain.String(), "Confirm the displayed provider changes") || strings.Contains(plain.String(), "Warning:") {
+		t.Errorf("marker-less plan printed a spurious marker: %q", plain.String())
+	}
+}
+
+// TestProviderImpactAcknowledgementStagesAllCarryAttention guards the display
+// contract itself: every CLI path that acknowledges consequences through the
+// stage readers builds its presentation plan from a scope or plan that carries
+// the structured marker, so no stage can silently lose the lead again. Scope
+// construction sets Attention together with ConfirmationsRequired
+// (internal/application/provider_change_scope.go).
+func TestProviderImpactAcknowledgementStagesAllCarryAttention(t *testing.T) {
+	owner := application.ProviderScopeOwner{Owner: "application-deployment", Reference: "/owned/plan-current", Subject: "plan-current", Revision: "rev"}
+	scope, err := application.ComposeProviderImpactScope(owner, nil, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if scope.Attention == "" {
+		t.Fatal("composed incomplete scope lost its attention marker")
+	}
+	for _, site := range []struct {
+		name         string
+		presentation application.ProviderImpactPlan
+	}{
+		// One entry per direct readProvider*/Acknowledgement(s) call site in
+		// cmd/baha; the app-edit wizard and apply/up paths pass the real plan.
+		{"application-destroy", application.ProviderImpactPlan{PlanID: scope.PlanID, Attention: scope.Attention, ConfirmationsRequired: scope.ConfirmationsRequired, Destructive: scope.Destructive}},
+		{"application-restore", application.ProviderImpactPlan{PlanID: scope.PlanID, Attention: scope.Attention, ConfirmationsRequired: scope.ConfirmationsRequired, Destructive: true}},
+		{"application-stop", application.ProviderImpactPlan{PlanID: scope.PlanID, Attention: scope.Attention, ConfirmationsRequired: scope.ConfirmationsRequired}},
+		{"control-plane-stop", application.ProviderImpactPlan{PlanID: scope.PlanID, Attention: scope.Attention, ConfirmationsRequired: scope.ConfirmationsRequired}},
+		{"node-disconnect", application.ProviderImpactPlan{PlanID: scope.PlanID, Attention: scope.Attention, ConfirmationsRequired: scope.ConfirmationsRequired, Destructive: scope.Destructive}},
+		{"runtime-destroy", application.ProviderImpactPlan{PlanID: scope.PlanID, Attention: scope.Attention, ConfirmationsRequired: scope.ConfirmationsRequired, Destructive: scope.Destructive}},
+		{"target-definition-change", application.ProviderImpactPlan{PlanID: scope.PlanID, Attention: scope.Attention, ConfirmationsRequired: scope.ConfirmationsRequired}},
+		{"external-provider-removal", application.ProviderImpactPlan{PlanID: scope.PlanID, Attention: scope.Attention, ConfirmationsRequired: scope.ConfirmationsRequired, Destructive: scope.Destructive}},
+		{"installation-destroy", application.ProviderImpactPlan{PlanID: scope.PlanID, Attention: scope.Attention, ConfirmationsRequired: scope.ConfirmationsRequired, Destructive: scope.Destructive}},
+	} {
+		if site.presentation.Attention == "" {
+			t.Errorf("stage %q acknowledges without an attention marker", site.name)
+		}
+		var out bytes.Buffer
+		if _, err := readProviderImpactAcknowledgements(bufio.NewReader(strings.NewReader("yes\nyes\nyes\n")), &out, site.presentation); err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(out.String(), "Warning: ") {
+			t.Errorf("stage %q printed no marker lead:\n%s", site.name, out.String())
+		}
+	}
+}
+
 func TestProviderImpactAllowsExplicitAlternativeLessDeletion(t *testing.T) {
 	plan := application.ProviderImpactPlan{Version: application.ProviderImpactVersion, PlanID: "concrete-effects", Complete: false, Attention: "no destination; deletion", ConfirmationsRequired: 2, Destructive: true}
 	for _, answers := range []string{"no\n", "\n", "", "maybe\n"} {
