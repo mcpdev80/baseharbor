@@ -49,6 +49,16 @@ type Grant struct {
 
 // Store must persist consumption before returning success, including under
 // concurrent requests and process restarts. Signing failures do not unconsume.
+//
+// Consume and RecordIssued are the two phases of one enrollment, each committing
+// in its own transaction. Between them the Grant is durably consumed while no
+// active node identity exists. The window is deliberate and stays fail-closed:
+// the consumed one-use Grant is never restored, the only recovery is a fresh
+// Create or CreateRenewal, and Enroll revokes the certificate it signed when
+// RecordIssued fails. The previous_certificate_serial clause in Consume and the
+// certificate_serial IS NULL condition in RecordIssued keep a competing request
+// from racing the serial write, so a half-finished enrollment leaves a consumed
+// Grant, never a partial identity or a second identity for one node. See ADR 0020.
 type Store interface {
 	Create(context.Context, Grant) error
 	Consume(context.Context, Scope, string, string, string, time.Time) (Grant, error)

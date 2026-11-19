@@ -45,7 +45,7 @@ func removeExternalProviderWithImpact(ctx context.Context, id string, in io.Read
 	if consent == nil && !noInput(ctx) && in != nil && readerIsTerminal(in) {
 		// Reuse the same staged reader. Scope confirmation acknowledges the
 		// aggregate ID; an individual Target ID never authorizes this removal.
-		presentation := application.ProviderImpactPlan{PlanID: plan.Scope.PlanID, ConfirmationsRequired: plan.Scope.ConfirmationsRequired, Destructive: plan.Scope.Destructive}
+		presentation := application.ProviderImpactPlan{PlanID: plan.Scope.PlanID, Attention: plan.Scope.Attention, ConfirmationsRequired: plan.Scope.ConfirmationsRequired, Destructive: plan.Scope.Destructive}
 		value, err := readProviderImpactAcknowledgements(bufio.NewReader(in), out, presentation)
 		if err != nil {
 			return application.ExternalProviderRemovalResult{}, err

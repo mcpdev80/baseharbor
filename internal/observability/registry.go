@@ -65,6 +65,7 @@ type SignalSource struct {
 	Network            string                                   `json:"network,omitempty"`
 	Target             string                                   `json:"target"`
 	Protocol           string                                   `json:"protocol"`
+	Scheme             string                                   `json:"scheme,omitempty"`
 	Path               string                                   `json:"path,omitempty"`
 	Mode               capability.ObservabilityRealizationMode  `json:"mode,omitempty"`
 	SemanticConvention string                                   `json:"semantic_convention,omitempty"`
@@ -95,6 +96,9 @@ func (s SignalSource) Validate() error {
 	}
 	switch s.Kind {
 	case SignalMetrics:
+		if s.Scheme != "" && s.Scheme != "http" && s.Scheme != "https" {
+			return fmt.Errorf("unsupported observability metrics scheme %q", s.Scheme)
+		}
 		if strings.TrimSpace(s.Network) == "" || !strings.HasPrefix(strings.TrimSpace(s.Path), "/") {
 			return errors.New("observability metrics source requires network and absolute path")
 		}
@@ -144,13 +148,13 @@ func (s MetricsSource) signal() SignalSource {
 		scheme = "http"
 	}
 	security := s.Security
-	if scheme == "https" {
+	if scheme == "https" && s.Class != SourceApplication {
 		security.TLSRequired = true
 	}
 	return SignalSource{
 		ID: s.ID, Kind: SignalMetrics, Provider: s.Provider, Class: s.Class,
 		Scope: s.Scope, SharingBoundary: s.SharingBoundary, OwnerApplication: s.OwnerApplication,
-		Network: s.Network, Target: s.Target, Protocol: "openmetrics", Path: s.Path,
+		Network: s.Network, Target: s.Target, Protocol: "openmetrics", Scheme: scheme, Path: s.Path,
 		Verification: s.Verification, Security: security,
 	}
 }
@@ -481,7 +485,7 @@ func Remove(id string) error {
 	})
 }
 
-func List(kind SignalKind, placement capability.ProviderPlacement, applications []string, includeApplicationProviders, includePlatformProviders bool) ([]SignalSource, error) {
+func List(kind SignalKind, placement capability.ProviderPlacement, applications []string, includeApplicationSources, includeApplicationProviders, includePlatformProviders bool, requestedEnvironment string) ([]SignalSource, error) {
 	path, err := registryPath()
 	if err != nil {
 		return nil, err
@@ -506,7 +510,9 @@ func List(kind SignalKind, placement capability.ProviderPlacement, applications 
 		}
 		switch source.Class {
 		case SourceApplication:
-			continue
+			if !includeApplicationSources {
+				continue
+			}
 		case SourceApplicationProvider:
 			if !includeApplicationProviders {
 				continue
@@ -515,6 +521,17 @@ func List(kind SignalKind, placement capability.ProviderPlacement, applications 
 			if !includePlatformProviders {
 				continue
 			}
+		}
+		// Central environment filter (card 0428-121, route 2): only an
+		// app-scoped caller is scoped to a single environment, so the
+		// comparing guard applies there — an app-scoped source is visible only
+		// when it resolves to the caller's requested environment. A source whose
+		// environment cannot be resolved or resolves elsewhere is excluded
+		// (fail-closed) — no cross-environment visibility leak. Shared-platform
+		// callers are not environment-scoped: they aggregate the allowed app
+		// sources under the shared/platform boundary rule applied downstream.
+		if placement.Scope == capability.ScopeApplication && source.Scope == capability.ScopeApplication && !SourceMatchesEnvironment(source, requestedEnvironment) {
+			continue
 		}
 		switch placement.Scope {
 		case capability.ScopeShared:
@@ -542,24 +559,105 @@ func List(kind SignalKind, placement capability.ProviderPlacement, applications 
 	return out, nil
 }
 
-func ListLogs(placement capability.ProviderPlacement, applications []string, includeApplicationProviders, includePlatformProviders bool) ([]SignalSource, error) {
-	return List(SignalLogs, placement, applications, includeApplicationProviders, includePlatformProviders)
+func ListLogs(placement capability.ProviderPlacement, applications []string, includeApplicationProviders, includePlatformProviders bool, requestedEnvironment string) ([]SignalSource, error) {
+	return List(SignalLogs, placement, applications, false, includeApplicationProviders, includePlatformProviders, requestedEnvironment)
 }
 
-func ListTraces(placement capability.ProviderPlacement, applications []string, includeApplicationProviders, includePlatformProviders bool) ([]SignalSource, error) {
-	return List(SignalTraces, placement, applications, includeApplicationProviders, includePlatformProviders)
+func ListTraces(placement capability.ProviderPlacement, applications []string, includeApplicationProviders, includePlatformProviders bool, requestedEnvironment string) ([]SignalSource, error) {
+	return List(SignalTraces, placement, applications, false, includeApplicationProviders, includePlatformProviders, requestedEnvironment)
 }
 
-func ListMetrics(placement capability.ProviderPlacement, applications []string, includeApplicationProviders, includePlatformProviders bool) ([]MetricsSource, error) {
-	signals, err := List(SignalMetrics, placement, applications, includeApplicationProviders, includePlatformProviders)
+func ApplicationMetricsSourceID(application, environment, source string) string {
+	return "application:metrics:" + strings.TrimSpace(application) + ":" + strings.TrimSpace(environment) + ":" + strings.TrimSpace(source)
+}
+
+// SourceMatchesEnvironment is the single source-driven environment predicate of
+// the list surface (card 0428-121, route 2): an app-scoped source is visible
+// only when it resolves to an explicit or unambiguously derivable environment
+// that equals the caller's requested environment (case-normalised). The
+// requested environment is the owning application's manifest environment — the
+// capability ProviderPlacement carries none on this base, so no caller passes
+// one and the dimension is threaded through the list wrappers explicitly. A
+// source whose environment cannot be resolved, or resolves to a different or
+// ambiguous environment (for example a hyphenated legacy "prod-west" read as
+// "west", or a reserved project token), fails closed: it appears in no single
+// environment result instead of leaking into another. Shared/platform sources
+// are not environment-scoped here; they keep the shared/platform boundary rule
+// applied downstream.
+func SourceMatchesEnvironment(source SignalSource, requestedEnvironment string) bool {
+	requestedEnvironment = strings.TrimSpace(requestedEnvironment)
+	environment, ok := SourceEnvironment(source)
+	if !ok {
+		return false
+	}
+	return strings.ToLower(environment) == strings.ToLower(requestedEnvironment)
+}
+
+func PruneApplicationMetrics(application, environment string, keepIDs map[string]struct{}) error {
+	application = strings.TrimSpace(application)
+	environment = strings.TrimSpace(environment)
+	if application == "" || environment == "" {
+		return errors.New("application metrics pruning requires application and environment")
+	}
+	prefix := "application:metrics:" + application + ":" + environment + ":"
+	path, err := registryPath()
+	if err != nil {
+		return err
+	}
+	return mutate(path, func(sources []SignalSource) ([]SignalSource, error) {
+		out := sources[:0]
+		for _, source := range sources {
+			if source.Class == SourceApplication && source.Kind == SignalMetrics && strings.HasPrefix(source.ID, prefix) {
+				if _, keep := keepIDs[source.ID]; !keep {
+					continue
+				}
+			}
+			out = append(out, source)
+		}
+		return out, nil
+	})
+}
+
+func ListApplicationMetrics(placement capability.ProviderPlacement, applications []string, requestedEnvironment string) ([]MetricsSource, error) {
+	signals, err := List(SignalMetrics, placement, applications, true, false, false, requestedEnvironment)
 	if err != nil {
 		return nil, err
 	}
 	out := make([]MetricsSource, 0, len(signals))
 	for _, source := range signals {
-		scheme := "http"
-		if source.Security.TLSRequired {
-			scheme = "https"
+		if source.Class != SourceApplication {
+			continue
+		}
+		scheme := source.Scheme
+		if scheme == "" {
+			scheme = "http"
+			if source.Security.TLSRequired {
+				scheme = "https"
+			}
+		}
+		out = append(out, MetricsSource{
+			ID: source.ID, Provider: source.Provider, Class: source.Class, Scope: source.Scope,
+			SharingBoundary: source.SharingBoundary, OwnerApplication: source.OwnerApplication,
+			Network: source.Network, Target: source.Target, Path: source.Path,
+			Scheme: scheme, Security: source.Security, Verification: source.Verification,
+		})
+	}
+	return out, nil
+}
+
+func ListMetrics(placement capability.ProviderPlacement, applications []string, includeApplicationProviders, includePlatformProviders bool, requestedEnvironment string) ([]MetricsSource, error) {
+	signals, err := List(SignalMetrics, placement, applications, false, includeApplicationProviders, includePlatformProviders, requestedEnvironment)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]MetricsSource, 0, len(signals))
+	for _, source := range signals {
+		scheme := source.Scheme
+		if scheme == "" {
+			scheme = "http"
+			if source.Security.TLSRequired {
+				scheme = "https"
+			}
 		}
 		out = append(out, MetricsSource{
 			ID: source.ID, Provider: source.Provider, Class: source.Class, Scope: source.Scope,

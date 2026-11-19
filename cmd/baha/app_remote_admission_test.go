@@ -48,7 +48,7 @@ func TestRemoteUnsupportedProviderDisclosesCurrentImpactBeforeTechnicalDenial(t 
 		t.Fatalf("concrete remote consequence plan unavailable: %v", err)
 	}
 	impact := plan.ProviderPlan.Impact
-	if impact.Attention != "Achtung" || impact.ConfirmationsRequired != 2 {
+	if impact.Attention != "Warning" || impact.ConfirmationsRequired != 2 {
 		t.Fatal("unsupported remote change lacks current two-stage consequence plan")
 	}
 	for _, consent := range []*application.ProviderChangeConsent{

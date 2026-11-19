@@ -184,7 +184,7 @@ func authorizeControlPlaneStop(ctx context.Context, out io.Writer) (controlPlane
 	}
 	in := applicationInput(ctx, nil)
 	if consent == nil && !noInput(ctx) && in != nil && readerIsTerminal(in) {
-		value, err := readProviderImpactAcknowledgements(bufio.NewReader(in), out, application.ProviderImpactPlan{PlanID: p.Scope.PlanID, ConfirmationsRequired: p.Scope.ConfirmationsRequired})
+		value, err := readProviderImpactAcknowledgements(bufio.NewReader(in), out, application.ProviderImpactPlan{PlanID: p.Scope.PlanID, Attention: p.Scope.Attention, ConfirmationsRequired: p.Scope.ConfirmationsRequired})
 		if err != nil {
 			return p, err
 		}
