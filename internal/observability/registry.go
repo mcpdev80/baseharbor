@@ -445,6 +445,45 @@ func ReconcileProviderSignals(id string, owned map[capability.ProviderKind]struc
 	})
 }
 
+// ReconcileMatching replaces exactly the registry entries a caller-owned
+// predicate selects with the desired set, in one atomic mutation. It is the
+// predicate form of ReconcileProviderSignals for identity spaces that are not
+// keyed on ID plus provider: the class-application workload log signals are one
+// such space, where the reconciliation boundary is the ID prefix of an
+// application/environment, so neither the ID-keyed reconciles nor a provider
+// claim (which would delete the metrics twin of the same workload) fit.
+// Entries the predicate does not select are never touched, and every desired
+// source must satisfy the predicate itself - a caller cannot widen the boundary
+// of what it replaces by passing foreign entries alongside its own.
+func ReconcileMatching(owned func(SignalSource) bool, desired []SignalSource) error {
+	if owned == nil {
+		return errors.New("observability signal reconciliation requires a predicate")
+	}
+	for i := range desired {
+		if err := desired[i].Validate(); err != nil {
+			return err
+		}
+		if !owned(desired[i]) {
+			return fmt.Errorf("observability signal reconciliation source %q lies outside the owned predicate", desired[i].ID)
+		}
+	}
+	path, err := registryPath()
+	if err != nil {
+		return err
+	}
+	return mutate(path, func(sources []SignalSource) ([]SignalSource, error) {
+		out := sources[:0]
+		for _, source := range sources {
+			if owned(source) {
+				continue
+			}
+			out = append(out, source)
+		}
+		out = append(out, desired...)
+		return out, nil
+	})
+}
+
 // RegistryHasSignal reports whether the registry still carries one exact
 // signal registration. Unlike the placement-filtered listings it sees every
 // provider and owner under an ID, so reconciliation and prune contracts - and
@@ -550,6 +589,100 @@ func List(kind SignalKind, placement capability.ProviderPlacement, applications 
 
 func ListLogs(placement capability.ProviderPlacement, applications []string, includeApplicationProviders, includePlatformProviders bool) ([]SignalSource, error) {
 	return List(SignalLogs, placement, applications, false, includeApplicationProviders, includePlatformProviders)
+}
+
+// ListLogsAt is the explicit-selector form of ListLogs: the caller names
+// directly whether class-application log sources belong to the listing.
+// ListLogs itself keeps its provider-only defaults because every renderer and
+// inventory consumer depends on them; a path that must see the workload
+// sources - verification, status/doctor evidence, Console - reads the class
+// through this boundary instead of a default it never chose, so a registered
+// application source can never drop out of the queried set silently
+// (card 0428-122).
+func ListLogsAt(placement capability.ProviderPlacement, applications []string, includeApplicationSources, includeApplicationProviders, includePlatformProviders bool) ([]SignalSource, error) {
+	return List(SignalLogs, placement, applications, includeApplicationSources, includeApplicationProviders, includePlatformProviders)
+}
+
+// ListAt is the explicit-selector form of the class-filtered listings: the
+// caller names every source-class dimension directly instead of relying on a
+// listing helper that hardwires one of them. The class-filtered convenience
+// helpers (ListLogs, ListTraces, ListMetrics) keep the provider-only semantics
+// every renderer and inventory consumer depends on; a verification or
+// reporting path that must see class-application signals calls ListAt with the
+// deployment policy's own collect bits, so a registered source can never drop
+// out of the queried set by a hardwired default - the silent-success shape
+// card 0428-122 removes.
+func ListAt(kind SignalKind, placement capability.ProviderPlacement, applications []string, includeApplicationSources, includeApplicationProviders, includePlatformProviders bool) ([]SignalSource, error) {
+	return List(kind, placement, applications, includeApplicationSources, includeApplicationProviders, includePlatformProviders)
+}
+
+// ApplicationLogSourceID is the canonical registry identity of one workload
+// service's log source in class application. Application and environment bind
+// the ownership and prune boundary; the environment never enters the ID so a
+// service keeps one identity across its deployments, mirroring the metrics
+// class boundary the registry already enforces.
+func ApplicationLogSourceID(applicationName, environment, service string) string {
+	return "application:logs:" + strings.TrimSpace(applicationName) + ":" + strings.TrimSpace(environment) + ":" + strings.TrimSpace(service)
+}
+
+// ApplicationLogBoundary is the registry-wide selector for the class-
+// application log signals of one application/environment: the ID prefix is
+// the single reconciliation key the write side (the render-time reconcile and
+// the Loki driver Bind path) and the prune side (PruneApplicationLogs) share,
+// mirroring the metrics identity. Exporting it keeps every writer honest
+// about the same boundary instead of re-deriving the predicate per call site.
+func ApplicationLogBoundary(applicationName, environment string) func(SignalSource) bool {
+	prefix := ApplicationLogSourceID(applicationName, environment, "")
+	return func(source SignalSource) bool {
+		return source.Class == SourceApplication && source.Kind == SignalLogs && strings.HasPrefix(source.ID, prefix)
+	}
+}
+
+// PruneApplicationLogs reclaims every class-application log signal of one
+// application and environment except the IDs the caller keeps. It is the logs
+// twin of PruneApplicationMetrics and keeps the listing and the delete
+// boundary identical, so a workload log source is never kept or dropped by a
+// different key than the one that wrote it.
+func PruneApplicationLogs(applicationName, environment string, keepIDs map[string]struct{}) error {
+	applicationName = strings.TrimSpace(applicationName)
+	environment = strings.TrimSpace(environment)
+	if applicationName == "" || environment == "" {
+		return errors.New("application log pruning requires application and environment")
+	}
+	return pruneApplicationSignals(ApplicationLogSourceID(applicationName, environment, ""), keepIDs, func(source SignalSource) bool {
+		return source.Class == SourceApplication && source.Kind == SignalLogs
+	})
+}
+
+// pruneApplicationSignals is the shared prune boundary for a class-
+// application signal space: it reclaims every source under one
+// application/environment ID prefix except the IDs the caller keeps, so the
+// delete side of every path uses exactly the key the write side used
+// (card 0428-122). An empty prefix or a nil selector is a caller error, not a
+// wildcard.
+func pruneApplicationSignals(prefix string, keepIDs map[string]struct{}, owned func(SignalSource) bool) error {
+	if !strings.HasSuffix(strings.TrimSpace(prefix), ":") {
+		return errors.New("application signal pruning requires an application/environment identity prefix")
+	}
+	if owned == nil {
+		return errors.New("application signal pruning requires its class selector")
+	}
+	path, err := registryPath()
+	if err != nil {
+		return err
+	}
+	return mutate(path, func(sources []SignalSource) ([]SignalSource, error) {
+		out := sources[:0]
+		for _, source := range sources {
+			if owned(source) && strings.HasPrefix(source.ID, prefix) {
+				if _, keep := keepIDs[source.ID]; !keep {
+					continue
+				}
+			}
+			out = append(out, source)
+		}
+		return out, nil
+	})
 }
 
 func ListTraces(placement capability.ProviderPlacement, applications []string, includeApplicationProviders, includePlatformProviders bool) ([]SignalSource, error) {
