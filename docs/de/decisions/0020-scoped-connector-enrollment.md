@@ -33,20 +33,19 @@ Rückgabe der gleichen Leugnung. Verbrauch behält einen Digest der unterzeichne
 Signierungsfehler erfordert eine neue Autorisierung: das verbrauchte Credential ist nicht
 wiederhergestellt, auch nach einem Neustart des Prozesses oder einem mehrdeutigen Ansprechfehler.
 
-Verbrauch und Identitätseintragung sind zwei Phasen einer Einschreibung, die in
-getrennten Transaktionen verpflichtet werden. Der eine-use Grant zwischen die
-Phasen gestellt ist dauerhaft verbraucht, während die Knotenidentität noch nicht
-eingetragen ist. Das Fenster ist absichtlich und bleibt fail-closed: keine aktive
-Identität existiert bevor die zweite Phase verpflichtet, der one-use Grant ist
-nie wiederhergestellt und die einzige Erholung ist ein frisches Create oder
-CreateRenewal; Enroll widerruft außerdem das Zertifikat das es unterzeichnet hat
-wenn die zweite Phase fehlschlägt. previous_certificate_serial im Verbrauch und
-serial-is-null im Identitätsschreiben halten einen konkurrierenden Antrag vom
-serial-write fern, so hinterlässt eine halb fertige Einschreibung einen toten
-Grant — nie eine teilweise Identität oder eine zweite Identität für einen Knoten.
-Der gleiche Versuch erneut zu konsumieren schlägt fehl: Falschumfang, abgelaufene
-Genehmigung oder ein bereits verbrauchter Grant führen zur gleichen Verweigerung
-(denial). Kern überprüft das Ergebnis gegen sein maßgebliches Vertrauensbündel, CSR Public Key,
+Verbrauch (`Consume`) und Identitätseintragung (`RecordIssued`) sind zwei Phasen
+einer Einschreibung, die in getrennten Transaktionen verpflichtet werden. Nach dem
+Commit von `Consume` ist der Grant dauerhaft verbraucht, ohne dass eine aktive
+Knotenidentität existiert; dieses Fenster ist absichtlich und bleibt fail-closed.
+Der verbrauchte Grant wird nie wiederhergestellt; die einzige Erholung ist ein
+frisches `Create` oder `CreateRenewal`. Wenn `RecordIssued` fehlschlägt, widerruft
+`Enroll` außerdem das Zertifikat, das es signiert hat. Die Klausel
+`previous_certificate_serial` in `Consume` und die Bedingung
+`certificate_serial IS NULL` in `RecordIssued` halten einen konkurrierenden
+Antrag vom Serial-Schreiben fern, sodass eine halb fertige Einschreibung einen
+endgültig verbrauchten Grant hinterlässt — nie eine teilweise Identität oder eine
+zweite Identität für einen Knoten.
+Kern überprüft das Ergebnis gegen sein maßgebliches Vertrauensbündel, CSR Public Key,
 scoped URI, client-only Schlüssel-Nutzung, serielle und Ablauf. Eine CA zurückgegeben neben einem Blatt
 Das PEM-Parsing lehnt zusätzliche Anträge ab.
 private Schlüssel und führende / Trailing Material. CSR und Manager Anmeldeinformationen Reisen
