@@ -104,10 +104,59 @@ check_files=()
 while IFS=$'\t' read -r status path; do
   [[ -n "$status" ]] || continue
   if [[ "$status" == A || "$status" == D ]] &&
-      [[ "$path" =~ ^scripts/(ci-[^/]+\.py|test_[^/]+\.py|[^/]*(check|gate)[^/]*\.py)$ ]]; then
+      [[ "$path" =~ ^scripts/(ci-[^/]+\.(py|sh)|test_[^/]+\.(py|sh)|[^/]*(check|gate)[^/]*\.(py|sh))$ ]]; then
     check_files+=("$status $path")
   fi
 done <<< "$changed_paths"
+
+# A validation can also be registered in an existing file without adding a
+# new check file. Watch the planner's check IDs, the runner's accepted IDs,
+# and dispatch arms in the existing PR validation workflow for those changes.
+planner_registration_changes="$(git diff --no-color --unified=0 "$base_sha" "$head_sha" -- scripts/pr-gate-plan.py |
+  grep -E '^[+-][[:space:]]*\{[[:space:]]*'"'"'id'"'"'[[:space:]]*:[[:space:]]*'"'"'[a-zA-Z0-9][a-zA-Z0-9_-]*'"'"'' || true)"
+
+runner_validation_ids() {
+  git show "$1:scripts/pr-check-runner.py" |
+    sed -n '/^VALIDATIONS = {/,/} | set(WIZARD_TEST_FAMILIES)/p' |
+    grep -oE "'([a-zA-Z0-9][a-zA-Z0-9_-]*)'" | tr -d "'" | sort -u
+}
+runner_registration_changes="$(diff -u \
+  <(runner_validation_ids "$base_sha") \
+  <(runner_validation_ids "$head_sha") || true)"
+
+planner_validation_ids() {
+  git show "$1:scripts/pr-gate-plan.py" |
+    grep -E "^[[:space:]]*\{'id': '[a-zA-Z0-9][a-zA-Z0-9_-]*'" |
+    sed -E "s/^[[:space:]]*\{'id': '([^']+)'.*/\1/" | sort -u
+}
+known_validation_ids="$( {
+  planner_validation_ids "$base_sha"
+  runner_validation_ids "$base_sha"
+  planner_validation_ids "$head_sha"
+  runner_validation_ids "$head_sha"
+} | sort -u)"
+
+# CI dispatch labels for validation IDs are case arms (for example,
+# `ci-policy)`). Match only IDs present in either planner/runner revision so
+# edits to unrelated status enums in this workflow do not block the change.
+workflow_registration_changes="$(
+  while IFS= read -r line; do
+    if [[ "$line" =~ ^[-+][[:space:]]+([a-z][a-z0-9_-]*(\|[a-z][a-z0-9_-]*)*)\)[[:space:]].*$ ]]; then
+      IFS='|' read -r -a dispatch_ids <<< "${BASH_REMATCH[1]}"
+      for dispatch_id in "${dispatch_ids[@]}"; do
+        if grep -Fxq -- "$dispatch_id" <<< "$known_validation_ids"; then
+          printf '%s\n' "$line"
+          break
+        fi
+      done
+    fi
+  done < <(git diff --no-color --unified=0 "$base_sha" "$head_sha" -- .github/workflows/ci.yml)
+)"
+
+registration_changes=()
+[[ -n "$planner_registration_changes" ]] && registration_changes+=("planner validation ID")
+[[ -n "$runner_registration_changes" ]] && registration_changes+=("runner validation registry")
+[[ -n "$workflow_registration_changes" ]] && registration_changes+=("CI workflow validation dispatch")
 
 catalogued_gate_ids_changed=false
 if git cat-file -e "${base_sha}:scripts/release-requirements.json" 2>/dev/null &&
@@ -126,7 +175,7 @@ fi
 pre_release_job_changes="$(git diff --no-color --unified=0 "$base_sha" "$head_sha" -- .github/workflows/pre-release.yml |
   grep -E '^[+-]  [A-Za-z0-9_-]+:[[:space:]]*(#.*)?$' || true)"
 new_gate_surface=false
-if ((${#check_files[@]} > 0)) || [[ -n "$pre_release_job_changes" ]]; then
+if ((${#check_files[@]} > 0 || ${#registration_changes[@]} > 0)) || [[ -n "$pre_release_job_changes" ]]; then
   new_gate_surface=true
 fi
 
@@ -138,7 +187,9 @@ if [[ "$new_gate_surface" == true ]]; then
     missing+=("scripts/release-requirements.json")
   if ((${#missing[@]} > 0)); then
     printf 'Gate catalog consistency violation: new/removed validation surface lacks same-change updates to: %s\n' "${missing[*]}" >&2
-    printf 'Affected check files: %s\n' "${check_files[*]:-(inline pre-release job)}" >&2
+    printf 'Affected check files: %s\n' "${check_files[*]:-(none)}" >&2
+    printf 'Affected registrations: %s\n' "${registration_changes[*]:-(none)}" >&2
+    [[ -n "$pre_release_job_changes" ]] && printf 'Affected pre-release jobs: %s\n' "$pre_release_job_changes" >&2
     exit 1
   fi
 fi
@@ -149,9 +200,9 @@ if [[ "$catalogued_gate_ids_changed" == true ]] &&
   exit 1
 fi
 
-if ((${#check_files[@]} > 0)) || [[ -n "$pre_release_job_changes" ]] ||
+if ((${#check_files[@]} > 0 || ${#registration_changes[@]} > 0)) || [[ -n "$pre_release_job_changes" ]] ||
     [[ "$catalogued_gate_ids_changed" == true ]]; then
-  echo "Gate catalog consistency PASS: check surface, PR planner and release catalog are updated together."
+  echo "Gate catalog consistency PASS: check surface, registrations, PR planner and release catalog are updated together."
 else
   echo "Gate catalog consistency PASS: no check-file or gate-ID additions/removals."
 fi
