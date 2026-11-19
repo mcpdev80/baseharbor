@@ -44,6 +44,57 @@ func providerTargetFileName(source observability.MetricsSource) string {
 	return prefix + providerSourceToken(source.ID) + ".json"
 }
 
+// applicationTargetPrefix is the file prefix for application-class metrics
+// targets. It is structurally disjoint from the provider target family
+// ("provider--"/"provider-secure--"): no valid application slug (including
+// "provider" or "provider-secure") can ever produce a filename that begins with
+// "application--", so no application target can match the provider glob and the
+// two job globs can never collide on a single file.
+const applicationTargetPrefix = "application--"
+
+// appTargetFileName derives the application--<application>--<environment>--<source>.json
+// path an application-class metrics source must be written to. The ID grammar is
+// application:metrics:<app>:<env>:<src>; the source segment is parts[2]. Fails
+// closed (empty) if the ID does not match the grammar.
+func appTargetFileName(source observability.MetricsSource) string {
+	const prefix = "application:metrics:"
+	if !strings.HasPrefix(source.ID, prefix) {
+		return ""
+	}
+	parts := strings.Split(strings.TrimPrefix(source.ID, prefix), ":")
+	if len(parts) != 3 {
+		return ""
+	}
+	m := application.Manifest{Name: parts[0], Environment: parts[1]}
+	return applicationTargetPrefix + targetFileName(m, parts[2])
+}
+
+// appTargetEnvironment returns the environment segment of an application-metrics
+// ID (application:metrics:<app>:<env>:<src>); empty when the ID does not match
+// the grammar. It is the single source of truth for the filename and the
+// baseharbor_environment label, so they can never diverge.
+func appTargetEnvironment(source observability.MetricsSource) string {
+	const prefix = "application:metrics:"
+	if !strings.HasPrefix(source.ID, prefix) {
+		return ""
+	}
+	parts := strings.Split(strings.TrimPrefix(source.ID, prefix), ":")
+	if len(parts) != 3 {
+		return ""
+	}
+	return strings.TrimSpace(parts[1])
+}
+
+// metricsPathFor returns the baseharbor_metrics_path label value for a target:
+// the source's declared path when set, otherwise the default scrape path "/".
+func metricsPathFor(source observability.MetricsSource) string {
+	path := strings.TrimSpace(source.Path)
+	if path == "" {
+		return "/"
+	}
+	return path
+}
+
 func syncProviderTargets(dir string, sources []observability.MetricsSource) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
@@ -52,12 +103,36 @@ func syncProviderTargets(dir string, sources []observability.MetricsSource) erro
 	if err != nil {
 		return err
 	}
+	// Reconcile the two target namespaces on every sync.
+	//
+	// provider-- / provider-secure-- : delete any file no longer selected.
+	// application-- : retain exactly the files for the currently selected
+	//   application-class sources; delete every other file in this namespace.
+	// Files in neither namespace (foreign provider files, runtime-target files,
+	// anything owned by another writer) are left untouched.
+	appKeep := map[string]struct{}{}
+	for _, source := range sources {
+		if fn := appTargetFileName(source); fn != "" {
+			appKeep[fn] = struct{}{}
+		}
+	}
 	for _, entry := range entries {
-		if !entry.IsDir() &&
-			(strings.HasPrefix(entry.Name(), "provider--") || strings.HasPrefix(entry.Name(), "provider-secure--")) &&
-			strings.HasSuffix(entry.Name(), ".json") {
-			if err := os.Remove(filepath.Join(dir, entry.Name())); err != nil && !errors.Is(err, os.ErrNotExist) {
-				return err
+		name := entry.Name()
+		if entry.IsDir() || !strings.HasSuffix(name, ".json") {
+			continue
+		}
+		switch {
+		case strings.HasPrefix(name, applicationTargetPrefix):
+			if _, ok := appKeep[name]; !ok {
+				if err := os.Remove(filepath.Join(dir, name)); err != nil && !errors.Is(err, os.ErrNotExist) {
+					return err
+				}
+			}
+		case strings.HasPrefix(name, "provider--") || strings.HasPrefix(name, "provider-secure--"):
+			if !providerSourcePresent(sources, name) {
+				if err := os.Remove(filepath.Join(dir, name)); err != nil && !errors.Is(err, os.ErrNotExist) {
+					return err
+				}
 			}
 		}
 	}
@@ -65,26 +140,89 @@ func syncProviderTargets(dir string, sources []observability.MetricsSource) erro
 		if source.Verification == capability.ObservabilityVerifyNone {
 			continue
 		}
-		target := targetGroup{
-			Targets: []string{source.Target},
-			Labels: map[string]string{
-				"job":                     "baseharbor-providers",
-				"baseharbor_provider":     string(source.Provider),
-				"baseharbor_source":       source.ID,
-				"baseharbor_source_class": string(source.Class),
-				"baseharbor_metrics_path": source.Path,
-			},
+		if source.Class == observability.SourceApplication {
+			// An application-class source is written to its own
+			// application--<app>--<env>--<source>.json file, never to a
+			// provider--<hash>.json file, so the two job globs never collide.
+			if err := writeApplicationTargetFile(dir, source); err != nil {
+				return err
+			}
+			continue
 		}
-		data, err := json.MarshalIndent([]targetGroup{target}, "", "  ")
+		data, err := targetGroupPayload(source)
 		if err != nil {
 			return err
 		}
-		data = append(data, '\n')
 		if err := os.WriteFile(filepath.Join(dir, providerTargetFileName(source)), data, 0o644); err != nil {
 			return err
 		}
 	}
 	return bhruntime.NormalizeContainerReadableProjection(dir)
+}
+
+// providerSourcePresent reports whether name is the provider target file for one
+// of the currently selected (non-application) sources, so the provider-namespace
+// reconciliation deletes only orphaned files.
+func providerSourcePresent(sources []observability.MetricsSource, name string) bool {
+	for _, source := range sources {
+		if source.Class == observability.SourceApplication {
+			continue
+		}
+		if name == providerTargetFileName(source) {
+			return true
+		}
+	}
+	return false
+}
+
+// targetGroupPayload serializes a provider-class source into a single
+// targetGroup payload with its baseharbor_* labels.
+func targetGroupPayload(source observability.MetricsSource) ([]byte, error) {
+	target := targetGroup{
+		Targets: []string{source.Target},
+		Labels: map[string]string{
+			"job":                     "baseharbor-providers",
+			"baseharbor_provider":     string(source.Provider),
+			"baseharbor_source":       source.ID,
+			"baseharbor_source_class": string(source.Class),
+			"baseharbor_metrics_path": source.Path,
+		},
+	}
+	return json.MarshalIndent([]targetGroup{target}, "", "  ")
+}
+
+// writeApplicationTargetFile writes a single application-class metrics source to
+// its own application--<app>--<env>--<source>.json file in the baseharbor-
+// applications job path, carrying the baseharbor_application/environment/source
+// labels the application verification query keys on. It never touches a
+// provider--<hash>.json file, so the app-class source leaves the provider file
+// entirely.
+func writeApplicationTargetFile(dir string, source observability.MetricsSource) error {
+	name := appTargetFileName(source)
+	if name == "" {
+		return fmt.Errorf("metrics target for %q has no application filename", source.ID)
+	}
+	target := targetGroup{
+		Targets: []string{source.Target},
+		Labels: map[string]string{
+			"job":                       "baseharbor-applications",
+			"baseharbor_application":    source.OwnerApplication,
+			"baseharbor_environment":    appTargetEnvironment(source),
+			"baseharbor_source":         source.ID,
+			"baseharbor_source_class":   string(source.Class),
+			"baseharbor_metrics_path":   metricsPathFor(source),
+			"baseharbor_metrics_scheme": source.Scheme,
+		},
+	}
+	data, err := json.MarshalIndent([]targetGroup{target}, "", "  ")
+	if err != nil {
+		return err
+	}
+	data = append(data, '\n')
+	if err := os.WriteFile(filepath.Join(dir, name), data, 0o644); err != nil {
+		return err
+	}
+	return nil
 }
 
 func syncProviderSecurity(dir string, sources []observability.MetricsSource) error {
@@ -246,6 +384,22 @@ func EnsureProviderFilesWithRuntimeCAAt(ctx context.Context, issuer serviceacces
 	)
 	if err != nil {
 		return ProviderFiles{}, err
+	}
+	// An application-class metrics source must be scrapeable through the
+	// baseharbor-applications job (card 0428-123). ListMetrics excludes
+	// application-class sources by contract, so collect them separately and
+	// fold them into the sources written to the target files. The
+	// application-class sources are written to their own
+	// application--<app>--<env>--<source>.json file (disjoint from the
+	// provider--<hash>.json family) by syncProviderTargets; a
+	// Verification==none application-class source stays a workload-only
+	// snapshot and never enters the scrape chain.
+	if policy.Collect[application.MetricsSourceApplication] {
+		appSources, appErr := observability.ListApplicationMetrics(providerPlacement, allowedApplications, m.Environment)
+		if appErr != nil {
+			return ProviderFiles{}, appErr
+		}
+		providerSources = append(providerSources, appSources...)
 	}
 	if err := syncProviderTargets(files.TargetsDir, providerSources); err != nil {
 		return ProviderFiles{}, err
@@ -458,6 +612,13 @@ func UnregisterSharedApplicationAt(ctx context.Context, runtime Runtime, issuer 
 	)
 	if err != nil {
 		return err
+	}
+	if policy.Collect[application.MetricsSourceApplication] {
+		appSources, appErr := observability.ListApplicationMetrics(providerPlacement, allowedApplications, m.Environment)
+		if appErr != nil {
+			return appErr
+		}
+		providerSources = append(providerSources, appSources...)
 	}
 	if err := syncProviderTargets(files.TargetsDir, providerSources); err != nil {
 		return err
