@@ -11,6 +11,9 @@ import (
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/development"
+	"github.com/mcpdev80/baseharbor/internal/identity"
+	"github.com/mcpdev80/baseharbor/internal/operatorauth"
+	"github.com/mcpdev80/baseharbor/internal/tenancy"
 )
 
 func writeSourceModelAppManifest(t *testing.T, root string) string {
@@ -24,10 +27,87 @@ func writeSourceModelAppManifest(t *testing.T, root string) string {
 }
 
 func runWorkspaceSourceModelCLI(t *testing.T, args ...string) (bytes.Buffer, bytes.Buffer, error) {
+	return runWorkspaceSourceModelCLIContext(t, context.Background(), args...)
+}
+
+func runWorkspaceSourceModelCLIContext(t *testing.T, ctx context.Context, args ...string) (bytes.Buffer, bytes.Buffer, error) {
 	t.Helper()
 	var out, errOut bytes.Buffer
-	err := runWithIO(context.Background(), append([]string{"app", "workspace"}, args...), &out, &errOut)
+	err := runWithIO(ctx, append([]string{"app", "workspace"}, args...), &out, &errOut)
 	return out, errOut, err
+}
+
+func TestWorkspaceSourceModelWritesRequireUpdatePermission(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(root, "config"))
+	manifest := writeSourceModelAppManifest(t, root)
+	model := development.SourceModel{
+		SchemaVersion: development.SourceModelVersion, Application: "shop",
+		Sources: []development.SourceDefinition{
+			{ID: "backend", Type: development.SourceRepository, Repository: "https://git.example/backend.git"},
+			{ID: "legacy", Type: development.SourceLocal, Path: filepath.Join(root, "legacy")},
+		},
+		Components: []development.ComponentSource{{Component: "api", Source: "backend"}},
+	}
+	if err := os.MkdirAll(filepath.Join(root, "legacy"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := development.WriteSourceModel(manifest, model); err != nil {
+		t.Fatal(err)
+	}
+	ctxFor := func(role string) context.Context {
+		ctx := operatorauth.WithVerifiedPrincipal(context.Background(), &identity.Principal{Issuer: "https://issuer.example", Subject: "operator", IssuerVerified: true})
+		return tenancy.WithContext(ctx, &tenancy.Context{TenantID: "tenant-a", ExternalIdentityID: "operator", Roles: []string{role}})
+	}
+	viewer := ctxFor("viewer")
+	var out, errOut bytes.Buffer
+	if err := appWorkspaceComponentListCommand().Run(viewer, []string{"--manifest", manifest}, &out, &errOut); err != nil {
+		t.Fatalf("viewer could not read component mappings: %v", err)
+	}
+	deniedMutations := []struct {
+		name string
+		run  func() error
+	}{
+		{"source add", func() error {
+			return appWorkspaceSourceAddCommand().Run(viewer, []string{"--manifest", manifest, "--source", "extra=https://git.example/extra.git"}, &out, &errOut)
+		}},
+		{"source remove", func() error {
+			return appWorkspaceSourceRemoveCommand().Run(viewer, []string{"backend", "--manifest", manifest}, &out, &errOut)
+		}},
+		{"component add", func() error {
+			return appWorkspaceComponentAddCommand().Run(viewer, []string{"worker", "backend", "--manifest", manifest}, &out, &errOut)
+		}},
+		{"component remove", func() error {
+			return appWorkspaceComponentRemoveCommand().Run(viewer, []string{"api", "--manifest", manifest}, &out, &errOut)
+		}},
+		{"repository path update", func() error {
+			return appWorkspacePathCommand().Run(viewer, []string{"backend", t.TempDir(), "--manifest", manifest}, &out, &errOut)
+		}},
+		{"local source path update", func() error {
+			return appWorkspacePathCommand().Run(viewer, []string{"legacy", filepath.Join(root, "new-legacy"), "--manifest", manifest}, &out, &errOut)
+		}},
+	}
+	for _, mutation := range deniedMutations {
+		t.Run(mutation.name, func(t *testing.T) {
+			if err := mutation.run(); err == nil {
+				t.Fatalf("viewer was allowed to perform %s", mutation.name)
+			}
+		})
+	}
+	after, _, err := development.LoadSourceModel(manifest)
+	if err != nil || len(after.Sources) != 2 || after.Sources[0].ID != "backend" || after.Sources[1].ID != "legacy" || len(after.Components) != 1 {
+		t.Fatalf("denied viewer mutation changed source model: %#v %v", after, err)
+	}
+	if _, _, err := development.LoadWorkspaceMapping(manifest, "shop"); err == nil {
+		t.Fatal("denied viewer mutation wrote a workspace mapping")
+	}
+	if err := appWorkspaceSourceAddCommand().Run(ctxFor("editor"), []string{"--manifest", manifest, "--source", "extra=https://git.example/extra.git"}, &out, &errOut); err != nil {
+		t.Fatalf("editor could not add a source: %v", err)
+	}
+	after, _, err = development.LoadSourceModel(manifest)
+	if err != nil || len(after.Sources) != 3 {
+		t.Fatalf("editor mutation was not persisted: %#v %v", after, err)
+	}
 }
 
 func TestWorkspaceInitAcceptsLocalDirectorySource(t *testing.T) {
