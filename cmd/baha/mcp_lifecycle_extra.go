@@ -56,8 +56,8 @@ func registerMCPAdditionalLifecycleTools(server *mcp.Server, store application.S
 	})
 	// The optional Perses management surface (0428-084): typed operations share
 	// the exact CLI mutation/read seams, so CLI -o json and the MCP structured
-	// result stay equal. Machine transports converge runtime immediately; the
-	// deferred-to-apply notice is the human CLI presentation only.
+	// result stay equal. Machine transports run the shared apply lifecycle
+	// immediately; the deferred-apply notice is the human CLI presentation only.
 	mcp.AddTool(server, machineMCPTool("app.perses.status", "Report the optional Perses management surface three-state contract without mutation or a health probe.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineApplicationInput) (*mcp.CallToolResult, any, error) {
 		ctx = machineNoninteractiveContext(withTargetOverride(ctx, input.Target))
 		result, err := reportPersesSurfaceStatus(ctx, store, machineApplicationArgs(input.Name, input.Environment))

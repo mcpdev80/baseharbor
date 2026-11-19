@@ -19,8 +19,10 @@ import (
 // application apply reconciliation:
 //
 //   - enable/disable edit the repository manifest services.perses field and then
-//     converge runtime with the existing 'baha app apply' path (the repository
-//     manifest is the source of truth).
+//     converge runtime: machine transports (MCP stdio, HTTP/remote) run the
+//     shared apply lifecycle immediately; the direct human CLI defers the
+//     convergence to a later 'baha app apply' and prints the actionable
+//     deferred-apply notice (the repository manifest is the source of truth).
 //   - status reports the public three-state contract without a health probe.
 //   - remove disables the surface and retires only the owned Perses runtime
 //     resources; Prometheus, Loki, Tempo and foreign data are preserved.
@@ -49,9 +51,9 @@ func persesEnableCommand(store application.Store) *cli.Command {
 		Name:    "enable",
 		Summary: "Select the optional Perses management-ui surface",
 		Usage:   "baha app perses enable [NAME] [--json]",
-		Long:    "Selects the optional Perses realization of the observability management-ui surface by setting services.perses in the repository manifest and converging runtime with 'baha app apply'. Fail-closed: requires a verified application owner; requires the observability management-ui surface and managed metrics sources (Prometheus). Reports configured_unverified — no Perses health path exists in this Core.",
+		Long:    "Selects the optional Perses realization of the observability management-ui surface by setting services.perses in the repository manifest. Machine transports converge runtime through the shared apply lifecycle; the direct human CLI defers it to 'baha app apply' and reports the deferred action. Fail-closed: requires a verified application owner; requires the observability management-ui surface and managed metrics sources (Prometheus). Reports configured_unverified — no Perses health path exists in this Core.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
-			return runPersesLifecycleCommand(ctx, store, args, out, errOut, application.PersesLifecycleEnable, true, true)
+			return runPersesLifecycleCommand(ctx, store, args, out, errOut, application.PersesLifecycleEnable, true)
 		},
 	}
 }
@@ -61,9 +63,9 @@ func persesDisableCommand(store application.Store) *cli.Command {
 		Name:    "disable",
 		Summary: "Deselect the optional Perses management-ui surface",
 		Usage:   "baha app perses disable [NAME] [--json]",
-		Long:    "Deselects the optional Perses realization of the observability management-ui surface by clearing services.perses in the repository manifest and converging runtime with 'baha app apply'. The backend observability surface (Prometheus) is preserved. Reports not_configured.",
+		Long:    "Deselects the optional Perses realization of the observability management-ui surface by clearing services.perses in the repository manifest. Machine transports converge runtime through the shared apply lifecycle; the direct human CLI defers it to 'baha app apply' and reports the deferred action. The backend observability surface (Prometheus) is preserved. Reports not_configured.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
-			return runPersesLifecycleCommand(ctx, store, args, out, errOut, application.PersesLifecycleDisable, false, false)
+			return runPersesLifecycleCommand(ctx, store, args, out, errOut, application.PersesLifecycleDisable, false)
 		},
 	}
 }
@@ -97,20 +99,28 @@ func persesRemoveCommand(store application.Store) *cli.Command {
 		Name:    "remove",
 		Summary: "Ownership-safe retirement of the owned Perses surface",
 		Usage:   "baha app perses remove [NAME] [--json]",
-		Long:    "Disables the optional Perses surface and retires only the BaseHarbor-owned Perses runtime resources. Prometheus, Loki, Tempo and foreign data are preserved and never removed. Fail-closed: requires a verified application owner. Runtime removal is deferred to the release window and reported as STATE; this operation converges the manifest and ownership-safe removal plan.",
+		Long:    "Disables the optional Perses surface and retires only the BaseHarbor-owned Perses runtime resources. Prometheus, Loki, Tempo and foreign data are preserved and never removed. Fail-closed: requires a verified application owner. Machine transports converge runtime through the shared apply lifecycle; the direct human CLI defers it to 'baha app apply' and reports the deferred action. This operation converges the manifest and ownership-safe removal plan.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
-			return runPersesLifecycleCommand(ctx, store, args, out, errOut, application.PersesLifecycleRemove, false, false)
+			return runPersesLifecycleCommand(ctx, store, args, out, errOut, application.PersesLifecycleRemove, false)
 		},
 	}
 }
 
+// persesLifecycleResult is the shared JSON/structured surface of every Perses
+// lifecycle mutation. DeferredAction carries the actionable deferred-apply
+// notice for the direct human CLI (the transport that defers the shared apply
+// lifecycle); it is empty on machine transports, which converged through the
+// shared apply lifecycle inside the same call.
 type persesLifecycleResult struct {
 	Action            string `json:"action"`
 	State             string `json:"state"`
 	RequiresReconcile bool   `json:"requires_reconcile"`
 	BackendPreserved  bool   `json:"backend_preserved"`
 	Enabled           bool   `json:"enabled"`
+	DeferredAction    string `json:"deferred_action,omitempty"`
 }
+
+const persesDeferredApplyNotice = "Converging runtime deferred: run 'baha app apply' to reconcile the changed manifest."
 
 type persesStatusResult struct {
 	State   string `json:"state"`
@@ -118,17 +128,39 @@ type persesStatusResult struct {
 	Version string `json:"version"`
 }
 
-// persesMachineConvergeDeferred reports whether the runtime convergence after a
-// manifest change is deferred to the release window under the current gate
-// scope. The direct human CLI invocation ("cli") defers and prints the
-// pending-apply notice; MCP stdio, HTTP and remote transports converge
-// immediately through the shared apply lifecycle, because a non-interactive
-// client has no later human 'baha app apply'. main.go tags direct CLI runs with
-// withLocalInvocation(ctx, "cli") and the MCP stdio transport with "stdio";
-// every other machine path leaves the transport empty. The seam is a
-// package-level function so tests assert both modes without a live runtime.
-var persesMachineConvergeDeferred = func(ctx context.Context) bool {
-	return cliInvocationTransport(ctx) != "cli"
+// persesDirectCLIApplyDeferred reports whether the shared apply lifecycle after
+// a manifest change is deferred to a later human 'baha app apply'. Only the
+// direct human CLI invocation ("cli") defers; it must print the actionable
+// deferred-apply notice. MCP stdio, HTTP, remote and every other machine
+// transport leave this false and run the shared apply lifecycle immediately,
+// because a non-interactive client has no later human apply. main.go tags
+// direct CLI runs with withLocalInvocation(ctx, "cli") and the MCP stdio
+// transport with "stdio"; every other machine path leaves the transport empty.
+var persesDirectCLIApplyDeferred = func(ctx context.Context) bool {
+	return cliInvocationTransport(ctx) == "cli"
+}
+
+// persesApplyLifecycleFunc is the shared apply lifecycle seam the Perses
+// lifecycle converges through. It is a package-level variable so the
+// transport/action matrix tests can observe the machine transports'
+// convergence hermetically (the mission forbids containers on the coordinator
+// host); production wires the real executeApplicationApplyLifecycle.
+var persesApplyLifecycleFunc = func(ctx context.Context, store application.Store, args []string, out, errOut io.Writer) error {
+	return executeApplicationApplyLifecycle(ctx, store, args, out, errOut)
+}
+
+// persesLifecycleStatusAction names the read action behind 'baha app perses
+// status' and its typed MCP operation (app.perses.status); the machine
+// contract registers no mutation for it.
+const persesLifecycleStatusAction application.PersesLifecycleAction = "status"
+
+// persesLifecycleOperationID binds each lifecycle action to its registered
+// typed machine operation (internal/machine/contract.go), the same identity
+// cliMachineOperations maps the CLI command form to. The bare "perses.<action>"
+// audit label was never a registry id: the unregistered id made every
+// authorization fail with "Unknown BaseHarbor machine operation".
+func persesLifecycleOperationID(action application.PersesLifecycleAction) string {
+	return "app.perses." + string(action)
 }
 
 // executePersesLifecycle is the single mutation seam the CLI commands and the
@@ -140,8 +172,10 @@ func executePersesLifecycle(ctx context.Context, store application.Store, args [
 	if err != nil {
 		return persesLifecycleResult{}, err
 	}
-	// Fail-closed ownership/authorization guard before any manifest mutation.
-	if err := authorizeApplicationOperation(ctx, "perses."+string(action), resolved); err != nil {
+	// Fail-closed ownership/authorization guard before any manifest mutation,
+	// under the registered typed operation id the machine-coverage map binds
+	// for this command ("app.perses.<action>").
+	if err := authorizeApplicationOperation(ctx, persesLifecycleOperationID(action), resolved); err != nil {
 		return persesLifecycleResult{}, err
 	}
 	plan, err := application.ResolvePersesLifecycle(resolved.Manifest, action, setPerses, true, true)
@@ -151,18 +185,26 @@ func executePersesLifecycle(ctx context.Context, store application.Store, args [
 	if err := persistRepositoryPersesLifecycle(ctx, resolved, plan); err != nil {
 		return persesLifecycleResult{}, err
 	}
-	if plan.RequiresReconcile && !persesMachineConvergeDeferred(ctx) {
-		if err := executeApplicationApplyLifecycle(ctx, store, args, out, errOut); err != nil {
+	if plan.RequiresReconcile && !persesDirectCLIApplyDeferred(ctx) {
+		if err := persesApplyLifecycleFunc(ctx, store, args, out, errOut); err != nil {
 			return persesLifecycleResult{}, err
 		}
 	}
-	return persesLifecycleResult{
+	result := persesLifecycleResult{
 		Action:            string(action),
 		State:             application.PersesLifecycleStatus(plan.ManifestAfter),
 		RequiresReconcile: plan.RequiresReconcile,
 		BackendPreserved:  plan.BackendPreserved,
 		Enabled:           application.PersesLifecycleEnabled(plan.ManifestAfter),
-	}, nil
+	}
+	if plan.RequiresReconcile && persesDirectCLIApplyDeferred(ctx) {
+		// The direct human CLI defers the shared apply lifecycle; the deferred
+		// action must then be explicit in the result (JSON parity and the
+		// human notice below), so a changed manifest never reports silent
+		// success.
+		result.DeferredAction = persesDeferredApplyNotice
+	}
+	return result, nil
 }
 
 // reportPersesSurfaceStatus is the shared read seam behind 'baha app perses
@@ -173,7 +215,7 @@ func reportPersesSurfaceStatus(ctx context.Context, store application.Store, arg
 	if err != nil {
 		return persesStatusResult{}, err
 	}
-	if err := authorizeApplicationOperation(ctx, "perses.status", resolved); err != nil {
+	if err := authorizeApplicationOperation(ctx, persesLifecycleOperationID(persesLifecycleStatusAction), resolved); err != nil {
 		return persesStatusResult{}, err
 	}
 	return persesStatusResult{
@@ -183,12 +225,12 @@ func reportPersesSurfaceStatus(ctx context.Context, store application.Store, arg
 	}, nil
 }
 
-func runPersesLifecycleCommand(ctx context.Context, store application.Store, args []string, out, errOut io.Writer, action application.PersesLifecycleAction, setPerses bool, printDeferredNotice bool) error {
+func runPersesLifecycleCommand(ctx context.Context, store application.Store, args []string, out, errOut io.Writer, action application.PersesLifecycleAction, setPerses bool) error {
 	filtered, format, err := parseReadOutputArgs(args, "perses "+string(action))
 	if err != nil {
 		return err
 	}
-	before, err := currentPersesSurfaceChanged(ctx, store, filtered, action, setPerses)
+	changed, err := currentPersesSurfaceChanged(ctx, store, filtered, action, setPerses)
 	if err != nil {
 		return err
 	}
@@ -199,10 +241,13 @@ func runPersesLifecycleCommand(ctx context.Context, store application.Store, arg
 		}
 		return err
 	}
-	if !before {
+	if !changed {
 		fmt.Fprintf(out, "No change: %s already at the target state.\n", action)
-	} else if printDeferredNotice && result.RequiresReconcile {
-		fmt.Fprintf(out, "Converging runtime: run 'baha app apply' (deferred to release window under current gate scope)\n")
+	} else if result.DeferredAction != "" {
+		// The direct human CLI deferred the shared apply lifecycle: every
+		// changed mutation (enable, disable, remove) must print the actionable
+		// deferred-apply notice here, in every output format.
+		fmt.Fprintf(out, "%s\n", result.DeferredAction)
 	}
 	if format == outputJSON {
 		return writeJSON(out, result)
