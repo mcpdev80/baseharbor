@@ -165,9 +165,10 @@ func TestApplicationClassLogSourceDisabledPolicyReclaims(t *testing.T) {
 	if err := logs.ReconcileApplicationLogSource(m, project, []string{"api"}); err != nil {
 		t.Fatal(err)
 	}
-	// Idempotency first: reconciling the same deployment twice keeps exactly
-	// one application-class signal.
-	if err := logs.ReconcileApplicationLogSource(m, project, []string{"api"}); err != nil {
+	// The ID is the workload identity: a second reconcile that resolves a
+	// different service retargets the SAME signal instead of accumulating a
+	// second entry.
+	if err := logs.ReconcileApplicationLogSource(m, project, []string{"worker"}); err != nil {
 		t.Fatal(err)
 	}
 	sources, err := logs.ListWorkloadLogSources(placement, m)
@@ -175,7 +176,7 @@ func TestApplicationClassLogSourceDisabledPolicyReclaims(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(sources) != 1 {
-		t.Fatalf("application-class log signals = %#v, want exactly one after two reconciles", sources)
+		t.Fatalf("application-class log signals = %#v, want exactly one after a re-target", sources)
 	}
 	// The prune boundary equals the write boundary: a nil keep set on the
 	// application/environment identity empties exactly this deployment's

@@ -113,25 +113,26 @@ func ReconcileApplicationLogSource(m application.Manifest, project string, servi
 	}
 	desired := []observability.SignalSource{}
 	if policy.Enabled && policy.Collect[application.LogsSourceApplication] {
-		// The registry ID is the workload token (applicationLogServiceName):
-		// exactly one class-application log signal per
-		// application/environment. The Target names the resolved stream -
-		// the caller's first service, else the canonical workload token - so
-		// repeated reconciles replace, never accumulate or drift to zero.
-		service := applicationLogServiceName
-		for _, candidate := range services {
-			if candidate = strings.TrimSpace(candidate); candidate != "" {
-				service = candidate
-				break
-			}
-		}
-		source, err := applicationLogSource(m, project, service)
+		// An enabled policy always writes exactly one signal: the ID names
+		// the workload identity, the Target the resolved stream (first named
+		// service, else the canonical workload token). Repeated reconciles
+		// replace, never accumulate.
+		source, err := applicationLogSource(m, project, firstNamedService(services))
 		if err != nil {
 			return err
 		}
 		desired = append(desired, source)
 	}
 	return observability.ReconcileMatching(applicationLogBoundary(m), desired)
+}
+
+func firstNamedService(services []string) string {
+	for _, candidate := range services {
+		if candidate = strings.TrimSpace(candidate); candidate != "" {
+			return candidate
+		}
+	}
+	return applicationLogServiceName
 }
 
 // ListWorkloadLogSources is the policy-aware listing boundary for class
@@ -157,9 +158,12 @@ func ConvergeManagedLogsForReconcile(m application.Manifest, project string) err
 	return ReconcileApplicationLogSource(m, project, []string{applicationLogServiceName})
 }
 
-// ReconcileWorkloadLogSource is the single-service form of
-// ReconcileApplicationLogSource for the Loki driver Bind path, which binds one
-// concrete workload service at a time.
+// ReconcileWorkloadLogSource registers one workload service's class-
+// application log signal - the same identity ReconcileApplicationLogSource
+// writes, reached directly by the Loki driver Bind path, which binds one
+// concrete service at a time. An enabled policy writes exactly one signal per
+// application/environment; a disabled policy fails closed here because reclaim
+// is the reconciliation entry's job, not the bind path's.
 func ReconcileWorkloadLogSource(m application.Manifest, project, service string) error {
 	policy, err := application.LogsPolicy(m)
 	if err != nil {
