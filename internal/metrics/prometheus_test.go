@@ -13,6 +13,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/observability"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 	"github.com/mcpdev80/baseharbor/internal/testsupport/serviceissuer"
 )
@@ -167,6 +168,10 @@ func TestBindWritesAttributedTargetAndPrunesOnlySameApplication(t *testing.T) {
 		labels["baseharbor_metrics_scheme"] != "https" {
 		t.Fatalf("labels = %#v", labels)
 	}
+	alphaSources, err := observability.ListApplicationMetrics(capability.ProviderPlacement{Scope: capability.ScopeApplication}, []string{"alpha"})
+	if err != nil || len(alphaSources) != 1 || alphaSources[0].Scheme != "https" {
+		t.Fatalf("registered alpha application metrics = %#v, err=%v", alphaSources, err)
+	}
 
 	if err := PruneApplicationTargets(alpha, nil); err != nil {
 		t.Fatal(err)
@@ -177,6 +182,14 @@ func TestBindWritesAttributedTargetAndPrunesOnlySameApplication(t *testing.T) {
 	betaPath := filepath.Join(files.TargetsDir, targetFileName(beta, "application"))
 	if _, err := os.Stat(betaPath); err != nil {
 		t.Fatalf("beta target was removed while pruning alpha: %v", err)
+	}
+	alphaSources, err = observability.ListApplicationMetrics(capability.ProviderPlacement{Scope: capability.ScopeApplication}, []string{"alpha"})
+	if err != nil || len(alphaSources) != 0 {
+		t.Fatalf("pruned alpha application metrics = %#v, err=%v", alphaSources, err)
+	}
+	betaSources, err := observability.ListApplicationMetrics(capability.ProviderPlacement{Scope: capability.ScopeApplication}, []string{"beta"})
+	if err != nil || len(betaSources) != 1 {
+		t.Fatalf("beta application metrics after alpha prune = %#v, err=%v", betaSources, err)
 	}
 }
 
