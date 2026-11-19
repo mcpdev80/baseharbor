@@ -60,7 +60,7 @@ func applicationLogSource(m application.Manifest, project, service string) (obse
 		return observability.SignalSource{}, fmt.Errorf("application log source %q requires its runtime project", service)
 	}
 	source := observability.SignalSource{
-		ID:                 observability.ApplicationLogSourceID(m.Name, m.Environment, applicationLogServiceName),
+		ID:                 observability.ApplicationLogSourceID(m.Name, m.Environment, service),
 		Kind:               observability.SignalLogs,
 		Provider:           capability.ProviderLoki,
 		Class:              observability.SourceApplication,
@@ -87,19 +87,20 @@ func applicationLogBoundary(m application.Manifest) func(observability.SignalSou
 }
 
 // ReconcileApplicationLogSource writes - or reclaims - the class-application
-// log signal of one deployment's workload project in the shared observability
+// log signals of one deployment's workload project in the shared observability
 // registry. Before card 0428-122 no production path ever stamped class
 // application on a log signal: the collector already labelled the streams it
 // ingests (render.go), but the registry - the listing every policy, evidence
 // and Console consumer reads - stayed empty for the class, so "application
 // logs collected" was reported from a source no reader could see.
 //
-// The writer is transport-neutral by design: the Loki Bind path (the Docker
-// realization) and the render-time convergence entry ConvergeManagedLogsFor-
-// Reconcile (both transports, wired in internal/application) all land here.
-// An empty service list reclaims the deployment's workload log signal, and a
-// disabled deployment policy reclaims it too: the registry never keeps a
-// source the deployment stopped collecting.
+// The writer is transport-neutral: both the render-time reconciliation in
+// internal/application (Docker syslog and Podman journald alike) and the Loki
+// driver Bind path land here. services is the desired set: one signal per
+// named workload service, and the canonical workload token alone when the
+// caller resolved none. A disabled deployment policy reclaims every signal of
+// the application/environment boundary: the registry never keeps a source the
+// deployment stopped collecting.
 func ReconcileApplicationLogSource(m application.Manifest, project string, services []string) error {
 	policy, err := application.LogsPolicy(m)
 	if err != nil {
@@ -107,25 +108,25 @@ func ReconcileApplicationLogSource(m application.Manifest, project string, servi
 	}
 	desired := []observability.SignalSource{}
 	if policy.Enabled && policy.Collect[application.LogsSourceApplication] {
-		// One deployment collects one workload stream set. A caller that
-		// resolves the concrete workload services (the render-time boundary
-		// in internal/application) passes them and they win, so the registry
-		// names the same identity the collector labels the stream with; a
-		// caller that has only the application manifest passes an empty
-		// service set and gets the canonical workload token, never a silent
-		// no-op.
-		service := applicationLogServiceName
+		named := false
 		for _, candidate := range services {
-			if candidate = strings.TrimSpace(candidate); candidate != "" {
-				service = candidate
-				break
+			if candidate = strings.TrimSpace(candidate); candidate == "" {
+				continue
 			}
+			named = true
+			source, err := applicationLogSource(m, project, candidate)
+			if err != nil {
+				return err
+			}
+			desired = append(desired, source)
 		}
-		source, err := applicationLogSource(m, project, service)
-		if err != nil {
-			return err
+		if !named {
+			source, err := applicationLogSource(m, project, applicationLogServiceName)
+			if err != nil {
+				return err
+			}
+			desired = append(desired, source)
 		}
-		desired = append(desired, source)
 	}
 	return observability.ReconcileMatching(applicationLogBoundary(m), desired)
 }

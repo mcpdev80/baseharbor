@@ -167,10 +167,9 @@ func TestApplicationClassLogSourceDisabledPolicyReclaims(t *testing.T) {
 	if err := logs.ReconcileApplicationLogSource(m, project, []string{"api"}); err != nil {
 		t.Fatal(err)
 	}
-	// One reconciliation is one signal per deployment: the same identity
-	// re-registers (idempotently), and an enabled policy with no resolved
-	// services must not lose or duplicate the workload signal.
-	if err := logs.ReconcileApplicationLogSource(m, project, nil); err != nil {
+	// Idempotency first: reconciling the same deployment twice keeps exactly
+	// one application-class signal.
+	if err := logs.ReconcileApplicationLogSource(m, project, []string{"api"}); err != nil {
 		t.Fatal(err)
 	}
 	sources, err := logs.ListWorkloadLogSources(placement, m)
@@ -178,11 +177,11 @@ func TestApplicationClassLogSourceDisabledPolicyReclaims(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(sources) != 1 {
-		t.Fatalf("an enabled policy with no resolved services lost the workload log signal: %#v", sources)
+		t.Fatalf("application-class log signals = %#v, want exactly one after two reconciles", sources)
 	}
-	// The reclaim boundary is the disabled policy itself, which
-	// TestApplicationClassLogSourcePolicyDisableReclaims pins end to end; an
-	// explicit reclaim here would widen the writer past its contract.
+	// The prune boundary equals the write boundary: a nil keep set on the
+	// application/environment identity empties exactly this deployment's
+	// application-class space.
 	if err := observability.PruneApplicationLogs(m.Name, m.Environment, nil); err != nil {
 		t.Fatal(err)
 	}
