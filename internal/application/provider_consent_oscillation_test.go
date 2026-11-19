@@ -612,3 +612,109 @@ func TestEqualRegistryFailClosedRevalidation(t *testing.T) {
 		t.Fatalf("expected a stale-impact-consent fail-closed error, got %v", revalErr)
 	}
 }
+
+// 0428-119 r2 / CODEX Finding 1: sameProviderInstanceAuthority omitted the
+// external Reference and OwnerEnvironment fields, so two instances that differ
+// ONLY in one of those compare as the same consent authority. These negatives
+// pin the fix: the reference and the owner-environment each count as an
+// authority-bearing field, and a same-instance swap in either one fails closed.
+func TestEqualRegistryBlockendReferenceOnly(t *testing.T) {
+	a := registryInstance("secrets", "v1", capability.ScopeApplication)
+	// Same id and count, but a different external registration reference:
+	// the instance now resolves to a different external registration.
+	b := registryInstance("secrets", "v1", capability.ScopeApplication)
+	b.Instances[0].Reference = "ext/different-registration"
+	if equalRegistry(a, b) {
+		t.Fatal("same id/count, different external Reference: registries must be UNEQUIVALENT (stale consent hole)")
+	}
+}
+
+func TestEqualRegistryBlockendOwnerEnvironmentOnly(t *testing.T) {
+	a := registryInstance("secrets", "v1", capability.ScopeApplication)
+	// Same id and count, but a different owner-environment constraint:
+	// the set of environments allowed to bind the instance changes.
+	b := registryInstance("secrets", "v1", capability.ScopeApplication)
+	b.Instances[0].OwnerEnvironment = "other-env"
+	if equalRegistry(a, b) {
+		t.Fatal("same id/count, different OwnerEnvironment: registries must be UNEQUIVALENT (stale consent hole)")
+	}
+}
+
+func TestEqualRegistryFailClosedReferenceAndEnvironment(t *testing.T) {
+	requests := []ProviderChangeRequest{{InstanceID: "secrets", Operation: "stop"}}
+	s, u, o := impactFixture(t)
+	plan, err := DescribeProviderChanges(s, u, requests, o)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Swap only the Reference of the "sql" instance (same id/count).
+	sRef := s
+	for i := range sRef.Registry.Instances {
+		if sRef.Registry.Instances[i].ID == "sql" {
+			sRef.Registry.Instances[i].Reference = "ext/swapped-reference"
+		}
+	}
+	planRef, err := DescribeProviderChanges(sRef, u, requests, o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	equivalent, err := ProviderImpactPlansConsentEquivalent(plan, planRef, s, sRef, u, u, o, o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if equivalent {
+		t.Fatal("a Reference-only instance change read as consent-equivalent (F1)")
+	}
+	if err := ValidateProviderImpactRevalidation(planRef, plan); err == nil {
+		t.Fatal("revalidation second gate accepted a Reference-only change as equivalent")
+	}
+
+	// Swap only the OwnerEnvironment of the "sql" instance (same id/count).
+	sEnv := s
+	for i := range sEnv.Registry.Instances {
+		if sEnv.Registry.Instances[i].ID == "sql" {
+			sEnv.Registry.Instances[i].OwnerEnvironment = "other-env"
+		}
+	}
+	planEnv, err := DescribeProviderChanges(sEnv, u, requests, o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	equivalentEnv, err := ProviderImpactPlansConsentEquivalent(plan, planEnv, s, sEnv, u, u, o, o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if equivalentEnv {
+		t.Fatal("an OwnerEnvironment-only instance change read as consent-equivalent (F1)")
+	}
+}
+
+// 0428-119 r2 / CODEX Finding 2: equalProviderCapabilities compared slice
+// length and then membership of each left value in the right set. A duplicate
+// entry on the left ([sql, sql]) masked a missing/different capability on the
+// right ([sql, secrets]) and compared equal. This negative proves the multiset
+// fix rejects it.
+func TestEqualProviderCapabilitiesRejectsDuplicateMasking(t *testing.T) {
+	// Same length (2), every element of a present in {sql, secrets}, but the
+	// multiset {sql, sql} does not support secrets: must NOT be equal.
+	if equalProviderCapabilities([]capability.Kind{capability.SQL, capability.SQL},
+		[]capability.Kind{capability.SQL, capability.Secrets}) {
+		t.Fatal("duplicate capability [sql,sql] masked a different second capability [sql,secrets]; equalProviderCapabilities must be a multiset comparison")
+	}
+	// The converse direction is the same bug: [sql, secrets] vs [sql, sql].
+	if equalProviderCapabilities([]capability.Kind{capability.SQL, capability.Secrets},
+		[]capability.Kind{capability.SQL, capability.SQL}) {
+		t.Fatal("duplicate capability [sql,sql] on the right masked a missing capability; equalProviderCapabilities must be a multiset comparison")
+	}
+	// Identical multisets still compare equal (order irrelevant).
+	if !equalProviderCapabilities([]capability.Kind{capability.SQL, capability.Secrets},
+		[]capability.Kind{capability.Secrets, capability.SQL}) {
+		t.Fatal("identical capability multisets in different order must be equal")
+	}
+	// A genuine capability loss must still compare unequal.
+	if equalProviderCapabilities([]capability.Kind{capability.SQL, capability.Secrets},
+		[]capability.Kind{capability.SQL}) {
+		t.Fatal("a lost capability must make the multisets unequal")
+	}
+}

@@ -494,9 +494,10 @@ func equalBindingSet(a, b []capability.ProviderBinding) bool {
 
 // sameProviderInstanceAuthority reports whether two instances of the SAME id
 // carry identical consent authority: id, provider identity and version,
-// protocol, scope, sharing boundary, ownership and owner. The registry already
-// keys instances by id, so this is the content the stale-impact-consent fold
-// must read.
+// protocol, scope, sharing boundary, ownership and owner, the external
+// registration Reference and the owner-environment constraint. The registry
+// already keys instances by id, so this is the content the stale-impact-consent
+// fold must read.
 func sameProviderInstanceAuthority(a, b capability.ProviderInstance) bool {
 	return a.ID == b.ID &&
 		a.ProviderID == b.ProviderID &&
@@ -507,7 +508,9 @@ func sameProviderInstanceAuthority(a, b capability.ProviderInstance) bool {
 		a.Scope == b.Scope &&
 		a.SharingBoundary == b.SharingBoundary &&
 		a.Ownership == b.Ownership &&
-		a.OwnerApplicationID == b.OwnerApplicationID
+		a.OwnerApplicationID == b.OwnerApplicationID &&
+		a.Reference == b.Reference &&
+		a.OwnerEnvironment == b.OwnerEnvironment
 }
 
 // sameBindingAuthority reports whether two bindings of the SAME tuple carry
@@ -547,18 +550,24 @@ func bindingKey(b capability.ProviderBinding) string {
 }
 
 // equalProviderCapabilities reports whether two capability lists carry the same
-// set of capabilities (order irrelevant): a provider that lost or gained a
-// capability is a different provider for consent purposes.
+// multiset of capabilities (order irrelevant): a provider that lost or gained a
+// capability, or duplicated one to mask a missing capability, is a different
+// provider for consent purposes. The comparison is by per-kind count, not by
+// length-plus-membership: the latter treated [sql, sql] and [sql, secrets] as
+// equal because both lengths are two and every left element is present in the
+// right set. A multiset match is required because a duplicate entry can hide a
+// capability the provider no longer supports.
 func equalProviderCapabilities(a, b []capability.Kind) bool {
 	if len(a) != len(b) {
 		return false
 	}
-	seen := make(map[capability.Kind]struct{}, len(b))
+	counts := make(map[capability.Kind]int, len(b))
 	for _, c := range b {
-		seen[c] = struct{}{}
+		counts[c]++
 	}
 	for _, c := range a {
-		if _, ok := seen[c]; !ok {
+		counts[c]--
+		if counts[c] < 0 {
 			return false
 		}
 	}
