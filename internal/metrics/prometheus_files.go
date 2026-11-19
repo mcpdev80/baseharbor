@@ -242,6 +242,7 @@ func EnsureProviderFilesWithRuntimeCAAt(ctx context.Context, issuer serviceacces
 		allowedApplications,
 		policy.Collect[application.MetricsSourceApplicationProvider],
 		policy.Collect[application.MetricsSourcePlatformProvider],
+		m.Environment,
 	)
 	if err != nil {
 		return ProviderFiles{}, err
@@ -453,6 +454,7 @@ func UnregisterSharedApplicationAt(ctx context.Context, runtime Runtime, issuer 
 		allowedApplications,
 		policy.Collect[application.MetricsSourceApplicationProvider],
 		policy.Collect[application.MetricsSourcePlatformProvider],
+		m.Environment,
 	)
 	if err != nil {
 		return err

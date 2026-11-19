@@ -25,6 +25,7 @@ func TestManagedRuntimeObservabilityUsesCanonicalServiceIdentities(t *testing.T)
 		[]string{m.Name},
 		true,
 		false,
+		m.Environment,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -34,6 +35,7 @@ func TestManagedRuntimeObservabilityUsesCanonicalServiceIdentities(t *testing.T)
 		[]string{m.Name},
 		true,
 		false,
+		m.Environment,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -78,6 +80,7 @@ func TestManagedRuntimeObservabilityExcludesSharedBackendServices(t *testing.T) 
 		[]string{m.Name},
 		true,
 		false,
+		m.Environment,
 	)
 	if err != nil {
 		t.Fatal(err)

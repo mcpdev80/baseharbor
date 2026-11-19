@@ -255,6 +255,7 @@ func refreshProviderTraceSources(prepared *managedTracesExecution) error {
 		[]string{prepared.manifest.Name},
 		policy.Collect[application.TracesSourceApplicationProvider],
 		policy.Collect[application.TracesSourcePlatformProvider],
+		prepared.manifest.Environment,
 	)
 	if err != nil {
 		return fmt.Errorf("resolve provider trace sources: %w", err)
