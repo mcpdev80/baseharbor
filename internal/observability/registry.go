@@ -485,7 +485,7 @@ func Remove(id string) error {
 	})
 }
 
-func List(kind SignalKind, placement capability.ProviderPlacement, applications []string, includeApplicationSources, includeApplicationProviders, includePlatformProviders bool) ([]SignalSource, error) {
+func List(kind SignalKind, placement capability.ProviderPlacement, applications []string, includeApplicationSources, includeApplicationProviders, includePlatformProviders bool, requestedEnvironment string) ([]SignalSource, error) {
 	path, err := registryPath()
 	if err != nil {
 		return nil, err
@@ -522,6 +522,17 @@ func List(kind SignalKind, placement capability.ProviderPlacement, applications 
 				continue
 			}
 		}
+		// Central environment filter (card 0428-121, route 2): only an
+		// app-scoped caller is scoped to a single environment, so the
+		// comparing guard applies there — an app-scoped source is visible only
+		// when it resolves to the caller's requested environment. A source whose
+		// environment cannot be resolved or resolves elsewhere is excluded
+		// (fail-closed) — no cross-environment visibility leak. Shared-platform
+		// callers are not environment-scoped: they aggregate the allowed app
+		// sources under the shared/platform boundary rule applied downstream.
+		if placement.Scope == capability.ScopeApplication && source.Scope == capability.ScopeApplication && !SourceMatchesEnvironment(source, requestedEnvironment) {
+			continue
+		}
 		switch placement.Scope {
 		case capability.ScopeShared:
 			if source.Scope == capability.ScopeShared && strings.TrimSpace(source.SharingBoundary) == strings.TrimSpace(placement.SharingBoundary) {
@@ -548,16 +559,38 @@ func List(kind SignalKind, placement capability.ProviderPlacement, applications 
 	return out, nil
 }
 
-func ListLogs(placement capability.ProviderPlacement, applications []string, includeApplicationProviders, includePlatformProviders bool) ([]SignalSource, error) {
-	return List(SignalLogs, placement, applications, false, includeApplicationProviders, includePlatformProviders)
+func ListLogs(placement capability.ProviderPlacement, applications []string, includeApplicationProviders, includePlatformProviders bool, requestedEnvironment string) ([]SignalSource, error) {
+	return List(SignalLogs, placement, applications, false, includeApplicationProviders, includePlatformProviders, requestedEnvironment)
 }
 
-func ListTraces(placement capability.ProviderPlacement, applications []string, includeApplicationProviders, includePlatformProviders bool) ([]SignalSource, error) {
-	return List(SignalTraces, placement, applications, false, includeApplicationProviders, includePlatformProviders)
+func ListTraces(placement capability.ProviderPlacement, applications []string, includeApplicationProviders, includePlatformProviders bool, requestedEnvironment string) ([]SignalSource, error) {
+	return List(SignalTraces, placement, applications, false, includeApplicationProviders, includePlatformProviders, requestedEnvironment)
 }
 
 func ApplicationMetricsSourceID(application, environment, source string) string {
 	return "application:metrics:" + strings.TrimSpace(application) + ":" + strings.TrimSpace(environment) + ":" + strings.TrimSpace(source)
+}
+
+// SourceMatchesEnvironment is the single source-driven environment predicate of
+// the list surface (card 0428-121, route 2): an app-scoped source is visible
+// only when it resolves to an explicit or unambiguously derivable environment
+// that equals the caller's requested environment (case-normalised). The
+// requested environment is the owning application's manifest environment — the
+// capability ProviderPlacement carries none on this base, so no caller passes
+// one and the dimension is threaded through the list wrappers explicitly. A
+// source whose environment cannot be resolved, or resolves to a different or
+// ambiguous environment (for example a hyphenated legacy "prod-west" read as
+// "west", or a reserved project token), fails closed: it appears in no single
+// environment result instead of leaking into another. Shared/platform sources
+// are not environment-scoped here; they keep the shared/platform boundary rule
+// applied downstream.
+func SourceMatchesEnvironment(source SignalSource, requestedEnvironment string) bool {
+	requestedEnvironment = strings.TrimSpace(requestedEnvironment)
+	environment, ok := SourceEnvironment(source)
+	if !ok {
+		return false
+	}
+	return strings.ToLower(environment) == strings.ToLower(requestedEnvironment)
 }
 
 func PruneApplicationMetrics(application, environment string, keepIDs map[string]struct{}) error {
@@ -585,8 +618,8 @@ func PruneApplicationMetrics(application, environment string, keepIDs map[string
 	})
 }
 
-func ListApplicationMetrics(placement capability.ProviderPlacement, applications []string) ([]MetricsSource, error) {
-	signals, err := List(SignalMetrics, placement, applications, true, false, false)
+func ListApplicationMetrics(placement capability.ProviderPlacement, applications []string, requestedEnvironment string) ([]MetricsSource, error) {
+	signals, err := List(SignalMetrics, placement, applications, true, false, false, requestedEnvironment)
 	if err != nil {
 		return nil, err
 	}
@@ -612,8 +645,8 @@ func ListApplicationMetrics(placement capability.ProviderPlacement, applications
 	return out, nil
 }
 
-func ListMetrics(placement capability.ProviderPlacement, applications []string, includeApplicationProviders, includePlatformProviders bool) ([]MetricsSource, error) {
-	signals, err := List(SignalMetrics, placement, applications, false, includeApplicationProviders, includePlatformProviders)
+func ListMetrics(placement capability.ProviderPlacement, applications []string, includeApplicationProviders, includePlatformProviders bool, requestedEnvironment string) ([]MetricsSource, error) {
+	signals, err := List(SignalMetrics, placement, applications, false, includeApplicationProviders, includePlatformProviders, requestedEnvironment)
 	if err != nil {
 		return nil, err
 	}

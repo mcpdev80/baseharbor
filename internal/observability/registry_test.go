@@ -12,8 +12,8 @@ func TestListMetricsRespectsSharingBoundaryAndApplicationAuthorization(t *testin
 	sources := []MetricsSource{
 		{ID: "shared-default", Provider: capability.ProviderTempo, Class: SourcePlatformProvider, Scope: capability.ScopeShared, Network: "trace", Target: "tempo:3200", Path: "/metrics"},
 		{ID: "shared-team-a", Provider: capability.ProviderLoki, Class: SourcePlatformProvider, Scope: capability.ScopeShared, SharingBoundary: "team-a", Network: "logs", Target: "loki:3100", Path: "/metrics"},
-		{ID: "app-a", Provider: capability.ProviderLoki, Class: SourceApplicationProvider, Scope: capability.ScopeApplication, OwnerApplication: "app-a", Network: "app-a-logs", Target: "loki:3100", Path: "/metrics"},
-		{ID: "app-b", Provider: capability.ProviderLoki, Class: SourceApplicationProvider, Scope: capability.ScopeApplication, OwnerApplication: "app-b", Network: "app-b-logs", Target: "loki:3100", Path: "/metrics"},
+		{ID: "app-a", Provider: capability.ProviderLoki, Class: SourceApplicationProvider, Scope: capability.ScopeApplication, OwnerApplication: "app-a", Network: "baseharbor-app-a-dev", Target: "loki:3100", Path: "/metrics"},
+		{ID: "app-b", Provider: capability.ProviderLoki, Class: SourceApplicationProvider, Scope: capability.ScopeApplication, OwnerApplication: "app-b", Network: "baseharbor-app-b-dev", Target: "loki:3100", Path: "/metrics"},
 	}
 	for _, source := range sources {
 		if err := Update(source); err != nil {
@@ -21,7 +21,7 @@ func TestListMetricsRespectsSharingBoundaryAndApplicationAuthorization(t *testin
 		}
 	}
 
-	got, err := ListMetrics(capability.ProviderPlacement{Scope: capability.ScopeShared, Ownership: capability.OwnershipBaseHarbor}, []string{"app-a"}, true, true)
+	got, err := ListMetrics(capability.ProviderPlacement{Scope: capability.ScopeShared, Ownership: capability.OwnershipBaseHarbor}, []string{"app-a"}, true, true, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -29,7 +29,7 @@ func TestListMetricsRespectsSharingBoundaryAndApplicationAuthorization(t *testin
 		t.Fatalf("default shared sources = %#v", got)
 	}
 
-	got, err = ListMetrics(capability.ProviderPlacement{Scope: capability.ScopeShared, SharingBoundary: "team-a", Ownership: capability.OwnershipBaseHarbor}, []string{"app-b"}, true, true)
+	got, err = ListMetrics(capability.ProviderPlacement{Scope: capability.ScopeShared, SharingBoundary: "team-a", Ownership: capability.OwnershipBaseHarbor}, []string{"app-b"}, true, true, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,7 +65,7 @@ func TestRegisterProviderSignalsUsesDescriptorAndRuntimeRealization(t *testing.T
 		t.Fatal(err)
 	}
 
-	got, err := List(SignalMetrics, capability.ProviderPlacement{Scope: capability.ScopeShared}, nil, false, true, true)
+	got, err := List(SignalMetrics, capability.ProviderPlacement{Scope: capability.ScopeShared}, nil, false, true, true, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -210,7 +210,7 @@ func TestRegisterProviderSignalsRemovesDisabledStaleSignal(t *testing.T) {
 	if err := RegisterProviderSignals(registration); err != nil {
 		t.Fatal(err)
 	}
-	got, err := List(SignalMetrics, capability.ProviderPlacement{Scope: capability.ScopeShared}, nil, false, true, true)
+	got, err := List(SignalMetrics, capability.ProviderPlacement{Scope: capability.ScopeShared}, nil, false, true, true, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -257,7 +257,7 @@ func TestListLogsAndTracesUseSharedOwnershipFiltering(t *testing.T) {
 		}
 	}
 
-	logs, err := ListLogs(capability.ProviderPlacement{Scope: capability.ScopeShared}, []string{"app-a"}, true, false)
+	logs, err := ListLogs(capability.ProviderPlacement{Scope: capability.ScopeShared}, []string{"app-a"}, true, false, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -265,7 +265,7 @@ func TestListLogsAndTracesUseSharedOwnershipFiltering(t *testing.T) {
 		t.Fatalf("logs = %#v", logs)
 	}
 
-	traces, err := ListTraces(capability.ProviderPlacement{Scope: capability.ScopeShared}, []string{"app-a"}, false, true)
+	traces, err := ListTraces(capability.ProviderPlacement{Scope: capability.ScopeShared}, []string{"app-a"}, false, true, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -298,14 +298,14 @@ func TestRegisterProviderSignalsRemovesStaleSignalsAtomically(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	traces, err := ListTraces(capability.ProviderPlacement{Scope: capability.ScopeShared}, nil, true, true)
+	traces, err := ListTraces(capability.ProviderPlacement{Scope: capability.ScopeShared}, nil, true, true, "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(traces) != 0 {
 		t.Fatalf("stale traces = %#v", traces)
 	}
-	metrics, err := ListMetrics(capability.ProviderPlacement{Scope: capability.ScopeShared}, nil, true, true)
+	metrics, err := ListMetrics(capability.ProviderPlacement{Scope: capability.ScopeShared}, nil, true, true, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -336,6 +336,7 @@ func TestRegisterProviderSignalsRetainsRealizationMetadata(t *testing.T) {
 		[]string{"demo"},
 		true,
 		false,
+		"dev",
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -367,21 +368,21 @@ func TestListApplicationMetricsRequiresExplicitClassAndApplicationScope(t *testi
 		t.Fatal(err)
 	}
 	placement := capability.ProviderPlacement{Scope: capability.ScopeApplication}
-	got, err := List(SignalMetrics, placement, []string{"demo"}, false, false, false)
+	got, err := List(SignalMetrics, placement, []string{"demo"}, false, false, false, "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(got) != 0 {
 		t.Fatalf("application sources leaked into provider listing: %#v", got)
 	}
-	got, err = List(SignalMetrics, placement, []string{"other"}, true, false, false)
+	got, err = List(SignalMetrics, placement, []string{"other"}, true, false, false, "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(got) != 0 {
 		t.Fatalf("application source crossed its owner scope: %#v", got)
 	}
-	listed, err := ListApplicationMetrics(placement, []string{"demo"})
+	listed, err := ListApplicationMetrics(placement, []string{"demo"}, "dev")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -391,7 +392,7 @@ func TestListApplicationMetricsRequiresExplicitClassAndApplicationScope(t *testi
 	if err := PruneApplicationMetrics("demo", "dev", nil); err != nil {
 		t.Fatal(err)
 	}
-	listed, err = ListApplicationMetrics(placement, []string{"demo"})
+	listed, err = ListApplicationMetrics(placement, []string{"demo"}, "dev")
 	if err != nil || len(listed) != 0 {
 		t.Fatalf("pruned application metrics = %#v, err=%v", listed, err)
 	}
