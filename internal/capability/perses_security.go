@@ -92,6 +92,19 @@ type PersesSecurityPolicy struct {
 	// same value the gateway plan verified. An empty value renders the loopback
 	// default. A routable literal is refused by the renderer.
 	BindAddress string
+	// EncryptionKeyFile is the host path the realization materializes the
+	// datasource encryption key at, container-readable. It is a reference
+	// only — never the key value — and the compose rendering mounts its
+	// directory read-only where the configuration points
+	// encryption_key_file. An empty value fails rendering closed.
+	EncryptionKeyFile string
+	// ServiceAddress is the backend-network address the management gateway
+	// routes to for this surface (the deployment's Perses service alias in
+	// the shared-namespace topology). The renderer states it in the mounted
+	// configuration so the server's own view of how it is reached matches the
+	// gateway plan; the command-line bind stays the loopback pin. It carries
+	// no credential material and is never used as a bind value.
+	ServiceAddress string
 }
 
 // DefaultPersesSecurityPolicy is the strict posture BaseHarbor requires for the

@@ -22,7 +22,7 @@ func TestPersesMountedConfigProvenanceAndEffectivePolicy(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ensure the Perses runtime files: %v", err)
 	}
-	compose, err := RuntimeComposeYAMLForProject(manifest, files.ResourceProject)
+	compose, err := RuntimeComposeYAMLForProject(manifest, files)
 	if err != nil {
 		t.Fatalf("render the Perses compose definition: %v", err)
 	}
@@ -37,8 +37,13 @@ func TestPersesMountedConfigProvenanceAndEffectivePolicy(t *testing.T) {
 	if !strings.Contains(serviceBlock, "--config="+serviceaccess.PersesConfigContainerPath) {
 		t.Fatalf("the Perses command must name the mounted configuration path:\n%s", serviceBlock)
 	}
-	if !strings.Contains(serviceBlock, "./providers/management-ui/perses/config.yaml:"+serviceaccess.PersesConfigMountDir+":ro") {
-		t.Fatalf("the rendering must mount the rendered configuration read-only at %s:\n%s", serviceaccess.PersesConfigMountDir, serviceBlock)
+	// The gateway topology (0428-089) mounts the rendered configuration
+	// file-wise (a directory bind of /etc/perses would shadow the key mount);
+	// the contract's mount target is PersesConfigContainerPath.
+	for _, mount := range serviceaccess.PersesServiceMounts() {
+		if !strings.Contains(serviceBlock, mount) {
+			t.Fatalf("the rendering must mount %q read-only:\n%s", mount, serviceBlock)
+		}
 	}
 	// The materialized host file exists and is the deterministic rendering of
 	// the validated policy, free of credential material.
@@ -47,11 +52,19 @@ func TestPersesMountedConfigProvenanceAndEffectivePolicy(t *testing.T) {
 	if err != nil {
 		t.Fatalf("the realization must materialize the rendered configuration at %s: %v", hostPath, err)
 	}
+	// The effective posture of the plan validates and renders the mounted
+	// bytes: the deterministic rendering no longer depends on the
+	// application name (the backend alias belongs to the compose project,
+	// not to the security contract).
 	policy := capability.DefaultPersesSecurityPolicy()
 	if err := capability.ValidatePersesSecurityPolicy(policy); err != nil {
 		t.Fatalf("the effective posture must validate before rendering: %v", err)
 	}
-	expected, err := serviceaccess.RenderPersesConfig(policy)
+	plan, err := PersesGatewayPlanFor(manifest, capability.DefaultPersesSecurityPolicy())
+	if err != nil {
+		t.Fatalf("derive the effective gateway plan: %v", err)
+	}
+	expected, err := serviceaccess.RenderPersesConfig(plan.Policy)
 	if err != nil {
 		t.Fatalf("render the expected configuration: %v", err)
 	}
@@ -67,7 +80,7 @@ func TestPersesMountedConfigProvenanceAndEffectivePolicy(t *testing.T) {
 		t.Fatalf("the rendering must reference the encryption key by file only, never inline it:\n%s", contents)
 	}
 	// Determinism: a second rendering of the same policy is byte-identical.
-	second, err := serviceaccess.RenderPersesConfig(policy)
+	second, err := serviceaccess.RenderPersesConfig(plan.Policy)
 	if err != nil || second != expected {
 		t.Fatalf("the rendering must be deterministic: %v", err)
 	}

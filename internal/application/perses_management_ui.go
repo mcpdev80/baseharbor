@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/devaccess"
 	"github.com/mcpdev80/baseharbor/internal/identity"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 	"github.com/mcpdev80/baseharbor/internal/tenancy"
@@ -306,13 +307,28 @@ func PersesGatewayPlanFor(m Manifest, policy capability.PersesSecurityPolicy) (s
 	}
 	effective := policy
 	effective.DeniedNetworks = append(append([]string(nil), policy.DeniedNetworks...), denied...)
+	// Shared-namespace topology (the production form): Perses binds the
+	// loopback of the namespace its gateway joins, and the gateway routes to
+	// the backend-network alias of the Perses service. The rendered service
+	// definition gets no published port and no 0.0.0.0 bind. The
+	// BindAddress policy field belongs to the configuration renderer (it
+	// states what the process binds); the gateway's loopback bind is
+	// command-line-pinned and never routes through the manifest alias here.
+	upstreamHost := serviceaccess.PersesServiceName
+	if raw := strings.TrimSpace(m.Name); raw != "" {
+		upstreamHost = devaccess.ApplicationAlias(m.Name, serviceaccess.PersesServiceName)
+	}
 	requirements := serviceaccess.PersesGatewayRequirements{
-		Upstream:       "http://" + serviceaccess.PersesServiceName + ":" + strconv.Itoa(serviceaccess.PersesUpstreamPort),
+		Upstream:       "http://" + upstreamHost + ":" + strconv.Itoa(serviceaccess.PersesUpstreamPort),
 		Policy:         effective,
 		Authentication: authentication.Authentication,
 		AuthTokenFile:  authentication.AuthTokenFile,
-		ServerNames:    []string{serviceaccess.PersesServiceName},
+		ServerNames:    []string{upstreamHost, serviceaccess.PersesServiceName},
 	}
+	// The effective policy carries how the surface is reached (the backend
+	// alias) so the rendered configuration and the persisted plan state it
+	// once, deterministically.
+	requirements.Policy.ServiceAddress = upstreamHost
 	plan, err := serviceaccess.BuildPersesGateway(requirements)
 	if err != nil {
 		return serviceaccess.PersesGatewayPlan{}, err

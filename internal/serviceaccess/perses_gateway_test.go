@@ -197,7 +197,7 @@ func TestPersesComposeServicesNeverPublishesPersesDirectly(t *testing.T) {
 		Caddyfile: filepath.Join(t.TempDir(), "config", "Caddyfile"),
 		Material:  TLSMaterial{ServerName: "perses-ui-access"},
 	}
-	restore := registerPersesRendererForTest(t, plan)
+	restore := registerPersesRendererForTest(t, &plan)
 	rendered, err := PersesComposeServices(context.Background(), plan, files, capability.PersesDefaultRelease)
 	if err != nil {
 		t.Fatalf("the Perses services must render: %v", err)
@@ -238,10 +238,21 @@ func TestPersesComposeServicesNeverPublishesPersesDirectly(t *testing.T) {
 // registerPersesRendererForTest materializes the deterministic configuration
 // rendering under a temporary host directory, exactly as a realization would,
 // and restores the previous registration when the test ends.
-func registerPersesRendererForTest(t *testing.T, plan PersesGatewayPlan) func() {
+func registerPersesRendererForTest(t *testing.T, plan *PersesGatewayPlan) func() {
 	t.Helper()
 	previous := persesConfigRenderer
 	dir := t.TempDir()
+	// The test realization materializes the encryption key next to the
+	// configuration it renders, exactly as the production projection does: the
+	// rendering mounts the key file the configuration references by path.
+	keyPath := filepath.Join(dir, "secrets", "encryption-key")
+	if err := os.MkdirAll(filepath.Dir(keyPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(keyPath, make([]byte, 32), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	plan.Policy.EncryptionKeyFile = keyPath
 	SetPersesConfigRenderer(func(_ context.Context, current PersesGatewayPlan) (PersesRenderedConfig, error) {
 		contents, err := RenderPersesConfig(current.Policy)
 		if err != nil {

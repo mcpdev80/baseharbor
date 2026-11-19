@@ -52,6 +52,14 @@ func RenderPersesConfig(policy capability.PersesSecurityPolicy) (string, error) 
 	if bind == "" {
 		bind = "127.0.0.1"
 	}
+	service := strings.TrimSpace(policy.ServiceAddress)
+	if service != "" {
+		if addr, err := netip.ParseAddr(service); err == nil && !addr.Unmap().IsLoopback() {
+			return "", fmt.Errorf("Perses service address %q is a routable literal: the gateway upstream may only name a service address or loopback", service)
+		} else if err != nil && !validPersesBindAddress(service) {
+			return "", fmt.Errorf("Perses service address %q is not a service address", service)
+		}
+	}
 	if addr, err := netip.ParseAddr(bind); err == nil && !addr.Unmap().IsLoopback() {
 		return "", fmt.Errorf("Perses bind address %q is a routable literal: the management surface may only bind loopback of its namespace or its service address", bind)
 	} else if err != nil && !validPersesBindAddress(bind) {
@@ -65,6 +73,13 @@ func RenderPersesConfig(policy capability.PersesSecurityPolicy) (string, error) 
 	b.WriteString("  enable_auth: true\n")
 	fmt.Fprintf(&b, "  readonly: %t\n", policy.ReadOnlyMode)
 	b.WriteString("  encryption_key_file: " + strconv.Quote(PersesEncryptionKeyContainerPath) + "\n")
+	if service := strings.TrimSpace(policy.ServiceAddress); service != "" {
+		// How this surface is reached, stated for the server's own view: the
+		// gateway routes to the backend-network alias. The effective bind
+		// stays the command-line loopback pin, so the process can never
+		// answer on another interface; this key never carries a bind address.
+		b.WriteString("  advertised_address: " + strconv.Quote(service) + "\n")
+	}
 	b.WriteString("  authentication:\n    providers:\n      enable_native: false\n")
 	if len(policy.SecretFileAllowedDirectories) > 0 {
 		b.WriteString("  secret_file_allowed_directories:\n")

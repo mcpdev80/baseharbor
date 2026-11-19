@@ -39,7 +39,7 @@ func TestPersesGatewayReachabilityAuthAndHostInvisibility(t *testing.T) {
 	if !plan.SharedGatewayNetwork || plan.UpstreamBindAddress != "127.0.0.1" {
 		t.Fatalf("the plan must render the shared-namespace loopback topology, got %+v", plan)
 	}
-	registerPersesRendererForTest(t, plan)
+	registerPersesRendererForTest(t, &plan)
 
 	upstreamPort, upstreamServes := startPersesUpstream(t, plan)
 	front := startPersesGatewayFront(t, t.TempDir(), plan, upstreamPort)

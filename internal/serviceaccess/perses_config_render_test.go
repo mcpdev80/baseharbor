@@ -73,6 +73,14 @@ func TestPersesComposeServicesProvenanceFailClosed(t *testing.T) {
 
 	dir := t.TempDir()
 	hostPath := filepath.Join(dir, "config.yaml")
+	keyPath := filepath.Join(dir, "secrets", "encryption-key")
+	if err := os.MkdirAll(filepath.Dir(keyPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(keyPath, make([]byte, 32), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	plan.Policy.EncryptionKeyFile = keyPath
 	SetPersesConfigRenderer(func(_ context.Context, current PersesGatewayPlan) (PersesRenderedConfig, error) {
 		contents, err := RenderPersesConfig(current.Policy)
 		if err != nil {
