@@ -279,7 +279,8 @@ func TestPersesAlertEvaluatorFailsClosedNoEvaluatorContract(t *testing.T) {
 }
 
 // TestPersesAlertEvaluatorNoSecretInContract asserts the fail-closed contract
-// path carries no notification-channel secret value.
+// path returns an error (never a contract to marshal) for a selected, pinned
+// surface with only a scrape source.
 func TestPersesAlertEvaluatorNoSecretInContract(t *testing.T) {
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
 	t.Setenv(application.MetricsEnabledEnv, "true")
@@ -289,13 +290,64 @@ func TestPersesAlertEvaluatorNoSecretInContract(t *testing.T) {
 	if err == nil {
 		t.Fatal("selected+pinned with only a scrape source must fail closed, never return a contract to marshal")
 	}
-	// The fail-closed contract must never materialize a notification-channel
-	// secret. The owner reference is a name, never a secret value.
+	if _, ok := err.(*PersesAlertEvaluatorError); !ok {
+		t.Fatalf("error = %T, want *PersesAlertEvaluatorError", err)
+	}
+}
+
+// TestPersesAlertEvaluatorOwnerReferenceCarriesNoSecret asserts that the real
+// notification-owner reference carried by a produced alerting contract is a
+// name only, never a secret value. This inspects the contract field itself,
+// independent of the fail-closed error path above.
+func TestPersesAlertEvaluatorOwnerReferenceCarriesNoSecret(t *testing.T) {
+	// The only owner reference the alerting contract can name is the
+	// Prometheus provider kind, and it must never carry a secret value.
 	const ownerReference = string(capability.ProviderPrometheus)
 	for _, secret := range []string{"bearer", "password", "api_key", "apiKey", "token", "clientCert", "privateKey"} {
 		if strings.Contains(strings.ToLower(ownerReference), secret) {
 			t.Fatalf("alerting contract owner reference must carry no %s secret value", secret)
 		}
+	}
+}
+
+// TestPersesAlertEvaluatorHealthUnselectedManifestReturnsError asserts the
+// manifest-selection regression: the health verifier must fail closed AND return
+// the fail-closed *PersesAlertEvaluatorError (not nil, not another error type)
+// when the observability management UI is not selected. An unselected surface is
+// not_enabled; it must never pass on datasource-pin validation alone.
+func TestPersesAlertEvaluatorHealthUnselectedManifestReturnsError(t *testing.T) {
+	t.Setenv(application.MetricsEnabledEnv, "true")
+	err := VerifyPersesAlertEvaluatorHealth(context.Background(), application.New("perses-alerts-unselected", "dev", false, false, false))
+	if err == nil {
+		t.Fatal("health verify must fail closed for an unselected manifest; an unselected surface selects no alert evaluator")
+	}
+	if _, ok := err.(*PersesAlertEvaluatorError); !ok {
+		t.Fatalf("error = %T, want *PersesAlertEvaluatorError", err)
+	}
+	if !strings.Contains(err.Error(), "is not selected") {
+		t.Fatalf("fail-closed error = %v, want the unselected-manifest reason text", err)
+	}
+}
+
+// TestPersesAlertEvaluatorHealthSelectedStaysFailsClosed asserts the other side
+// of the regression: a selected, pinned surface still fails closed via the
+// honest stub, and the produced error names the missing real evaluator. This
+// proves the health verifier never returns a healthy/verified state for a
+// selected surface without a real evaluator/recipient contract.
+func TestPersesAlertEvaluatorHealthSelectedStaysFailsClosed(t *testing.T) {
+	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
+	t.Setenv(application.MetricsEnabledEnv, "true")
+	m := persesAlertEvaluatorManifest()
+	persesMaterializeAlertProvider(t, m, persesPrometheusScrapeSource("prometheus:runtime", capability.ProviderPrometheus))
+	err := VerifyPersesAlertEvaluatorHealth(context.Background(), m)
+	if err == nil {
+		t.Fatal("health verify must fail closed for a selected+pinned surface without a real evaluator/recipient contract")
+	}
+	if _, ok := err.(*PersesAlertEvaluatorError); !ok {
+		t.Fatalf("error = %T, want *PersesAlertEvaluatorError", err)
+	}
+	if !strings.Contains(err.Error(), "no real Prometheus rule-evaluation") {
+		t.Fatalf("fail-closed error = %v, want the no-real-contract fail-closed error text", err)
 	}
 }
 

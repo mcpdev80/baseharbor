@@ -195,21 +195,37 @@ func VerifyPersesAlertEvaluatorHealth(_ context.Context, m application.Manifest)
 	if err := capability.ValidatePersesRelease(capability.PersesDefaultRelease); err != nil {
 		return newPersesAlertEvaluatorError("a pinned Perses release (product version + image) is required to define an alert evaluator")
 	}
+	// Manifest truth first: an unselected observability management UI selects no
+	// alerting contract at all. A non-selected manifest must never be reported
+	// as "no problem" — an unselected surface is not_enabled, and the fail-closed
+	// reason text must name the absence of selection, not a fabricated success.
+	if !m.Services.ObservabilityManagementUI || !m.Services.Perses {
+		return newPersesAlertEvaluatorError("the observability management UI (Perses) is not selected, so there is no alert evaluator to verify; the alerting contract is not_enabled (fail-closed)")
+	}
 	// Ground the health contract in manifest truth: a real, authorized
 	// Prometheus rule-evaluation and a validated notification owner contract are
 	// both required. This Core ships neither, so the health contract always
 	// fails closed (not_enabled): selection, the datasource pin, and a
 	// materialized /metrics scrape source are neither evaluator nor recipient
 	// proof. Pin validation alone can NEVER pass.
+	//
+	// The positive "alerting enabled"/"verified" path is structurally absent:
+	// persesAlertRealEvaluatorContractPresent() is a fail-closed stub that always
+	// returns false and is never flipped to true (a future Owner-approved real
+	// evaluator/recipient contract would set this to true and gate this path
+	// behind it). This function therefore NEVER returns nil for a selected,
+	// pinned surface — the unreachable success branch the previous draft carried
+	// has been removed so the health state can never surface as
+	// healthy/verified/filled.
 	if !persesAlertRealEvaluatorContractPresent() {
 		return newPersesAlertEvaluatorError("no real Prometheus rule-evaluation and notification-owner contract exists in this Core; selection, datasource pin and an authorized metrics scrape source are not evaluator or recipient proof, so the alerting contract fails closed (not_enabled)")
 	}
-	// Declared, pinned, evaluator-present and recipient-named; reachability stays
-	// not_enabled/configured_unverified — no Prometheus/Perses runtime
-	// rule-evaluation or notification sender probe exists here. Do NOT report an
-	// "alerting enabled"/"verified" contract. No SUPPORTED HA line. No external
-	// notifications by default.
-	return nil
+	// Fail-closed safety net: persesAlertRealEvaluatorContractPresent() is a
+	// permanent stub, so this branch is unreachable today. It is kept (never a
+	// nil/return-healthy) so a future Owner who enables the real evaluator
+	// contract sees an explicit fail-closed endpoint rather than a hidden success
+	// path. Do NOT replace with "return nil".
+	return newPersesAlertEvaluatorError("the alerting contract cannot assert alerting-enabled without a real Prometheus rule-evaluation and notification-owner contract")
 }
 
 // PersesAlertEvaluatorJSON marshals the produced alerting contract
