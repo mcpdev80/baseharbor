@@ -121,7 +121,7 @@ func EnsureRuntime(ctx context.Context, issuer serviceaccess.Issuer, store Store
 		return RuntimeFiles{}, fmt.Errorf("reconcile application management UIs: %w", err)
 	}
 
-	compose, err := RuntimeComposeYAMLForProject(m, files.ResourceProject)
+	compose, err := RuntimeComposeYAMLForProject(m, files)
 	if err != nil {
 		return RuntimeFiles{}, err
 	}
@@ -314,10 +314,25 @@ func VerifyValkeyRuntime(ctx context.Context, runtime bhruntime.RuntimeProvider,
 }
 
 func RuntimeComposeYAML(m Manifest) (string, error) {
-	return RuntimeComposeYAMLForProject(m, RuntimeProjectName(m))
+	return RuntimeComposeYAMLForProject(m, RuntimeFiles{ResourceProject: RuntimeProjectName(m)})
 }
 
-func RuntimeComposeYAMLForProject(m Manifest, resourceProject string) (string, error) {
+// RuntimeComposeYAMLForProject renders the managed compose definition. Pure
+// callers (inventory, projection, retirement checks) pass no runtime files:
+// the rendering then uses the deterministic relative bind sources rooted at
+// the compose file's own directory, exactly as every other managed service
+// renders them. The deployment path (EnsureRuntime) passes the materialized
+// RuntimeFiles: only there the optional Perses gateway rendering (0428-089)
+// can consume the provenance-checked projection state and fail closed on
+// drift or absence. Without files, a selected Perses renders no host bind at
+// all and the gateway record check below refuses the rendering, so a pure
+// caller can never mistake this form for the applied definition.
+func RuntimeComposeYAMLForProject(m Manifest, files RuntimeFiles) (string, error) {
+	resourceProject := strings.TrimSpace(files.ResourceProject)
+
+	if resourceProject == "" {
+		resourceProject = RuntimeProjectName(m)
+	}
 	if err := CheckSupportedRuntimeServices(m); err != nil {
 		return "", err
 	}
@@ -366,7 +381,18 @@ func RuntimeComposeYAMLForProject(m Manifest, resourceProject string) (string, e
 		writeCacheUIComposeServices(&b, m)
 	}
 	if m.Services.Perses {
-		writePersesUIComposeService(&b, m, resourceProject)
+		// The gateway topology (0428-089): the Perses process never owns a
+		// host port or a routable bind; its management gateway is the only
+		// host-visible address, and the gateway reaches Perses through the
+		// backend-network alias while Perses binds the shared-namespace
+		// loopback. The rendering consumes only files with a proven producer
+		// (EnsurePersesManagementUI) and fails closed on drift or absence.
+		if strings.TrimSpace(files.Dir) == "" {
+			return "", errors.New("the Perses gateway composition requires the materialized runtime files: a pure rendering cannot prove the mounted files' provenance")
+		}
+		if err := writePersesGatewayComposeServices(&b, m, files); err != nil {
+			return "", err
+		}
 	}
 	b.WriteString("\nvolumes:\n")
 	for _, instance := range sqlInstances {
