@@ -97,6 +97,26 @@ class RuntimeReuseTests(unittest.TestCase):
         self.assertFalse(self.decide(manifest=None))
         self.assertFalse(self.decide(manifest={**MANIFEST, "status": "failure"}))
 
+    def test_release_push_is_eligible_only_for_exact_tag_branch(self):
+        self.assertTrue(reuse.run_event_eligible(
+            {"event": "push", "head_branch": "release/v0.4.27-current"}, "v0.4.27"))
+        self.assertFalse(reuse.run_event_eligible(
+            {"event": "push", "head_branch": "release/v0.4.26-current"}, "v0.4.27"))
+        self.assertFalse(reuse.run_event_eligible(
+            {"event": "push", "head_branch": "release/v0.4.27"}, "v0.4.27"))
+        self.assertFalse(reuse.run_event_eligible(
+            {"event": "push", "head_branch": "release/develop-current"}, "develop"))
+        self.assertTrue(reuse.run_event_eligible(
+            {"event": "workflow_dispatch", "head_branch": "main"}, "v0.4.27"))
+
+    def test_unavailable_or_missing_catalog_evidence_is_never_reused(self):
+        self.assertFalse(self.decide(
+            manifest={**MANIFEST, "catalog_version": "unavailable"},
+            catalog_version="unavailable"))
+        self.assertFalse(self.decide(
+            manifest={key: value for key, value in MANIFEST.items()
+                      if key != "catalog_version"}))
+
     def test_exact_gate_input_fingerprint_is_required(self):
         self.assertFalse(self.decide(fingerprint="other"))
 
@@ -172,8 +192,23 @@ class RuntimeReuseTests(unittest.TestCase):
         impact = json.loads(Path(__file__).with_name("pre-release-runtime-impact.json").read_text())
         expected = {"integration/docker/coreless-lifecycle",
                     "integration/podman/coreless-lifecycle"}
-        for path in ("cmd/baha/app_coreless_runtime_test.go",
+        for path in ("cmd/baha/app_backend_selective_runtime_test.go",
+                     "cmd/baha/app_backend_shared_runtime_test.go",
+                     "cmd/baha/app_application_backend_runtime_test.go",
+                     "cmd/baha/app_capability_runtime_test.go",
+                     "cmd/baha/app_https_selective_runtime_test.go",
+                     "cmd/baha/application_otlp_handoff_runtime_test.go",
+                     "cmd/baha/app_coreless_runtime_test.go",
+                     "cmd/baha/app_identity_selective_runtime_test.go",
                      "cmd/baha/app_local_stdio_runtime_test.go"):
+            self.assertEqual(expected, set(impact["core"][path]))
+
+    def test_openbao_manager_login_changes_invalidate_recovery_on_both_engines(self):
+        impact = json.loads(Path(__file__).with_name("pre-release-runtime-impact.json").read_text())
+        expected = {"atomic/docker/control-plane-recovery",
+                    "atomic/podman/control-plane-recovery"}
+        for path in ("internal/openbao/bootstrap_auth.go",
+                     "internal/openbao/bootstrap_auth_test.go"):
             self.assertEqual(expected, set(impact["core"][path]))
 
     def test_demo_consent_fix_invalidates_affected_gate_families_only(self):

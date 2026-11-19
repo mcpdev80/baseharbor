@@ -270,7 +270,7 @@ func assertSignalProviders(t *testing.T, m application.Manifest, kind observabil
 		t.Fatal(err)
 	}
 
-	sources, err := observability.List(kind, placement, []string{m.Name}, true, true)
+	sources, err := observability.List(kind, placement, []string{m.Name}, false, true, true, m.Environment)
 	if err != nil {
 		t.Fatal(err)
 	}

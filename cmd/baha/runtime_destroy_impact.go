@@ -175,9 +175,11 @@ func authorizeRuntimeDestroyImpact(ctx context.Context, p runtimeDestroyImpact, 
 		report.Impact = &p
 	}
 	if p.Scope.Destructive {
-		fmt.Fprintln(out, "Achtung: permanent destruction requires two current-plan confirmations and separate data-deletion consent.")
+		labels := application.ProviderImpactConsentCatalog()
+		fmt.Fprintln(out, labels.RuntimeDestroyImpactDestructive)
 	} else {
-		fmt.Fprintln(out, "Achtung: selected runtime removal requires two current-plan confirmations; persistent data and protected owners remain.")
+		labels := application.ProviderImpactConsentCatalog()
+		fmt.Fprintln(out, labels.RuntimeDestroyImpactNonDestructive)
 	}
 	if err := writeJSON(out, p); err != nil {
 		return false, err
@@ -188,7 +190,7 @@ func authorizeRuntimeDestroyImpact(ctx context.Context, p runtimeDestroyImpact, 
 	}
 	in := applicationInput(ctx, runtimeInput)
 	if consent == nil && !noInput(ctx) && in != nil && readerIsTerminal(in) {
-		value, err := readProviderImpactAcknowledgements(bufio.NewReader(in), out, application.ProviderImpactPlan{PlanID: p.Scope.PlanID, ConfirmationsRequired: p.Scope.ConfirmationsRequired, Destructive: p.Scope.Destructive})
+		value, err := readProviderImpactAcknowledgements(bufio.NewReader(in), out, application.ProviderImpactPlan{PlanID: p.Scope.PlanID, Attention: p.Scope.Attention, ConfirmationsRequired: p.Scope.ConfirmationsRequired, Destructive: p.Scope.Destructive})
 		if err != nil {
 			return false, err
 		}

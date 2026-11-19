@@ -44,6 +44,24 @@ func impactDigestInput(p ProviderImpactPlan, registry capability.Registry, s Res
 	}{stableValidityImpact(p), registry, facts, consumers, union.Required, union.ReleasedBindings, union.ConsumerActivity, ancillary})
 }
 
+// ProviderImpactPlansEquivalent compares the stable meaning of two provider
+// impact plans. RemainingValiditySeconds is a display countdown sampled at
+// observation time; it is deliberately omitted from consent identity and must
+// not make an otherwise unchanged proposal appear stale. Absolute validity,
+// expiry meaning, outcomes, ownership and every other plan field remain part
+// of the comparison.
+func ProviderImpactPlansEquivalent(a, b ProviderImpactPlan) bool {
+	left, err := json.Marshal(stableValidityImpact(a))
+	if err != nil {
+		return false
+	}
+	right, err := json.Marshal(stableValidityImpact(b))
+	if err != nil {
+		return false
+	}
+	return string(left) == string(right)
+}
+
 // Countdown samples change with observation time, while authority and absolute
 // validity do not. Expiry still changes the function outcome and consent digest.
 // Copy projections so calculating the digest never edits the displayed result.

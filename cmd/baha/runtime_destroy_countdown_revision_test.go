@@ -8,7 +8,7 @@ import (
 
 func retainedCountdownChild(t *testing.T, subject string, remaining int64, revision string) applicationDestructionPlan {
 	t.Helper()
-	leaf := application.ProviderImpactPlan{Version: application.ProviderImpactVersion, Target: "isolated", PlanID: "verified-provider-authority-" + revision, ConfirmationsRequired: 2, Attention: "Achtung", Impacts: []application.ProviderImpact{{InstanceID: "retained-identity", Materials: []application.MaterialConsequence{{RemainingValiditySeconds: &remaining}}, Functions: []application.FunctionConsequence{{RemainingValiditySeconds: &remaining}}}}}
+	leaf := application.ProviderImpactPlan{Version: application.ProviderImpactVersion, Target: "isolated", PlanID: "verified-provider-authority-" + revision, ConfirmationsRequired: 2, Attention: "Warning", Impacts: []application.ProviderImpact{{InstanceID: "retained-identity", Materials: []application.MaterialConsequence{{RemainingValiditySeconds: &remaining}}, Functions: []application.FunctionConsequence{{RemainingValiditySeconds: &remaining}}}}}
 	scope, err := application.ComposeProviderImpactScope(application.ProviderScopeOwner{Owner: "application-deployment", Reference: "/owned/" + subject, Subject: subject, Revision: revision, Destructive: true}, []application.ProviderImpactPlan{leaf}, false)
 	if err != nil {
 		t.Fatal(err)

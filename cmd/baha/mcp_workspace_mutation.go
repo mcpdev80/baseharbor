@@ -10,8 +10,8 @@ import (
 type machineWorkspaceInitInput struct {
 	Target     string                         `json:"target,omitempty" jsonschema:"optional BaseHarbor deployment Target for shared authorization context"`
 	Manifest   string                         `json:"manifest,omitempty" jsonschema:"repository manifest path; defaults to the current application repository"`
-	Sources    []development.SourceDefinition `json:"sources" jsonschema:"canonical repository or immutable OCI source identities"`
-	Components []development.ComponentSource  `json:"components" jsonschema:"application component to source identity mappings"`
+	Sources    []development.SourceDefinition `json:"sources" jsonschema:"canonical repository, local directory or immutable OCI source identities"`
+	Components []development.ComponentSource  `json:"components" jsonschema:"application component to source identity mappings; multiple components may share one source"`
 }
 
 type machineWorkspaceMapInput struct {

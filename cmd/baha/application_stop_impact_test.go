@@ -23,7 +23,7 @@ func TestApplicationStopRequiresBothCurrentAcknowledgementsWithoutReleasingBindi
 	if err != nil {
 		t.Fatal(err)
 	}
-	if plan.Scope.Attention != "Achtung" || plan.Scope.ConfirmationsRequired != 2 || plan.Scope.Destructive || len(plan.Scope.Targets) != 1 || len(plan.Materials) == 0 {
+	if plan.Scope.Attention != "Warning" || plan.Scope.ConfirmationsRequired != 2 || plan.Scope.Destructive || len(plan.Scope.Targets) != 1 || len(plan.Materials) == 0 {
 		t.Fatal("stop lost concrete provider consequences or retained owners")
 	}
 	path := filepath.Join(r.TargetStateRoot, "provider-registry.json")

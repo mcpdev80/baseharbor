@@ -81,7 +81,7 @@ func TestExternalReceiverChangeRequiresCurrentPlanBeforeAnyDeliveryMutation(t *t
 				t.Fatalf("receiver/material change lacked concrete consequence disclosure: %v", err)
 			}
 			impact := plan.ProviderPlan.Impact
-			if impact.Attention != "Achtung" || impact.ConfirmationsRequired != 2 {
+			if impact.Attention != "Warning" || impact.ConfirmationsRequired != 2 {
 				t.Fatal("unknown delivery consequences lacked two current confirmations")
 			}
 			encoded, _ := json.Marshal(plan)
@@ -161,7 +161,7 @@ func TestRegisteredReceiverReplacementAndMaterialDriftRequireFreshConsent(t *tes
 		t.Fatalf("registered destination has no current impact: %v", err)
 	}
 	impact := plan.ProviderPlan.Impact
-	if impact.Attention != "Achtung" || impact.ConfirmationsRequired != 2 {
+	if impact.Attention != "Warning" || impact.ConfirmationsRequired != 2 {
 		t.Fatal("unknown destination bypassed attention")
 	}
 	consent := &application.ProviderChangeConsent{PlanID: impact.PlanID, First: true, Second: true}
@@ -238,7 +238,7 @@ func TestManagedCollectorAndRegisteredReceiverReplacementRequireCurrentConsent(t
 				t.Fatalf("actual receiver replacement omitted consequences: %v", err)
 			}
 			impact := plan.ProviderPlan.Impact
-			if impact.Attention != "Achtung" || impact.ConfirmationsRequired != 2 {
+			if impact.Attention != "Warning" || impact.ConfirmationsRequired != 2 {
 				t.Fatal("receiver replacement lacked current two-stage consequences")
 			}
 			for _, consent := range []*application.ProviderChangeConsent{nil, {PlanID: impact.PlanID, First: true}, {PlanID: "stale", First: true, Second: true}, {PlanID: impact.PlanID, First: true, Second: true}} {

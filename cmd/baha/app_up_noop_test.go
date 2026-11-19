@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/development"
 )
 
 func TestDecideRepositoryUp(t *testing.T) {
@@ -230,4 +231,81 @@ func TestRecordRepositoryAppliedFingerprintRoundTrip(t *testing.T) {
 	if !match {
 		t.Fatal("recorded desired-state fingerprint did not match")
 	}
+}
+
+func TestRepositoryDesiredStateFingerprintTracksLocalSourceFiles(t *testing.T) {
+	root := t.TempDir()
+	repo := filepath.Join(root, "repo")
+	if err := os.MkdirAll(repo, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	manifestPath := filepath.Join(repo, "baseharbor.yaml")
+	if err := os.WriteFile(manifestPath, []byte("version: 1\napp:\n  name: demo\n  environment: dev\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	sourceRoot := filepath.Join(root, "local-source")
+	if err := os.MkdirAll(sourceRoot, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	filePath := filepath.Join(sourceRoot, "content.txt")
+	if err := os.WriteFile(filePath, []byte("initial\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	model := development.SourceModel{
+		SchemaVersion: development.SourceModelVersion,
+		Application:   "demo",
+		Sources:       []development.SourceDefinition{{ID: "local", Type: development.SourceLocal, Path: sourceRoot}},
+		Components:    []development.ComponentSource{{Component: "web", Source: "local"}},
+	}
+	if _, err := development.WriteSourceModel(manifestPath, model); err != nil {
+		t.Fatalf("write source model: %v", err)
+	}
+	if _, err := development.SaveWorkspaceMapping(manifestPath, development.WorkspaceMapping{
+		SchemaVersion: development.WorkspaceMappingVersion,
+		Application:   "demo",
+	}); err != nil {
+		t.Fatalf("write workspace mapping: %v", err)
+	}
+	resolved := resolvedApplication{
+		Manifest:       application.New("demo", "dev", false, false, false),
+		ManifestPath:   manifestPath,
+		FromRepository: true,
+	}
+	fingerprint := func() string {
+		t.Helper()
+		got, err := repositoryDesiredStateFingerprint(context.Background(), resolved)
+		if err != nil {
+			t.Fatalf("fingerprint: %v", err)
+		}
+		return got
+	}
+	assertChanged := func(previous, operation string) string {
+		t.Helper()
+		current := fingerprint()
+		if current == previous {
+			t.Fatalf("local source %s did not change desired-state fingerprint", operation)
+		}
+		if stable := fingerprint(); stable != current {
+			t.Fatalf("unchanged local source produced unstable fingerprint after %s: %s != %s", operation, stable, current)
+		}
+		return current
+	}
+
+	first := fingerprint()
+	if stable := fingerprint(); stable != first {
+		t.Fatalf("unchanged local source produced unstable fingerprint: %s != %s", stable, first)
+	}
+	if err := os.WriteFile(filePath, []byte("edited\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	current := assertChanged(first, "file edit")
+	newPath := filepath.Join(sourceRoot, "new.txt")
+	if err := os.WriteFile(newPath, []byte("new\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	current = assertChanged(current, "file addition")
+	if err := os.Remove(filePath); err != nil {
+		t.Fatal(err)
+	}
+	assertChanged(current, "file deletion")
 }

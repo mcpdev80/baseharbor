@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/observability"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 	"net/http"
@@ -432,5 +433,11 @@ func pruneApplicationTargetsFromFiles(files ProviderFiles, m application.Manifes
 			return fmt.Errorf("remove stale Prometheus target %s: %w", entry.Name(), err)
 		}
 	}
-	return nil
+	keep := make(map[string]struct{}, len(m.Metrics.Sources))
+	for _, source := range m.Metrics.Sources {
+		if _, wanted := desired[targetFileName(m, source.Name)]; wanted {
+			keep[observability.ApplicationMetricsSourceID(m.Name, m.Environment, source.Name)] = struct{}{}
+		}
+	}
+	return observability.PruneApplicationMetrics(m.Name, m.Environment, keep)
 }
