@@ -25,7 +25,7 @@ defer span.End()
 
 `ctx` an Datenbank-/HTTP-Aufrufe weitergeben. Ein Exporter instrumentiert nicht automatisch jede Operation; ergänze Spans oder Instrumentierungsbibliotheken.
 
-`baha app env --format json` zeigt maskierte Bindungen; `baha app logs app` liest Workload-Logs. Doctor verifiziert Capabilities, einen Fach-Span beweist erst ein tatsächlicher Request durch instrumentierten Code. Grafana oder andere Visualisierung ist optionales Ecosystem-Tooling. Für die Version v0.4.28 ist Perses die optionale, provider-basierte Visualisierungsoberfläche: sie wird bei v0.55.1 fixiert, ist keine Anwendungsfähigkeit und kein Teil des Pflicht-Core-Bundles. Ihr Status kann `not_configured`, `configured_unverified` oder `verified` lauten; die normative Zustandsdefinition steht in docs/spec/management-access-v1.md.
+`baha app env --format json` zeigt maskierte Bindungen; `baha app logs app` liest Workload-Logs. Doctor verifiziert Capabilities, einen Fach-Span beweist erst ein tatsächlicher Request durch instrumentierten Code. Grafana oder andere Visualisierung ist optionales Ecosystem-Tooling. Für die Version v0.4.28 ist Perses die optionale, provider-basierte Visualisierungsoberfläche: sie wird bei v0.55.1 fixiert, ist keine Anwendungsfähigkeit und kein Teil des Pflicht-Core-Bundles. `baha app perses status` meldet `not_configured`, wenn die Oberfläche nicht ausgewählt ist oder ihr Pin ungültig oder nicht verfügbar ist, und `configured_unverified`, wenn sie mit gültigem Pin ausgewählt ist. Dieser Core enthält keine Perses-Gesundheitsprüfung; `verified` ist daher derzeit nicht erreichbar. Die normative Zustandsdefinition steht in docs/spec/management-access-v1.md.
 
 [Kanonische Anleitung (EN)](https://mcpdev80.github.io/baseharbor/how-to/observability/).
 
