@@ -105,13 +105,19 @@ func trailingProjectEnvironment(source SignalSource, value string) (string, bool
 		value = value[:strings.Index(value, "/")]
 	}
 	if idx := strings.Index(value, ":"); idx >= 0 {
-		// "<provider>:<project>" — the project lives AFTER the first colon
-		// (develop builds application-provider IDs as
-		// "<provider>:" + placement.Project, internal/logs/realization.go:233,
-		// internal/logs/lifecycle.go:172). Keep the segment after the colon; a
-		// bare provider token with no project (a bare 'loki') then fails closed
-		// because it carries no application anchor.
-		value = value[idx+1:]
+		// "<provider>:<project>[:<service>]" — a real application-provider ID
+		// has three segments (internal/application/runtime_observability.go:242
+		// builds id := fmt.Sprintf("%s:%s:%s", provider, project, service));
+		// develop also writes "<provider>:" + placement.Project
+		// (internal/logs/realization.go:233, internal/logs/lifecycle.go:172).
+		// The project is the SECOND colon segment; the first is the provider.
+		// Split and keep it; a bare provider with no project (fewer than two
+		// segments, or an empty project) fails closed.
+		parts := strings.SplitN(value, ":", 3)
+		if len(parts) < 2 || strings.TrimSpace(parts[1]) == "" {
+			return "", false
+		}
+		value = parts[1]
 	}
 	app := strings.ToLower(strings.TrimSpace(source.OwnerApplication))
 	if app == "" {

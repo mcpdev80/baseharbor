@@ -40,9 +40,12 @@ const collisionProject = "bh-local-demo-prod-west"
 // logsFixture registers a provider-class logs source for one OwnerApplication on
 // the colliding project; the anchor resolves 'prod-west' for owner 'demo' and
 // 'west' for owner 'demo-prod'. It returns the source ID and the anchor env.
+// The ID is a three-part "<provider>:<project>:<service>" fixture (the form
+// internal/application/runtime_observability.go:242 builds) so the environment
+// resolves from the project segment.
 func logsFixture(t *testing.T, ownerApplication string) (id string, anchorEnv string) {
 	t.Helper()
-	id = "loki:" + collisionProject
+	id = "loki:" + collisionProject + ":loki"
 	proofEnv := ""
 	if env, ok := projectTokenFromID(SignalSource{OwnerApplication: ownerApplication, ID: id, Target: RuntimeTarget(collisionProject, "loki")}); !ok || env == "" {
 		t.Fatalf("%s logs fixture proof: projectTokenFromID(env)=%q ok=%v, want non-empty (prod-west for 'demo', west for 'demo-prod')", ownerApplication, env, ok)
@@ -70,9 +73,11 @@ func logsFixture(t *testing.T, ownerApplication string) (id string, anchorEnv st
 // metricsFixture registers a provider-class metrics source for one OwnerApplication
 // on the colliding project; the anchor resolves 'prod-west' for owner 'demo' and
 // 'west' for owner 'demo-prod'. It returns the source ID and the anchor env.
+// The ID is a three-part "<provider>:<project>:<service>" fixture so the
+// environment resolves from the project segment.
 func metricsFixture(t *testing.T, ownerApplication string) (id string, anchorEnv string) {
 	t.Helper()
-	id = "prometheus:" + collisionProject
+	id = "prometheus:" + collisionProject + ":prometheus"
 	proofEnv := ""
 	if env, ok := projectTokenFromID(SignalSource{OwnerApplication: ownerApplication, ID: id, Target: RuntimeTarget(collisionProject, "prometheus")}); !ok || env == "" {
 		t.Fatalf("%s metrics fixture proof: projectTokenFromID(env)=%q ok=%v, want non-empty (prod-west for 'demo', west for 'demo-prod')", ownerApplication, env, ok)
@@ -262,12 +267,15 @@ func TestRoute5ListSeamCaseC_MyAppDevIncludesProdExcludes(t *testing.T) {
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
 
 	// Canonical generator project name (internal/runtime/project_names.go:31):
-	// 'bh-<target>-<app>-<env>'. One single value drives ID and Target so the
-	// source carries one project, not two.
+	// 'bh-<target>-<app>-<env>'. One single value drives ID and Target.
 	project := bhruntime.ApplicationProjectName("prod", "my-app", "dev")
-	id := "loki:" + project
+
+	// (i) a real application-provider ID is three-segmented:
+	// "<provider>:<project>:<service>" (internal/application/runtime_observability.go:242
+	// builds id := fmt.Sprintf("%s:%s:%s", provider, project, service)).
+	idWithService := "loki:" + project + ":loki"
 	if err := UpdateSignal(SignalSource{
-		ID:               id,
+		ID:               idWithService,
 		Kind:             SignalLogs,
 		Provider:         capability.ProviderLoki,
 		Class:            SourceApplicationProvider,
@@ -286,7 +294,7 @@ func TestRoute5ListSeamCaseC_MyAppDevIncludesProdExcludes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(devLogs) != 1 || devLogs[0].ID != id {
+	if len(devLogs) != 1 || devLogs[0].ID != idWithService {
 		t.Fatalf("case (c): dev caller must see the my-app dev provider, got %d: %v", len(devLogs), ids(devLogs))
 	}
 
@@ -298,18 +306,100 @@ func TestRoute5ListSeamCaseC_MyAppDevIncludesProdExcludes(t *testing.T) {
 		t.Fatalf("case (c): prod caller must NOT see the my-app dev provider, got %d: %v", len(prodLogs), ids(prodLogs))
 	}
 
-	// positive control: the canonical project's anchor resolves 'dev' for owner
-	// 'my-app' over the provider-qualified ID (loki:<canonical-project>). This
-	// is the assertion that carries the environment.go colon fix: the project
-	// lives AFTER the first colon in a develop application-provider ID
-	// (internal/logs/realization.go:233, internal/logs/lifecycle.go:172).
-	if env, ok := projectTokenFromID(SignalSource{OwnerApplication: "my-app", ID: id, Target: RuntimeTarget(project, "loki")}); !ok || env != "dev" {
-		t.Fatalf("case (c) colon proof: projectTokenFromID(env)=%q ok=%v, want env=dev ok=true", env, ok)
+	// (ii) three anchor paths all resolve 'dev' for owner 'my-app', each isolated
+	// so one cannot hide another:
+	//   (a) three-part ID "<provider>:<project>:<service>" (internal/application/
+	//       runtime_observability.go:242 builds id := fmt.Sprintf("%s:%s:%s",
+	//       provider, project, service)) — the ID segment carries 'dev'.
+	//   (b) runtime:// "<project>/<service>" (registry.go:263 RuntimeTarget) —
+	//       the only source of the environment here is the target; the ID is a
+	//       bare provider token with no project so the target path is forced.
+	//   (c) ID-only (Target = "") — the gap run 44506393063 exposed: with Target
+	//       given the target fallback can hide a broken ID grammar; with Target
+	//       = "" the ID grammar is the only thing left and must carry 'dev'.
+	for _, tc := range []struct {
+		name, id, target string
+	}{
+		{"three-part", "loki:" + project + ":loki", RuntimeTarget(project, "loki")},
+		{"runtime-target-only", "loki", RuntimeTarget(project, "loki")},
+		{"id-only", "loki:" + project + ":loki", ""},
+	} {
+		if env, ok := projectTokenFromID(SignalSource{OwnerApplication: "my-app", ID: tc.id, Target: tc.target}); !ok || env != "dev" {
+			t.Fatalf("case (c) colon proof [%s]: projectTokenFromID(env)=%q ok=%v, want env=dev ok=true", tc.name, env, ok)
+		}
 	}
-	// a bare provider token with no project carries no anchor: nothing resolves
-	// (the ID path is the only one tried when no target is given).
+
+	// a bare provider token with no project carries no anchor: nothing resolves.
 	if _, ok := projectTokenFromID(SignalSource{OwnerApplication: "my-app", ID: "loki"}); ok {
 		t.Fatalf("case (c) colon proof: bare provider token 'loki' resolved, want ok=false")
+	}
+	// an empty project segment fails closed.
+	if _, ok := projectTokenFromID(SignalSource{OwnerApplication: "my-app", ID: "loki::loki"}); ok {
+		t.Fatalf("case (c) colon proof: empty project segment 'loki::loki' resolved, want ok=false")
+	}
+}
+
+// Regression (r5): the service dimension of a three-part ID is inert — the
+// environment resolves from the PROJECT segment alone, so two different services
+// on the same project yield the same environment, and the exclusion is driven by
+// the requested environment, not by which service the ID names.
+func TestRoute5ServiceDimensionInert(t *testing.T) {
+	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
+
+	project := bhruntime.ApplicationProjectName("prod", "my-app", "dev")
+	placement := capability.ProviderPlacement{Scope: capability.ScopeApplication}
+
+	lokiID := "loki:" + project + ":loki"
+	grafanaID := "loki:" + project + ":grafana"
+
+	// Same project, two different services. Both must resolve 'dev' from their
+	// ID alone (Target = ""), proving the service segment does not move the
+	// environment.
+	for _, id := range []string{lokiID, grafanaID} {
+		if env, ok := projectTokenFromID(SignalSource{OwnerApplication: "my-app", ID: id, Target: ""}); !ok || env != "dev" {
+			t.Fatalf("service-dimension: projectTokenFromID(%q) env=%q ok=%v, want env=dev ok=true", id, env, ok)
+		}
+	}
+
+	// Register both at the seam; the dev caller sees exactly one of them per ID.
+	if err := UpdateSignal(SignalSource{
+		ID: lokiID, Kind: SignalLogs, Provider: capability.ProviderLoki,
+		Class: SourceApplicationProvider, Scope: capability.ScopeApplication,
+		OwnerApplication: "my-app", Network: "baseharbor-my-app-dev-logs",
+		Target: RuntimeTarget(project, "loki"), Protocol: "syslog-rfc5424",
+		Verification: capability.ObservabilityVerifyBackend,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := UpdateSignal(SignalSource{
+		ID: grafanaID, Kind: SignalLogs, Provider: capability.ProviderTempo,
+		Class: SourceApplicationProvider, Scope: capability.ScopeApplication,
+		OwnerApplication: "my-app", Network: "baseharbor-my-app-dev-traces",
+		Target: RuntimeTarget(project, "tempo"), Protocol: "otlp",
+		Path: "/traces", Verification: capability.ObservabilityVerifyBackend,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	devLogs, err := ListLogs(placement, []string{"my-app"}, true, false, "dev")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(devLogs) != 2 {
+		t.Fatalf("service-dimension: dev caller must see both services on the same project, got %d: %v", len(devLogs), ids(devLogs))
+	}
+	for _, s := range devLogs {
+		if s.ID != lokiID && s.ID != grafanaID {
+			t.Fatalf("service-dimension: unexpected source id %q", s.ID)
+		}
+	}
+
+	prodLogs, err := ListLogs(placement, []string{"my-app"}, true, false, "prod")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(prodLogs) != 0 {
+		t.Fatalf("service-dimension: prod caller must see neither dev-scoped service, got %d: %v", len(prodLogs), ids(prodLogs))
 	}
 }
 
@@ -325,7 +415,7 @@ func TestRoute5MutationAnchorDestruction(t *testing.T) {
 	// Canonical generator project name; the anchor is '-my-app-' in the project.
 	project := bhruntime.ApplicationProjectName("prod", "my-app", "dev")
 	if err := UpdateSignal(SignalSource{
-		ID:               "loki:" + project,
+		ID:               "loki:" + project + ":loki",
 		Kind:             SignalLogs,
 		Provider:         capability.ProviderLoki,
 		Class:            SourceApplicationProvider,
@@ -352,11 +442,11 @@ func TestRoute5MutationAnchorDestruction(t *testing.T) {
 	// Remove the visible source, then register the same logical source with a
 	// destroyed project (ID and target both lack '-my-app-'). Anchor resolution
 	// now fails closed -> invisible.
-	if err := Remove("loki:" + project); err != nil {
+	if err := Remove("loki:" + project + ":loki"); err != nil {
 		t.Fatal(err)
 	}
 	if err := UpdateSignal(SignalSource{
-		ID:               "loki:bh-prod-my-logs",
+		ID:               "loki:bh-prod-my-logs:loki",
 		Kind:             SignalLogs,
 		Provider:         capability.ProviderLoki,
 		Class:            SourceApplicationProvider,
