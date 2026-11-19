@@ -2027,6 +2027,19 @@ class MainRunnerContextEntrypointTests(unittest.TestCase):
         self.assertIsNone(code)
         self.assertIn('"coverage_status": "resolved"', out)
 
+    def test_stacked_lane_runner_context_resolves_and_keeps_unknown_paths_broad(self):
+        self._actual = diff(paths('internal/new_plan_v2/feature.go'))
+        code, out, msg = self._run_main({
+            'GITHUB_REPOSITORY': 'mcpdev80/baseharbor',
+            'GITHUB_BASE_REF': 'lane-old-base',
+        })
+        self.assertIsNone(code, msg or out)
+        result = json.loads(out)
+        self.assertEqual('resolved', result['coverage_status'])
+        self.assertTrue(result['fallback_used'])
+        self.assertTrue({'go-unit-tests', 'go-vet', 'go-build'} <=
+                        {row['id'] for row in result['required_validation_checks']})
+
     def test_empty_context_fails_closed(self):
         # Missing runner context must be rejected before plan() runs: the
         # entrypoint refuses to qualify with an unknown authenticated context.
@@ -2052,6 +2065,15 @@ class MainRunnerContextEntrypointTests(unittest.TestCase):
             'GITHUB_BASE_REF': 'develop',
         })
         self.assertIsNotNone(code)
+        self.assertNotIn('"coverage_status"', out)
+        self.assertIn('authenticated runner context', msg)
+
+    def test_empty_lane_name_fails_closed(self):
+        code, out, msg = self._run_main({
+            'GITHUB_REPOSITORY': 'mcpdev80/baseharbor',
+            'GITHUB_BASE_REF': 'lane-',
+        })
+        self.assertNotEqual(0, code)
         self.assertNotIn('"coverage_status"', out)
         self.assertIn('authenticated runner context', msg)
 
