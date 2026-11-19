@@ -103,53 +103,51 @@ func syncProviderTargets(dir string, sources []observability.MetricsSource) erro
 	if err != nil {
 		return err
 	}
-	// Reconcile the two target namespaces on every sync.
+	// Room-scoped sweep: delete every stale file in the prefix-rooms this
+	// writer owns, then rewrite the rooms from the current source list on the
+	// next loop. The two rooms belong to two distinct writers:
 	//
-	// application-- : retain exactly the files for the currently selected
-	//   application-class sources; delete every other file in this namespace.
-	// provider-- / provider-secure-- : the current sync owns a provider file
-	// only when it can prove it by name (it matches one of the currently
-	// selected provider-class sources). An application-only sync has no provider
-	// sources of its own, so it must not touch the provider namespace at all —
-	// a foreign provider-- / provider-secure-- file owned by another sync is
-	// left byte-for-byte intact. Files in neither namespace (runtime-target
-	// files, anything else owned by another writer) are left untouched.
-	appKeep := map[string]struct{}{}
+	// provider-- / provider-secure-- : the room THIS sync owns — the only
+	//   production writer of these files (prometheus_files.go:83). Every run
+	//   of this sync is a provider sync (both production call sites fold in
+	//   the provider sources), so the provider room is a complete rewrite of
+	//   a BaseHarbor-owned dir (normalized back to the container projection
+	//   afterwards). A deselected source leaves no orphan file in the active
+	//   provider glob.
+	// application-- : the room owned by an application-class source; a
+	//   provider-only sync leaves this room untouched, so an application file
+	//   owned by another sync is never rewritten or deleted.
+	// Files in neither prefix-room (runtime-target files, anything else owned
+	// by another writer) are left untouched.
+	hasApplication := false
+	hasProvider := false
 	for _, source := range sources {
-		if fn := appTargetFileName(source); fn != "" {
-			appKeep[fn] = struct{}{}
+		if source.Class == observability.SourceApplication {
+			hasApplication = true
+			continue
 		}
+		hasProvider = true
 	}
-	providerSources := make([]observability.MetricsSource, 0, len(sources))
-	for _, source := range sources {
-		if source.Class != observability.SourceApplication {
-			providerSources = append(providerSources, source)
-		}
-	}
-	ownProviderNamespace := len(providerSources) > 0
+	// The provider room is swept whenever this sync owns provider sources or
+	// reconciles the room (an empty source list still sweeps it: a fully
+	// deselected provider room must leave no orphan file). The application
+	// room is swept only when the sync carries application sources, so an
+	// application-only sync never rewrites the foreign provider room.
 	for _, entry := range entries {
 		name := entry.Name()
 		if entry.IsDir() || !strings.HasSuffix(name, ".json") {
 			continue
 		}
 		switch {
-		case strings.HasPrefix(name, applicationTargetPrefix):
-			if _, ok := appKeep[name]; !ok {
+		case strings.HasPrefix(name, applicationTargetPrefix) && hasApplication:
+			if err := os.Remove(filepath.Join(dir, name)); err != nil && !errors.Is(err, os.ErrNotExist) {
+				return err
+			}
+		case strings.HasPrefix(name, "provider--") || strings.HasPrefix(name, "provider-secure--"):
+			if hasProvider || len(sources) == 0 {
 				if err := os.Remove(filepath.Join(dir, name)); err != nil && !errors.Is(err, os.ErrNotExist) {
 					return err
 				}
-			}
-		case strings.HasPrefix(name, "provider--") || strings.HasPrefix(name, "provider-secure--"):
-			// An application-only sync cannot own any provider file, so it must
-			// never delete a provider-prefixed file. When the sync does own
-			// provider sources, delete only files it can prove it produced
-			// (name matches a currently selected provider-class source); every
-			// other provider file is foreign and left untouched.
-			if !ownProviderNamespace || !providerSourcePresent(providerSources, name) {
-				continue
-			}
-			if err := os.Remove(filepath.Join(dir, name)); err != nil && !errors.Is(err, os.ErrNotExist) {
-				return err
 			}
 		}
 	}
@@ -175,21 +173,6 @@ func syncProviderTargets(dir string, sources []observability.MetricsSource) erro
 		}
 	}
 	return bhruntime.NormalizeContainerReadableProjection(dir)
-}
-
-// providerSourcePresent reports whether name is the provider target file for one
-// of the currently selected (non-application) sources, so the provider-namespace
-// reconciliation deletes only orphaned files.
-func providerSourcePresent(sources []observability.MetricsSource, name string) bool {
-	for _, source := range sources {
-		if source.Class == observability.SourceApplication {
-			continue
-		}
-		if name == providerTargetFileName(source) {
-			return true
-		}
-	}
-	return false
 }
 
 // targetGroupPayload serializes a provider-class source into a single

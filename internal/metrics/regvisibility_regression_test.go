@@ -12,6 +12,8 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/observability"
+	"regexp"
+	"go.yaml.in/yaml/v3"
 )
 
 // readSingleTargetGroup reads the single targetGroup payload from the named file
@@ -218,11 +220,12 @@ func mustRead(t *testing.T, path string) []byte {
 }
 
 // TestRegVisibilityForeignProviderFileSurvivesApplicationReconciliation pins the
-// blocking B2 correction: an application-only sync must not delete a
-// provider-- / provider-secure-- file owned by a foreign writer (another
-// application or provider). The file is seeded before the sync and asserted
-// byte-identical (before/after hash) afterwards, alongside the runtime-target
-// file. Acceptance fails if either is removed or rewritten.
+// B2 correction under the room-scoped contract: an application-only sync owns
+// only the application-- room, so it must leave a provider-- /
+// provider-secure-- file in the OTHER room byte-for-byte intact (a foreign
+// file is a prefix-room of another writer). The file is seeded before the sync
+// and asserted byte-identical afterwards, alongside the runtime-target file.
+// Acceptance fails if either is removed or rewritten.
 func TestRegVisibilityForeignProviderFileSurvivesApplicationReconciliation(t *testing.T) {
 	dir := t.TempDir()
 
@@ -243,8 +246,8 @@ func TestRegVisibilityForeignProviderFileSurvivesApplicationReconciliation(t *te
 	providerBefore := fileDigest(t, filepath.Join(dir, foreignProviderName))
 	secureBefore := fileDigest(t, filepath.Join(dir, foreignSecureName))
 
-	// An application-only sync for a different application must leave the foreign
-	// provider files byte-for-byte intact.
+	// An application-only sync for a different application must leave the
+	// foreign provider files byte-for-byte intact (different room).
 	otherID := observability.ApplicationMetricsSourceID("other-app", "dev", "api")
 	otherSource := observability.MetricsSource{
 		ID:               otherID,
@@ -269,22 +272,21 @@ func TestRegVisibilityForeignProviderFileSurvivesApplicationReconciliation(t *te
 	}
 }
 
-// TestRegVisibilityForeignProviderFilePreservedUnderProviderSync proves that a
-// sync which DOES own provider sources still preserves a foreign provider file
-// (one that does not correspond to any currently selected provider source):
-// ownership of provider-prefixed files is explicit, so reconciliation never
-// rewrites a file the current sync cannot prove it produced.
-func TestRegVisibilityForeignProviderFilePreservedUnderProviderSync(t *testing.T) {
+// TestRegVisibilityDeselectedProviderFileRemovedByProviderSync pins the core B2
+// correction: a provider sweep deletes a stale provider-- / provider-secure--
+// file for a source that is no longer selected, so a deselected source leaves
+// no orphan file in the active provider glob. A file seeded for an owned
+// provider source is gone after a following sync that no longer selects it.
+func TestRegVisibilityDeselectedProviderFileRemovedByProviderSync(t *testing.T) {
 	dir := t.TempDir()
 
-	foreignName := "provider--foreigndeadbeef.json"
-	foreignData := []byte("[{\"targets\":[\"foreign:9090\"],\"labels\":{\"job\":\"baseharbor-providers\",\"baseharbor_provider\":\"loki\"}}]\n")
-	if err := os.WriteFile(filepath.Join(dir, foreignName), foreignData, 0o644); err != nil {
-		t.Fatalf("write foreign provider file: %v", err)
+	ownedName := "provider--ownedsource123.json"
+	ownedData := []byte("[{\"targets\":[\"owned:9090\"],\"labels\":{\"job\":\"baseharbor-providers\",\"baseharbor_provider\":\"loki\"}}]\n")
+	if err := os.WriteFile(filepath.Join(dir, ownedName), ownedData, 0o644); err != nil {
+		t.Fatalf("write owned provider file: %v", err)
 	}
-	foreignBefore := fileDigest(t, filepath.Join(dir, foreignName))
 
-	// A provider sync for a DIFFERENT (owned) provider source.
+	// First sync owns the source: the file must be written.
 	ownedProvider := observability.MetricsSource{
 		ID:       "prometheus:owned-source",
 		Provider: capability.ProviderPrometheus,
@@ -293,15 +295,19 @@ func TestRegVisibilityForeignProviderFilePreservedUnderProviderSync(t *testing.T
 		Path:     "/metrics",
 	}
 	if err := syncProviderTargets(dir, []observability.MetricsSource{ownedProvider}); err != nil {
-		t.Fatalf("provider syncProviderTargets: %v", err)
+		t.Fatalf("provider syncProviderTargets (seed): %v", err)
 	}
-	// The foreign provider file must remain byte-for-byte intact.
-	if d := fileDigest(t, filepath.Join(dir, foreignName)); d != foreignBefore {
-		t.Fatalf("foreign provider file changed under provider reconciliation")
-	}
-	// The owned provider source must be written.
 	if _, err := os.Stat(filepath.Join(dir, providerTargetFileName(ownedProvider))); err != nil {
 		t.Fatalf("owned provider source not written: %v", err)
+	}
+
+	// Second sync no longer selects the source: the room-scoped sweep must
+	// remove every provider file, so no orphan remains in the active glob.
+	if err := syncProviderTargets(dir, []observability.MetricsSource{}); err != nil {
+		t.Fatalf("provider syncProviderTargets (deselect): %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, providerTargetFileName(ownedProvider))); !os.IsNotExist(err) {
+		t.Fatalf("deselected provider file %q survived provider sweep (err=%v)", providerTargetFileName(ownedProvider), err)
 	}
 }
 
@@ -335,10 +341,10 @@ func TestRegVisibilityProviderFileGlobClassification(t *testing.T) {
 		}
 
 		cfg := prometheusConfig(nil, false, nil)
-		appSelected := globSelects(cfg, "baseharbor-applications", appFileName)
-		providerSelectedByAppJob := globSelects(cfg, "baseharbor-applications", providerFileName)
-		providerSelectedByProviderJob := globSelects(cfg, "baseharbor-providers", providerFileName)
-		appSelectedByProviderJob := globSelects(cfg, "baseharbor-providers", appFileName)
+		appSelected := globSelects(t, cfg, "baseharbor-applications", appFileName)
+		providerSelectedByAppJob := globSelects(t, cfg, "baseharbor-applications", providerFileName)
+		providerSelectedByProviderJob := globSelects(t, cfg, "baseharbor-providers", providerFileName)
+		appSelectedByProviderJob := globSelects(t, cfg, "baseharbor-providers", appFileName)
 
 		if !appSelected {
 			t.Fatalf("slug %q application target %q not selected by baseharbor-applications job", slug, appFileName)
@@ -355,53 +361,168 @@ func TestRegVisibilityProviderFileGlobClassification(t *testing.T) {
 	}
 }
 
-// globSelects reports whether a rendered prometheus config, restricted to the
-// named scrape job, contains a file_sd glob that would match target. It
-// extracts the target-job file_sd globs and matches each against a synthetic
-// path shaped like the emitted file names.
-func globSelects(cfg, jobName, targetFileName string) bool {
-	jobStart := strings.Index(cfg, "job_name: "+jobName)
-	if jobStart < 0 {
-		return false
+// TestRegVisibilityProviderFileGlobCorruption is the B1 stop criterion: the
+// regression must FAIL when the emitted provider glob is deliberately made
+// wrong (does not match the real provider--<hash>.json file it is supposed to
+// select), and PASS only for the correct rendered routing table. It drives the
+// same assertions as TestRegVisibilityProviderFileGlobClassification over a
+// correct config and a config whose provider glob was corrupted to a
+// non-matching pattern. A test that passes both proves nothing, so the test
+// explicitly asserts CORRECT == true and CORRUPT == false.
+func TestRegVisibilityProviderFileGlobCorruption(t *testing.T) {
+	providerSource := observability.MetricsSource{
+		ID:       "prometheus:corrupt",
+		Provider: capability.ProviderPrometheus,
+		Class:    observability.SourceApplicationProvider,
+		Target:   "corrupt-api:9090",
+		Path:     "/metrics",
+	}
+	providerFileName := providerTargetFileName(providerSource)
+	if !strings.HasPrefix(providerFileName, "provider--") {
+		t.Fatalf("provider file = %q, want provider-- prefix", providerFileName)
 	}
 
-	// Extract every file path from /etc/prometheus/... across the whole config;
-	// globMatch restricts by job structure only via the file names themselves.
-	idx := 0
-	for {
-		pos := strings.Index(cfg[idx:], "/etc/prometheus/")
-		if pos < 0 {
-			break
+	// Correct config: the provider job must select the real provider file.
+	correctCfg := prometheusConfig(nil, false, []observability.MetricsSource{providerSource})
+	if !globSelects(t, correctCfg, "baseharbor-providers", providerFileName) {
+		t.Fatalf("correct rendered provider glob did not select %q", providerFileName)
+	}
+	// Corrupted config: rewrite the provider job's glob to a pattern that does
+	// not match the real provider file. A correct routing table must pass; a
+	// corrupted one must be detected.
+	corruptCfg := corruptProviderGlob(correctCfg)
+	if globSelects(t, corruptCfg, "baseharbor-providers", providerFileName) {
+		t.Fatalf("corrupted provider glob still selected %q — corruption not detected", providerFileName)
+	}
+}
+
+// corruptProviderGlob returns cfg with the baseharbor-providers job's file_sd
+// glob replaced by a non-matching pattern (a bogus provider-xyz-- prefix). It
+// is a test helper only; it does not touch production code.
+func corruptProviderGlob(cfg string) string {
+	const wrongGlob = "/etc/prometheus/targets/provider-xyz--*.json"
+	const rightGlob = "/etc/prometheus/targets/provider--*.json"
+	if !strings.Contains(cfg, rightGlob) {
+		// Secure-only config may omit the plain provider glob; fall back to a
+		// structural replacement below.
+	}
+	return strings.Replace(cfg, rightGlob, wrongGlob, 1)
+}
+
+// scrapeJob is one rendered scrape_config: its job_name and the file_sd glob
+// file lists it applies to target files.
+type scrapeJob struct {
+	name  string
+	files []string
+}
+
+// parseScrapeJobs parses the rendered Prometheus YAML into its scrape jobs and
+// each job's file_sd_configs.files globs. It fails the test on any parse
+// error so a malformed emitted config is never silently treated as "no glob".
+func parseScrapeJobs(cfg string) ([]scrapeJob, error) {
+	var doc struct {
+		ScrapeConfigs []struct {
+			JobName       string `yaml:"job_name"`
+			FileSDConfigs []struct {
+				Files []string `yaml:"files"`
+			} `yaml:"file_sd_configs"`
+		} `yaml:"scrape_configs"`
+	}
+	if err := yaml.Unmarshal([]byte(cfg), &doc); err != nil {
+		return nil, err
+	}
+	jobs := make([]scrapeJob, 0, len(doc.ScrapeConfigs))
+	for _, sc := range doc.ScrapeConfigs {
+		var files []string
+		for _, fsd := range sc.FileSDConfigs {
+			files = append(files, fsd.Files...)
 		}
-		pos += idx
-		end := strings.Index(cfg[pos:], ".json")
-		if end < 0 {
-			break
+		jobs = append(jobs, scrapeJob{name: sc.JobName, files: files})
+	}
+	return jobs, nil
+}
+
+// tForGlob fails the test inline; used only inside glob-selectors so a parse
+// error surfaces as a hard failure of the regression.
+func tForGlob(t *testing.T, err error) {
+	t.Helper()
+	t.Fatalf("parse emitted prometheus config: %v", err)
+}
+
+// globSelects reports whether a rendered prometheus config, scoped to the named
+// scrape job, contains a file_sd glob that would match the given target file
+// name. It parses the emitted YAML into scrape jobs and their file_sd
+// file_sd_configs.files and applies each real glob (from that job only) to the
+// real filename, so changing the emitted pattern to a colliding or non-matching
+// glob is detected rather than swept up by the whole-config scan.
+func globSelects(t *testing.T, cfg, jobName, targetFileName string) bool {
+	jobs, err := parseScrapeJobs(cfg)
+	if err != nil {
+		tForGlob(t, err)
+		return false
+	}
+	for _, job := range jobs {
+		if job.name != jobName {
+			continue
 		}
-		end += pos
-		glob := cfg[pos : end+len(".json")]
-		idx = end + 1
-		if globMatch(jobName, glob, targetFileName) {
-			return true
+		for _, glob := range job.files {
+			if globMatch(t, jobName, glob, targetFileName) {
+				return true
+			}
 		}
 	}
 	return false
 }
 
-// globMatch reports whether a single /etc/prometheus/targets/<glob> string would
-// select a file with the given base name under the named job. The applications
-// job selects application--<app>--<env>--<src>.json files (three "--" delimited
-// segments); the provider job selects provider--<hash>.json files. A
-// provider--<hash>.json file never matches the applications glob, and an
-// application--<app>--<env>--<src>.json file never matches the provider glob.
-func globMatch(jobName, glob, fileName string) bool {
-	switch jobName {
-	case "baseharbor-providers":
-		return strings.HasPrefix(fileName, "provider--")
-	default: // baseharbor-applications
-		parts := strings.SplitN(fileName, "--", 3)
-		return len(parts) == 3 && parts[0] != "" && parts[1] != "" && parts[2] != ""
+// globMatch reports whether a single emitted /etc/prometheus/targets/<glob>
+// string would select a file with the given base name under the named job. The
+// application job selects application--<app>--<env>--<src>.json files (three
+// "--" delimited segments after the application-- prefix); the provider job
+// selects provider--<hash>.json files; the secure-provider job selects the
+// exact provider-secure--<hash>.json file. The match is a real glob/substring
+// match against the emitted pattern, never a hardcoded job-name shortcut.
+func globMatch(t *testing.T, jobName, glob, fileName string) bool {
+	const targetsPrefix = "/etc/prometheus/targets/"
+	// Only target globs can match target files; runtime-target globs live
+	// under /etc/prometheus/runtime-targets/ and never select either family.
+	if !strings.HasPrefix(glob, targetsPrefix) {
+		return false
 	}
+	relGlob := strings.TrimPrefix(glob, targetsPrefix)
+	// Translate the emitted Prometheus glob (a leading/trailing * means "any
+	// non-empty run of characters") into a regular expression and match the
+	// bare filename against it. A * is anchored to the surrounding literal
+	// segments, so provider--*.json only matches provider--<hash>.json and
+	// application--*--*--*.json only matches an application-- file with the
+	// expected segment shape — a wrong glob is a real, detectable mismatch.
+	re, err := regexp.Compile("^" + translateGlob(relGlob) + "$")
+	if err != nil {
+		tForGlob(t, err)
+		return false
+	}
+	return re.MatchString(fileName)
+}
+
+// translateGlob converts a Prometheus file_sd glob (only `/`-free target globs
+// are expected here) into a regular expression. A leading or trailing * becomes
+// "one or more of any character"; other characters are escaped.
+func translateGlob(glob string) string {
+	var b strings.Builder
+	runes := []rune(glob)
+	for i := 0; i < len(runes); i++ {
+		r := runes[i]
+		if r == '*' {
+			// Collapse a run of consecutive * into a single greedy match.
+			if i+1 < len(runes) && runes[i+1] == '*' {
+				continue
+			}
+			b.WriteString(".+")
+			i++
+			continue
+		}
+		b.WriteString(regexp.QuoteMeta(string(r)))
+	}
+	return b.String()
 }
 
 func fileDigest(t *testing.T, path string) string {
