@@ -169,6 +169,9 @@ func (c Config) Validate() error {
 		return err
 	}
 	for name, env := range c.Environments {
+		if containsSecretMaterial(name) {
+			return fmt.Errorf("environment name contains secret-like material; use a non-secret identifier")
+		}
 		if !namePattern.MatchString(strings.TrimSpace(name)) {
 			return fmt.Errorf("environment name %q is invalid", name)
 		}
