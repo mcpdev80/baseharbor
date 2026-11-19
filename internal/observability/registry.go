@@ -591,36 +591,6 @@ func ListLogs(placement capability.ProviderPlacement, applications []string, inc
 	return List(SignalLogs, placement, applications, false, includeApplicationProviders, includePlatformProviders)
 }
 
-// ListLogsAt is the explicit-selector form of ListLogs: the caller names
-// directly whether class-application log sources belong to the listing.
-// ListLogs itself keeps its provider-only defaults because every renderer and
-// inventory consumer depends on them; a path that must see the workload
-// sources - verification, status/doctor evidence, Console - reads the class
-// through this boundary instead of a default it never chose, so a registered
-// application source can never drop out of the queried set silently
-// (card 0428-122).
-func ListLogsAt(placement capability.ProviderPlacement, applications []string, includeApplicationSources, includeApplicationProviders, includePlatformProviders bool) ([]SignalSource, error) {
-	return List(SignalLogs, placement, applications, includeApplicationSources, includeApplicationProviders, includePlatformProviders)
-}
-
-// ListAt is the explicit-selector form of the class-filtered listings: the
-// caller names every source-class dimension directly instead of relying on a
-// listing helper that hardwires one of them. The class-filtered convenience
-// helpers (ListLogs, ListTraces, ListMetrics) keep the provider-only semantics
-// every renderer and inventory consumer depends on; a verification or
-// reporting path that must see class-application signals calls ListAt with the
-// deployment policy's own collect bits, so a registered source can never drop
-// out of the queried set by a hardwired default - the silent-success shape
-// card 0428-122 removes.
-func ListAt(kind SignalKind, placement capability.ProviderPlacement, applications []string, includeApplicationSources, includeApplicationProviders, includePlatformProviders bool) ([]SignalSource, error) {
-	return List(kind, placement, applications, includeApplicationSources, includeApplicationProviders, includePlatformProviders)
-}
-
-// ApplicationLogSourceID is the canonical registry identity of one workload
-// service's log source in class application. Application and environment bind
-// the ownership and prune boundary; the environment never enters the ID so a
-// service keeps one identity across its deployments, mirroring the metrics
-// class boundary the registry already enforces.
 func ApplicationLogSourceID(applicationName, environment, service string) string {
 	return "application:logs:" + strings.TrimSpace(applicationName) + ":" + strings.TrimSpace(environment) + ":" + strings.TrimSpace(service)
 }

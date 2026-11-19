@@ -89,9 +89,7 @@ func TestApplicationClassLogSourceSurvivesManagedReconcile(t *testing.T) {
 
 func TestApplicationClassLogSourceHasProductionWriter(t *testing.T) {
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
-	m := application.New("demo", "dev", false, false, false)
-	m = application.WithLogsCollection(m, "application")
-	project := application.WorkloadProjectName(m)
+	m, project := appClassManifest(t)
 
 	if err := logs.ReconcileApplicationLogSource(m, project, []string{"api"}); err != nil {
 		t.Fatalf("reconcile application log source: %v", err)

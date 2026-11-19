@@ -100,11 +100,12 @@ func applicationLogBoundary(m application.Manifest) func(observability.SignalSou
 //
 // The writer is transport-neutral: both the render-time reconciliation in
 // internal/application (Docker syslog and Podman journald alike) and the Loki
-// driver Bind path land here. services is the desired set: one signal per
-// named workload service, and the canonical workload token alone when the
-// caller resolved none. A disabled deployment policy reclaims every signal of
-// the application/environment boundary: the registry never keeps a source the
-// deployment stopped collecting.
+// driver Bind path land here. The registry identity is the workload token:
+// exactly one class-application log signal per application/environment, whose
+// Target names the resolved stream (the caller's first service, else the
+// canonical workload token). A disabled deployment policy reclaims every
+// signal of the application/environment boundary: the registry never keeps a
+// source the deployment stopped collecting.
 func ReconcileApplicationLogSource(m application.Manifest, project string, services []string) error {
 	policy, err := application.LogsPolicy(m)
 	if err != nil {
@@ -112,10 +113,11 @@ func ReconcileApplicationLogSource(m application.Manifest, project string, servi
 	}
 	desired := []observability.SignalSource{}
 	if policy.Enabled && policy.Collect[application.LogsSourceApplication] {
-		// Exactly one signal per application/environment: the first resolved
-		// service names the stream the collector ingests, an empty service
-		// set keeps the canonical workload token. Repeating the same intent
-		// replaces (idempotent); it never accumulates.
+		// The registry ID is the workload token (applicationLogServiceName):
+		// exactly one class-application log signal per
+		// application/environment. The Target names the resolved stream -
+		// the caller's first service, else the canonical workload token - so
+		// repeated reconciles replace, never accumulate or drift to zero.
 		service := applicationLogServiceName
 		for _, candidate := range services {
 			if candidate = strings.TrimSpace(candidate); candidate != "" {
@@ -133,17 +135,16 @@ func ReconcileApplicationLogSource(m application.Manifest, project string, servi
 }
 
 // ListWorkloadLogSources is the policy-aware listing boundary for class
-// application log sources: ListLogs keeps the provider-only defaults every
-// renderer and inventory consumer depends on, so this wrapper resolves the
-// caller's deployment policy and reads the class through ListLogsAt. The
-// wrapper lives in this package because the policy belongs to the logs
-// domain; the registry stays parameter-free at the listing boundary.
+// application log sources: it calls the existing generic List directly with
+// its own manifest's application-collect bit, so no listing function in the
+// registry changes semantics (the card asked for a writer, not a new filter).
+// ListLogs keeps its provider-only defaults for every existing consumer.
 func ListWorkloadLogSources(placement capability.ProviderPlacement, m application.Manifest) ([]observability.SignalSource, error) {
 	policy, err := application.LogsPolicy(m)
 	if err != nil {
 		return nil, err
 	}
-	return observability.ListLogsAt(placement, []string{m.Name},
+	return observability.List(observability.SignalLogs, placement, []string{m.Name},
 		policy.Enabled && policy.Collect[application.LogsSourceApplication], false, false)
 }
 
