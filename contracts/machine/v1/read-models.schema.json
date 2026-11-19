@@ -115,11 +115,23 @@
                     "service": {
                       "type": "string"
                     },
+                    "source": {
+                      "type": "string"
+                    },
+                    "source_identity": {
+                      "type": "string"
+                    },
                     "source_revision": {
+                      "type": "string"
+                    },
+                    "source_type": {
                       "type": "string"
                     },
                     "stale": {
                       "type": "boolean"
+                    },
+                    "sub_path": {
+                      "type": "string"
                     },
                     "tag": {
                       "type": "string"

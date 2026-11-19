@@ -35,6 +35,12 @@ type applicationStatusResult struct {
 	ManagementUI    []application.ManagementUISurface            `json:"management_ui,omitempty"`
 	OperatorAuth    operatorAuthObservation                      `json:"operator_auth"`
 	Availability    []availability.NegotiationResult             `json:"availability,omitempty"`
+	// Versions is the unified version dimension of this deployment (card
+	// 0428-062): the separated wanted/applied/observed cells from the delivered
+	// read model plus the component rows with their source-model provenance.
+	// VersionWarnings names why a dimension or row could not be answered.
+	Versions        appStatusVersions `json:"versions"`
+	VersionWarnings []string          `json:"version_warnings,omitempty"`
 
 	tlsStatus     *applicationTLSStatus
 	tlsErr        error
@@ -225,6 +231,7 @@ func collectApplicationStatusResult(ctx context.Context, store application.Store
 			}
 		}
 	}
+	versions, versionWarnings := collectAppStatusVersions(resolved)
 	return applicationStatusResult{
 		StatusResult:    result,
 		ApplicationID:   resolved.Manifest.ApplicationID,
@@ -237,6 +244,8 @@ func collectApplicationStatusResult(ctx context.Context, store application.Store
 		RuntimeDocsURL:  runtimeDocsURL,
 		ApplicationURLs: applicationAccessURLs(resolved, result.Ready),
 		ManagementUI:    managementUI,
+		Versions:        versions,
+		VersionWarnings: versionWarnings,
 		tlsStatus:       tlsStatus,
 		tlsErr:          tlsErr,
 		serviceTLSErr:   serviceTLSErr,
