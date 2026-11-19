@@ -1,8 +1,10 @@
 package development
 
 import (
+	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 )
@@ -161,10 +163,23 @@ func RemoveComponentMapping(model *SourceModel, component string) error {
 // The mapping entry is removed last so a failed model write never orphans a
 // local path. No local file or checkout is deleted.
 func SaveRemovableSource(manifestPath, application string, model SourceModel, sourceID string) (sourceModelPath string, mappingPath string, detachedComponents []string, removedMapping bool, err error) {
+	return saveRemovableSource(manifestPath, application, model, sourceID, SaveWorkspaceMapping)
+}
+
+func saveRemovableSource(manifestPath, application string, model SourceModel, sourceID string, saveMapping func(string, WorkspaceMapping) (string, error)) (sourceModelPath string, mappingPath string, detachedComponents []string, removedMapping bool, err error) {
 	sourceID = strings.TrimSpace(sourceID)
 	detached, err := RemoveSourceDefinition(&model, sourceID, false)
 	if err != nil {
 		return "", "", nil, false, err
+	}
+	manifestPath, err = filepath.Abs(strings.TrimSpace(manifestPath))
+	if err != nil {
+		return "", "", nil, false, err
+	}
+	sourceModelPath = filepath.Join(filepath.Dir(manifestPath), filepath.FromSlash(SourceModelRelativePath))
+	originalModel, err := readRollbackSnapshot(sourceModelPath)
+	if err != nil {
+		return "", "", nil, false, fmt.Errorf("snapshot source model before removal: %w", err)
 	}
 	// Validate the developer-local mapping before changing the portable model.
 	// A malformed or mismatched mapping must not turn a failed remove into a
@@ -172,6 +187,13 @@ func SaveRemovableSource(manifestPath, application string, model SourceModel, so
 	mapping, mappingPath, mapErr := LoadWorkspaceMapping(manifestPath, application)
 	if mapErr != nil && !os.IsNotExist(mapErr) {
 		return "", mappingPath, nil, false, mapErr
+	}
+	var originalMapping fileRollbackSnapshot
+	if mapErr == nil {
+		originalMapping, err = readRollbackSnapshot(mappingPath)
+		if err != nil {
+			return "", mappingPath, nil, false, fmt.Errorf("snapshot workspace mapping before removal: %w", err)
+		}
 	}
 	sourceModelPath, err = WriteSourceModel(manifestPath, model)
 	if err != nil {
@@ -182,12 +204,49 @@ func SaveRemovableSource(manifestPath, application string, model SourceModel, so
 	}
 	if _, exists := mapping.Sources[sourceID]; exists {
 		delete(mapping.Sources, sourceID)
-		if _, err := SaveWorkspaceMapping(manifestPath, mapping); err != nil {
-			return sourceModelPath, mappingPath, detached, false, err
+		if _, err := saveMapping(manifestPath, mapping); err != nil {
+			rollbackErr := restoreFileSnapshot(sourceModelPath, originalModel)
+			if rollbackErr != nil {
+				err = errors.Join(err, fmt.Errorf("restore source model after failed mapping save: %w", rollbackErr))
+			}
+			rollbackErr = restoreFileSnapshot(mappingPath, originalMapping)
+			if rollbackErr != nil {
+				err = errors.Join(err, fmt.Errorf("restore workspace mapping after failed mapping save: %w", rollbackErr))
+			}
+			return sourceModelPath, mappingPath, nil, false, err
 		}
 		removedMapping = true
 	}
 	return sourceModelPath, mappingPath, detached, removedMapping, nil
+}
+
+type fileRollbackSnapshot struct {
+	data []byte
+	mode os.FileMode
+}
+
+func readRollbackSnapshot(path string) (fileRollbackSnapshot, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return fileRollbackSnapshot{}, err
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return fileRollbackSnapshot{}, err
+	}
+	return fileRollbackSnapshot{data: data, mode: info.Mode().Perm()}, nil
+}
+
+func restoreFileSnapshot(path string, snapshot fileRollbackSnapshot) error {
+	tmp := path + ".rollback.tmp"
+	if err := os.WriteFile(tmp, snapshot.data, snapshot.mode); err != nil {
+		return err
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	return nil
 }
 
 // SourceComponentNames lists, sorted and deterministic, the components
