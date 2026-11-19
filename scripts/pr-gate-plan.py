@@ -759,6 +759,12 @@ def openbao_retry_checks(diff, repository='.', context_repository=None,
     return CODE_CHECKS + OPENBAO_CHECKS
 
 
+def supported_pr_target_branch(branch):
+    """Accept develop and non-empty stacked-lane PR targets only."""
+    return (branch == 'develop' or
+            isinstance(branch, str) and branch.startswith('lane-') and len(branch) > 5)
+
+
 
 def targeted_plan(diff, requirements, mapping, repository='.',
          context_repository=None, context_target_branch=None):
@@ -1718,7 +1724,8 @@ def plan(diff, requirements, mapping, repository='.', context_repository=None,
                'release preflight selection')
     if (not valid or diff['broad_required'] or not diff.get('integration_sha')
             or context_repository not in (None, 'mcpdev80/baseharbor')
-            or context_target_branch not in (None, 'develop')
+            or (context_target_branch is not None and
+                not supported_pr_target_branch(context_target_branch))
             or any(reason.startswith(invalid) for reason in reasons)):
         return deduplicate_cli_package_validations(result)
     paths = [change[key] for change in diff['changes']
@@ -1766,13 +1773,12 @@ def main():
     # Authenticated evaluation context comes from the runner, never from the
     # candidate PR. On GitHub Actions the runner sets GITHUB_REPOSITORY
     # (owner/name) and GITHUB_BASE_REF (target branch) in the pull_request
-    # context; these cannot be altered by the PR author. A blank value means
-    # the authenticated context is unknown, which must fail closed: an empty
-    # context yields an unresolved plan, never a trusted one.
+    # context; these cannot be altered by the PR author. A blank or unsupported
+    # value means the authenticated context is unknown and must fail closed.
     context_repository = os.environ.get('GITHUB_REPOSITORY', '').strip()
     context_target_branch = os.environ.get('GITHUB_BASE_REF', '').strip()
     if (context_repository != 'mcpdev80/baseharbor' or
-            context_target_branch != 'develop'):
+            not supported_pr_target_branch(context_target_branch)):
         raise SystemExit(
             'refusing to qualify without authenticated runner context: '
             'GITHUB_REPOSITORY=%r GITHUB_BASE_REF=%r'

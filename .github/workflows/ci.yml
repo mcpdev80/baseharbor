@@ -728,6 +728,7 @@ jobs:
       public_contracts_required: ${{ steps.plan.outputs.public_contracts_required }}
       trusted_base_sha: ${{ steps.plan.outputs.trusted_base_sha }}
       controller_sha: ${{ steps.plan.outputs.controller_sha }}
+      candidate_advisory_required: ${{ steps.plan.outputs.candidate_advisory_required }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -790,6 +791,17 @@ jobs:
           else
             python3 scripts/pr-diff-base.py --target-base "$effective_base" --head "$HEAD_SHA" --integration "$INTEGRATION_SHA" > "$RUNNER_TEMP/pr-diff.json"
           fi
+          candidate_advisory_required="$(python3 - "$RUNNER_TEMP/pr-diff.json" <<'PYTHON'
+          import json
+          import sys
+          plan = json.load(open(sys.argv[1]))
+          paths = {change[key] for change in plan.get('changes', [])
+                   for key in ('path', 'old_path', 'new_path') if key in change}
+          print(str(any(path.startswith('.github/workflows/') or path.startswith('scripts/')
+                        for path in paths)).lower())
+          PYTHON
+          )"
+          echo "candidate_advisory_required=$candidate_advisory_required" >> "$GITHUB_OUTPUT"
           # One immutable, locally checked controller deploys the simplification.
           # Once merged, ordinary trusted-target policy is used automatically.
           git fetch --no-tags origin "$MIGRATION_CONTROLLER"
@@ -838,6 +850,8 @@ jobs:
           runtime_required="$(python3 -c 'import json,sys; print("true" if json.load(open(sys.argv[1]))["required"] else "false")' "$RUNNER_TEMP/pr-runtime-matrix.json")"
           echo "runtime_required=$runtime_required" >> "$GITHUB_OUTPUT"
           echo "public_contracts_required=false" >> "$GITHUB_OUTPUT"
+      - name: Preserve exact verified diff for advisory candidate checks
+        run: cp "$RUNNER_TEMP/pr-diff.json" pr-diff.json
       - name: Pin immutable Demo source for safe native result reuse
         id: demo_source
         env:
@@ -887,7 +901,9 @@ jobs:
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: trusted-pr-plan
-          path: pr-plan.json
+          path: |
+            pr-plan.json
+            pr-diff.json
           retention-days: 7
 
       - name: Route only required Go tests into mandatory parallel shards
@@ -1087,6 +1103,37 @@ jobs:
           path: ${{ runner.temp }}/pr-exact-candidate
           if-no-files-found: error
           retention-days: 7
+
+  pr_candidate_advisory:
+    name: PR · Candidate-added checks (advisory)
+    needs: pr_plan
+    if: github.event_name == 'pull_request' && (github.base_ref == 'develop' || startsWith(github.base_ref, 'lane-')) && github.event.pull_request.draft == false && needs.pr_plan.outputs.candidate_advisory_required == 'true'
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: trusted-pr-plan
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Run candidate-added validation checks outside the required plan
+        shell: bash
+        run: >-
+          python3 scripts/pr-candidate-advisory.py
+          --base-plan pr-plan.json
+          --diff pr-diff.json
+          --repository .
+          --summary "$GITHUB_STEP_SUMMARY"
 
   pr_focused:
     name: PR · Focused Python
@@ -1380,6 +1427,8 @@ jobs:
         if: always()
         run: bash scripts/ci-runtime-reset.sh ${{ matrix.runtime }}
 
+  # Keep candidate-added/advisory jobs out of this dependency list. The base
+  # plan alone defines the jobs that can block PR Selected Checks.
   pr_selected_final:
     name: PR Selected Checks
     needs: [workflow_policy, source_format, pr_plan, pr_focused, pr_validations, pr_candidate, pr_consumer_pins, pr_demo_pin, pr_runner_interface, pr_runtime_selected, pr_selected_integration, pr_public_contracts, pr_owner_node_native, pr_native_impact, pr_native_selected, pr_unit_shards]

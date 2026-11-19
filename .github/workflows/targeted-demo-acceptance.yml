@@ -1,14 +1,13 @@
 name: "Targeted Atomic Gate"
 
-run-name: "targeted · ${{ github.ref_name }}"
+run-name: "Targeted · ${{ inputs.ref || github.ref_name }} · ${{ inputs.gate || 'gate' }}"
 
 on:
   workflow_dispatch:
     inputs:
       ref:
-        description: BaseHarbor branch/tag or full commit SHA; short SHAs are resolved to a ref before checkout
-        required: true
-        default: release/v0.4.21
+        description: Optional BaseHarbor branch/tag or full commit SHA; defaults to the branch selected for this dispatch. short SHAs are resolved before checkout.
+        required: false
         type: string
       demo_ref:
         description: Exact baseharbor-demo commit SHA to test
@@ -72,7 +71,7 @@ jobs:
         shell: bash
         env:
           EVENT_NAME: ${{ github.event_name }}
-          DISPATCH_REF: ${{ inputs.ref }}
+          DISPATCH_REF: ${{ inputs.ref || github.sha }}
           DISPATCH_DEMO_REF: ${{ inputs.demo_ref }}
           DISPATCH_CONSOLE_REF: ${{ inputs.console_ref }}
           DISPATCH_CONNECTOR_REF: ${{ inputs.connector_ref }}
