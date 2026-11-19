@@ -51,6 +51,7 @@ func TestKeycloakSignalRegistrationRegistersNativeMetricsSignal(t *testing.T) {
 		observability.SignalMetrics,
 		placement,
 		[]string{app.Name},
+		false,
 		true,
 		true,
 	)
@@ -98,6 +99,7 @@ func TestKeycloakSignalRegistrationFailsClosedWithoutMetrics(t *testing.T) {
 		observability.SignalMetrics,
 		placement,
 		[]string{app.Name},
+		false,
 		true,
 		true,
 	)
