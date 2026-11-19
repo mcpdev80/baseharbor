@@ -350,7 +350,7 @@ func TestRoute5ServiceDimensionInert(t *testing.T) {
 	placement := capability.ProviderPlacement{Scope: capability.ScopeApplication}
 
 	lokiID := "loki:" + project + ":loki"
-	grafanaID := "loki:" + project + ":grafana"
+	grafanaID := "loki:" + project + ":loki-sidecar"
 
 	// Same project, two different services. Both must resolve 'dev' from their
 	// ID alone (Target = ""), proving the service segment does not move the
@@ -372,11 +372,11 @@ func TestRoute5ServiceDimensionInert(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := UpdateSignal(SignalSource{
-		ID: grafanaID, Kind: SignalLogs, Provider: capability.ProviderTempo,
+		ID: grafanaID, Kind: SignalLogs, Provider: capability.ProviderLoki,
 		Class: SourceApplicationProvider, Scope: capability.ScopeApplication,
-		OwnerApplication: "my-app", Network: "baseharbor-my-app-dev-traces",
-		Target: RuntimeTarget(project, "tempo"), Protocol: "otlp",
-		Path: "/traces", Verification: capability.ObservabilityVerifyBackend,
+		OwnerApplication: "my-app", Network: "baseharbor-my-app-dev-sidecar",
+		Target: RuntimeTarget(project, "loki"), Protocol: "stdout-stderr",
+		Path: "/sidecar", Verification: capability.ObservabilityVerifyBackend,
 	}); err != nil {
 		t.Fatal(err)
 	}
