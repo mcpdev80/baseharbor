@@ -494,10 +494,14 @@ func equalBindingSet(a, b []capability.ProviderBinding) bool {
 
 // sameProviderInstanceAuthority reports whether two instances of the SAME id
 // carry identical consent authority: id, provider identity and version,
-// protocol, scope, sharing boundary, ownership and owner, the external
-// registration Reference and the owner-environment constraint. The registry
-// already keys instances by id, so this is the content the stale-impact-consent
-// fold must read.
+// protocol, scope, sharing boundary, ownership and owner, the owning
+// manifest name, the external registration Reference and the owner-environment
+// constraint. The registry already keys instances by id, so this is the content
+// the stale-impact-consent fold must read. OwnerApplicationID (the owning
+// application's id) and OwnerApplication (the owning application's manifest
+// name) are distinct fields, both authority-bearing: an OwnerApplication-only
+// change rewrites which manifest owns the instance, so it must not read as
+// consent-equivalent.
 func sameProviderInstanceAuthority(a, b capability.ProviderInstance) bool {
 	return a.ID == b.ID &&
 		a.ProviderID == b.ProviderID &&
@@ -509,6 +513,7 @@ func sameProviderInstanceAuthority(a, b capability.ProviderInstance) bool {
 		a.SharingBoundary == b.SharingBoundary &&
 		a.Ownership == b.Ownership &&
 		a.OwnerApplicationID == b.OwnerApplicationID &&
+		a.OwnerApplication == b.OwnerApplication &&
 		a.Reference == b.Reference &&
 		a.OwnerEnvironment == b.OwnerEnvironment
 }

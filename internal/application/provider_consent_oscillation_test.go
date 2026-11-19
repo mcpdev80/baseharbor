@@ -640,6 +640,23 @@ func TestEqualRegistryBlockendOwnerEnvironmentOnly(t *testing.T) {
 	}
 }
 
+// 0428-119 r4 / CODEX r3 Finding P1: sameProviderInstanceAuthority omitted the
+// owning manifest name (OwnerApplication), so two instances that differ ONLY in
+// that field read as the same consent authority. OwnerApplicationID (the owning
+// application's id) and OwnerApplication (the owning application's manifest
+// name) are distinct fields. This negative pins the fix: a same-instance swap of
+// only OwnerApplication fails closed.
+func TestEqualRegistryBlockendOwnerApplicationOnly(t *testing.T) {
+	a := registryInstance("secrets", "v1", capability.ScopeApplication)
+	// Same id, same OwnerApplicationID, but a different owning manifest name:
+	// the instance now resolves to a different owning manifest.
+	b := registryInstance("secrets", "v1", capability.ScopeApplication)
+	b.Instances[0].OwnerApplication = "other-manifest"
+	if equalRegistry(a, b) {
+		t.Fatal("same id/OwnerApplicationID, different OwnerApplication: registries must be UNEQUIVALENT (stale consent hole)")
+	}
+}
+
 func TestEqualRegistryFailClosedReferenceAndEnvironment(t *testing.T) {
 	requests := []ProviderChangeRequest{{InstanceID: "secrets", Operation: "stop"}}
 	s, u, o := impactFixture(t)
