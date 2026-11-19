@@ -95,17 +95,30 @@ func TestBahaStatusHostContainersDashboardsExposesUnavailable(t *testing.T) {
 			t.Fatalf("host/container view %q reason must name the missing native signal, got %q", key, avail.Reason)
 		}
 	}
-	// Positive witness: the three real backends are exposed as available.
-	for _, key := range []string{"prometheus-host-container", "loki-host-container", "tempo-host-container"} {
+	// Backend-specific witnesses. The resolved status this face carries is a
+	// PROMETHEUS verdict (host/provider-metrics), so it may only ever make the
+	// prometheus backend available. Loki and Tempo answer from their own
+	// backend signals; on this un-applied, signal-less probe face they must
+	// report explicitly unavailable with a reason naming their OWN missing
+	// signal — never green by inheritance (CODEX-REVIEW act 1602-0428-077.md).
+	prom, ok := report.HostContainersDashboards["prometheus-host-container"]
+	if !ok {
+		t.Fatal("host_containers_dashboards must expose prometheus-host-container")
+	}
+	if prom.Available != "available" || prom.Backend != "prometheus" || prom.Datasource != "prometheus" {
+		t.Fatalf("prometheus backend with a resolved host/provider-metrics signal must report available/prometheus, got available=%q backend=%q datasource=%q", prom.Available, prom.Backend, prom.Datasource)
+	}
+	for _, backend := range []string{"loki", "tempo"} {
+		key := backend + "-host-container"
 		avail, ok := report.HostContainersDashboards[key]
 		if !ok {
-			t.Fatalf("host_containers_dashboards must expose %q", key)
+			t.Fatalf("host_containers_dashboards must expose %q explicitly", key)
 		}
-		if avail.Available != "available" {
-			t.Fatalf("host/container backend %q must report available, got %q", key, avail.Available)
+		if avail.Available != "unavailable" {
+			t.Fatalf("%s must never become available from the prometheus signal verdict, got %q", key, avail.Available)
 		}
-		if avail.Datasource == "" {
-			t.Fatalf("available host/container backend %q must carry its datasource kind", key)
+		if !strings.Contains(avail.Reason, backend) {
+			t.Fatalf("%s reason must name the backend's OWN missing signal (%s), got %q", key, backend, avail.Reason)
 		}
 	}
 }

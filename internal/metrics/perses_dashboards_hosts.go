@@ -239,8 +239,15 @@ func persesHostPanelPrometheus() PersesHostPanel {
 	}
 }
 
-// persesHostPanelLoki is the BaseHarbor Loki host/container panel. It queries
-// the real Loki log source (job="baseharbor-providers") with a LogQL log query.
+// persesHostPanelLoki is the BaseHarbor Loki host/container panel. Its selector
+// uses baseharbor_provider, the label BaseHarbor's own collector emits on
+// every provider log stream: the Alloy relabel rules set target_label
+// "baseharbor_provider" for syslog provider streams (internal/logs/render.go
+// :145, :163) and journald provider streams (:296), and BaseHarbor's own
+// runtime verification queries use exactly that label
+// (internal/logs/query.go:115, :123). Loki streams carry no Prometheus job
+// label, so the former {job="baseharbor-providers"} selector could never
+// resolve against emitted data.
 func persesHostPanelLoki() PersesHostPanel {
 	return PersesHostPanel{
 		Kind: PersesHostPanelKind,
@@ -251,7 +258,7 @@ func persesHostPanelLoki() PersesHostPanel {
 				Kind: PersesHostQueryWrapperLog,
 				Spec: PersesHostQueryPlugin{
 					Kind:       PersesHostQueryLoki,
-					Spec:       mustJSONHosts(map[string]string{"query": `{job="baseharbor-providers"} |= "error"`}),
+					Spec:       mustJSONHosts(map[string]string{"query": `{baseharbor_provider=~".+"} |= "error"`}),
 					Datasource: &PersesHostDatasourceRef{Kind: PersesHostDatasourceLoki, Name: "loki"},
 				},
 			}},
@@ -259,8 +266,19 @@ func persesHostPanelLoki() PersesHostPanel {
 	}
 }
 
-// persesHostPanelTempo is the BaseHarbor Tempo host/container panel. It queries
-// the real Tempo trace source with a TraceQL trace query.
+// persesHostPanelTempo is the BaseHarbor Tempo host/container panel. Its
+// selector names the resource attribute BaseHarbor actually emits on provider
+// OTLP spans. The span contract puts baseharbor.provider, baseharbor.source,
+// baseharbor.source_class and baseharbor.resource on the SPAN (internal/
+// telemetry/otlp_payload.go:28-32); service.name is a resource attribute (the
+// OTLP resource is a separate message, :37-41) whose provider-path values are
+// the literal "baseharbor" or the application name (:38, :66), never
+// "baseharbor-providers", and whose runtime-component values are component
+// names such as "runtime-executor" (internal/runtimeexecutor/compose_render.go
+// :277, internal/runtimeobservability/observer.go:400). So a span-filtered
+// baseharbor.provider attribute selector is the only selector that resolves
+// over every provider trace BaseHarbor emits; the former
+// {service.name="baseharbor-providers"} could never match emitted data.
 func persesHostPanelTempo() PersesHostPanel {
 	return PersesHostPanel{
 		Kind: PersesHostPanelKind,
@@ -271,7 +289,7 @@ func persesHostPanelTempo() PersesHostPanel {
 				Kind: PersesHostQueryWrapperTrace,
 				Spec: PersesHostQueryPlugin{
 					Kind:       PersesHostQueryTempo,
-					Spec:       mustJSONHosts(map[string]string{"query": `{service.name="baseharbor-providers"}`}),
+					Spec:       mustJSONHosts(map[string]string{"query": `{.baseharbor.provider=~".+"}`}),
 					Datasource: &PersesHostDatasourceRef{Kind: PersesHostDatasourceTempo, Name: "tempo"},
 				},
 			}},
@@ -317,6 +335,13 @@ func identityUnavailableReasonHost(resolvedStatus capability.ObservabilitySuppor
 // metrics, cAdvisor per-container stats) as UNAVAILABLE entries. No entry ships
 // a fabricated panel or installs an exporter.
 func persesHostDashboardCatalog(resolvedHostSignalStatus capability.ObservabilitySupportStatus) map[string]PersesHostPanelCatalogEntry {
+	return persesHostDashboardCatalogWithWitness(resolvedHostSignalStatus, PersesBackendSignalWitness{})
+}
+
+// persesHostDashboardCatalogWithWitness is the catalog builder over an
+// explicit per-backend signal witness; no backend inherits another backend's
+// verdict.
+func persesHostDashboardCatalogWithWitness(resolvedHostSignalStatus capability.ObservabilitySupportStatus, witness PersesBackendSignalWitness) map[string]PersesHostPanelCatalogEntry {
 	// The two host/container views with no native signal (raw host node metrics,
 	// cAdvisor per-container stats) are always present as UNAVAILABLE entries;
 	// there is no native exporter for them in BaseHarbor, so no panel is ever
@@ -332,35 +357,38 @@ func persesHostDashboardCatalog(resolvedHostSignalStatus capability.Observabilit
 	// status) reports them as unavailable with a concrete reason naming the
 	// missing verified signal. Catalog presence never becomes a fabricated
 	// panel.
-	if resolvedHostSignalStatus != capability.ObservabilitySupported {
-		for _, key := range []string{"prometheus-host-container", "loki-host-container", "tempo-host-container"} {
-			out[key] = persesHostUnavailableEntry(key, backendForHostKey(key),
-				identityUnavailableReasonHost(resolvedHostSignalStatus))
+	// Each backend answers from its OWN signal: Prometheus from the resolved
+	// manifest host/provider-metrics verdict, Loki and Tempo from their own
+	// collector signals. A signal resolved to ObservabilitySupported realizes
+	// no Loki/Tempo panel by itself — that inference was the review defect.
+	for _, key := range []string{"prometheus-host-container", "loki-host-container", "tempo-host-container"} {
+		backend := backendForHostKey(key)
+		if !backendAvailableWithoutInference(backend, resolvedHostSignalStatus, witness) {
+			out[key] = persesHostUnavailableEntry(key, backend, hostBackendUnavailableReason(backend))
+			continue
 		}
-		return out
-	}
-	out["prometheus-host-container"] = PersesHostPanelCatalogEntry{
-		Key:            "prometheus-host-container",
-		Backend:        "prometheus",
-		Datasource:     "prometheus",
-		DatasourceName: "prometheus",
-		Dashboard:      persesHostPrometheusDashboard(),
-	}
-	out["loki-host-container"] = PersesHostPanelCatalogEntry{
-		Key:            "loki-host-container",
-		Backend:        "loki",
-		Datasource:     "loki",
-		DatasourceName: "loki",
-		Dashboard:      persesHostLokiDashboard(),
-	}
-	out["tempo-host-container"] = PersesHostPanelCatalogEntry{
-		Key:            "tempo-host-container",
-		Backend:        "tempo",
-		Datasource:     "tempo",
-		DatasourceName: "tempo",
-		Dashboard:      persesHostTempoDashboard(),
+		out[key] = PersesHostPanelCatalogEntry{
+			Key:            key,
+			Backend:        backend,
+			Datasource:     backend,
+			DatasourceName: backend,
+			Dashboard:      persesHostDashboardForBackend(key),
+		}
 	}
 	return out
+}
+
+// persesHostDashboardForBackend returns the dashboard resource of one real
+// backend key.
+func persesHostDashboardForBackend(key string) PersesHostDashboard {
+	switch key {
+	case "loki-host-container":
+		return persesHostLokiDashboard()
+	case "tempo-host-container":
+		return persesHostTempoDashboard()
+	default:
+		return persesHostPrometheusDashboard()
+	}
 }
 
 // backendForHostKey maps a real host dashboard catalog key to its backend data
@@ -498,22 +526,87 @@ func marshalIndentNoEscape(v any) ([]byte, error) {
 	return bytes.TrimRight(buf.Bytes(), "\n"), nil
 }
 
+// PersesBackendSignalWitness is the deterministic per-backend signal witness
+// the host/container catalog consumes. Each field reports whether that
+// backend's OWN BaseHarbor signal is proven, never inferred from another
+// backend's health. The zero witness is fail-closed: every backend is
+// unproven, which is the correct answer whenever no authoritative input is
+// supplied.
+type PersesBackendSignalWitness struct {
+	// PrometheusProven is true only when a provider-scoped Prometheus metric
+	// source is registered (job="baseharbor-providers" target files).
+	PrometheusProven bool
+	// LokiProven is true only when an Alloy pipeline labels provider log
+	// streams with baseharbor_provider (internal/logs/render.go:145,163,296).
+	LokiProven bool
+	// TempoProven is true only when an OTLP trace source carrying the
+	// baseharbor.provider span attribute is registered.
+	TempoProven bool
+}
+
+// backendAvailableWithoutInference reports, for one host/container backend,
+// whether its OWN signal witness proves availability under the resolved
+// host-metrics status. Prometheus keeps the authoritative manifest resolution
+// that guarded this catalog before; Loki and Tempo answer only from their own
+// backends. An empty backend is not a real backend.
+func backendAvailableWithoutInference(backend string, resolvedHostSignalStatus capability.ObservabilitySupportStatus, witness PersesBackendSignalWitness) bool {
+	switch backend {
+	case "prometheus":
+		return resolvedHostSignalStatus == capability.ObservabilitySupported
+	case "loki":
+		return witness.LokiProven
+	case "tempo":
+		return witness.TempoProven
+	default:
+		return false
+	}
+}
+
+// hostBackendUnavailableReason is the concrete per-backend reason an
+// unproven backend reports. It never borrows another backend's health: it
+// names the backend and the signal that is missing.
+func hostBackendUnavailableReason(backend string) string {
+	switch backend {
+	case "loki":
+		return "BaseHarbor has no verified Loki provider-log stream signal (no Alloy pipeline is configured that labels streams with baseharbor_provider); the loki/dashboard is explicitly unavailable and no exporter is installed"
+	case "tempo":
+		return "BaseHarbor has no verified Tempo provider-trace signal (no registered OTLP trace source emits the baseharbor.provider span attribute); the tempo/dashboard is explicitly unavailable and no exporter is installed"
+	case "prometheus":
+		return identityUnavailableReasonHost("")
+	default:
+		return "BaseHarbor has no verified signal owner for backend " + backend + "; the host/dashboard is explicitly unavailable and no exporter is installed"
+	}
+}
+
 // PersesHostDashboardAvailability returns the availability verdict of every
-// catalog entry, keyed by catalog key, for the pinned release. A real backend
-// returns "available" with its Perses datasource kind; any other resolved
-// status returns "unavailable" with a reason naming the missing verified
-// signal; a host/container view with no native signal is reported as
-// "unavailable" too. This is the deterministic CLI witness that the host
-// dashboard remains explicitly unavailable rather than silently reported as
-// available when its verified provider-metrics signal is absent.
+// catalog entry, keyed by catalog key, for the pinned release, under the
+// DEFAULT fail-closed witness: Loki and Tempo report "unavailable" until
+// their own backend signals are proven elsewhere. A real backend returns
+// "available" with its Perses datasource kind; any other resolved status
+// returns "unavailable" with a reason naming the missing verified signal; a
+// host/container view with no native signal is reported as "unavailable" too.
+// This is the deterministic CLI witness that the host dashboard remains
+// explicitly unavailable rather than silently reported as available when its
+// verified provider-metrics signal is absent.
 //
 // resolvedHostSignalStatus is the authoritative resolved-signal witness of the
 // manifest (internal/capability/reference.go host/provider-metrics observability
-// signal). The host dashboard is realized only when that signal resolves to
-// ObservabilitySupported; every other resolved status (including the empty /
-// absent status) stays unavailable-preserving.
+// signal). The PROMETHEUS host dashboard is realized only when that signal
+// resolves to ObservabilitySupported; every other resolved status (including
+// the empty / absent status) stays unavailable-preserving. Loki and Tempo are
+// NEVER realized from that Prometheus verdict — that cross-backend inference
+// was the CODEX-REVIEW defect on PR #1602 (request-changes act
+// 1602-0428-077.md). Use PersesHostDashboardAvailabilityWithWitness to pass
+// real per-backend signal proof.
 func PersesHostDashboardAvailability(resolvedHostSignalStatus capability.ObservabilitySupportStatus) map[string]PersesHostDashboardAvailabilityEntry {
-	catalog := persesHostDashboardCatalog(resolvedHostSignalStatus)
+	return PersesHostDashboardAvailabilityWithWitness(resolvedHostSignalStatus, PersesBackendSignalWitness{})
+}
+
+// PersesHostDashboardAvailabilityWithWitness returns the same verdict under an
+// explicit per-backend signal witness. Each backend answers from its OWN
+// signal only; no backend inherits another backend's health.
+func PersesHostDashboardAvailabilityWithWitness(resolvedHostSignalStatus capability.ObservabilitySupportStatus, witness PersesBackendSignalWitness) map[string]PersesHostDashboardAvailabilityEntry {
+	catalog := persesHostDashboardCatalogWithWitness(resolvedHostSignalStatus, witness)
 	out := make(map[string]PersesHostDashboardAvailabilityEntry, len(catalog))
 	for key, entry := range catalog {
 		avail := PersesHostDashboardAvailable

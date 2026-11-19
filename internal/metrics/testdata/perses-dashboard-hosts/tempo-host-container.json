@@ -33,7 +33,7 @@
               "spec": {
                 "kind": "TempoTraceQuery",
                 "spec": {
-                  "query": "{service.name=\"baseharbor-providers\"}"
+                  "query": "{.baseharbor.provider=~\".+\"}"
                 },
                 "datasource": {
                   "kind": "TempoDatasource",

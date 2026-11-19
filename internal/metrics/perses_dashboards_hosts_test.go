@@ -10,13 +10,27 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/capability"
 )
 
+// persesHostCatalogAllProven is the test witness of a deployment whose three
+// backends have EACH proven their own signal: Prometheus via the resolved
+// manifest host/provider-metrics verdict, Loki via the Alloy provider-log
+// pipeline, Tempo via registered provider OTLP trace sources. Availability
+// here is per-backend proof, never one backend inheriting another's health.
+func persesHostCatalogAllProven() map[string]PersesHostPanelCatalogEntry {
+	return persesHostDashboardCatalogWithWitness(capability.ObservabilitySupported, PersesBackendSignalWitness{
+		PrometheusProven: true,
+		LokiProven:       true,
+		TempoProven:      true,
+	})
+}
+
 // TestPersesHostDashboardCatalogHasRealBackendsOnly pins the shipped catalog:
-// it contains one real dashboard per real BaseHarbor backend (prometheus, loki,
-// tempo) and an explicit UNAVAILABLE entry per host/container view with no
-// native signal (raw host node metrics, cAdvisor per-container stats). No
-// fabricated panel ships for a view with no real signal.
+// with every backend's OWN signal proven it contains one real dashboard per
+// real BaseHarbor backend (prometheus, loki, tempo) and an explicit
+// UNAVAILABLE entry per host/container view with no native signal (raw host
+// node metrics, cAdvisor per-container stats). No fabricated panel ships for a
+// view with no real signal.
 func TestPersesHostDashboardCatalogHasRealBackendsOnly(t *testing.T) {
-	catalog := persesHostDashboardCatalog(capability.ObservabilitySupported)
+	catalog := persesHostCatalogAllProven()
 	for _, key := range []string{"prometheus-host-container", "loki-host-container", "tempo-host-container"} {
 		entry, ok := catalog[key]
 		if !ok {
@@ -50,7 +64,7 @@ func TestPersesHostDashboardCatalogHasRealBackendsOnly(t *testing.T) {
 // marshals to Perses-native JSON: kind "Dashboard", one layout referencing a
 // panel, and a panel carrying a query with the matching backend datasource.
 func TestPersesHostDashboardPersesNativeJSON(t *testing.T) {
-	catalog := persesHostDashboardCatalog(capability.ObservabilitySupported)
+	catalog := persesHostCatalogAllProven()
 	for _, key := range []string{"prometheus-host-container", "loki-host-container", "tempo-host-container"} {
 		entry := catalog[key]
 		raw, err := persesHostPanelJSON(entry)
@@ -100,10 +114,14 @@ func TestPersesHostDashboardPersesNativeJSON(t *testing.T) {
 	}
 }
 
-// TestPersesHostDashboardQueriesAreRealSignals pins that every real panel query
-// references a real BaseHarbor backend job, never a fabricated target.
+// TestPersesHostDashboardQueriesAreRealSignals replaces the former shared
+// "baseharbor-providers" substring check (it blessed invalid Loki/Tempo
+// selectors — CODEX-REVIEW act 1602-0428-077.md). Every real panel query must
+// now select ONLY labels/attributes its OWN backend actually emits, proven
+// line-by-line against the collector sources.
 func TestPersesHostDashboardQueriesAreRealSignals(t *testing.T) {
-	catalog := persesHostDashboardCatalog(capability.ObservabilitySupported)
+	catalog := persesHostCatalogAllProven()
+	queries := map[string]string{}
 	for key, entry := range catalog {
 		if entry.Unavailable {
 			continue
@@ -124,11 +142,42 @@ func TestPersesHostDashboardQueriesAreRealSignals(t *testing.T) {
 				if err := json.Unmarshal(q.Spec.Spec, &spec); err != nil {
 					t.Fatalf("%s/%s: decode query: %v", key, panelName, err)
 				}
-				if !strings.Contains(spec.Query, `baseharbor-providers`) {
-					t.Fatalf("%s/%s: query must reference a real BaseHarbor backend (baseharbor-providers), got %q", key, panelName, spec.Query)
-				}
+				queries[key] = spec.Query
 			}
 		}
+	}
+	// Prometheus: the job label is real because Prometheus scrape config
+	// literally declares the provider job (internal/metrics/
+	// prometheus_render.go:221 "- job_name: baseharbor-providers") and the
+	// provider target files carry it (internal/metrics/prometheus_files.go:71
+	// "job": "baseharbor-providers").
+	if !strings.Contains(queries["prometheus-host-container"], `job="baseharbor-providers"`) {
+		t.Fatalf("prometheus panel query %q must select the real provider scrape job job=\"baseharbor-providers\" (prometheus_files.go:71, prometheus_render.go:221)", queries["prometheus-host-container"])
+	}
+	// Loki: the selector must use the label the Alloy pipeline actually
+	// relabels onto every provider stream (internal/logs/render.go:140-172
+	// syslog rules target_label "baseharbor_provider", :292-306 journald
+	// rules) — never a Prometheus job label, which Loki streams do not carry.
+	loki := queries["loki-host-container"]
+	if strings.Contains(loki, "job=") {
+		t.Fatalf("loki panel query %q must not select a Prometheus job label: Loki streams carry baseharbor_provider/baseharbor_service from Alloy relabel (logs/render.go:145,152,296,300), never job", loki)
+	}
+	if !strings.Contains(loki, "baseharbor_provider") {
+		t.Fatalf("loki panel query %q must select the emitted Alloy label baseharbor_provider (logs/render.go:145,152,296,300)", loki)
+	}
+	// Tempo: the selector must use an attribute BaseHarbor actually emits.
+	// The provider verification span puts baseharbor.provider on the SPAN
+	// (internal/telemetry/otlp_payload.go:28 keyValue("baseharbor.provider",
+	// string(source.Provider))) while service.name is a RESOURCE attribute
+	// with values "baseharbor" or the application name (otlp_payload.go:38,66;
+	// internal/runtimeobservability/observer.go:400) — so the former
+	// service.name="baseharbor-providers" selector could never resolve.
+	tempo := queries["tempo-host-container"]
+	if strings.Contains(tempo, `service.name="baseharbor-providers"`) {
+		t.Fatalf("tempo panel query %q must not select service.name=\"baseharbor-providers\": no emitted OTLP resource attribute carries that value (telemetry/otlp_payload.go:38,66)", tempo)
+	}
+	if !strings.Contains(tempo, "baseharbor.provider") {
+		t.Fatalf("tempo panel query %q must select the emitted span attribute baseharbor.provider (telemetry/otlp_payload.go:28)", tempo)
 	}
 }
 
@@ -136,7 +185,7 @@ func TestPersesHostDashboardQueriesAreRealSignals(t *testing.T) {
 // entry marshals to the same bytes on every call, so the golden witness is
 // stable.
 func TestPersesHostDashboardJSONIsDeterministic(t *testing.T) {
-	catalog := persesHostDashboardCatalog(capability.ObservabilitySupported)
+	catalog := persesHostCatalogAllProven()
 	first, err := persesHostPanelJSON(catalog["prometheus-host-container"])
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
@@ -201,7 +250,7 @@ func TestPersesHostDashboardKeysDistinctFromDatabaseDashboards(t *testing.T) {
 // be one of the three real backends the selection catalog knows (prometheus,
 // loki, tempo).
 func TestPersesHostDashboardKeysMatchSelectionCatalogKeys(t *testing.T) {
-	catalog := persesHostDashboardCatalog(capability.ObservabilitySupported)
+	catalog := persesHostCatalogAllProven()
 	for _, entry := range catalog {
 		if entry.Unavailable {
 			continue
@@ -221,7 +270,7 @@ func TestPersesHostDashboardKeysMatchSelectionCatalogKeys(t *testing.T) {
 // entry (real dashboard + unavailable reason document) must match its golden
 // file byte-for-byte, so the Perses-native output is a stable, reviewed witness.
 func TestPersesHostDashboardGoldenFiles(t *testing.T) {
-	entries := persesHostDashboardCatalog(capability.ObservabilitySupported)
+	entries := persesHostCatalogAllProven()
 	for key, entry := range entries {
 		golden, err := os.ReadFile(filepath.Join("testdata", "perses-dashboard-hosts", key+".json"))
 		if err != nil {
@@ -244,7 +293,7 @@ func TestPersesHostDashboardGoldenFiles(t *testing.T) {
 // the Luna-r1 acceptance: the pinned native Perses schema, never a flattened
 // or Grafana-shaped document.
 func TestPersesHostDashboardPersesNativeSchema(t *testing.T) {
-	catalog := persesHostDashboardCatalog(capability.ObservabilitySupported)
+	catalog := persesHostCatalogAllProven()
 	for _, key := range []string{"prometheus-host-container", "loki-host-container", "tempo-host-container"} {
 		entry := catalog[key]
 		raw, err := persesHostPanelJSON(entry)
@@ -312,25 +361,98 @@ func TestPersesHostDashboardUnavailableWithoutVerifiedSignal(t *testing.T) {
 }
 
 // TestPersesHostDashboardAvailabilityConsumesAuthoritativeSignal pins that
-// PersesHostDashboardAvailability returns "available" ONLY for a signal resolved
-// to ObservabilitySupported, and "unavailable" for every other resolved status
-// (empty/absent, requires-adapter, other). Availability is authoritative, never
-// a caller-supplied static positive.
+// PersesHostDashboardAvailability returns "available" for the PROMETHEUS
+// backend ONLY for a signal resolved to ObservabilitySupported, and
+// "unavailable" for every other resolved status (empty/absent,
+// requires-adapter, other). Availability is authoritative, never a
+// caller-supplied static positive. Loki and Tempo stay unavailable under this
+// one-argument face — the resolved host/provider-metrics status is a
+// PROMETHEUS verdict and must never color them (CODEX-REVIEW act
+// 1602-0428-077.md).
 func TestPersesHostDashboardAvailabilityConsumesAuthoritativeSignal(t *testing.T) {
 	supported := PersesHostDashboardAvailability(capability.ObservabilitySupported)
-	for _, key := range []string{"prometheus-host-container", "loki-host-container", "tempo-host-container"} {
-		if supported[key].Available != PersesHostDashboardAvailable {
-			t.Fatalf("%s: resolved ObservabilitySupported must be available, got %q", key, supported[key].Available)
+	prom := supported["prometheus-host-container"]
+	if prom.Available != PersesHostDashboardAvailable {
+		t.Fatalf("prometheus-host-container: resolved ObservabilitySupported must be available, got %q", prom.Available)
+	}
+	if prom.Backend != "prometheus" || prom.Datasource != "prometheus" {
+		t.Fatalf("prometheus-host-container: prometheus availability must carry its own backend/datasource, got backend=%q datasource=%q", prom.Backend, prom.Datasource)
+	}
+	for _, key := range []string{"loki-host-container", "tempo-host-container"} {
+		if supported[key].Available != PersesHostDashboardUnavailable {
+			t.Fatalf("%s: a Prometheus health verdict must NEVER make another backend available, got %q", key, supported[key].Available)
+		}
+		if !strings.Contains(supported[key].Reason, keyPart(key)) {
+			t.Fatalf("%s: reason must name the backend's OWN missing signal, got %q", key, supported[key].Reason)
 		}
 	}
 	for _, status := range []capability.ObservabilitySupportStatus{"", capability.ObservabilityRequiresAdapter, capability.ObservabilityUnsupported} {
 		verdict := PersesHostDashboardAvailability(status)
-		for _, key := range []string{"host-node-metrics", "container-stats"} {
+		for _, key := range []string{"host-node-metrics", "container-stats", "prometheus-host-container", "loki-host-container", "tempo-host-container"} {
 			if verdict[key].Available != PersesHostDashboardUnavailable {
 				t.Fatalf("status %q: %s must be unavailable, got %q", status, key, verdict[key].Available)
 			}
 		}
 	}
+}
+
+// TestPersesHostDashboardAvailabilityPerBackendNoInference pins the
+// per-backend gates: each backend answers ONLY from its own signal witness.
+// In particular the named correction case: Prometheus healthy, Loki WITHOUT
+// its own signal -> Loki unavailable; and each backend available exactly when
+// its own signal is proven regardless of the others.
+func TestPersesHostDashboardAvailabilityPerBackendNoInference(t *testing.T) {
+	cases := []struct {
+		name      string
+		status    capability.ObservabilitySupportStatus
+		witness   PersesBackendSignalWitness
+		wantProm  string
+		wantLoki  string
+		wantTempo string
+	}{
+		{"prometheus healthy, loki without signal -> loki unavailable",
+			capability.ObservabilitySupported,
+			PersesBackendSignalWitness{PrometheusProven: true},
+			PersesHostDashboardAvailable, PersesHostDashboardUnavailable, PersesHostDashboardUnavailable},
+		{"prometheus healthy, loki signal proven -> loki available",
+			capability.ObservabilitySupported,
+			PersesBackendSignalWitness{PrometheusProven: true, LokiProven: true},
+			PersesHostDashboardAvailable, PersesHostDashboardAvailable, PersesHostDashboardUnavailable},
+		{"prometheus unhealthy, loki signal proven -> loki stays available",
+			"",
+			PersesBackendSignalWitness{LokiProven: true},
+			PersesHostDashboardUnavailable, PersesHostDashboardAvailable, PersesHostDashboardUnavailable},
+		{"prometheus unhealthy, tempo signal proven -> tempo stays available",
+			capability.ObservabilityRequiresAdapter,
+			PersesBackendSignalWitness{TempoProven: true},
+			PersesHostDashboardUnavailable, PersesHostDashboardUnavailable, PersesHostDashboardAvailable},
+		{"all signals proven -> all available",
+			capability.ObservabilitySupported,
+			PersesBackendSignalWitness{PrometheusProven: true, LokiProven: true, TempoProven: true},
+			PersesHostDashboardAvailable, PersesHostDashboardAvailable, PersesHostDashboardAvailable},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			verdict := PersesHostDashboardAvailabilityWithWitness(tc.status, tc.witness)
+			for key, want := range map[string]string{
+				"prometheus-host-container": tc.wantProm,
+				"loki-host-container":       tc.wantLoki,
+				"tempo-host-container":      tc.wantTempo,
+			} {
+				if verdict[key].Available != want {
+					t.Fatalf("%s: verdict = %q, want %q (status %q witness %+v)", key, verdict[key].Available, want, tc.status, tc.witness)
+				}
+				if want == PersesHostDashboardUnavailable && strings.TrimSpace(verdict[key].Reason) == "" {
+					t.Fatalf("%s: unavailable verdict must carry a concrete reason", key)
+				}
+			}
+		})
+	}
+}
+
+// keyPart extracts the backend word of a host catalog key (loki / tempo).
+func keyPart(key string) string {
+	return strings.TrimSuffix(key, "-host-container")
 }
 
 // TestPersesHostDashboardAvailableAvailabilityWitness pins the availability

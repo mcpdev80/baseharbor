@@ -33,7 +33,7 @@
               "spec": {
                 "kind": "LokiLogQuery",
                 "spec": {
-                  "query": "{job=\"baseharbor-providers\"} |= \"error\""
+                  "query": "{baseharbor_provider=~\".+\"} |= \"error\""
                 },
                 "datasource": {
                   "kind": "LokiDatasource",
