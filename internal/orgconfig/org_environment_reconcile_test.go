@@ -154,6 +154,14 @@ func TestOrgEnvIdentitySecretMaterialRejected(t *testing.T) {
 	}
 	if _, err := ResolveEffective(state, "prod"); err == nil {
 		t.Fatal("organization env identity with inline secret material must be rejected at validation")
+	} else {
+		const secret = "deadbeef"
+		if strings.Contains(err.Error(), secret) || strings.Contains(err.Error(), "env:prod?token=") {
+			t.Fatalf("validation error exposed secret-like reference material: %q", err)
+		}
+		if !strings.Contains(err.Error(), "prod environment identity") || !strings.Contains(err.Error(), "secret-like material") {
+			t.Fatalf("validation error should identify the safe field and rejection reason: %q", err)
+		}
 	}
 }
 

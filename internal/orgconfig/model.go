@@ -286,7 +286,7 @@ func validateEnvironmentIdentity(scope string, identity *EnvironmentIdentity) er
 		return fmt.Errorf("%s environment identity requires a reference", scope)
 	}
 	if containsSecretMaterial(value) {
-		return fmt.Errorf("%s environment identity %q contains secret-like material; organization configuration stores references only", scope, value)
+		return fmt.Errorf("%s environment identity contains secret-like material; organization configuration stores references only", scope)
 	}
 	return nil
 }
