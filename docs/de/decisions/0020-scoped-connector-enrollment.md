@@ -34,17 +34,18 @@ Signierungsfehler erfordert eine neue Autorisierung: das verbrauchte Credential 
 wiederhergestellt, auch nach einem Neustart des Prozesses oder einem mehrdeutigen Ansprechfehler.
 
 Verbrauch (`Consume`) und Identitätseintragung (`RecordIssued`) sind zwei Phasen
-einer Einschreibung, die in getrennten Transaktionen verpflichtet werden. Nach dem
-Commit von `Consume` ist der Grant dauerhaft verbraucht, ohne dass eine aktive
-Knotenidentität existiert; dieses Fenster ist absichtlich und bleibt fail-closed.
-Der verbrauchte Grant wird nie wiederhergestellt; die einzige Erholung ist ein
-frisches `Create` oder `CreateRenewal`. Wenn `RecordIssued` fehlschlägt, widerruft
-`Enroll` außerdem das Zertifikat, das es signiert hat. Die Klausel
+einer Einschreibung, die jeweils in einer eigenen Transaktion abgeschlossen werden.
+Nach dem Commit von `Consume` ist der Grant dauerhaft verbraucht, ohne dass eine
+aktive Knotenidentität existiert; dieses Fenster ist absichtlich und bleibt
+fail-closed. Der verbrauchte Grant wird nie wiederhergestellt; die einzige
+Erholung ist ein frisches `Create` oder `CreateRenewal`. Schlägt `RecordIssued`
+fehl, widerruft `Enroll` das signierte Zertifikat. Die Klausel
 `previous_certificate_serial` in `Consume` und die Bedingung
-`certificate_serial IS NULL` in `RecordIssued` halten einen konkurrierenden
-Antrag vom Serial-Schreiben fern, sodass eine halb fertige Einschreibung einen
-endgültig verbrauchten Grant hinterlässt — nie eine teilweise Identität oder eine
-zweite Identität für einen Knoten.
+`certificate_serial IS NULL` in `RecordIssued` verhindern, dass ein konkurrierender
+Antrag die Zertifikatsserial schreibt; eine halb fertige Einschreibung hinterlässt
+daher einen endgültig verbrauchten Grant — nie eine teilweise oder zweite
+Identität für einen Knoten.
+
 Kern überprüft das Ergebnis gegen sein maßgebliches Vertrauensbündel, CSR Public Key,
 scoped URI, client-only Schlüssel-Nutzung, serielle und Ablauf. Eine CA zurückgegeben neben einem Blatt
 Das PEM-Parsing lehnt zusätzliche Anträge ab.
