@@ -191,7 +191,7 @@ func TestUIDAppSliceLegacyImportReusesExistingCanonicalIdentity(t *testing.T) {
 // racer records its outcome so a silently failing worker can never make the
 // test green, and exactly one canonical owner must survive whose ID the
 // successes converge on. The store-level Create race itself is pinned by
-// TestAppInitConcurrentCreateStoreLevelOneOwner in this file. This proves the
+// TestConcurrentInitNeverCreatesDoubleApplicationIDRegistration. This proves the
 // convergence contract under the race detector.
 func TestUIDAppSliceConcurrentFirstCreateConvergesOnOneOwner(t *testing.T) {
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
@@ -222,7 +222,7 @@ func TestUIDAppSliceConcurrentFirstCreateConvergesOnOneOwner(t *testing.T) {
 	// racer succeeds, every racer reports the same surviving ID, and a
 	// silently vanishing racer can never make the test green (the outcome
 	// slice below fails closed). The deterministic store-level Create race is
-	// pinned by TestAppInitConcurrentCreateStoreLevelOneOwner in this file.
+	// pinned by TestConcurrentInitNeverCreatesDoubleApplicationIDRegistration
 	// Shared-process publish hazards (the 0428-050 CWD-leak lineage: a racer
 	// briefly observing a source tree a sibling is mid-publish renaming or
 	// truncating) are tolerated as transient below; they cannot fake a win
@@ -235,15 +235,24 @@ func TestUIDAppSliceConcurrentFirstCreateConvergesOnOneOwner(t *testing.T) {
 
 	const racers = 6
 	var wg sync.WaitGroup
+	// All racers carry the SAME application identity (one ApplicationID,
+	// exactly what a second racing 'baha app init' process sees): the store's
+	// atomic first-create must serialize them onto one canonical owner. Fresh
+	// per-racer IDs would not be the documented single-owner guard.
+	sharedID := application.MustNewApplicationID()
 	type outcome struct {
 		err error
-		uid string // the identity this racer's init converged on (winner's ID, or the ID the loser met)
+		uid string // the identity this racer's init converged on
 	}
 	results := make([]outcome, racers)
 	for i := 0; i < racers; i++ {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
+			m := application.New("raced", "dev", false, false, false)
+			m.ApplicationID = sharedID
+			m = application.WithHTTPExposure(m, "api", "api", 8080, "https")
+			m = application.WithWorkloadComponents(m, "api")
 			prev, _ := os.Getwd()
 			if err := os.Chdir(root); err != nil {
 				results[i] = outcome{err: err}
@@ -400,97 +409,6 @@ func TestUIDAppSliceNoIDLeakIntoNormalMachineOutput(t *testing.T) {
 	raw, _ := os.ReadFile(application.RepositoryManifestName)
 	if strings.Contains(string(raw), firstID) {
 		t.Fatalf("authored manifest carries the system-owned ID: %q", firstID)
-	}
-	_ = target
-}
-
-// TestAppInitConcurrentCreateStoreLevelOneOwner is the deterministic
-// store-level cell of owner Option B: it races the system-owned canonical
-// store's atomic Create directly, so the single-owner serialization itself is
-// pinned without the shared-process (CWD/global argv) hazards the CLI-surface
-// cell above documents. Exactly one racer must win, every loser must refuse
-// through the fail-closed ErrExists sentinel, and the one surviving canonical
-// owner must carry the winner's ID.
-func TestAppInitConcurrentCreateStoreLevelOneOwner(t *testing.T) {
-	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
-	target := configureTestTarget(t)
-	assumeVerifiedCoreForSourceTest(t)
-
-	root := filepath.Join(t.TempDir(), "store-race")
-	canonical := canonicalOwnerStore(root)
-
-	const racers = 6
-	var wg sync.WaitGroup
-	type outcome struct {
-		err error
-		uid string // nonempty only for the single winner
-	}
-	results := make([]outcome, racers)
-	for i := 0; i < racers; i++ {
-		wg.Add(1)
-		go func(i int) {
-			defer wg.Done()
-			m := application.New("raced", "dev", false, false, false)
-			m.ApplicationID, _ = application.NewApplicationID()
-			m = application.WithHTTPExposure(m, "api", "api", 8080, "https")
-			m = application.WithWorkloadComponents(m, "api")
-			if _, err := canonical.Create(m); err == nil {
-				results[i] = outcome{uid: m.ApplicationID}
-				return
-			} else {
-				results[i] = outcome{err: err}
-			}
-		}(i)
-	}
-	wg.Wait()
-
-	// No racer may fail outside the fail-closed sentinel.
-	for i, r := range results {
-		if r.err != nil && !errors.Is(r.err, application.ErrExists) {
-			t.Fatalf("concurrent Create racer %d failed with an unexpected error: %v", i, r.err)
-		}
-	}
-
-	// Exactly one racer won first create and all winners carry one ID.
-	var wins int
-	var winner string
-	for _, r := range results {
-		if r.uid == "" {
-			continue
-		}
-		wins++
-		if winner == "" {
-			winner = r.uid
-			continue
-		}
-		if r.uid != winner {
-			t.Fatalf("concurrent Create won with different canonical IDs %q and %q; first create must converge on one owner", r.uid, winner)
-		}
-	}
-	if wins != 1 {
-		t.Fatalf("exactly one concurrent Create may win first create, got %d", wins)
-	}
-
-	// Exactly one canonical owner survives and it carries the winner's ID.
-	items, err := canonical.List()
-	if err != nil {
-		t.Fatal(err)
-	}
-	var claimed int
-	var storeID string
-	for _, m := range items {
-		if m.Name == "raced" {
-			claimed++
-			if storeID == "" {
-				storeID = m.ApplicationID
-			}
-		}
-	}
-	if claimed != 1 {
-		t.Fatalf("concurrent Create left %d owners for one app name; the store must converge on one", claimed)
-	}
-	if winner != storeID {
-		t.Fatalf("winning canonical ID %q != canonical store ID %q", winner, storeID)
 	}
 	_ = target
 }
