@@ -58,6 +58,16 @@ func guidedRevision(value any) (string, error) {
 	return hex.EncodeToString(sum[:]), nil
 }
 
+func guidedRevisionSnapshot(snapshot application.ResolutionSnapshot) application.ResolutionSnapshot {
+	revisionSnapshot := snapshot
+	revisionSnapshot.Facts = make(map[string]application.ProviderFact, len(snapshot.Facts))
+	for id, fact := range snapshot.Facts {
+		fact.MemoryBytes, fact.Containers = application.Quantity{}, application.Quantity{}
+		revisionSnapshot.Facts[id] = fact
+	}
+	return revisionSnapshot
+}
+
 func readGuidedApplicationContext(ctx context.Context, resolved resolvedApplication) (GuidedReadContext, error) {
 	return readGuidedApplicationContextWithFacts(ctx, resolved, observeApplicationProviderFacts(ctx, resolved))
 }
@@ -93,11 +103,15 @@ func readGuidedApplicationContextWithFacts(ctx context.Context, resolved resolve
 	}
 	plan := lifecycle.ProviderPlan
 	footprint = lifecycle.Footprint
+	// Runtime memory/container samples are footprint display evidence, not a
+	// change in provider ownership, dependencies, or requested intent. Keep the
+	// revision stable across fresh samples while retaining all authoritative
+	// registry and provider facts.
 	snapshotRev, err := guidedRevision(struct {
 		Manifest    application.Manifest
 		Snapshot    application.ResolutionSnapshot
 		Preferences []application.ProviderPreference
-	}{resolved.Manifest, snapshot, preferences})
+	}{resolved.Manifest, guidedRevisionSnapshot(snapshot), preferences})
 	if err != nil {
 		return GuidedReadContext{}, &GuidedReadError{Kind: "unverifiable", Cause: err}
 	}

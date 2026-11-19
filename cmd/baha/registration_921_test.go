@@ -229,6 +229,7 @@ func TestCore921MCPEditHandlerLevelNegatives(t *testing.T) {
 	t.Run("SDK-consent-and-partial-execution", core921MCPEditConsentAndPartialExecutionThroughSDK)
 	t.Run("public-error-categories", core921MachineAdapterPublicCategories)
 	t.Run("missing-second-consent", core921MissingConsentPublicClassification)
+	t.Run("missing-pending-partial-fails-loud", core921PendingPartialMCPReportsFailure)
 	configureTestTarget(t)
 	root := t.TempDir()
 	t.Chdir(root)
@@ -529,6 +530,109 @@ func core921MCPEditConsentAndPartialExecutionThroughSDK(t *testing.T) {
 			}
 		})
 	}
+}
+
+func core921PendingPartialMCPReportsFailure(t *testing.T) {
+	// Regression for hunt-917 / card 0428-120: an incomplete provider-change
+	// result where one impact is simply missing from the execution outcomes (it
+	// stays "pending", never "failed") leaves RecordProviderChangeResult with
+	// result.Status == "partial" and a nil error. The CLI Edit path rejects that
+	// (appEditApplyConfirmed:372), but the MCP/HTTP apply handler must mirror that
+	// contract and surface the partial as a loud verification_failed failure
+	// instead of returning success (nil error, IsError:false).
+	t.Run("missing-pending", func(t *testing.T) {
+		t.Setenv("BASEHARBOR_STATE_DIR", filepath.Join(t.TempDir(), "state"))
+		target := configureTestTarget(t)
+		root := t.TempDir()
+		t.Chdir(root)
+		requirement := capability.Requirement{Kind: capability.SQL, Name: "primary"}
+		requirements := []capability.Requirement{requirement, {Kind: capability.SQL, Name: "analytics"}}
+		manifest := application.WithSQLInstances(application.New("edit-safe", "dev", false, false, false), "primary", "analytics")
+		manifest.ApplicationID = application.MustNewApplicationID()
+		source := filepath.Join(root, application.RepositoryManifestName)
+		mustWriteInitializedAuthoredManifest(t, source, manifest)
+		registerTestDeployment(t, target, manifest, root, source)
+		impactPlan := application.ProviderImpactPlan{Version: application.ProviderImpactVersion, Target: target.Name,
+			PlanID: "sdk-partial-plan", Revision: "sdk-revision", Complete: true, ConfirmationsRequired: 2,
+			Impacts: []application.ProviderImpact{{InstanceID: "db-a", Operation: "provide"}, {InstanceID: "db-b", Operation: "provide"}}}
+		executed := 0
+		authorities := appEditTestAuthorities(target.Name, manifest.ApplicationID,
+			requirements, nil, []application.ProviderImpactPlan{impactPlan}, &executed)
+		// db-a attested applied; db-b is never returned -> stays "pending".
+		outcomes := []application.ProviderExecutionOutcome{
+			{InstanceID: "db-a", Operation: "provide", Status: "applied", Verified: true, Evidence: "verified fixture outcome"},
+		}
+		authorities.Execute = func(context.Context, appEditDesired, application.ProviderImpactPlan, application.ProviderChangeConsent) ([]application.ProviderExecutionOutcome, error) {
+			executed++
+			return outcomes, nil
+		}
+		ctx := context.Background()
+		server := mcp.NewServer(&mcp.Implementation{Name: "edit-contract-fixture", Version: "v1"}, nil)
+		registerMCPAppEditToolWithAuthorities(server, application.DefaultStore(), func(application.Store, []string) appEditAuthorities { return authorities })
+		serverTransport, clientTransport := mcp.NewInMemoryTransports()
+		serverSession, err := server.Connect(ctx, serverTransport, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = serverSession.Close() })
+		client := mcp.NewClient(&mcp.Implementation{Name: "edit-contract-client", Version: "v1"}, nil)
+		session, err := client.Connect(ctx, clientTransport, &mcp.ClientSessionOptions{ProtocolVersion: "2026-07-28"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = session.Close() })
+		request := appMachineDesiredRequest{Target: target.Name, SnapshotRevision: "snapshot-1", Requirements: requirements}
+		for _, requirement := range requirements {
+			request.Choices = append(request.Choices, appMachineDesiredChoice{Requirement: requirement, InstanceID: "provider-" + string(requirement.Kind) + "-" + requirement.Name})
+		}
+		proposed, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "baseharbor.app.edit", Arguments: appMCPEditInput{
+			Target: target.Name, Phase: "propose", Desired: request,
+		}})
+		if err != nil || proposed == nil || proposed.IsError {
+			t.Fatalf("SDK propose failed: %v", err)
+		}
+		var proposal appMachineDesiredResult
+		if err := json.Unmarshal(marshalStructured(t, proposed), &proposal); err != nil {
+			t.Fatal(err)
+		}
+		consent := application.ProviderChangeConsent{PlanID: proposal.Plan.PlanID, First: true, Second: true}
+		applied, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "baseharbor.app.edit", Arguments: appMCPEditInput{
+			Target: target.Name, Phase: "apply", Desired: proposal.Desired, Proposal: &proposal, Consent: &consent,
+		}})
+		if err != nil || applied == nil {
+			t.Fatalf("SDK apply transport failed: %v", err)
+		}
+		raw := marshalStructured(t, applied)
+		if bytes.Contains(raw, []byte("private")) {
+			t.Fatal("private diagnostic leaked")
+		}
+		// Before this fix the handler returned nil, result, nil for a partial;
+		// the regression asserts the fix: the missing-pending impact is now a
+		// structured verification_failed carrying the partial result as details.
+		var payload struct {
+			Error *machine.Error `json:"error"`
+		}
+		if err := json.Unmarshal(raw, &payload); err != nil {
+			t.Fatal(err)
+		}
+		if !applied.IsError || payload.Error == nil {
+			t.Fatalf("SDK apply reported a silent success for a partial result: %s", raw)
+		}
+		if payload.Error.Code != machine.ErrorVerificationFailed {
+			t.Fatalf("SDK partial classification = %s, want verification_failed: %s", payload.Error.Code, raw)
+		}
+		var details struct {
+			Error struct {
+				Details application.ProviderChangeResult `json:"details"`
+			} `json:"error"`
+		}
+		if err := json.Unmarshal(raw, &details); err != nil {
+			t.Fatal(err)
+		}
+		if executed != 1 || details.Error.Details.Status != "partial" || details.Error.Details.PlanID != impactPlan.PlanID {
+			t.Fatalf("partial SDK outcome or details lost: %s", raw)
+		}
+	})
 }
 
 func core921MachineAdapterPublicCategories(t *testing.T) {

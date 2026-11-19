@@ -177,13 +177,14 @@ func authorizeControlPlaneStop(ctx context.Context, out io.Writer) (controlPlane
 	if out == nil {
 		out = io.Discard
 	}
-	fmt.Fprintln(out, "Achtung: review this selected Core stop, affected consumers and retained recovery locations.")
+	labels := application.ProviderImpactConsentCatalog()
+	fmt.Fprintln(out, labels.ControlPlaneStopImpact)
 	if err := writeJSON(out, p); err != nil {
 		return p, err
 	}
 	in := applicationInput(ctx, nil)
 	if consent == nil && !noInput(ctx) && in != nil && readerIsTerminal(in) {
-		value, err := readProviderImpactAcknowledgements(bufio.NewReader(in), out, application.ProviderImpactPlan{PlanID: p.Scope.PlanID, ConfirmationsRequired: p.Scope.ConfirmationsRequired})
+		value, err := readProviderImpactAcknowledgements(bufio.NewReader(in), out, application.ProviderImpactPlan{PlanID: p.Scope.PlanID, Attention: p.Scope.Attention, ConfirmationsRequired: p.Scope.ConfirmationsRequired})
 		if err != nil {
 			return p, err
 		}

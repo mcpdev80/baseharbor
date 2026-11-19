@@ -3,10 +3,19 @@
 Die verbindliche vollständige Checkliste steht in [der zentralen Release-Abnahme](https://github.com/mcpdev80/baseharbor/blob/develop/docs/internal/pre-release-documentation-audit.md).
 
 **Pre-Release-ready** bedeutet: Die gesamte Release-Vorbereitung und die
-gezielte Abnahme sind abgeschlossen. Dazu gehören Core, Demo, Console,
-Node-Connector, CLI/JSON/MCP/HTTP-Kompatibilität, Entwicklerabläufe, EN/DE-Doku,
-Pages-Build und Navigation, Changelog, Release Notes, exakte Ecosystem-SHAs
-sowie der versionsbezogene Testplan. Grüne Core-Tests allein
+gezielte Abnahme für den aktiven Scope der Version sind abgeschlossen. Für
+v0.4.28 sind das Core, Demo, das gelieferte CLI und die optionale
+Perses-Provider-Oberfläche: Entwicklerabläufe vom Arbeitsplatz zu Core auf
+unterstützten Docker- und Podman-Laufzeiten, aktuelle
+CLI/JSON/MCP/HTTP-Kompatibilität, EN/DE-Doku, Pages-Kandidaten-Build und
+Navigation, Changelog, Release Notes, unveränderliche Core-/Demo-SHAs sowie
+der versionsbezogene Testplan. Die optionale Perses-Oberfläche gehört nicht
+zum Pflicht-Core-Bundle; wenn sie nicht gewählt ist, ist `not configured` der
+Normalzustand und kein Fehler oder Readiness-Problem, und kein
+Release-Nachweis darf behaupten, eine Perses-Instanz sei implementiert oder
+bereitgestellt. Console und Node Connector sind archivierte Snapshots und als
+aktive Abnehmer außerhalb des öffentlichen Scopes dieser Version; das
+schwächt ihre archivierten Quellen, Tests und Nachweise nicht. Grüne Core-Tests allein
 reichen nicht. Fehlende, fehlgeschlagene, übersprungene oder ungeprüfte
 Pflichtnachweise blockieren diesen Status.
 

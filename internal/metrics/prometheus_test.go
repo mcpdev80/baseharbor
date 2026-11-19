@@ -13,6 +13,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/observability"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 	"github.com/mcpdev80/baseharbor/internal/testsupport/serviceissuer"
 )
@@ -41,7 +42,8 @@ func TestProviderComposeYAMLIsValidYAML(t *testing.T) {
 
 func TestProviderFilesUsePinnedPrometheusAndHardenedSharedNetwork(t *testing.T) {
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
-	files, err := EnsureProviderFiles(context.Background(), serviceissuer.New(t), application.Manifest{Name: "demo", Environment: "dev"})
+	m := application.WithMetricsSource(application.New("demo", "dev", true, false, false), "default", "api", 5432, "/metrics")
+	files, err := EnsureProviderFiles(context.Background(), serviceissuer.New(t), m)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,7 +70,7 @@ func TestProviderFilesUsePinnedPrometheusAndHardenedSharedNetwork(t *testing.T) 
 		"cap_drop:",
 		"- ALL",
 		"no-new-privileges:true",
-		"name: " + strconv.Quote(application.MetricsProviderNetworkName(application.Manifest{Name: "demo", Environment: "dev"})),
+		"name: " + strconv.Quote(application.MetricsProviderNetworkName(m)),
 		"name: " + strconv.Quote("baseharbor-prometheus-data"),
 	} {
 		if !strings.Contains(text, want) {
@@ -166,6 +168,10 @@ func TestBindWritesAttributedTargetAndPrunesOnlySameApplication(t *testing.T) {
 		labels["baseharbor_metrics_scheme"] != "https" {
 		t.Fatalf("labels = %#v", labels)
 	}
+	alphaSources, err := observability.ListApplicationMetrics(capability.ProviderPlacement{Scope: capability.ScopeApplication}, []string{"alpha"})
+	if err != nil || len(alphaSources) != 1 || alphaSources[0].Scheme != "https" {
+		t.Fatalf("registered alpha application metrics = %#v, err=%v", alphaSources, err)
+	}
 
 	if err := PruneApplicationTargets(alpha, nil); err != nil {
 		t.Fatal(err)
@@ -176,6 +182,14 @@ func TestBindWritesAttributedTargetAndPrunesOnlySameApplication(t *testing.T) {
 	betaPath := filepath.Join(files.TargetsDir, targetFileName(beta, "application"))
 	if _, err := os.Stat(betaPath); err != nil {
 		t.Fatalf("beta target was removed while pruning alpha: %v", err)
+	}
+	alphaSources, err = observability.ListApplicationMetrics(capability.ProviderPlacement{Scope: capability.ScopeApplication}, []string{"alpha"})
+	if err != nil || len(alphaSources) != 0 {
+		t.Fatalf("pruned alpha application metrics = %#v, err=%v", alphaSources, err)
+	}
+	betaSources, err := observability.ListApplicationMetrics(capability.ProviderPlacement{Scope: capability.ScopeApplication}, []string{"beta"})
+	if err != nil || len(betaSources) != 1 {
+		t.Fatalf("beta application metrics after alpha prune = %#v, err=%v", betaSources, err)
 	}
 }
 

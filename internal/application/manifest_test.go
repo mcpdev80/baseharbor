@@ -153,6 +153,66 @@ func TestManifestPersesManagementUIRoundTripFailsClosedWithoutMetrics(t *testing
 	}
 }
 
+func TestManifestPersesSelectionRoundTripWithoutManagementUI(t *testing.T) {
+	// Case (perses=true, management_ui=ohne): this is the INVALID selection. It
+	// must fail closed validation (no still-nil path), never serialize losslessly.
+	m := New("demo", "dev", false, false, false)
+	m.Services.SQL = true
+	m.Services.Perses = true
+
+	if err := m.Validate(); err == nil {
+		t.Fatal("perses without observability.management_ui must fail validation (fail-closed), got nil")
+	}
+}
+
+func TestManifestPersesSelectionRoundTripWithManagementUIStill(t *testing.T) {
+	// Case (perses=true, management_ui=true): the VALID selection must round-trip
+	// losslessly — the YAML must not drop the perses field inside the management_ui
+	// block.
+	m := New("demo", "dev", false, false, false)
+	m.Services.SQL = true
+	m.Services.ObservabilityManagementUI = true
+	m.Services.Perses = true
+	m.Workload = WorkloadConfig{Components: []string{"demo-app"}}
+	m.Metrics.Sources = []MetricsSourceRequirement{{Name: "application", Service: "demo-app", Port: 8080, Path: "/metrics"}}
+
+	rendered := m.YAML()
+	if !strings.Contains(rendered, "observability:\n    management_ui: true\n    perses: true\n") {
+		t.Fatalf("perses seam missing from management_ui manifest:\n%s", rendered)
+	}
+
+	got, err := ParseCanonicalYAML(rendered)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.Services.ObservabilityManagementUI || !got.Services.Perses {
+		t.Fatalf("perses seam did not survive round trip with management_ui: observability=%v perses=%v", got.Services.ObservabilityManagementUI, got.Services.Perses)
+	}
+}
+
+func TestManifestPersesSelectionIgnoredWithoutManagementUIAndPerses(t *testing.T) {
+	// Case (perses=false, management_ui=ohne): unchanged baseline — no observability
+	// block, no validation error.
+	m := New("demo", "dev", false, false, false)
+	m.Services.SQL = true
+
+	rendered := m.YAML()
+	if strings.Contains(rendered, "observability:") {
+		t.Fatalf("observability block must not render when neither perses nor management_ui is set:\n%s", rendered)
+	}
+	if err := m.Validate(); err != nil {
+		t.Fatalf("baseline manifest with no observability selection must validate: %v", err)
+	}
+
+	got, err := ParseCanonicalYAML(rendered)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Services.Perses || got.Services.ObservabilityManagementUI {
+		t.Fatalf("observability flags must stay false:\n%#v", got.Services)
+	}
+}
+
 func TestManifestPersesSelectionRequiresPinnedRelease(t *testing.T) {
 	m := New("demo", "dev", false, false, false)
 	m.Services.ObservabilityManagementUI = true
