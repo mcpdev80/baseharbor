@@ -485,7 +485,7 @@ func Remove(id string) error {
 	})
 }
 
-func List(kind SignalKind, placement capability.ProviderPlacement, applications []string, includeApplicationSources, includeApplicationProviders, includePlatformProviders bool) ([]SignalSource, error) {
+func List(kind SignalKind, placement capability.ProviderPlacement, applications []string, includeApplicationSources, includeApplicationProviders, includePlatformProviders bool, requestedEnvironment string) ([]SignalSource, error) {
 	path, err := registryPath()
 	if err != nil {
 		return nil, err
@@ -522,6 +522,17 @@ func List(kind SignalKind, placement capability.ProviderPlacement, applications 
 				continue
 			}
 		}
+		// Central environment filter (card 0428-121, route 2): only an
+		// app-scoped caller is scoped to a single environment, so the
+		// comparing guard applies there — an app-scoped source is visible only
+		// when it resolves to the caller's requested environment. A source whose
+		// environment cannot be resolved or resolves elsewhere is excluded
+		// (fail-closed) — no cross-environment visibility leak. Shared-platform
+		// callers are not environment-scoped: they aggregate the allowed app
+		// sources under the shared/platform boundary rule applied downstream.
+		if placement.Scope == capability.ScopeApplication && source.Scope == capability.ScopeApplication && !SourceMatchesEnvironment(source, requestedEnvironment) {
+			continue
+		}
 		switch placement.Scope {
 		case capability.ScopeShared:
 			if source.Scope == capability.ScopeShared && strings.TrimSpace(source.SharingBoundary) == strings.TrimSpace(placement.SharingBoundary) {
@@ -548,16 +559,185 @@ func List(kind SignalKind, placement capability.ProviderPlacement, applications 
 	return out, nil
 }
 
-func ListLogs(placement capability.ProviderPlacement, applications []string, includeApplicationProviders, includePlatformProviders bool) ([]SignalSource, error) {
-	return List(SignalLogs, placement, applications, false, includeApplicationProviders, includePlatformProviders)
+func ListLogs(placement capability.ProviderPlacement, applications []string, includeApplicationProviders, includePlatformProviders bool, requestedEnvironment string) ([]SignalSource, error) {
+	return List(SignalLogs, placement, applications, false, includeApplicationProviders, includePlatformProviders, requestedEnvironment)
 }
 
-func ListTraces(placement capability.ProviderPlacement, applications []string, includeApplicationProviders, includePlatformProviders bool) ([]SignalSource, error) {
-	return List(SignalTraces, placement, applications, false, includeApplicationProviders, includePlatformProviders)
+func ListTraces(placement capability.ProviderPlacement, applications []string, includeApplicationProviders, includePlatformProviders bool, requestedEnvironment string) ([]SignalSource, error) {
+	return List(SignalTraces, placement, applications, false, includeApplicationProviders, includePlatformProviders, requestedEnvironment)
 }
 
 func ApplicationMetricsSourceID(application, environment, source string) string {
 	return "application:metrics:" + strings.TrimSpace(application) + ":" + strings.TrimSpace(environment) + ":" + strings.TrimSpace(source)
+}
+
+// SourceEnvironment derives the environment dimension of a registry entry from
+// the source's OWN data only (route 2 / caller-agnostic): no caller passes an
+// environment and the capability ProviderPlacement carries none on this base,
+// so the environment must live on the source.
+//
+//   - application-scoped metrics (SourceApplication, SignalMetrics) carry an
+//     explicit environment in the canonical application-metrics ID grammar
+//     (application:metrics:<application>:<environment>:<source>); the middle
+//     segment is the environment.
+//   - application-scoped providers (SourceApplicationProvider, e.g.
+//     loki/tempo/prometheus of one application) carry the deployment project
+//     name (bh-<target>-<application>-<environment>) in their ID or target; the
+//     trailing hyphen token is the environment.
+//   - shared/platform sources carry their environment in the sharing boundary
+//     ("environment:<env>").
+//
+// The boolean is false when no environment resolves. For an application-scoped
+// source that is the fail-closed case the reviewer requires: a source without
+// an explicit or unambiguously derivable environment must not appear in any
+// single-environment result instead of leaking into another environment.
+// Shared/platform sources with an unresolvable boundary stay environment-agnostic.
+func SourceEnvironment(source SignalSource) (environment string, ok bool) {
+	// application-scoped metrics: explicit environment segment in the ID grammar.
+	if source.Class == SourceApplication && source.Kind == SignalMetrics {
+		if env, derived := applicationMetricsSourceEnvironment(source.ID); derived {
+			return env, true
+		}
+	}
+	// application-scoped providers: trailing project token of the project name.
+	if source.Class == SourceApplicationProvider {
+		if env, derived := projectTokenFromID(source); derived {
+			return env, true
+		}
+	}
+	// shared/platform: environment:<env> sharing boundary.
+	if env, derived := sharingBoundaryEnvironment(source); derived {
+		return env, true
+	}
+	return "", false
+}
+
+// applicationMetricsSourceEnvironment returns the environment segment of the
+// canonical application-metrics ID grammar (application:metrics:<app>:<env>:<src>).
+func applicationMetricsSourceEnvironment(id string) (string, bool) {
+	const prefix = "application:metrics:"
+	if !strings.HasPrefix(id, prefix) {
+		return "", false
+	}
+	parts := strings.Split(strings.TrimPrefix(id, prefix), ":")
+	if len(parts) != 3 {
+		return "", false
+	}
+	env := strings.TrimSpace(parts[1])
+	if env == "" {
+		return "", false
+	}
+	return env, true
+}
+
+// projectTokenFromID extracts the trailing environment token of an
+// application provider ID/target that carries a canonical project name
+// (bh-<target>-<app>-<env>) or a "<provider>:" identity prefix / "runtime://<project>/<svc>" target.
+func projectTokenFromID(source SignalSource) (string, bool) {
+	for _, candidate := range []string{source.ID, source.Target} {
+		if env, derived := trailingProjectEnvironment(candidate); derived {
+			return env, true
+		}
+	}
+	return "", false
+}
+
+// trailingProjectEnvironment isolates the environment token of a canonical
+// application project name, tolerating a "<provider>:" identity prefix and a
+// "runtime://<project>/<service>" target. A hyphenated trailing token (for
+// example the "west" of a legacy "prod-west" project) is ambiguous and yields
+// ok=false so the caller fails closed instead of leaking.
+func trailingProjectEnvironment(value string) (string, bool) {
+	value = strings.TrimSpace(value)
+	value = strings.TrimPrefix(value, "runtime://")
+	if strings.Contains(value, "/") {
+		// runtime://<project>/<service> — isolate the project segment first.
+		value = value[:strings.Index(value, "/")]
+	}
+	if idx := strings.Index(value, ":"); idx >= 0 {
+		// "<provider>:<project>" (or "id:project") — keep only the first
+		// colon-delimited segment, which carries the project name.
+		value = value[:idx]
+	}
+	// Runtime project name: baseharbor-<target>-<app>-<env> (4 tokens,
+	// namespaced) or baseharbor-<app>-<env> (3 tokens, namespace-less).
+	if strings.HasPrefix(value, "baseharbor-") {
+		value = strings.TrimPrefix(value, "baseharbor-")
+		parts := strings.Split(value, "-")
+		// baseharbor-<app>-<env> => two remaining tokens, or
+		// baseharbor-<target>-<app>-<env> => three remaining tokens.
+		if len(parts) == 2 || len(parts) == 3 {
+			return environmentToken(parts[len(parts)-1])
+		}
+		return "", false
+	}
+	// Operator project name: bh-<target>-<app>-<env> (3 tokens after "bh-").
+	value = strings.TrimPrefix(value, "bh-")
+	parts := strings.Split(value, "-")
+	if len(parts) != 3 {
+		return "", false
+	}
+	return environmentToken(parts[2])
+}
+
+// environmentToken normalises a trailing project token into an environment:
+// empty, "shared", or a reserved platform token fails closed (ambiguous).
+func environmentToken(token string) (string, bool) {
+	env := strings.ToLower(strings.TrimSpace(token))
+	if env == "" || env == "shared" || reservedEnvironmentToken(env) {
+		return "", false
+	}
+	return env, true
+}
+
+// sharingBoundaryEnvironment reads the environment:<env> sharing boundary of a
+// shared/platform source.
+func sharingBoundaryEnvironment(source SignalSource) (string, bool) {
+	boundary := strings.TrimSpace(source.SharingBoundary)
+	const prefix = "environment:"
+	if !strings.HasPrefix(boundary, prefix) {
+		return "", false
+	}
+	env := strings.TrimSpace(strings.TrimPrefix(boundary, prefix))
+	if env == "" {
+		return "", false
+	}
+	return strings.ToLower(env), true
+}
+
+// reservedEnvironmentToken marks project tokens that are shared platform
+// resources rather than one application's deployment environment.
+func reservedEnvironmentToken(value string) bool {
+	switch value {
+	case "shared", "postgres", "openbao", "runtime-executor", "object-storage",
+		"metrics", "prometheus", "logs", "loki", "traces", "tempo",
+		"telemetry", "otel-collector", "seaweedfs":
+		return true
+	default:
+		return false
+	}
+}
+
+// SourceMatchesEnvironment is the single source-driven environment predicate of
+// the list surface (card 0428-121, route 2): an app-scoped source is visible
+// only when it resolves to an explicit or unambiguously derivable environment
+// that equals the caller's requested environment (case-normalised). The
+// requested environment is the owning application's manifest environment — the
+// capability ProviderPlacement carries none on this base, so no caller passes
+// one and the dimension is threaded through the list wrappers explicitly. A
+// source whose environment cannot be resolved, or resolves to a different or
+// ambiguous environment (for example a hyphenated legacy "prod-west" read as
+// "west", or a reserved project token), fails closed: it appears in no single
+// environment result instead of leaking into another. Shared/platform sources
+// are not environment-scoped here; they keep the shared/platform boundary rule
+// applied downstream.
+func SourceMatchesEnvironment(source SignalSource, requestedEnvironment string) bool {
+	requestedEnvironment = strings.TrimSpace(requestedEnvironment)
+	environment, ok := SourceEnvironment(source)
+	if !ok {
+		return false
+	}
+	return strings.ToLower(environment) == strings.ToLower(requestedEnvironment)
 }
 
 func PruneApplicationMetrics(application, environment string, keepIDs map[string]struct{}) error {
@@ -585,8 +765,8 @@ func PruneApplicationMetrics(application, environment string, keepIDs map[string
 	})
 }
 
-func ListApplicationMetrics(placement capability.ProviderPlacement, applications []string) ([]MetricsSource, error) {
-	signals, err := List(SignalMetrics, placement, applications, true, false, false)
+func ListApplicationMetrics(placement capability.ProviderPlacement, applications []string, requestedEnvironment string) ([]MetricsSource, error) {
+	signals, err := List(SignalMetrics, placement, applications, true, false, false, requestedEnvironment)
 	if err != nil {
 		return nil, err
 	}
@@ -612,8 +792,8 @@ func ListApplicationMetrics(placement capability.ProviderPlacement, applications
 	return out, nil
 }
 
-func ListMetrics(placement capability.ProviderPlacement, applications []string, includeApplicationProviders, includePlatformProviders bool) ([]MetricsSource, error) {
-	signals, err := List(SignalMetrics, placement, applications, false, includeApplicationProviders, includePlatformProviders)
+func ListMetrics(placement capability.ProviderPlacement, applications []string, includeApplicationProviders, includePlatformProviders bool, requestedEnvironment string) ([]MetricsSource, error) {
+	signals, err := List(SignalMetrics, placement, applications, false, includeApplicationProviders, includePlatformProviders, requestedEnvironment)
 	if err != nil {
 		return nil, err
 	}

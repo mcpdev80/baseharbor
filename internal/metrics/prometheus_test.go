@@ -168,7 +168,7 @@ func TestBindWritesAttributedTargetAndPrunesOnlySameApplication(t *testing.T) {
 		labels["baseharbor_metrics_scheme"] != "https" {
 		t.Fatalf("labels = %#v", labels)
 	}
-	alphaSources, err := observability.ListApplicationMetrics(capability.ProviderPlacement{Scope: capability.ScopeApplication}, []string{"alpha"})
+	alphaSources, err := observability.ListApplicationMetrics(capability.ProviderPlacement{Scope: capability.ScopeApplication}, []string{"alpha"}, "dev")
 	if err != nil || len(alphaSources) != 1 || alphaSources[0].Scheme != "https" {
 		t.Fatalf("registered alpha application metrics = %#v, err=%v", alphaSources, err)
 	}
@@ -183,11 +183,11 @@ func TestBindWritesAttributedTargetAndPrunesOnlySameApplication(t *testing.T) {
 	if _, err := os.Stat(betaPath); err != nil {
 		t.Fatalf("beta target was removed while pruning alpha: %v", err)
 	}
-	alphaSources, err = observability.ListApplicationMetrics(capability.ProviderPlacement{Scope: capability.ScopeApplication}, []string{"alpha"})
+	alphaSources, err = observability.ListApplicationMetrics(capability.ProviderPlacement{Scope: capability.ScopeApplication}, []string{"alpha"}, "dev")
 	if err != nil || len(alphaSources) != 0 {
 		t.Fatalf("pruned alpha application metrics = %#v, err=%v", alphaSources, err)
 	}
-	betaSources, err := observability.ListApplicationMetrics(capability.ProviderPlacement{Scope: capability.ScopeApplication}, []string{"beta"})
+	betaSources, err := observability.ListApplicationMetrics(capability.ProviderPlacement{Scope: capability.ScopeApplication}, []string{"beta"}, "dev")
 	if err != nil || len(betaSources) != 1 {
 		t.Fatalf("beta application metrics after alpha prune = %#v, err=%v", betaSources, err)
 	}
