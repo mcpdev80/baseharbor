@@ -74,7 +74,7 @@ func TestNativeBackendRetirementRetainsMeasuredCanonicalAbsence(t *testing.T) {
 		if pass == 0 {
 			resolved.Manifest.Services.DocumentDatabaseInstances = nil
 			resolved.Manifest.Services.DocumentDatabase = false
-			canonical, err := application.RuntimeComposeYAMLForProject(resolved.Manifest, files.ResourceProject)
+			canonical, err := application.RuntimeComposeYAMLForProject(resolved.Manifest, files)
 			if err != nil {
 				t.Fatal(err)
 			}

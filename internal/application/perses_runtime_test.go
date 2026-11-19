@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 	"github.com/mcpdev80/baseharbor/internal/testsupport/runtimeprovider"
 	"github.com/mcpdev80/baseharbor/internal/testsupport/serviceissuer"
 	"go.yaml.in/yaml/v3"
@@ -54,12 +55,14 @@ func persesRuntimeFiles(t *testing.T, m Manifest) RuntimeFiles {
 }
 
 // TestPersesComposeRenderedWhenSelected asserts that a selected Perses surface
-// materializes a single-instance managed compose service, its data volume and a
-// loopback-published port. Fail-closed: deselected Perses renders no service.
+// materializes the gateway-protected compose topology (0428-089): the gateway
+// service owns the only host-visible loopback port, the Perses service joins
+// the gateway's network namespace through network_mode and declares no ports
+// of its own. Fail-closed: deselected Perses renders no service.
 func TestPersesComposeRenderedWhenSelected(t *testing.T) {
 	selected := persesRuntimeManifest(t, true)
 	selectedFiles := persesRuntimeFiles(t, selected)
-	rendered, err := RuntimeComposeYAMLForProject(selected, selectedFiles.ResourceProject)
+	rendered, err := RuntimeComposeYAMLForProject(selected, selectedFiles)
 	if err != nil {
 		t.Fatalf("render selected Perses compose: %v", err)
 	}
@@ -67,18 +70,23 @@ func TestPersesComposeRenderedWhenSelected(t *testing.T) {
 	if !strings.Contains(rendered, "  "+persesService+":") {
 		t.Fatalf("selected Perses must render a single-instance compose service:\n%s", rendered)
 	}
-	if !strings.Contains(rendered, PersesUIImage) {
-		t.Fatalf("selected Perses must pin the reviewed image %q: %s", PersesUIImage, rendered)
+	if !strings.Contains(rendered, capability.PersesDefaultRelease.Image) {
+		t.Fatalf("selected Perses must pin the reviewed image %q: %s", capability.PersesDefaultRelease.Image, rendered)
+	}
+	if !strings.Contains(rendered, serviceaccess.PersesGatewayServiceName+":") {
+		t.Fatalf("selected Perses must render its management gateway service:\n%s", rendered)
 	}
 	if !strings.Contains(rendered, PersesUIHostPortEnv) {
-		t.Fatalf("selected Perses must publish a loopback host port via %q: %s", PersesUIHostPortEnv, rendered)
+		t.Fatalf("the gateway must publish the loopback host port via %q: %s", PersesUIHostPortEnv, rendered)
 	}
 	if !strings.Contains(rendered, PersesRuntimeVolumeName(selectedFiles.ResourceProject, persesService)) {
 		t.Fatalf("selected Perses must declare a managed data volume:\n%s", rendered)
 	}
 	var compose struct {
 		Services map[string]struct {
-			Volumes []string `yaml:"volumes"`
+			Volumes     []string `yaml:"volumes"`
+			Ports       []string `yaml:"ports"`
+			NetworkMode string   `yaml:"network_mode"`
 		} `yaml:"services"`
 		Volumes map[string]struct {
 			Name string `yaml:"name"`
@@ -86,6 +94,17 @@ func TestPersesComposeRenderedWhenSelected(t *testing.T) {
 	}
 	if err := yaml.Unmarshal([]byte(rendered), &compose); err != nil {
 		t.Fatalf("decode selected Perses compose: %v", err)
+	}
+	// The Perses service itself is never published: only the gateway owns a
+	// host port.
+	if len(compose.Services[persesService].Ports) != 0 {
+		t.Fatalf("the Perses service must declare no published ports, got %v", compose.Services[persesService].Ports)
+	}
+	if compose.Services[persesService].NetworkMode != "service:"+serviceaccess.PersesGatewayServiceName {
+		t.Fatalf("the Perses service must join the gateway namespace, got %q", compose.Services[persesService].NetworkMode)
+	}
+	if len(compose.Services[serviceaccess.PersesGatewayServiceName].Ports) == 0 {
+		t.Fatal("the gateway must publish the operator-visible loopback port")
 	}
 	volumeKey := persesService + "-data"
 	volume, ok := compose.Volumes[volumeKey]
@@ -104,7 +123,7 @@ func TestPersesComposeRenderedWhenSelected(t *testing.T) {
 
 	deselected := persesRuntimeManifest(t, false)
 	deselectedFiles := persesRuntimeFiles(t, deselected)
-	deselectedRendered, err := RuntimeComposeYAMLForProject(deselected, deselectedFiles.ResourceProject)
+	deselectedRendered, err := RuntimeComposeYAMLForProject(deselected, deselectedFiles)
 	if err != nil {
 		t.Fatalf("render deselected Perses compose: %v", err)
 	}
@@ -136,7 +155,7 @@ func TestPersesRuntimeFilesProjectProviderFiles(t *testing.T) {
 // target instead of the whole document.
 func persesComposeFragment(t *testing.T, m Manifest, files RuntimeFiles) string {
 	t.Helper()
-	rendered, err := RuntimeComposeYAMLForProject(m, files.ResourceProject)
+	rendered, err := RuntimeComposeYAMLForProject(m, files)
 	if err != nil {
 		t.Fatalf("render selected Perses compose: %v", err)
 	}
@@ -150,102 +169,63 @@ func persesComposeFragment(t *testing.T, m Manifest, files RuntimeFiles) string 
 	return services
 }
 
-// TestPersesTLSFilesProjectedAndConsumed is the CODEX-REVIEW #1592 regression:
-// every TLS file the Perses compose service mounts must exist in the runtime
-// projection, and the rendered service must configure the Perses server to
-// consume it over HTTPS (matching the contract's observability management-ui
-// protocol). Fail-closed: the projected private key must stay 0600 while the
-// bind-mounted copy the distroless nonroot container reads must be readable.
+// TestPersesTLSFilesProjectedAndConsumed is the CODEX-REVIEW #1592 regression
+// carried onto the gateway topology (0428-089): the operator-visible TLS
+// listener is the management gateway, so every gateway TLS file the compose
+// service mounts must exist in the runtime projection with the right modes
+// (the projected copy readable 0644 for the unprivileged gateway, the PKI
+// working key private 0600), and the gateway certificate must cover the names
+// the contract's observability management-ui protocol (https) is served under.
+// The Perses service itself serves plain HTTP on the namespace loopback behind
+// the gateway (its HTTPS is the gateway's job).
 func TestPersesTLSFilesProjectedAndConsumed(t *testing.T) {
 	m := persesRuntimeManifest(t, true)
 	files := persesRuntimeFiles(t, m)
 	rendered := persesComposeFragment(t, m, files)
-	dir := PersesManagementUIPath(files)
-	// The compose bind-mounts are 0644 copies of the 0600 PKI material (the
-	// distroless nonroot container cannot read 0600 binds), exactly the
-	// approved serviceaccess projection used by the neighbouring UIs.
-	const projectedKeyMode os.FileMode = 0o644
-
-	var certMount, keyMount string
-	for _, line := range strings.Split(rendered, "\n") {
-		trimmed := strings.TrimPrefix(strings.Trim(strings.TrimSpace(line), `"'`), "- ")
-		switch {
-		case strings.HasPrefix(trimmed, "./providers/management-ui/perses/server.cert:"):
-			certMount = trimmed
-		case strings.HasPrefix(trimmed, "./providers/management-ui/perses/server.key:"):
-			keyMount = trimmed
+	stateDir := PersesGatewayStateDir(files)
+	if !strings.Contains(rendered, serviceaccess.PersesGatewayServiceName+":") {
+		t.Fatalf("the compose must render the Perses management gateway service:\n%s", rendered)
+	}
+	accessDir := filepath.Join(stateDir, "service-access")
+	for _, required := range []string{
+		filepath.Join(accessDir, "config", "Caddyfile"),
+		filepath.Join(accessDir, "runtime", "server.pem"),
+		filepath.Join(accessDir, "runtime", "server-key.pem"),
+		filepath.Join(accessDir, "runtime", "ca.pem"),
+	} {
+		if _, err := os.Stat(required); err != nil {
+			t.Fatalf("the gateway projection must materialize %s: %v", required, err)
 		}
 	}
-	if certMount == "" || keyMount == "" {
-		t.Fatalf("Perses compose must mount the projected TLS files (cert %q, key %q):\n%s", certMount, keyMount, rendered)
-	}
-	for name, mount := range map[string]string{"certificate": certMount, "key": keyMount} {
-		if mount == "" {
-			t.Fatalf("Perses compose must mount the projected %s file:\n%s", name, rendered)
-		}
-		parts := strings.SplitN(mount, ":", 2)
-		hostRel, mountRest := parts[0], parts[1]
-		containerPath := strings.SplitN(mountRest, ":", 2)[0]
-		if !strings.HasPrefix(hostRel, "./") {
-			t.Fatalf("Perses %s mount source %q must be compose-relative ./...", name, hostRel)
-		}
-		hostPath := filepath.Join(files.Dir, strings.TrimPrefix(hostRel, "./"))
-		info, err := os.Stat(hostPath)
-		if err != nil || info.IsDir() {
-			t.Fatalf("Perses %s mount source must exist as a file (%q): %v", name, hostPath, err)
-		}
-		// The compose mounts must be exactly the projected files.
-		if filepath.Clean(hostPath) != filepath.Clean(filepath.Join(dir, filepath.Base(hostPath))) {
-			t.Fatalf("Perses %s mount %q must resolve into the projection dir %q", name, hostRel, dir)
-		}
-		// The server consumes each mount via the TLS command flags.
-		containerFlag := map[string]string{
-			"/certs/server.cert": "--web.tls-cert-file=" + containerPath,
-			"/certs/server.key":  "--web.tls-key-file=" + containerPath,
-		}[containerPath]
-		if containerFlag == "" || !strings.Contains(rendered, containerFlag) {
-			t.Fatalf("Perses service must consume the mounted path via %q:\n%s", containerFlag, rendered)
-		}
-	}
-	if !strings.Contains(rendered, "--web.tls-cert-file=/certs/server.cert") ||
-		!strings.Contains(rendered, "--web.tls-key-file=/certs/server.key") {
-		t.Fatalf("Perses service must enable HTTPS with both TLS flags:\n%s", rendered)
-	}
-
-	certData, err := os.ReadFile(filepath.Join(dir, "server.cert"))
+	// The projected key copy is the readable bind-mount file; the authoritative
+	// PKI material stays private.
+	keyInfo, err := os.Stat(filepath.Join(accessDir, "runtime", "server-key.pem"))
 	if err != nil {
-		t.Fatalf("read projected Perses certificate: %v", err)
+		t.Fatalf("stat gateway projected key: %v", err)
 	}
-	keyData, err := os.ReadFile(filepath.Join(dir, "server.key"))
+	if keyInfo.Mode().Perm() != 0o644 {
+		t.Fatalf("the projected gateway key must be the readable bind-mount copy 0644, got %v", keyInfo.Mode().Perm())
+	}
+	pkiKeyInfo, err := os.Stat(filepath.Join(accessDir, "pki", "server-key.pem"))
 	if err != nil {
-		t.Fatalf("read projected Perses key: %v", err)
-	}
-	if len(certData) == 0 || len(keyData) == 0 {
-		t.Fatal("projected Perses TLS files must not be empty")
-	}
-	keyInfo, err := os.Stat(filepath.Join(dir, "server.key"))
-	if err != nil {
-		t.Fatalf("stat projected Perses key: %v", err)
-	}
-	if keyInfo.Mode().Perm() != projectedKeyMode {
-		t.Fatalf("projected Perses key must be the readable bind-mount copy %v, got %v", projectedKeyMode, keyInfo.Mode().Perm())
-	}
-	pkiKeyInfo, err := os.Stat(filepath.Join(dir, "pki", "server-key.pem"))
-	if err != nil {
-		t.Fatalf("stat Perses PKI working key: %v", err)
+		t.Fatalf("stat gateway PKI working key: %v", err)
 	}
 	if pkiKeyInfo.Mode().Perm() != 0o600 {
-		t.Fatalf("Perses PKI working key must stay private 0600, got %v", pkiKeyInfo.Mode().Perm())
+		t.Fatalf("the gateway PKI working key must stay private 0600, got %v", pkiKeyInfo.Mode().Perm())
+	}
+	certData, err := os.ReadFile(filepath.Join(accessDir, "runtime", "server.pem"))
+	if err != nil {
+		t.Fatalf("read projected gateway certificate: %v", err)
 	}
 	certBlock, _ := pem.Decode(certData)
 	if certBlock == nil {
-		t.Fatal("projected Perses certificate must be PEM")
+		t.Fatal("projected gateway certificate must be PEM")
 	}
 	cert, err := x509.ParseCertificate(certBlock.Bytes)
 	if err != nil {
-		t.Fatalf("parse projected Perses certificate: %v", err)
+		t.Fatalf("parse projected gateway certificate: %v", err)
 	}
-	names := map[string]bool{"localhost": false, "127.0.0.1": false, "perses": false}
+	names := map[string]bool{"localhost": false, "127.0.0.1": false, serviceaccess.PersesGatewayServiceName: false}
 	for _, san := range cert.DNSNames {
 		names[san] = true
 	}
@@ -256,16 +236,14 @@ func TestPersesTLSFilesProjectedAndConsumed(t *testing.T) {
 	}
 	for name, covered := range names {
 		if !covered {
-			t.Fatalf("Perses certificate must cover loopback name %q (contract protocol https): %+v", name, cert.DNSNames)
+			t.Fatalf("the gateway certificate must cover %q (contract protocol https): %+v", name, cert.DNSNames)
 		}
 	}
 	if cert.NotAfter.Before(time.Now()) {
-		t.Fatal("projected Perses certificate must not be expired")
+		t.Fatal("projected gateway certificate must not be expired")
 	}
 }
 
-// TestPersesLifecycleResourcesIncludeManagedService asserts the runtime lifecycle
-// inspects and can retire the Perses UI container and its data volume.
 func TestPersesLifecycleResourcesIncludeManagedService(t *testing.T) {
 	selected := persesRuntimeManifest(t, true)
 	resources := ExpectedRuntimeResources(selected)
