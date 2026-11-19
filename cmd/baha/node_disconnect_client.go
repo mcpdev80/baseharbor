@@ -162,7 +162,7 @@ func runNodeDisconnectWithImpact(ctx context.Context, target string, format cliO
 		}
 	}
 	if consent == nil && format != outputJSON && !noInput(ctx) && readerIsTerminal(nodeInput) {
-		presentation := application.ProviderImpactPlan{PlanID: plan.Scope.PlanID, ConfirmationsRequired: plan.Scope.ConfirmationsRequired, Destructive: plan.Scope.Destructive}
+		presentation := application.ProviderImpactPlan{PlanID: plan.Scope.PlanID, Attention: plan.Scope.Attention, ConfirmationsRequired: plan.Scope.ConfirmationsRequired, Destructive: plan.Scope.Destructive}
 		value, err := readProviderImpactAcknowledgements(bufio.NewReader(nodeInput), out, presentation)
 		if err != nil {
 			return err

@@ -166,7 +166,7 @@ func authorizeApplicationRestore(ctx context.Context, resolved resolvedApplicati
 	}
 	in := applicationInput(ctx, guidedBackupInput)
 	if consent == nil && !noInput(ctx) && in != nil && readerIsTerminal(in) {
-		ack, err := readProviderImpactAcknowledgements(bufio.NewReader(in), out, application.ProviderImpactPlan{PlanID: p.Scope.PlanID, ConfirmationsRequired: p.Scope.ConfirmationsRequired, Destructive: true})
+		ack, err := readProviderImpactAcknowledgements(bufio.NewReader(in), out, application.ProviderImpactPlan{PlanID: p.Scope.PlanID, Attention: p.Scope.Attention, ConfirmationsRequired: p.Scope.ConfirmationsRequired, Destructive: true})
 		if err != nil {
 			return err
 		}
