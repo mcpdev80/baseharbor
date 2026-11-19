@@ -40,8 +40,8 @@ aktive Knotenidentität existiert; dieses Fenster ist absichtlich und bleibt
 fail-closed. Der verbrauchte Grant wird nie wiederhergestellt; die einzige
 Erholung ist ein frisches `Create` oder `CreateRenewal`. Schlägt `RecordIssued`
 fehl, widerruft `Enroll` das signierte Zertifikat. Die Klausel
-`previous_certificate_serial` in `Consume` und die Bedingung
-`certificate_serial IS NULL` in `RecordIssued` verhindern, dass ein konkurrierender
+`previous_certificate_serial` in `Consume` und die Bedingungen
+`certificate_serial IS NULL` und `consumed_at IS NOT NULL` in `RecordIssued` verhindern, dass ein konkurrierender
 Antrag die Zertifikatsserial schreibt; eine halb fertige Einschreibung hinterlässt
 daher einen endgültig verbrauchten Grant — nie eine teilweise oder zweite
 Identität für einen Knoten.
