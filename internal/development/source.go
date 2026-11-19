@@ -468,26 +468,9 @@ func ResolveWorkspace(manifestPath string, model SourceModel, mapping WorkspaceM
 			if err := validateLocalSourceLocation(source.ID, root); err != nil {
 				return WorkspaceResolution{}, err
 			}
-			componentRoot := root
-			if strings.TrimSpace(component.SubPath) != "" {
-				componentRoot, err = filepath.Abs(filepath.Join(root, filepath.FromSlash(component.SubPath)))
-				if err != nil {
-					return WorkspaceResolution{}, err
-				}
-				rel, relErr := filepath.Rel(root, componentRoot)
-				if relErr != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-					return WorkspaceResolution{}, fmt.Errorf("component %q source path escapes local source directory", component.Component)
-				}
-				info, statErr := os.Stat(componentRoot)
-				if statErr != nil {
-					if os.IsNotExist(statErr) {
-						return WorkspaceResolution{}, &WorkspaceSourceError{Source: source.ID, Component: component.Component, Path: componentRoot, Problem: "component subpath is missing inside local source directory"}
-					}
-					return WorkspaceResolution{}, statErr
-				}
-				if !info.IsDir() {
-					return WorkspaceResolution{}, fmt.Errorf("component %q path %s is not a directory", component.Component, componentRoot)
-				}
+			componentRoot, err := resolveContainedWorkspaceDirectory(root, component.SubPath, source.ID, component.Component, "local source directory")
+			if err != nil {
+				return WorkspaceResolution{}, err
 			}
 			resolved.Root = componentRoot
 		case SourceRepository:
@@ -510,27 +493,9 @@ func ResolveWorkspace(manifestPath string, model SourceModel, mapping WorkspaceM
 			if !info.IsDir() {
 				return WorkspaceResolution{}, fmt.Errorf("workspace source %q path %s is not a directory", source.ID, root)
 			}
-			componentRoot := root
-			if strings.TrimSpace(component.SubPath) != "" {
-				componentRoot = filepath.Join(root, filepath.FromSlash(component.SubPath))
-			}
-			componentRoot, err = filepath.Abs(componentRoot)
+			componentRoot, err := resolveContainedWorkspaceDirectory(root, component.SubPath, source.ID, component.Component, "mapped worktree")
 			if err != nil {
 				return WorkspaceResolution{}, err
-			}
-			rel, err := filepath.Rel(root, componentRoot)
-			if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-				return WorkspaceResolution{}, fmt.Errorf("component %q source path escapes mapped worktree", component.Component)
-			}
-			info, err = os.Stat(componentRoot)
-			if err != nil {
-				if os.IsNotExist(err) {
-					return WorkspaceResolution{}, &WorkspaceSourceError{Source: source.ID, Component: component.Component, Path: componentRoot, Problem: "component subpath is missing inside mapped worktree"}
-				}
-				return WorkspaceResolution{}, err
-			}
-			if !info.IsDir() {
-				return WorkspaceResolution{}, fmt.Errorf("component %q path %s is not a directory", component.Component, componentRoot)
 			}
 			resolved.Root = componentRoot
 		}
@@ -540,4 +505,48 @@ func ResolveWorkspace(manifestPath string, model SourceModel, mapping WorkspaceM
 		return resolution.Components[i].Component < resolution.Components[j].Component
 	})
 	return resolution, nil
+}
+
+// resolveContainedWorkspaceDirectory checks both lexical traversal and the
+// canonical filesystem path. A lexical Rel check alone accepts a subdirectory
+// symlink that points outside its declared source root.
+func resolveContainedWorkspaceDirectory(root, subPath, sourceID, component, rootDescription string) (string, error) {
+	root, err := filepath.Abs(root)
+	if err != nil {
+		return "", err
+	}
+	candidate := root
+	if strings.TrimSpace(subPath) != "" {
+		candidate = filepath.Join(root, filepath.FromSlash(subPath))
+	}
+	candidate, err = filepath.Abs(candidate)
+	if err != nil {
+		return "", err
+	}
+	if rel, relErr := filepath.Rel(root, candidate); relErr != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("component %q source path escapes %s", component, rootDescription)
+	}
+	canonicalRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		return "", err
+	}
+	canonicalCandidate, err := filepath.EvalSymlinks(candidate)
+	if err != nil {
+		if os.IsNotExist(err) && strings.TrimSpace(subPath) != "" {
+			return "", &WorkspaceSourceError{Source: sourceID, Component: component, Path: candidate, Problem: "component subpath is missing inside " + rootDescription}
+		}
+		return "", err
+	}
+	rel, err := filepath.Rel(canonicalRoot, canonicalCandidate)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("component %q source path escapes %s through a symbolic link", component, rootDescription)
+	}
+	info, err := os.Stat(canonicalCandidate)
+	if err != nil {
+		return "", err
+	}
+	if !info.IsDir() {
+		return "", fmt.Errorf("component %q path %s is not a directory", component, canonicalCandidate)
+	}
+	return canonicalCandidate, nil
 }
