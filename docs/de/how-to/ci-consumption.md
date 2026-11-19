@@ -6,7 +6,7 @@ lokalen Core auf dem kurzlebigen Runner und führt Core- und
 Anwendungskommandos im selben Job aus. Es baut weder BaseHarbor noch die
 Anwendung neu und stellt nichts auf einem Kunden-Target bereit.
 
-Kopiere den Workflow und `scripts/ci-consumption-example.sh` in ein
+Kopiere den Workflow und `scripts/consumption-example.sh` in ein
 Anwendungsrepository mit gültiger `baseharbor.yaml` und Workload-Quelle.
 Verwende für dieses Beispiel nur ein Wegwerfprojekt und Wegwerfgeheimnisse; die
 Anwendungskommandos können lokale Container erstellen und deklarierte Dienste

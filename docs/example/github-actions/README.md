@@ -5,7 +5,7 @@ This example starts only with a manual **Run workflow** action. It has no
 Ubuntu runner so the local Core and application state remain available for the
 whole example.
 
-Copy `consume.yml` and `scripts/ci-consumption-example.sh` into an application
+Copy `consume.yml` and `scripts/consumption-example.sh` into an application
 repository that contains a valid `baseharbor.yaml` and workload source. The
 job uses the runner's Docker engine and stops the application before it exits.
 Use a disposable application and disposable secrets; the workflow is not for a

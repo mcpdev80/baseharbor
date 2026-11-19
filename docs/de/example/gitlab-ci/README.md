@@ -5,7 +5,7 @@ Auch ihr Job muss manuell gestartet werden; Pushes und Merge Requests lösen
 keinen Lauf aus. Der Job verwendet einen einzelnen kurzlebigen Runner, damit
 Core und Anwendungszustand zusammenbleiben.
 
-Kopiere `pipeline.yml` und `scripts/ci-consumption-example.sh` in ein
+Kopiere `pipeline.yml` und `scripts/consumption-example.sh` in ein
 Anwendungsrepository mit gültiger `baseharbor.yaml` und Workload-Quelle.
 Registriere einen kurzlebigen Runner mit dem Tag
 `baseharbor-ephemeral-docker` und Docker-Socket. Verwende eine Wegwerfanwendung

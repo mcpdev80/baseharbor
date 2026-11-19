@@ -14,7 +14,7 @@ import yaml
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SCRIPT = ROOT / "scripts/ci-consumption-example.sh"
+SCRIPT = ROOT / "scripts/consumption-example.sh"
 
 
 class CIConsumptionExamples(unittest.TestCase):
@@ -26,14 +26,14 @@ class CIConsumptionExamples(unittest.TestCase):
         self.assertEqual(set(github["on"]), {"workflow_dispatch"})
         self.assertEqual(set(github["jobs"]), {"consume"})
         self.assertEqual(github["jobs"]["consume"]["steps"][-1]["run"],
-                         "bash scripts/ci-consumption-example.sh")
+                         "bash scripts/consumption-example.sh")
 
         gitlab = self.load_yaml("docs/example/gitlab-ci/pipeline.yml")
         self.assertEqual(gitlab["workflow"]["rules"][0]["if"],
                          '$CI_PIPELINE_SOURCE == "web"')
         self.assertEqual(gitlab["workflow"]["rules"][-1]["when"], "never")
         self.assertEqual(gitlab["consume"]["when"], "manual")
-        self.assertIn("bash scripts/ci-consumption-example.sh", gitlab["consume"]["script"][0])
+        self.assertIn("bash scripts/consumption-example.sh", gitlab["consume"]["script"][0])
 
     def run_script(self, *, fail_on: str = "", sleep_on: str = "",
                    version: str = "0.4.28") -> tuple[subprocess.CompletedProcess, Path]:

@@ -26,4 +26,4 @@ jobs:
           curl -fsSL "https://raw.githubusercontent.com/mcpdev80/baseharbor/v${BASEHARBOR_VERSION}/scripts/install.sh" | bash -s -- "$BASEHARBOR_VERSION"
       - name: Consume the checked-out application with the local runner Core
         shell: bash
-        run: bash scripts/ci-consumption-example.sh
+        run: bash scripts/consumption-example.sh

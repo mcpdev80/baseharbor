@@ -4,7 +4,7 @@ This pipeline accepts only a manually started **Run pipeline** action. Its job
 also requires a manual start, and it does not run for pushes or merge requests.
 The job uses one disposable runner so Core and application state stay together.
 
-Copy `pipeline.yml` and `scripts/ci-consumption-example.sh` into an application
+Copy `pipeline.yml` and `scripts/consumption-example.sh` into an application
 repository that contains a valid `baseharbor.yaml` and workload source. Register
 a disposable runner with the `baseharbor-ephemeral-docker` tag and a Docker
 socket. Use a disposable application and disposable secrets; the example is

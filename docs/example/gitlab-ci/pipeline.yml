@@ -27,4 +27,4 @@ consume:
       apt-get install -y --no-install-recommends ca-certificates curl docker.io
       docker version
       curl -fsSL "https://raw.githubusercontent.com/mcpdev80/baseharbor/v${BASEHARBOR_VERSION}/scripts/install.sh" | bash -s -- "$BASEHARBOR_VERSION"
-      bash scripts/ci-consumption-example.sh
+      bash scripts/consumption-example.sh

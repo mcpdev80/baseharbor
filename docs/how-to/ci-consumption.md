@@ -6,7 +6,7 @@ ephemeral runner and keeps Core and application commands in the same job. It
 does not rebuild BaseHarbor or the application, and it does not deploy to a
 customer Target.
 
-Copy the workflow and `scripts/ci-consumption-example.sh` into an application
+Copy the workflow and `scripts/consumption-example.sh` into an application
 repository that contains a valid `baseharbor.yaml` and its
 workload source. Use only a disposable project and secrets for this example;
 application commands may create local containers and access services declared
