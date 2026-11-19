@@ -17,6 +17,9 @@ import (
 var (
 	ErrWorkspaceSourceMissing = errors.New("workspace source is missing")
 	ErrWorkspaceModelMissing  = errors.New("workspace source model is not initialized")
+	// ErrWorkspaceLastSource refuses removing the final source of a model so an
+	// application never loses its last portable source identity by accident.
+	ErrWorkspaceLastSource = errors.New("workspace source model requires at least one source")
 )
 
 type WorkspaceSourceError struct {
@@ -53,6 +56,7 @@ type SourceKind string
 
 const (
 	SourceRepository SourceKind = "repository"
+	SourceLocal      SourceKind = "local"
 	SourceOCI        SourceKind = "oci"
 )
 
@@ -61,6 +65,7 @@ type SourceDefinition struct {
 	Type       SourceKind `json:"type" yaml:"type"`
 	Repository string     `json:"repository,omitempty" yaml:"repository,omitempty"`
 	Ref        string     `json:"ref,omitempty" yaml:"ref,omitempty"`
+	Path       string     `json:"path,omitempty" yaml:"path,omitempty"`
 	Image      string     `json:"image,omitempty" yaml:"image,omitempty"`
 }
 
@@ -110,7 +115,7 @@ func (m SourceModel) Validate() error {
 		return fmt.Errorf("source model application is required")
 	}
 	if len(m.Sources) == 0 {
-		return fmt.Errorf("source model requires at least one source")
+		return fmt.Errorf("%w: run 'baha app workspace init' to create %s", ErrWorkspaceModelMissing, SourceModelRelativePath)
 	}
 	sourceIDs := map[string]SourceDefinition{}
 	for _, source := range m.Sources {
@@ -132,24 +137,34 @@ func (m SourceModel) Validate() error {
 			if strings.TrimSpace(source.Repository) == "" {
 				return fmt.Errorf("repository source %q requires repository identity", id)
 			}
-			if strings.TrimSpace(source.Image) != "" {
-				return fmt.Errorf("repository source %q must not declare image", id)
+			if strings.TrimSpace(source.Image) != "" || strings.TrimSpace(source.Path) != "" {
+				return fmt.Errorf("repository source %q must not declare image/path", id)
+			}
+		case SourceLocal:
+			if strings.TrimSpace(source.Path) == "" {
+				return fmt.Errorf("local source %q requires an existing directory path", id)
+			}
+			if err := validateLocalSourceLocation(id, source.Path); err != nil {
+				return err
+			}
+			if strings.TrimSpace(source.Repository) != "" || strings.TrimSpace(source.Ref) != "" || strings.TrimSpace(source.Image) != "" {
+				return fmt.Errorf("local source %q must not declare repository/ref/image", id)
 			}
 		case SourceOCI:
 			if strings.TrimSpace(source.Image) == "" {
 				return fmt.Errorf("OCI source %q requires image reference", id)
 			}
-			if strings.TrimSpace(source.Repository) != "" || strings.TrimSpace(source.Ref) != "" {
-				return fmt.Errorf("OCI source %q must not declare repository/ref", id)
+			if strings.TrimSpace(source.Repository) != "" || strings.TrimSpace(source.Ref) != "" || strings.TrimSpace(source.Path) != "" {
+				return fmt.Errorf("OCI source %q must not declare repository/ref/path", id)
 			}
 		default:
 			return fmt.Errorf("source %q has unsupported type %q", id, source.Type)
 		}
 		sourceIDs[id] = source
 	}
-	if len(m.Components) == 0 {
-		return fmt.Errorf("source model requires at least one component mapping")
-	}
+	// Components are optional unique identities: an initialized source model may
+	// legitimately declare zero components until one is added incrementally.
+	// Multiple components may share one source; each component name is unique.
 	components := map[string]struct{}{}
 	for _, component := range m.Components {
 		id := strings.TrimSpace(component.Component)
@@ -181,6 +196,26 @@ func validateSourceSubPath(value string) error {
 	clean := filepath.Clean(value)
 	if clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
 		return fmt.Errorf("source subPath escapes its source root")
+	}
+	return nil
+}
+
+// validateLocalSourceLocation keeps portable source identity honest: a local
+// directory source names an absolute existing directory and never a file.
+func validateLocalSourceLocation(id, location string) error {
+	trimmed := strings.TrimSpace(location)
+	if !filepath.IsAbs(trimmed) {
+		return fmt.Errorf("local source %q must use an absolute directory path", id)
+	}
+	info, err := os.Stat(trimmed)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("local source %q directory %s does not exist", id, trimmed)
+		}
+		return fmt.Errorf("local source %q directory %s: %w", id, trimmed, err)
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("local source %q path %s is not a directory", id, trimmed)
 	}
 	return nil
 }
@@ -420,6 +455,41 @@ func ResolveWorkspace(manifestPath string, model SourceModel, mapping WorkspaceM
 		case SourceOCI:
 			resolved.Identity = source.Image
 			resolved.Image = source.Image
+		case SourceLocal:
+			resolved.Identity = filepath.Clean(strings.TrimSpace(source.Path))
+			root := strings.TrimSpace(mapping.Sources[source.ID])
+			if root == "" {
+				root = resolved.Identity
+			}
+			root, err = filepath.Abs(root)
+			if err != nil {
+				return WorkspaceResolution{}, err
+			}
+			if err := validateLocalSourceLocation(source.ID, root); err != nil {
+				return WorkspaceResolution{}, err
+			}
+			componentRoot := root
+			if strings.TrimSpace(component.SubPath) != "" {
+				componentRoot, err = filepath.Abs(filepath.Join(root, filepath.FromSlash(component.SubPath)))
+				if err != nil {
+					return WorkspaceResolution{}, err
+				}
+				rel, relErr := filepath.Rel(root, componentRoot)
+				if relErr != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+					return WorkspaceResolution{}, fmt.Errorf("component %q source path escapes local source directory", component.Component)
+				}
+				info, statErr := os.Stat(componentRoot)
+				if statErr != nil {
+					if os.IsNotExist(statErr) {
+						return WorkspaceResolution{}, &WorkspaceSourceError{Source: source.ID, Component: component.Component, Path: componentRoot, Problem: "component subpath is missing inside local source directory"}
+					}
+					return WorkspaceResolution{}, statErr
+				}
+				if !info.IsDir() {
+					return WorkspaceResolution{}, fmt.Errorf("component %q path %s is not a directory", component.Component, componentRoot)
+				}
+			}
+			resolved.Root = componentRoot
 		case SourceRepository:
 			resolved.Identity = source.Repository
 			root := strings.TrimSpace(mapping.Sources[source.ID])
