@@ -68,24 +68,36 @@ func applicationMetricsSourceEnvironment(id string) (string, bool) {
 	return env, true
 }
 
-// projectTokenFromID extracts the trailing environment token of an
-// application provider ID/target that carries a canonical project name
-// (bh-<target>-<app>-<env>) or a "<provider>:" identity prefix / "runtime://<project>/<svc>" target.
+// projectTokenFromID extracts the deployment environment of an application
+// provider ID/target that carries a canonical project name. The environment is
+// the segment that follows the KNOWN application name in the project: the source
+// carries its owning application (OwnerApplication) and the runtime operator
+// project name in its Target ("runtime://<project>/<service>") or ID ("<provider>:<project>"),
+// so the application is the fixed anchor and the remainder after it is the
+// environment. This resolves the hyphen-application ambiguity structurally:
+// 'bh-prod-my-app-dev' with OwnerApplication 'my-app' anchors on '-my-app-' and
+// yields the trailing environment 'dev'; a name with no anchor, more than one
+// anchor, or an empty remainder fails closed so it stays invisible at every
+// caller.
 func projectTokenFromID(source SignalSource) (string, bool) {
 	for _, candidate := range []string{source.ID, source.Target} {
-		if env, derived := trailingProjectEnvironment(candidate); derived {
+		if env, derived := trailingProjectEnvironment(source, candidate); derived {
 			return env, true
 		}
 	}
 	return "", false
 }
 
-// trailingProjectEnvironment isolates the environment token of a canonical
+// trailingProjectEnvironment isolates the deployment environment of a canonical
 // application project name, tolerating a "<provider>:" identity prefix and a
-// "runtime://<project>/<service>" target. A hyphenated trailing token (for
-// example the "west" of a legacy "prod-west" project) is ambiguous and yields
-// ok=false so the caller fails closed instead of leaking.
-func trailingProjectEnvironment(value string) (string, bool) {
+// "runtime://<project>/<service>" target. The application is the known anchor
+// (source.OwnerApplication); the environment is exactly the segment that follows
+// the first (and only) '-<application>-' occurrence in the project name. A name
+// with no anchor, with more than one anchor, or with an empty remainder after
+// the anchor fails closed so the caller fails closed instead of leaking; a
+// reserved-platform project (for example 'bh-local-prometheus') fails closed
+// because the anchor never matches the application.
+func trailingProjectEnvironment(source SignalSource, value string) (string, bool) {
 	value = strings.TrimSpace(value)
 	value = strings.TrimPrefix(value, "runtime://")
 	if strings.Contains(value, "/") {
@@ -97,25 +109,35 @@ func trailingProjectEnvironment(value string) (string, bool) {
 		// colon-delimited segment, which carries the project name.
 		value = value[:idx]
 	}
-	// Runtime project name: baseharbor-<target>-<app>-<env> (4 tokens,
-	// namespaced) or baseharbor-<app>-<env> (3 tokens, namespace-less).
-	if strings.HasPrefix(value, "baseharbor-") {
-		value = strings.TrimPrefix(value, "baseharbor-")
-		parts := strings.Split(value, "-")
-		// baseharbor-<app>-<env> => two remaining tokens, or
-		// baseharbor-<target>-<app>-<env> => three remaining tokens.
-		if len(parts) == 2 || len(parts) == 3 {
-			return environmentToken(parts[len(parts)-1])
-		}
+	app := strings.ToLower(strings.TrimSpace(source.OwnerApplication))
+	if app == "" {
+		// No owning application to anchor on — the project name cannot be tied
+		// to one environment and fails closed.
 		return "", false
 	}
-	// Operator project name: bh-<target>-<app>-<env> (3 tokens after "bh-").
-	value = strings.TrimPrefix(value, "bh-")
-	parts := strings.Split(value, "-")
-	if len(parts) != 3 {
+	anchor := "-" + app + "-"
+	// Count anchors so a name holding the application name twice is ambiguous.
+	anchorCount := strings.Count(value, anchor)
+	if anchorCount == 0 {
 		return "", false
 	}
-	return environmentToken(parts[2])
+	idx := strings.Index(value, anchor)
+	if idx < 0 {
+		return "", false
+	}
+	// The environment is the remainder after the anchor, trimmed of any stray
+	// leading/trailing hyphens.
+	environment := strings.Trim(strings.ToLower(value[idx+len(anchor):]), "-")
+	if environment == "" {
+		// Anchor at the very end of the name (for example 'prod-west' with
+		// OwnerApplication 'prod-west') — no environment follows, so fail closed.
+		return "", false
+	}
+	if anchorCount > 1 {
+		// The application appears more than once — unresolvable, fail closed.
+		return "", false
+	}
+	return environmentToken(environment)
 }
 
 // environmentToken normalises a trailing project token into an environment:

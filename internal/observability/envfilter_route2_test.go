@@ -267,3 +267,109 @@ func TestRoute2SharedSourceStaysVisibleForSharedCaller(t *testing.T) {
 		t.Fatalf("shared environment-agnostic source must stay visible for a shared caller, got %d", len(got))
 	}
 }
+
+// Case F: the hyphenated-application regression (card 0428-121, round 4). A
+// generated namespaced project for a valid hyphenated application name must be
+// visible to the matching requested environment and invisible to every other
+// one. The environment is derived by anchoring on the known OwnerApplication:
+// the segment that follows '-<application>-' in the project name is the
+// environment, so 'bh-prod-my-app-dev' (OwnerApplication 'my-app') resolves to
+// 'dev' instead of being dropped by a fixed hyphen-token-count rule.
+func TestRoute2HyphenatedApplicationProvider(t *testing.T) {
+	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
+
+	const project = "bh-prod-my-app-dev"
+	if err := UpdateSignal(SignalSource{
+		ID:               "loki:" + project,
+		Kind:             SignalLogs,
+		Provider:         capability.ProviderLoki,
+		Class:            SourceApplicationProvider,
+		Scope:            capability.ScopeApplication,
+		OwnerApplication: "my-app",
+		Network:          "baseharbor-my-app-dev-logs",
+		Target:           RuntimeTarget("baseharbor-my-app-dev", "loki"),
+		Protocol:         "syslog-rfc5424",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	devCaller, err := ListLogs(
+		capability.ProviderPlacement{Scope: capability.ScopeApplication},
+		[]string{"my-app"},
+		true, false,
+		"dev",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(devCaller) != 1 {
+		t.Fatalf("matching (dev) caller must see the hyphenated-application provider, got %d", len(devCaller))
+	}
+
+	prodCaller, err := ListLogs(
+		capability.ProviderPlacement{Scope: capability.ScopeApplication},
+		[]string{"my-app"},
+		true, false,
+		"prod",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(prodCaller) != 0 {
+		t.Fatalf("non-matching (prod) caller must NOT see the dev-scoped provider, got %d", len(prodCaller))
+	}
+}
+
+// Case G: table over the anchor rule (file:environment.go trailingProjectEnvironment,
+// anchored on OwnerApplication). Each row fixes the OwnerApplication that the
+// system already knows and the project the source carries; the expected result
+// is the environment the anchor yields, or "" (fail-closed) when the project
+// cannot be tied to exactly one environment.
+func TestRoute2AnchorRuleTable(t *testing.T) {
+	type row struct {
+		ownerApplication string
+		project          string
+		wantEnv          string // "" => fail-closed
+	}
+	rows := []row{
+		// (d) hyphenated app name, generated namespaced project: env follows the
+		// '-my-app-' anchor.
+		{"my-app", "bh-prod-my-app-dev", "dev"},
+		// runtime (namespace-less) grammar: baseharbor-<app>-<env>.
+		{"my-app", "baseharbor-my-app-dev", "dev"},
+		// (a) hyphenated legacy name 'demo/prod-west': the anchor '-demo-' leaves
+		// the remainder 'prod-west' as the environment, which is NOT 'west', so a
+		// 'west' caller stays fail-closed.
+		{"demo", "bh-local-demo-prod-west", "prod-west"},
+		// (a') the same physical chain with the real application 'demo-prod': the
+		// anchor '-demo-prod-' leaves 'west' as the environment.
+		{"demo-prod", "bh-local-demo-prod-west", "west"},
+		// (b) reserved-token project: the anchor never matches 'prometheus', so
+		// fail closed.
+		{"demo", "bh-local-prometheus", ""},
+		// (c) legacy bare ID with no project schema and no anchor: fail closed.
+		{"demo", "demo-metrics", ""},
+		// two anchors in one name: the application appears twice, unresolvable,
+		// fail closed.
+		{"demo", "bh-demo-local-demo-dev", ""},
+	}
+	fail := 0
+	for _, r := range rows {
+		src := SignalSource{
+			OwnerApplication: r.ownerApplication,
+			ID:               "loki:" + r.project,
+			Target:           RuntimeTarget(r.project, "loki"),
+		}
+		got, ok := projectTokenFromID(src)
+		wantOK := r.wantEnv != ""
+		if ok != wantOK || (ok && got != r.wantEnv) {
+			fail++
+			t.Errorf("owner %q project %q: got env=%q ok=%v, want env=%q", r.ownerApplication, r.project, got, ok, r.wantEnv)
+			continue
+		}
+		t.Logf("anchor %-14q project %-30q => env=%q", r.ownerApplication, r.project, got)
+	}
+	if fail > 0 {
+		t.Fatalf("%d anchor rows failed", fail)
+	}
+}
