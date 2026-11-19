@@ -52,6 +52,11 @@ class CheckRoutingTests(unittest.TestCase):
         cls.script = next(step['run'] for step in cls.ci['jobs']['pr_validations']['steps']
                           if step.get('name') == 'Execute existing validation owner without publication')
 
+    def test_migration_controller_is_an_immutable_commit(self):
+        env = next(step['env'] for step in self.ci['jobs']['pr_plan']['steps']
+                   if 'MIGRATION_CONTROLLER' in step.get('env', {}))
+        self.assertRegex(env['MIGRATION_CONTROLLER'], r'^[0-9a-f]{40}$')
+
     def test_stacked_lane_prs_trigger_the_full_pr_check_graph(self):
         workflow = (ROOT / '.github/workflows/ci.yml').read_text()
         self.assertIn("      - 'lane-*'", workflow)
