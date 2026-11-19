@@ -38,7 +38,7 @@ func changeTargetDefinition(ctx context.Context, name, recovery string, out io.W
 	}
 	in := applicationInput(ctx, nil)
 	if consent == nil && out != nil && !noInput(ctx) && in != nil && readerIsTerminal(in) {
-		value, err := readProviderImpactAcknowledgements(bufio.NewReader(in), out, application.ProviderImpactPlan{PlanID: plan.Scope.PlanID, ConfirmationsRequired: plan.Scope.ConfirmationsRequired})
+		value, err := readProviderImpactAcknowledgements(bufio.NewReader(in), out, application.ProviderImpactPlan{PlanID: plan.Scope.PlanID, Attention: plan.Scope.Attention, ConfirmationsRequired: plan.Scope.ConfirmationsRequired})
 		if err != nil {
 			return result, err
 		}

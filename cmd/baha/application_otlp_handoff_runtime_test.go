@@ -136,8 +136,8 @@ func TestManagedRegisteredOTLPNativeConsumerHandoff(t *testing.T) {
 		t.Fatal("native replacement lacks concrete consequences", err)
 	}
 	impact := plan.ProviderPlan.Impact
-	if impact.Attention != "Achtung" || impact.ConfirmationsRequired != 2 {
-		t.Fatal("native replacement omits Achtung/two current confirmations")
+	if impact.Attention != "Warning" || impact.ConfirmationsRequired != 2 {
+		t.Fatal("native replacement omits Warning/two current confirmations")
 	}
 	for _, consent := range []*application.ProviderChangeConsent{nil, {PlanID: impact.PlanID, First: true}, {PlanID: "stale", First: true, Second: true}} {
 		var rejected bytes.Buffer

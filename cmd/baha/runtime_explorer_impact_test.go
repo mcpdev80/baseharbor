@@ -26,7 +26,7 @@ func TestRuntimeImpactRequiresTwoCurrentAcknowledgementsAndRetainsUnknownEffects
 	resource, record := runtimeImpactFixture(t)
 	request := runtimeexplorer.OperationRequest{Resource: resource.Ref, Operation: runtimeexplorer.OperationStop}
 	plan, err := planRuntimeMutation(resource, request.Operation)
-	if err != nil || plan.Scope.Complete || plan.Scope.Attention != "Achtung" || plan.Scope.ConfirmationsRequired != 2 || len(plan.Materials) == 0 || len(plan.Functions) == 0 {
+	if err != nil || plan.Scope.Complete || plan.Scope.Attention != "Warning" || plan.Scope.ConfirmationsRequired != 2 || len(plan.Materials) == 0 || len(plan.Functions) == 0 {
 		t.Fatalf("missing actual owners or honest consequences: %+v %v", plan, err)
 	}
 	for _, ack := range []application.ProviderChangeConsent{{}, {PlanID: plan.Scope.PlanID, First: true}, {PlanID: "stale", First: true, Second: true}} {

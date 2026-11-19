@@ -51,8 +51,10 @@ func TestKeycloakSignalRegistrationRegistersNativeMetricsSignal(t *testing.T) {
 		observability.SignalMetrics,
 		placement,
 		[]string{app.Name},
+		false,
 		true,
 		true,
+		app.Environment,
 	)
 	if err != nil {
 		t.Fatalf("List: %v", err)
@@ -98,8 +100,10 @@ func TestKeycloakSignalRegistrationFailsClosedWithoutMetrics(t *testing.T) {
 		observability.SignalMetrics,
 		placement,
 		[]string{app.Name},
+		false,
 		true,
 		true,
+		app.Environment,
 	)
 	if err != nil {
 		t.Fatalf("List: %v", err)

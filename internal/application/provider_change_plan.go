@@ -90,12 +90,12 @@ func DescribeProviderChanges(snapshot ResolutionSnapshot, union ProviderPlan, re
 		p.Complete = p.Complete && known
 		p.Destructive = p.Destructive || destructive
 		if attention {
-			p.Attention = "Achtung"
+			p.Attention = "Warning"
 			p.ConfirmationsRequired = 2
 		}
 	}
 	if !p.Complete || p.Destructive {
-		p.Attention = "Achtung"
+		p.Attention = "Warning"
 		p.ConfirmationsRequired = 2
 	}
 	// Hash all relevant authoritative state, including ownership, binding and
