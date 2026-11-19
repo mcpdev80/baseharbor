@@ -22,8 +22,10 @@ import (
 // (encryption_key_file); no secret value, token or key content is ever
 // interpolated into the YAML. Datasource secrets stay in the Perses database
 // behind BaseHarbor-owned provisioning. The native authentication provider is
-// disabled: operator access belongs to the gateway, and an account-less native
-// provider cannot authenticate anyone.
+// enabled INSIDE the security block (fix-7 B2): Perses requires at least one
+// active provider once enable_auth is true, and a disabled native provider is
+// the refused no-login-path shape. Operator access rides the gateway, and the
+// native account store stays encrypted with the key file above.
 //
 // The datasource proxy is left structurally absent from the rendering, and the
 // gateway refuses the /proxy/ route prefix; the deny lists written here bind
@@ -84,10 +86,13 @@ func RenderPersesConfig(policy capability.PersesSecurityPolicy, serviceAddress s
 	}
 	// fix-7 B2: enable_auth without any provider is refused by server
 	// verification (no login path exists). The native provider is stated
-	// explicitly, enabled: the gateway (mTLS or bearer) is the operator
-	// boundary in front of it; native users live in the encrypted Perses
-	// database (encryption_key_file above), and sign-up stays usable for
-	// the first operator on a loopback-only surface.
+	// explicitly, enabled, INSIDE the security block (Perses schema:
+	// security.authentication.providers.enable_native — a top-level
+	// authentication key is not consumed there): the gateway (mTLS or
+	// bearer) is the operator boundary in front of it; native users live
+	// in the encrypted Perses database (encryption_key_file above), and
+	// sign-up stays usable for the first operator on a loopback-only
+	// surface.
 	b.WriteString("  authentication:\n    providers:\n      enable_native: true\n")
 	if len(policy.SecretFileAllowedDirectories) > 0 {
 		b.WriteString("  secret_file_allowed_directories:\n")
