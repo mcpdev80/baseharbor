@@ -214,3 +214,68 @@ func TestMutationSnapshotAbsentOwnerDoesNotInitialize(t *testing.T) {
 		t.Fatalf("read allocated state: %v", err)
 	}
 }
+
+// TestSaveStateRouteFirstWriteNotRejectedAsGhost guards the 0428-110 r2 fix: a
+// legitimate first write to the BASEHARBOR_STATE_DIR config route must NOT be
+// rejected when a sibling <state>/config.yaml sits one level up. That sibling
+// is a coincidence on the state route, never an XDG double-append, so the ghost
+// guard must be XDG-scoped (configGhostRoot), not a generic grandparent check.
+func TestSaveStateRouteFirstWriteNotRejectedAsGhost(t *testing.T) {
+	state := t.TempDir()
+	t.Setenv("BASEHARBOR_STATE_DIR", state)
+	// Legitimate sibling: <state>/config.yaml present, <state>/config/config.yaml absent.
+	if err := os.WriteFile(filepath.Join(state, "config.yaml"), []byte("version: 1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg := Config{Version: ConfigVersion, Access: map[string]AccessDefinition{"local": {Provider: "local", Reference: "local"}}, Targets: map[string]TargetDefinition{"first": {Runtime: RuntimeDefinition{Provider: "docker"}, Access: TargetAccess{Reference: "local"}}}}
+	path, err := ConfigPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Absent owner: LoadConfigForMutation must return a clean nil snapshot.
+	if _, expected, err := LoadConfigForMutation(); err != nil || expected != nil {
+		t.Fatalf("absent owner must snapshot empty, got %+v expected=%v err=%v", expected, nil, err)
+	}
+	// First supported mutation: must write only to the configured state route.
+	if err := cfg.SaveExpected(nil); err != nil {
+		t.Fatalf("state-route first write must not be rejected as ghost: %v", err)
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("state config.yaml not written: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(state, "config", "config.yaml")); err != nil {
+		t.Fatalf("write did not land in the configured config root: %v", err)
+	}
+	// No stray temp/config files were created outside the configured location.
+	if entries, _ := filepath.Glob(filepath.Join(state, ".config-*")); len(entries) != 0 {
+		t.Fatalf("temp config leaked into state dir: %v", entries)
+	}
+	if entries, _ := filepath.Glob(filepath.Join(state, "config", ".config-*")); len(entries) != 0 {
+		t.Fatalf("temp config leaked into config root: %v", entries)
+	}
+}
+
+// TestSaveRouteXDGGhostStillRejected preserves the XDG double-append guard on
+// the save route: on the XDG route, an absent <xdg>/baseharbor/config.yaml with
+// a config.yaml one level up is the genuine ghost and must still be rejected.
+func TestSaveRouteXDGGhostStillRejected(t *testing.T) {
+	root := filepath.Join(t.TempDir(), ".config", "baseharbor")
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "config.yaml"), []byte("version: 1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("XDG_CONFIG_HOME", root)
+	cfg := Config{Version: ConfigVersion, Access: map[string]AccessDefinition{"local": {Provider: "local", Reference: "local"}}, Targets: map[string]TargetDefinition{"first": {Runtime: RuntimeDefinition{Provider: "docker"}, Access: TargetAccess{Reference: "local"}}}}
+	path, err := ConfigPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, statErr := os.Lstat(path); !os.IsNotExist(statErr) {
+		t.Fatalf("fixture: nested config.yaml must be absent, got %v", statErr)
+	}
+	if err := cfg.Save(); !errors.Is(err, ErrConfigMissing) {
+		t.Fatalf("XDG ghost must still be rejected on save route, got: %v", err)
+	}
+}

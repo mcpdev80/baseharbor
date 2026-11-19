@@ -108,7 +108,7 @@ func assertTraceSourceProviders(t *testing.T, m Manifest, want map[string]capabi
 	if err != nil {
 		t.Fatal(err)
 	}
-	sources, err := observability.ListTraces(placement, []string{m.Name}, true, true)
+	sources, err := observability.ListTraces(placement, []string{m.Name}, true, true, m.Environment)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -148,7 +148,7 @@ func TestWorkloadTraceSourceNeverAttributedToPrometheus(t *testing.T) {
 			m := workloadOnlyTraceManifest("trace-owner-" + tc.name)
 			writeTestRuntimeOTLPBinding(t, m, tc.provider, tc.host, tc.container)
 			project := RuntimeProjectName(m)
-			if err := reconcileManagedRuntimeObservability(m, project); err != nil {
+			if err := reconcileManagedRuntimeObservability(m, project, ""); err != nil {
 				t.Fatal(err)
 			}
 			assertTraceSourceProviders(t, m, map[string]capability.ProviderKind{
@@ -159,7 +159,7 @@ func TestWorkloadTraceSourceNeverAttributedToPrometheus(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			metrics, err := observability.ListMetrics(placement, []string{m.Name}, true, true)
+			metrics, err := observability.ListMetrics(placement, []string{m.Name}, true, true, m.Environment)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -187,7 +187,7 @@ func TestWorkloadTraceSourceFollowsTelemetryReplacement(t *testing.T) {
 	project := RuntimeProjectName(m)
 
 	writeTestRuntimeOTLPBinding(t, m, string(capability.ProviderOTelCollector), "https://127.0.0.1:43183", "https://otel-collector:4318")
-	if err := reconcileManagedRuntimeObservability(m, project); err != nil {
+	if err := reconcileManagedRuntimeObservability(m, project, ""); err != nil {
 		t.Fatal(err)
 	}
 	collectorID := fmt.Sprintf("%s:%s", capability.ProviderOTelCollector, project)
@@ -195,11 +195,11 @@ func TestWorkloadTraceSourceFollowsTelemetryReplacement(t *testing.T) {
 
 	externalEndpoint := "https://receiver.example.test:43189"
 	writeTestRuntimeOTLPBinding(t, m, string(capability.ProviderExternalOTLP), externalEndpoint, externalEndpoint)
-	if err := reconcileManagedRuntimeObservability(m, project); err != nil {
+	if err := reconcileManagedRuntimeObservability(m, project, ""); err != nil {
 		t.Fatal(err)
 	}
 	externalID := fmt.Sprintf("%s:%s", capability.ProviderExternalOTLP, project)
-	sources, err := observability.ListTraces(mustPlacement(t, m), []string{m.Name}, true, true)
+	sources, err := observability.ListTraces(mustPlacement(t, m), []string{m.Name}, true, true, m.Environment)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -215,10 +215,10 @@ func TestWorkloadTraceSourceFollowsTelemetryReplacement(t *testing.T) {
 	}
 
 	writeTestRuntimeOTLPBinding(t, m, string(capability.ProviderOTelCollector), "https://127.0.0.1:43183", "https://otel-collector:4318")
-	if err := reconcileManagedRuntimeObservability(m, project); err != nil {
+	if err := reconcileManagedRuntimeObservability(m, project, ""); err != nil {
 		t.Fatal(err)
 	}
-	sources, err = observability.ListTraces(mustPlacement(t, m), []string{m.Name}, true, true)
+	sources, err = observability.ListTraces(mustPlacement(t, m), []string{m.Name}, true, true, m.Environment)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -245,7 +245,7 @@ func mustPlacement(t *testing.T, m Manifest) capability.ProviderPlacement {
 
 func traceSources(t *testing.T, m Manifest) []observability.SignalSource {
 	t.Helper()
-	sources, err := observability.ListTraces(mustPlacement(t, m), []string{m.Name}, true, true)
+	sources, err := observability.ListTraces(mustPlacement(t, m), []string{m.Name}, true, true, m.Environment)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -278,7 +278,7 @@ func TestWorkloadTraceSourceReclaimsBothReceiversWhenUnbound(t *testing.T) {
 	collectorID := fmt.Sprintf("%s:%s", capability.ProviderOTelCollector, project)
 	externalID := fmt.Sprintf("%s:%s", capability.ProviderExternalOTLP, project)
 	writeTestRuntimeOTLPBinding(t, m, string(capability.ProviderOTelCollector), "https://127.0.0.1:43183", "https://otel-collector:4318")
-	if err := reconcileManagedRuntimeObservability(m, project); err != nil {
+	if err := reconcileManagedRuntimeObservability(m, project, ""); err != nil {
 		t.Fatal(err)
 	}
 	if got := traceIDs(traceSources(t, m)); got[collectorID] != capability.ProviderOTelCollector {
@@ -286,7 +286,7 @@ func TestWorkloadTraceSourceReclaimsBothReceiversWhenUnbound(t *testing.T) {
 	}
 	external := "https://receiver.example.test:43189"
 	writeTestRuntimeOTLPBinding(t, m, string(capability.ProviderExternalOTLP), external, external)
-	if err := reconcileManagedRuntimeObservability(m, project); err != nil {
+	if err := reconcileManagedRuntimeObservability(m, project, ""); err != nil {
 		t.Fatal(err)
 	}
 	if got := traceIDs(traceSources(t, m)); got[externalID] != capability.ProviderExternalOTLP {
@@ -308,7 +308,7 @@ func TestWorkloadTraceSourceReclaimsBothReceiversWhenUnbound(t *testing.T) {
 	t.Setenv(ProviderExternalReferenceEnv(capability.ProviderExternalOTLP), "")
 	t.Setenv(OTLPEndpointEnv, "")
 	t.Setenv(OTLPProviderEnv, "")
-	if err := reconcileManagedRuntimeObservability(m, project); err != nil {
+	if err := reconcileManagedRuntimeObservability(m, project, ""); err != nil {
 		t.Fatal(err)
 	}
 	got := traceIDs(traceSources(t, m))
@@ -328,7 +328,7 @@ func TestWorkloadTraceSignalReclaimedWhenOTLPIntentRemoved(t *testing.T) {
 	m := workloadOnlyTraceManifest("trace-intent-off")
 	project := RuntimeProjectName(m)
 	writeTestRuntimeOTLPBinding(t, m, string(capability.ProviderOTelCollector), "https://127.0.0.1:43183", "https://otel-collector:4318")
-	if err := reconcileManagedRuntimeObservability(m, project); err != nil {
+	if err := reconcileManagedRuntimeObservability(m, project, ""); err != nil {
 		t.Fatal(err)
 	}
 	collectorID := fmt.Sprintf("%s:%s", capability.ProviderOTelCollector, project)
@@ -407,7 +407,7 @@ func TestWorkloadTracePruneKeepsForeignSources(t *testing.T) {
 	project := RuntimeProjectName(m)
 	external := "https://receiver.example.test:43189"
 	writeTestRuntimeOTLPBinding(t, m, string(capability.ProviderExternalOTLP), external, external)
-	if err := reconcileManagedRuntimeObservability(m, project); err != nil {
+	if err := reconcileManagedRuntimeObservability(m, project, ""); err != nil {
 		t.Fatal(err)
 	}
 	// Seed the other receiver kind the way a stale registry would carry it, then
@@ -421,7 +421,7 @@ func TestWorkloadTracePruneKeepsForeignSources(t *testing.T) {
 	t.Setenv(ProviderExternalReferenceEnv(capability.ProviderExternalOTLP), "")
 	t.Setenv(OTLPEndpointEnv, "")
 	t.Setenv(OTLPProviderEnv, "")
-	if err := reconcileManagedRuntimeObservability(m, project); err != nil {
+	if err := reconcileManagedRuntimeObservability(m, project, ""); err != nil {
 		t.Fatal(err)
 	}
 
@@ -429,7 +429,7 @@ func TestWorkloadTracePruneKeepsForeignSources(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sources, err := observability.ListTraces(placement, []string{m.Name, ""}, true, true)
+	sources, err := observability.ListTraces(placement, []string{m.Name, ""}, true, true, m.Environment)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -480,7 +480,7 @@ func TestWorkloadTracePruneKeepsSameIDUnderOtherProvider(t *testing.T) {
 	// owns under the external receiver's provider.
 	external := "https://receiver.example.test:43189"
 	writeTestRuntimeOTLPBinding(t, m, string(capability.ProviderExternalOTLP), external, external)
-	if err := reconcileManagedRuntimeObservability(m, project); err != nil {
+	if err := reconcileManagedRuntimeObservability(m, project, ""); err != nil {
 		t.Fatal(err)
 	}
 	live, err := observability.RegistryHasSignal(id, capability.ProviderOTelCollector, observability.SignalTraces)
@@ -519,8 +519,8 @@ func TestWorkloadTracePruneKeepsSameIDUnderOtherProvider(t *testing.T) {
 // The legacy Prometheus-attributed workload trace signal predates this
 // reconciliation and must be reclaimed even when the metrics policy is
 // disabled - that is the state a later deployment can reach after the earlier
-// release registered it. Its metrics and logs signals remain registered: this
-// reclaims the trace signal only.
+// release registered it. The invalid provider-log identity for the application
+// workload is reclaimed at the same time; its metrics signal remains.
 func TestLegacyPrometheusTraceSignalIsReclaimedWithoutMetricsPolicy(t *testing.T) {
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
 	t.Setenv(MetricsEnabledEnv, "false")
@@ -565,11 +565,20 @@ func TestLegacyPrometheusTraceSignalIsReclaimedWithoutMetricsPolicy(t *testing.T
 	if got := traceIDs(traceSources(t, m))[legacyID]; got != capability.ProviderPrometheus {
 		t.Fatalf("legacy fixture is not in place: %v", got)
 	}
+	if err := observability.UpdateSignal(observability.SignalSource{
+		ID: legacyID, Kind: observability.SignalLogs, Provider: capability.ProviderPrometheus,
+		Class: observability.SourceApplicationProvider, Scope: capability.ScopeApplication,
+		OwnerApplication: m.Name, Target: observability.RuntimeTarget(project, "workload"),
+		Protocol: "stdout-stderr", Mode: capability.ObservabilityRuntime,
+		Verification: capability.ObservabilityVerifyBackend,
+	}); err != nil {
+		t.Fatal(err)
+	}
 
 	// Reconcile with the metrics policy disabled: this is the path that used to
 	// return before reaching any signal reconciliation.
 	t.Setenv(MetricsEnabledEnv, "false")
-	if err := reconcileManagedRuntimeObservability(m, project); err != nil {
+	if err := reconcileManagedRuntimeObservability(m, project, ""); err != nil {
 		t.Fatal(err)
 	}
 	if got := traceIDs(traceSources(t, m))[legacyID]; got != "" {
@@ -579,7 +588,7 @@ func TestLegacyPrometheusTraceSignalIsReclaimedWithoutMetricsPolicy(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	logged, err := observability.List(observability.SignalLogs, loggedPlacement, []string{m.Name}, true, true)
+	logged, err := observability.List(observability.SignalLogs, loggedPlacement, []string{m.Name}, false, true, true, m.Environment)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -587,7 +596,7 @@ func TestLegacyPrometheusTraceSignalIsReclaimedWithoutMetricsPolicy(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	metrics, err := observability.List(observability.SignalMetrics, metricsPlacement, []string{m.Name}, true, true)
+	metrics, err := observability.List(observability.SignalMetrics, metricsPlacement, []string{m.Name}, false, true, true, m.Environment)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -602,7 +611,23 @@ func TestLegacyPrometheusTraceSignalIsReclaimedWithoutMetricsPolicy(t *testing.T
 	}
 	for _, source := range logged {
 		if source.ID == legacyID {
-			t.Fatalf("metrics-disabled reclaim removed the workload's log signal: %+v", logged)
+			t.Fatalf("legacy Prometheus workload log source survived reconciliation: %+v", logged)
+		}
+	}
+
+	// Re-enabling metrics must recreate only the metrics signal; Prometheus
+	// still cannot produce workload logs.
+	t.Setenv(MetricsEnabledEnv, "true")
+	if err := reconcileManagedRuntimeObservability(m, project, ""); err != nil {
+		t.Fatal(err)
+	}
+	logged, err = observability.List(observability.SignalLogs, loggedPlacement, []string{m.Name}, false, true, true, m.Environment)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, source := range logged {
+		if source.ID == legacyID {
+			t.Fatalf("metrics-enabled reconciliation recreated the invalid Prometheus workload log source: %+v", logged)
 		}
 	}
 }
@@ -618,7 +643,7 @@ func TestWorkloadReceiverTraceSignalsReclaimedWhenTracesDisabled(t *testing.T) {
 		m = WithLogsCollection(m, "application")
 		project := RuntimeProjectName(m)
 		writeTestRuntimeOTLPBinding(t, m, string(capability.ProviderOTelCollector), "https://127.0.0.1:43183", "https://otel-collector:4318")
-		if err := reconcileManagedRuntimeObservability(m, project); err != nil {
+		if err := reconcileManagedRuntimeObservability(m, project, ""); err != nil {
 			t.Fatal(err)
 		}
 		collectorID := fmt.Sprintf("%s:%s", capability.ProviderOTelCollector, project)
@@ -629,19 +654,19 @@ func TestWorkloadReceiverTraceSignalsReclaimedWhenTracesDisabled(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		logged, err := observability.List(observability.SignalLogs, loggedPlacement, []string{m.Name}, true, true)
+		logged, err := observability.List(observability.SignalLogs, loggedPlacement, []string{m.Name}, false, true, true, m.Environment)
 		if err != nil {
 			t.Fatal(err)
 		}
 
 		t.Setenv(TracesEnabledEnv, "false")
-		if err := reconcileManagedRuntimeObservability(m, project); err != nil {
+		if err := reconcileManagedRuntimeObservability(m, project, ""); err != nil {
 			t.Fatal(err)
 		}
 		if got := traceIDs(traceSources(t, m)); got[collectorID] != "" {
 			t.Fatalf("collector trace signal survived disabled trace collection: %v", got)
 		}
-		loggedAfter, err := observability.List(observability.SignalLogs, loggedPlacement, []string{m.Name}, true, true)
+		loggedAfter, err := observability.List(observability.SignalLogs, loggedPlacement, []string{m.Name}, false, true, true, m.Environment)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -652,7 +677,7 @@ func TestWorkloadReceiverTraceSignalsReclaimedWhenTracesDisabled(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		metricsAfter, err := observability.List(observability.SignalMetrics, metricsPlacement, []string{m.Name}, true, true)
+		metricsAfter, err := observability.List(observability.SignalMetrics, metricsPlacement, []string{m.Name}, false, true, true, m.Environment)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -670,7 +695,7 @@ func TestWorkloadReceiverTraceSignalsReclaimedWhenTracesDisabled(t *testing.T) {
 		m := workloadOnlyTraceManifest("trace-policy-ext")
 		project := RuntimeProjectName(m)
 		writeTestRuntimeOTLPBinding(t, m, string(capability.ProviderExternalOTLP), "https://receiver.example.test:43189", "https://receiver.example.test:43189")
-		if err := reconcileManagedRuntimeObservability(m, project); err != nil {
+		if err := reconcileManagedRuntimeObservability(m, project, ""); err != nil {
 			t.Fatal(err)
 		}
 		externalID := fmt.Sprintf("%s:%s", capability.ProviderExternalOTLP, project)
@@ -697,7 +722,7 @@ func TestWorkloadTraceSourceRequiresMaterializedReceiver(t *testing.T) {
 	// source at all, in any receiver-transition state.
 	m := WithWorkloadComponents(New("trace-unbound", "dev", false, false, false), "api")
 	project := RuntimeProjectName(m)
-	if err := reconcileManagedRuntimeObservability(m, project); err != nil {
+	if err := reconcileManagedRuntimeObservability(m, project, ""); err != nil {
 		t.Fatal(err)
 	}
 	if got := traceIDs(traceSources(t, m)); len(got) != 0 {
@@ -709,7 +734,7 @@ func TestWorkloadTraceSourceRequiresMaterializedReceiver(t *testing.T) {
 	// must not disagree while a deployment is in flight.
 	bound := WithOTLPTelemetry(WithWorkloadComponents(New("trace-bound", "dev", false, false, false), "api"), "traces")
 	boundProject := RuntimeProjectName(bound)
-	if err := reconcileManagedRuntimeObservability(bound, boundProject); err != nil {
+	if err := reconcileManagedRuntimeObservability(bound, boundProject, ""); err != nil {
 		t.Fatal(err)
 	}
 	collectorID := fmt.Sprintf("%s:%s", capability.ProviderOTelCollector, boundProject)
@@ -734,7 +759,7 @@ func TestWorkloadTraceSourceRequiresMaterializedReceiver(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := reconcileApplicationMetricsSource(m, project, false, false); err != nil {
+	if err := reconcileApplicationMetricsSource(m, project); err != nil {
 		t.Fatal(err)
 	}
 	if got := traceIDs(traceSources(t, m)); got[legacyID] != "" {
@@ -744,7 +769,7 @@ func TestWorkloadTraceSourceRequiresMaterializedReceiver(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	metrics, err := observability.List(observability.SignalMetrics, metricsPlacement, []string{m.Name}, true, true)
+	metrics, err := observability.List(observability.SignalMetrics, metricsPlacement, []string{m.Name}, false, true, true, m.Environment)
 	if err != nil {
 		t.Fatal(err)
 	}

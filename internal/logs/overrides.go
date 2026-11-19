@@ -107,6 +107,7 @@ func EnsureRuntimeModuleOverrideForModeAt(
 		[]string{m.Name},
 		includeApplicationProviders,
 		includePlatformProviders,
+		m.Environment,
 	)
 	if err != nil {
 		return "", false, err
