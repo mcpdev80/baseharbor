@@ -135,7 +135,7 @@ func TestRegisteredOIDCReplacementRequiresCurrentConsentAndDeliversDestinationMa
 		t.Fatalf("registered OIDC replacement lacked consequence plan: %v", err)
 	}
 	impact := plan.ProviderPlan.Impact
-	if impact.Attention != "Achtung" || impact.ConfirmationsRequired != 2 {
+	if impact.Attention != "Warning" || impact.ConfirmationsRequired != 2 {
 		t.Fatal("unverified login/session continuation lacked current two-stage acknowledgement")
 	}
 	public, _ := json.Marshal(plan)
@@ -222,7 +222,7 @@ func TestManagedToRegisteredIdentityReplacementRequiresConsentAndVerifiesDeliver
 		t.Fatal(err)
 	}
 	impact := plan.ProviderPlan.Impact
-	if impact == nil || impact.Attention != "Achtung" || impact.ConfirmationsRequired != 2 {
+	if impact == nil || impact.Attention != "Warning" || impact.ConfirmationsRequired != 2 {
 		t.Fatal("authority replacement bypassed current consequence plan")
 	}
 	for _, ack := range []*application.ProviderChangeConsent{nil, {PlanID: impact.PlanID, First: true}, {PlanID: "stale", First: true, Second: true}, {PlanID: impact.PlanID, First: true, Second: true}} {
