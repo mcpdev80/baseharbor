@@ -43,8 +43,10 @@ const (
 // security policy. It fails closed: an invalid posture has no rendering, and a
 // policy that cannot be expressed without weakening the posture (a routable
 // literal bind, a key reference that could be mistaken for a secret value) has
-// no rendering either.
-func RenderPersesConfig(policy capability.PersesSecurityPolicy) (string, error) {
+// no rendering either. The serviceAddress is the gateway plan's
+// deployment-scoped backend alias the routes reach (empty omits the
+// statement); it belongs to the plan, never to the security posture.
+func RenderPersesConfig(policy capability.PersesSecurityPolicy, serviceAddress string) (string, error) {
 	if err := capability.ValidatePersesSecurityPolicy(policy); err != nil {
 		return "", err
 	}
@@ -52,7 +54,7 @@ func RenderPersesConfig(policy capability.PersesSecurityPolicy) (string, error) 
 	if bind == "" {
 		bind = "127.0.0.1"
 	}
-	service := strings.TrimSpace(policy.ServiceAddress)
+	service := strings.TrimSpace(serviceAddress)
 	if service != "" {
 		if addr, err := netip.ParseAddr(service); err == nil && !addr.Unmap().IsLoopback() {
 			return "", fmt.Errorf("Perses service address %q is a routable literal: the gateway upstream may only name a service address or loopback", service)
@@ -73,14 +75,20 @@ func RenderPersesConfig(policy capability.PersesSecurityPolicy) (string, error) 
 	b.WriteString("  enable_auth: true\n")
 	fmt.Fprintf(&b, "  readonly: %t\n", policy.ReadOnlyMode)
 	b.WriteString("  encryption_key_file: " + strconv.Quote(PersesEncryptionKeyContainerPath) + "\n")
-	if service := strings.TrimSpace(policy.ServiceAddress); service != "" {
+	if service != "" {
 		// How this surface is reached, stated for the server's own view: the
 		// gateway routes to the backend-network alias. The effective bind
 		// stays the command-line loopback pin, so the process can never
 		// answer on another interface; this key never carries a bind address.
 		b.WriteString("  advertised_address: " + strconv.Quote(service) + "\n")
 	}
-	b.WriteString("  authentication:\n    providers:\n      enable_native: false\n")
+	// fix-7 B2: enable_auth without any provider is refused by server
+	// verification (no login path exists). The native provider is stated
+	// explicitly, enabled: the gateway (mTLS or bearer) is the operator
+	// boundary in front of it; native users live in the encrypted Perses
+	// database (encryption_key_file above), and sign-up stays usable for
+	// the first operator on a loopback-only surface.
+	b.WriteString("  authentication:\n    providers:\n      enable_native: true\n")
 	if len(policy.SecretFileAllowedDirectories) > 0 {
 		b.WriteString("  secret_file_allowed_directories:\n")
 		for _, directory := range sortedUnique(policy.SecretFileAllowedDirectories) {

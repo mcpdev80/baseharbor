@@ -12,11 +12,11 @@ import (
 
 func TestRenderPersesConfigIsDeterministicAndCredentialFree(t *testing.T) {
 	policy := capability.DefaultPersesSecurityPolicy()
-	first, err := RenderPersesConfig(policy)
+	first, err := RenderPersesConfig(policy, "")
 	if err != nil {
 		t.Fatalf("the validated posture must render: %v", err)
 	}
-	second, err := RenderPersesConfig(policy)
+	second, err := RenderPersesConfig(policy, "")
 	if err != nil || first != second {
 		t.Fatalf("the rendering must be deterministic: %v", err)
 	}
@@ -25,7 +25,7 @@ func TestRenderPersesConfigIsDeterministicAndCredentialFree(t *testing.T) {
 		"encryption_key_file: " + strconvQuote(PersesEncryptionKeyContainerPath),
 		"deny_private_networks: true",
 		"disable_local: true",
-		"enable_native: false",
+		"  authentication:\n    providers:\n      enable_native: true",
 	} {
 		if !strings.Contains(first, want) {
 			t.Fatalf("the rendering must state %q:\n%s", want, first)
@@ -41,12 +41,12 @@ func TestRenderPersesConfigIsDeterministicAndCredentialFree(t *testing.T) {
 func TestRenderPersesConfigFailsClosedForInvalidPosture(t *testing.T) {
 	anonymous := capability.DefaultPersesSecurityPolicy()
 	anonymous.AuthenticationEnabled = false
-	if _, err := RenderPersesConfig(anonymous); err == nil {
+	if _, err := RenderPersesConfig(anonymous, ""); err == nil {
 		t.Fatal("an anonymous posture must have no rendering")
 	}
 	keyless := capability.DefaultPersesSecurityPolicy()
 	keyless.EncryptionKeyDeclared = false
-	if _, err := RenderPersesConfig(keyless); err == nil {
+	if _, err := RenderPersesConfig(keyless, ""); err == nil {
 		t.Fatal("a keyless posture must have no rendering")
 	}
 }
@@ -80,9 +80,9 @@ func TestPersesComposeServicesProvenanceFailClosed(t *testing.T) {
 	if err := os.WriteFile(keyPath, make([]byte, 32), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	plan.Policy.EncryptionKeyFile = keyPath
+	plan.EncryptionKeyFile = keyPath
 	SetPersesConfigRenderer(func(_ context.Context, current PersesGatewayPlan) (PersesRenderedConfig, error) {
-		contents, err := RenderPersesConfig(current.Policy)
+		contents, err := RenderPersesConfig(current.Policy, current.ServiceAddress)
 		if err != nil {
 			return PersesRenderedConfig{}, err
 		}
@@ -108,7 +108,7 @@ func TestPersesComposeServicesProvenanceFailClosed(t *testing.T) {
 	// that rewrites the configuration with a shell (or loses it) must never
 	// reach a rendered service definition.
 	drifted := func(_ context.Context, current PersesGatewayPlan) (PersesRenderedConfig, error) {
-		contents, err := RenderPersesConfig(current.Policy)
+		contents, err := RenderPersesConfig(current.Policy, current.ServiceAddress)
 		if err != nil {
 			return PersesRenderedConfig{}, err
 		}
@@ -135,7 +135,7 @@ func TestPersesComposeServicesProvenanceFailClosed(t *testing.T) {
 	}
 	// A renderer that declares a path it never wrote fails closed as well.
 	SetPersesConfigRenderer(func(_ context.Context, current PersesGatewayPlan) (PersesRenderedConfig, error) {
-		contents, err := RenderPersesConfig(current.Policy)
+		contents, err := RenderPersesConfig(current.Policy, current.ServiceAddress)
 		return PersesRenderedConfig{HostPath: filepath.Join(dir, "absent.yaml"), Contents: contents}, err
 	})
 	if _, err := PersesComposeServices(ctx, plan, files, capability.PersesDefaultRelease); err == nil {

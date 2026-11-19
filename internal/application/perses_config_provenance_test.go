@@ -64,7 +64,7 @@ func TestPersesMountedConfigProvenanceAndEffectivePolicy(t *testing.T) {
 	if err != nil {
 		t.Fatalf("derive the effective gateway plan: %v", err)
 	}
-	expected, err := serviceaccess.RenderPersesConfig(plan.Policy)
+	expected, err := serviceaccess.RenderPersesConfig(plan.Policy, plan.ServiceAddress)
 	if err != nil {
 		t.Fatalf("render the expected configuration: %v", err)
 	}
@@ -80,7 +80,7 @@ func TestPersesMountedConfigProvenanceAndEffectivePolicy(t *testing.T) {
 		t.Fatalf("the rendering must reference the encryption key by file only, never inline it:\n%s", contents)
 	}
 	// Determinism: a second rendering of the same policy is byte-identical.
-	second, err := serviceaccess.RenderPersesConfig(plan.Policy)
+	second, err := serviceaccess.RenderPersesConfig(plan.Policy, plan.ServiceAddress)
 	if err != nil || second != expected {
 		t.Fatalf("the rendering must be deterministic: %v", err)
 	}

@@ -151,7 +151,7 @@ func writePersesGatewayComposeServices(b *strings.Builder, m Manifest, files Run
 	// identity check: the record must name exactly this deployment's Perses
 	// service alias, so a copied-in record cannot masquerade.
 	wantService := mPersesServiceAlias(m)
-	if plan.Policy.ServiceAddress != wantService || plan.Spec.Upstream != "http://"+wantService+":"+strconv.Itoa(serviceaccess.PersesUpstreamPort) {
+	if plan.ServiceAddress != wantService || plan.Spec.Upstream != "http://"+wantService+":"+strconv.Itoa(serviceaccess.PersesUpstreamPort) {
 		return errors.New("the persisted Perses gateway plan does not name this deployment's Perses service address: reconcile the deployment")
 	}
 	if !plan.SharedGatewayNetwork {
@@ -220,7 +220,7 @@ func persesComposeInput(files RuntimeFiles, plan serviceaccess.PersesGatewayPlan
 			// materialized. The projection's effective policy is pure
 			// contract state (no manifest-derived fields), so rendering it is
 			// deterministic in the persisted plan alone.
-			contents, err := serviceaccess.RenderPersesConfig(current.Policy)
+			contents, err := serviceaccess.RenderPersesConfig(current.Policy, current.ServiceAddress)
 			if err != nil {
 				return serviceaccess.PersesRenderedConfig{}, err
 			}
@@ -379,8 +379,7 @@ func EnsurePersesManagementUI(ctx context.Context, issuer serviceaccess.Issuer, 
 	// bytes the compose-time drift check re-derives from the persisted plan.
 	// The placeholder rendering below only proves the posture validates.
 	security := capability.DefaultPersesSecurityPolicy()
-	security.ServiceAddress = devaccess.ApplicationAlias(m.Name, serviceaccess.PersesServiceName)
-	if _, err := serviceaccess.RenderPersesConfig(security); err != nil {
+	if _, err := serviceaccess.RenderPersesConfig(security, ""); err != nil {
 		return err
 	}
 	// its container-readable projection here: the rendered configuration
@@ -398,18 +397,32 @@ func EnsurePersesManagementUI(ctx context.Context, issuer serviceaccess.Issuer, 
 	if err != nil {
 		return err
 	}
-	if plan.Policy.ServiceAddress == "" {
+	if plan.ServiceAddress == "" {
 		return errors.New("the Perses gateway plan must state the service address the configuration advertises")
 	}
-	contents, err := serviceaccess.RenderPersesConfig(plan.Policy)
+	// fix-7 B1: the Perses service joins the gateway namespace through
+	// network_mode, which Docker Compose forbids alongside a networks:
+	// entry, so Perses itself registers NO backend-network alias and the
+	// alias can never resolve to a routable Perses address — peers that
+	// address bh-dev-<name>-perses:8080 are refused, because Perses serves
+	// the namespace loopback only. The alias therefore rides the GATEWAY
+	// service (the sole backend-network member of this surface) through
+	// NetworkAliases, which HTTPGatewayComposeService emits under the
+	// FIRST network (http_gateway.go i==0 branch), and the gateway's
+	// upstream names it on that network. Both the spec networks and the
+	// alias list are set HERE (the projection owns the deployment-scoped
+	// compose membership) and persist in the plan record before the
+	// config.yaml is rendered, so the configuration and the compose
+	// rendering derive from one record and stay byte-identical.
+	plan.Spec.Networks = []string{"default"}
+	plan.Spec.NetworkAliases = []string{plan.ServiceAddress}
+	contents, err := serviceaccess.RenderPersesConfig(plan.Policy, plan.ServiceAddress)
 	if err != nil {
 		return err
 	}
 	if err := writeUIRuntimeProjection(filepath.Join(dir, "config.yaml"), []byte(contents)); err != nil {
 		return err
 	}
-	plan.Spec.Networks = []string{"default"}
-	plan.Spec.Upstream = "http://" + security.ServiceAddress + ":" + strconv.Itoa(serviceaccess.PersesUpstreamPort)
 	accessPolicy, err := serviceaccess.Resolve(m.Environment, serviceaccess.PersesGatewayProvider, serviceaccess.AuthenticationMTLS)
 	if err != nil {
 		return err
@@ -422,6 +435,10 @@ func EnsurePersesManagementUI(ctx context.Context, issuer serviceaccess.Issuer, 
 	// Caddyfile it describes exist: the compose rendering reads this record,
 	// so a half-projected deployment never renders a service that mounts
 	// missing files.
+	// The key projection this deployment materialized is part of the plan
+	// record the pure compose rendering reads back (reference path only,
+	// never a value).
+	plan.EncryptionKeyFile = filepath.Join(PersesEncryptionKeyProjection(files.Dir), "encryption-key")
 	if err := writePersesGatewayPlanState(stateDir, plan); err != nil {
 		return err
 	}
@@ -468,7 +485,7 @@ func PersesManagementUIPath(files RuntimeFiles) string {
 // the relative bind sources point.
 func persesRenderingProver(files RuntimeFiles) serviceaccess.PersesConfigRenderer {
 	return func(_ context.Context, current serviceaccess.PersesGatewayPlan) (serviceaccess.PersesRenderedConfig, error) {
-		contents, err := serviceaccess.RenderPersesConfig(current.Policy)
+		contents, err := serviceaccess.RenderPersesConfig(current.Policy, current.ServiceAddress)
 		if err != nil {
 			return serviceaccess.PersesRenderedConfig{}, err
 		}

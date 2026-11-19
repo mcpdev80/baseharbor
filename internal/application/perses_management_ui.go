@@ -318,6 +318,12 @@ func PersesGatewayPlanFor(m Manifest, policy capability.PersesSecurityPolicy) (s
 	if raw := strings.TrimSpace(m.Name); raw != "" {
 		upstreamHost = devaccess.ApplicationAlias(m.Name, serviceaccess.PersesServiceName)
 	}
+	// fix-7 B1 variant A: the alias registration rides the gateway service
+	// (the Perses service itself joins the namespace through network_mode,
+	// which Docker Compose forbids alongside networks). The contract-level
+	// derivation stays deployment-free; the realization adds the compose
+	// membership (EnsurePersesManagementUI), and ServerNames above already
+	// carries the alias for the certificate identities.
 	requirements := serviceaccess.PersesGatewayRequirements{
 		Upstream:       "http://" + upstreamHost + ":" + strconv.Itoa(serviceaccess.PersesUpstreamPort),
 		Policy:         effective,
@@ -325,10 +331,11 @@ func PersesGatewayPlanFor(m Manifest, policy capability.PersesSecurityPolicy) (s
 		AuthTokenFile:  authentication.AuthTokenFile,
 		ServerNames:    []string{upstreamHost, serviceaccess.PersesServiceName},
 	}
-	// The effective policy carries how the surface is reached (the backend
-	// alias) so the rendered configuration and the persisted plan state it
-	// once, deterministically.
-	requirements.Policy.ServiceAddress = upstreamHost
+	// The plan carrier (serviceaccess, NOT the security posture) states how
+	// the surface is reached — the compose project's backend-network alias
+	// for the Perses service — so the rendered configuration and the
+	// persisted record carry it once, deterministically, deployment-scoped.
+	requirements.ServiceAddress = upstreamHost
 	plan, err := serviceaccess.BuildPersesGateway(requirements)
 	if err != nil {
 		return serviceaccess.PersesGatewayPlan{}, err

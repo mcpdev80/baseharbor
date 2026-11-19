@@ -137,7 +137,7 @@ func TestPersesProductionComposeMountsKeyAndConfig(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	expectation, err := serviceaccess.RenderPersesConfig(plan.Policy)
+	expectation, err := serviceaccess.RenderPersesConfig(plan.Policy, plan.ServiceAddress)
 	if err != nil {
 		t.Fatal(err)
 	}

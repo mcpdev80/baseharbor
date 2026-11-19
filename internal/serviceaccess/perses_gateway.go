@@ -92,6 +92,12 @@ type PersesGatewayRequirements struct {
 	// Target is a cluster. Upstream denies it only when it is named, so
 	// BaseHarbor names it.
 	KubernetesServiceAddress string
+	// ServiceAddress is the deployment-scoped backend address the gateway
+	// routes to for this surface (the compose project's Perses service alias
+	// in the shared-namespace topology). Realization state, not posture:
+	// BuildPersesGateway copies it onto the plan; the empty form (pure
+	// posture projections) keeps the configuration statement out.
+	ServiceAddress string
 }
 
 // PersesGatewayPlan is the validated outcome: the hardened HTTP gateway spec,
@@ -120,6 +126,16 @@ type PersesGatewayPlan struct {
 	// loopback upstream of BuildPersesGateway becomes reachable without ever
 	// publishing the Perses port on the host.
 	SharedGatewayNetwork bool
+	// ServiceAddress is the deployment-scoped backend-network address this
+	// gateway routes to (the compose project's Perses service alias in the
+	// shared-namespace topology). It is realization state, NOT posture, so it
+	// lives on the plan in this package — the capability security policy is
+	// the accepted 0428-084 contract surface and stays deployment-free.
+	ServiceAddress string
+	// EncryptionKeyFile is the host path the realization materializes the
+	// datasource encryption key at, container-readable. A reference only,
+	// never a value; an empty path fails rendering closed.
+	EncryptionKeyFile string
 }
 
 // BuildPersesGateway derives the protected access configuration for one Perses
@@ -190,22 +206,43 @@ func BuildPersesGateway(requirements PersesGatewayRequirements) (PersesGatewayPl
 	// gateway routes to instead. Keeping the two values distinct (and derived
 	// from one plan) is what lets the compose rendering prove the mounted
 	// file byte-for-byte against persisted state alone.
-	effectivePolicy := requirements.Policy
-	if sharedNetwork && effectivePolicy.ServiceAddress == "" {
-		effectivePolicy.ServiceAddress = upstreamHost
-		requirements.Policy = effectivePolicy
-	}
 
 	plan := PersesGatewayPlan{
+		ServiceAddress:        strings.TrimSpace(requirements.ServiceAddress),
 		Policy:                requirements.Policy,
 		DeniedPaths:           denied,
 		RequireClientIdentity: authentication == AuthenticationMTLS,
 		UpstreamBindAddress:   bindAddress,
 		SharedGatewayNetwork:  sharedNetwork,
 	}
+	if sharedNetwork {
+		// The shared-namespace form always pins the namespace loopback on the
+		// command line; the configuration statement names the service address
+		// the gateway routes to instead. Keeping the two values distinct (and
+		// derived from one plan) is what lets the compose rendering prove the
+		// mounted file byte-for-byte against persisted state alone.
+		plan.ServiceAddress = upstreamHost
+	}
 	spec := HTTPGatewaySpec{
-		ServiceName:            PersesGatewayServiceName,
-		Upstream:               upstream,
+		ServiceName: PersesGatewayServiceName,
+		Upstream:    upstream,
+		// fix-7 B1 (variant A): the Perses service definition carries
+		// network_mode (Docker Compose forbids network_mode AND networks on
+		// one service), so it registers no backend alias of its own. The
+		// alias the gateway routes to is registered on the gateway service
+		// instead, in the first network entry it joins; the shared-namespace
+		// topology stays decided by the non-loopback upstream form above —
+		// the upstream is never rewritten to a loopback literal.
+		// fix-7 B1 (variant A): the Perses service definition carries
+		// network_mode (Docker Compose forbids network_mode AND networks on
+		// one service), so it registers no backend alias of its own. The
+		// alias the gateway routes to is registered on the gateway service
+		// instead — HTTPGatewayComposeService emits it under the FIRST
+		// network entry — and it exists only in the shared form, where the
+		// upstream names a routable service address rather than a loopback
+		// literal. The namespace-local form reaches the peer inside its own
+		// namespace and needs no alias.
+		NetworkAliases:         persesGatewayNetworkAliases(sharedNetwork, upstreamHost),
 		ContainerPort:          8443,
 		PublishedPortEnv:       PersesHostPortEnv,
 		CertificateNames:       requirements.ServerNames,
@@ -217,6 +254,16 @@ func BuildPersesGateway(requirements PersesGatewayRequirements) (PersesGatewayPl
 	}
 	plan.Spec = spec
 	return plan, nil
+}
+
+// persesGatewayNetworkAliases is the fix-7 B1 alias rule: the shared form
+// registers the upstream's host (the deployment's Perses service alias) on the
+// gateway service's first network; the namespace-local form registers none.
+func persesGatewayNetworkAliases(sharedNetwork bool, upstreamHost string) []string {
+	if !sharedNetwork {
+		return nil
+	}
+	return []string{upstreamHost}
 }
 
 func normalizedPersesUpstream(raw string) (string, error) {

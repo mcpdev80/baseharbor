@@ -252,9 +252,9 @@ func registerPersesRendererForTest(t *testing.T, plan *PersesGatewayPlan) func()
 	if err := os.WriteFile(keyPath, make([]byte, 32), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	plan.Policy.EncryptionKeyFile = keyPath
+	plan.EncryptionKeyFile = keyPath
 	SetPersesConfigRenderer(func(_ context.Context, current PersesGatewayPlan) (PersesRenderedConfig, error) {
-		contents, err := RenderPersesConfig(current.Policy)
+		contents, err := RenderPersesConfig(current.Policy, current.ServiceAddress)
 		if err != nil {
 			return PersesRenderedConfig{}, err
 		}

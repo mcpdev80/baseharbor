@@ -27,6 +27,14 @@ import (
 // materialized encryption-key projection, and a persisted plan record that
 // still validates.
 
+// serviceAddressOf is the deployment-scoped backend address the gateway
+// routes to. It lives on the plan (never on the security posture); the
+// non-shared topology renders the command-line bind instead and states no
+// address in the configuration.
+func serviceAddressOf(plan PersesGatewayPlan) string {
+	return plan.ServiceAddress
+}
+
 // PersesRenderedConfig is one rendered Perses configuration file plus the host
 // path the realization must materialize it at. Contents carry no credential
 // material: they reference files only.
@@ -137,6 +145,8 @@ type PersesGatewayPlanRecord struct {
 	ProxyDenyReason       string                          `json:"proxy_deny_reason,omitempty"`
 	UpstreamBindAddress   string                          `json:"upstream_bind_address"`
 	SharedGatewayNetwork  bool                            `json:"shared_gateway_network"`
+	ServiceAddress        string                          `json:"service_address,omitempty"`
+	EncryptionKeyFile     string                          `json:"encryption_key_file,omitempty"`
 }
 
 // PersistPersesGatewayPlan writes the credential-free plan record into the
@@ -151,6 +161,8 @@ func PersistPersesGatewayPlan(stateDir string, plan PersesGatewayPlan) error {
 		ProxyDenyReason:       plan.ProxyDenyReason,
 		UpstreamBindAddress:   plan.UpstreamBindAddress,
 		SharedGatewayNetwork:  plan.SharedGatewayNetwork,
+		ServiceAddress:        plan.ServiceAddress,
+		EncryptionKeyFile:     plan.EncryptionKeyFile,
 	}
 	// The bearer token path is resolution-time state, not plan truth, and a
 	// path that outlives its file invites a substitution; drop it (never a
@@ -227,6 +239,8 @@ func ReadPersesGatewayPlan(stateDir string) (PersesGatewayPlan, error) {
 		ProxyDenyReason:       record.ProxyDenyReason,
 		UpstreamBindAddress:   record.UpstreamBindAddress,
 		SharedGatewayNetwork:  record.SharedGatewayNetwork,
+		ServiceAddress:        record.ServiceAddress,
+		EncryptionKeyFile:     record.EncryptionKeyFile,
 	}, nil
 }
 
@@ -303,7 +317,7 @@ func RenderPersesCompose(ctx context.Context, input PersesComposeInput) (string,
 // (the production composition uses RenderPersesCompose with an explicit
 // projection field).
 func PersesComposeServices(ctx context.Context, plan PersesGatewayPlan, files HTTPGatewayFiles, release capability.PersesRelease) (string, error) {
-	return persesComposeServices(ctx, plan, files, release, plan.Policy.EncryptionKeyFile, "", nil, registeredPersesConfigRenderer())
+	return persesComposeServices(ctx, plan, files, release, plan.EncryptionKeyFile, "", nil, registeredPersesConfigRenderer())
 }
 
 func persesComposeServices(ctx context.Context, plan PersesGatewayPlan, files HTTPGatewayFiles, release capability.PersesRelease, keyProjection, keyComposeBind string, mounts []string, renderer PersesConfigRenderer) (string, error) {
@@ -323,7 +337,7 @@ func persesComposeServices(ctx context.Context, plan PersesGatewayPlan, files HT
 	if err != nil {
 		return "", err
 	}
-	if expected, err := RenderPersesConfig(plan.Policy); err != nil {
+	if expected, err := RenderPersesConfig(plan.Policy, serviceAddressOf(plan)); err != nil {
 		return "", err
 	} else if configured.Contents != expected {
 		return "", fmt.Errorf("the registered Perses configuration renderer did not produce the deterministic rendering of the validated policy for %s; refusing to mount it", configured.HostPath)
@@ -350,18 +364,20 @@ func persesComposeServices(ctx context.Context, plan PersesGatewayPlan, files HT
 		return "", errors.New("Perses service rendering requires the bind address the plan verifies")
 	}
 	if plan.SharedGatewayNetwork {
-		// The loopback bind is only meaningful inside the namespace the gateway
-		// joins, and it is what keeps the Perses port unforwardable on the
-		// host. Deliberately no `ports:` for Perses; the gateway service joins
-		// the deployment backend network, so the gateway hostname stays
-		// resolvable to backend peers.
+		// The Perses service joins the gateway container's network namespace
+		// through network_mode. Docker Compose forbids network_mode and
+		// networks on one service, so this branch emits network_mode
+		// exclusively and never a networks: block — see fix-7 B1. Two
+		// consequences the renderers must honor together: (a) Perses is NOT
+		// registered as a backend-network alias of its own container, so the
+		// gateway upstream cannot address it by the deployment alias — the
+		// upstream is rewritten to the namespace loopback below, which the
+		// shared namespace always reaches; (b) Perses still needs its own
+		// backend alias for peer services (metric scrape, provisioning
+		// callbacks), which the gateway's alias list carries instead, so the
+		// alias exists on a network the gateway joins. The loopback bind on
+		// the command line keeps the Perses port unforwardable on the host.
 		fmt.Fprintf(&b, "    network_mode: %s\n", strconv.Quote("service:"+gatewayName))
-		if len(plan.Spec.Networks) > 0 {
-			b.WriteString("    networks:\n")
-			for _, network := range plan.Spec.Networks {
-				fmt.Fprintf(&b, "      %s: {}\n", network)
-			}
-		}
 	} else {
 		// Namespace-local loopback: no published port, no expose, no network —
 		// nothing can route to Perses from outside its own namespace.
@@ -448,7 +464,7 @@ func validatePersesRenderedConfig(plan PersesGatewayPlan, configured PersesRende
 	if string(contents) != configured.Contents {
 		return fmt.Errorf("Perses configuration at %s does not match the renderer output; the mounted file must be the deterministic rendering", configured.HostPath)
 	}
-	if expected, err := RenderPersesConfig(plan.Policy); err != nil {
+	if expected, err := RenderPersesConfig(plan.Policy, serviceAddressOf(plan)); err != nil {
 		return err
 	} else if string(contents) != expected {
 		return fmt.Errorf("Perses configuration at %s is not the deterministic rendering of the validated policy", configured.HostPath)
