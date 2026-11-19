@@ -108,6 +108,26 @@ func TestWorkspaceSourceModelWritesRequireUpdatePermission(t *testing.T) {
 	if err != nil || len(after.Sources) != 3 {
 		t.Fatalf("editor mutation was not persisted: %#v %v", after, err)
 	}
+	checkout := t.TempDir()
+	editor := ctxFor("editor")
+	if err := appWorkspacePathCommand().Run(editor, []string{"backend", checkout, "--manifest", manifest}, &out, &errOut); err != nil {
+		t.Fatalf("editor could not update repository checkout mapping: %v", err)
+	}
+	mapping, _, err := development.LoadWorkspaceMapping(manifest, "shop")
+	if err != nil || mapping.Sources["backend"] != checkout {
+		t.Fatalf("editor mapping mutation was not persisted: %#v %v", mapping, err)
+	}
+	updatedLocal := filepath.Join(root, "new-legacy")
+	if err := os.MkdirAll(updatedLocal, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := appWorkspacePathCommand().Run(editor, []string{"legacy", updatedLocal, "--manifest", manifest}, &out, &errOut); err != nil {
+		t.Fatalf("editor could not update local source path: %v", err)
+	}
+	after, _, err = development.LoadSourceModel(manifest)
+	if err != nil || after.Sources[1].Path != updatedLocal {
+		t.Fatalf("editor local source mutation was not persisted: %#v %v", after, err)
+	}
 }
 
 func TestWorkspaceInitAcceptsLocalDirectorySource(t *testing.T) {
