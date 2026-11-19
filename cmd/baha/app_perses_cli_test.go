@@ -184,7 +184,7 @@ func persesProbeApp(t *testing.T, ctx context.Context, perses bool) (resolvedApp
 	if err := os.MkdirAll(files.Dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	canonical, err := application.RuntimeComposeYAMLForProject(resolved.Manifest, files.ResourceProject)
+	canonical, err := application.RuntimeComposeYAMLForProject(resolved.Manifest, files)
 	if err != nil {
 		t.Fatal(err)
 	}
