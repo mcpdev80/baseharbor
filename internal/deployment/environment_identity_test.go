@@ -172,6 +172,99 @@ func TestGetEnvironmentRejectsInvalidTargetOrName(t *testing.T) {
 	}
 }
 
+func TestEnvironmentPathNamesRejectTraversalBeforeAccess(t *testing.T) {
+	t.Run("get rejects existing traversed record", func(t *testing.T) {
+		root := t.TempDir()
+		t.Setenv("BASEHARBOR_STATE_DIR", root)
+		outsidePath := writeTraversedEnvironmentRecord(t, root)
+		before, err := os.ReadFile(outsidePath)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if _, err := GetEnvironment("target-a", "../outside"); err == nil {
+			t.Fatal("GetEnvironment accepted a traversing environment name")
+		}
+		after, err := os.ReadFile(outsidePath)
+		if err != nil {
+			t.Fatalf("traversed record was removed: %v", err)
+		}
+		if string(after) != string(before) {
+			t.Fatal("traversed record was modified")
+		}
+	})
+
+	t.Run("rename rejects traversed old name before reading it", func(t *testing.T) {
+		root := t.TempDir()
+		t.Setenv("BASEHARBOR_STATE_DIR", root)
+		outsidePath := writeTraversedEnvironmentRecord(t, root)
+		before, err := os.ReadFile(outsidePath)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if _, err := RenameEnvironment("target-a", "../outside", "safe"); err == nil {
+			t.Fatal("RenameEnvironment accepted a traversing old name")
+		}
+		after, err := os.ReadFile(outsidePath)
+		if err != nil {
+			t.Fatalf("traversed source record was removed: %v", err)
+		}
+		if string(after) != string(before) {
+			t.Fatal("traversed source record was modified")
+		}
+	})
+
+	t.Run("rename rejects traversed new name before creating it", func(t *testing.T) {
+		root := t.TempDir()
+		t.Setenv("BASEHARBOR_STATE_DIR", root)
+		original, err := GetEnvironment("target-a", "prod")
+		if err != nil {
+			t.Fatal(err)
+		}
+		outsidePath := filepath.Join(root, "targets", "target-a", ".baseharbor", "outside", environmentRecordFile)
+		outsideDir := filepath.Dir(outsidePath)
+
+		if _, err := RenameEnvironment("target-a", "prod", "../outside"); err == nil {
+			t.Fatal("RenameEnvironment accepted a traversing new name")
+		}
+		if _, err := os.Stat(outsideDir); !os.IsNotExist(err) {
+			t.Fatalf("traversed destination directory was created: %v", err)
+		}
+		if _, err := os.Stat(outsidePath); !os.IsNotExist(err) {
+			t.Fatalf("traversed destination was created: %v", err)
+		}
+		after, err := GetEnvironment("target-a", "prod")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if after.Identity != original.Identity {
+			t.Fatalf("source identity changed after rejected rename: %q != %q", after.Identity, original.Identity)
+		}
+	})
+}
+
+func writeTraversedEnvironmentRecord(t *testing.T, root string) string {
+	t.Helper()
+	identity, err := environment.NewID()
+	if err != nil {
+		t.Fatal(err)
+	}
+	record := EnvironmentRecord{Target: "target-a", Name: "../outside", Identity: identity}
+	data, err := json.Marshal(record)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "targets", "target-a", ".baseharbor", "outside", environmentRecordFile)
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
 // TestEnvironmentRecordSerializesNameAndIdentitySeparately proves the two core
 // contract fields — Name (mutable selector) and Identity (durable UUID) — are
 // written to their own distinct json fields. A previous regression wrote the

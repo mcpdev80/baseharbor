@@ -53,8 +53,8 @@ func environmentStateRoot(target, environmentName string) (string, string, error
 		return "", "", err
 	}
 	name := strings.TrimSpace(environmentName)
-	if name == "" {
-		return "", "", fmt.Errorf("environment name is empty")
+	if err := environment.ValidateName(name); err != nil {
+		return "", "", fmt.Errorf("invalid environment name: %w", err)
 	}
 	targetRoot, err := TargetStateRoot(target)
 	if err != nil {
@@ -105,6 +105,9 @@ func readEnvironmentRecord(path, target, environmentName string) (EnvironmentRec
 	}
 	if strings.TrimSpace(record.Name) == "" {
 		return EnvironmentRecord{}, fmt.Errorf("environment identity at %q carries an empty name", path)
+	}
+	if err := environment.ValidateName(record.Name); err != nil {
+		return EnvironmentRecord{}, fmt.Errorf("environment identity at %q carries an invalid name %q: %w", path, record.Name, err)
 	}
 	// Bind-check: the record must name exactly the (target, environment) its
 	// path declares. A valid record copied or renamed under another path keeps
