@@ -68,7 +68,10 @@ func TestApplicationClassLogSourceSurvivesManagedReconcile(t *testing.T) {
 	}
 
 	placement := capability.ProviderPlacement{Scope: capability.ScopeApplication, Ownership: capability.OwnershipBaseHarbor}
-	// The workload signal exists exactly once after repeated writes.
+	// The workload signal exists exactly once after repeated writes. Its ID
+	// carries the service dimension (card 0428-122 correction round): this
+	// deployment declares no explicit workload components, so its single
+	// service is the canonical "workload" one.
 	sources, err := logs.ListWorkloadLogSources(placement, m)
 	if err != nil {
 		t.Fatal(err)
@@ -165,9 +168,11 @@ func TestApplicationClassLogSourceDisabledPolicyReclaims(t *testing.T) {
 	if err := logs.ReconcileApplicationLogSource(m, project, []string{"api"}); err != nil {
 		t.Fatal(err)
 	}
-	// The ID is the workload identity: a second reconcile that resolves a
-	// different service retargets the SAME signal instead of accumulating a
-	// second entry.
+	// The ID carries the service dimension: a reconcile that resolves a
+	// different service registers that service's own signal, and the boundary
+	// is the active service set, so the previously registered entry is
+	// reclaimed instead of lingering as a stale key (card 0428-122 correction
+	// round; the multi-service case lives in appclass_log_writer_identity_test.go).
 	if err := logs.ReconcileApplicationLogSource(m, project, []string{"worker"}); err != nil {
 		t.Fatal(err)
 	}
@@ -176,7 +181,7 @@ func TestApplicationClassLogSourceDisabledPolicyReclaims(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(sources) != 1 {
-		t.Fatalf("application-class log signals = %#v, want exactly one after a re-target", sources)
+		t.Fatalf("application-class log signals = %#v, want exactly the newly active service after a reconcile", sources)
 	}
 	// The prune boundary equals the write boundary: a nil keep set on the
 	// application/environment identity empties exactly this deployment's

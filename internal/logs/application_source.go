@@ -22,12 +22,14 @@ import (
 // provider streams to Loki this way).
 const applicationLogProtocol = "stdout-stderr"
 
-// applicationLogServiceName is the service token of the workload identity
-// class-application log signals carry in their registry ID. The concrete
-// workload service is part of the collector's stream labels, not of the
-// reconciliation identity: one deployment owns exactly one workload log
-// signal set, named by the project/service target it registers.
-const applicationLogServiceName = "workload"
+// applicationLogCanonicalService is the fallback service token of a
+// class-application log signal whose caller names no concrete workload
+// service. It is the one entry the registry holds for the bare workload
+// identity - never a stand-in for the deployment's services: the established
+// runtime log identity keeps the service dimension in the ID, so each
+// workload service of an application/environment is its own source
+// (docs/architecture/runtime-log-source-contract.md, card 0428-122).
+const applicationLogCanonicalService = "workload"
 
 // validateApplicationLogSource is the single identity contract every class
 // application log registration shares: the caller describes one concrete
@@ -48,23 +50,22 @@ func validateApplicationLogSource(m application.Manifest, source LogSource) erro
 	return nil
 }
 
-// applicationLogSource builds the class-application log signal for one
-// workload service of a deployment and validates it against the registry
-// contract.
+// applicationLogSource builds the class-application log signal of one
+// concrete workload service of a deployment and validates it against the
+// registry contract. The service dimension belongs in the ID: two services of
+// the same application/environment, class and provider are two distinguishable
+// sources, exactly as the runtime log source contract documents (card
+// 0428-122 correction round).
 func applicationLogSource(m application.Manifest, project, service string) (observability.SignalSource, error) {
 	service = strings.TrimSpace(service)
 	if service == "" {
-		service = applicationLogServiceName
+		service = applicationLogCanonicalService
 	}
 	if strings.TrimSpace(project) == "" {
 		return observability.SignalSource{}, fmt.Errorf("application log source %q requires its runtime project", service)
 	}
-	// The ID names the workload identity ("workload"), never the concrete
-	// service, so the registry holds exactly one class-application log signal
-	// per application/environment. The Target carries the caller's concrete
-	// service, which is what the collector labels the stream with.
 	source := observability.SignalSource{
-		ID:                 observability.ApplicationLogSourceID(m.Name, m.Environment, applicationLogServiceName),
+		ID:                 observability.ApplicationLogSourceID(m.Name, m.Environment, service),
 		Kind:               observability.SignalLogs,
 		Provider:           capability.ProviderLoki,
 		Class:              observability.SourceApplication,
@@ -82,10 +83,33 @@ func applicationLogSource(m application.Manifest, project, service string) (obse
 	return source, nil
 }
 
+// applicationLogSourceSet is the writer-side of the service-carrying identity:
+// it turns the caller's service names into the desired class-application log
+// signals of this deployment, without duplicates and in the order the caller
+// named them. An empty or blank service list keeps the documented behaviour of
+// the bare workload identity: exactly the canonical "workload" entry.
+func applicationLogSourceSet(m application.Manifest, project string, services []string) ([]observability.SignalSource, error) {
+	names := deduplicateServiceNames(services)
+	if len(names) == 0 {
+		names = []string{applicationLogCanonicalService}
+	}
+	desired := make([]observability.SignalSource, 0, len(names))
+	for _, service := range names {
+		source, err := applicationLogSource(m, project, service)
+		if err != nil {
+			return nil, err
+		}
+		desired = append(desired, source)
+	}
+	return desired, nil
+}
+
 // applicationLogBoundary is the local mirror of observability.ApplicationLogBoundary
-// for this package's writers; it exists so ReconcileWorkloadLogSource can be
-// called with its own (m, project) arguments without importing a second
-// predicate helper.
+// for this package's writers: the reconciliation boundary of the class-
+// application log signals of one application/environment. Every writer of this
+// class - the whole-set reconcile, the per-service Bind registration and the
+// render-time reconciliation in internal/application - goes through it, so no
+// call site re-derives its own predicate over the registry (card 0428-122).
 func applicationLogBoundary(m application.Manifest) func(observability.SignalSource) bool {
 	return observability.ApplicationLogBoundary(m.Name, m.Environment)
 }
@@ -100,12 +124,15 @@ func applicationLogBoundary(m application.Manifest) func(observability.SignalSou
 //
 // The writer is transport-neutral: both the render-time reconciliation in
 // internal/application (Docker syslog and Podman journald alike) and the Loki
-// driver Bind path land here. The registry identity is the workload token:
-// exactly one class-application log signal per application/environment, whose
-// Target names the resolved stream (the caller's first service, else the
-// canonical workload token). A disabled deployment policy reclaims every
-// signal of the application/environment boundary: the registry never keeps a
-// source the deployment stopped collecting.
+// driver Bind path land here. The registry identity is the workload service
+// identity: one class-application log signal per application/environment AND
+// service, whose ID and Target both name that service. The reconciliation
+// boundary is the application/environment class space, so the desired set the
+// caller passes registers the ACTUALLY active services and reclaim removes the
+// entries of services that are no longer desired - stale keys are never merely
+// appended to, and newly appearing services are never swallowed. A disabled
+// deployment policy reclaims every signal of the boundary: the registry never
+// keeps a source the deployment stopped collecting.
 func ReconcileApplicationLogSource(m application.Manifest, project string, services []string) error {
 	policy, err := application.LogsPolicy(m)
 	if err != nil {
@@ -113,26 +140,35 @@ func ReconcileApplicationLogSource(m application.Manifest, project string, servi
 	}
 	desired := []observability.SignalSource{}
 	if policy.Enabled && policy.Collect[application.LogsSourceApplication] {
-		// An enabled policy always writes exactly one signal: the ID names
-		// the workload identity, the Target the resolved stream (first named
-		// service, else the canonical workload token). Repeated reconciles
-		// replace, never accumulate.
-		source, err := applicationLogSource(m, project, firstNamedService(services))
+		// An enabled policy writes exactly the desired set: one signal per
+		// distinct service the caller names (the canonical workload entry when
+		// it names none). Repeated reconciles replace, never accumulate.
+		desired, err = applicationLogSourceSet(m, project, services)
 		if err != nil {
 			return err
 		}
-		desired = append(desired, source)
 	}
 	return observability.ReconcileMatching(applicationLogBoundary(m), desired)
 }
 
-func firstNamedService(services []string) string {
-	for _, candidate := range services {
-		if candidate = strings.TrimSpace(candidate); candidate != "" {
-			return candidate
+// deduplicateServiceNames keeps the first occurrence of every non-blank
+// service name, trimmed. Repeated renders or repeated Bind calls for the same
+// service must not produce duplicate desired entries.
+func deduplicateServiceNames(services []string) []string {
+	seen := make(map[string]struct{}, len(services))
+	out := make([]string, 0, len(services))
+	for _, service := range services {
+		service = strings.TrimSpace(service)
+		if service == "" {
+			continue
 		}
+		if _, ok := seen[service]; ok {
+			continue
+		}
+		seen[service] = struct{}{}
+		out = append(out, service)
 	}
-	return applicationLogServiceName
+	return out
 }
 
 // ListWorkloadLogSources is the policy-aware listing boundary for class
@@ -150,20 +186,24 @@ func ListWorkloadLogSources(placement capability.ProviderPlacement, m applicatio
 }
 
 // ConvergeManagedLogsForReconcile is the collector-side entry of the
-// application-class log writer. The render-time writer lives in
-// internal/application, where the project identity is canonical; this entry
-// serves the callers that own a registration of their own - the Loki driver
-// Bind path lands in ReconcileWorkloadLogSource below.
+// application-class log writer for a deployment whose workload services the
+// caller does not enumerate: it registers the canonical workload identity.
+// Callers that know the deployment's services use ReconcileApplicationLogSource
+// with that set, which is what the render-time reconciliation in
+// internal/application does.
 func ConvergeManagedLogsForReconcile(m application.Manifest, project string) error {
-	return ReconcileApplicationLogSource(m, project, []string{applicationLogServiceName})
+	return ReconcileApplicationLogSource(m, project, nil)
 }
 
-// ReconcileWorkloadLogSource registers one workload service's class-
+// ReconcileWorkloadLogSource registers exactly one workload service's class-
 // application log signal - the same identity ReconcileApplicationLogSource
 // writes, reached directly by the Loki driver Bind path, which binds one
-// concrete service at a time. An enabled policy writes exactly one signal per
-// application/environment; a disabled policy fails closed here because reclaim
-// is the reconciliation entry's job, not the bind path's.
+// concrete service at a time. It reconciles only its own ID: every other
+// class-application source of this application/environment keeps its entry, so
+// binding a second service never overwrites the first one's signal. An
+// enabled policy writes exactly one signal per service; a disabled policy
+// fails closed here because reclaim is the reconciliation entry's job, not the
+// bind path's.
 func ReconcileWorkloadLogSource(m application.Manifest, project, service string) error {
 	policy, err := application.LogsPolicy(m)
 	if err != nil {
@@ -176,5 +216,12 @@ func ReconcileWorkloadLogSource(m application.Manifest, project, service string)
 	if err != nil {
 		return err
 	}
-	return observability.ReconcileMatching(applicationLogBoundary(m), []observability.SignalSource{source})
+	// The Bind path owns one service, so it reconciles exactly one ID: the
+	// predicate selects that entry inside the application/environment class
+	// space and leaves every sibling service's source in place. Replacing the
+	// whole space here is what overwrote the first service when a second one
+	// was bound (card 0428-122 correction round).
+	return observability.ReconcileMatching(func(existing observability.SignalSource) bool {
+		return applicationLogBoundary(m)(existing) && existing.ID == source.ID
+	}, []observability.SignalSource{source})
 }

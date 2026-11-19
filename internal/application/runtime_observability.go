@@ -79,8 +79,21 @@ func ReconcileManagedRuntimeObservability(m Manifest, project string) error {
 	return reconcileManagedRuntimeObservability(m, project)
 }
 
-// reconcileApplicationLogSource writes the class-application log signal of
-// this deployment's workload identity into the shared observability registry.
+// selectedWorkloadServiceNames is the ACTUALLY active workload service set of
+// this deployment: the services its manifest declares, and the single
+// canonical workload service where the manifest declares none. It mirrors the
+// selection MaterializeWorkload performs over the Compose document, so the
+// render-time identity never depends on a checkout being present.
+func selectedWorkloadServiceNames(m Manifest) ([]string, error) {
+	declared := WorkloadComponentNames(m)
+	if len(declared) == 0 {
+		return []string{"workload"}, nil
+	}
+	return declared, nil
+}
+
+// reconcileApplicationLogSource writes the class-application log signals of
+// this deployment's workload services into the shared observability registry.
 // The collector has always labelled the workload's stream
 // baseharbor_source_class="application" (internal/logs/render.go, both the
 // syslog listener and the journald source), and #1680's reclaim proved no
@@ -88,36 +101,59 @@ func ReconcileManagedRuntimeObservability(m Manifest, project string) error {
 // on a log signal, so the documented normalized class existed only in the
 // contract and every application-class listing stayed silently empty
 // (card 0428-122). This is the render-time writer for BOTH transports.
+//
+// The service dimension is part of the identity: each workload service of the
+// deployment gets its own source, and the desired set is the ACTUALLY active
+// service set this render resolved. Services that are no longer in it lose
+// exactly their own entry, so a repeated render neither accumulates stale keys
+// nor swallows a service that appeared in the meantime.
 func reconcileApplicationLogSource(m Manifest, project string) error {
 	policy, err := LogsPolicy(m)
 	if err != nil {
 		return err
 	}
-	desired := []observability.SignalSource{}
-	if policy.Enabled && policy.Collect[LogsSourceApplication] {
-		// The render-time boundary names the workload identity itself, so the
-		// ID service token and the Target service token agree on "workload":
-		// one signal per application/environment, never a service-dependent
-		// drift between registry and collector.
+	if !policy.Enabled || !policy.Collect[LogsSourceApplication] {
+		return observability.ReconcileMatching(observability.ApplicationLogBoundary(m.Name, m.Environment), nil)
+	}
+	desired, err := selectedApplicationLogSources(m, project)
+	if err != nil {
+		return err
+	}
+	return observability.ReconcileMatching(observability.ApplicationLogBoundary(m.Name, m.Environment), desired)
+}
+
+// selectedApplicationLogSources builds the desired class-application log
+// signals of this deployment from the workload services its manifest
+// declares. The identity (ID, Target, provider, protocol) is the one the
+// collector and the driver Bind path use, assembled here so the render-time
+// writer keeps this package's service selection while the log writer owns the
+// identity contract.
+func selectedApplicationLogSources(m Manifest, project string) ([]observability.SignalSource, error) {
+	services, err := selectedWorkloadServiceNames(m)
+	if err != nil {
+		return nil, err
+	}
+	desired := make([]observability.SignalSource, 0, len(services))
+	for _, service := range services {
 		source := observability.SignalSource{
-			ID:                 observability.ApplicationLogSourceID(m.Name, m.Environment, "workload"),
+			ID:                 observability.ApplicationLogSourceID(m.Name, m.Environment, service),
 			Kind:               observability.SignalLogs,
 			Provider:           capability.ProviderLoki,
 			Class:              observability.SourceApplication,
 			Scope:              capability.ScopeApplication,
 			OwnerApplication:   m.Name,
-			Target:             observability.RuntimeTarget(project, "workload"),
+			Target:             observability.RuntimeTarget(project, service),
 			Protocol:           "stdout-stderr",
 			Mode:               capability.ObservabilityRuntime,
 			SemanticConvention: "baseharbor.runtime.logs",
 			Verification:       capability.ObservabilityVerifyBackend,
 		}
 		if err := source.Validate(); err != nil {
-			return fmt.Errorf("application log source: %w", err)
+			return nil, fmt.Errorf("application log source %q: %w", service, err)
 		}
 		desired = append(desired, source)
 	}
-	return observability.ReconcileMatching(observability.ApplicationLogBoundary(m.Name, m.Environment), desired)
+	return desired, nil
 }
 
 // reconcileApplicationMetricsSource records the workload's runtime identity in
