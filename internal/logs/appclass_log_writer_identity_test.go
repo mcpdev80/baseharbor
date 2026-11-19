@@ -180,7 +180,7 @@ func TestApplicationClassLogSourceDisabledPolicyReclaimsEveryService(t *testing.
 	}
 	assertApplicationLogSources(t, m, wantApplicationLogSources(project, "api", "worker"))
 	placement := capability.ProviderPlacement{Scope: capability.ScopeApplication, Ownership: capability.OwnershipBaseHarbor}
-	providerBefore, err := observability.ListLogs(placement, []string{m.Name}, true, false)
+	providerBefore, err := observability.ListLogs(placement, []string{m.Name}, true, false, m.Environment)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -193,7 +193,7 @@ func TestApplicationClassLogSourceDisabledPolicyReclaimsEveryService(t *testing.
 		t.Fatalf("disabled-policy reconcile: %v", err)
 	}
 	assertApplicationLogSources(t, m, wantApplicationLogSources(project))
-	providerAfter, err := observability.ListLogs(placement, []string{m.Name}, true, false)
+	providerAfter, err := observability.ListLogs(placement, []string{m.Name}, true, false, m.Environment)
 	if err != nil {
 		t.Fatal(err)
 	}
