@@ -51,7 +51,7 @@ func TestFreshRestoreStableConsentAndCanonicalIdentityRecovery(t *testing.T) {
 		} else if p.Scope.PlanID != planID {
 			t.Fatal("unchanged recovery proposals invalidated consent")
 		}
-		if p.Scope.Attention != "Achtung" || p.Scope.ConfirmationsRequired != 2 || !p.Scope.Destructive {
+		if p.Scope.Attention != "Warning" || p.Scope.ConfirmationsRequired != 2 || !p.Scope.Destructive {
 			t.Fatal("missing current recovery consequences")
 		}
 		for _, ack := range []*application.ProviderChangeConsent{nil, {PlanID: planID, First: true}, {PlanID: planID, First: true, Second: true}} {

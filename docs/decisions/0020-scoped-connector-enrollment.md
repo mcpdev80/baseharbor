@@ -33,6 +33,18 @@ return the same denial. Consumption retains a digest of the signed CSR. A
 signing failure requires a fresh authorization: the consumed credential is not
 restored, including after process restart or an ambiguous response failure.
 
+Consumption and identity recording form two phases that commit in separate
+transactions. Between them the grant is durably consumed while the node has no
+admitted serial yet. The boundary is deliberate and stays fail-closed: no active
+identity exists before the second phase commits, the one-use grant is never
+restored, and the only recovery is a fresh initial or renewal authorization;
+`Enroll` also revokes the certificate it signed when that second phase fails. The
+`previous_certificate_serial` clause in the consume statement and the
+serial-is-null guard plus consumed-grant predicate in the identity write prevent a
+competing request from racing the serial write, so a half-finished enrollment can
+never admit two identities for one node. What the two phases leave behind is
+therefore a dead, permanently consumed grant, not a usable partial identity.
+
 Core verifies the result against its authoritative trust bundle, CSR public key,
 scoped URI, client-only key usage, serial and expiry. A CA returned next to a leaf
 cannot replace authoritative trust. PEM parsing rejects additional requests,

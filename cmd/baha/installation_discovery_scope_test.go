@@ -32,7 +32,7 @@ func TestInstallationPlanDisclosesUnregisteredLocalStateWithoutInventingRuntimeO
 	if err != nil {
 		t.Fatal(err)
 	}
-	if after.Scope.PlanID == before.Scope.PlanID || after.Scope.Complete || after.Scope.Attention != "Achtung" || after.Scope.ConfirmationsRequired != 2 {
+	if after.Scope.PlanID == before.Scope.PlanID || after.Scope.Complete || after.Scope.Attention != "Warning" || after.Scope.ConfirmationsRequired != 2 {
 		t.Fatal("new unknown local state was not bound/disclosed")
 	}
 	if len(after.Applications) != 1 || after.Applications[0].Scope.Owner.Subject != r.DeploymentIdentity.DeploymentID {
@@ -77,7 +77,7 @@ func TestInstallationUnknownTargetRuntimeIsDisclosureNotDestructionAuthority(t *
 	if err != nil {
 		t.Fatal(err)
 	}
-	if after.Scope.PlanID == before.Scope.PlanID || after.Scope.Complete || after.Scope.Attention != "Achtung" || after.Scope.ConfirmationsRequired != 2 {
+	if after.Scope.PlanID == before.Scope.PlanID || after.Scope.Complete || after.Scope.Attention != "Warning" || after.Scope.ConfirmationsRequired != 2 {
 		t.Fatal("unknown target runtime did not require current explicit consequences")
 	}
 	found := false

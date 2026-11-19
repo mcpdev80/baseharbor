@@ -1,6 +1,7 @@
 package deployment
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"os"
@@ -9,12 +10,38 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/mcpdev80/baseharbor/internal/apierror"
 	"github.com/mcpdev80/baseharbor/internal/coreinstallation"
 	"github.com/mcpdev80/baseharbor/internal/targetaccess"
 	"go.yaml.in/yaml/v3"
 )
 
 const ConfigVersion = 1
+
+// Config sentinels. Re-exported from internal/apierror so callers that already
+// match them via errors.Is against the apierror package keep working; the
+// classify layer (internal/machine) recognizes the family from internal/apierror
+// without importing this higher-level package. The values are identical to the
+// apierror sentinels.
+var (
+	// ErrConfigMissing is returned when the configured BaseHarbor config root is
+	// populated (other BaseHarbor state files are present) but the authoritative
+	// config.yaml is absent. This is a misconfiguration the user must fix, never
+	// a silent empty default — a missing config under an active config root would
+	// otherwise make the daemon fall through to its implicit defaults. It belongs
+	// to the same "configured but unusable" family as ErrConfigEmpty (an existing
+	// but empty file).
+	ErrConfigMissing = apierror.ErrConfigMissing
+
+	// ErrConfigEmpty is returned when an existing config.yaml resolves but carries
+	// no loadable content (zero bytes or whitespace only). An existing file is a
+	// malformed configuration, never a clean absent-config default: the user
+	// pointed BaseHarbor at this path on purpose, so an emptied or untouched file
+	// must surface as an actionable error rather than silently falling through to
+	// the implicit defaults. It belongs to the ErrConfigMissing family so callers
+	// can treat "configured but unusable" the same way.
+	ErrConfigEmpty = apierror.ErrConfigEmpty
+)
 
 var targetTenantID = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
 
@@ -145,13 +172,79 @@ func LoadConfig() (Config, error) {
 		return Config{}, err
 	}
 	data, err := os.ReadFile(path)
-	if errors.Is(err, os.ErrNotExist) {
-		return Config{Version: ConfigVersion, Access: map[string]AccessDefinition{}, Targets: map[string]TargetDefinition{}}, nil
-	}
 	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			// A config the user believes exists but that this process cannot
+			// resolve is not a clean empty default: it is a configuration that
+			// is being silently ignored (BF-05). When the resolved config
+			// directory is populated by other BaseHarbor state files, the user
+			// clearly intends this to be their BaseHarbor config root, so a
+			// missing config.yaml here is a misconfiguration worth a loud,
+			// actionable error rather than a silent fall-through to the
+			// implicit default. An absent directory is still a clean no-config.
+			if dirExistsAndHasBaseharborState(filepath.Dir(path)) {
+				return Config{}, fmt.Errorf("%w: %s", ErrConfigMissing, path)
+			}
+			return Config{Version: ConfigVersion, Access: map[string]AccessDefinition{}, Targets: map[string]TargetDefinition{}}, nil
+		}
 		return Config{}, fmt.Errorf("read BaseHarbor config: %w", err)
 	}
+	if len(bytes.TrimSpace(data)) == 0 {
+		// An EXISTING but empty/whitespace-only config.yaml is a malformed
+		// configuration, not a clean absent-config default. The user pointed
+		// BaseHarbor at this path on purpose, so an emptied or untouched file
+		// must fail loud with an actionable error rather than silently falling
+		// through to the implicit defaults (BF-05). Only a genuinely absent
+		// file may keep the clean default below.
+		return Config{}, fmt.Errorf("%w: %s", ErrConfigEmpty, path)
+	}
 	return decodeConfig(data)
+}
+
+// dirExistsAndHasBaseharborState reports whether the user's BaseHarbor config
+// root is populated but the authoritative config.yaml is missing, so
+// LoadConfig can fail loud (BF-05) instead of silently falling through to the
+// implicit default. Two precise signals, no speculative climbing:
+//
+//  1. A config.yaml sits exactly one level up from where ConfigPath() looks.
+//     This is the XDG double-append that made the H-D28 repro fall silently
+//     through: XDG_CONFIG_HOME already targets the baseharbor config root, so
+//     ConfigPath() appends a second "/baseharbor" and never reads the user's
+//     file.
+//  2. The resolved config directory exists and already carries the deployment
+//     target marker (active-target) or the installation lock: the user's root
+//     is active for deployment, so a missing config.yaml is a misconfiguration.
+//
+// Only deployment markers count. active.json / an organization/ subtree is the
+// separate org-config system and must not, by itself, mark the deployment
+// config root as populated. Anything else (unrelated subdirs, sibling temp
+// directories) is ignored so a clean empty root stays a clean no-config.
+func dirExistsAndHasBaseharborState(dir string) bool {
+	// Signal 1: a config.yaml exactly one level up (XDG double-append).
+	parent := filepath.Dir(dir)
+	if parent != dir {
+		if info, err := os.Stat(parent); err == nil && info.IsDir() {
+			if entries, rerr := os.ReadDir(parent); rerr == nil {
+				for _, entry := range entries {
+					if entry.Name() == "config.yaml" {
+						return true
+					}
+				}
+			}
+		}
+	}
+	// Signal 2: the resolved config directory carries deployment-target state.
+	if info, err := os.Stat(dir); err == nil && info.IsDir() {
+		if entries, rerr := os.ReadDir(dir); rerr == nil {
+			for _, entry := range entries {
+				switch entry.Name() {
+				case "active-target", ".installation.lock":
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 func decodeConfig(data []byte) (Config, error) {

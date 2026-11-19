@@ -41,6 +41,26 @@ func TestLoginManagerRetriesTransientTransportEOF(t *testing.T) {
 	}
 }
 
+func TestLoginManagerRetriesSeveralTransientTransportEOFs(t *testing.T) {
+	const transient = "Error writing data to auth/approle/login: EOF"
+	executor := &appRoleLoginExecutor{responses: []error{
+		errors.New(transient),
+		errors.New(transient),
+		errors.New(transient),
+		errors.New(transient),
+	}}
+	token, err := loginManager(context.Background(), executor, bhruntime.Files{}, AdminCredentials{RoleID: "role", SecretID: "secret"})
+	if err != nil {
+		t.Fatalf("loginManager() after repeated transient EOFs: %v", err)
+	}
+	if token != "manager-token" {
+		t.Fatalf("loginManager() token = %q, want manager-token", token)
+	}
+	if executor.calls != 5 {
+		t.Fatalf("login attempts = %d, want 5 after four transient EOFs", executor.calls)
+	}
+}
+
 func TestLoginManagerRetriesConnectionReset(t *testing.T) {
 	executor := &appRoleLoginExecutor{responses: []error{errors.New("write: connection reset by peer")}}
 	token, err := loginManager(context.Background(), executor, bhruntime.Files{}, AdminCredentials{RoleID: "role", SecretID: "secret"})

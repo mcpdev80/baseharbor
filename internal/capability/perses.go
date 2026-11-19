@@ -48,10 +48,11 @@ var PersesManagementUIInterface = ProviderInterface{
 // IntegrationDescriptor because binding Perses to the Metrics capability kind
 // supplied a fake capability claim the task forbids: Perses never IMPLEMENTS a
 // metrics/logs/traces capability on its own, it only visualises the surface the
-// backend data owner already ships. A valid IntegrationDescriptor must declare a
-// real capability, so a genuine capability claim is impossible without lying.
-//
-// Instead this contract carries only what is genuinely true:
+// backend data owner already ships. A valid IntegrationDescriptor must declare
+// a real capability, so a genuine capability claim is impossible without lying.
+// The surface is therefore deliberately NOT an IntegrationDescriptor: this
+// contract uses a purpose-specific management-tool/surface type that declares
+// no capability kind and carries only what is genuinely true:
 //
 //   - the Perses management provider kind (PersesProviderKind),
 //   - the product version axis, which is DISTINCT from any provider
