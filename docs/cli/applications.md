@@ -237,3 +237,21 @@ Then verify the Target again with `baha app list`. Commands addressed by
 `--uuid` keep working on such a Target; name-addressed commands do not, until
 the duplicate is retired. The `(application_id, environment)` pair is the
 system identity per ADR 0017.
+
+Two selectors are often confused here, and they are not interchangeable.
+`--uuid <deployment-id>` is the **identity** selector: it names the deployment
+by its UUID and is understood only by the commands that read a deployment by
+identity — `baha app show`, `baha app status`, `baha app plan`, and
+`baha app destroy`. Each of them accepts `--uuid` without a positional `NAME`:
+the selector is stripped before the one-`NAME` limit and routes directly at the
+registry seam, so `baha app status --uuid <deployment-id>` (with no `NAME`)
+resolves the exact deployment by its identity. `-e/--environment` is **not** an
+identity selector: it sets or overrides the environment *value*, and it never
+disambiguates a name-colliding deployment the way a UUID does. `baha app plan`
+is the exception on a remote Target, where it refuses `--uuid` and asks for the
+registered `NAME` instead. The identity selector is **not** part of `baha app env`:
+that command selects its deployment by `NAME` alone (plus `--format`/`--reveal`/`--path`) and
+rejects both `--uuid` and `-e/--environment` in its own parser (`unknown option`),
+so neither selector is executable for `app env`; inside a duplicate situation `app env`
+needs a distinct `NAME` (a different environment or a retired twin), not a
+`--uuid` flag.
