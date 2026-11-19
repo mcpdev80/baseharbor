@@ -365,6 +365,9 @@ func RuntimeComposeYAMLForProject(m Manifest, resourceProject string) (string, e
 	if (m.Services.CacheManagementUI || m.Services.KeyValueManagementUI) && !UsesSharedValkey(m) {
 		writeCacheUIComposeServices(&b, m)
 	}
+	if m.Services.Perses {
+		writePersesUIComposeService(&b, m, resourceProject)
+	}
 	b.WriteString("\nvolumes:\n")
 	for _, instance := range sqlInstances {
 		service := runtimeServiceName("postgres", instance)
@@ -387,6 +390,10 @@ func RuntimeComposeYAMLForProject(m Manifest, resourceProject string) (string, e
 			volume := mongodbMemberVolumeName(instance, ordinal)
 			fmt.Fprintf(&b, "  %s:\n    name: %s_%s\n", volume, resourceProject, volume)
 		}
+	}
+	if m.Services.Perses {
+		service := runtimeServiceName("perses", defaultServiceInstance)
+		fmt.Fprintf(&b, "  %s-data:\n    name: %s\n", service, PersesRuntimeVolumeName(resourceProject, service))
 	}
 	b.WriteString("\nnetworks:\n  default:\n")
 	fmt.Fprintf(&b, "    name: %s\n", ApplicationBackendNetworkNameForProject(resourceProject))
