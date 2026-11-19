@@ -312,8 +312,11 @@ class GitFixture(unittest.TestCase):
         shell = '\n'.join(line.removeprefix('          ') for line in
                           workflow[begin:end].splitlines())
         with tempfile.TemporaryDirectory() as runner_temp:
+            github_output = Path(runner_temp) / 'github-output'
+            github_output.touch()
             env = dict(os.environ, BASE_SHA=event_base, HEAD_SHA=head, BASE_REF='develop',
-                       INTEGRATION_SHA=candidate, RUNNER_TEMP=runner_temp)
+                       INTEGRATION_SHA=candidate, RUNNER_TEMP=runner_temp,
+                       GITHUB_OUTPUT=str(github_output))
             result = subprocess.run(['bash', '-euo', 'pipefail', '-c', shell],
                                     cwd=self.root, env=env, text=True,
                                     stdout=subprocess.PIPE, stderr=subprocess.PIPE)
