@@ -205,7 +205,7 @@ func fingerprintResolvedWorkspace(ctx context.Context, resolved resolvedApplicat
 			return err
 		}
 		write("component/"+component.Component+"/source-identity.json", identity)
-		if component.Type == development.SourceRepository {
+		if component.Type == development.SourceRepository || component.Type == development.SourceLocal {
 			if err := writeRepositoryTreeFingerprint(ctx, write, "component/"+component.Component+"/source", component.Root); err != nil {
 				return fmt.Errorf("fingerprint component %s source: %w", component.Component, err)
 			}
