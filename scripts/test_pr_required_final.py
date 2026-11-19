@@ -115,7 +115,22 @@ class FinalChecks(unittest.TestCase):
                     needs['pr_unit_shards']['result'] = result
                     self.assertTrue(final.verify(plan, needs))
 
-    def test_optional_failure_is_not_ignored(self):
+    def test_candidate_added_plan_does_not_replace_trusted_base_plan(self):
+        candidate_plan = {**self.plan,
+                          'selected_gates': ['atomic/new-runtime/lifecycle'],
+                          'required_validation_checks': [
+                              *self.plan['required_validation_checks'],
+                              {'id': 'candidate-only-validation'}]}
+        # The final verifier receives only the trusted base plan. Candidate
+        # planner output and advisory outcomes are kept outside this argument.
+        self.assertEqual([], final.verify(self.plan, self.needs))
+        self.assertNotEqual([], final.verify(candidate_plan, self.needs))
+
+    def test_candidate_added_job_failure_is_not_part_of_base_workflow_requirements(self):
+        self.needs['pr_candidate_advisory'] = {'result': 'failure'}
+        self.assertEqual([], final.verify(self.plan, self.needs))
+
+    def test_optional_failure_in_the_final_dependency_graph_is_not_ignored(self):
         self.needs['pr_demo_pin'] = {'result': 'failure'}
         self.assertTrue(final.verify(self.plan, self.needs))
 
