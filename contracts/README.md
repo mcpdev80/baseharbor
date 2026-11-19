@@ -47,7 +47,7 @@ Provider lifecycle consequences are packaged as `provider-impact/v1/impact.schem
 with `consent.schema.json` for the existing authority acknowledgement projection,
 and verified/partial execution receipts as `provider-impact/v1/result.schema.json`.
 `provider-plan` embeds the same optional impact result through its canonical schema
-reference. Unknown or alternative-less outcomes require Achtung and two plan-bound
+reference. Unknown or alternative-less outcomes require Warning and two plan-bound
 acknowledgements, not a permanent developer-choice veto. Data deletion still needs
 separate explicit consent. The schemas contain authorized references and locations,
 never secret values. Domain fixtures and offline conformance tests prove shared

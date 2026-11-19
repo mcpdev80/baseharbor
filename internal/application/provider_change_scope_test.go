@@ -28,7 +28,7 @@ func TestImpactScopeBindsAllTargetsAndRegistrationOwner(t *testing.T) {
 	if !reflect.DeepEqual(plans, original) {
 		t.Fatal("composition mutated input target plans")
 	}
-	if len(scope.Targets) != 2 || scope.ConfirmationsRequired != 2 || scope.Attention != "Achtung" {
+	if len(scope.Targets) != 2 || scope.ConfirmationsRequired != 2 || scope.Attention != "Warning" {
 		t.Fatalf("scope omitted shared consequences: %+v", scope)
 	}
 	consent := ProviderChangeConsent{PlanID: scope.PlanID, First: true, Second: true, DeleteData: true}

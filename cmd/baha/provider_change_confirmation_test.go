@@ -40,6 +40,49 @@ func TestProviderImpactHumanOutputRetainsConcreteConsequences(t *testing.T) {
 	}
 }
 
+// Regression for card 0428-093 (BF-04): the concrete-consequence hint must be
+// English user output ("Warning:") and the machine-readable contract marker
+// ("attention") must carry the English marker value, never the Germanism.
+func TestProviderImpactConsequenceHintIsEnglishOutputAndContractMarker(t *testing.T) {
+	// (1) JSON contract: the composition path sets the English marker value and
+	// the marshaled contract field is English, never the Germanism.
+	owner := application.ProviderScopeOwner{Owner: "application-deployment", Reference: "/owned/plan-current", Subject: "plan-current", Revision: "rev"}
+	scope, err := application.ComposeProviderImpactScope(owner, nil, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if scope.Attention != "Warning" {
+		t.Fatalf("contract marker is not the English value: %q", scope.Attention)
+	}
+	raw, err := json.Marshal(scope)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "Achtung") {
+		t.Fatalf("marshaled contract still carries the Germanism: %s", raw)
+	}
+	if !strings.Contains(string(raw), `"attention":"Warning"`) {
+		t.Fatalf("marshaled contract attention is not the English value: %s", raw)
+	}
+
+	// (2) user output: the confirmation prompt uses the "Warning:" precedent,
+	// never the Germanism. A two-confirmation, non-destructive scope still
+	// requires the English "Warning:" outcome prompt.
+	plan := application.ProviderImpactPlan{Version: application.ProviderImpactVersion, Target: "core", PlanID: "plan-current", ConfirmationsRequired: 2, Attention: "Warning"}
+	var prompt bytes.Buffer
+	_, err = readProviderImpactAcknowledgements(bufio.NewReader(strings.NewReader("yes\nyes\n")), &prompt, plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	outText := prompt.String()
+	if strings.Contains(outText, "Achtung") {
+		t.Fatalf("user output still carries the Germanism: %q", outText)
+	}
+	if !strings.Contains(outText, "Warning: confirm the displayed outcome without a working alternative") {
+		t.Fatalf("expected English 'Warning:' confirmation prompt, got: %q", outText)
+	}
+}
+
 func TestProviderImpactAllowsExplicitAlternativeLessDeletion(t *testing.T) {
 	plan := application.ProviderImpactPlan{Version: application.ProviderImpactVersion, PlanID: "concrete-effects", Complete: false, Attention: "no destination; deletion", ConfirmationsRequired: 2, Destructive: true}
 	for _, answers := range []string{"no\n", "\n", "", "maybe\n"} {

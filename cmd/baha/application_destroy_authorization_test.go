@@ -105,7 +105,7 @@ func TestApplicationDestructionRequiresCurrentOuterScopeAndSeparateDataConsent(t
 		if reset && applicationDestroyMayRetireProviders(p) {
 			t.Fatal("incomplete destruction impact must retain provider resources")
 		}
-		if p.Scope.Complete || p.Scope.ConfirmationsRequired != 2 || p.Scope.Attention != "Achtung" || p.Scope.Destructive != reset || p.Scope.Owner.Subject != r.DeploymentIdentity.DeploymentID || len(p.Materials) == 0 || len(p.Scope.Targets) != 1 {
+		if p.Scope.Complete || p.Scope.ConfirmationsRequired != 2 || p.Scope.Attention != "Warning" || p.Scope.Destructive != reset || p.Scope.Owner.Subject != r.DeploymentIdentity.DeploymentID || len(p.Materials) == 0 || len(p.Scope.Targets) != 1 {
 			t.Fatal("selected owner/materials, unknown consequences or destructive scope lost")
 		}
 		leaf := p.Scope.Targets[0].PlanID
