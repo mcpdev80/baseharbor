@@ -62,6 +62,9 @@ func syncProviderTargets(dir string, sources []observability.MetricsSource) erro
 		}
 	}
 	for _, source := range sources {
+		if source.Verification == capability.ObservabilityVerifyNone {
+			continue
+		}
 		target := targetGroup{
 			Targets: []string{source.Target},
 			Labels: map[string]string{
@@ -157,6 +160,9 @@ func providerMetricNetworks(sources []observability.MetricsSource) []string {
 	seen := map[string]struct{}{}
 	var result []string
 	for _, source := range sources {
+		if source.Verification == capability.ObservabilityVerifyNone {
+			continue
+		}
 		network := strings.TrimSpace(source.Network)
 		if network == "" {
 			continue
@@ -236,6 +242,7 @@ func EnsureProviderFilesWithRuntimeCAAt(ctx context.Context, issuer serviceacces
 		allowedApplications,
 		policy.Collect[application.MetricsSourceApplicationProvider],
 		policy.Collect[application.MetricsSourcePlatformProvider],
+		m.Environment,
 	)
 	if err != nil {
 		return ProviderFiles{}, err
@@ -447,6 +454,7 @@ func UnregisterSharedApplicationAt(ctx context.Context, runtime Runtime, issuer 
 		allowedApplications,
 		policy.Collect[application.MetricsSourceApplicationProvider],
 		policy.Collect[application.MetricsSourcePlatformProvider],
+		m.Environment,
 	)
 	if err != nil {
 		return err

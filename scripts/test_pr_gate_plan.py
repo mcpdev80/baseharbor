@@ -1048,14 +1048,28 @@ class MappingTests(unittest.TestCase):
                 self.assertNotEqual(['atomic/docker/lifecycle'], result['selected_gates'])
 
     def test_ci_evidence_selects_policy_planner_executor_verifier(self):
-        for name in ['scripts/pr-gate-plan.py', 'scripts/test_pr_gate_plan.py']:
+        for name in ['scripts/pr-gate-plan.py', 'scripts/test_pr_gate_plan.py',
+                     'scripts/pre-release-runtime-reuse.py',
+                     'scripts/pre-release-runtime-impact.json',
+                     'scripts/test_pre_release_runtime_reuse.py',
+                     'scripts/test_pr_runtime_workflow_shape.py',
+                     '.github/workflows/ci.yml',
+                     '.github/workflows/pre-release.yml',
+                     '.github/workflows/pre-release-runtime-suite.yml']:
             with self.subTest(path=name):
                 result = planner.plan(diff(paths(name)), REQ, MAP_26)
                 self.assertEqual('resolved', result['coverage_status'])
                 self.assertEqual([], result['selected_gates'])
-                self.assertEqual({'ci-policy', 'pr-planner-tests', 'ci-executor-tests',
-                                  'receipt-execution-tests'},
+                expected_checks = {'ci-policy', 'pr-planner-tests', 'ci-executor-tests',
+                                   'receipt-execution-tests'}
+                if name.startswith('.github/workflows/'):
+                    expected_checks.add('ci-actionlint')
+                self.assertEqual(expected_checks,
                                  {c['id'] for c in result['required_validation_checks']})
+                planner_check = next(c for c in result['required_validation_checks']
+                                     if c['id'] == 'pr-planner-tests')
+                self.assertIn('scripts/test_pre_release_runtime_reuse.py',
+                              planner_check['command'])
 
     def test_unknown_never_auto_selects_full_release_catalog(self):
         for name in ['Dockerfile', 'internal/operatorauth/policy.go',
@@ -1335,6 +1349,17 @@ class CliGofmtTestBindingTests(unittest.TestCase):
 
 
 class RuntimeDockerEngineMappingTests(unittest.TestCase):
+    def test_podman_pinned_service_stop_selects_exact_podman_lifecycle(self):
+        for name in ('internal/runtime/service_stop.go',
+                     'internal/runtime/service_stop_test.go'):
+            with self.subTest(path=name):
+                result = planner.plan(diff(paths(name)), REQ, MAP_26)
+                self.assertEqual('resolved', result['coverage_status'])
+                self.assertEqual(['atomic/podman/lifecycle'], result['selected_gates'])
+                self.assertFalse(result.get('fallback_used', False))
+                checks = {row['id'] for row in result['required_validation_checks']}
+                self.assertIn('runtime-provider-package-tests', checks)
+
     def test_docker_engine_path_classifies_to_lifecycle_gate(self):
         # core-1240 permanent lane: changing ONLY internal/runtime/docker_engine.go
         # must resolve with the real atomic docker lifecycle gate.  This is the exact
@@ -2002,6 +2027,19 @@ class MainRunnerContextEntrypointTests(unittest.TestCase):
         self.assertIsNone(code)
         self.assertIn('"coverage_status": "resolved"', out)
 
+    def test_stacked_lane_runner_context_resolves_and_keeps_unknown_paths_broad(self):
+        self._actual = diff(paths('internal/new_plan_v2/feature.go'))
+        code, out, msg = self._run_main({
+            'GITHUB_REPOSITORY': 'mcpdev80/baseharbor',
+            'GITHUB_BASE_REF': 'lane-old-base',
+        })
+        self.assertIsNone(code, msg or out)
+        result = json.loads(out)
+        self.assertEqual('resolved', result['coverage_status'])
+        self.assertTrue(result['fallback_used'])
+        self.assertTrue({'go-unit-tests', 'go-vet', 'go-build'} <=
+                        {row['id'] for row in result['required_validation_checks']})
+
     def test_empty_context_fails_closed(self):
         # Missing runner context must be rejected before plan() runs: the
         # entrypoint refuses to qualify with an unknown authenticated context.
@@ -2027,6 +2065,15 @@ class MainRunnerContextEntrypointTests(unittest.TestCase):
             'GITHUB_BASE_REF': 'develop',
         })
         self.assertIsNotNone(code)
+        self.assertNotIn('"coverage_status"', out)
+        self.assertIn('authenticated runner context', msg)
+
+    def test_empty_lane_name_fails_closed(self):
+        code, out, msg = self._run_main({
+            'GITHUB_REPOSITORY': 'mcpdev80/baseharbor',
+            'GITHUB_BASE_REF': 'lane-',
+        })
+        self.assertNotEqual(0, code)
         self.assertNotIn('"coverage_status"', out)
         self.assertIn('authenticated runner context', msg)
 
@@ -2453,10 +2500,15 @@ class ReceiptControlPlaneExecutionTests(unittest.TestCase):
                 self.assertIn(path, ' '.join(result['unresolved_coverage']))
 
     def test_native_workflow_changes_select_normal_ci_checks(self):
-        path = '.github/workflows/runtime-s3-acceptance.yml'
-        result = planner.plan(diff([{'status': 'modified', 'path': path}]), REQ, MAP_26)
-        self.assertEqual('resolved', result['coverage_status'])
-        self.assertTrue({'ci-actionlint', 'ci-policy', 'ci-executor-tests'} <= self.check_ids(result))
+        for path in ('.github/workflows/runtime-s3-acceptance.yml',
+                     '.github/workflows/pre-release.yml',
+                     '.github/workflows/release.yml'):
+            with self.subTest(path=path):
+                result = planner.plan(diff([{'status': 'modified', 'path': path}]), REQ, MAP_26)
+                self.assertEqual('resolved', result['coverage_status'])
+                self.assertFalse(result['unresolved_coverage'])
+                self.assertTrue({'ci-actionlint', 'ci-policy', 'ci-executor-tests'} <=
+                                self.check_ids(result))
 
     def test_receipt_execution_check_actually_runs_receipt_suites(self):
         # Coupling guard: the receipt-execution-tests id the planner emits must
@@ -2670,6 +2722,16 @@ class ConcreteUnitTestExecutionTests(unittest.TestCase):
 
 
 class CurrentProductSeamRoutingTests(unittest.TestCase):
+    def test_openbao_manager_login_paths_resolve_package_tests(self):
+        for name in ('internal/openbao/bootstrap_auth.go',
+                     'internal/openbao/bootstrap_auth_test.go'):
+            with self.subTest(path=name):
+                result = planner.plan(diff(paths(name)), REQ, MAP_26)
+                self.assertEqual('resolved', result['coverage_status'])
+                checks = {row['id'] for row in result['required_validation_checks']}
+                self.assertIn('openbao-package-tests', checks)
+                self.assertFalse(result['unresolved_coverage'])
+
     def test_mixed_cli_tests_run_with_deployment_owner_implementation(self):
         result = planner.plan(diff(paths('cmd/baha/deployment_record.go',
                                          'cmd/baha/app_context_incomplete_test.go',
@@ -2737,10 +2799,67 @@ class CLISelectedCheckDeduplicationTests(unittest.TestCase):
         self.assertNotIn('cli-guided-tests', ids)
 
 
+class ReviewedSudoTTYGateSelectionTests(unittest.TestCase):
+    def setUp(self):
+        self.changed = paths(*planner.SUDO_TTY_REVIEWED_FILES)
+        self.source = diff(self.changed)
+        self.source['head_sha'] = planner.SUDO_TTY_REVIEWED_HEAD
+        self.plan = {
+            'coverage_status': 'resolved', 'unresolved_coverage': [],
+            'selected_gates': ['atomic/docker/guided'],
+            'required_validation_checks': [{'id': 'go-vet', 'command': 'go vet ./cmd/baha'}],
+            'reasons': [],
+        }
+
+    def test_exact_reviewed_terminal_change_has_full_go_proof_without_docker_core(self):
+        narrowed = planner.narrow_reviewed_sudo_tty_plan(self.source, self.plan)
+        self.assertEqual([], narrowed['selected_gates'])
+        ids = {c['id'] for c in narrowed['required_validation_checks']}
+        self.assertTrue({'cli-package-tests', 'cli-gofmt', 'cli-vet', 'cli-build'} <= ids)
+        self.assertEqual(['atomic/docker/guided'], self.plan['selected_gates'])
+
+    def test_reviewed_descendant_with_unchanged_blobs_avoids_duplicate_docker_run(self):
+        descendant = {**self.source, 'head_sha': 'c' * 40}
+        ok = subprocess.CompletedProcess([], 0, stdout='same-blob\\n')
+        with patch.object(planner.subprocess, 'run', return_value=ok) as run:
+            narrowed = planner.narrow_reviewed_sudo_tty_plan(descendant, self.plan)
+        self.assertEqual([], narrowed['selected_gates'])
+        self.assertEqual(7, run.call_count)
+
+    def test_descendant_with_changed_blob_or_missing_ancestry_stays_native(self):
+        descendant = {**self.source, 'head_sha': 'c' * 40}
+        ok = subprocess.CompletedProcess([], 0, stdout='same-blob\\n')
+        modified = subprocess.CompletedProcess([], 0, stdout='new-blob\\n')
+        missing = subprocess.CompletedProcess([], 1, stdout='')
+        with patch.object(planner.subprocess, 'run',
+                          side_effect=[ok, ok, ok, ok, ok, ok, modified]):
+            self.assertIs(self.plan,
+                          planner.narrow_reviewed_sudo_tty_plan(descendant, self.plan))
+        with patch.object(planner.subprocess, 'run', return_value=missing):
+            self.assertIs(self.plan,
+                          planner.narrow_reviewed_sudo_tty_plan(descendant, self.plan))
+
+    def test_other_heads_and_other_source_changes_keep_real_runtime_gate(self):
+        variants = [
+            {**self.source, 'head_sha': 'c' * 40},
+            {**self.source, 'changes': paths('cmd/baha/rootless_bootstrap.go')},
+            {**self.source, 'changes': self.changed + paths('cmd/baha/runtime.go')},
+            {**self.source, 'broad_required': True},
+        ]
+        for variant in variants:
+            with self.subTest(variant=variant):
+                self.assertIs(self.plan,
+                              planner.narrow_reviewed_sudo_tty_plan(variant, self.plan))
+        unresolved = {**self.plan, 'coverage_status': 'unresolved',
+                      'unresolved_coverage': ['unowned change']}
+        self.assertIs(unresolved, planner.narrow_reviewed_sudo_tty_plan(self.source, unresolved))
+
+
 class IdentityProviderPackageRoutingTests(unittest.TestCase):
     def test_keycloak_test_only_selects_one_package_not_broad_fallback(self):
         for filename in ('internal/identityprovider/keycloak_single_native_ci_test.go',
-                         'internal/identityprovider/keycloak_files_test.go'):
+                         'internal/identityprovider/keycloak_files_test.go',
+                         'internal/identityprovider/keycloak_secret_rotation_test.go'):
             result = planner.plan(diff(paths(filename)), REQ, MAP_26,
                                   conservative_fallback=True)
             checks = {row['id'] for row in result['required_validation_checks']}

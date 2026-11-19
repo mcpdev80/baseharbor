@@ -155,13 +155,14 @@ func runNodeDisconnectWithImpact(ctx context.Context, target string, format cliO
 		return err
 	}
 	if format != outputJSON {
-		fmt.Fprintln(out, "Achtung: review node access loss and all known Core/local recovery owners.")
+		labels := application.ProviderImpactConsentCatalog()
+		fmt.Fprintln(out, labels.NodeDisconnectImpact)
 		if err := writeJSON(out, plan); err != nil {
 			return err
 		}
 	}
 	if consent == nil && format != outputJSON && !noInput(ctx) && readerIsTerminal(nodeInput) {
-		presentation := application.ProviderImpactPlan{PlanID: plan.Scope.PlanID, ConfirmationsRequired: plan.Scope.ConfirmationsRequired, Destructive: plan.Scope.Destructive}
+		presentation := application.ProviderImpactPlan{PlanID: plan.Scope.PlanID, Attention: plan.Scope.Attention, ConfirmationsRequired: plan.Scope.ConfirmationsRequired, Destructive: plan.Scope.Destructive}
 		value, err := readProviderImpactAcknowledgements(bufio.NewReader(nodeInput), out, presentation)
 		if err != nil {
 			return err

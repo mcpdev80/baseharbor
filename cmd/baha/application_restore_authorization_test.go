@@ -23,7 +23,7 @@ func TestRestoreRefusesBeforeRuntimeMutationAndBindsArchiveOwnerAndDataDecision(
 	if err != nil {
 		t.Fatal(err)
 	}
-	if p.Scope.Owner.Owner != "application-restore" || !p.Scope.Destructive || p.Scope.Complete || p.Scope.ConfirmationsRequired != 2 || p.Scope.Attention != "Achtung" || len(p.Materials) == 0 {
+	if p.Scope.Owner.Owner != "application-restore" || !p.Scope.Destructive || p.Scope.Complete || p.Scope.ConfirmationsRequired != 2 || p.Scope.Attention != "Warning" || len(p.Materials) == 0 {
 		t.Fatal("restore did not inventory destructive/unknown consequences")
 	}
 	registry := filepath.Join(r.TargetStateRoot, "provider-registry.json")

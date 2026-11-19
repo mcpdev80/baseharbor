@@ -1,7 +1,10 @@
 package telemetry
 
 import (
+	"bytes"
 	"context"
+	"encoding/hex"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -47,6 +50,45 @@ func TestExternalOTLPVerifySendsRealProtobufTrace(t *testing.T) {
 	}
 	if len(body) == 0 || !strings.Contains(string(body), "baseharbor.otlp.verify") {
 		t.Fatal("verification request did not contain the BaseHarbor OTLP probe span")
+	}
+}
+
+func TestExternalOTLPVerifyFreshTraceUsesUniqueQueryableID(t *testing.T) {
+	var bodies [][]byte
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Errorf("read OTLP body: %v", err)
+		}
+		bodies = append(bodies, body)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+	t.Setenv(application.OTLPEndpointEnv, server.URL)
+	m := application.WithOTLPTelemetry(application.Manifest{Version: 1, Name: "demo", Environment: "test", Workload: application.WorkloadConfig{Components: []string{"api"}}}, "traces")
+	d := NewDriver(noopRuntime{}, m, application.RuntimeFiles{}, serviceissuer.New(t))
+	resource := capability.Resource{Application: "demo", Kind: capability.TelemetryOTLP, Name: "default", Provider: capability.ProviderExternalOTLP}
+	first, err := d.VerifyFreshTrace(context.Background(), resource)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := d.VerifyFreshTrace(context.Background(), resource)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first == second || first == ProbeTraceIDHex || second == ProbeTraceIDHex {
+		t.Fatalf("fresh trace IDs are not unique: %q and %q", first, second)
+	}
+	firstBytes, err := hex.DecodeString(first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondBytes, err := hex.DecodeString(second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(bodies) != 2 || !bytes.Contains(bodies[0], firstBytes) || !bytes.Contains(bodies[1], secondBytes) {
+		t.Fatalf("exported protobuf payloads do not contain their returned trace IDs (bodies=%d)", len(bodies))
 	}
 }
 

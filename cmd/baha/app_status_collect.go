@@ -393,6 +393,14 @@ func (c *applicationStatusCollection) collectManagementUICheck(ctx context.Conte
 				detail = devgateway.URLForTarget(c.resolved.Target.Name, host)
 			}
 		}
+		// Perses is configured_unverified by design: BaseHarbor ships no Perses
+		// health probe, so a selected surface is declared configured but never
+		// ready/verified. Render it as a degraded (non-ready) observation that
+		// never reports the contract-forbidden "ready"/"verified" state.
+		if result.Name == "perses" {
+			c.result.AddObservation("management-ui/perses", "unverified", "Perses management surface is configured_unverified: no Perses health probe exists, reachability cannot be asserted")
+			continue
+		}
 		record(result.Name, result.Err, detail)
 	}
 

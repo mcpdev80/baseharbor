@@ -2,8 +2,11 @@ package identityprovider
 
 import (
 	"context"
+	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/hex"
+	"encoding/pem"
 	"fmt"
 	"net"
 	"net/http"
@@ -124,6 +127,8 @@ func TestKeycloakHARuntimeFailoverAcceptanceInCI(t *testing.T) {
 	if err := runtimeProvider.UpProjectFilesSelected(ctx, files.Project, files.Dir, environment, []string{primary}, files.Compose); err != nil {
 		t.Fatalf("restart Keycloak PostgreSQL member %s: %v", primary, err)
 	}
+	waitForKeycloakPostgresMemberReady(t, ctx, runtimeProvider, files, primary)
+	waitForKeycloakPostgresHAClusterReady(t, ctx, runtimeProvider, files)
 	waitForKeycloakContinuity(t, ctx, driver, resource, binding, "Keycloak PostgreSQL member recovery")
 
 	if err := driver.RotateClientSecret(ctx); err != nil {
@@ -143,10 +148,69 @@ func TestKeycloakHARuntimeFailoverAcceptanceInCI(t *testing.T) {
 	}
 	issuer.Rotate(t)
 	if err := driver.RotatePKI(ctx); err != nil {
+		logKeycloakDatabaseTLSState(t, ctx, runtimeProvider, files)
 		t.Fatalf("rotate Keycloak PKI: %v", err)
 	}
 	waitForKeycloakContinuity(t, ctx, driver, resource, binding, "Keycloak PKI rotation")
 	assertKeycloakOldCARejected(t, ctx, oldCA, files.PublicPort)
+}
+
+// Log enough public certificate metadata to distinguish a stale PostgreSQL
+// leaf from a stale Keycloak JDBC trust projection when a live CA rotation
+// fails. The certificate bytes and fingerprints are public material; no keys
+// or connection credentials are emitted.
+func logKeycloakDatabaseTLSState(t *testing.T, ctx context.Context, runtimeProvider bhruntime.RuntimeProvider, files KeycloakFiles) {
+	t.Helper()
+	rootPath := filepath.Join(files.Dir, "db-ha", "runtime", "ca.pem")
+	leafPath := filepath.Join(files.Dir, "db-ha", "runtime", "server.pem")
+	rootPEM, rootErr := os.ReadFile(rootPath)
+	leafPEM, leafErr := os.ReadFile(leafPath)
+	if rootErr != nil || leafErr != nil {
+		t.Logf("Keycloak database TLS file diagnostic: trust_read_error=%v leaf_read_error=%v", rootErr, leafErr)
+	} else {
+		roots := x509.NewCertPool()
+		for rest := rootPEM; len(rest) > 0; {
+			block, next := pem.Decode(rest)
+			if block == nil {
+				break
+			}
+			rest = next
+			if block.Type != "CERTIFICATE" {
+				continue
+			}
+			cert, parseErr := x509.ParseCertificate(block.Bytes)
+			if parseErr != nil {
+				t.Logf("Keycloak database trust certificate parse error: %v", parseErr)
+				continue
+			}
+			roots.AddCert(cert)
+			t.Logf("Keycloak database projected trust anchor: subject=%q serial=%s sha256=%s", cert.Subject.String(), cert.SerialNumber.Text(16), certificateFingerprint(cert))
+		}
+		block, _ := pem.Decode(leafPEM)
+		if block == nil {
+			t.Log("Keycloak database projected server leaf is not valid PEM")
+		} else if leaf, parseErr := x509.ParseCertificate(block.Bytes); parseErr != nil {
+			t.Logf("Keycloak database projected server leaf parse error: %v", parseErr)
+		} else {
+			_, verifyErr := leaf.Verify(x509.VerifyOptions{Roots: roots, DNSName: "keycloak-db", KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}})
+			t.Logf("Keycloak database projected server leaf: subject=%q issuer=%q serial=%s sha256=%s verifies_against_projected_trust=%t verify_error=%v", leaf.Subject.String(), leaf.Issuer.String(), leaf.SerialNumber.Text(16), certificateFingerprint(leaf), verifyErr == nil, verifyErr)
+		}
+	}
+
+	// Query the live PostgreSQL endpoint from a cluster member and print only
+	// the TLS handshake/certificate chain. This lets the next hosted run show
+	// whether PostgreSQL still presents a leaf different from the projection.
+	command := `timeout 10 openssl s_client -starttls postgres -connect keycloak-db:5432 -showcerts </dev/null 2>&1 | sed -n '1,100p'`
+	output, execErr := runtimeProvider.ExecProject(ctx, files.Project, files.Compose, files.Env, "keycloak-db-member-1", "sh", "-ec", command)
+	if len(output) > 12000 {
+		output = output[:12000] + "[truncated]"
+	}
+	t.Logf("Keycloak live PostgreSQL TLS probe (error=%v):\n%s", execErr, output)
+}
+
+func certificateFingerprint(cert *x509.Certificate) string {
+	sum := sha256.Sum256(cert.Raw)
+	return hex.EncodeToString(sum[:])
 }
 
 func assertKeycloakOldCARejected(t *testing.T, ctx context.Context, oldCA []byte, port int) {
@@ -213,6 +277,108 @@ func mustKeycloakPostgresPrimary(t *testing.T, ctx context.Context, runtimeProvi
 	}
 	t.Fatal("no Keycloak Patroni primary found")
 	return ""
+}
+
+func waitForKeycloakPostgresMemberReady(t *testing.T, ctx context.Context, runtimeProvider bhruntime.RuntimeProvider, files KeycloakFiles, service string) {
+	t.Helper()
+	executor, ok := runtimeProvider.(keycloakProjectUserExecutor)
+	if !ok {
+		t.Fatal("Keycloak PostgreSQL readiness requires execution as the postgres user")
+	}
+	readyCtx, cancel := context.WithTimeout(ctx, 90*time.Second)
+	defer cancel()
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
+	var lastErr error
+	for {
+		attemptCtx, attemptCancel := context.WithTimeout(readyCtx, 5*time.Second)
+		_, lastErr = executor.ExecProjectAs(attemptCtx, files.Project, files.Compose, files.Env, service, "postgres", "pg_isready", "-h", "/var/run/postgresql", "-U", "postgres", "-d", "postgres")
+		attemptCancel()
+		if lastErr == nil {
+			return
+		}
+		select {
+		case <-readyCtx.Done():
+			t.Fatalf("restarted Keycloak PostgreSQL member %s did not become locally ready within 90s: %v", service, lastErr)
+		case <-ticker.C:
+		}
+	}
+}
+
+func waitForKeycloakPostgresHAClusterReady(t *testing.T, ctx context.Context, runtimeProvider bhruntime.RuntimeProvider, files KeycloakFiles) {
+	t.Helper()
+	// A restarted Patroni member may need to re-seed its data directory with
+	// pg_basebackup. On hosted runners that bootstrap can take longer than the
+	// local readiness probe, so allow three minutes while retaining the strict
+	// three-sample, one-primary/two-replica assertion below.
+	const readinessTimeout = 180 * time.Second
+	readyCtx, cancel := context.WithTimeout(ctx, readinessTimeout)
+	defer cancel()
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+
+	const roleProbe = `python3 -c 'import sys,urllib.request
+for role in ("primary", "replica"):
+ try:
+  response=urllib.request.urlopen("http://127.0.0.1:8008/"+role, timeout=2)
+  if response.status == 200:
+   print(role)
+   sys.exit(0)
+ except Exception:
+  pass
+sys.exit(1)'`
+	stableSamples := 0
+	var lastRoles []string
+	var lastErr error
+	for {
+		roles := make([]string, 0, 3)
+		lastErr = nil
+		for ordinal := 1; ordinal <= 3; ordinal++ {
+			service := fmt.Sprintf("keycloak-db-member-%d", ordinal)
+			output, err := runtimeProvider.ExecProject(readyCtx, files.Project, files.Compose, files.Env,
+				service, "sh", "-ec", roleProbe)
+			if err != nil {
+				lastErr = fmt.Errorf("read Patroni role on %s: %w", service, err)
+				break
+			}
+			roles = append(roles, strings.TrimSpace(output))
+		}
+		if lastErr == nil && keycloakPostgresHAClusterRolesReady(roles) {
+			stableSamples++
+			lastRoles = roles
+			if stableSamples >= 3 {
+				return
+			}
+		} else {
+			stableSamples = 0
+			if lastErr == nil {
+				lastRoles = roles
+			}
+		}
+		select {
+		case <-readyCtx.Done():
+			t.Fatalf("Keycloak PostgreSQL HA cluster did not converge to one primary and two ready replicas for three consecutive probes within %s: roles=%v last_error=%v", readinessTimeout, lastRoles, lastErr)
+		case <-ticker.C:
+		}
+	}
+}
+
+func keycloakPostgresHAClusterRolesReady(roles []string) bool {
+	if len(roles) != 3 {
+		return false
+	}
+	primaryCount, replicaCount := 0, 0
+	for _, role := range roles {
+		switch role {
+		case "primary":
+			primaryCount++
+		case "replica":
+			replicaCount++
+		default:
+			return false
+		}
+	}
+	return primaryCount == 1 && replicaCount == 2
 }
 
 func waitForKeycloakContinuity(t *testing.T, ctx context.Context, driver *KeycloakDriver, resource capability.Resource, binding capability.Binding, phase string) {

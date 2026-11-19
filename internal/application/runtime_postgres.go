@@ -128,7 +128,7 @@ func EnsureRuntime(ctx context.Context, issuer serviceaccess.Issuer, store Store
 	if err := os.WriteFile(files.Compose, []byte(compose), 0o600); err != nil {
 		return RuntimeFiles{}, fmt.Errorf("write application compose file: %w", err)
 	}
-	if err := reconcileManagedRuntimeObservability(m, files.Project); err != nil {
+	if err := reconcileManagedRuntimeObservability(m, files.Project, files.Dir); err != nil {
 		return RuntimeFiles{}, fmt.Errorf("reconcile managed runtime observability: %w", err)
 	}
 	if HasSharedBackends(m) {
@@ -365,6 +365,9 @@ func RuntimeComposeYAMLForProject(m Manifest, resourceProject string) (string, e
 	if (m.Services.CacheManagementUI || m.Services.KeyValueManagementUI) && !UsesSharedValkey(m) {
 		writeCacheUIComposeServices(&b, m)
 	}
+	if m.Services.Perses {
+		writePersesUIComposeService(&b, m, resourceProject)
+	}
 	b.WriteString("\nvolumes:\n")
 	for _, instance := range sqlInstances {
 		service := runtimeServiceName("postgres", instance)
@@ -387,6 +390,10 @@ func RuntimeComposeYAMLForProject(m Manifest, resourceProject string) (string, e
 			volume := mongodbMemberVolumeName(instance, ordinal)
 			fmt.Fprintf(&b, "  %s:\n    name: %s_%s\n", volume, resourceProject, volume)
 		}
+	}
+	if m.Services.Perses {
+		service := runtimeServiceName("perses", defaultServiceInstance)
+		fmt.Fprintf(&b, "  %s-data:\n    name: %s\n", service, PersesRuntimeVolumeName(resourceProject, service))
 	}
 	b.WriteString("\nnetworks:\n  default:\n")
 	fmt.Fprintf(&b, "    name: %s\n", ApplicationBackendNetworkNameForProject(resourceProject))

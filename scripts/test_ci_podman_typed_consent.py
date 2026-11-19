@@ -79,7 +79,7 @@ class PodmanTypedConsentTests(unittest.TestCase):
 
     def test_scope_output_parser_accepts_only_one_emitted_plan(self):
         document = scope("down-scope")
-        raw = "Achtung: review current stop.\n" + json.dumps(document) + "\n"
+        raw = "Warning: review current stop.\n" + json.dumps(document) + "\n"
         self.assertEqual(document, helper._document_from_text(raw, "scope-output"))
         with self.assertRaises(ValueError):
             helper._document_from_text(raw + "unexpected", "scope-output")
@@ -141,7 +141,7 @@ if args[:2] == ["app", "plan"]:
     state.write_text(str(count + 1), encoding="utf-8")
     print(json.dumps({"provider_plan": {"impact": impact(plan_id)}}))
 elif args[:3] == ["--no-input", "app", "down"]:
-    print("Achtung: review the current application stop.")
+    print("Warning: review the current application stop.")
     print(json.dumps({"scope": {"version": "baseharbor.provider-impact-scope/v1",
         "plan_id": "down-plan", "confirmations_required": 2,
         "destructive": False, "complete": False}}))

@@ -50,6 +50,54 @@ func TestKeycloakClientSecretOverlapRotation(t *testing.T) {
 	}
 }
 
+func TestKeycloakClientSecretRotationWaitsForHAReadConvergence(t *testing.T) {
+	postCount := 0
+	currentReadCount := 0
+	rotatedReadCount := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/client-secret"):
+			postCount++
+			_, _ = w.Write([]byte(`{"value":"new-secret"}`))
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/client-secret/rotated"):
+			rotatedReadCount++
+			if rotatedReadCount == 1 {
+				// A stale HA member returns the current secret as its overlap value.
+				_, _ = w.Write([]byte(`{"value":"new-secret"}`))
+				return
+			}
+			_, _ = w.Write([]byte(`{"value":"old-secret"}`))
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/client-secret"):
+			currentReadCount++
+			if currentReadCount == 1 {
+				// A member may briefly fail while the HA cluster is converging.
+				http.Error(w, "member is restarting", http.StatusServiceUnavailable)
+				return
+			}
+			_, _ = w.Write([]byte(`{"value":"new-secret"}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	admin := &keycloakAdmin{endpoint: server.URL, client: server.Client()}
+	current, rotated, err := admin.rotateClientSecret(context.Background(), "realm", "uuid")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if current != "new-secret" || rotated != "old-secret" {
+		t.Fatalf("rotation = current %q rotated %q", current, rotated)
+	}
+	if postCount != 1 {
+		t.Fatalf("secret regeneration POST count = %d, want exactly one", postCount)
+	}
+	if rotatedReadCount != 2 || currentReadCount != 3 {
+		t.Fatalf("read counts = current %d rotated %d, want 3 current and 2 rotated reads", currentReadCount, rotatedReadCount)
+	}
+}
+
 func TestKeycloakClientSecretVerificationDistinguishesInvalidClient(t *testing.T) {
 	tests := []struct {
 		name    string
