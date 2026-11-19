@@ -10,8 +10,10 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/mcpdev80/baseharbor/internal/capability"
 )
@@ -52,6 +54,14 @@ const (
 	PersesHostPortEnv = "BASEHARBOR_PERSES_UI_HOST_PORT"
 	// PersesHealthAuthorizationEnv carries the gateway health probe credential.
 	PersesHealthAuthorizationEnv = "BASEHARBOR_PERSES_HEALTH_AUTHORIZATION"
+	// PersesConfigContainerPath is the file the rendered command names with
+	// --config. It is a mount target, never a path BaseHarbor writes into with
+	// a shell.
+	PersesConfigContainerPath = "/etc/perses/config.yaml"
+	// PersesConfigMountDir is the container directory the rendered host
+	// configuration directory is bind-mounted to, read-only. Its parent holds
+	// the mount target.
+	PersesConfigMountDir = "/etc/perses"
 )
 
 // PersesGatewayRequirements is what the gateway needs to protect one Perses
@@ -60,6 +70,12 @@ type PersesGatewayRequirements struct {
 	// Upstream is the URL of the Perses server this gateway fronts. It must be a
 	// loopback or Target-internal service address, without credentials.
 	Upstream string
+	// PersesBindAddress is the address the Perses process binds. The empty
+	// value is the shared-namespace form: Perses binds the loopback of the
+	// network namespace its gateway container joins, so the port can never be
+	// host-forwarded and the gateway still reaches it. A non-loopback value
+	// must name the exact address the gateway upstream routes to.
+	PersesBindAddress string
 	// Policy is the effective Perses security posture. It must validate.
 	Policy capability.PersesSecurityPolicy
 	// Authentication is the gateway authentication mode offered to operators.
@@ -95,9 +111,16 @@ type PersesGatewayPlan struct {
 	// ProxyDenyReason explains why the datasource proxy is refused. Empty means
 	// the policy validates; the route stays denied by default.
 	ProxyDenyReason string
-	// UpstreamBindAddress is the loopback bind address rendered for the Perses
-	// process so it can never be reached without the gateway.
+	// UpstreamBindAddress is the address the Perses process binds so it can
+	// never be reached without the gateway. With SharedGatewayNetwork it is the
+	// loopback of the namespace the gateway joins; otherwise it is the
+	// Target-internal service address rendered into --web.listen-address.
 	UpstreamBindAddress string
+	// SharedGatewayNetwork reports that the Perses service definition renders
+	// network_mode into the gateway container's namespace. It is how the
+	// loopback upstream of BuildPersesGateway becomes reachable without ever
+	// publishing the Perses port on the host.
+	SharedGatewayNetwork bool
 }
 
 // BuildPersesGateway derives the protected access configuration for one Perses
@@ -125,11 +148,41 @@ func BuildPersesGateway(requirements PersesGatewayRequirements) (PersesGatewayPl
 		return PersesGatewayPlan{}, fmt.Errorf("Perses management gateway token authentication requires %s", EnvAuthTokenFile)
 	}
 	denied := []string{capability.PersesProxyPrefix}
+	// Perses binds the loopback of a network namespace its gateway container
+	// joins (compose network_mode): the port can never be host-forwarded and
+	// the gateway reaches it. The gateway upstream is the service DNS name;
+	// inside the shared namespace that name resolves to a container address,
+	// never to Perses' bind, so a service-name upstream is the only accepted
+	// form. A loopback-literal upstream would strand the peer that does not
+	// join the namespace, and a routable literal makes Perses itself
+	// reachable, so both fail closed here.
+	upstreamURL, err := url.Parse(upstream)
+	if err != nil {
+		return PersesGatewayPlan{}, fmt.Errorf("parse normalized Perses gateway upstream: %w", err)
+	}
+	upstreamHost := strings.TrimSuffix(strings.TrimPrefix(upstreamURL.Hostname(), "["), "]")
+	if addr, addrErr := netip.ParseAddr(upstreamHost); addrErr == nil && addr.Unmap().IsLoopback() {
+		return PersesGatewayPlan{}, fmt.Errorf("Perses gateway upstream %q is a loopback literal: loopback is private to one network namespace, so the gateway can only reach Perses through its service address while Perses binds loopback of the namespace the two share", requirements.Upstream)
+	}
+	bindAddress := strings.TrimSpace(requirements.PersesBindAddress)
+	switch bindAddress {
+	case "", "127.0.0.1", "localhost":
+		bindAddress = "127.0.0.1"
+	default:
+		if !validPersesBindAddress(bindAddress) {
+			return PersesGatewayPlan{}, fmt.Errorf("Perses bind address %q is not a literal address or service address", bindAddress)
+		}
+		if addr, addrErr := netip.ParseAddr(bindAddress); addrErr == nil && !addr.Unmap().IsLoopback() {
+			return PersesGatewayPlan{}, fmt.Errorf("Perses bind address %q is a routable literal: BaseHarbor renders Perses on the loopback of the shared gateway namespace only", bindAddress)
+		}
+		bindAddress = "127.0.0.1"
+	}
 	plan := PersesGatewayPlan{
 		Policy:                requirements.Policy,
 		DeniedPaths:           denied,
 		RequireClientIdentity: authentication == AuthenticationMTLS,
-		UpstreamBindAddress:   "127.0.0.1",
+		UpstreamBindAddress:   bindAddress,
+		SharedGatewayNetwork:  true,
 	}
 	spec := HTTPGatewaySpec{
 		ServiceName:            PersesGatewayServiceName,
@@ -175,10 +228,17 @@ func normalizedPersesUpstream(raw string) (string, error) {
 	if err != nil || number < 1 || number > 65535 {
 		return "", fmt.Errorf("Perses management gateway upstream %q has an invalid port", raw)
 	}
-	if addr, err := netip.ParseAddr(host); err == nil && !addr.Unmap().IsLoopback() {
-		return "", fmt.Errorf("Perses management gateway upstream %q is a routable literal address: bind Perses to loopback or a Target-internal service name so only the gateway can reach it", raw)
+	normalized := scheme + "://" + host + ":" + port
+	if addr, addrErr := netip.ParseAddr(host); addrErr == nil {
+		if !addr.Unmap().IsLoopback() {
+			return "", fmt.Errorf("Perses management gateway upstream %q is a routable literal address: bind Perses to loopback or a Target-internal service name so only the gateway can reach it", raw)
+		}
+		return normalized, nil
 	}
-	return scheme + "://" + host + ":" + port, nil
+	if !validPersesBindAddress(host) {
+		return "", fmt.Errorf("Perses management gateway upstream %q has an invalid host", raw)
+	}
+	return normalized, nil
 }
 
 // PersesDeniedProxyPaths reports the route prefixes a gateway must refuse for a
@@ -233,11 +293,71 @@ func parsePersesNetwork(label, raw string) (netip.Prefix, error) {
 	return prefix, nil
 }
 
-// PersesComposeServices renders the Perses service and its gateway. Perses binds
-// loopback inside its own network namespace and is never published; the gateway
+// validPersesBindAddress accepts a literal address or a DNS service name:
+// exactly what --web.listen-address takes.
+func validPersesBindAddress(raw string) bool {
+	if raw == "" {
+		return false
+	}
+	if _, err := netip.ParseAddr(raw); err == nil {
+		return true
+	}
+	_, err := netip.ParsePrefix(raw)
+	return err != nil && persesAllowedBindPattern.MatchString(raw)
+}
+
+var persesAllowedBindPattern = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$`)
+
+// PersesRenderedConfig is one rendered Perses configuration file plus the host
+// path the realization must materialize it at. Contents carry no credential
+// material: they reference files only.
+type PersesRenderedConfig struct {
+	// HostPath is where the realization writes the rendering; the rendered
+	// service definition bind-mounts its directory at PersesConfigContainerPath,
+	// read-only.
+	HostPath string
+	// Contents is the deterministic YAML of the effective policy.
+	Contents string
+}
+
+// PersesConfigRenderer materializes the Perses configuration file for a plan.
+// It is the producer half of the --config=/etc/perses/config.yaml contract:
+// without a renderer wired into the deployment there is no configuration to
+// mount, and BuildPersesGateway refuses to render service definitions that
+// would silently fall back to the upstream anonymous default posture.
+type PersesConfigRenderer func(context.Context, PersesGatewayPlan) (PersesRenderedConfig, error)
+
+// SetPersesConfigRenderer registers the realization's renderer. It must be set
+// before any deployment renders the optional Perses surface; a nil renderer is
+// an explicit statement that no realization can materialize the file, and the
+// compose rendering then fails closed.
+func SetPersesConfigRenderer(renderer PersesConfigRenderer) {
+	persesConfigRendererMu.Lock()
+	defer persesConfigRendererMu.Unlock()
+	persesConfigRenderer = renderer
+}
+
+// PersesConfigRendererRegistered reports whether a realization provides the
+// configuration producer the rendered service definition consumes.
+func PersesConfigRendererRegistered() bool {
+	persesConfigRendererMu.RLock()
+	defer persesConfigRendererMu.RUnlock()
+	return persesConfigRenderer != nil
+}
+
+var (
+	persesConfigRendererMu sync.RWMutex
+	persesConfigRenderer   PersesConfigRenderer
+)
+
+// PersesComposeServices renders the Perses service and its gateway. The Perses
+// process binds the address from the plan and is never published; the gateway
 // is the only host-visible address and carries the TLS and authentication
-// requirements from the plan.
-func PersesComposeServices(plan PersesGatewayPlan, files HTTPGatewayFiles, release capability.PersesRelease) (string, error) {
+// requirements from the plan. The configuration the command line names is
+// rendered from the validated policy by the registered realization renderer
+// and mounted read-only, so the posture the contract verified is the posture
+// the process actually serves.
+func PersesComposeServices(ctx context.Context, plan PersesGatewayPlan, files HTTPGatewayFiles, release capability.PersesRelease) (string, error) {
 	if err := capability.ValidatePersesSecurityPolicy(plan.Policy); err != nil {
 		return "", err
 	}
@@ -247,27 +367,84 @@ func PersesComposeServices(plan PersesGatewayPlan, files HTTPGatewayFiles, relea
 	if strings.TrimSpace(files.Caddyfile) == "" {
 		return "", errors.New("Perses management gateway requires its Caddyfile before rendering")
 	}
+	persesConfigRendererMu.RLock()
+	renderer := persesConfigRenderer
+	persesConfigRendererMu.RUnlock()
+	if renderer == nil {
+		return "", errors.New("Perses service rendering requires a registered configuration renderer: the --config file must have a proven producer, otherwise the deployment silently runs the upstream anonymous default posture")
+	}
+	configured, err := renderer(ctx, plan)
+	if err != nil {
+		return "", err
+	}
+	if expected, err := RenderPersesConfig(plan.Policy); err != nil {
+		return "", err
+	} else if configured.Contents != expected {
+		return "", fmt.Errorf("the registered Perses configuration renderer did not produce the deterministic rendering of the validated policy for %s; refusing to mount it", configured.HostPath)
+	}
+	if err := validatePersesRenderedConfig(plan, configured); err != nil {
+		return "", err
+	}
 	var b strings.Builder
+	// The gateway container is rendered first because the Perses service
+	// definition joins its network namespace.
+	gateway := HTTPGatewayComposeService(files, plan.Spec)
+	gatewayName := strings.TrimSpace(plan.Spec.ServiceName)
+	if gatewayName == "" || !strings.HasPrefix(gateway, "  "+gatewayName+":") {
+		return "", errors.New("Perses management gateway spec must name its service before rendering")
+	}
+	b.WriteString(gateway)
 	fmt.Fprintf(&b, "  %s:\n", PersesServiceName)
 	fmt.Fprintf(&b, "    image: %s\n", release.Image)
 	b.WriteString("    restart: unless-stopped\n")
 	b.WriteString("    read_only: true\n")
 	b.WriteString("    cap_drop: [\"ALL\"]\n")
 	b.WriteString("    security_opt: [\"no-new-privileges:true\"]\n")
+	if !plan.SharedGatewayNetwork || strings.TrimSpace(plan.UpstreamBindAddress) != "127.0.0.1" {
+		return "", errors.New("Perses service rendering requires the shared-namespace loopback binding the plan verifies")
+	}
+	// The loopback bind is only meaningful inside the namespace the gateway
+	// joins, and it is what keeps the Perses port unforwardable on the host.
+	// Deliberately no `ports:` and no `networks:` block for Perses: the gateway
+	// is the only reachable address.
+	fmt.Fprintf(&b, "    network_mode: %s\n", strconv.Quote("service:"+gatewayName))
 	b.WriteString("    tmpfs:\n")
 	b.WriteString("      - /tmp:rw,noexec,nosuid,nodev\n")
-	// Deliberately no `ports:` block: the gateway is the only reachable address.
-	b.WriteString("    expose:\n")
-	fmt.Fprintf(&b, "      - \"%d\"\n", PersesUpstreamPort)
+	b.WriteString("      - /etc/perses/database:rw,noexec,nosuid,nodev\n")
 	// The configuration is rendered by the realization and mounted read-only;
 	// BaseHarbor never rewrites it with a shell so that a rendering stays
 	// deterministic and free of credential interpolation. Binding loopback is
 	// the flag the product documents for this purpose.
 	b.WriteString("    command:\n")
-	fmt.Fprintf(&b, "      - --config=/etc/perses/config.yaml\n")
+	fmt.Fprintf(&b, "      - --config=%s\n", PersesConfigContainerPath)
 	fmt.Fprintf(&b, "      - --web.listen-address=%s:%d\n", plan.UpstreamBindAddress, PersesUpstreamPort)
-	b.WriteString(HTTPGatewayComposeService(files, plan.Spec))
+	fmt.Fprintf(&b, "    volumes:\n")
+	fmt.Fprintf(&b, "      - %s\n", strconv.Quote(composeBindSource(filepath.Dir(configured.HostPath))+":"+PersesConfigMountDir+":ro"))
 	return b.String(), nil
+}
+
+// validatePersesRenderedConfig proves the provenance chain of one rendering:
+// the file exists at the path the renderer declared, it is the deterministic
+// rendering of the plan's effective policy, and it does not carry credential
+// material. A renderer that writes elsewhere, drifts from the policy or
+// interpolates secrets fails the deployment closed.
+func validatePersesRenderedConfig(plan PersesGatewayPlan, configured PersesRenderedConfig) error {
+	if strings.TrimSpace(configured.HostPath) == "" || !filepath.IsAbs(configured.HostPath) {
+		return errors.New("Perses configuration renderer must declare an absolute host path")
+	}
+	contents, err := os.ReadFile(configured.HostPath)
+	if err != nil {
+		return fmt.Errorf("Perses configuration renderer declared %s but the file is not materialized: %w", configured.HostPath, err)
+	}
+	if string(contents) != configured.Contents {
+		return fmt.Errorf("Perses configuration at %s does not match the renderer output; the mounted file must be the deterministic rendering", configured.HostPath)
+	}
+	if expected, err := RenderPersesConfig(plan.Policy); err != nil {
+		return err
+	} else if string(contents) != expected {
+		return fmt.Errorf("Perses configuration at %s is not the deterministic rendering of the validated policy", configured.HostPath)
+	}
+	return nil
 }
 
 // PersesGatewayCaddyDirectives renders the refused datasource-proxy routes and

@@ -88,6 +88,10 @@ type PersesSecurityPolicy struct {
 	// ReadOnlyMode corresponds to `security.readonly`, disabling the mutating
 	// API. Optional: it narrows the blast radius but is never required.
 	ReadOnlyMode bool
+	// BindAddress is the interface the rendered Perses process listens on, the
+	// same value the gateway plan verified. An empty value renders the loopback
+	// default. A routable literal is refused by the renderer.
+	BindAddress string
 }
 
 // DefaultPersesSecurityPolicy is the strict posture BaseHarbor requires for the

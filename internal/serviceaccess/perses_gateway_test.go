@@ -197,13 +197,14 @@ func TestPersesComposeServicesNeverPublishesPersesDirectly(t *testing.T) {
 		Caddyfile: filepath.Join(t.TempDir(), "config", "Caddyfile"),
 		Material:  TLSMaterial{ServerName: "perses-ui-access"},
 	}
-	rendered, err := PersesComposeServices(plan, files, capability.PersesDefaultRelease)
+	restore := registerPersesRendererForTest(t, plan)
+	rendered, err := PersesComposeServices(context.Background(), plan, files, capability.PersesDefaultRelease)
 	if err != nil {
 		t.Fatalf("the Perses services must render: %v", err)
 	}
 	persesBlock := rendered
-	if idx := strings.Index(rendered, "  "+PersesGatewayServiceName+":"); idx >= 0 {
-		persesBlock = rendered[:idx]
+	if idx := strings.Index(rendered, "  "+PersesServiceName+":"); idx >= 0 {
+		persesBlock = rendered[idx:]
 	}
 	if strings.Contains(persesBlock, "ports:") {
 		t.Fatalf("the Perses service must never be published to the host; only the gateway is reachable:\n%s", persesBlock)
@@ -218,19 +219,41 @@ func TestPersesComposeServicesNeverPublishesPersesDirectly(t *testing.T) {
 		t.Fatalf("the rendering must use the pinned image, got:\n%s", rendered)
 	}
 	// Unpinned releases must fail closed rather than render `latest`.
-	if _, err := PersesComposeServices(plan, files, capability.PersesRelease{Version: "v0.55.1"}); err == nil {
+	if _, err := PersesComposeServices(context.Background(), plan, files, capability.PersesRelease{Version: "v0.55.1"}); err == nil {
 		t.Fatal("a Perses release without a pinned image must not render")
 	}
 	var notConfigured *capability.PersesNotConfiguredError
-	if _, err := PersesComposeServices(plan, files, capability.PersesRelease{}); !errors.As(err, &notConfigured) {
+	if _, err := PersesComposeServices(context.Background(), plan, files, capability.PersesRelease{}); !errors.As(err, &notConfigured) {
 		t.Fatalf("an unpinned surface must report the typed not-configured verdict, got %v", err)
 	}
+	restore()
 	// A plan whose policy has since been weakened must not render either.
 	weakened := plan
 	weakened.Policy = capability.AnonymousPersesSecurityPolicy()
-	if _, err := PersesComposeServices(weakened, files, capability.PersesDefaultRelease); err == nil {
+	if _, err := PersesComposeServices(context.Background(), weakened, files, capability.PersesDefaultRelease); err == nil {
 		t.Fatal("rendering must re-check the posture, not trust the plan shape")
 	}
+}
+
+// registerPersesRendererForTest materializes the deterministic configuration
+// rendering under a temporary host directory, exactly as a realization would,
+// and restores the previous registration when the test ends.
+func registerPersesRendererForTest(t *testing.T, plan PersesGatewayPlan) func() {
+	t.Helper()
+	previous := persesConfigRenderer
+	dir := t.TempDir()
+	SetPersesConfigRenderer(func(_ context.Context, current PersesGatewayPlan) (PersesRenderedConfig, error) {
+		contents, err := RenderPersesConfig(current.Policy)
+		if err != nil {
+			return PersesRenderedConfig{}, err
+		}
+		hostPath := filepath.Join(dir, "config.yaml")
+		if err := os.WriteFile(hostPath, []byte(contents), 0o444); err != nil {
+			return PersesRenderedConfig{}, err
+		}
+		return PersesRenderedConfig{HostPath: hostPath, Contents: contents}, nil
+	})
+	return func() { SetPersesConfigRenderer(previous) }
 }
 
 func TestEnsurePersesGatewayMaterialRequiresIssuerAndTLS(t *testing.T) {
