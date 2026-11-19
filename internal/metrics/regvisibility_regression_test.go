@@ -12,8 +12,8 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/observability"
-	"regexp"
 	"go.yaml.in/yaml/v3"
+	"regexp"
 )
 
 // readSingleTargetGroup reads the single targetGroup payload from the named file
