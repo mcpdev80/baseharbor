@@ -4,6 +4,7 @@ import copy
 import hashlib
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -1719,6 +1720,98 @@ class ReceiptControlPlaneMappingTests(unittest.TestCase):
         self.assertEqual('unresolved', result['coverage_status'])
         self.assertTrue(any('cmd/baha/app_new_command.go' in item for item in
                             result['unresolved_coverage']))
+
+
+class WorkflowPolicyRegistrationTests(unittest.TestCase):
+    def _run_policy(self, update):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            policy_source = (ROOT / 'ci-workflow-policy.sh').read_text()
+            expected = re.search(r'expected=\(\s*(.*?)\s*\)', policy_source, re.S)
+            self.assertIsNotNone(expected)
+            workflow_names = re.findall(r'^\s*([a-z0-9-]+\.yml)$', expected.group(1), re.M)
+            workflows = root / '.github' / 'workflows'
+            workflows.mkdir(parents=True)
+            for name in workflow_names:
+                (workflows / name).write_text('\n')
+            scripts = root / 'scripts'
+            scripts.mkdir()
+            (scripts / 'ci-workflow-policy.sh').write_text(policy_source)
+            planner_path = scripts / 'pr-gate-plan.py'
+            planner_path.write_text("CI_CHECKS = [\n    {'id': 'base-check', 'owner': 'base'},\n    {'id': 'ci-policy', 'owner': 'policy'},\n]\n")
+            runner_path = scripts / 'pr-check-runner.py'
+            runner_path.write_text("VALIDATIONS = {'base-check', 'ci-policy'} | set(WIZARD_TEST_FAMILIES)\n")
+            (scripts / 'release-requirements.json').write_text(
+                json.dumps({'gates': [{'id': 'base-gate'}]}) + '\n')
+            (workflows / 'ci.yml').write_text('case "$VALIDATION" in\n  base-check) true ;;\nesac\n')
+            subprocess.run(['git', '-C', str(root), 'init', '-q'], check=True)
+            subprocess.run(['git', '-C', str(root), 'config', 'user.name', 'Policy fixture'], check=True)
+            subprocess.run(['git', '-C', str(root), 'config', 'user.email', 'policy@example.invalid'], check=True)
+            subprocess.run(['git', '-C', str(root), 'add', '.'], check=True)
+            subprocess.run(['git', '-C', str(root), 'commit', '-qm', 'policy base'], check=True)
+            base_sha = subprocess.run(['git', '-C', str(root), 'rev-parse', 'HEAD'],
+                                      check=True, text=True, capture_output=True).stdout.strip()
+            update(root)
+            subprocess.run(['git', '-C', str(root), 'add', '.'], check=True)
+            subprocess.run(['git', '-C', str(root), 'commit', '-qm', 'policy candidate'], check=True)
+            head_sha = subprocess.run(['git', '-C', str(root), 'rev-parse', 'HEAD'],
+                                      check=True, text=True, capture_output=True).stdout.strip()
+            env = os.environ.copy()
+            env.update({'BASEHARBOR_POLICY_BASE_SHA': base_sha,
+                        'BASEHARBOR_POLICY_HEAD_SHA': head_sha,
+                        'GITHUB_EVENT_NAME': 'workflow_dispatch'})
+            return subprocess.run(['bash', 'scripts/ci-workflow-policy.sh'], cwd=root,
+                                  env=env, text=True, capture_output=True)
+
+    def test_new_planner_id_requires_catalog_update(self):
+        def update(root):
+            path = root / 'scripts' / 'pr-gate-plan.py'
+            path.write_text(path.read_text().replace("    {'id': 'base-check', 'owner': 'base'},",
+                                                     "    {'id': 'base-check', 'owner': 'base'},\n    {'id': 'new-check', 'owner': 'new'},"))
+        result = self._run_policy(update)
+        self.assertNotEqual(0, result.returncode, result.stdout + result.stderr)
+        self.assertIn('scripts/release-requirements.json', result.stderr)
+
+    def test_new_runner_registration_requires_planner_and_catalog(self):
+        def update(root):
+            path = root / 'scripts' / 'pr-check-runner.py'
+            path.write_text("VALIDATIONS = {'base-check', 'new-check'} | set(WIZARD_TEST_FAMILIES)\n")
+        result = self._run_policy(update)
+        self.assertNotEqual(0, result.returncode, result.stdout + result.stderr)
+        self.assertIn('scripts/pr-gate-plan.py', result.stderr)
+        self.assertIn('scripts/release-requirements.json', result.stderr)
+
+    def test_new_ci_dispatch_registration_requires_planner_and_catalog(self):
+        def update(root):
+            path = root / '.github' / 'workflows' / 'ci.yml'
+            path.write_text('case "$VALIDATION" in\n  base-check) true ;;\n  ci-policy) bash scripts/ci-workflow-policy.sh ;;\nesac\n')
+        result = self._run_policy(update)
+        self.assertNotEqual(0, result.returncode, result.stdout + result.stderr)
+        self.assertIn('scripts/pr-gate-plan.py', result.stderr)
+        self.assertIn('scripts/release-requirements.json', result.stderr)
+
+    def test_catalog_and_planner_co_update_allows_new_registration(self):
+        def update(root):
+            planner_path = root / 'scripts' / 'pr-gate-plan.py'
+            planner_path.write_text(planner_path.read_text().replace(
+                "    {'id': 'base-check', 'owner': 'base'},",
+                "    {'id': 'base-check', 'owner': 'base'},\n    {'id': 'new-check', 'owner': 'new'},"))
+            (root / 'scripts' / 'pr-check-runner.py').write_text(
+                "VALIDATIONS = {'base-check', 'new-check'} | set(WIZARD_TEST_FAMILIES)\n")
+            (root / '.github' / 'workflows' / 'ci.yml').write_text(
+                'case "$VALIDATION" in\n  base-check) true ;;\n  new-check) true ;;\nesac\n')
+            (root / 'scripts' / 'release-requirements.json').write_text(json.dumps({
+                'gates': [{'id': 'base-gate'}, {'id': 'new-gate'}]}) + '\n')
+        result = self._run_policy(update)
+        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+        self.assertIn('Gate catalog consistency PASS', result.stdout)
+
+    def test_unrelated_existing_file_edits_do_not_require_catalog_update(self):
+        def update(root):
+            path = root / 'scripts' / 'pr-gate-plan.py'
+            path.write_text(path.read_text() + '# unrelated comment\n')
+        result = self._run_policy(update)
+        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
 
 
 # Registration coverage is part of the trusted planner qualification suite.
