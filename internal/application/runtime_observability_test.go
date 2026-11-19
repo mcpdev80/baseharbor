@@ -16,7 +16,7 @@ func TestManagedRuntimeObservabilityUsesCanonicalServiceIdentities(t *testing.T)
 	m = WithOTLPTelemetry(m, "traces")
 
 	project := "baseharbor-local-demo-dev"
-	if err := reconcileManagedRuntimeObservability(m, project); err != nil {
+	if err := reconcileManagedRuntimeObservability(m, project, ""); err != nil {
 		t.Fatal(err)
 	}
 
@@ -70,7 +70,7 @@ func TestManagedRuntimeObservabilityExcludesSharedBackendServices(t *testing.T) 
 	}
 
 	project := "baseharbor-local-demo-dev"
-	if err := reconcileManagedRuntimeObservability(m, project); err != nil {
+	if err := reconcileManagedRuntimeObservability(m, project, ""); err != nil {
 		t.Fatal(err)
 	}
 	logs, err := observability.ListLogs(

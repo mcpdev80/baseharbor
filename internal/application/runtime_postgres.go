@@ -128,7 +128,7 @@ func EnsureRuntime(ctx context.Context, issuer serviceaccess.Issuer, store Store
 	if err := os.WriteFile(files.Compose, []byte(compose), 0o600); err != nil {
 		return RuntimeFiles{}, fmt.Errorf("write application compose file: %w", err)
 	}
-	if err := reconcileManagedRuntimeObservability(m, files.Project); err != nil {
+	if err := reconcileManagedRuntimeObservability(m, files.Project, files.Dir); err != nil {
 		return RuntimeFiles{}, fmt.Errorf("reconcile managed runtime observability: %w", err)
 	}
 	if HasSharedBackends(m) {

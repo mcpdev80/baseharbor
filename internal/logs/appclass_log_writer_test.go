@@ -59,7 +59,7 @@ func TestApplicationClassLogSourceSurvivesManagedReconcile(t *testing.T) {
 	}
 
 	for i := 0; i < 2; i++ {
-		if err := application.ReconcileManagedRuntimeObservability(m, project); err != nil {
+		if err := application.ReconcileManagedRuntimeObservability(m, project, ""); err != nil {
 			t.Fatalf("managed logs converge round %d: %v", i+1, err)
 		}
 		if err := logs.ConvergeManagedLogsForReconcile(m, project); err != nil {

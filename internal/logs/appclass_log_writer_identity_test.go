@@ -92,7 +92,7 @@ func TestApplicationClassLogSourcesStayDistinguishablePerService(t *testing.T) {
 	want := wantApplicationLogSources(project, "api", "worker")
 
 	for round := 1; round <= 2; round++ {
-		if err := application.ReconcileManagedRuntimeObservability(m, project); err != nil {
+		if err := application.ReconcileManagedRuntimeObservability(m, project, ""); err != nil {
 			t.Fatalf("render-time reconcile round %d: %v", round, err)
 		}
 		assertApplicationLogSources(t, m, want)
@@ -114,7 +114,7 @@ func TestApplicationClassLogSourcesStayDistinguishablePerService(t *testing.T) {
 func TestApplicationClassLogSourceReconcileRegistersActiveServiceSet(t *testing.T) {
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
 	m, project := appClassWorkloadManifest(t, "api", "worker")
-	if err := application.ReconcileManagedRuntimeObservability(m, project); err != nil {
+	if err := application.ReconcileManagedRuntimeObservability(m, project, ""); err != nil {
 		t.Fatalf("render-time reconcile: %v", err)
 	}
 	assertApplicationLogSources(t, m, wantApplicationLogSources(project, "api", "worker"))
@@ -123,7 +123,7 @@ func TestApplicationClassLogSourceReconcileRegistersActiveServiceSet(t *testing.
 	// surviving service's source must be intact.
 	m = application.WithWorkloadComponents(application.New("demo", "dev", false, false, false), "api")
 	m = application.WithLogsCollection(m, "application")
-	if err := application.ReconcileManagedRuntimeObservability(m, project); err != nil {
+	if err := application.ReconcileManagedRuntimeObservability(m, project, ""); err != nil {
 		t.Fatalf("render-time reconcile after the service was removed: %v", err)
 	}
 	assertApplicationLogSources(t, m, wantApplicationLogSources(project, "api"))
@@ -134,7 +134,7 @@ func TestApplicationClassLogSourceReconcileRegistersActiveServiceSet(t *testing.
 	// A service that appears later must be registered, not swallowed.
 	m = application.WithWorkloadComponents(application.New("demo", "dev", false, false, false), "api", "cron")
 	m = application.WithLogsCollection(m, "application")
-	if err := application.ReconcileManagedRuntimeObservability(m, project); err != nil {
+	if err := application.ReconcileManagedRuntimeObservability(m, project, ""); err != nil {
 		t.Fatalf("render-time reconcile after a new service appeared: %v", err)
 	}
 	assertApplicationLogSources(t, m, wantApplicationLogSources(project, "api", "cron"))
@@ -146,7 +146,7 @@ func TestApplicationClassLogSourceReconcileRegistersActiveServiceSet(t *testing.
 func TestApplicationClassLogSourceBindKeepsSiblings(t *testing.T) {
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
 	m, project := appClassWorkloadManifest(t, "api")
-	if err := application.ReconcileManagedRuntimeObservability(m, project); err != nil {
+	if err := application.ReconcileManagedRuntimeObservability(m, project, ""); err != nil {
 		t.Fatalf("render-time reconcile: %v", err)
 	}
 	assertApplicationLogSources(t, m, wantApplicationLogSources(project, "api"))
@@ -175,7 +175,7 @@ func TestApplicationClassLogSourceDisabledPolicyReclaimsEveryService(t *testing.
 	// instance only when the app is private and does not share the backend.
 	m.Services.SQL = true
 	m.Private = true
-	if err := application.ReconcileManagedRuntimeObservability(m, project); err != nil {
+	if err := application.ReconcileManagedRuntimeObservability(m, project, ""); err != nil {
 		t.Fatalf("render-time reconcile: %v", err)
 	}
 	assertApplicationLogSources(t, m, wantApplicationLogSources(project, "api", "worker"))
@@ -189,7 +189,7 @@ func TestApplicationClassLogSourceDisabledPolicyReclaimsEveryService(t *testing.
 	}
 
 	t.Setenv(application.LogsCollectSourcesEnv, "application-provider")
-	if err := application.ReconcileManagedRuntimeObservability(m, project); err != nil {
+	if err := application.ReconcileManagedRuntimeObservability(m, project, ""); err != nil {
 		t.Fatalf("disabled-policy reconcile: %v", err)
 	}
 	assertApplicationLogSources(t, m, wantApplicationLogSources(project))
