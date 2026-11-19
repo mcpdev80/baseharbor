@@ -200,7 +200,7 @@ func VerifyPersesAlertEvaluatorHealth(_ context.Context, m application.Manifest)
 	// as "no problem" — an unselected surface is not_enabled, and the fail-closed
 	// reason text must name the absence of selection, not a fabricated success.
 	if !m.Services.ObservabilityManagementUI || !m.Services.Perses {
-		return newPersesAlertEvaluatorError("the observability management UI (Perses) is not selected, so there is no alert evaluator to verify; the alerting contract is not_enabled (fail-closed)")
+		return newPersesAlertEvaluatorError("the observability management UI (Perses) is not selected, so there is no alert evaluator to verify; the alerting contract is not configured")
 	}
 	// Ground the health contract in manifest truth: a real, authorized
 	// Prometheus rule-evaluation and a validated notification owner contract are
@@ -218,7 +218,7 @@ func VerifyPersesAlertEvaluatorHealth(_ context.Context, m application.Manifest)
 	// has been removed so the health state can never surface as
 	// healthy/verified/filled.
 	if !persesAlertRealEvaluatorContractPresent() {
-		return newPersesAlertEvaluatorError("no real Prometheus rule-evaluation and notification-owner contract exists in this Core; selection, datasource pin and an authorized metrics scrape source are not evaluator or recipient proof, so the alerting contract fails closed (not_enabled)")
+		return newPersesAlertEvaluatorError("no real Prometheus rule-evaluation and notification-owner contract exists in this Core; selection, datasource pin and an authorized metrics scrape source are not evaluator or recipient proof, so the alerting contract is unavailable (owner-gated evaluator contract)")
 	}
 	// Fail-closed safety net: persesAlertRealEvaluatorContractPresent() is a
 	// permanent stub, so this branch is unreachable today. It is kept (never a

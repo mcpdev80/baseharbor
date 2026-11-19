@@ -327,6 +327,14 @@ func TestPersesAlertEvaluatorHealthUnselectedManifestReturnsError(t *testing.T) 
 	if !strings.Contains(err.Error(), "is not selected") {
 		t.Fatalf("fail-closed error = %v, want the unselected-manifest reason text", err)
 	}
+	// A2: the exact user-visible state text is anchored for the unselected branch.
+	got := err.Error()
+	if strings.Contains(got, "(not_enabled)") {
+		t.Fatalf("unselected manifest must expose the 'not configured' fail-closed state, got %q", got)
+	}
+	if want := "the alerting contract is not configured"; !strings.Contains(got, want) {
+		t.Fatalf("unselected manifest must emit %q, got %q", want, got)
+	}
 }
 
 // TestPersesAlertEvaluatorHealthSelectedStaysFailsClosed asserts the other side
@@ -348,6 +356,42 @@ func TestPersesAlertEvaluatorHealthSelectedStaysFailsClosed(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "no real Prometheus rule-evaluation") {
 		t.Fatalf("fail-closed error = %v, want the no-real-contract fail-closed error text", err)
+	}
+	// A2: the exact user-visible state text is anchored for the selected branch.
+	got := err.Error()
+	if strings.Contains(got, "(not_enabled)") {
+		t.Fatalf("selected+owner-gated surface must expose the 'unavailable' fail-closed state, got %q", got)
+	}
+	if want := "the alerting contract is unavailable (owner-gated evaluator contract)"; !strings.Contains(got, want) {
+		t.Fatalf("selected+owner-gated surface must emit %q, got %q", want, got)
+	}
+}
+
+// TestPersesAlertEvaluatorHealthGuardOwnerAuthorizationAbsent asserts the A3
+// guard: a selected, pinned surface with missing or unknown owner authorization
+// must reach no nil/success/healthy/verified path — neither through the
+// selected manifest path (which fails closed on the missing owner-gated
+// evaluator contract) nor, structurally, through any recipient-validating arm.
+// There is no real evaluator or validated notification owner in this Core, so
+// every selected surface stays unavailable; a missing or foreign owner can
+// never flip the verdict to success.
+func TestPersesAlertEvaluatorHealthGuardOwnerAuthorizationAbsent(t *testing.T) {
+	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
+	t.Setenv(application.MetricsEnabledEnv, "true")
+	m := persesAlertEvaluatorManifest()
+	// A materialized, authorized /metrics scrape source is present, but a
+	// scrape target is neither a rule evaluator nor a notification recipient;
+	// it carries no owner/authorization evidence for the alerting contract.
+	persesMaterializeAlertProvider(t, m, persesPrometheusScrapeSource("prometheus:runtime", capability.ProviderPrometheus))
+	err := VerifyPersesAlertEvaluatorHealth(context.Background(), m)
+	if err == nil {
+		t.Fatal("selected+pinned surface with missing owner-authorization must fail closed; no nil/success path may exist without a real evaluator/recipient contract")
+	}
+	if _, ok := err.(*PersesAlertEvaluatorError); !ok {
+		t.Fatalf("error = %T, want *PersesAlertEvaluatorError", err)
+	}
+	if !strings.Contains(err.Error(), "unavailable (owner-gated evaluator contract)") {
+		t.Fatalf("selected+owner-gated surface must expose the unavailable state, got %q", err.Error())
 	}
 }
 
