@@ -227,6 +227,10 @@ func GetEnvironment(target, environmentName string) (EnvironmentRecord, error) {
 		}
 		switch {
 		case errors.Is(err, ErrRegistryConcurrentWrite):
+			// The lock is intentionally non-blocking. Yield between retries so
+			// contenders do not exhaust the retry budget while the winner is
+			// still writing the first identity.
+			time.Sleep(time.Millisecond)
 			continue
 		case errors.Is(err, ErrEnvironmentAlreadyExists):
 			// A concurrent writer won. Read and return its identity so the
