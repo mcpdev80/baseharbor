@@ -3,6 +3,8 @@ package application
 import (
 	"errors"
 	"testing"
+
+	"github.com/mcpdev80/baseharbor/internal/capability"
 )
 
 // Regression 0428-119 (hunt 916 befund-1, A-F1 / A.4 / B2 / C3): a registry,
@@ -430,5 +432,183 @@ func TestConsentSurvivesObservationClockChurn(t *testing.T) {
 	}
 	if err := ValidateProviderChangeConsent(after, ProviderChangeConsent{PlanID: before.PlanID, First: true, Second: true}); err == nil {
 		t.Fatal("a crossed validity boundary with only the clock sampled accepted stale consent")
+	}
+}
+
+// The three regression suites for 0428-119 independent-review befund-2 / C-blockend
+// (akten evidence/r28-welle4-2026-11-19/codex-review-wave/1690-0428-119-independent-review.md):
+// equalRegistry at provider_consent_authority.go:432 compared only the LENGTHS of
+// Instances and Bindings. A provider change that keeps the same number of
+// instances/bindings but swaps the instance, retargets the binding or retitles
+// the version/readiness of a same-id instance read as consent-equivalent and
+// passed the fail-closed gate — exactly the stale-impact-consent hole this card
+// exists to close. These suites pin equalRegistry to CONTENT (keyset equality,
+// order irrelevant) and pin the end-to-end revalidation gate to fail closed on a
+// same-count/different-content registry change.
+
+// registryInstance builds a single-instance registry with a given version/scope.
+func registryInstance(id string, version string, scope capability.ProviderScope) capability.Registry {
+	r := capability.NewRegistry()
+	r.Instances = []capability.ProviderInstance{{
+		ID:                 id,
+		ProviderID:         "native/" + id,
+		ProviderVersion:    version,
+		Provider:           capability.Provider{Kind: capability.ProviderOpenBao},
+		Scope:              scope,
+		Ownership:          capability.OwnershipBaseHarbor,
+		OwnerApplicationID: "app",
+	}}
+	return r
+}
+
+// registryWith builds a registry from an ordered list of (id, version, scope),
+// so two registries can carry identical content in different order.
+func registryWith(t *testing.T, entries ...[3]string) capability.Registry {
+	t.Helper()
+	r := capability.NewRegistry()
+	for _, e := range entries {
+		id, version, scopeStr := e[0], e[1], e[2]
+		scope := capability.ScopeApplication
+		if scopeStr == "shared" {
+			scope = capability.ScopeShared
+		}
+		r.Instances = append(r.Instances, capability.ProviderInstance{
+			ID:                 id,
+			ProviderID:         "native/" + id,
+			ProviderVersion:    version,
+			Provider:           capability.Provider{Kind: capability.ProviderOpenBao},
+			Scope:              scope,
+			Ownership:          capability.OwnershipBaseHarbor,
+			OwnerApplicationID: "app",
+		})
+	}
+	return r
+}
+
+// TestEqualRegistryPositiveSameContentDifferentOrder asserts the positive path:
+// two registries that carry the SAME instances/bindings in a DIFFERENT order are
+// content-equivalent, so a reordered registry never triggers a false-positive
+// oscillation (the stale-impact-consent fold must be order-independent).
+func TestEqualRegistryPositiveSameContentDifferentOrder(t *testing.T) {
+	// Identical two-instance content, appended in opposite order.
+	a := registryWith(t, [3]string{"secrets", "v1", "application"}, [3]string{"cache", "v1", "application"})
+	b := registryWith(t, [3]string{"cache", "v1", "application"}, [3]string{"secrets", "v1", "application"})
+	if len(a.Instances) != 2 || len(b.Instances) != 2 {
+		t.Fatalf("test setup: expected 2 instances each, got %d and %d", len(a.Instances), len(b.Instances))
+	}
+	if !equalRegistry(a, b) {
+		t.Fatal("same registry content in different order must be equivalent (false-positive oscillation)")
+	}
+	if !equalRegistry(b, a) {
+		t.Fatal("reverse order must also be equivalent (symmetry of the fold)")
+	}
+}
+
+// TestEqualRegistryBlockendSameCountDifferentContent is the actual befund: two
+// registries with the SAME COUNT of instances but DIFFERENT content — the
+// instance id swapped — are NOT equivalent, and the following request FAILS
+// CLOSED. This is the case the old length-only comparison silently passed.
+func TestEqualRegistryBlockendSameCountDifferentContent(t *testing.T) {
+	a := registryInstance("secrets", "v1", capability.ScopeApplication)
+	// Same count (1 instance), but the instance was swapped for a different id
+	// (a different provider): the stale entry must not pass as equivalent.
+	b := registryInstance("postgres", "v1", capability.ScopeApplication)
+	if equalRegistry(a, b) {
+		t.Fatal("same instance count, different instance id: registries must be UNEQUIVALENT")
+	}
+	// Same id, but the version changed: still a real registry content change.
+	c := registryInstance("secrets", "v2", capability.ScopeApplication)
+	if equalRegistry(a, c) {
+		t.Fatal("same id, different provider_version: registries must be UNEQUIVALENT")
+	}
+	// Same id, but the scope changed (application -> shared): a real authority
+	// change, must be UNEQUIVALENT.
+	d := registryInstance("secrets", "v1", capability.ScopeShared)
+	if equalRegistry(a, d) {
+		t.Fatal("same id, different scope: registries must be UNEQUIVALENT")
+	}
+}
+
+// TestEqualRegistryBlockendBindingRetarget pins the binding side: same instance
+// count, but a binding retargeted to a different provider instance is NOT
+// equivalent.
+func TestEqualRegistryBlockendBindingRetarget(t *testing.T) {
+	base := registryInstance("secrets", "v1", capability.ScopeApplication)
+	base.Bindings = []capability.ProviderBinding{
+		{ApplicationID: "app", Resource: capability.Resource{Kind: capability.Secrets, Name: "token"}, Environment: "dev", ProviderInstanceID: "secrets"},
+	}
+	retargeted := registryInstance("secrets", "v1", capability.ScopeApplication)
+	retargeted.Bindings = []capability.ProviderBinding{
+		{ApplicationID: "app", Resource: capability.Resource{Kind: capability.Secrets, Name: "token"}, Environment: "dev", ProviderInstanceID: "postgres"},
+	}
+	if equalRegistry(base, retargeted) {
+		t.Fatal("same instance count, binding retargeted to another provider instance: must be UNEQUIVALENT")
+	}
+}
+
+// TestEqualRegistryBoundaryEmpty pins the empty/empty and empty/non-empty
+// boundary cases.
+func TestEqualRegistryBoundaryEmpty(t *testing.T) {
+	empty1 := capability.NewRegistry()
+	empty2 := capability.NewRegistry()
+	if !equalRegistry(empty1, empty2) {
+		t.Fatal("empty vs empty registry must be equivalent")
+	}
+	nonEmpty := registryInstance("secrets", "v1", capability.ScopeApplication)
+	if equalRegistry(empty1, nonEmpty) {
+		t.Fatal("empty vs non-empty registry must be UNEQUIVALENT")
+	}
+	if equalRegistry(nonEmpty, empty1) {
+		t.Fatal("non-empty vs empty registry must be UNEQUIVALENT (symmetry)")
+	}
+}
+
+// TestEqualRegistryFailClosedRevalidation is the end-to-end proof: two plans
+// whose only registry difference is a same-count/different-content instance
+// swap must NOT read as consent-equivalent, and the post-consent revalidation
+// gate must fail closed (stale-impact-consent). The positive order-independent
+// path is proven in the two positive suites above.
+func TestEqualRegistryFailClosedRevalidation(t *testing.T) {
+	requests := []ProviderChangeRequest{{InstanceID: "secrets", Operation: "stop"}}
+	s, u, o := impactFixture(t)
+	plan, err := DescribeProviderChanges(s, u, requests, o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Authority == nil {
+		t.Fatal("plan carries no frozen consent surface")
+	}
+
+	// Build a second observation whose registry carries a DIFFERENT instance in
+	// place of "sql" (the request targets "secrets", which stays intact) — same
+	// count (3), different content. Swap sql->redis with a different kind.
+	s2 := s
+	for i := range s2.Registry.Instances {
+		if s2.Registry.Instances[i].ID == "sql" {
+			s2.Registry.Instances[i].ID = "redis"
+			s2.Registry.Instances[i].ProviderID = "native/redis"
+			s2.Registry.Instances[i].Provider.Kind = capability.ProviderValkey
+		}
+	}
+	plan2, err := DescribeProviderChanges(s2, u, requests, o)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	equivalent, err := ProviderImpactPlansConsentEquivalent(plan, plan2, s, s2, u, u, o, o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if equivalent {
+		t.Fatal("a same-count/different-content registry swap read as consent-equivalent")
+	}
+	// The second gate on the revalidation site must also fail closed.
+	revalErr := ValidateProviderImpactRevalidation(plan2, plan)
+	if revalErr == nil {
+		t.Fatal("revalidation second gate accepted a same-count/different-content registry swap as equivalent")
+	}
+	var typed *ProviderChangeError
+	if !errors.As(revalErr, &typed) || typed.Code != "stale-impact-consent" {
+		t.Fatalf("expected a stale-impact-consent fail-closed error, got %v", revalErr)
 	}
 }

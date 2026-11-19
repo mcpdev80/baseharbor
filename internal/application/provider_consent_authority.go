@@ -429,12 +429,138 @@ func (a ConsentAuthority) Equivalent(b ConsentAuthority) (bool, error) {
 	return true, nil
 }
 
+// equalRegistry compares two provider registries by CONTENT, not by count.
+// A provider-change that keeps the same number of instances/bindings but
+// swaps, retargets or retitles one of them must NOT read as consent-equivalent:
+// the stale entry has to block the new request. Order is irrelevant (the
+// registry is a set keyed by instance id / binding tuple). Empty registries
+// are equal; an empty registry and a non-empty one are not.
 func equalRegistry(a, b capability.Registry) bool {
-	if len(a.Instances) != len(b.Instances) {
+	if !equalInstanceSet(a.Instances, b.Instances) {
 		return false
 	}
-	if len(a.Bindings) != len(b.Bindings) {
+	if !equalBindingSet(a.Bindings, b.Bindings) {
 		return false
+	}
+	return true
+}
+
+// equalInstanceSet reports whether two instance slices carry the same set of
+// instances, keyed by id. Two instances are equal only when every field that
+// the registry carries — the identity (id, provider_id, provider_version,
+// provider_protocol), the provider (kind) plus scope, sharing boundary,
+// ownership and owner — is identical. A differing version, scope, owner or
+// provider kind for the same id is a real registry change.
+func equalInstanceSet(a, b []capability.ProviderInstance) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	bIndex := make(map[string]struct{}, len(b))
+	for _, bi := range b {
+		bIndex[bi.ID] = struct{}{}
+	}
+	for _, ai := range a {
+		if _, ok := bIndex[ai.ID]; !ok {
+			return false
+		}
+		if !sameProviderInstanceAuthority(ai, b[findInstanceIndex(b, ai.ID)]) {
+			return false
+		}
+	}
+	return true
+}
+
+// equalBindingSet reports whether two binding slices carry the same set of
+// bindings, keyed by the full binding tuple. A binding retargeted to another
+// provider instance (or resource/environment) is a real registry change.
+func equalBindingSet(a, b []capability.ProviderBinding) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	bIndex := make(map[string]struct{}, len(b))
+	for _, bi := range b {
+		bIndex[bindingKey(bi)] = struct{}{}
+	}
+	for _, ai := range a {
+		if _, ok := bIndex[bindingKey(ai)]; !ok {
+			return false
+		}
+		if !sameBindingAuthority(ai, b[findBindingIndex(b, ai)]) {
+			return false
+		}
+	}
+	return true
+}
+
+// sameProviderInstanceAuthority reports whether two instances of the SAME id
+// carry identical consent authority: id, provider identity and version,
+// protocol, scope, sharing boundary, ownership and owner. The registry already
+// keys instances by id, so this is the content the stale-impact-consent fold
+// must read.
+func sameProviderInstanceAuthority(a, b capability.ProviderInstance) bool {
+	return a.ID == b.ID &&
+		a.ProviderID == b.ProviderID &&
+		a.ProviderVersion == b.ProviderVersion &&
+		a.ProviderProtocol == b.ProviderProtocol &&
+		a.Provider.Kind == b.Provider.Kind &&
+		equalProviderCapabilities(a.Provider.Capabilities, b.Provider.Capabilities) &&
+		a.Scope == b.Scope &&
+		a.SharingBoundary == b.SharingBoundary &&
+		a.Ownership == b.Ownership &&
+		a.OwnerApplicationID == b.OwnerApplicationID
+}
+
+// sameBindingAuthority reports whether two bindings of the SAME tuple carry
+// identical consent authority: application, resource, environment and the
+// provider instance they bind to.
+func sameBindingAuthority(a, b capability.ProviderBinding) bool {
+	return a.ApplicationID == b.ApplicationID &&
+		a.Resource == b.Resource &&
+		a.Environment == b.Environment &&
+		a.ProviderInstanceID == b.ProviderInstanceID
+}
+
+func findInstanceIndex(list []capability.ProviderInstance, id string) int {
+	for i, v := range list {
+		if v.ID == id {
+			return i
+		}
+	}
+	return -1
+}
+
+func findBindingIndex(list []capability.ProviderBinding, want capability.ProviderBinding) int {
+	for i, v := range list {
+		if bindingKey(v) == bindingKey(want) {
+			return i
+		}
+	}
+	return -1
+}
+
+func bindingKey(b capability.ProviderBinding) string {
+	return b.ApplicationID + "\x00" +
+		string(b.Resource.Kind) + "\x00" +
+		b.Resource.Name + "\x00" +
+		b.Environment + "\x00" +
+		b.ProviderInstanceID
+}
+
+// equalProviderCapabilities reports whether two capability lists carry the same
+// set of capabilities (order irrelevant): a provider that lost or gained a
+// capability is a different provider for consent purposes.
+func equalProviderCapabilities(a, b []capability.Kind) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	seen := make(map[capability.Kind]struct{}, len(b))
+	for _, c := range b {
+		seen[c] = struct{}{}
+	}
+	for _, c := range a {
+		if _, ok := seen[c]; !ok {
+			return false
+		}
 	}
 	return true
 }
