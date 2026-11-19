@@ -54,8 +54,8 @@ func TestProviderResultNonContinuationBehaviourPin(t *testing.T) {
 			t.Fatal(err)
 		}
 		t.Logf("non-continuation receipt with unexpected edge failed closed: status=%v code=%v", result.Outcomes[0].Status, result.Outcomes[0].ErrorCode)
-		if result.Outcomes[0].Status != "failed" {
-			t.Fatalf("non-continuation receipt with an unexpected continuation edge must fail closed: got status=%q code=%q, want failed", result.Outcomes[0].Status, result.Outcomes[0].ErrorCode)
+		if result.Outcomes[0].Status != "failed" || result.Outcomes[0].ErrorCode != "actual-disposition-differs" {
+			t.Fatalf("non-continuation receipt with an unexpected continuation edge must fail closed with actual-disposition-differs: got status=%q code=%q", result.Outcomes[0].Status, result.Outcomes[0].ErrorCode)
 		}
 	})
 	t.Run("non_continuation_clean", func(t *testing.T) {
@@ -96,8 +96,8 @@ func TestProviderResultNonContinuationBehaviourPin(t *testing.T) {
 			t.Fatal(err)
 		}
 		t.Logf("continuation without evidence blocked: status=%v code=%v", cdResult.Outcomes[0].Status, cdResult.Outcomes[0].ErrorCode)
-		if cdResult.Outcomes[0].ErrorCode != "continuation-dependency-unverified" {
-			t.Fatalf("continuation without evidence must be blocked: got status=%q code=%q, want continuation-dependency-unverified", cdResult.Outcomes[0].Status, cdResult.Outcomes[0].ErrorCode)
+		if cdResult.Outcomes[0].Status != "failed" || cdResult.Outcomes[0].ErrorCode != "continuation-dependency-unverified" {
+			t.Fatalf("continuation without evidence must fail with continuation-dependency-unverified: got status=%q code=%q", cdResult.Outcomes[0].Status, cdResult.Outcomes[0].ErrorCode)
 		}
 	})
 }
