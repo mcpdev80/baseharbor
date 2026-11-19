@@ -6,8 +6,8 @@ import "fmt"
 // destructive / consent-gated paths. The regression these labels fix is the
 // rendered CLI string: every label below is the English catalog value that the
 // CLI must print instead of a hardcoded German fallback. The wire model value
-// ProviderImpactPlan.Attention ("Achtung") stays language-neutral and is
-// untouched here — this is a presentation-layer catalog only.
+// ProviderImpactPlan.Attention ("Warning", renamed by 0428-093) is a
+// language-neutral marker — this is a presentation-layer catalog only.
 type ProviderImpactConsentLabels struct {
 	ControlPlaneStopImpact               string
 	NodeDisconnectImpact                 string
