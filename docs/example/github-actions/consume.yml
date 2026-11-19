@@ -1,97 +1,29 @@
-name: baseharbor-consume
-
-# Documentation / illustration only.
-# - Consumes the pinned BaseHarbor release; it does not build BaseHarbor or the workload.
-# - No secrets and no automatic trigger for real environments are committed here.
-# - Replace <X.Y.Z> with the release the acceptance gate accepted, and set the
-#   masked variables BASEHARBOR_API_KEY (and any other required secret) in the
-#   repository settings, never in this file.
+name: BaseHarbor manual consumption example
 
 on:
-  push:
-    branches: [main]
-  workflow_dispatch: {}
-
-# Shared-runner only. No jobs run on a self-hosted owner machine.
-concurrency:
-  group: baseharbor-consume-${{ github.ref }}
-  cancel-in-progress: false
-
-env:
-  BASEHARBOR_VERSION: "X.Y.Z"
-  BASEHARBOR_IMAGE: ghcr.io/mcpdev80/baseharbor-runtime:X.Y.Z
-  TARGET: docker
+  workflow_dispatch:
+    inputs:
+      release_version:
+        description: Published BaseHarbor version to consume (for example 0.4.28)
+        required: true
+        type: string
 
 jobs:
-  inspect:
+  consume:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      BASEHARBOR_VERSION: ${{ inputs.release_version }}
+      APP_ENVIRONMENT: dev
+      APP_API_KEY: ${{ secrets.APP_API_KEY }}
     steps:
       - uses: actions/checkout@v4
-      - name: Install pinned baha
+      - name: Install the selected released baha
+        shell: bash
         run: |
-          curl -fsSL "https://raw.githubusercontent.com/mcpdev80/baseharbor/v${{ env.BASEHARBOR_VERSION }}/scripts/install.sh" | sh -s "${{ env.BASEHARBOR_VERSION }}"
-          baha version
-      - name: Read-only inspect (fail closed without a decision)
-        run: |
-          baha --no-input app inspect . --plain
-          baha --no-input app inspect . -o json > inspection.json
-          test -s inspection.json
-
-  plan:
-    needs: inspect
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install pinned baha
-        run: |
-          curl -fsSL "https://raw.githubusercontent.com/mcpdev80/baseharbor/v${{ env.BASEHARBOR_VERSION }}/scripts/install.sh" | sh -s "${{ env.BASEHARBOR_VERSION }}"
-      - name: Show the plan without changing anything
-        run: |
-          baha --no-input app plan -o json > plan.json
-          test -s plan.json
-
-  seed-secrets:
-    needs: plan
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install pinned baha
-        run: |
-          curl -fsSL "https://raw.githubusercontent.com/mcpdev80/baseharbor/v${{ env.BASEHARBOR_VERSION }}/scripts/install.sh" | sh -s "${{ env.BASEHARBOR_VERSION }}"
-      - name: Seed one required secret from a masked variable (no value in the log)
-        run: |
-          printf '%s' "${{ secrets.BASEHARBOR_API_KEY }}" | baha --no-input app secret set API_KEY --stdin
-
-  accept:
-    needs: seed-secrets
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install pinned baha
-        run: |
-          curl -fsSL "https://raw.githubusercontent.com/mcpdev80/baseharbor/v${{ env.BASEHARBOR_VERSION }}/scripts/install.sh" | sh -s "${{ env.BASEHARBOR_VERSION }}"
-      - name: Preflight before mutation
-        run: baha --no-input app preflight
-      - name: Converge and verify readiness
-        run: |
-          timeout 300 baha --no-input app apply --yes
-      - name: Read back structured status
-        run: |
-          timeout 120 baha --no-input app status -o json > status.json
-          test -s status.json
-      - name: Show the environment contract (masked)
-        run: baha --no-input app env dev --format json
-      - name: Read a connection binding (no plaintext by default)
-        run: baha --no-input app creds postgres
-
-  teardown:
-    needs: accept
-    if: always()
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install pinned baha
-        run: |
-          curl -fsSL "https://raw.githubusercontent.com/mcpdev80/baseharbor/v${{ env.BASEHARBOR_VERSION }}/scripts/install.sh" | sh -s "${{ env.BASEHARBOR_VERSION }}"
-      - name: Stop the application, preserving data for reactivation
-        run: baha --no-input app down --yes
+          set -euo pipefail
+          [[ "$BASEHARBOR_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9.-]+)?$ ]]
+          curl -fsSL "https://raw.githubusercontent.com/mcpdev80/baseharbor/v${BASEHARBOR_VERSION}/scripts/install.sh" | bash -s -- "$BASEHARBOR_VERSION"
+      - name: Consume the checked-out application with the local runner Core
+        shell: bash
+        run: bash scripts/ci-consumption-example.sh

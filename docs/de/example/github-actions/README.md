@@ -1,54 +1,18 @@
-# GitHub Actions KonsumptionBeispiel (Dokumentation)
+# BaseHarbor-Beispiel für GitHub Actions
 
-Dieses Verzeichnis illustriert, wie eine **GitHub Actions**-Workflow eine bereits
-produzierte BaseHarbor-Release konsumiert. Es ist Dokumentation, kein
-BaseHarbor-Test-Gate: es baut nichts, enthält keine Secrets und löst keine
-reale Umgebung aus.
+Dieses Beispiel startet ausschließlich über die manuelle Aktion **Run
+workflow**. Es gibt keinen `push`- oder Pull-Request-Trigger. Der gesamte Ablauf
+läuft in einem Job auf einem kurzlebigen, von GitHub gehosteten Ubuntu-Runner,
+damit lokaler Core und Anwendungszustand während des Beispiels erhalten bleiben.
 
-## Was es demonstriert
+Kopiere `consume.yml` und `scripts/ci-consumption-example.sh` in ein
+Anwendungsrepository mit gültiger `baseharbor.yaml` und Workload-Quelle. Der Job
+verwendet die Docker-Engine des Runners und stoppt die Anwendung vor dem Ende.
+Verwende eine Wegwerfanwendung und Wegwerfgeheimnisse; der Workflow ist nicht
+für ein Kunden-Target gedacht.
 
-- Pinnt die veröffentlichte `baha`-Binäre und Laufzeitbildoby Release-Version
-  (`env.BASEHARBOR_VERSION`, `env.BASEHARBOR_IMAGE`); dasselbe Artifact läuft
-  über alle Jobs.
-- Nutzt nur den Shared, GitHub-gehörten Runner (`runs-on: ubuntu-latest`); kein
-  Self-hosted Owner-Maschine.
-- Treibt die `baha`-Oberfläche kopflos: nur-Lese `inspect`, `plan`,
-  `preflight`, `apply --yes` und strukturierte `status`/`env`/`creds`-Ausgabe.
-- Schlägt fail-closed mit `--no-input` fehl undprüft Exit-Codes vor der
-  Nutzung.
-- Säht ein benötigtes Secret aus einer maskierten `secrets.*`-Variable über
-  `--stdin`; kein Wert wird je geloggt oder committet.
-- Stoppt die Anwendungin einem `teardown`-Job, der immer läuft.
-
-## Wie man es nutzt
-
-1. Ersetze `<X.Y.Z>` durch die Release, die das Akzeptanzgate akzeptiert hat,
-   und das `BASEHARBOR_IMAGE`-Tag durch das passende Laufzeitbild-Tag.
-2. Fodie die benötigten maskierten Variablen (zum Beispiel `BASEHARBOR_API_KEY`)
-   in den Repository-Einstellungen hinzu, nicht in dieser Datei.
-3. Passe `TARGET` an das Laufzeitbild an, das das Akzeptanzgate valdiert hat
-   (`docker` oder `podman`).
-4. Gate den `accept`-Job auf manuelle Genehmigung, wenn es auf eine reale
-   Umgebung zeigt.
-
-## Das Konsumptions-Muster
-
-```text
-inspect (read-only)
-        |
-        v
-plan (read-only)  → preflight
-        |
-        v
-seed required secrets (masked var, --stdin)
-        |
-        v
-apply --yes  →  status  →  env  →  creds
-        |
-        v
-down (teardown, always)
-```
-
-## Siehe auch
-
-- [CI-KonsumptionAnleitung](../../how-to/ci-consumption.md)
+Setze die Release-Version als manuelle Eingabe. Füge `APP_API_KEY` nur dann als
+maskiertes GitHub-Actions-Geheimnis hinzu, wenn die Anwendung `API_KEY`
+deklariert. Setze `APP_CHECK_POSTGRES_CREDS=true` nur bei einer Anwendung mit
+PostgreSQL-Verbindung. Der [CI-Leitfaden](../../how-to/ci-consumption.md)
+beschreibt Sicherheitsgrenzen und weitere Eingaben.

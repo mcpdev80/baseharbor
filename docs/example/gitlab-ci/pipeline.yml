@@ -1,69 +1,30 @@
-# GitLab CI consumption example (documentation)
-#
-# Illustrates how a GitLab CI pipeline consumes an already produced BaseHarbor
-# release. It is documentation, not a BaseHarbor test gate: it builds nothing,
-# contains no secrets, and does not trigger a real environment.
-#
-# Replace <X.Y.Z> with the release the acceptance gate accepted, and set the
-# masked variable BASEHARBOR_API_KEY in the project settings, not here.
+workflow:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "web"'
+      when: always
+    - when: never
 
 variables:
-  BASEHARBOR_VERSION: "<X.Y.Z>"
-  BASEHARBOR_IMAGE: "ghcr.io/mcpdev80/baseharbor-runtime:<X.Y.Z>"
-  TARGET: "docker"
+  BASEHARBOR_VERSION: "0.4.28"
+  APP_ENVIRONMENT: "dev"
 
 stages:
-  - verify
-  - seed
-  - accept
-  - teardown
+  - consume
 
-.default:
-  image: "${BASEHARBOR_IMAGE}"
+consume:
+  stage: consume
+  image: ubuntu:24.04
   tags:
-    - shared
-
-inspect:
-  extends: .default
-  stage: verify
+    - baseharbor-ephemeral-docker
+  timeout: 30 minutes
+  when: manual
+  allow_failure: false
   script:
-    - "baha version"
-    - "baha --no-input app inspect . --plain"
-    - "baha --no-input app inspect . -o json > inspection.json"
-    - "test -s inspection.json"
-
-plan:
-  extends: .default
-  stage: verify
-  needs: ["inspect"]
-  script:
-    - "baha --no-input app plan -o json > plan.json"
-    - "test -s plan.json"
-
-seed:
-  extends: .default
-  stage: seed
-  needs: ["plan"]
-  script:
-    - "printf '%s' \"$BASEHARBOR_API_KEY\" | baha --no-input app secret set API_KEY --stdin"
-
-accept:
-  extends: .default
-  stage: accept
-  needs: ["seed"]
-  when: on_manual
-  script:
-    - "baha --no-input app preflight"
-    - "timeout 300 baha --no-input app apply --yes"
-    - "timeout 120 baha --no-input app status -o json > status.json"
-    - "test -s status.json"
-    - "baha --no-input app env dev --format json"
-    - "baha --no-input app creds postgres"
-
-teardown:
-  extends: .default
-  stage: teardown
-  needs: ["accept"]
-  when: always
-  script:
-    - "baha --no-input app down --yes"
+    - |
+      set -euo pipefail
+      [[ "$BASEHARBOR_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9.-]+)?$ ]]
+      apt-get update
+      apt-get install -y --no-install-recommends ca-certificates curl docker.io
+      docker version
+      curl -fsSL "https://raw.githubusercontent.com/mcpdev80/baseharbor/v${BASEHARBOR_VERSION}/scripts/install.sh" | bash -s -- "$BASEHARBOR_VERSION"
+      bash scripts/ci-consumption-example.sh
