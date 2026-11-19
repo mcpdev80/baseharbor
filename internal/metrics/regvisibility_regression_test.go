@@ -311,6 +311,95 @@ func TestRegVisibilityDeselectedProviderFileRemovedByProviderSync(t *testing.T) 
 	}
 }
 
+// TestRegVisibilityDeselectedProviderFileRemovedByApplicationSync is the r6
+// regression (CODEX-r5 P1/P3): a sync that carries ONLY application sources and
+// is NON-EMPTY must still sweep the provider room. A provider file written for
+// a previously-selected provider source must be gone afterwards, while the
+// application file written by this same sync stays and is visible in the
+// rendered config. This is the mixed case the empty-list regression did not
+// prove; before the unconditional-sweep fix the provider file lingered as an
+// orphan in the active provider glob.
+func TestRegVisibilityDeselectedProviderFileRemovedByApplicationSync(t *testing.T) {
+	dir := t.TempDir()
+
+	// Write a provider file for a previously-selected (now deselected) source.
+	ownedProvider := observability.MetricsSource{
+		ID:       "prometheus:owned-source",
+		Provider: capability.ProviderPrometheus,
+		Class:    observability.SourceApplicationProvider,
+		Target:   "owned:9090",
+		Path:     "/metrics",
+	}
+	if err := syncProviderTargets(dir, []observability.MetricsSource{ownedProvider}); err != nil {
+		t.Fatalf("provider syncProviderTargets (seed): %v", err)
+	}
+	seedName := providerTargetFileName(ownedProvider)
+	if _, err := os.Stat(filepath.Join(dir, seedName)); err != nil {
+		t.Fatalf("seeded provider file %q not written: %v", seedName, err)
+	}
+	// Also seed a secure provider file to prove both forms are swept.
+	secureProvider := observability.MetricsSource{
+		ID:       "prometheus:owned-secure",
+		Provider: capability.ProviderPrometheus,
+		Class:    observability.SourceApplicationProvider,
+		Target:   "owned-secure:9443",
+		Path:     "/metrics",
+		Security: observability.Security{TLSRequired: true, TrustFile: "/ca"},
+	}
+	if err := syncProviderTargets(dir, []observability.MetricsSource{ownedProvider, secureProvider}); err != nil {
+		t.Fatalf("provider syncProviderTargets (seed secure): %v", err)
+	}
+	secureName := providerTargetFileName(secureProvider)
+	if !strings.HasPrefix(secureName, "provider-secure--") {
+		t.Fatalf("secure provider file %q missing secure prefix", secureName)
+	}
+
+	// Now sync with ONLY application sources (non-empty). The provider room
+	// must still be swept: both provider files vanish.
+	appSource := observability.MetricsSource{
+		ID:               observability.ApplicationMetricsSourceID("demo", "dev", "api"),
+		Provider:         capability.ProviderPrometheus,
+		Class:            observability.SourceApplication,
+		Scope:            capability.ScopeApplication,
+		OwnerApplication: "demo",
+		Network:          "baseharbor-metrics",
+		Target:           "demo-api:8080",
+		Path:             "/metrics",
+		Scheme:           "http",
+		Verification:     capability.ObservabilityVerifyBackend,
+	}
+	if err := syncProviderTargets(dir, []observability.MetricsSource{appSource}); err != nil {
+		t.Fatalf("application-only syncProviderTargets: %v", err)
+	}
+
+	// Both provider files must be gone.
+	if _, err := os.Stat(filepath.Join(dir, seedName)); !os.IsNotExist(err) {
+		t.Fatalf("deselected provider file %q survived application-only sweep (err=%v)", seedName, err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, secureName)); !os.IsNotExist(err) {
+		t.Fatalf("deselected secure provider file %q survived application-only sweep (err=%v)", secureName, err)
+	}
+
+	// The application file written by this same sync must be present.
+	appFile := appTargetFileName(appSource)
+	if appFile == "" {
+		t.Fatalf("application source %q produced no filename", appSource.ID)
+	}
+	if _, err := os.Stat(filepath.Join(dir, appFile)); err != nil {
+		t.Fatalf("application file %q written by this sync is missing: %v", appFile, err)
+	}
+
+	// The application file must be visible in the rendered config snippet.
+	cfg := prometheusConfig(nil, false, nil)
+	if !globSelects(t, cfg, "baseharbor-applications", appFile) {
+		t.Fatalf("application file %q not selected by baseharbor-applications job in rendered config", appFile)
+	}
+	// And the (now removed) provider file must NOT be selectable by any job.
+	if globSelects(t, cfg, "baseharbor-providers", seedName) || globSelects(t, cfg, "baseharbor-providers", secureName) {
+		t.Fatalf("removed provider files still selectable by baseharbor-providers job")
+	}
+}
+
 // TestRegVisibilityProviderFileGlobClassification exercises the emitted
 // Prometheus config for the two valid slugs that previously risked glob
 // collision ("provider", "provider-secure"): it asserts that an application
