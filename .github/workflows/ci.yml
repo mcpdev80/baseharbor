@@ -758,7 +758,8 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           INTEGRATION_SHA: ${{ github.sha }}
           BASE_REF: ${{ github.base_ref }}
-          MIGRATION_CONTROLLER: a6756c5cd0f2a8ec43b0b7f777bf215bff2b9248
+          # Merged lane-compatible planner; old lane bases fall back to this immutable commit.
+          MIGRATION_CONTROLLER: 85965486154284d4ae7974573f504002335d4523
         run: |
           set -euo pipefail
           git fetch --no-tags origin "$BASE_SHA" "$HEAD_SHA" "$INTEGRATION_SHA"
