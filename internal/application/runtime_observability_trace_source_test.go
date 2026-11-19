@@ -621,7 +621,7 @@ func TestLegacyPrometheusTraceSignalIsReclaimedWithoutMetricsPolicy(t *testing.T
 	if err := reconcileManagedRuntimeObservability(m, project); err != nil {
 		t.Fatal(err)
 	}
-	logged, err = observability.List(observability.SignalLogs, loggedPlacement, []string{m.Name}, true, true)
+	logged, err = observability.List(observability.SignalLogs, loggedPlacement, []string{m.Name}, false, true, true)
 	if err != nil {
 		t.Fatal(err)
 	}
