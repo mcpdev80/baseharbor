@@ -532,6 +532,17 @@ func marshalIndentNoEscape(v any) ([]byte, error) {
 // backend's health. The zero witness is fail-closed: every backend is
 // unproven, which is the correct answer whenever no authoritative input is
 // supplied.
+//
+// This is the per-backend correction for the CODEX-REVIEW defect on PR #1602
+// (act 1602-0428-077.md): the one-argument face PersesHostDashboardAvailability
+// answers the PROMETHEUS backend from the resolved host/provider-metrics
+// status and keeps Loki and Tempo unavailable — a Prometheus verdict can
+// never color them. A deployment that proves the Loki/Tempo signals passes a
+// witness with the corresponding fields set. Wiring that witness from the
+// runtime registry is NOT done in this candidate: cmd/baha/app_status_result.go
+// is outside the current write-set (blocked by 0428-084 and the develop
+// 0428-121/0428-125 moves), so the CLI face stays fail-closed for Loki/Tempo
+// until that wiring lands in a follow-up.
 type PersesBackendSignalWitness struct {
 	// PrometheusProven is true only when a provider-scoped Prometheus metric
 	// source is registered (job="baseharbor-providers" target files).
@@ -579,33 +590,32 @@ func hostBackendUnavailableReason(backend string) string {
 }
 
 // PersesHostDashboardAvailability returns the availability verdict of every
-// catalog entry, keyed by catalog key, for the pinned release, under the
-// DEFAULT fail-closed witness: Loki and Tempo report "unavailable" until
-// their own backend signals are proven elsewhere. A real backend returns
-// "available" with its Perses datasource kind; any other resolved status
-// returns "unavailable" with a reason naming the missing verified signal; a
-// host/container view with no native signal is reported as "unavailable" too.
-// This is the deterministic CLI witness that the host dashboard remains
-// explicitly unavailable rather than silently reported as available when its
-// verified provider-metrics signal is absent.
+// catalog entry, keyed by catalog key, for the pinned release. Prometheus
+// answers from the resolved host/provider-metrics status; Loki and Tempo
+// answer from their OWN backend signals only, and the one-argument CLI face
+// carries no Loki/Tempo signal input, so Loki and Tempo report "unavailable"
+// here with a reason naming their own missing signal — a Prometheus verdict
+// can NEVER color them (that cross-backend inference was the CODEX-REVIEW
+// defect on PR #1602, request-changes act 1602-0428-077.md). A real backend
+// returns "available" with its Perses datasource kind; a host/container view
+// with no native signal is reported as "unavailable" too. This is the
+// deterministic CLI witness that the host dashboard remains explicitly
+// unavailable rather than silently reported as available when its verified
+// provider-metrics signal is absent.
 //
 // resolvedHostSignalStatus is the authoritative resolved-signal witness of the
 // manifest (internal/capability/reference.go host/provider-metrics observability
 // signal). The PROMETHEUS host dashboard is realized only when that signal
 // resolves to ObservabilitySupported; every other resolved status (including
-// the empty / absent status) stays unavailable-preserving. Loki and Tempo are
-// NEVER realized from that Prometheus verdict — that cross-backend inference
-// was the CODEX-REVIEW defect on PR #1602 (request-changes act
-// 1602-0428-077.md). Use PersesHostDashboardAvailabilityWithWitness to pass
-// real per-backend signal proof.
+// the empty / absent status) stays unavailable-preserving.
 func PersesHostDashboardAvailability(resolvedHostSignalStatus capability.ObservabilitySupportStatus) map[string]PersesHostDashboardAvailabilityEntry {
-	return PersesHostDashboardAvailabilityWithWitness(resolvedHostSignalStatus, PersesBackendSignalWitness{})
+	return persesHostDashboardAvailabilityWitnessed(resolvedHostSignalStatus, PersesBackendSignalWitness{})
 }
 
-// PersesHostDashboardAvailabilityWithWitness returns the same verdict under an
+// persesHostDashboardAvailabilityWitnessed returns the same verdict under an
 // explicit per-backend signal witness. Each backend answers from its OWN
 // signal only; no backend inherits another backend's health.
-func PersesHostDashboardAvailabilityWithWitness(resolvedHostSignalStatus capability.ObservabilitySupportStatus, witness PersesBackendSignalWitness) map[string]PersesHostDashboardAvailabilityEntry {
+func persesHostDashboardAvailabilityWitnessed(resolvedHostSignalStatus capability.ObservabilitySupportStatus, witness PersesBackendSignalWitness) map[string]PersesHostDashboardAvailabilityEntry {
 	catalog := persesHostDashboardCatalogWithWitness(resolvedHostSignalStatus, witness)
 	out := make(map[string]PersesHostDashboardAvailabilityEntry, len(catalog))
 	for key, entry := range catalog {

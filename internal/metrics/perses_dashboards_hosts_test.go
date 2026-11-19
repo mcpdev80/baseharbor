@@ -433,7 +433,7 @@ func TestPersesHostDashboardAvailabilityPerBackendNoInference(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			verdict := PersesHostDashboardAvailabilityWithWitness(tc.status, tc.witness)
+			verdict := persesHostDashboardAvailabilityWitnessed(tc.status, tc.witness)
 			for key, want := range map[string]string{
 				"prometheus-host-container": tc.wantProm,
 				"loki-host-container":       tc.wantLoki,
