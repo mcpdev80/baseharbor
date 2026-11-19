@@ -118,6 +118,43 @@ func VerifyProviderSourcesAt(ctx context.Context, m application.Manifest, dataDi
 	return verifyProviderSourcesAt(ctx, m, dataDir, namespace, queryUp)
 }
 
+// ProviderSourcesCompositionState returns the observable state of the Prometheus
+// provider composition for m (see ProviderCompositionState). It surfaces the
+// effective scrape target count even when it is zero because every provider
+// source is Verification=none, so the operator sees an explicit state instead
+// of silence. It never fails closed on that expected zero count.
+func ProviderSourcesCompositionState(ctx context.Context, m application.Manifest, dataDir, namespace string) (string, error) {
+	policy, err := application.MetricsPolicy(m)
+	if err != nil {
+		return "", err
+	}
+	placement, err := application.ResolveProviderPlacement(m, capability.ProviderPrometheus)
+	if err != nil {
+		return "", err
+	}
+	allowedApplications := []string{m.Name}
+	if placement.Scope == capability.ScopeShared {
+		if files, fileErr := ExistingProviderFilesAt(dataDir, namespace, m); fileErr == nil {
+			if registrations, regErr := readRegistrations(files.Registrations); regErr == nil {
+				allowedApplications = allowedApplications[:0]
+				for _, registration := range registrations {
+					allowedApplications = append(allowedApplications, registration.Application)
+				}
+			}
+		}
+	}
+	sources, err := observability.ListMetrics(
+		placement,
+		allowedApplications,
+		policy.Collect[application.MetricsSourceApplicationProvider],
+		policy.Collect[application.MetricsSourcePlatformProvider],
+	)
+	if err != nil {
+		return "", err
+	}
+	return ProviderCompositionState(sources), nil
+}
+
 func verifyProviderSourcesAt(ctx context.Context, m application.Manifest, dataDir, namespace string, queryProvider func(context.Context, *http.Client, string, string) (bool, error)) error {
 	policy, err := application.MetricsPolicy(m)
 	if err != nil {

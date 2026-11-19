@@ -306,6 +306,42 @@ func providerMetricNetworks(sources []observability.MetricsSource) []string {
 	return result
 }
 
+// EffectiveProviderTargetCount reports how many of the given provider sources
+// actually produce a Prometheus scrape target after composition. A source with
+// Verification == ObservabilityVerifyNone is correctly skipped here (its signal is
+// realised through the OTLP/Tempo receiver, not a Prometheus endpoint), so it
+// never contributes a file_sd target or a provider network. The count is the
+// single authoritative counter for the composition; callers use it to emit an
+// explicit state instead of silently composing zero scrape targets.
+func EffectiveProviderTargetCount(sources []observability.MetricsSource) int {
+	count := 0
+	for _, source := range sources {
+		if source.Verification == capability.ObservabilityVerifyNone {
+			continue
+		}
+		if strings.TrimSpace(source.Target) == "" {
+			continue
+		}
+		count++
+	}
+	return count
+}
+
+// ProviderCompositionState renders the observable state of a Prometheus provider
+// composition. A non-nil result means the placement has one or more effective
+// scrape targets. A zero effective target count is a documented, expected state
+// (every source is Verification == ObservabilityVerifyNone): it is reported as an
+// explicit state, not a hard error, so the blind spot hunt-918 befund 6 no
+// longer surfaces as silent silence. Callers that treat the composition as a
+// mutation must still fail closed; this message only makes the count visible.
+func ProviderCompositionState(sources []observability.MetricsSource) string {
+	effective := EffectiveProviderTargetCount(sources)
+	if effective > 0 {
+		return fmt.Sprintf("metrics provider composition: %d effective scrape target(s)", effective)
+	}
+	return "metrics provider composition: null effective scrape targets after composition (all provider sources are Verification=none; signals flow to the OTLP/Tempo receiver, not Prometheus)"
+}
+
 func EnsureProviderFiles(ctx context.Context, issuer serviceaccess.Issuer, m application.Manifest) (ProviderFiles, error) {
 	return EnsureProviderFilesWithRuntimeCA(ctx, issuer, m, "")
 }
@@ -399,6 +435,7 @@ func EnsureProviderFilesWithRuntimeCAAt(ctx context.Context, issuer serviceacces
 		return ProviderFiles{}, err
 	}
 	providerNetworks := providerMetricNetworks(providerSources)
+	files.CompositionState = ProviderCompositionState(providerSources)
 
 	if strings.TrimSpace(runtimeCASource) != "" {
 		caData, err := os.ReadFile(runtimeCASource)
@@ -618,6 +655,7 @@ func UnregisterSharedApplicationAt(ctx context.Context, runtime Runtime, issuer 
 		return err
 	}
 	providerNetworks := providerMetricNetworks(providerSources)
+	files.CompositionState = ProviderCompositionState(providerSources)
 
 	_, caErr := os.Stat(files.RuntimeCA)
 	hasRuntimeCA := caErr == nil
