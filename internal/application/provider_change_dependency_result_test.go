@@ -4,27 +4,27 @@ import (
 	"testing"
 )
 
-// TestProviderResultNonContinuationBehaviourPin pins the CURRENT semantics of
-// the receipt-verification guard in provider_change_result.go:47 (the
-// parenthesised form `continuationRequiresDependencyEvidence(imp) &&
-// (len(imp.ContinuationDependencies) == 0 || !continuationDependencyOutcomesMatch(...))`,
-// already accepted in fix-1). It is a behaviour-pin, NOT a fail-closed
-// invariant: it records what the correct code does TODAY so that any LATER
-// switch of the non-continuation branch to a fail-closed `unexpected edge`
-// status is an explicit, visible assertion change rather than a silent drift.
+// TestProviderResultNonContinuationBehaviourPin pins the FAIL-CLOSED semantics
+// of the receipt-verification guard in provider_change_result.go (the
+// fail-closed ruling, reviewer decision 2026-11-19): a NON-continuation
+// operation (continuationRequiresDependencyEvidence == false, A false) with an
+// applied receipt that STILL carries a continuation edge the approved plan did
+// not verify is an unexpected edge and fails closed.
+//
+// It is now an explicit fail-closed invariant, not a description of pinned
+// CURRENT behaviour: any LATER switch of the non-continuation branch back to a
+// lenient `applied` status is an explicit, visible assertion change rather than
+// a silent drift.
 //
 // Two side-by-side operands of the same guard:
-//   - non_continuation: a stop impact (continuationRequiresDependencyEvidence
-//     == false, A false). An applied receipt that carries an UNPLANNED
-//     continuation edge on an instance the approved stop never planned. Under
-//     the CORRECT guard the guard is false for A==false and the receipt
-//     applies cleanly (status=applied). The stray edge is irrelevant to a
-//     non-continuation op. This is the behaviour the current code is pinned to.
-//     (Under the pre-fix-1 collapsed guard `(A && len==0) || !match` this same
-//     case fired on its second operand and was mislabelled
-//     `continuation-dependency-unverified`; the pin therefore still catches a
-//     regression of the precedence fix, but its stated intent is the pinned
-//     CURRENT behaviour, not the fix itself.)
+//   - non_continuation: a stop impact (A false). An applied receipt that carries
+//     an UNPLANNED continuation edge on an instance the approved stop never
+//     planned. Under the fail-closed guard this fails with status=failed
+//     (actual-disposition-differs). This is the fail-closed behaviour pinned
+//     here.
+//   - non_continuation_clean: the same stop impact with an applied receipt that
+//     carries NO continuation edge. This stays the apply path (status=applied);
+//     a non-continuation op with a clean receipt is unaffected by fail closed.
 //   - continuation_without_evidence: a replacement impact that requires a
 //     dependency graph (A true) with NO evidence supplied. The guard must
 //     block it as `continuation-dependency-unverified`. This pins the
@@ -44,9 +44,8 @@ func TestProviderResultNonContinuationBehaviourPin(t *testing.T) {
 		}
 		actual := appliedOutcome(imp)
 		// The applied receipt carries an UNPLANNED continuation edge (the
-		// approved stop planned no dependency graph). Under the correct guard
-		// the guard cannot fire when A is false, so the receipt applies
-		// cleanly — the pinned CURRENT semantics.
+		// approved stop planned no dependency graph). Under the fail-closed
+		// guard this unexpected edge fails closed; it can no longer apply.
 		actual.ContinuationDependencies = []ProviderDependencyEvidence{
 			{Realization: ProviderRealization{InstanceID: "ghost", Supported: true, Verified: true, Evidence: "e", State: ProviderRunning}, Dependencies: []string{}},
 		}
@@ -54,9 +53,34 @@ func TestProviderResultNonContinuationBehaviourPin(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		t.Logf("non-continuation receipt applied cleanly: status=%v code=%v", result.Outcomes[0].Status, result.Outcomes[0].ErrorCode)
+		t.Logf("non-continuation receipt with unexpected edge failed closed: status=%v code=%v", result.Outcomes[0].Status, result.Outcomes[0].ErrorCode)
+		if result.Outcomes[0].Status != "failed" {
+			t.Fatalf("non-continuation receipt with an unexpected continuation edge must fail closed: got status=%q code=%q, want failed", result.Outcomes[0].Status, result.Outcomes[0].ErrorCode)
+		}
+	})
+	t.Run("non_continuation_clean", func(t *testing.T) {
+		s, u, o := impactFixture(t)
+		plan, err := DescribeProviderChanges(s, u, []ProviderChangeRequest{{InstanceID: "identity", Operation: "stop"}}, o)
+		if err != nil {
+			t.Fatal(err)
+		}
+		imp := plan.Impacts[0]
+		if continuationRequiresDependencyEvidence(imp) {
+			t.Fatal("stop impact must not require dependency evidence")
+		}
+		// A non-continuation op with an applied receipt that carries NO
+		// continuation edge is the apply path and is unaffected by fail closed.
+		actual := appliedOutcome(imp)
+		if len(actual.ContinuationDependencies) != 0 {
+			t.Fatalf("clean fixture must carry no continuation edge: got %v", actual.ContinuationDependencies)
+		}
+		result, err := RecordProviderChangeResult(plan, []ProviderExecutionOutcome{actual})
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Logf("non-continuation clean receipt applied cleanly: status=%v code=%v", result.Outcomes[0].Status, result.Outcomes[0].ErrorCode)
 		if result.Outcomes[0].Status != "applied" {
-			t.Fatalf("non-continuation receipt must apply under current semantics: got status=%q code=%q, want applied", result.Outcomes[0].Status, result.Outcomes[0].ErrorCode)
+			t.Fatalf("non-continuation clean receipt must apply: got status=%q code=%q, want applied", result.Outcomes[0].Status, result.Outcomes[0].ErrorCode)
 		}
 	})
 	t.Run("continuation_without_evidence", func(t *testing.T) {
