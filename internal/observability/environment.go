@@ -105,9 +105,13 @@ func trailingProjectEnvironment(source SignalSource, value string) (string, bool
 		value = value[:strings.Index(value, "/")]
 	}
 	if idx := strings.Index(value, ":"); idx >= 0 {
-		// "<provider>:<project>" (or "id:project") — keep only the first
-		// colon-delimited segment, which carries the project name.
-		value = value[:idx]
+		// "<provider>:<project>" — the project lives AFTER the first colon
+		// (develop builds application-provider IDs as
+		// "<provider>:" + placement.Project, internal/logs/realization.go:233,
+		// internal/logs/lifecycle.go:172). Keep the segment after the colon; a
+		// bare provider token with no project (a bare 'loki') then fails closed
+		// because it carries no application anchor.
+		value = value[idx+1:]
 	}
 	app := strings.ToLower(strings.TrimSpace(source.OwnerApplication))
 	if app == "" {

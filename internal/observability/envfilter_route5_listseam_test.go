@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/capability"
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
 // envfilter_route5_listseam_test.go — caller-visible seam regression for card
@@ -260,16 +261,20 @@ func TestRoute5MetricsCaseB_DemoProdWestCallerIncludes(t *testing.T) {
 func TestRoute5ListSeamCaseC_MyAppDevIncludesProdExcludes(t *testing.T) {
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
 
-	const wantID = "loki:bh-prod-my-app-dev"
+	// Canonical generator project name (internal/runtime/project_names.go:31):
+	// 'bh-<target>-<app>-<env>'. One single value drives ID and Target so the
+	// source carries one project, not two.
+	project := bhruntime.ApplicationProjectName("prod", "my-app", "dev")
+	id := "loki:" + project
 	if err := UpdateSignal(SignalSource{
-		ID:               wantID,
+		ID:               id,
 		Kind:             SignalLogs,
 		Provider:         capability.ProviderLoki,
 		Class:            SourceApplicationProvider,
 		Scope:            capability.ScopeApplication,
 		OwnerApplication: "my-app",
 		Network:          "baseharbor-my-app-dev-logs",
-		Target:           RuntimeTarget("baseharbor-my-app-dev", "loki"),
+		Target:           RuntimeTarget(project, "loki"),
 		Protocol:         "syslog-rfc5424",
 	}); err != nil {
 		t.Fatal(err)
@@ -281,7 +286,7 @@ func TestRoute5ListSeamCaseC_MyAppDevIncludesProdExcludes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(devLogs) != 1 || devLogs[0].ID != wantID {
+	if len(devLogs) != 1 || devLogs[0].ID != id {
 		t.Fatalf("case (c): dev caller must see the my-app dev provider, got %d: %v", len(devLogs), ids(devLogs))
 	}
 
@@ -293,9 +298,18 @@ func TestRoute5ListSeamCaseC_MyAppDevIncludesProdExcludes(t *testing.T) {
 		t.Fatalf("case (c): prod caller must NOT see the my-app dev provider, got %d: %v", len(prodLogs), ids(prodLogs))
 	}
 
-	// positive control: the anchor resolves 'dev' for owner 'my-app'.
-	if _, ok := projectTokenFromID(SignalSource{OwnerApplication: "my-app", ID: wantID, Target: RuntimeTarget("baseharbor-my-app-dev", "loki")}); !ok {
-		t.Fatalf("case (c) positive-control: projectTokenFromID ok=false, want true")
+	// positive control: the canonical project's anchor resolves 'dev' for owner
+	// 'my-app' over the provider-qualified ID (loki:<canonical-project>). This
+	// is the assertion that carries the environment.go colon fix: the project
+	// lives AFTER the first colon in a develop application-provider ID
+	// (internal/logs/realization.go:233, internal/logs/lifecycle.go:172).
+	if env, ok := projectTokenFromID(SignalSource{OwnerApplication: "my-app", ID: id, Target: RuntimeTarget(project, "loki")}); !ok || env != "dev" {
+		t.Fatalf("case (c) colon proof: projectTokenFromID(env)=%q ok=%v, want env=dev ok=true", env, ok)
+	}
+	// a bare provider token with no project carries no anchor: nothing resolves
+	// (the ID path is the only one tried when no target is given).
+	if _, ok := projectTokenFromID(SignalSource{OwnerApplication: "my-app", ID: "loki"}); ok {
+		t.Fatalf("case (c) colon proof: bare provider token 'loki' resolved, want ok=false")
 	}
 }
 
@@ -308,7 +322,8 @@ func TestRoute5ListSeamCaseC_MyAppDevIncludesProdExcludes(t *testing.T) {
 func TestRoute5MutationAnchorDestruction(t *testing.T) {
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
 
-	const project = "bh-prod-my-app-dev"
+	// Canonical generator project name; the anchor is '-my-app-' in the project.
+	project := bhruntime.ApplicationProjectName("prod", "my-app", "dev")
 	if err := UpdateSignal(SignalSource{
 		ID:               "loki:" + project,
 		Kind:             SignalLogs,
@@ -334,17 +349,21 @@ func TestRoute5MutationAnchorDestruction(t *testing.T) {
 		t.Fatalf("mutation control: source WITH anchor must be visible to the dev caller, got %d", len(withAnchor))
 	}
 
-	// Same source, destroyed project: overwrite the SAME id so its target no
-	// longer carries '-my-app-' (the anchor). Anchor resolution now fails closed.
+	// Remove the visible source, then register the same logical source with a
+	// destroyed project (ID and target both lack '-my-app-'). Anchor resolution
+	// now fails closed -> invisible.
+	if err := Remove("loki:" + project); err != nil {
+		t.Fatal(err)
+	}
 	if err := UpdateSignal(SignalSource{
-		ID:               "loki:bh-prod-my-app-dev",
+		ID:               "loki:bh-prod-my-logs",
 		Kind:             SignalLogs,
 		Provider:         capability.ProviderLoki,
 		Class:            SourceApplicationProvider,
 		Scope:            capability.ScopeApplication,
 		OwnerApplication: "my-app",
 		Network:          "net-bh-prod-my-app-logs",
-		Target:           RuntimeTarget("baseharbor-my-app-logs", "loki"),
+		Target:           RuntimeTarget("bh-prod-my-app", "loki"),
 		Protocol:         "syslog-rfc5424",
 	}); err != nil {
 		t.Fatal(err)
