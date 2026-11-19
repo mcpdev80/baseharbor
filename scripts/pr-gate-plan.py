@@ -1193,6 +1193,8 @@ def targeted_plan(diff, requirements, mapping, repository='.',
             area = 'registration-mixed-unresolved'
             unresolved.append('mixed registration/execution source needs independent diff review: ' + path)
         elif (path.startswith('docs/') and path.endswith(('.md', '.rst')) or
+                path.startswith('docs/internal/') and path.endswith('.json') or
+                path.startswith('docs/example/') and path.endswith(('.yml', '.yaml')) or
                 path in ('README.md', 'CONTRIBUTING.md', 'CHANGELOG.md',
                          'mkdocs.yml', 'mkdocs.de.yml') or
                 path.startswith('site/')):

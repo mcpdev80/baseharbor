@@ -32,7 +32,7 @@ func retainedNativeBackendFixture(t *testing.T) resolvedApplication {
 	if err := os.MkdirAll(files.Dir, 0700); err != nil {
 		t.Fatal(err)
 	}
-	canonical, err := application.RuntimeComposeYAMLForProject(m, files.ResourceProject)
+	canonical, err := application.RuntimeComposeYAMLForProject(m, files)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -127,7 +127,7 @@ func TestNamedBackendRemovalRequiresImpactAndPreservesPeerData(t *testing.T) {
 	if _, err := recordDeploymentBeforeMutation(confirmCtx, resolved, "applying", confirm); err != nil {
 		t.Fatal(err)
 	}
-	canonical, err := application.RuntimeComposeYAMLForProject(resolved.Manifest, files.ResourceProject)
+	canonical, err := application.RuntimeComposeYAMLForProject(resolved.Manifest, files)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -23,7 +23,7 @@ func TestValkeyHAComposeEnablesSentinelQuorumOnRuntimeNetwork(t *testing.T) {
 	if err := m.Validate(); err != nil {
 		t.Fatal(err)
 	}
-	compose, err := RuntimeComposeYAMLForProject(m, "bh-valkey-ha-contract")
+	compose, err := RuntimeComposeYAMLForProject(m, RuntimeFiles{ResourceProject: "bh-valkey-ha-contract"})
 	if err != nil {
 		t.Fatal(err)
 	}

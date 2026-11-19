@@ -31,7 +31,7 @@ func TestMongoDBRuntimeFoundationIsApplicationScopedPersistentAndTLSGated(t *tes
 	if placement.Scope != capability.ScopeApplication || placement.Ownership != capability.OwnershipBaseHarbor {
 		t.Fatalf("MongoDB placement = %#v", placement)
 	}
-	compose, err := RuntimeComposeYAMLForProject(m, "bh-documents")
+	compose, err := RuntimeComposeYAMLForProject(m, RuntimeFiles{ResourceProject: "bh-documents"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -145,7 +145,7 @@ func TestMongoDBHAComposeUsesExplicitYAMLKeyfileAndKeyfileTLSBoundary(t *testing
 	if err := m.Validate(); err != nil {
 		t.Fatal(err)
 	}
-	compose, err := RuntimeComposeYAMLForProject(m, "bh-documents-ha")
+	compose, err := RuntimeComposeYAMLForProject(m, RuntimeFiles{ResourceProject: "bh-documents-ha"})
 	if err != nil {
 		t.Fatal(err)
 	}
