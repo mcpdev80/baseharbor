@@ -739,6 +739,47 @@ class Core921ProductionRegistrationCoverageTests(unittest.TestCase):
 
 
 class MappingTests(unittest.TestCase):
+    def test_internal_json_selects_documentation_checks(self):
+        result = planner.plan(diff(paths('docs/internal/release-audit.json')), REQ, MAP_26)
+        self.assertEqual('resolved', result['coverage_status'])
+        self.assertFalse(result['broad_required'])
+        self.assertFalse(result['unresolved_coverage'])
+        check_ids = {check['id'] for check in result['required_validation_checks']}
+        self.assertEqual({check['id'] for check in planner.DOC_CHECKS}, check_ids)
+        self.assertIn('documentation-audit', check_ids)
+
+    def test_unrelated_json_does_not_select_documentation_checks(self):
+        result = planner.plan(diff(paths('examples/release-audit.json')), REQ, MAP_26)
+        self.assertEqual('unresolved', result['coverage_status'])
+        self.assertTrue(result['broad_required'])
+        self.assertTrue(result['unresolved_coverage'])
+        check_ids = {check['id'] for check in result['required_validation_checks']}
+        self.assertNotIn('documentation-audit', check_ids)
+
+    def test_nested_internal_json_selects_documentation_checks(self):
+        result = planner.plan(diff(paths('docs/internal/receipts/release.json')), REQ, MAP_26)
+        self.assertEqual('resolved', result['coverage_status'])
+        self.assertFalse(result['broad_required'])
+        self.assertIn('documentation-audit',
+                      {check['id'] for check in result['required_validation_checks']})
+
+    def test_documentation_example_workflow_yaml_selects_documentation_checks(self):
+        result = planner.plan(diff(paths('docs/example/github-actions/consume.yml')),
+                              REQ, MAP_26)
+        self.assertEqual('resolved', result['coverage_status'])
+        self.assertFalse(result['broad_required'])
+        self.assertFalse(result['unresolved_coverage'])
+        self.assertIn('documentation-audit',
+                      {check['id'] for check in result['required_validation_checks']})
+
+    def test_unrelated_yaml_does_not_select_documentation_checks(self):
+        result = planner.plan(diff(paths('deploy/example/pipeline.yaml')), REQ, MAP_26)
+        self.assertEqual('unresolved', result['coverage_status'])
+        self.assertTrue(result['broad_required'])
+        self.assertTrue(result['unresolved_coverage'])
+        self.assertNotIn('documentation-audit',
+                         {check['id'] for check in result['required_validation_checks']})
+
     def test_edit_navigation_uses_actual_sql_new_edit_gates(self):
         for path in ['cmd/baha/app_edit.go', 'cmd/baha/app_edit_test.go']:
             with self.subTest(path=path):
