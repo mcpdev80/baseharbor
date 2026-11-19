@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 
@@ -12,34 +14,55 @@ import (
 )
 
 // withConfirmCandidateDigestForResolved returns a context carrying the operator
-// confirmation and the canonical confirm digest for the repository candidate
-// bound to resolved, so the real apply choke point can record a validated ECHT
-// consent in tests. It computes the digest exactly as the production consumer
-// does (repository desired-state fingerprint over the resolved source), so it
-// matches what recordDeploymentBeforeMutation binds. Non-candidate sources are
-// unaffected.
+// confirmation and the canonical confirm digest for a repository-backed apply,
+// so the real apply choke point can record a validated ECHT consent in tests.
+// It also covers a fresh `app init` record whose source kind is still "managed":
+// applying its authored repository manifest transitions it to a repository
+// candidate. The fingerprint and submission fields match what
+// recordDeploymentBeforeMutation binds. Non-repository sources are unaffected.
 func withConfirmCandidateDigestForResolved(ctx context.Context, resolved resolvedApplication) (context.Context, string) {
-	record := resolved.DeploymentRecord
-	if record == nil {
-		if loaded, err := deployment.LoadDeploymentRecord(resolved.DeploymentIdentity); err == nil {
-			record = &loaded
-		}
-	}
-	if record == nil || record.Source.Kind != "repository" || !resolved.FromRepository {
+	if !resolved.FromRepository {
 		return ctx, ""
 	}
-	fingerprint, err := repositoryDesiredStateFingerprint(ctx, resolved)
-	if err != nil || fingerprint == "" {
+	submission, revision := candidateSubmissionForResolvedApp(ctx, resolved)
+	if submission.SourceRepository == "" || revision == "" {
 		return ctx, ""
 	}
-	submission := delivery.CandidateSubmission{
-		ContractVersion:  delivery.CandidateContractVersion,
-		ApplicationID:    record.Identity.ApplicationID,
-		TargetName:       record.Identity.Target,
-		SourceRepository: record.Source.Repository,
-		SourceRevision:   fingerprint,
+	digest := delivery.CandidateConsentDigest(submission)
+	return withCandidateConsentDigest(ctx, digest), digest
+}
+
+func TestConfirmCandidateDigestForFirstRepositoryApplyFromManagedInit(t *testing.T) {
+	root := t.TempDir()
+	manifestPath := filepath.Join(root, application.RepositoryManifestName)
+	if err := os.WriteFile(manifestPath, []byte("version: 1\napp:\n  name: sibling\n"), 0600); err != nil {
+		t.Fatal(err)
 	}
-	return withCandidateConsentDigest(ctx, delivery.CandidateConsentDigest(submission)), delivery.CandidateConsentDigest(submission)
+	if err := os.WriteFile(filepath.Join(root, "compose.yaml"), []byte("services: {}\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	identity := deployment.DeploymentIdentity{
+		ApplicationID: "bf8fcb8d-ca02-48db-b91b-b8d03a2afe8a",
+		Target:        "docker-dev",
+	}
+	resolved := resolvedApplication{
+		DeploymentIdentity: identity,
+		DeploymentRecord: &deployment.DeploymentRecord{
+			Identity: identity,
+			Source:   deployment.DeploymentSource{Kind: "managed", Repository: root, Manifest: manifestPath},
+		},
+		ManifestPath:   manifestPath,
+		RepositoryRoot: root,
+		FromRepository: true,
+	}
+	ctx, got := withConfirmCandidateDigestForResolved(context.Background(), resolved)
+	if got == "" || candidateConsentOverride(ctx) != got {
+		t.Fatal("first repository apply from app init did not bind exact candidate confirmation")
+	}
+	submission, revision := candidateSubmissionForResolvedApp(context.Background(), resolved)
+	if got != delivery.CandidateConsentDigest(submission) || revision != submission.SourceRevision {
+		t.Fatal("test consent digest differs from the production candidate submission")
+	}
 }
 
 // withConfirmCandidateForSetup returns a context carrying the confirm digest for

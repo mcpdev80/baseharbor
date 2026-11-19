@@ -26,6 +26,10 @@ Internal Go packages are not public API unless explicitly documented.
 
 Manifest v1 remains the supported v0.4 compatibility surface. v0.4 adds provider-neutral contract/runtime seams behind that surface rather than forcing applications to rewrite their manifest for future providers.
 
+### Optional observability management surface
+
+Observability backends (Prometheus, Loki, Tempo) are optional, opt-in data owners, not required Core bundles. For v0.4.28 the visualization surface is optional **Perses** (pinned at v0.55.1, image `persesdev/perses:v0.55.1`; the provider pin is separate from BaseHarbor's own release version). Perses is a provider-owned, dashboard-as-code surface, not an application capability and not part of the required Core bundle. The Perses visualization surface is optional; its state may be `not_configured`, `configured_unverified` or `verified`. The normative state definition lives in docs/spec/management-access-v1.md. The Prometheus, Loki and Tempo data backends remain available regardless of whether a visualization surface is selected.
+
 ## Development versus releases
 
 BaseHarbor uses two long-lived branches with distinct responsibilities:
@@ -78,6 +82,16 @@ Source rule: the release issue and release notes must identify the exact BaseHar
 ## Release preparation
 
 Normal releases are prepared on `develop` and promoted to `main` after validating the immutable candidate. Hotfixes start from `main`. The [complete release audit](https://github.com/mcpdev80/baseharbor/blob/develop/docs/internal/pre-release-documentation-audit.md) covers implementation, ecosystem consumers, EN/DE docs, the Pages candidate build, changelog and human-readable release notes.
+
+The Pre-Release workflow records the exact candidate SHA and fetched `develop`
+tip SHA used by its ancestry guard. A normal candidate must contain that
+`develop` tip. Publish captures a `develop` SHA while validating the tag and
+passes that immutable SHA to the reusable Pre-Release workflow; the tag must be
+integrated into that same `develop` history. The workflow summary writes a
+qualification binding line with the candidate, `develop` and Demo SHAs and the
+selected suite so the release dossier can cite the exact source pair. Four-part
+hotfixes use the documented main-based path; their fixes are forward-ported to
+`develop` after publication.
 
 1. Complete implementation, contracts, documentation and release notes.
 2. Freeze exact Core and active-consumer commits required by the release scope. Archived or deferred consumers are excluded unless a release explicitly brings them back into scope.

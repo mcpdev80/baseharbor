@@ -133,7 +133,7 @@ func verifyManagedTracesAfterTelemetry(ctx context.Context, out io.Writer, prepa
 		case source.Mode == capability.ObservabilityInteraction && source.Protocol == "interaction":
 			traceID, err = telemetry.ExportProviderInteractionTraceAt(ctx, prepared.manifest, source, prepared.dataDir, prepared.namespace)
 		case source.Mode == capability.ObservabilityNative && source.Protocol == "otlp":
-			traceID, err = runtimeComponentTraceProbe(ctx, prepared, source)
+			traceID, err = nativeTraceSourceProbe(ctx, prepared, source)
 		default:
 			return fmt.Errorf("provider trace source %s has unsupported realization %q/%q", source.ID, source.Mode, source.Protocol)
 		}
@@ -146,6 +146,26 @@ func verifyManagedTracesAfterTelemetry(ctx context.Context, out io.Writer, prepa
 	}
 	fmt.Fprintf(out, "[VERIFIED] traces         application verification trace + %d provider trace(s) queryable for %s\n", len(prepared.providerSources), prepared.manifest.Name)
 	return nil
+}
+
+// nativeTraceSourceProbe selects the adapter that can actually produce a span
+// for one registered native OTLP trace source. The source's provider names the
+// receiver its spans reach, so that identity — not a guess — decides the route:
+// a runtime component owns a probe endpoint, while a receiver-owned source
+// carries no endpoint of its own and is proven by exporting over exactly the
+// binding the application's traces use. Any other provider keeps failing closed
+// because it receives no OTLP spans at all.
+func nativeTraceSourceProbe(ctx context.Context, prepared *managedTracesExecution, source observability.SignalSource) (string, error) {
+	switch source.Provider {
+	case capability.ProviderRuntimeBroker, capability.ProviderRuntimeExecutor:
+		return runtimeComponentTraceProbe(ctx, prepared, source)
+	case capability.ProviderOTelCollector, capability.ProviderExternalOTLP:
+		return telemetry.ExportNativeReceiverTraceAt(ctx, prepared.manifest, source, prepared.runtimeFiles, prepared.dataDir, prepared.namespace)
+	default:
+		// Naming both halves of the mistake keeps the diagnosis actionable:
+		// which provider was registered for spans, and what can be probed.
+		return "", fmt.Errorf("native OTLP trace source %s is registered for provider %q, which is neither a runtime component nor an OTLP receiver and has no runtime probe adapter", source.ID, source.Provider)
+	}
 }
 
 func runtimeComponentTraceProbe(ctx context.Context, prepared *managedTracesExecution, source observability.SignalSource) (string, error) {
@@ -235,6 +255,7 @@ func refreshProviderTraceSources(prepared *managedTracesExecution) error {
 		[]string{prepared.manifest.Name},
 		policy.Collect[application.TracesSourceApplicationProvider],
 		policy.Collect[application.TracesSourcePlatformProvider],
+		prepared.manifest.Environment,
 	)
 	if err != nil {
 		return fmt.Errorf("resolve provider trace sources: %w", err)

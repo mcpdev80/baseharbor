@@ -126,7 +126,7 @@ func completeCommandLine(root *cli.Command, words []string, stores ...applicatio
 
 func completionAcceptsApplicationName(command *cli.Command) bool {
 	switch command.Name {
-	case "show", "plan", "status", "doctor", "apply", "up", "down", "destroy", "backup", "env", "psql", "redis", "logs", "shell", "exec", "update", "tls":
+	case "show", "plan", "status", "doctor", "apply", "up", "down", "destroy", "backup", "env", "psql", "redis", "logs", "shell", "exec", "update", "tls", "perses":
 		return true
 	default:
 		return false

@@ -183,6 +183,10 @@ class WorkflowWiring(unittest.TestCase):
         resolve = next(s for s in steps if s.get('id') == 'resolve')
         self.assertIn('scripts/targeted-gate-ref.py --ref "$DISPATCH_REF"', resolve['run'])
         self.assertIn('ref="$GITHUB_SHA"', resolve['run'])
+        self.assertEqual('${{ inputs.ref || github.sha }}', resolve['env']['DISPATCH_REF'])
+        ref_input = (self.targeted.get('on') or self.targeted.get(True))['workflow_dispatch']['inputs']['ref']
+        self.assertFalse(ref_input['required'])
+        self.assertNotIn('default', ref_input)
         triggers = self.targeted.get('on') or self.targeted.get(True)
         description = triggers['workflow_dispatch']['inputs']['ref']['description']
         self.assertIn('short SHAs are resolved', description)
@@ -210,6 +214,8 @@ class WorkflowWiring(unittest.TestCase):
         self.assertIn("inputs.gate == 'observability'", setup['if'])
         gate = next(s for s in steps if s.get('id') == 'runtime_gate')
         self.assertIn("inputs.gate == 'observability' && 25", gate['timeout-minutes'])
+        self.assertIn("inputs.runtime == 'podman'", gate['timeout-minutes'])
+        self.assertIn("inputs.gate == 'guided' && 30", gate['timeout-minutes'])
         self.assertIn("inputs.gate == 'guided' && 12", gate['timeout-minutes'])
         condition = 'if [ "$GATE" = observability ] && [ "$GITHUB_EVENT_NAME" = pull_request ]; then'
         block = 'set -euo pipefail\n' + condition + gate['run'].split(condition, 1)[1]

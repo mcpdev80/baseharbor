@@ -32,7 +32,7 @@ func TestManagedIdentityReplacementRequiresCurrentConsentBeforeExecutionAdmissio
 		t.Fatalf("selection was vetoed before consequence disclosure: %v", err)
 	}
 	impact := plan.ProviderPlan.Impact
-	if impact == nil || impact.Attention != "Achtung" || impact.ConfirmationsRequired != 2 {
+	if impact == nil || impact.Attention != "Warning" || impact.ConfirmationsRequired != 2 {
 		t.Fatal("unknown replacement consequences lacked current two-stage plan")
 	}
 	selected := false

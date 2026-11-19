@@ -166,7 +166,7 @@ func ensureProviderFilesForModeAt(ctx context.Context, issuer serviceaccess.Issu
 	if err != nil {
 		return ProviderFiles{}, err
 	}
-	providerSources, err := providerLogSources(p, registrations)
+	providerSources, err := providerLogSources(p, registrations, m.Environment)
 	if err != nil {
 		return ProviderFiles{}, err
 	}

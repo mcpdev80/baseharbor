@@ -28,7 +28,7 @@ func TestImpactScopeBindsAllTargetsAndRegistrationOwner(t *testing.T) {
 	if !reflect.DeepEqual(plans, original) {
 		t.Fatal("composition mutated input target plans")
 	}
-	if len(scope.Targets) != 2 || scope.ConfirmationsRequired != 2 || scope.Attention != "Achtung" {
+	if len(scope.Targets) != 2 || scope.ConfirmationsRequired != 2 || scope.Attention != "Warning" {
 		t.Fatalf("scope omitted shared consequences: %+v", scope)
 	}
 	consent := ProviderChangeConsent{PlanID: scope.PlanID, First: true, Second: true, DeleteData: true}
@@ -151,6 +151,49 @@ func TestImpactScopeConsentTracksConsequencesButNotCountdownSamples(t *testing.T
 	}
 	if err := ValidateProviderImpactScopeConsent(destructive, ProviderChangeConsent{PlanID: destructive.PlanID, First: true, Second: true}); err == nil {
 		t.Fatal("two acknowledgements silently granted material deletion")
+	}
+}
+
+func TestProviderImpactPlansEquivalentIgnoresOnlyCountdownSamples(t *testing.T) {
+	first, second := int64(315359527), int64(315359512)
+	base := ProviderImpactPlan{
+		Version: ProviderImpactVersion, Target: "dev", PlanID: "same-plan", Revision: "same-revision",
+		Complete: true, ConfirmationsRequired: 1,
+		Impacts: []ProviderImpact{{
+			InstanceID: "postgres", Operation: "add", Selection: "explicit",
+			Functions: []FunctionConsequence{{
+				Consumer: "application/app/dev", Function: "database.sql/default",
+				Outcome: "remains", ValidUntil: "2036-11-13T06:13:11Z", RemainingValiditySeconds: &first,
+			}},
+			Materials: []MaterialConsequence{{
+				Before:  ProviderMaterial{ID: "postgres/cert", ExpiresAt: "2036-11-13T06:13:11Z"},
+				Meaning: "within observed time window", RemainingValiditySeconds: &first,
+			}},
+		}},
+	}
+	resampled := base
+	resampled.Impacts = append([]ProviderImpact(nil), base.Impacts...)
+	resampled.Impacts[0].Functions = append([]FunctionConsequence(nil), base.Impacts[0].Functions...)
+	resampled.Impacts[0].Functions[0].RemainingValiditySeconds = &second
+	resampled.Impacts[0].Materials = append([]MaterialConsequence(nil), base.Impacts[0].Materials...)
+	resampled.Impacts[0].Materials[0].RemainingValiditySeconds = &second
+	if !ProviderImpactPlansEquivalent(base, resampled) {
+		t.Fatal("a fresh countdown sample made the same impact plan unequal")
+	}
+
+	changedExpiry := resampled
+	changedExpiry.Impacts = append([]ProviderImpact(nil), resampled.Impacts...)
+	changedExpiry.Impacts[0].Materials = append([]MaterialConsequence(nil), resampled.Impacts[0].Materials...)
+	changedExpiry.Impacts[0].Materials[0].Before.ExpiresAt = "2036-11-12T06:13:11Z"
+	if ProviderImpactPlansEquivalent(base, changedExpiry) {
+		t.Fatal("an absolute expiry change was ignored")
+	}
+	changedMeaning := resampled
+	changedMeaning.Impacts = append([]ProviderImpact(nil), resampled.Impacts...)
+	changedMeaning.Impacts[0].Materials = append([]MaterialConsequence(nil), resampled.Impacts[0].Materials...)
+	changedMeaning.Impacts[0].Materials[0].Meaning = "material is expired"
+	if ProviderImpactPlansEquivalent(base, changedMeaning) {
+		t.Fatal("an expiry meaning change was ignored")
 	}
 }
 

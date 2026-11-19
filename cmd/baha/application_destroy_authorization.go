@@ -167,7 +167,7 @@ func authorizeApplicationDestruction(ctx context.Context, resolved resolvedAppli
 	}
 	in := applicationInput(ctx, nil)
 	if consent == nil && !noInput(ctx) && in != nil && readerIsTerminal(in) {
-		ack, err := readProviderApplyAcknowledgement(bufio.NewReader(in), out, application.ProviderImpactPlan{PlanID: p.Scope.PlanID, ConfirmationsRequired: p.Scope.ConfirmationsRequired, Destructive: p.Scope.Destructive})
+		ack, err := readProviderApplyAcknowledgement(bufio.NewReader(in), out, application.ProviderImpactPlan{PlanID: p.Scope.PlanID, Attention: p.Scope.Attention, ConfirmationsRequired: p.Scope.ConfirmationsRequired, Destructive: p.Scope.Destructive})
 		if err != nil {
 			return p, err
 		}

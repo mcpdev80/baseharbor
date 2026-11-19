@@ -139,7 +139,7 @@ func TestTargetDeleteProceedsWithoutOrphans(t *testing.T) {
 	if err != nil {
 		t.Fatalf("clean Target refused detach: %v", err)
 	}
-	if plan.Scope.Attention != "Achtung" || plan.Scope.ConfirmationsRequired != 2 {
+	if plan.Scope.Attention != "Warning" || plan.Scope.ConfirmationsRequired != 2 {
 		t.Fatal("clean detach did not reach the standard two-stage consent disclosure")
 	}
 }
