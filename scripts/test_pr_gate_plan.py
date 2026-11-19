@@ -772,6 +772,15 @@ class MappingTests(unittest.TestCase):
         self.assertIn('documentation-audit',
                       {check['id'] for check in result['required_validation_checks']})
 
+    def test_documentation_example_workflow_yml_extension_selects_documentation_checks(self):
+        result = planner.plan(diff(paths('docs/example/gitlab-ci/pipeline.yaml')),
+                              REQ, MAP_26)
+        self.assertEqual('resolved', result['coverage_status'])
+        self.assertFalse(result['broad_required'])
+        self.assertFalse(result['unresolved_coverage'])
+        self.assertIn('documentation-audit',
+                      {check['id'] for check in result['required_validation_checks']})
+
     def test_unrelated_yaml_does_not_select_documentation_checks(self):
         result = planner.plan(diff(paths('deploy/example/pipeline.yaml')), REQ, MAP_26)
         self.assertEqual('unresolved', result['coverage_status'])
