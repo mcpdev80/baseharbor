@@ -44,6 +44,13 @@ func withCIIntegrationOperator(ctx context.Context, args []string) context.Conte
 		return ciIntegrationOperatorContext(ctx)
 	}
 	if managedGateReason := ciIntegrationManagedLocalGateReason(args, target, err); managedGateReason == "" {
+		// Root status is a read-only observation on the selected local runtime.
+		// Let the production local authority path evaluate it; a synthetic
+		// operator would switch observation to OIDC and hide runtime-grant state.
+		if ciIntegrationReadOnlyStatus(args) {
+			ciIntegrationOperatorTrace("managed-local-status-observation", args, target, nil)
+			return ctx
+		}
 		ciIntegrationOperatorTrace("managed-local-gate", args, target, nil)
 		return ciIntegrationOperatorContext(ctx)
 	} else {
@@ -87,6 +94,9 @@ func ciIntegrationManagedLocalGateReason(args []string, target deployment.Resolv
 	}
 	operation := cliLocalWorkloadOperation(args)
 	managedWorkload := operatorauth.LocalWorkloadOperation(operation)
+	if !managedWorkload && ciIntegrationReadOnlyStatus(args) {
+		managedWorkload = true
+	}
 	// Root doctor inspects the control plane and is authorized as
 	// control-plane.doctor, not as an app-bound local workload operation. The
 	// disposable acceptance gate may use its synthetic operator only for the
@@ -139,6 +149,16 @@ func ciIntegrationReadOnlyDoctor(args []string) bool {
 		return args[1] == "--json"
 	}
 	return len(args) == 3 && args[0] == "doctor" && args[1] == "--output" && args[2] == "json"
+}
+
+func ciIntegrationReadOnlyStatus(args []string) bool {
+	if len(args) == 1 && args[0] == "status" {
+		return true
+	}
+	if len(args) == 2 && args[0] == "status" {
+		return args[1] == "--json" || args[1] == "--output=json" || args[1] == "-ojson"
+	}
+	return len(args) == 3 && args[0] == "status" && (args[1] == "--output" || args[1] == "-o") && args[2] == "json"
 }
 
 func ciIntegrationRootInit(args []string) bool {
