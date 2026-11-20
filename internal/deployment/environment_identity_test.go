@@ -467,6 +467,42 @@ func TestRenameRetryCleansSourceAfterInterruptedInstall(t *testing.T) {
 	}
 }
 
+func TestInstallRenameRefusesMismatchedDestination(t *testing.T) {
+	root := t.TempDir()
+	oldHome := filepath.Join(root, "old")
+	newHome := filepath.Join(root, "new")
+	if err := os.MkdirAll(oldHome, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(newHome, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	oldPath := filepath.Join(oldHome, environmentRecordFile)
+	newPath := filepath.Join(newHome, environmentRecordFile)
+	source := EnvironmentRecord{Target: "target-a", Name: "old", Identity: "00000000-0000-4000-8000-000000000001"}
+	if _, err := persistEnvironmentRecord(oldHome, oldPath, source.Target, source.Name, source.Identity, nil); err != nil {
+		t.Fatal(err)
+	}
+	foreign := []byte("{\"target\":\"target-b\",\"name\":\"new\",\"id\":\"00000000-0000-4000-8000-000000000002\"}\n")
+	if err := os.WriteFile(newPath, foreign, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := installRenamedEnvironmentIdentity(oldPath, newHome, newPath, "target-a", "new", source); !errors.Is(err, ErrEnvironmentBindingMismatch) {
+		t.Fatalf("expected mismatched destination refusal, got %v", err)
+	}
+	after, err := os.ReadFile(newPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(after) != string(foreign) {
+		t.Fatalf("foreign destination was overwritten: got %s", after)
+	}
+	if _, err := os.Stat(oldPath); err != nil {
+		t.Fatalf("source identity was removed after refusal: %v", err)
+	}
+}
+
 // TestRenameReopeningByNameIsIdempotent proves that reopening an already-renamed
 // environment returns the same UUID without allocating a new one or duplicating
 // state.

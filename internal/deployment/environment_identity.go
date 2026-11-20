@@ -493,9 +493,7 @@ func installRenamedEnvironmentIdentity(oldPath, newHome, newPath, target, newNam
 	if existing, statErr := os.Stat(newPath); statErr == nil && !existing.IsDir() {
 		cur, readErr := readEnvironmentRecord(newPath, target, newName)
 		if readErr != nil {
-			if !errors.Is(readErr, ErrEnvironmentBindingMismatch) {
-				return EnvironmentRecord{}, fmt.Errorf("inspect destination %q: %w", newPath, readErr)
-			}
+			return EnvironmentRecord{}, fmt.Errorf("inspect destination %q: %w", newPath, readErr)
 		} else {
 			if cur.Identity != source.Identity {
 				return EnvironmentRecord{}, fmt.Errorf("%w: destination %q now holds %q", ErrEnvironmentAlreadyExists, newName, cur.Identity)
