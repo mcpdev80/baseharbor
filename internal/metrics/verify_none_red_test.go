@@ -111,25 +111,72 @@ func TestVerificationNoneCompositionReportsNullTargetState(t *testing.T) {
 }
 
 // TestEnsureProviderFilesCompositionStateCarriesState runs the real composition
-// entry point with a workload-only app (its runtime metrics source is
-// verification:none) and asserts ProviderFiles.CompositionState carries the
-// explicit null-target state.
+// entry point with a workload-only app (no provider metrics sources, only
+// runtime workload metrics) and asserts ProviderFiles.CompositionState carries
+// the explicit "no provider metrics sources" state. This is finding 1: an app
+// with no provider sources must NOT be reported as "null effective scrape
+// targets after composition (all Verification=none)" — that would be a false
+// null-provider-target status.
 func TestEnsureProviderFilesCompositionStateCarriesState(t *testing.T) {
 	stateDir := t.TempDir()
 	t.Setenv("BASEHARBOR_STATE_DIR", stateDir)
 	t.Setenv(application.MetricsEnabledEnv, "true")
 
 	m := application.WithWorkloadComponents(application.New("workload-only", "dev", false, false, false), "api")
-	issuer := serviceissuer.New(t)
-
-	files, err := EnsureProviderFiles(context.Background(), issuer, m)
+	files, err := EnsureProviderFiles(context.Background(), serviceissuer.New(t), m)
 	if err != nil {
 		t.Fatalf("EnsureProviderFiles: %v", err)
 	}
 	if files.CompositionState == "" {
 		t.Fatal("ProviderFiles.CompositionState is empty; composition must report its state")
 	}
-	if !strings.Contains(strings.ToLower(files.CompositionState), "null effective scrape targets") {
-		t.Fatalf("composition state %q for workload-only app must report the null effective target count", files.CompositionState)
+	// The workload-only app has no provider metrics sources: the composition
+	// must report the no-source state, not the Verification=none null-target
+	// message (finding 1).
+	for _, ok := range []string{"no provider metrics sources", "nothing to scrape"} {
+		if !strings.Contains(files.CompositionState, ok) {
+			t.Fatalf("composition state %q for a provider-less workload-only app must report the no-source state, got %q", ok, files.CompositionState)
+		}
+	}
+}
+
+// TestProviderCompositionStateEmptySourceListIsNoSource (finding 1): the empty
+// provider source list must report the no-source state, NOT the "all
+// Verification=none null effective scrape targets" message. A zero effective
+// count with no sources is "no sources", not "all verification:none".
+func TestProviderCompositionStateEmptySourceListIsNoSource(t *testing.T) {
+	state := ProviderCompositionState(nil)
+	for _, ok := range []string{"no provider metrics sources", "nothing to scrape"} {
+		if !strings.Contains(state, ok) {
+			t.Fatalf("composition state for empty source list %q must report the no-source state, got %q", ok, state)
+		}
+	}
+	for _, bad := range []string{"Verification=none"} {
+		if strings.Contains(state, bad) {
+			t.Fatalf("composition state for empty source list %q must not claim all sources are Verification=none", state)
+		}
+	}
+}
+
+// TestProviderCompositionStateNonEmptyAllNoneReportsNullTarget (finding 1): a
+// non-empty provider source list whose sources are all Verification=none must
+// still report the null effective target count (the documented, expected-zero
+// state). The empty-guard above must not swallow the genuine all-verification
+// none case.
+func TestProviderCompositionStateNonEmptyAllNoneReportsNullTarget(t *testing.T) {
+	noneSource := observability.MetricsSource{
+		ID:           "prometheus:platform-provider",
+		Provider:     capability.ProviderPrometheus,
+		Class:        observability.SourcePlatformProvider,
+		Scope:        capability.ScopeShared,
+		Target:       "platform.backend:9090",
+		Path:         "/metrics",
+		Verification: capability.ObservabilityVerifyNone,
+	}
+	state := ProviderCompositionState([]observability.MetricsSource{noneSource})
+	for _, want := range []string{"null effective scrape targets", "after composition", "Verification=none"} {
+		if !strings.Contains(state, want) {
+			t.Fatalf("composition state %q for all-verification:none must report the null effective target count, got %q", want, state)
+		}
 	}
 }

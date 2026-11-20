@@ -196,10 +196,13 @@ func verifyManagedMetricsAfterWorkload(ctx context.Context, out io.Writer, prepa
 	} else if stateErr != nil {
 		return stateErr
 	}
-	// Always surface the operator-facing composition state (positive target
-	// count or the documented zero-count message) so cmd/baha prints the real
-	// Prometheus placement instead of a generic convergence line.
-	if state, compErr := metricsprovider.ProviderSourcesCompositionState(ctx, prepared.manifest, prepared.dataDir, prepared.namespace); compErr == nil && state != "" {
+	// Surface the operator-facing composition state for the cases that do not
+	// already carry it via a *CompositionStateError above: the positive single
+	// target count and the no-source (provider-less) app. The all-none provider
+	// case already emitted exactly one [STATE] line via the CompositionStateError
+	// branch above, so skip the redundant ProviderSourcesCompositionState print
+	// there (finding 2: avoid a duplicate [STATE] line for the same state).
+	if state, compErr := metricsprovider.ProviderSourcesCompositionState(ctx, prepared.manifest, prepared.dataDir, prepared.namespace); compErr == nil && state != "" && compositionErr == nil {
 		fmt.Fprintf(out, "[STATE] metrics          %s for %s\n", state, prepared.manifest.Name)
 	}
 	if prepared.placementChanged {
