@@ -168,6 +168,7 @@ func ProviderSourcesCompositionState(ctx context.Context, m application.Manifest
 		allowedApplications,
 		policy.Collect[application.MetricsSourceApplicationProvider],
 		policy.Collect[application.MetricsSourcePlatformProvider],
+		"",
 	)
 	if err != nil {
 		return "", err
