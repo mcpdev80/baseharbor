@@ -164,6 +164,11 @@ func cliLocalWorkloadOperation(args []string) string {
 	if len(args) > 0 && args[0] == "plan" {
 		return "plan"
 	}
+	// The root `up` command is a deployment apply and must use the same
+	// invocation-local runtime grant as `app apply`.
+	if len(args) > 0 && args[0] == "up" {
+		return "apply"
+	}
 	return ""
 }
 
