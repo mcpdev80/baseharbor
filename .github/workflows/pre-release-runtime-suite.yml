@@ -474,6 +474,11 @@ jobs:
           echo "===== $file ====="
           tail -n 160 "$file" || true
         done
+        for file in "$out"/failure-runtime/*/scope-result.json; do
+          [ -f "$file" ] || continue
+          echo "===== $file ====="
+          cat "$file"
+        done
         echo "::endgroup::"
     - name: Run provider integration gate
       id: integration_gate

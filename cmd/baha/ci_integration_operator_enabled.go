@@ -102,6 +102,13 @@ func ciIntegrationManagedLocalGateReason(args []string, target deployment.Resolv
 	if !managedWorkload && ciIntegrationReadOnlyStatus(args) {
 		managedWorkload = true
 	}
+	// The guided acceptance reads the loopback developer domain after its
+	// readiness/status checks. Allow only that exact read-only probe in the
+	// guided fixture; credential output and arbitrary developer commands stay
+	// outside this synthetic-operator exception.
+	if !managedWorkload && gate == "guided" && ciIntegrationGuidedDevDomain(args) {
+		managedWorkload = true
+	}
 	// The observability acceptance gate reads the disposable demo workload's
 	// logs to verify its query path. Raw logs may contain secrets, so this
 	// exception exists only in the separately tagged CI binary and is limited
@@ -171,6 +178,10 @@ func ciIntegrationReadOnlyStatus(args []string) bool {
 		return args[1] == "--json" || args[1] == "--output=json" || args[1] == "-ojson"
 	}
 	return len(args) == 3 && args[0] == "status" && (args[1] == "--output" || args[1] == "-o") && args[2] == "json"
+}
+
+func ciIntegrationGuidedDevDomain(args []string) bool {
+	return len(args) == 2 && args[0] == "dev" && args[1] == "domain"
 }
 
 func ciIntegrationConfigureStatusOperatorBoundary(target string) error {

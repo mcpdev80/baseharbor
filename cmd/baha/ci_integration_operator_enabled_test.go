@@ -275,6 +275,33 @@ func TestCIIntegrationOperatorAllowsRootDestroyOnlyForGuidedGate(t *testing.T) {
 	}
 }
 
+func TestCIIntegrationOperatorAllowsOnlyGuidedDeveloperDomainProbe(t *testing.T) {
+	t.Setenv("DEMO_ATOMIC_GATE", "1")
+	t.Setenv("BASEHARBOR_TEST_RUNTIME", "docker")
+	t.Setenv("GATE", "guided")
+	t.Setenv("BASEHARBOR_DEMO_OPERATOR_GATE", "guided")
+	target := configureIsolatedEmptyRuntimeTarget(t, "atomic-docker-guided", "docker")
+	t.Setenv("BASEHARBOR_TARGET", target.Name)
+	if err := registerInstallationForTarget(t, target.Name); err != nil {
+		t.Fatalf("register guided Core fixture: %v", err)
+	}
+	if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), []string{"dev", "domain"})); !ok {
+		t.Fatal("exact guided developer-domain probe did not receive its CI operator")
+	}
+	for _, args := range [][]string{{"dev", "domain", "--json"}, {"dev", "credentials"}, {"dev", "token"}} {
+		if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), args)); ok {
+			t.Errorf("noncanonical or unrelated developer command %v unexpectedly received the CI operator", args)
+		}
+	}
+	t.Setenv("GATE", "lifecycle")
+	t.Setenv("BASEHARBOR_DEMO_OPERATOR_GATE", "lifecycle")
+	lifecycle := configureIsolatedEmptyRuntimeTarget(t, "atomic-docker-lifecycle", "docker")
+	t.Setenv("BASEHARBOR_TARGET", lifecycle.Name)
+	if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), []string{"dev", "domain"})); ok {
+		t.Fatal("guided developer-domain exception escaped into another selected gate")
+	}
+}
+
 func TestCIIntegrationOperatorAllowsOnlyObservabilityLogProbe(t *testing.T) {
 	t.Setenv("DEMO_ATOMIC_GATE", "1")
 	t.Setenv("BASEHARBOR_TEST_RUNTIME", "docker")
