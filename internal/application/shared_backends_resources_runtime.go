@@ -366,6 +366,12 @@ func VerifySharedBackends(ctx context.Context, compose bhruntime.RuntimeProvider
 }
 
 func DestroyAllSharedBackendsAt(ctx context.Context, compose bhruntime.RuntimeProvider, dataDir, namespace string) error {
+	return destroyAllSharedBackendsAt(ctx, compose, dataDir, namespace, observability.PruneOwnedPlatformSources)
+}
+
+type sharedPlatformSourcePruner func(capability.ProviderKind, observability.SourceClass, capability.ProviderScope, string, map[string]struct{}) error
+
+func destroyAllSharedBackendsAt(ctx context.Context, compose bhruntime.RuntimeProvider, dataDir, namespace string, prune sharedPlatformSourcePruner) error {
 	root := filepath.Join(filepath.Clean(dataDir), "providers", "shared-backends")
 	entries, err := os.ReadDir(root)
 	if errors.Is(err, os.ErrNotExist) {
@@ -390,13 +396,18 @@ func DestroyAllSharedBackendsAt(ctx context.Context, compose bhruntime.RuntimePr
 			result = errors.Join(result, statErr)
 			continue
 		}
+		if err := prune(capability.ProviderPostgreSQL, observability.SourcePlatformProvider, capability.ScopeShared, "environment:"+environment, nil); err != nil {
+			result = errors.Join(result, err)
+			continue
+		}
+		if err := prune(capability.ProviderValkey, observability.SourcePlatformProvider, capability.ScopeShared, "environment:"+environment, nil); err != nil {
+			result = errors.Join(result, err)
+			continue
+		}
+		// Keep the environment identity on disk until both registry prunes
+		// succeed. Pruning is idempotent, so a failure between providers can be
+		// retried while this directory still maps the stale source to its owner.
 		if err := os.RemoveAll(files.Dir); err != nil {
-			result = errors.Join(result, err)
-		}
-		if err := observability.PruneOwnedPlatformSources(capability.ProviderPostgreSQL, observability.SourcePlatformProvider, capability.ScopeShared, "environment:"+environment, nil); err != nil {
-			result = errors.Join(result, err)
-		}
-		if err := observability.PruneOwnedPlatformSources(capability.ProviderValkey, observability.SourcePlatformProvider, capability.ScopeShared, "environment:"+environment, nil); err != nil {
 			result = errors.Join(result, err)
 		}
 	}

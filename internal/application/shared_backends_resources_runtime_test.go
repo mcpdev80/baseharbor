@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -126,6 +127,42 @@ func TestSharedDestroyPreservesForeignPlatformSources(t *testing.T) {
 	after := sharedPlatformCounts(t, "environment:other")
 	if after["postgresql"] != 1 || after["valkey"] != 1 {
 		t.Fatalf("foreign platform sources were wiped by shared destroy (cross-tenant, both providers): %#v", after)
+	}
+}
+
+func TestSharedDestroyKeepsEnvironmentForRegistryPruneRetry(t *testing.T) {
+	stateDir := t.TempDir()
+	t.Setenv("BASEHARBOR_STATE_DIR", stateDir)
+	registerSharedPlatformSource(t, "core", capability.PostgreSQLIntegration)
+	registerSharedPlatformSource(t, "core", capability.ValkeyIntegration)
+
+	dataDir := t.TempDir()
+	if err := setupSharedBackendDir(t, dataDir, "core"); err != nil {
+		t.Fatal(err)
+	}
+	// Let the PostgreSQL prune succeed, then inject a Valkey failure. This is
+	// the partial-progress case that used to lose the environment identity.
+	valkeyFailure := errors.New("injected valkey prune failure")
+	prune := func(provider capability.ProviderKind, class observability.SourceClass, scope capability.ProviderScope, boundary string, keepIDs map[string]struct{}) error {
+		if provider == capability.ProviderValkey {
+			return valkeyFailure
+		}
+		return observability.PruneOwnedPlatformSources(provider, class, scope, boundary, keepIDs)
+	}
+	if err := destroyAllSharedBackendsAt(context.Background(), noopRuntimeEmbeds{}, dataDir, "orphan", prune); !errors.Is(err, valkeyFailure) {
+		t.Fatalf("expected injected Valkey prune failure, got %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dataDir, "providers", "shared-backends", "core")); err != nil {
+		t.Fatalf("environment identity removed after partial registry prune: %v", err)
+	}
+	if after := sharedPlatformCounts(t, "environment:core"); len(after) != 1 || after["valkey"] != 1 {
+		t.Fatalf("expected successful PostgreSQL prune and retained Valkey source before retry, got %#v", after)
+	}
+	if err := DestroyAllSharedBackendsAt(context.Background(), noopRuntimeEmbeds{}, dataDir, "orphan"); err != nil {
+		t.Fatalf("retry after registry recovery: %v", err)
+	}
+	if after := sharedPlatformCounts(t, "environment:core"); len(after) != 0 {
+		t.Fatalf("retry left owned sources behind: %#v", after)
 	}
 }
 
