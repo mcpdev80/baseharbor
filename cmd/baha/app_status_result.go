@@ -190,13 +190,13 @@ func collectApplicationStatusResult(ctx context.Context, store application.Store
 		}
 		remoteResult.AddObservation("remote-provider-project", "unverified", "no owned provider containers observed without a live Core session; complete application absence is unverified")
 		remoteResult.AddObservation("application-lifecycle", "unverified", "complete remote application readiness requires workload, protocol, secret and exposure verification")
-		return applicationStatusResult{StatusResult: remoteResult, ApplicationID: resolved.Manifest.ApplicationID,
-			DeploymentID: resolved.DeploymentIdentity.DeploymentID,
-			OperatorAuth: collectOperatorAuthObservation(ctx, resolved.Target.Name, resolved.Manifest.Environment),
-			Perses:       persesStatus,
+		return withIdentityDashboardStatus(applicationStatusResult{StatusResult: remoteResult,
+			ApplicationID: resolved.Manifest.ApplicationID,
+			DeploymentID:  resolved.DeploymentIdentity.DeploymentID,
+			OperatorAuth:  collectOperatorAuthObservation(ctx, resolved.Target.Name, resolved.Manifest.Environment),
 			HostContainersDashboards: metricsprovider.PersesHostDashboardAvailability(
 				resolvedHostSignalStatus),
-			IdentityDashboardEligible: identityBackendAvailable}, nil
+		}, persesStatus, identityBackendAvailable), nil
 	}
 	result, err := collectApplicationStatus(ctx, store, args)
 	if err != nil {
@@ -289,25 +289,31 @@ func collectApplicationStatusResult(ctx context.Context, store application.Store
 			}
 		}
 	}
-	return applicationStatusResult{
-		StatusResult:              result,
-		ApplicationID:             resolved.Manifest.ApplicationID,
-		DeploymentID:              resolved.DeploymentIdentity.DeploymentID,
-		OperatorAuth:              collectOperatorAuthObservation(ctx, resolved.Target.Name, resolved.Manifest.Environment),
-		Availability:              availabilityResults,
-		TLS:                       tlsObservation,
-		ServiceTLS:                serviceTLS,
-		RuntimeArtifact:           runtimeArtifact,
-		RuntimeDocsURL:            runtimeDocsURL,
-		ApplicationURLs:           applicationAccessURLs(resolved, result.Ready),
-		ManagementUI:              managementUI,
-		Perses:                    persesStatus,
-		HostContainersDashboards:  metricsprovider.PersesHostDashboardAvailability(resolvedHostSignalStatus),
-		IdentityDashboardEligible: identityBackendAvailable,
-		tlsStatus:                 tlsStatus,
-		tlsErr:                    tlsErr,
-		serviceTLSErr:             serviceTLSErr,
-	}, nil
+	return withIdentityDashboardStatus(applicationStatusResult{
+		StatusResult:             result,
+		ApplicationID:            resolved.Manifest.ApplicationID,
+		DeploymentID:             resolved.DeploymentIdentity.DeploymentID,
+		OperatorAuth:             collectOperatorAuthObservation(ctx, resolved.Target.Name, resolved.Manifest.Environment),
+		Availability:             availabilityResults,
+		TLS:                      tlsObservation,
+		ServiceTLS:               serviceTLS,
+		RuntimeArtifact:          runtimeArtifact,
+		RuntimeDocsURL:           runtimeDocsURL,
+		ApplicationURLs:          applicationAccessURLs(resolved, result.Ready),
+		ManagementUI:             managementUI,
+		HostContainersDashboards: metricsprovider.PersesHostDashboardAvailability(resolvedHostSignalStatus),
+		tlsStatus:                tlsStatus,
+		tlsErr:                   tlsErr,
+		serviceTLSErr:            serviceTLSErr,
+	}, persesStatus, identityBackendAvailable), nil
+}
+
+// withIdentityDashboardStatus binds the same verified-only decision to both
+// local and remote public status results.
+func withIdentityDashboardStatus(result applicationStatusResult, persesStatus *capability.PersesStatus, eligible bool) applicationStatusResult {
+	result.Perses = persesStatus
+	result.IdentityDashboardEligible = eligible
+	return result
 }
 
 // identityDashboardBackendEligible is the verified-only, non-forgeable decision

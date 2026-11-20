@@ -5,6 +5,8 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/deployment"
+	"github.com/mcpdev80/baseharbor/internal/identityprovider"
 	"github.com/mcpdev80/baseharbor/internal/observability"
 )
 
@@ -28,40 +30,58 @@ func newIdentityManifestNamed(t *testing.T, name string) application.Manifest {
 	return m
 }
 
+func identityTargetRoot(t *testing.T, namespace string) string {
+	t.Helper()
+	root := t.TempDir()
+	t.Setenv("BASEHARBOR_STATE_DIR", root)
+	targetRoot, err := deployment.TargetStateRoot(namespace)
+	if err != nil {
+		t.Fatalf("resolve target state root: %v", err)
+	}
+	return targetRoot
+}
+
+func seedCurrentKeycloakSignal(t *testing.T, m application.Manifest, placement capability.ProviderPlacement, targetRoot, namespace string) {
+	t.Helper()
+	id, err := identityprovider.KeycloakMetricsRegistrationIDAt(m, placement, targetRoot, namespace)
+	if err != nil {
+		t.Fatalf("resolve Keycloak signal registration: %v", err)
+	}
+	class := observability.SourcePlatformProvider
+	if placement.Scope == capability.ScopeApplication {
+		class = observability.SourceApplicationProvider
+	}
+	source := observability.SignalSource{
+		ID: id, Kind: observability.SignalMetrics, Provider: capability.ProviderKeycloak,
+		Class: class, Scope: placement.Scope, SharingBoundary: placement.SharingBoundary,
+		OwnerApplication: m.Name, Network: "baseharbor-identity", Target: "keycloak:9000",
+		Protocol: "openmetrics", Path: "/metrics", Mode: capability.ObservabilityNative,
+		Verification: capability.ObservabilityVerifyBackend,
+	}
+	if err := source.Validate(); err != nil {
+		t.Fatalf("validate Keycloak signal: %v", err)
+	}
+	if err := observability.UpdateSignal(source); err != nil {
+		t.Fatalf("register Keycloak signal: %v", err)
+	}
+}
+
 // TestIdentityWitnessEligibleWhenRealSignalAndTargetAuthorized is the positive
 // case: a real Keycloak native metrics signal registered for this Target, the
 // identity provider actually selected, and a valid BaseHarbor-owned Keycloak
 // placement yield a non-forgeable witness (NonForgeableAvailable() == true).
 func TestIdentityWitnessEligibleWhenRealSignalAndTargetAuthorized(t *testing.T) {
-	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
-
+	root := identityTargetRoot(t, "target-alpha")
+	const namespace = "target-alpha"
 	m := newIdentityManifest(t)
 	placement, err := application.ResolveProviderPlacement(m, capability.ProviderKeycloak)
 	if err != nil {
 		t.Fatalf("resolve keycloak placement: %v", err)
 	}
 
-	// Seed a real Keycloak native metrics signal for this Target. The signal is
-	// bound to the manifest's concrete Target (m.Name), so the witness signal
-	// lookup anchors on that binding.
-	source := observability.MetricsSource{
-		ID:       keycloakMetricsSignalID,
-		Provider: capability.ProviderKeycloak,
-		Class:    observability.SourcePlatformProvider,
-		Scope:    capability.ScopeShared,
-		Network:  "baseharbor-identity",
-		Target:   m.Name,
-		Path:     "/metrics",
-		Scheme:   "http",
-	}
-	if err := source.Validate(); err != nil {
-		t.Fatalf("seed signal validate: %v", err)
-	}
-	if err := observability.Update(source); err != nil {
-		t.Fatalf("seed signal: %v", err)
-	}
+	seedCurrentKeycloakSignal(t, m, placement, root, namespace)
 
-	witness := IdentitySelectionWitnessAt(m, placement, "", "")
+	witness := IdentitySelectionWitnessAt(m, placement, root, namespace)
 	if !witness.NonForgeableAvailable() {
 		t.Fatalf(
 			"non-forgeable availability = false, want true with a real keycloak-metrics signal + valid target authorization\n%+v",
@@ -82,7 +102,8 @@ func TestIdentityWitnessEligibleWhenRealSignalAndTargetAuthorized(t *testing.T) 
 // keycloakMetricSignals must make this test RED — the foreign-target case would
 // otherwise become eligible.
 func TestIdentityWitnessIsolatedToConcreteTarget(t *testing.T) {
-	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
+	rootA := identityTargetRoot(t, "target-alpha")
+	const namespaceA = "target-alpha"
 
 	// Target A has the real Keycloak native metrics signal bound to its own
 	// binding.
@@ -91,43 +112,125 @@ func TestIdentityWitnessIsolatedToConcreteTarget(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resolve keycloak placement for target A: %v", err)
 	}
-	sourceA := observability.MetricsSource{
-		ID:       keycloakMetricsSignalID,
-		Provider: capability.ProviderKeycloak,
-		Class:    observability.SourcePlatformProvider,
-		Scope:    capability.ScopeShared,
-		Network:  "baseharbor-identity",
-		Target:   manifestA.Name,
-		Path:     "/metrics",
-		Scheme:   "http",
-	}
-	if err := sourceA.Validate(); err != nil {
-		t.Fatalf("seed target A signal validate: %v", err)
-	}
-	if err := observability.Update(sourceA); err != nil {
-		t.Fatalf("seed target A signal: %v", err)
-	}
+	seedCurrentKeycloakSignal(t, manifestA, placementA, rootA, namespaceA)
 
 	// Positive case: the witness for the manifest that owns the signal is
 	// eligible.
-	if witnessA := IdentitySelectionWitnessAt(manifestA, placementA, "", ""); !witnessA.NonForgeableAvailable() {
+	if witnessA := IdentitySelectionWitnessAt(manifestA, placementA, rootA, namespaceA); !witnessA.NonForgeableAvailable() {
 		t.Fatalf("target A witness must be eligible: %+v", witnessA)
 	}
 
-	// Foreign case: a DIFFERENT Target (same sharing boundary) on the SAME
-	// platform with NO signal of its own must NOT become eligible from target A's
-	// signal. Build manifest B in the same state dir and assert fail-closed.
-	manifestB := newIdentityManifestNamed(t, "other-target")
+	// A second Target gets a different state root and registration identity,
+	// even though both Keycloak providers use the same platform sharing boundary.
+	// Its own registration proves the global registry is populated and isolated.
+	rootB, err := deployment.TargetStateRoot("target-beta")
+	if err != nil {
+		t.Fatalf("resolve target B state root: %v", err)
+	}
+	const namespaceB = "target-beta"
+	manifestB := newIdentityManifestNamed(t, manifestA.Name)
 	placementB, err := application.ResolveProviderPlacement(manifestB, capability.ProviderKeycloak)
 	if err != nil {
 		t.Fatalf("resolve keycloak placement for target B: %v", err)
 	}
-	witnessB := IdentitySelectionWitnessAt(manifestB, placementB, "", "")
-	if witnessB.NonForgeableAvailable() {
-		t.Fatalf("target B witness must fail closed when only target A has the signal: %+v", witnessB)
+	seedCurrentKeycloakSignal(t, manifestB, placementB, rootB, namespaceB)
+	witnessB := IdentitySelectionWitnessAt(manifestB, placementB, rootB, namespaceB)
+	if !witnessB.NonForgeableAvailable() {
+		t.Fatalf("target B must resolve its own signal from the populated registry: %+v", witnessB)
 	}
-	if witnessB.MetricPresent {
-		t.Fatalf("MetricPresent must be false for target B when the signal is bound to target A: %+v", witnessB)
+
+	// A third Target with no registration must remain unavailable while both
+	// other targets' records are present in the same global registry.
+	rootC, err := deployment.TargetStateRoot("target-gamma")
+	if err != nil {
+		t.Fatalf("resolve target C state root: %v", err)
+	}
+	manifestC := newIdentityManifestNamed(t, manifestA.Name)
+	placementC, err := application.ResolveProviderPlacement(manifestC, capability.ProviderKeycloak)
+	if err != nil {
+		t.Fatalf("resolve keycloak placement for target C: %v", err)
+	}
+	witnessC := IdentitySelectionWitnessAt(manifestC, placementC, rootC, "target-gamma")
+	if witnessC.NonForgeableAvailable() || witnessC.MetricPresent {
+		t.Fatalf("target C must not inherit target A/B's signals from the shared registry: %+v", witnessC)
+	}
+}
+
+func TestIdentityWitnessFailsClosedForUnresolvedTargetBinding(t *testing.T) {
+	root := identityTargetRoot(t, "target-alpha")
+	m := newIdentityManifest(t)
+	placement, err := application.ResolveProviderPlacement(m, capability.ProviderKeycloak)
+	if err != nil {
+		t.Fatalf("resolve keycloak placement: %v", err)
+	}
+	seedCurrentKeycloakSignal(t, m, placement, root, "target-alpha")
+
+	// The registry is populated with the exact production-shaped registration;
+	// an empty or mismatched state root/namespace must not borrow it.
+	otherRoot, err := deployment.TargetStateRoot("target-beta")
+	if err != nil {
+		t.Fatalf("resolve other target state root: %v", err)
+	}
+	tests := []struct {
+		name      string
+		dataDir   string
+		namespace string
+	}{
+		{name: "missing root", dataDir: "", namespace: "target-alpha"},
+		{name: "missing namespace", dataDir: root, namespace: ""},
+		{name: "root belongs to another target", dataDir: otherRoot, namespace: "target-alpha"},
+		{name: "namespace belongs to another root", dataDir: root, namespace: "target-beta"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			witness := IdentitySelectionWitnessAt(m, placement, tc.dataDir, tc.namespace)
+			if witness.NonForgeableAvailable() || witness.MetricPresent || witness.MetricCurrent {
+				t.Fatalf("unresolved Target binding must fail closed: %+v", witness)
+			}
+		})
+	}
+}
+
+func TestIdentityWitnessRejectsLegacyOrMismatchedSignalRecords(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(*observability.SignalSource)
+	}{
+		{name: "legacy signal id", mutate: func(s *observability.SignalSource) { s.ID = keycloakMetricsSignalID }},
+		{name: "wrong owner", mutate: func(s *observability.SignalSource) { s.OwnerApplication = "foreign-app" }},
+		{name: "endpoint is not tenant binding", mutate: func(s *observability.SignalSource) { s.Target = "testapp" }},
+		{name: "non-native mode", mutate: func(s *observability.SignalSource) { s.Mode = "" }},
+		{name: "unverified descriptor", mutate: func(s *observability.SignalSource) { s.Verification = capability.ObservabilityVerifyNone }},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			root := identityTargetRoot(t, "target-alpha")
+			m := newIdentityManifest(t)
+			placement, err := application.ResolveProviderPlacement(m, capability.ProviderKeycloak)
+			if err != nil {
+				t.Fatalf("resolve Keycloak placement: %v", err)
+			}
+			id, err := identityprovider.KeycloakMetricsRegistrationIDAt(m, placement, root, "target-alpha")
+			if err != nil {
+				t.Fatalf("resolve Keycloak registration ID: %v", err)
+			}
+			source := observability.SignalSource{
+				ID: id, Kind: observability.SignalMetrics, Provider: capability.ProviderKeycloak,
+				Class: observability.SourcePlatformProvider, Scope: placement.Scope,
+				SharingBoundary: placement.SharingBoundary, OwnerApplication: m.Name,
+				Network: "baseharbor-identity", Target: "keycloak:9000", Protocol: "openmetrics",
+				Path: "/metrics", Mode: capability.ObservabilityNative,
+				Verification: capability.ObservabilityVerifyBackend,
+			}
+			tc.mutate(&source)
+			if err := observability.UpdateSignal(source); err != nil {
+				t.Fatalf("register mutated signal: %v", err)
+			}
+			witness := IdentitySelectionWitnessAt(m, placement, root, "target-alpha")
+			if witness.MetricPresent || witness.MetricCurrent || witness.NonForgeableAvailable() {
+				t.Fatalf("mismatched registry record must fail closed: %+v", witness)
+			}
+		})
 	}
 }
 
@@ -135,7 +238,7 @@ func TestIdentityWitnessIsolatedToConcreteTarget(t *testing.T) {
 // Keycloak native metrics signal registered for this Target fails closed, even
 // when the identity provider is selected and the placement is valid.
 func TestIdentityWitnessFailsClosedWithoutSignal(t *testing.T) {
-	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
+	root := identityTargetRoot(t, "target-alpha")
 
 	m := newIdentityManifest(t)
 	placement, err := application.ResolveProviderPlacement(m, capability.ProviderKeycloak)
@@ -143,7 +246,7 @@ func TestIdentityWitnessFailsClosedWithoutSignal(t *testing.T) {
 		t.Fatalf("resolve keycloak placement: %v", err)
 	}
 
-	witness := IdentitySelectionWitnessAt(m, placement, "", "")
+	witness := IdentitySelectionWitnessAt(m, placement, root, "target-alpha")
 	if witness.NonForgeableAvailable() {
 		t.Fatalf("non-forgeable availability = true with no keycloak-metrics signal registered, want fail-closed false")
 	}
@@ -155,7 +258,7 @@ func TestIdentityWitnessFailsClosedWithoutSignal(t *testing.T) {
 // TestIdentityWitnessFailsClosedWhenNotSelected is the negative case: an
 // unselected identity provider fails closed, even with a real signal.
 func TestIdentityWitnessFailsClosedWhenNotSelected(t *testing.T) {
-	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
+	root := identityTargetRoot(t, "target-alpha")
 
 	m := newIdentityManifest(t)
 	m.Services.Identity = false // identity not selected
@@ -166,21 +269,9 @@ func TestIdentityWitnessFailsClosedWhenNotSelected(t *testing.T) {
 
 	// Seed a real signal — the witness must still fail closed because the
 	// identity provider is not actually selected.
-	source := observability.MetricsSource{
-		ID:       keycloakMetricsSignalID,
-		Provider: capability.ProviderKeycloak,
-		Class:    observability.SourcePlatformProvider,
-		Scope:    capability.ScopeShared,
-		Network:  "baseharbor-identity",
-		Target:   m.Name,
-		Path:     "/metrics",
-		Scheme:   "http",
-	}
-	if err := observability.Update(source); err != nil {
-		t.Fatalf("seed signal: %v", err)
-	}
+	seedCurrentKeycloakSignal(t, m, placement, root, "target-alpha")
 
-	witness := IdentitySelectionWitnessAt(m, placement, "", "")
+	witness := IdentitySelectionWitnessAt(m, placement, root, "target-alpha")
 	if witness.NonForgeableAvailable() {
 		t.Fatalf("non-forgeable availability = true with identity not selected, want fail-closed false")
 	}
@@ -193,7 +284,7 @@ func TestIdentityWitnessFailsClosedWhenNotSelected(t *testing.T) {
 // external OIDC placement (no BaseHarbor-owned Keycloak) fails closed even with
 // a real signal and a selected identity provider.
 func TestIdentityWitnessFailsClosedOnExternalPlacement(t *testing.T) {
-	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
+	root := identityTargetRoot(t, "target-alpha")
 
 	m := newIdentityManifest(t)
 	// An external OIDC placement (no BaseHarbor-owned Keycloak): the identity
@@ -205,21 +296,13 @@ func TestIdentityWitnessFailsClosedOnExternalPlacement(t *testing.T) {
 		ExternalReference: "https://oidc.example.com/realm",
 	}
 
-	source := observability.MetricsSource{
-		ID:       keycloakMetricsSignalID,
-		Provider: capability.ProviderKeycloak,
-		Class:    observability.SourcePlatformProvider,
-		Scope:    capability.ScopeShared,
-		Network:  "baseharbor-identity",
-		Target:   m.Name,
-		Path:     "/metrics",
-		Scheme:   "http",
+	placement, err := application.ResolveProviderPlacement(m, capability.ProviderKeycloak)
+	if err != nil {
+		t.Fatalf("resolve keycloak placement for signal: %v", err)
 	}
-	if err := observability.Update(source); err != nil {
-		t.Fatalf("seed signal: %v", err)
-	}
+	seedCurrentKeycloakSignal(t, m, placement, root, "target-alpha")
 
-	witness := IdentitySelectionWitnessAt(m, externalPlacement, "", "")
+	witness := IdentitySelectionWitnessAt(m, externalPlacement, root, "target-alpha")
 	if witness.NonForgeableAvailable() {
 		t.Fatalf("non-forgeable availability = true with an external keycloak placement, want fail-closed false")
 	}

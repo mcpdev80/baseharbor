@@ -1,10 +1,13 @@
 package metrics
 
 import (
+	"path/filepath"
 	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/deployment"
+	"github.com/mcpdev80/baseharbor/internal/identityprovider"
 	"github.com/mcpdev80/baseharbor/internal/observability"
 )
 
@@ -34,14 +37,11 @@ const keycloakMetricsSignalID = "keycloak-metrics"
 // every production gate must use; it cannot be forged by supplying a status
 // boolean.
 //
-// dataDir/namespace scope the observability registry read exactly like the
-// existing metrics-provider resolution (prometheus_verify.go): the keycloak
-// metrics signal is a provider-registered target signal, resolved the same way.
-// The signal is additionally bound to this concrete Target: a native keycloak
-// signal of ANOTHER Target on the same sharing boundary can never satisfy a
-// positive witness here, and a target whose binding cannot be resolved fails
-// closed. This is the target-isolation the identity-dashboard contract (Zugriff
-// nur nach echtem Signal + echtem Target) requires.
+// dataDir/namespace must identify the canonical Target state root. The
+// registry is shared, so the signal is additionally matched against the
+// registration ID derived from that target's Keycloak state, its owner, scope,
+// and sharing boundary. Endpoint-valued SignalSource.Target is never treated as
+// a tenant ID. Missing or ambiguous bindings fail closed.
 func IdentitySelectionWitnessAt(m application.Manifest, placement capability.ProviderPlacement, dataDir, namespace string) capability.IdentitySelectionWitness {
 	witness := capability.NewIdentitySelectionWitness(false, false, false, false)
 
@@ -86,6 +86,17 @@ func IdentitySelectionWitnessAt(m application.Manifest, placement capability.Pro
 // boundary is excluded (fail-closed): the signal must resolve to this Target's
 // binding, never a foreign Target on the same platform boundary.
 func keycloakMetricSignals(m application.Manifest, placement capability.ProviderPlacement, dataDir, namespace string) (metricPresent, metricCurrent bool) {
+	if strings.TrimSpace(dataDir) == "" || strings.TrimSpace(namespace) == "" {
+		return false, false
+	}
+	expectedRoot, err := deployment.TargetStateRoot(namespace)
+	if err != nil || filepath.Clean(dataDir) != filepath.Clean(expectedRoot) {
+		return false, false
+	}
+	expectedID, err := identityprovider.KeycloakMetricsRegistrationIDAt(m, placement, dataDir, namespace)
+	if err != nil {
+		return false, false
+	}
 	// The canonical, current realization of the keycloak-metrics signal is the
 	// native openmetrics signal declared in the Keycloak integration descriptor
 	// (capability/reference.go). This is the "current, accepted Perses release"
@@ -125,21 +136,25 @@ func keycloakMetricSignals(m application.Manifest, placement capability.Provider
 		return false, false
 	}
 	for _, source := range sources {
-		if source.Provider != capability.ProviderKeycloak {
+		if source.Provider != capability.ProviderKeycloak || source.ID != expectedID {
 			continue
 		}
-		if strings.TrimSpace(source.ID) != keycloakMetricsSignalID {
+		if source.OwnerApplication != m.Name || source.Scope != placement.Scope {
 			continue
 		}
-		// Target-isolation: a native keycloak-metrics signal bound to ANOTHER
-		// Target on the same sharing boundary must NOT satisfy this Target's
-		// witness. The signal must resolve to this concrete Target's binding.
-		if strings.TrimSpace(source.Target) != "" &&
-			strings.TrimSpace(source.Target) != strings.TrimSpace(m.Name) {
+		if placement.Scope == capability.ScopeShared && source.SharingBoundary != placement.SharingBoundary {
 			continue
 		}
-		// Present AND current: the registry signal matches the native, accepted
-		// realization declared in the reference descriptor.
+		// Target is a runtime endpoint (for Keycloak, keycloak:9000), not an
+		// application or tenant identifier. Require the production realization
+		// shape and descriptor verification mode instead of accepting legacy
+		// records that only happen to use the signal name.
+		if strings.TrimSpace(source.Target) != "keycloak:9000" ||
+			source.Mode != capability.ObservabilityNative ||
+			source.Protocol != "openmetrics" ||
+			source.Verification != capability.ObservabilityVerifyBackend {
+			continue
+		}
 		metricPresent = true
 		metricCurrent = true
 	}

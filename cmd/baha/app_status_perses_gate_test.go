@@ -12,6 +12,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
+	"github.com/mcpdev80/baseharbor/internal/identityprovider"
 	metricsprovider "github.com/mcpdev80/baseharbor/internal/metrics"
 	"github.com/mcpdev80/baseharbor/internal/observability"
 )
@@ -43,23 +44,36 @@ type identityStatusJSON struct {
 // seedIdentityMetricsWitness registers the real Keycloak native metrics signal
 // for the configured test target, so a selected identity provider + selected
 // Perses surface yields a non-forgeable witness and the gate may emit true.
-func seedIdentityMetricsWitness(t *testing.T, targetName string) {
+func seedIdentityMetricsWitness(t *testing.T, m application.Manifest, targetName string) {
 	t.Helper()
-	source := observability.MetricsSource{
-		ID:       "keycloak-metrics",
-		Provider: capability.ProviderKeycloak,
-		Class:    observability.SourcePlatformProvider,
-		Scope:    capability.ScopeShared,
-		Network:  "baseharbor-identity",
-		Target:   targetName,
-		Path:     "/metrics",
-		Scheme:   "http",
+	placement, err := application.ResolveProviderPlacement(m, capability.ProviderKeycloak)
+	if err != nil {
+		t.Fatalf("resolve Keycloak placement: %v", err)
+	}
+	root, err := deployment.TargetStateRoot(targetName)
+	if err != nil {
+		t.Fatalf("resolve Target state root: %v", err)
+	}
+	id, err := identityprovider.KeycloakMetricsRegistrationIDAt(m, placement, root, targetName)
+	if err != nil {
+		t.Fatalf("resolve Keycloak registration ID: %v", err)
+	}
+	class := observability.SourcePlatformProvider
+	if placement.Scope == capability.ScopeApplication {
+		class = observability.SourceApplicationProvider
+	}
+	source := observability.SignalSource{
+		ID: id, Kind: observability.SignalMetrics, Provider: capability.ProviderKeycloak,
+		Class: class, Scope: placement.Scope, SharingBoundary: placement.SharingBoundary,
+		OwnerApplication: m.Name, Network: "baseharbor-identity", Target: "keycloak:9000",
+		Protocol: "openmetrics", Path: "/metrics", Mode: capability.ObservabilityNative,
+		Verification: capability.ObservabilityVerifyBackend,
 	}
 	if err := source.Validate(); err != nil {
-		t.Fatalf("seed keycloak signal validate: %v", err)
+		t.Fatalf("seed Keycloak signal validate: %v", err)
 	}
-	if err := observability.Update(source); err != nil {
-		t.Fatalf("seed keycloak signal: %v", err)
+	if err := observability.UpdateSignal(source); err != nil {
+		t.Fatalf("seed Keycloak signal: %v", err)
 	}
 }
 
@@ -129,7 +143,9 @@ func TestIdentityDashboardEligibleRequiresConfiguredVerifiedPerses(t *testing.T)
 	t.Setenv("BASEHARBOR_STATE_DIR", "")
 	ctx := t.Context()
 	target := configureTestTarget(t)
-	seedIdentityMetricsWitness(t, target.Name)
+	m := application.New("perses-identity-gate", "dev", false, false, false)
+	m.Services.Identity = true
+	seedIdentityMetricsWitness(t, m, target.Name)
 
 	// A selected Perses surface with a real Keycloak witness still reports
 	// configured_unverified (no real Perses health probe exists locally), and the
@@ -154,67 +170,52 @@ func TestIdentityDashboardEligibleRequiresConfiguredVerifiedPerses(t *testing.T)
 		}
 	})
 
-	// The positive verified case: a real, current Keycloak witness (all four
-	// evidence flags) PLUS a verified Perses surface makes the verified-only
-	// production predicate eligible (identityDashboardBackendEligible). The
-	// predicate is the single validated entrance on both status faces, so the
-	// positive test drives it directly (PersesStatusNow never yields verified
-	// locally — a real health probe is required). The verified-only decision
-	// fails closed without a verified status, and a witness mutation to false
-	// fails this case — the witness chain is a real gate input, not decoration.
-	t.Run("perses-verified-real-witness-eligible", func(t *testing.T) {
-		m := newIdentityGateManifest(t)
-		placement, err := application.ResolveProviderPlacement(m, capability.ProviderKeycloak)
-		if err != nil {
-			t.Fatalf("resolve keycloak placement for positive case: %v", err)
-		}
-		// Seed a real Keycloak native metrics signal bound to this manifest's
-		// target so the witness is non-forgeable available.
-		source := observability.MetricsSource{
-			ID:       "keycloak-metrics",
-			Provider: capability.ProviderKeycloak,
-			Class:    observability.SourcePlatformProvider,
-			Scope:    capability.ScopeShared,
-			Network:  "baseharbor-identity",
-			Target:   m.Name,
-			Path:     "/metrics",
-			Scheme:   "http",
-		}
-		if err := source.Validate(); err != nil {
-			t.Fatalf("seed signal validate: %v", err)
-		}
-		if err := observability.Update(source); err != nil {
-			t.Fatalf("seed signal: %v", err)
-		}
+}
 
-		realWitness := metricsprovider.IdentitySelectionWitnessAt(m, placement, "", "")
-		if !realWitness.NonForgeableAvailable() {
-			t.Fatalf("the positive witness must be non-forgeable available\n%+v", realWitness)
-		}
+// TestIdentityDashboardVerifiedStatusResultSerializesPositive exercises the
+// verified-only production predicate and the exact public JSON encoder. The
+// current Perses status probe correctly cannot produce "verified" yet, so this
+// pins the result boundary without making PersesStatusNow invent a health proof.
+func TestIdentityDashboardVerifiedStatusResultSerializesPositive(t *testing.T) {
+	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
+	m := newIdentityGateManifest(t)
+	const targetName = "target-test"
+	root, err := deployment.TargetStateRoot(targetName)
+	if err != nil {
+		t.Fatalf("resolve target state root: %v", err)
+	}
+	placement, err := application.ResolveProviderPlacement(m, capability.ProviderKeycloak)
+	if err != nil {
+		t.Fatalf("resolve Keycloak placement: %v", err)
+	}
+	seedIdentityMetricsWitness(t, m, targetName)
+	witness := metricsprovider.IdentitySelectionWitnessAt(m, placement, root, targetName)
+	if !witness.NonForgeableAvailable() {
+		t.Fatalf("real target-bound Keycloak witness must be available: %+v", witness)
+	}
 
-		// verified status + real witness => eligible through the production predicate.
-		verified := capability.PersesStatusVerified
-		if !identityDashboardBackendEligible(&verified, m, "", "") {
-			t.Fatal("verified Perses + real Keycloak witness must be eligible via identityDashboardBackendEligible")
+	verified := capability.PersesStatusVerified
+	eligible := identityDashboardBackendEligible(&verified, m, root, targetName)
+	if !eligible {
+		t.Fatal("verified Perses plus the real target-bound witness must pass the production predicate")
+	}
+	result := withIdentityDashboardStatus(applicationStatusResult{}, &verified, eligible)
+	var encoded bytes.Buffer
+	if err := writeJSON(&encoded, result); err != nil {
+		t.Fatalf("encode public status JSON: %v", err)
+	}
+	var decoded identityStatusJSON
+	if err := json.Unmarshal(encoded.Bytes(), &decoded); err != nil {
+		t.Fatalf("decode public status JSON: %v", err)
+	}
+	if decoded.Perses == nil || *decoded.Perses != string(verified) || !decoded.IdentityDashboardEligible {
+		t.Fatalf("verified status JSON must carry perses=verified and identity_dashboard_eligible=true: %s", encoded.String())
+	}
+	for _, status := range []capability.PersesStatus{capability.PersesStatusConfiguredUnverified, capability.PersesStatusNotConfigured} {
+		if identityDashboardBackendEligible(&status, m, root, targetName) {
+			t.Fatalf("status %q must remain ineligible", status)
 		}
-
-		// configured_unverified must fail closed on the same predicate (both faces).
-		configured := capability.PersesStatusConfiguredUnverified
-		if identityDashboardBackendEligible(&configured, m, "", "") {
-			t.Fatal("configured_unverified must fail closed on identityDashboardBackendEligible")
-		}
-		// not_configured must fail closed on the same predicate.
-		notConfigured := capability.PersesStatusNotConfigured
-		if identityDashboardBackendEligible(&notConfigured, m, "", "") {
-			t.Fatal("not_configured must fail closed on identityDashboardBackendEligible")
-		}
-
-		// A verified status WITHOUT a real witness fails closed (fail-closed).
-		zero := capability.NewIdentitySelectionWitness(false, false, false, false)
-		if zero.NonForgeableAvailable() {
-			t.Fatal("a zero-value witness must fail closed")
-		}
-	})
+	}
 }
 
 // TestIdentityDashboardEligibleGatesOnKeycloakWitness proves the gate is not
@@ -286,17 +287,7 @@ func remotePersesStatusFixture(t *testing.T, seededWitness, perses bool) (contex
 		t.Fatalf("remote status fixture save deployment record: %v", err)
 	}
 	if seededWitness {
-		witness := observability.MetricsSource{
-			ID: "keycloak-metrics", Provider: capability.ProviderKeycloak,
-			Class: observability.SourcePlatformProvider, Scope: capability.ScopeShared,
-			Network: "baseharbor-identity", Target: node.Name, Path: "/metrics", Scheme: "http",
-		}
-		if err := witness.Validate(); err != nil {
-			t.Fatalf("remote status fixture witness validate: %v", err)
-		}
-		if err := observability.Update(witness); err != nil {
-			t.Fatalf("remote status fixture witness update: %v", err)
-		}
+		seedIdentityMetricsWitness(t, reloaded, node.Name)
 	}
 	return ctx, store, reloaded.Name
 }
@@ -304,8 +295,8 @@ func remotePersesStatusFixture(t *testing.T, seededWitness, perses bool) (contex
 // remoteIdentityStatusJSON resolves the Connector-backed remote Target and runs
 // the production collectApplicationStatusResult collector for it — the exact
 // collector the CLI `baha status` command and the MCP status tool call — and
-// serialises the production applicationStatusResult struct through the same
-// json tags the public `baha status --json` face uses, then decodes the two
+// serialises the production applicationStatusResult through the public
+// writeJSON encoder used by `baha status --json`, then decodes the two
 // gated fields. This drives the REAL remote production path (app_status_result.go
 // remote early return via hasRemoteApplicationTarget), not a path helper, and
 // needs no live mTLS/Core session: the gate fields are computed from the
@@ -320,19 +311,15 @@ func remoteIdentityStatusJSON(t *testing.T, ctx context.Context, store applicati
 	if !hasRemoteApplicationTarget(resolved) {
 		t.Fatalf("the remote gate fixture must resolve to a remote target, got access provider %q", resolved.Target.AccessProvider)
 	}
-	status, err := collectApplicationStatusResult(ctx, store, []string{name})
-	if err != nil {
-		t.Fatalf("collectApplicationStatusResult over remote target failed: %v", err)
-	}
-	// Serialise the production applicationStatusResult through the same json tags
-	// the public face uses, then decode the two gated fields. This proves the
-	// fields survive the real serialisation, not only a manual struct projection.
-	encoded, err := json.Marshal(status)
-	if err != nil {
-		t.Fatalf("serialise remote production status result: %v", err)
+	var encoded bytes.Buffer
+	var errOut bytes.Buffer
+	// Run the real app-status command handler, including its remote early return
+	// and writeJSON encoder, against the Connector-backed target fixture.
+	if err := appStatusCommand(store).Run(ctx, []string{name, "--json"}, &encoded, &errOut); err != nil {
+		t.Fatalf("remote baha app status --json failed: %v\nstdout: %s\nstderr: %s", err, encoded.String(), errOut.String())
 	}
 	var decoded identityStatusJSON
-	if err := json.Unmarshal(encoded, &decoded); err != nil {
+	if err := json.Unmarshal(encoded.Bytes(), &decoded); err != nil {
 		t.Fatalf("the remote status result is not the public JSON report: %v", err)
 	}
 	return decoded

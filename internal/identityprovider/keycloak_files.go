@@ -423,6 +423,21 @@ func keycloakStateIdentity(app application.Manifest, placement capability.Provid
 	}
 }
 
+// KeycloakMetricsRegistrationIDAt returns the registration identity used for
+// this Keycloak runtime at one target. The target state root and namespace are
+// part of the lookup so a shared provider registration from another target
+// cannot be mistaken for this target's signal.
+func KeycloakMetricsRegistrationIDAt(app application.Manifest, placement capability.ProviderPlacement, dataDir, namespace string) (string, error) {
+	if strings.TrimSpace(dataDir) == "" || strings.TrimSpace(namespace) == "" {
+		return "", errors.New("Keycloak metrics registration requires a target state root and namespace")
+	}
+	_, project, err := keycloakStateIdentity(app, placement, dataDir, namespace)
+	if err != nil {
+		return "", err
+	}
+	return "keycloak:" + project, nil
+}
+
 func sharedKeycloakProject(namespace, boundary string) string {
 	if boundary == "core" {
 		return bhruntime.SharedProjectName(namespace + "-core")
