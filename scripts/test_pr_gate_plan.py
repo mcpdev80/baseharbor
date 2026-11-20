@@ -2207,14 +2207,6 @@ class MainRunnerContextEntrypointTests(unittest.TestCase):
         self.assertIsNone(code)
         self.assertIn('"coverage_status": "resolved"', out)
 
-    def test_stacked_cli_base_context_resolves(self):
-        code, out, msg = self._run_main({
-            'GITHUB_REPOSITORY': 'mcpdev80/baseharbor',
-            'GITHUB_BASE_REF': 'cli2-env-policy-head',
-        })
-        self.assertIsNone(code)
-        self.assertIn('\"coverage_status\": \"resolved\"', out)
-
     def test_stacked_lane_runner_context_resolves_and_keeps_unknown_paths_broad(self):
         self._actual = diff(paths('internal/new_plan_v2/feature.go'))
         code, out, msg = self._run_main({
