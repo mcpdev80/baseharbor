@@ -211,6 +211,14 @@ func projectForApplication(source SignalSource, application string) (string, boo
 // scopedProjectOf reads the project segment of a scoped ID
 // "<provider>:<project>:<service>".
 func scopedProjectOf(id string) (string, bool) {
+	return ScopedIDProject(id)
+}
+
+// ScopedIDProject reads the project segment of a scoped ID
+// "<provider>:<project>:<service>". The Keycloak registration seam uses it to
+// decide, before mutating, whether a legacy record already carries its own
+// anchor-bearing project (card 0428-168, r3 review fail-closed rule).
+func ScopedIDProject(id string) (string, bool) {
 	parts := strings.Split(id, ":")
 	if len(parts) != 3 || parts[1] == "" {
 		return "", false

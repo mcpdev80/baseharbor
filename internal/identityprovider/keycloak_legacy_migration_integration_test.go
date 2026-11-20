@@ -3,6 +3,7 @@ package identityprovider
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
@@ -335,5 +336,133 @@ func TestListKeycloakOwnerProjectsReportsPartialScan(t *testing.T) {
 	}
 	if _, err := ListKeycloakOwnerProjects(dir, "target"); err == nil {
 		t.Fatal("an owner directory without an environment entry must error, not be omitted")
+	}
+}
+
+// TestRegisterKeycloakSignalsRebooksLegacyOwnerWithoutStateDir is the r3
+// review P1 blocker's mixed state: a pre-scoping legacy holder (appA) whose
+// state directory is GONE while another application's state directory (the
+// registering appB) exists — the recorded scan map is non-empty, so the r3
+// code never consulted the derived legacy-owner recovery and appA's record
+// fell through to appB's project: re-booked under a grammar lacking the appA
+// anchor, unobservable again. The union fix passes appA's derived grammar map
+// and appB's registration re-books appA's record onto ITS OWN identity:
+// visible to appA through the list contract and removable by it. The test
+// fails red when the union (the derived map being appended alongside a
+// non-empty recorded map) is removed — mutation proof E in the lane evidence.
+func TestRegisterKeycloakSignalsRebooksLegacyOwnerWithoutStateDir(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("BASEHARBOR_STATE_DIR", dir)
+	t.Setenv(application.ProviderScopeEnv(capability.ProviderKeycloak), string(capability.ScopeApplication))
+
+	// appA deployed BEFORE the ID scoping and its state directory is gone:
+	// only its legacy registry record remains.
+	appA := keycloakSignalTestApp(t, "alpha", true)
+	if err := observability.Update(observability.MetricsSource{
+		ID:               observability.LegacyKeycloakMetricsID,
+		Provider:         capability.ProviderKeycloak,
+		Class:            observability.SourceApplicationProvider,
+		Scope:            capability.ScopeApplication,
+		OwnerApplication: appA.Name,
+		Network:          "baseharbor-alpha-dev",
+		Target:           "keycloak:9000",
+		Path:             "/metrics",
+		Scheme:           "http",
+	}); err != nil {
+		t.Fatalf("write legacy source: %v", err)
+	}
+	// The registering appB's placement state directory EXISTS — the scan map
+	// is non-empty, exactly the mixed state the r3 blocker names.
+	appB := keycloakSignalTestApp(t, "bravo", true)
+	writeKeycloakStateDirs(t, dir, appB)
+	bravoProject := bhruntime.ApplicationProjectName("target", appB.Name+"-identity", appB.Environment)
+	rB := &localKeycloakRealization{
+		app:       appB,
+		namespace: "target",
+		dataDir:   dir,
+		files:     KeycloakFiles{Project: bravoProject, ConsumerNetwork: "baseharbor-bravo-dev"},
+	}
+	if err := rB.registerKeycloakSignals(); err != nil {
+		t.Fatalf("register appB with a state-dir-less legacy owner: %v", err)
+	}
+
+	// appA's record stands under ITS OWN derived identity (the registry
+	// grammar for appA), never under appB's project.
+	migratedID := "keycloak:" + bhruntime.ApplicationProjectName("target", appA.Name, appA.Environment) + ":" + observability.LegacyKeycloakMetricsID
+	if strings.Contains(migratedID, appB.Name) {
+		t.Fatal("test fixture error: the identity must anchor appA")
+	}
+	if ok, err := observability.RegistryHasSignal(observability.LegacyKeycloakMetricsID, capability.ProviderKeycloak, observability.SignalMetrics); err != nil {
+		t.Fatal(err)
+	} else if ok {
+		t.Fatal("appA's legacy literal survived: it was not re-booked")
+	}
+	if ok, err := observability.RegistryHasSource(migratedID, capability.ProviderKeycloak, observability.SignalMetrics, appA.Name); err != nil {
+		t.Fatal(err)
+	} else if !ok {
+		sources, _ := observability.ListAll()
+		t.Fatalf("appA's record is not under its own derived identity with its owner verbatim: %q sources=%#v", migratedID, sources)
+	}
+	// Visible to appA through the list contract, and removable by it.
+	list, err := observability.ListMetrics(appScopedPlacement(), []string{appA.Name}, true, true, appA.Environment)
+	if err != nil {
+		t.Fatalf("ListMetrics for appA: %v", err)
+	}
+	visible := false
+	for _, source := range list {
+		if source.ID == migratedID && source.OwnerApplication == appA.Name {
+			visible = true
+		}
+	}
+	if !visible {
+		t.Fatalf("appA's re-booked source %q is not observable for its owner: %#v", migratedID, list)
+	}
+	if err := observability.Remove(migratedID); err != nil {
+		t.Fatalf("Remove(appA identity %q): %v", migratedID, err)
+	}
+	if ok, err := observability.RegistryHasSignal(migratedID, capability.ProviderKeycloak, observability.SignalMetrics); err != nil {
+		t.Fatal(err)
+	} else if ok {
+		t.Fatal("appA's source still present after removing its project identity")
+	}
+}
+
+// TestRegisterKeycloakSignalsAbortsOnUnreadableLegacyRegistry proves the
+// fail-closed half of the r3 recipe end to end: the owner derivation reads
+// the registry (legacyLiteralOwners) and the unresolved-owner check reads it
+// again (unresolvedLegacyOwners); when either read FAILS (here: corrupt
+// registry bytes), registration must abort BEFORE RegisterProviderSignals and
+// leave the bytes verbatim — never substitute the caller's project from
+// partial knowledge and re-book onto an anchorless identity.
+func TestRegisterKeycloakSignalsAbortsOnUnreadableLegacyRegistry(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("BASEHARBOR_STATE_DIR", dir)
+	t.Setenv(application.ProviderScopeEnv(capability.ProviderKeycloak), string(capability.ScopeApplication))
+	path := filepath.Join(dir, "observability", "signals.json")
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	const corrupt = "not-a-registry"
+	if err := os.WriteFile(path, []byte(corrupt), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	appB := keycloakSignalTestApp(t, "bravo", true)
+	writeKeycloakStateDirs(t, dir, appB)
+	bravoProject := bhruntime.ApplicationProjectName("target", appB.Name+"-identity", appB.Environment)
+	rB := &localKeycloakRealization{
+		app:       appB,
+		namespace: "target",
+		dataDir:   dir,
+		files:     KeycloakFiles{Project: bravoProject, ConsumerNetwork: "baseharbor-bravo-dev"},
+	}
+	if err := rB.registerKeycloakSignals(); err == nil {
+		t.Fatal("an unreadable legacy registry must abort registration, not guess")
+	}
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read registry after abort: %v", err)
+	}
+	if string(after) != corrupt {
+		t.Fatalf("the aborted registration replaced the registry bytes: %q", after)
 	}
 }

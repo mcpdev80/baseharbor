@@ -237,12 +237,90 @@ func (r *localKeycloakRealization) ownerProjectMaps(placement capability.Provide
 		return nil, err
 	}
 	if len(recorded) > 0 {
-		return append(maps, recorded), nil
+		maps = append(maps, recorded)
 	}
-	if derived := legacyLiteralOwners(r.namespace); len(derived) > 0 {
+	// The derived legacy-owner recovery is NOT conditional on the recorded
+	// map being empty (r3 review P1 blocker): a pre-scoping legacy holder may
+	// have no state directory while other applications do. legacyLiteralOwners
+	// collects EVERY app that currently holds the unscoped literal, and maps
+	// are consulted in order, so a recorded owner keeps its own state-derived
+	// project while an un-recorded legacy holder resolves through the
+	// grammar. A derived owner token can never equal a recorded owner's
+	// project unless the state names match, so this union cannot drag a
+	// scoped, already-migrated record back onto a derived identity: an app
+	// whose state directory exists is always in `recorded` first.
+	if derived, err := legacyLiteralOwners(r.namespace); err != nil {
+		return nil, err
+	} else if len(derived) > 0 {
 		maps = append(maps, derived)
 	}
+	// Fail-closed (r3 recipe): a legacy record whose owner NEITHER the state
+	// scan nor the registry grammar resolves must abort the registration
+	// BEFORE the mutation, instead of letting ProjectFor substitute the
+	// caller's project — that identity's grammar lacks the owner anchor and
+	// the re-booked record would be unobservable again.
+	unresolved, err := r.unresolvedLegacyOwners(maps)
+	if err != nil {
+		return nil, err
+	}
+	if len(unresolved) > 0 {
+		return nil, fmt.Errorf("keycloak legacy migration: no project resolves for legacy source owner(s) %s", strings.Join(unresolved, ", "))
+	}
 	return maps, nil
+}
+
+// unresolvedLegacyOwners lists the applications that hold the unscoped legacy
+// Keycloak source of record but resolve to NO project: not through the
+// owner->project maps the migration consults, and not through their own
+// record's anchor-bearing ID or runtime:// target (the ProjectFor routes that
+// need no caller knowledge).
+func (r *localKeycloakRealization) unresolvedLegacyOwners(maps []map[string]string) ([]string, error) {
+	sources, err := observability.ListAll()
+	if err != nil {
+		return nil, err
+	}
+	var unresolved []string
+	for _, source := range sources {
+		if source.ID != observability.LegacyKeycloakMetricsID || source.Provider != capability.ProviderKeycloak {
+			continue
+		}
+		if source.Scope != capability.ScopeApplication || strings.TrimSpace(source.OwnerApplication) == "" {
+			continue
+		}
+		resolved := false
+		for _, ownerProject := range maps {
+			if project, ok := ownerProject[source.OwnerApplication]; ok && strings.TrimSpace(project) != "" {
+				resolved = true
+				break
+			}
+		}
+		if !resolved && !legacyRecordAnchorsOwnProject(source, r.files.Project) {
+			unresolved = append(unresolved, source.OwnerApplication)
+		}
+	}
+	return unresolved, nil
+}
+
+// legacyRecordAnchorsOwnProject reports whether a legacy record carries its
+// own anchor-bearing project — the route ProjectFor walks WITHOUT any
+// owner->project map, reproduced here so the abort is deterministic and never
+// depends on the caller's project.
+func legacyRecordAnchorsOwnProject(source observability.SignalSource, callerProject string) bool {
+	if project, ok := observability.ScopedIDProject(source.ID); ok && legacyProjectCarriesAnchor(project, source.OwnerApplication) {
+		return true
+	}
+	target := strings.TrimPrefix(source.Target, "runtime://")
+	if idx := strings.Index(target, "/"); idx >= 0 {
+		target = target[:idx]
+	}
+	return legacyProjectCarriesAnchor(target, source.OwnerApplication)
+}
+
+func legacyProjectCarriesAnchor(project, application string) bool {
+	if strings.TrimSpace(project) == "" {
+		return false
+	}
+	return strings.Contains("-"+strings.ToLower(project)+"-", "-"+strings.ToLower(application)+"-")
 }
 
 // legacyLiteralOwners collects owner->canonical identity project for every
@@ -252,10 +330,10 @@ func (r *localKeycloakRealization) ownerProjectMaps(placement capability.Provide
 // current runtime's project formula for that owner is
 // "bh-<target>-<app>-identity-<environment>". The environment is the one the
 // registering deployment lives in.
-func legacyLiteralOwners(namespace string) map[string]string {
+func legacyLiteralOwners(namespace string) (map[string]string, error) {
 	sources, err := observability.ListAll()
 	if err != nil {
-		return nil
+		return nil, err
 	}
 	owners := map[string]string{}
 	for _, source := range sources {
@@ -268,9 +346,9 @@ func legacyLiteralOwners(namespace string) map[string]string {
 		owners[source.OwnerApplication] = legacyOwnerProject(namespace, source.OwnerApplication)
 	}
 	if len(owners) == 0 {
-		return nil
+		return nil, nil
 	}
-	return owners
+	return owners, nil
 }
 
 // legacyOwnerProject is the canonical identity project formula the current
