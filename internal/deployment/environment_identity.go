@@ -33,10 +33,19 @@ var ErrEnvironmentAlreadyExists = errors.New("environment identity already exist
 // back as an identity, and Identity must never be read back as a name. This
 // separation is what makes a rename a pure metadata update — renaming changes
 // Name and keeps Identity byte-identical.
+//
+// Associations is the Core-authoritative membership list of this environment
+// (app/target/node association for shared environments, card 0428-054). It is
+// an additive field on the same record, never a sibling file: it is an
+// attribute of the single source of truth, so a reader that predates this seam
+// still decodes target/name/id unchanged and a writer that predates this seam
+// still produces a record that decodes cleanly. It is omitempty so a record
+// with no membership omits the field entirely.
 type EnvironmentRecord struct {
-	Target   string `json:"target"`
-	Name     string `json:"name"`
-	Identity string `json:"id"`
+	Target       string               `json:"target"`
+	Name         string               `json:"name"`
+	Identity     string               `json:"id"`
+	Associations []AssociationBinding `json:"associations,omitempty"`
 }
 
 // environmentStateRoot resolves the home directory and record path of an
@@ -121,11 +130,19 @@ func readEnvironmentRecord(path, target, environmentName string) (EnvironmentRec
 	return record, nil
 }
 
-// persistEnvironmentRecord atomically writes a freshly created identity. The
-// rename is the atomic seam: a concurrent writer that wrote a DIFFERENT record
-// first is detected here and refused, so two first registrations can never
-// leave two divergent identities behind (state split, precedent 0427).
-func persistEnvironmentRecord(home, path, target, name string, id string) (EnvironmentRecord, error) {
+// persistEnvironmentRecord atomically writes a freshly created identity and the
+// supplied membership list. The rename is the atomic seam: a concurrent writer
+// that wrote a DIFFERENT record first is detected here and refused, so two
+// first registrations can never leave two divergent identities behind (state
+// split, precedent 0427).
+//
+// associations is the authoritative member list written alongside the identity.
+// It is nil/empty for a plain first creation (the field is omitempty), and is
+// populated only by the association seam when a subject is registered. A
+// nil slice is deliberately NOT treated as "delete the existing list" here:
+// persistEnvironmentRecord is a create-path primitive, and the association
+// mutation writes its own intended list through the same atomic seam.
+func persistEnvironmentRecord(home, path, target, name string, id string, associations []AssociationBinding) (EnvironmentRecord, error) {
 	if err := os.MkdirAll(home, 0o700); err != nil {
 		return EnvironmentRecord{}, fmt.Errorf("create environment state dir: %w", err)
 	}
@@ -133,7 +150,7 @@ func persistEnvironmentRecord(home, path, target, name string, id string) (Envir
 	// the Identity field — never the id into the name slot. Name and identity
 	// are distinct json fields (see EnvironmentRecord), so a name can never be
 	// mistaken for an identity on read.
-	record := EnvironmentRecord{Target: target, Name: strings.TrimSpace(name), Identity: id}
+	record := EnvironmentRecord{Target: target, Name: strings.TrimSpace(name), Identity: id, Associations: normalizeAssociations(associations)}
 	data, err := json.MarshalIndent(record, "", "  ")
 	if err != nil {
 		return EnvironmentRecord{}, fmt.Errorf("encode environment identity: %w", err)
@@ -266,7 +283,7 @@ func createEnvironmentUnderLock(target, home, path, name, id string) (Environmen
 			return nil
 		}
 		var persistErr error
-		created, persistErr = persistEnvironmentRecord(home, path, target, name, id)
+		created, persistErr = persistEnvironmentRecord(home, path, target, name, id, nil)
 		return persistErr
 	})
 	return created, err
@@ -364,11 +381,18 @@ func RenameEnvironment(target, oldName, newName string) (EnvironmentRecord, erro
 			return EnvironmentRecord{}, fmt.Errorf("inspect destination %q: %w", newPath, dErr)
 		}
 		if dest.Identity == source.Identity {
-			// The destination already carries OUR identity: the rename is a no-op
-			// and this record is the result (idempotent, finding 4).
-			return dest, nil
+			// The destination can be a partial prior install: when the source
+			// still exists, continue under the registry lock to reconcile both
+			// records and remove the stale source. If the source is already gone,
+			// the rename completed and this is the idempotent result.
+			if _, sourceErr := os.Stat(oldPath); errors.Is(sourceErr, os.ErrNotExist) {
+				return dest, nil
+			} else if sourceErr != nil {
+				return EnvironmentRecord{}, fmt.Errorf("inspect source %q: %w", oldPath, sourceErr)
+			}
+		} else {
+			return EnvironmentRecord{}, fmt.Errorf("%w: destination %q already exists as %q", ErrEnvironmentAlreadyExists, newName, dest.Identity)
 		}
-		return EnvironmentRecord{}, fmt.Errorf("%w: destination %q already exists as %q", ErrEnvironmentAlreadyExists, newName, dest.Identity)
 	}
 
 	// Take the registry write lock for the whole check → move → remove so a
@@ -442,24 +466,7 @@ func RenameEnvironment(target, oldName, newName string) (EnvironmentRecord, erro
 			// concurrent creator's UID with ours. Re-read newPath here under the
 			// same lock and fail closed when it now carries a different identity
 			// — a rename must never clobber another (Target, environment)'s UID.
-			if existing, nErr := os.Stat(newPath); nErr == nil && !existing.IsDir() {
-				if cur, rErr := readEnvironmentRecord(newPath, target, newName); rErr == nil {
-					if cur.Identity != source.Identity {
-						return fmt.Errorf("%w: destination %q now holds %q", ErrEnvironmentAlreadyExists, newName, cur.Identity)
-					}
-					// Destination already carries OUR identity: the rename is a
-					// no-op — the record is already correct. Converge on it.
-					moved = cur
-					return nil
-				} else if !errors.Is(rErr, ErrEnvironmentBindingMismatch) {
-					// A corrupt or foreign binding at the destination is a race
-					// between a rename and a concurrent creator we cannot resolve
-					// here; refuse so the caller retries with the authoritative
-					// identity rather than risk a silent clobber.
-					return fmt.Errorf("inspect destination %q: %w", newPath, rErr)
-				}
-			}
-			record, rErr := persistRenamedEnvironmentIdentity(oldPath, newHome, newPath, newName, source)
+			record, rErr := installRenamedEnvironmentIdentity(oldPath, newHome, newPath, target, newName, source)
 			if rErr != nil {
 				return rErr
 			}
@@ -482,8 +489,30 @@ func RenameEnvironment(target, oldName, newName string) (EnvironmentRecord, erro
 	}
 }
 
+func installRenamedEnvironmentIdentity(oldPath, newHome, newPath, target, newName string, source EnvironmentRecord) (EnvironmentRecord, error) {
+	if existing, statErr := os.Stat(newPath); statErr == nil && !existing.IsDir() {
+		cur, readErr := readEnvironmentRecord(newPath, target, newName)
+		if readErr != nil {
+			return EnvironmentRecord{}, fmt.Errorf("inspect destination %q: %w", newPath, readErr)
+		} else {
+			if cur.Identity != source.Identity {
+				return EnvironmentRecord{}, fmt.Errorf("%w: destination %q now holds %q", ErrEnvironmentAlreadyExists, newName, cur.Identity)
+			}
+			merged, err := mergeRenamedEnvironmentAssociations(source, cur)
+			if err != nil {
+				return EnvironmentRecord{}, err
+			}
+			source = merged
+		}
+	}
+	return persistRenamedEnvironmentIdentity(oldPath, newHome, newPath, newName, source)
+}
+
 func persistRenamedEnvironmentIdentity(oldPath, newHome, newPath, newName string, source EnvironmentRecord) (EnvironmentRecord, error) {
-	record := EnvironmentRecord{Target: source.Target, Name: newName, Identity: source.Identity}
+	if err := validateAssociations(source.Associations); err != nil {
+		return EnvironmentRecord{}, fmt.Errorf("source environment identity carries an invalid association: %w", err)
+	}
+	record := EnvironmentRecord{Target: source.Target, Name: newName, Identity: source.Identity, Associations: normalizeAssociations(source.Associations)}
 	data, err := json.MarshalIndent(record, "", "  ")
 	if err != nil {
 		return EnvironmentRecord{}, fmt.Errorf("encode environment identity: %w", err)
@@ -514,6 +543,18 @@ func persistRenamedEnvironmentIdentity(oldPath, newHome, newPath, newName string
 		return EnvironmentRecord{}, fmt.Errorf("remove stale old environment record: %w", err)
 	}
 	return record, nil
+}
+
+func mergeRenamedEnvironmentAssociations(source, destination EnvironmentRecord) (EnvironmentRecord, error) {
+	if err := validateAssociations(source.Associations); err != nil {
+		return EnvironmentRecord{}, fmt.Errorf("source environment identity carries an invalid association: %w", err)
+	}
+	if err := validateAssociations(destination.Associations); err != nil {
+		return EnvironmentRecord{}, fmt.Errorf("destination environment identity carries an invalid association: %w", err)
+	}
+	merged := append(append([]AssociationBinding(nil), source.Associations...), destination.Associations...)
+	source.Associations = normalizeAssociations(merged)
+	return source, nil
 }
 
 // EnvironmentID returns just the durable identity of a (Target, environment)
