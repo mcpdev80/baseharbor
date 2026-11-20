@@ -1,6 +1,7 @@
 package observability
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -181,6 +182,12 @@ type ProviderSignalRegistration struct {
 	OwnerApplication string
 	Enabled          map[SignalKind]bool
 	Signals          map[string]ProviderSignalRuntime
+	// Legacy, when set, makes the registration migrate the pre-scoping source
+	// of record INSIDE its own single mutation (card 0428-168): the legacy
+	// entry is re-booked onto a derived, project-scoped identity BEFORE the
+	// (ID, provider) replacement runs, so the registration can never silently
+	// drop a source that predates the ID scoping.
+	Legacy *LegacyReconciliation
 }
 
 func RegisterProviderSignals(registration ProviderSignalRegistration) error {
@@ -248,6 +255,14 @@ func RegisterProviderSignals(registration ProviderSignalRegistration) error {
 		return err
 	}
 	return mutate(path, func(sources []SignalSource) ([]SignalSource, error) {
+		// The migration seam (card 0428-168): re-book the legacy source of
+		// record INSIDE this mutation, before the (ID, provider) replacement,
+		// so a caller's registration can never drop a source of record that
+		// predates the ID scoping. A record already migrated under a project
+		// grammar is left where the earlier migration placed it.
+		if legacy := registration.Legacy; legacy != nil {
+			sources = RebookLegacySignals(*legacy, sources, registration.ID)
+		}
 		out := sources[:0]
 		for _, existing := range sources {
 			if existing.ID == registration.ID && existing.Provider == registration.Descriptor.Provider.Kind {
@@ -484,28 +499,10 @@ func ReconcileMatching(owned func(SignalSource) bool, desired []SignalSource) er
 	})
 }
 
-// RegistryHasSignal reports whether the registry still carries one exact
-// signal registration. Unlike the placement-filtered listings it sees every
-// provider and owner under an ID, so reconciliation and prune contracts - and
-// their tests - assert retention and reclamation through it.
-func RegistryHasSignal(id string, provider capability.ProviderKind, kind SignalKind) (bool, error) {
-	path, err := registryPath()
-	if err != nil {
-		return false, err
-	}
-	sources, err := read(path)
-	if errors.Is(err, os.ErrNotExist) {
-		return false, nil
-	}
-	if err != nil {
-		return false, err
-	}
-	for _, source := range sources {
-		if source.ID == id && source.Provider == provider && source.Kind == kind {
-			return true, nil
-		}
-	}
-	return false, nil
+// SignalKindForSignal maps a descriptor signal kind onto the registry's
+// SignalKind, the exported twin of the internal registration path.
+func SignalKindForSignal(kind capability.ObservabilitySignalKind) (SignalKind, error) {
+	return signalKind(kind)
 }
 
 func Remove(id string) error {
@@ -705,25 +702,47 @@ func ListMetrics(placement capability.ProviderPlacement, applications []string, 
 }
 
 func mutate(path string, fn func([]SignalSource) ([]SignalSource, error)) error {
+	_, err := mutateChanged(path, fn)
+	return err
+}
+
+// mutateChanged is the change-aware form of mutate: it takes the SAME state
+// lock (the shared "<registry>.lock" flock — no parallel migration lock
+// exists), reads the registry, applies the callback, and replaces the registry
+// file ONLY when the serialized result actually differs from the bytes on
+// disk. A callback that changes nothing — the file already carries exactly
+// what the callback produced, or nothing was found and nothing is produced —
+// returns changed=false WITHOUT creating, replacing or rewriting the registry
+// file. This is the persistence discipline the legacy signal migration relies
+// on (card 0428-168): an already-migrated registry stays byte-identical, in
+// the style of the precedent no-mutation migration that reports an empty
+// changed set so the caller performs no write. mutateChanged never creates a
+// file that does not exist.
+func mutateChanged(path string, fn func([]SignalSource) ([]SignalSource, error)) (changed bool, err error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return err
+		return false, err
 	}
 	lock, err := os.OpenFile(path+".lock", os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer lock.Close()
 	if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX); err != nil {
-		return err
+		return false, err
 	}
 	defer syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
-	sources, err := read(path)
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return err
+	storedBytes, readErr := os.ReadFile(path)
+	exists := readErr == nil
+	if readErr != nil && !errors.Is(readErr, os.ErrNotExist) {
+		return false, readErr
 	}
-	sources, err = fn(sources)
+	stored, err := read(path)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return false, err
+	}
+	sources, err := fn(stored)
 	if err != nil {
-		return err
+		return false, err
 	}
 	sort.Slice(sources, func(i, j int) bool {
 		if sources[i].Kind != sources[j].Kind {
@@ -733,18 +752,25 @@ func mutate(path string, fn func([]SignalSource) ([]SignalSource, error)) error 
 	})
 	data, err := json.MarshalIndent(sources, "", "  ")
 	if err != nil {
-		return err
+		return false, err
 	}
 	data = append(data, '\n')
+	if exists && bytes.Equal(bytes.TrimSpace(storedBytes), bytes.TrimSpace(data)) {
+		return false, nil
+	}
+	if !exists && string(data) == "[]\n" {
+		// Nothing was found and nothing was produced: never create the file.
+		return false, nil
+	}
 	tmp := path + ".tmp"
 	if err := os.WriteFile(tmp, data, 0o600); err != nil {
-		return err
+		return false, err
 	}
 	if err := os.Rename(tmp, path); err != nil {
 		_ = os.Remove(tmp)
-		return err
+		return false, err
 	}
-	return nil
+	return true, nil
 }
 
 func read(path string) ([]SignalSource, error) {
