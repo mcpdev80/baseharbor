@@ -17,6 +17,13 @@ import (
 
 var appInitInput io.Reader = os.Stdin
 
+// testOperatorContext is a test seam. When nil (production) the operator
+// identity is established only through the real CLI run path. Tests that must
+// exercise a mutating CLI command in a managed environment inject a verified
+// operator principal and its editor membership here, as a fixture, so the
+// operator-auth contract is satisfied without any workflow/owner env setting.
+var testOperatorContext func(context.Context) context.Context
+
 type appProjectDetection struct {
 	Name                     string
 	WorkloadSourceCandidates []repositoryinspect.WorkloadSourceCandidate

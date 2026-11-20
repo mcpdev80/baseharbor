@@ -142,6 +142,15 @@ func runWithIO(ctx context.Context, args []string, out, errOut io.Writer) error 
 	ctx = withTargetOverride(ctx, target)
 	ctx = cli.WithOutputOptions(ctx, opts)
 	ctx = operatorauth.WithEnforcement(ctx)
+	// testOperatorContext is a test seam: production leaves it nil. Tests that
+	// drive the production CLI through runWithIO (for example the unit tests that
+	// exercise the real app create/init path in a dev environment) inject a
+	// verified operator principal and its editor membership here, AFTER the
+	// enforcement setup (WithVerifiedPrincipal stores the principal in the
+	// enforcement state, which a later WithEnforcement would otherwise wipe).
+	if testOperatorContext != nil {
+		ctx = testOperatorContext(ctx)
+	}
 	membershipProvider := newCLIOperatorMembershipProvider()
 	defer membershipProvider.Close()
 	ctx = operatorauth.WithMembershipProviderIfAbsent(ctx, membershipProvider)

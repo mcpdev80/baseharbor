@@ -45,6 +45,10 @@ func TestRootAndNestedHelp(t *testing.T) {
 
 func TestAppCreateListShowPlan(t *testing.T) {
 	target := configureTestTarget(t)
+	// The production CLI run path now requires an authenticated operator for a
+	// managed environment (#1594); establish the operator identity as an in-test
+	// fixture so this unit test exercises the real app create path (no owner/env).
+	testOperatorFixture(t)
 	dir := t.TempDir()
 	old, err := os.Getwd()
 	if err != nil {

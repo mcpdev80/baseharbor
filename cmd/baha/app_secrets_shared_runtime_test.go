@@ -24,6 +24,10 @@ type sharedSecretsRuntimeApplication struct {
 
 func TestSharedSecretsRuntimeFixtureUsesActualSourceOnlyInitialization(t *testing.T) {
 	configureTestTarget(t)
+	// The production CLI run path now requires an authenticated operator for a
+	// managed environment (#1594); establish the operator identity as an in-test
+	// fixture so this unit test exercises the real app init --quick path.
+	testOperatorFixture(t)
 	root := t.TempDir()
 	t.Chdir(root)
 	if err := os.WriteFile("compose.yaml", []byte(corelessHTTPWorkload), 0600); err != nil {
