@@ -228,3 +228,112 @@ func TestRegisterKeycloakSignalsSecondRegistrationIsNoMutationOnFirst(t *testing
 		t.Fatalf("an idempotent re-registration rewrote the registry:\nfirst=%s\nafter=%s", first, after)
 	}
 }
+
+// TestRegisterKeycloakSignalsAbortsOnPartialOwnerStateScan closes the r2
+// review blocker: when the Target's Keycloak owner-state scan PARTIALLY fails
+// — an application directory that cannot be read, or one that carries no
+// environment entry — registration must return an error BEFORE the registry
+// mutation, leaving the legacy record and all registry bytes untouched. A
+// foreign owner's record may never be re-booked under the caller's project by
+// guesswork: that identity's grammar lacks the owner anchor, so the record
+// would fail closed in listing and be unobservable again.
+func TestRegisterKeycloakSignalsAbortsOnPartialOwnerStateScan(t *testing.T) {
+	for _, mode := range []string{"unreadable-owner-dir", "owner-dir-without-environment"} {
+		t.Run(mode, func(t *testing.T) {
+			dir := t.TempDir()
+			t.Setenv("BASEHARBOR_STATE_DIR", dir)
+			t.Setenv(application.ProviderScopeEnv(capability.ProviderKeycloak), string(capability.ScopeApplication))
+			appA := keycloakSignalTestApp(t, "alpha", true)
+			writeKeycloakStateDirs(t, dir, appA)
+			if err := observability.Update(observability.MetricsSource{
+				ID:               observability.LegacyKeycloakMetricsID,
+				Provider:         capability.ProviderKeycloak,
+				Class:            observability.SourceApplicationProvider,
+				Scope:            capability.ScopeApplication,
+				OwnerApplication: appA.Name,
+				Network:          "baseharbor-alpha-dev",
+				Target:           "keycloak:9000",
+				Path:             "/metrics",
+				Scheme:           "http",
+			}); err != nil {
+				t.Fatalf("write legacy source: %v", err)
+			}
+			// A second owner's application directory makes the scan PARTIAL.
+			foreign := filepath.Join(dir, "providers", "keycloak", "applications", "charlie")
+			var before []byte
+			switch mode {
+			case "unreadable-owner-dir":
+				if err := os.MkdirAll(foreign, 0o000); err != nil {
+					t.Fatalf("unreadable owner dir: %v", err)
+				}
+				if _, err := os.ReadDir(foreign); err == nil {
+					t.Skip("the current user may read 0o000 directories (root): no deterministic unreadable seam")
+				}
+			case "owner-dir-without-environment":
+				if err := os.MkdirAll(foreign, 0o700); err != nil {
+					t.Fatalf("empty owner dir: %v", err)
+				}
+			}
+			t.Cleanup(func() { _ = os.Chmod(foreign, 0o700) })
+
+			appB := keycloakSignalTestApp(t, "bravo", true)
+			bravoProject := bhruntime.ApplicationProjectName("target", appB.Name+"-identity", appB.Environment)
+			rB := &localKeycloakRealization{
+				app:       appB,
+				namespace: "target",
+				dataDir:   dir,
+				files:     KeycloakFiles{Project: bravoProject, ConsumerNetwork: "baseharbor-bravo-dev"},
+			}
+			path := filepath.Join(dir, "observability", "signals.json")
+			before, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatalf("read registry before: %v", err)
+			}
+			if err := rB.registerKeycloakSignals(); err == nil {
+				t.Fatal("a partial owner-state scan must abort registration, not guess")
+			}
+			after, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatalf("read registry after: %v", err)
+			}
+			if string(before) != string(after) {
+				t.Fatalf("the aborted registration changed registry bytes:\nbefore=%s\nafter =%s", before, after)
+			}
+			if ok, err := observability.RegistryHasSignal(observability.LegacyKeycloakMetricsID, capability.ProviderKeycloak, observability.SignalMetrics); err != nil {
+				t.Fatal(err)
+			} else if !ok {
+				t.Fatal("the legacy record must stand verbatim after the abort")
+			}
+		})
+	}
+}
+
+// TestListKeycloakOwnerProjectsReportsPartialScan proves the scan surface
+// itself: no state directory is NO error (nil, nil — the legacy migration
+// case), a complete scan maps owners, and a per-owner read failure or an
+// owner directory without any environment entry returns an error instead of
+// silently omitting the owner.
+func TestListKeycloakOwnerProjectsReportsPartialScan(t *testing.T) {
+	dir := t.TempDir()
+	// No state at all: nil, nil.
+	if got, err := ListKeycloakOwnerProjects(dir, "target"); err != nil || got != nil {
+		t.Fatalf("absent state: got=%v err=%v, want nil,nil", got, err)
+	}
+	// Complete scan.
+	appA := keycloakSignalTestApp(t, "alpha", true)
+	writeKeycloakStateDirs(t, dir, appA)
+	got, err := ListKeycloakOwnerProjects(dir, "target")
+	if err != nil {
+		t.Fatalf("complete scan: %v", err)
+	}
+	if want := bhruntime.ApplicationProjectName("target", "alpha-identity", appA.Environment); got["alpha"] != want {
+		t.Fatalf("complete scan alpha=%q, want %q", got["alpha"], want)
+	}
+	// Partial scan: an owner directory with no environment entry errors.
+	if err := os.MkdirAll(filepath.Join(dir, "providers", "keycloak", "applications", "charlie"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ListKeycloakOwnerProjects(dir, "target"); err == nil {
+		t.Fatal("an owner directory without an environment entry must error, not be omitted")
+	}
+}

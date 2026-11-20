@@ -171,7 +171,18 @@ func (r *localKeycloakRealization) registerKeycloakSignals() error {
 	// registration ID, so the registration below can neither overwrite nor
 	// delete it. The record's owner and every other field stay verbatim. With
 	// nothing to migrate the step writes no byte at all (idempotent,
-	// no-mutation).
+	// no-mutation). The owner->project maps the migration consults come from
+	// the Target's own Keycloak state: the caller's canonical project first
+	// (so the caller's own record converges onto its canonical registration
+	// identity), then every recorded installation, so a foreign owner's record
+	// migrates onto ITS grammar, never the caller's. A PARTIAL state scan
+	// aborts the registration BEFORE the registry mutation (r2 review
+	// blocker): guessing a foreign owner's project would re-book onto a
+	// project whose grammar lacks the owner anchor, leaving it unobservable.
+	ownerMaps, err := r.ownerProjectMaps(placement)
+	if err != nil {
+		return err
+	}
 	registration := observability.ProviderSignalRegistration{
 		ID:               registrationID,
 		Descriptor:       capability.KeycloakIntegration,
@@ -182,11 +193,6 @@ func (r *localKeycloakRealization) registerKeycloakSignals() error {
 		Enabled:          map[observability.SignalKind]bool{observability.SignalMetrics: metricsEnabled},
 		Signals:          signals,
 	}
-	// The owner->project maps the migration consults, in precedence order: the
-	// caller's own canonical project first (so the caller's own record
-	// converges onto its canonical registration identity), then every
-	// Keycloak installation recorded on this Target, so a foreign owner's
-	// record migrates onto ITS grammar, never the caller's.
 	registration.Legacy = &observability.LegacyReconciliation{
 		Source: observability.LegacySource{
 			ID:        observability.LegacyKeycloakMetricsID,
@@ -194,7 +200,7 @@ func (r *localKeycloakRealization) registerKeycloakSignals() error {
 		},
 		Project:           r.files.Project,
 		CallerApplication: r.app.Name,
-		OwnerProjects:     r.ownerProjectMaps(placement),
+		OwnerProjects:     ownerMaps,
 	}
 	return observability.RegisterProviderSignals(registration)
 }
@@ -205,9 +211,21 @@ func (r *localKeycloakRealization) registerKeycloakSignals() error {
 // installations. When the scan finds NO application state at all - a legacy,
 // pre-scoping deployment wrote none, which is exactly the migration case -
 // the owners currently holding the unscoped literal fall back to the canonical
-// identity grammar the current runtime computes for them.
-func (r *localKeycloakRealization) ownerProjectMaps(placement capability.ProviderPlacement) []map[string]string {
+// identity grammar the current runtime computes for them. A scan that PARTIALLY
+// fails (an application directory it cannot read, or one with no environment
+// entry) returns an error and the caller aborts its registration: guessing a
+// foreign owner's project from partial state would re-book the record onto a
+// project whose grammar lacks the owner anchor, leaving it unobservable again
+// (card 0428-168, r2 review blocker).
+func (r *localKeycloakRealization) ownerProjectMaps(placement capability.ProviderPlacement) ([]map[string]string, error) {
 	maps := []map[string]string{{r.app.Name: legacyMigrationProject(r.namespace, r.app, placement, r.files.Project)}}
+	// A shared placement's records are environment-agnostic (the sharing
+	// boundary carries the environment), so the project grammar must not be
+	// consulted and a state scan can never strand them: the caller's project
+	// alone is the correct map.
+	if placement.Scope != capability.ScopeApplication {
+		return maps, nil
+	}
 	dir := r.dataDir
 	if strings.TrimSpace(dir) == "" {
 		if resolved, err := bhruntime.DataDir(""); err == nil {
@@ -215,16 +233,16 @@ func (r *localKeycloakRealization) ownerProjectMaps(placement capability.Provide
 		}
 	}
 	recorded, err := ListKeycloakOwnerProjects(dir, r.namespace)
-	if err == nil && len(recorded) > 0 {
-		maps = append(maps, recorded)
-		return maps
+	if err != nil {
+		return nil, err
 	}
-	if err == nil && len(recorded) == 0 {
-		if derived := legacyLiteralOwners(r.namespace); len(derived) > 0 {
-			maps = append(maps, derived)
-		}
+	if len(recorded) > 0 {
+		return append(maps, recorded), nil
 	}
-	return maps
+	if derived := legacyLiteralOwners(r.namespace); len(derived) > 0 {
+		maps = append(maps, derived)
+	}
+	return maps, nil
 }
 
 // legacyLiteralOwners collects owner->canonical identity project for every
@@ -310,6 +328,11 @@ func legacyMigrationProject(namespace string, app application.Manifest, placemen
 // manifest identity in "applications/<name>/<environment>", which yields the
 // owner token, and its compose project is the canonical application project
 // name for that placement. Shared placements contribute no application owner.
+// A directory the scan cannot read at all is no state (nil, nil); but an
+// application directory whose environment listing fails to read, or that
+// carries no environment entry, is a PARTIAL scan and returns an error — the
+// legacy migration must never guess a foreign owner's project from partial
+// state (card 0428-168, r2 review blocker).
 func ListKeycloakOwnerProjects(dataDir, namespace string) (map[string]string, error) {
 	root := filepath.Join(filepath.Clean(dataDir), "providers", "keycloak", "applications")
 	entries, err := os.ReadDir(root)
@@ -326,8 +349,11 @@ func ListKeycloakOwnerProjects(dataDir, namespace string) (map[string]string, er
 		}
 		name := entry.Name()
 		envs, err := os.ReadDir(filepath.Join(root, name))
-		if err != nil || len(envs) == 0 {
-			continue
+		if err != nil {
+			return nil, fmt.Errorf("keycloak owner state scan %s: %w", name, err)
+		}
+		if len(envs) == 0 {
+			return nil, fmt.Errorf("keycloak owner state scan %s: no environment directory under %s", name, root)
 		}
 		environment := envs[len(envs)-1].Name()
 		projects[name] = bhruntime.ApplicationProjectName(namespace, name+"-identity", environment)
