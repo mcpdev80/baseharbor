@@ -80,6 +80,8 @@ AUTHORITY_PACKAGES = ('internal/coreinstallation', 'internal/stableid', 'interna
 OPERATORAUTH_POLICY_FILES = {
     'internal/operatorauth/config.go',
     'internal/operatorauth/config_explicit_policy_test.go',
+    'internal/operatorauth/authorization_test.go',
+    'internal/operatorauth/operatorauth_test.go',
     'internal/operatorauth/local_runtime.go',
     'internal/operatorauth/local_runtime_test.go',
 }
@@ -91,6 +93,7 @@ OPERATORAUTH_POLICY_FILES = {
 WORKLOAD_SECURITY_POLICY_FILES = {
     'internal/application/workload_security.go',
     'internal/application/workload_security_explicit_policy_test.go',
+    'internal/application/workload_security_test.go',
 }
 
 
