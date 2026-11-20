@@ -32,6 +32,10 @@ func TestObservabilityFullStackAcceptanceInCI(t *testing.T) {
 		t.Fatalf("detect runtime: %v", err)
 	}
 	ensureRuntimeIntegrationTrustPlane(t, ctx)
+	// The package bootstrap intentionally leaves an invalid target sentinel in
+	// the environment so tests must opt into their real, owned Core explicitly.
+	// This acceptance uses the package-owned Core with a test-scoped application.
+	isolateRuntimeForTest(t, "observability-fullstack")
 
 	t.Setenv(application.ProviderScopeEnv(capability.ProviderPostgreSQL), string(capability.ScopeApplication))
 	t.Setenv(application.ProviderScopeEnv(capability.ProviderValkey), string(capability.ScopeApplication))
