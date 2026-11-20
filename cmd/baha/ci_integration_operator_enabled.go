@@ -109,10 +109,13 @@ func ciIntegrationManagedLocalGateReason(args []string, target deployment.Resolv
 	if !managedWorkload && gate == "guided" && ciIntegrationGuidedDevDomain(args) {
 		managedWorkload = true
 	}
-	// Guided regression coverage creates disposable app manifests through the
-	// interactive `app new` wizard. Keep that mutation limited to the exact
-	// canonical command on the selected guided fixture.
+	// Guided regression coverage creates and edits disposable manifests through
+	// the interactive `app new` and `app edit` wizards. Keep those mutations
+	// limited to their exact canonical commands on the selected guided fixture.
 	if !managedWorkload && gate == "guided" && ciIntegrationGuidedAppNew(args) {
+		managedWorkload = true
+	}
+	if !managedWorkload && gate == "guided" && ciIntegrationGuidedAppEdit(args) {
 		managedWorkload = true
 	}
 	// The observability acceptance gate reads the disposable demo workload's
@@ -197,6 +200,10 @@ func ciIntegrationGuidedDevDomain(args []string) bool {
 
 func ciIntegrationGuidedAppNew(args []string) bool {
 	return len(args) == 2 && args[0] == "app" && args[1] == "new"
+}
+
+func ciIntegrationGuidedAppEdit(args []string) bool {
+	return len(args) == 2 && args[0] == "app" && args[1] == "edit"
 }
 
 func ciIntegrationConfigureStatusOperatorBoundary(target string) error {
