@@ -321,10 +321,10 @@ func TestInteractiveGuardPresent(t *testing.T) {
 //
 // These drive the actual `baha` binary through a real interactive shell that
 // sources the generated wrapper, proving the parent shell applies
-// 'context use'/'context clear' in its own process (no marker file). Where a
-// shell is installed in CI (bash on ubuntu-latest), the shell is exercised;
-// where it is absent, the test is skipped and the gap is reported to the owner
-// as an owner-scope (workflow) point, not this lane's decision.
+// 'context use'/'context clear' in its own process (no marker file). Both shells
+// are mandatory here: the test fails loud when a shell is missing so the CI
+// shard cannot pass while skipping the zsh or fish path. The owning CI cell
+// installs zsh and fish so both paths actually execute.
 
 // MUTANT PROOFS (blocker 4), one per stage, applied individually and recorded
 // verbatim here. Each proof asserts that removing a single piece of the wrapper
@@ -435,8 +435,12 @@ func TestEndToEndInstalledZshAndFishWrappers(t *testing.T) {
 	for _, shell := range []string{"zsh", "fish"} {
 		shellPath, err := exec.LookPath(shell)
 		if err != nil {
-			t.Logf("%s is not installed; generated wrapper remains covered structurally", shell)
-			continue
+			// Fail loud: the wrapper for this shell must actually execute on the
+			// runner. A silent skip here (the pre-existing behaviour) lets the CI
+			// shard pass while NEITHER the zsh NOR the fish path runs, which is not
+			// durable evidence for the fish recursion guard. The owning CI cell
+			// installs zsh and fish so both paths run.
+			t.Fatalf("%s is required to run this wrapper path; install %s in the owning CI cell: %v", shell, shell, err)
 		}
 		bin, cleanup := buildBahaBin(t)
 		cfg := configureTestTarget(t)
