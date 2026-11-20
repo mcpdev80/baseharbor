@@ -30,7 +30,14 @@
             {
               "kind": "query",
               "spec": {
-                "kind": "graph"
+                "kind": "graph",
+                "spec": {
+                  "query": "up{job=\"baseharbor-providers\", backend=\"valkey\"}"
+                },
+                "datasource": {
+                  "kind": "prometheus",
+                  "name": "valkey"
+                }
               }
             }
           ]

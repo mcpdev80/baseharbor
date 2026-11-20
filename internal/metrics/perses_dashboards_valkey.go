@@ -1,6 +1,7 @@
 package metrics
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -188,7 +189,23 @@ type PersesValkeyPanelCatalogEntry struct {
 // persesValkeyUnavailableReason is the concrete reason the Valkey dashboard
 // reports today. It names the missing native signal exactly, per the card
 // contract.
-const persesValkeyUnavailableReason = "Valkey has no native metrics signal in BaseHarbor (observability status RequiresAdapter); the dashboard is explicitly unavailable and no exporter is installed"
+const persesValkeyUnavailableReason = "Valkey has no native metrics signal in BaseHarbor (observability status ObservabilityUnsupported); the dashboard is explicitly unavailable and no exporter is installed"
+
+// mustJSONPersesValkey marshals v to compact JSON without HTML escaping, and
+// panics on error. It is a build helper for building Valkey Perses plugin specs
+// from raw compile-time constants, so marshalling cannot fail at runtime. The
+// & character is emitted literally (not \u0026) so the golden witnesses are
+// human-readable Perses-native JSON. It is disjoint from the host/container
+// mustJSONHosts helper.
+func mustJSONPersesValkey(v any) json.RawMessage {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(v); err != nil {
+		panic("perses valkey panel spec marshal failed: " + err.Error())
+	}
+	return json.RawMessage(bytes.TrimRight(buf.Bytes(), "\n"))
+}
 
 // persesValkeyResolvedSignalStatus is the real producer of the Valkey dashboard
 // availability verdict — the authoritative, non-forgeable resolution of the
@@ -242,6 +259,15 @@ func persesValkeyPanelValkeyUp() PersesValkeyPanel {
 				Kind: PersesValkeyQueryWrapperKind,
 				Spec: PersesValkeyQueryPlugin{
 					Kind: PersesValkeyQueryPluginGraph,
+					// The verified panel carries a real Perses query: a Prometheus
+					// expression selecting the BaseHarbor Prometheus scrape of the
+					// valkey provider container (job="baseharbor-providers",
+					// backend="valkey") and a datasource reference to the dashboard's
+					// valkey-prometheus datasource. A graph panel without this data
+					// basis would be a fabricated panel (0428-183 P2: every exported
+					// panel must carry a runnable query).
+					Spec:       mustJSONPersesValkey(map[string]string{"query": `up{job="baseharbor-providers", backend="valkey"}`}),
+					Datasource: &PersesValkeyDatasourceRef{Kind: PersesValkeyDatasourcePrometheus, Name: "valkey"},
 				},
 			}},
 		},

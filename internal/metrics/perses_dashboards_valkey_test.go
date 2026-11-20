@@ -37,13 +37,14 @@ func TestPersesValkeyDashboardCatalogIsUnavailableOnly(t *testing.T) {
 	if entry.Reason == "" {
 		t.Fatalf("unavailable entry must carry a concrete reason")
 	}
-	// The reason must name the missing native signal and the RequiresAdapter
-	// status exactly, so the CLI witness is unambiguous.
+	// The reason must name the missing native signal and the
+	// ObservabilityUnsupported status exactly, so the CLI witness is
+	// unambiguous and reflects the 0428-182 reference status.
 	if !strings.Contains(entry.Reason, "Valkey") {
 		t.Fatalf("reason must name the missing-signal provider Valkey, got: %s", entry.Reason)
 	}
-	if !strings.Contains(entry.Reason, "RequiresAdapter") {
-		t.Fatalf("reason must cite the observability status RequiresAdapter, got: %s", entry.Reason)
+	if !strings.Contains(entry.Reason, "ObservabilityUnsupported") {
+		t.Fatalf("reason must cite the observability status ObservabilityUnsupported (0428-182), got: %s", entry.Reason)
 	}
 	if strings.Contains(entry.Reason, "exporter is installed") && strings.Count(entry.Reason, "no exporter") == 0 {
 		t.Fatalf("reason must state no exporter is installed, got: %s", entry.Reason)
@@ -146,8 +147,8 @@ func TestPersesValkeyDashboardAvailabilityPinsReasons(t *testing.T) {
 	if entry.Datasource != "" {
 		t.Fatalf("unavailable valkey-targets must report no datasource, got %q", entry.Datasource)
 	}
-	if !strings.Contains(entry.Reason, "RequiresAdapter") {
-		t.Fatalf("availability reason must cite RequiresAdapter, got: %s", entry.Reason)
+	if !strings.Contains(entry.Reason, "ObservabilityUnsupported") {
+		t.Fatalf("availability reason must cite ObservabilityUnsupported (0428-182), got: %s", entry.Reason)
 	}
 }
 
@@ -161,7 +162,7 @@ func TestPersesValkeyDashboardAvailabilityPinsReasons(t *testing.T) {
 func valkeyAvailabilityStatuses() map[string]capability.ObservabilitySupportStatus {
 	return map[string]capability.ObservabilitySupportStatus{
 		"not_configured":        "",
-		"configured_unverified": capability.ObservabilityRequiresAdapter,
+		"configured_unverified": capability.ObservabilityUnsupported,
 		"verified":              capability.ObservabilitySupported,
 	}
 }
@@ -237,8 +238,8 @@ func TestPersesValkeyDashboardMutantAvailabilityForcedIsolated(t *testing.T) {
 
 // TestPersesValkeyDashboardThreeStates drives the three-state availability path
 // the card requires on the Valkey face through the REAL producer verdicts:
-// not_configured (empty) and configured_unverified (RequiresAdapter) report
-// "unavailable", verified (ObservabilitySupported) reports "available" with a
+// not_configured (empty) and configured_unverified (ObservabilityUnsupported)
+// report "unavailable", verified (ObservabilitySupported) reports "available" with a
 // real datasource. configured_unverified MUST NOT be available — only a verified
 // native signal promotes the entry, mirroring the verified-only predicate the
 // identity dashboard hardened (0428-078).
@@ -305,6 +306,16 @@ func TestPersesValkeyDashboardVerifiedRealizesRealPanel(t *testing.T) {
 	}
 	if doc.Kind == "DashboardUnavailable" {
 		t.Fatalf("verified valkey dashboard must not emit DashboardUnavailable, got the reason document")
+	}
+	// The verified dashboard must carry a REAL data query for its panel, never
+	// a query-less graph panel. This is the 0428-183 P2 regression check: a
+	// graph panel without a query datasource + expression is a fabricated panel
+	// that cannot show Valkey data even when the entry is available.
+	if !strings.Contains(string(raw), `"datasource"`) {
+		t.Fatalf("verified valkey dashboard panel must reference a Perses datasource in its query, got none in:\n%s", raw)
+	}
+	if !strings.Contains(string(raw), `"query"`) {
+		t.Fatalf("verified valkey dashboard panel must carry a Prometheus query expression, got none in:\n%s", raw)
 	}
 }
 
