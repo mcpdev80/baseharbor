@@ -16,7 +16,9 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/coreinstallation"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
+	"github.com/mcpdev80/baseharbor/internal/identity"
 	"github.com/mcpdev80/baseharbor/internal/identityprovider"
+	"github.com/mcpdev80/baseharbor/internal/operatorauth"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
@@ -32,8 +34,21 @@ func TestInstallationDestroyCurrentChildrenInterruptedVolumeAndRetry(t *testing.
 	if kind != "docker" && kind != "podman" {
 		t.Fatal("explicit native runtime required")
 	}
+	t.Cleanup(func() { cleanupInstallationDestroyNativeFixture(kind) })
 	var out bytes.Buffer
-	if err := runWithIO(ctx, []string{"target", "create", "installation-retry-native", "--provider", kind, "--access", "installation-retry-native", "--reference", "local", "--default"}, &out, &out); err != nil {
+	operator := &identity.Principal{
+		Issuer:         "https://issuer.example",
+		Subject:        "installation-destroy-operator",
+		IssuerVerified: true,
+		Groups:         []string{"editor"},
+	}
+	ctx = operatorauth.WithEnforcement(ctx)
+	ctx = operatorauth.WithVerifiedPrincipal(ctx, operator)
+	ctx = operatorauth.WithMembershipProvider(ctx, &readGrantingMembershipProvider{})
+	// Register this fresh local target as an authenticated operator. The local
+	// runtime authority used by later workload operations does not authorize
+	// target.create, which remains an operator-only management operation.
+	if err := runWithIOAndOperator(ctx, []string{"target", "create", "installation-retry-native", "--runtime-provider", kind, "--access", "local", "--access-provider", "local", "--reference", "local", "--default"}, &out, &out, operator); err != nil {
 		t.Fatal(err)
 	}
 	// A native installation destroy acceptance must first create the real
@@ -59,7 +74,7 @@ func TestInstallationDestroyCurrentChildrenInterruptedVolumeAndRetry(t *testing.
 			t.Fatal(err)
 		}
 	}
-	if err := runWithIO(ctx, []string{"app", "init", "--quick", "--json"}, &out, &out); err != nil {
+	if err := runWithIOAndOperator(ctx, []string{"app", "init", "--quick", "--json"}, &out, &out, operator); err != nil {
 		t.Fatal(err)
 	}
 	// A repository-owned candidate needs explicit, exact-submission consent.
@@ -81,7 +96,7 @@ func TestInstallationDestroyCurrentChildrenInterruptedVolumeAndRetry(t *testing.
 		applyCtx = withProviderChangeConsent(ctx, &application.ProviderChangeConsent{PlanID: impact.PlanID, First: true, Second: true})
 	}
 	out.Reset()
-	firstErr := runWithIO(applyCtx, []string{"app", "apply", "--skip-memory-preflight"}, &out, &out)
+	firstErr := runWithIOAndOperator(applyCtx, []string{"app", "apply", "--skip-memory-preflight"}, &out, &out, operator)
 	if firstErr == nil || !strings.Contains(firstErr.Error(), "candidate submission requires") {
 		t.Fatalf("expected pre-mutation candidate-consent challenge: %v\\n%s", firstErr, out.String())
 	}
@@ -90,7 +105,7 @@ func TestInstallationDestroyCurrentChildrenInterruptedVolumeAndRetry(t *testing.
 		t.Fatalf("candidate challenge did not publish an exact confirmation digest: %s", out.String())
 	}
 	out.Reset()
-	if err := runWithIO(applyCtx, []string{"app", "apply", "--skip-memory-preflight", "--confirm-candidate", match[1]}, &out, &out); err != nil {
+	if err := runWithIOAndOperator(applyCtx, []string{"app", "apply", "--skip-memory-preflight", "--confirm-candidate", match[1]}, &out, &out, operator); err != nil {
 		t.Fatalf("consented native fixture apply: %v\\n%s", err, out.String())
 	}
 	r, err := resolveApplication(ctx, application.Store{}, nil, "status")
@@ -269,4 +284,29 @@ func TestInstallationDestroyCurrentChildrenInterruptedVolumeAndRetry(t *testing.
 		t.Fatal("successful installation destroy retained selected owner")
 	}
 	t.Log("actual full-installation child reset, partial native deletion, preserved foreign authority and fresh current-plan retry completed; selected native data/configuration/owners absent")
+}
+
+func cleanupInstallationDestroyNativeFixture(runtime string) {
+	for _, args := range [][]string{
+		{"ps", "-aq", "--filter", "name=bh-installation-retry-native-"},
+		{"network", "ls", "-q", "--filter", "name=baseharbor-installation-retry-native"},
+		{"network", "ls", "-q", "--filter", "name=baseharbor-identity-core-installation-retry-native"},
+		{"volume", "ls", "-q", "--filter", "name=bh-installation-retry-native"},
+	} {
+		output, err := exec.Command(runtime, args...).Output()
+		if err != nil {
+			continue
+		}
+		ids := strings.Fields(string(output))
+		if len(ids) == 0 {
+			continue
+		}
+		removeArgs := append([]string{"rm", "--force"}, ids...)
+		if args[0] == "network" {
+			removeArgs = append([]string{"network", "rm"}, ids...)
+		} else if args[0] == "volume" {
+			removeArgs = append([]string{"volume", "rm"}, ids...)
+		}
+		_ = exec.Command(runtime, removeArgs...).Run()
+	}
 }
