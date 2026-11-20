@@ -72,7 +72,9 @@ func Resolve(environment, provider string, authentication AuthenticationMode) (P
 	default:
 		return Policy{}, fmt.Errorf("unsupported service authentication mode %q", authentication)
 	}
-	return ResolveWithPolicy(environment, provider, authentication, EnvironmentPolicy{TrustedLocal: TrustedLocalForEnvironment(environment)})
+	// The compatibility API has no trusted policy source. Treat every
+	// environment as managed until a caller supplies an explicit policy.
+	return ResolveWithPolicy(environment, provider, authentication, EnvironmentPolicy{})
 }
 
 // EnvironmentPolicy carries the explicit, non-name-derived policy decision for
@@ -80,12 +82,9 @@ func Resolve(environment, provider string, authentication AuthenticationMode) (P
 // the policy is the authority for whether that environment is trusted-local
 // (operator-trusted, no mandatory service authentication) or managed.
 //
-// This replaces the previous name-based switch (dev/development → untrusted-
-// local, anything else → managed): behavior now follows an explicit policy
-// argument rather than a hardcoded name pattern. The historical mapping is
-// preserved by the trustedLocal derivation so no existing guarded environment
-// weakens, and a name can never silently weaken guarantees again — a caller
-// that wants a trusted-local environment must pass it explicitly.
+// Behavior follows an explicit policy argument rather than a hardcoded name
+// pattern. A caller that has no trusted policy source must use the zero value,
+// which fails closed as managed.
 type EnvironmentPolicy struct {
 	// TrustedLocal is true when an explicit policy/authorization declares the
 	// environment operator-trusted (authentication optional, transport still
@@ -103,19 +102,12 @@ func (p EnvironmentPolicy) IsValid() bool {
 	return true
 }
 
-// TrustedLocalForEnvironment is the historical, documented mapping used to
-// preserve current observable behavior for callers that resolve by name without
-// an organization policy layer: dev/development are trusted-local, every other
-// environment (test, staging, prod, custom) is managed. It is a single, visible
-// decision point — the name no longer reaches into every policy switch. Callers
-// with an explicit policy source should pass that policy instead.
+// TrustedLocalForEnvironment is retained for source compatibility. Environment
+// names do not establish trust, so this compatibility helper always fails
+// closed. Callers may enable trusted-local behavior only from an explicit,
+// trusted policy source.
 func TrustedLocalForEnvironment(environment string) bool {
-	switch strings.ToLower(strings.TrimSpace(environment)) {
-	case "dev", "development":
-		return true
-	default:
-		return false
-	}
+	return false
 }
 
 func ResolveWithPolicy(environment, provider string, authentication AuthenticationMode, policy EnvironmentPolicy) (Policy, error) {

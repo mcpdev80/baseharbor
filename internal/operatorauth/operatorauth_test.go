@@ -37,12 +37,11 @@ func TestConfigValidateRejectsInsecureOrIncompleteOIDC(t *testing.T) {
 	}
 }
 
-func TestManagedEnvironmentKeepsDevTrustedLocal(t *testing.T) {
-	if ManagedEnvironment("dev") || ManagedEnvironment("development") {
-		t.Fatal("development must stay trusted-local")
-	}
-	if !ManagedEnvironment("test") || !ManagedEnvironment("prod") {
-		t.Fatal("test/prod must require managed operator authentication")
+func TestManagedEnvironmentFailsClosedForEveryName(t *testing.T) {
+	for _, name := range []string{"dev", "development", "test", "staging", "prod", "custom-env"} {
+		if !ManagedEnvironment(name) {
+			t.Fatalf("environment %q must require managed operator authentication without explicit policy", name)
+		}
 	}
 }
 

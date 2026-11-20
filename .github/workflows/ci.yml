@@ -16,6 +16,8 @@ on:
       - main
       # Stacked development PRs target a lane-* branch and receive the same PR CI.
       - 'lane-*'
+      # Named CLI stacks also need the complete PR check graph.
+      - 'cli2-*'
 
 concurrency:
   group: ci-${{ github.ref }}
