@@ -262,8 +262,13 @@ func TestCIIntegrationOperatorAllowsRootDestroyOnlyForGuidedGate(t *testing.T) {
 	if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), rootDestroy)); !ok {
 		t.Fatal("exact guided atomic gate did not receive its CI operator for the documented root destroy step")
 	}
-	if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), []string{"destroy", "--all", "--yes", "--force"})); ok {
-		t.Fatal("guided root destroy exception unexpectedly authorized a noncanonical cleanup command")
+	if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), []string{"destroy", "--all", "--json"})); !ok {
+		t.Fatal("exact guided atomic gate did not receive its CI operator for the read-only destroy ownership preview")
+	}
+	for _, args := range [][]string{{"destroy", "--all", "--force"}, {"destroy", "--all", "--json", "--yes"}, {"destroy", "--all", "--yes", "--force"}} {
+		if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), args)); ok {
+			t.Fatal("guided root destroy exception unexpectedly authorized a noncanonical cleanup command")
+		}
 	}
 	if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), []string{"down"})); ok {
 		t.Fatal("guided root destroy exception unexpectedly authorized another root command")
@@ -275,7 +280,7 @@ func TestCIIntegrationOperatorAllowsRootDestroyOnlyForGuidedGate(t *testing.T) {
 	}
 }
 
-func TestCIIntegrationOperatorAllowsOnlyGuidedDeveloperDomainProbe(t *testing.T) {
+func TestCIIntegrationOperatorAllowsOnlyGuidedDeveloperDomainAndAppNew(t *testing.T) {
 	t.Setenv("DEMO_ATOMIC_GATE", "1")
 	t.Setenv("BASEHARBOR_TEST_RUNTIME", "docker")
 	t.Setenv("GATE", "guided")
@@ -288,7 +293,10 @@ func TestCIIntegrationOperatorAllowsOnlyGuidedDeveloperDomainProbe(t *testing.T)
 	if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), []string{"dev", "domain"})); !ok {
 		t.Fatal("exact guided developer-domain probe did not receive its CI operator")
 	}
-	for _, args := range [][]string{{"dev", "domain", "--json"}, {"dev", "credentials"}, {"dev", "token"}} {
+	if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), []string{"app", "new"})); !ok {
+		t.Fatal("exact guided app-new wizard did not receive its CI operator")
+	}
+	for _, args := range [][]string{{"dev", "domain", "--json"}, {"dev", "credentials"}, {"dev", "token"}, {"app", "new", "--yes"}, {"app", "edit"}} {
 		if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), args)); ok {
 			t.Errorf("noncanonical or unrelated developer command %v unexpectedly received the CI operator", args)
 		}

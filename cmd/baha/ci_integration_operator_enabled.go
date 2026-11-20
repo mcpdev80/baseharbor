@@ -102,11 +102,17 @@ func ciIntegrationManagedLocalGateReason(args []string, target deployment.Resolv
 	if !managedWorkload && ciIntegrationReadOnlyStatus(args) {
 		managedWorkload = true
 	}
-	// The guided acceptance reads the loopback developer domain after its
-	// readiness/status checks. Allow only that exact read-only probe in the
-	// guided fixture; credential output and arbitrary developer commands stay
-	// outside this synthetic-operator exception.
+	// The guided acceptance ensures the fixture's default developer domain
+	// before probing the loopback gateway. This exact fixture-scoped operation
+	// can persist that default; credentials and other developer commands remain
+	// outside the synthetic-operator exception.
 	if !managedWorkload && gate == "guided" && ciIntegrationGuidedDevDomain(args) {
+		managedWorkload = true
+	}
+	// Guided regression coverage creates disposable app manifests through the
+	// interactive `app new` wizard. Keep that mutation limited to the exact
+	// canonical command on the selected guided fixture.
+	if !managedWorkload && gate == "guided" && ciIntegrationGuidedAppNew(args) {
 		managedWorkload = true
 	}
 	// The observability acceptance gate reads the disposable demo workload's
@@ -134,6 +140,11 @@ func ciIntegrationManagedLocalGateReason(args []string, target deployment.Resolv
 	if !managedWorkload && ciIntegrationRootDestroy(args) {
 		managedWorkload = true
 	}
+	// Fixture cleanup first requests a read-only ownership preview before its
+	// separate confirmed destroy call. Admit only that exact preview form.
+	if !managedWorkload && ciIntegrationRootDestroyPreview(args) {
+		managedWorkload = true
+	}
 	// Recovery gates also exercise the root `down` command against the local
 	// Core. Keep this alias scoped to that explicit fixture.
 	if !managedWorkload && gate == "control-plane-recovery" && len(args) > 0 && args[0] == "down" {
@@ -147,7 +158,7 @@ func ciIntegrationManagedLocalGateReason(args []string, target deployment.Resolv
 		return "runtime-state-root-failed: " + err.Error()
 	}
 	_, err = coreinstallation.Load(root)
-	if err != nil && errors.Is(err, os.ErrNotExist) && (ciIntegrationRootDestroy(args) || ciIntegrationReadOnlyDoctor(args) || ciIntegrationRootInit(args)) {
+	if err != nil && errors.Is(err, os.ErrNotExist) && (ciIntegrationRootDestroy(args) || ciIntegrationRootDestroyPreview(args) || ciIntegrationReadOnlyDoctor(args) || ciIntegrationRootInit(args)) {
 		// A selected acceptance gate may bootstrap, inspect, or clean up its
 		// disposable Target before bootstrap or after a failed bootstrap. Permit
 		// only exact init, read-only probe, or idempotent cleanup forms; malformed
@@ -184,6 +195,10 @@ func ciIntegrationGuidedDevDomain(args []string) bool {
 	return len(args) == 2 && args[0] == "dev" && args[1] == "domain"
 }
 
+func ciIntegrationGuidedAppNew(args []string) bool {
+	return len(args) == 2 && args[0] == "app" && args[1] == "new"
+}
+
 func ciIntegrationConfigureStatusOperatorBoundary(target string) error {
 	// The disposable runtime gate uses the same verified issuer as
 	// ciIntegrationOperatorContext. Root status needs the stored boundary to
@@ -208,6 +223,10 @@ func ciIntegrationRootDestroy(args []string) bool {
 	plain := len(args) == 3 && args[0] == "destroy" && args[1] == "--all" && args[2] == "--yes"
 	json := len(args) == 4 && args[0] == "destroy" && args[1] == "--all" && args[2] == "--yes" && args[3] == "--json"
 	return plain || json
+}
+
+func ciIntegrationRootDestroyPreview(args []string) bool {
+	return len(args) == 3 && args[0] == "destroy" && args[1] == "--all" && args[2] == "--json"
 }
 
 func ciIntegrationOperatorTrace(reason string, args []string, target deployment.ResolvedTarget, err error) {
