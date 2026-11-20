@@ -120,11 +120,15 @@ for status in /proc/[0-9]*/status; do
   [ -r "$status" ] || continue
   name=$(awk '$1 == "Name:" { print $2; exit }' "$status" 2>/dev/null) || continue
   case "$name" in postgres*) ;; *) continue ;; esac
-  uid=$(awk '$1 == "Uid:" { print $2; exit }' "$status" 2>/dev/null) || continue
+  uid_state=$(awk '$1 == "Uid:" {
+    if ($2 == "0" || $3 == "0" || $4 == "0" || $5 == "0") print "root"
+    else print "nonroot"
+    exit
+  }' "$status" 2>/dev/null) || continue
   caps=$(awk '$1 == "CapEff:" { print $2; exit }' "$status" 2>/dev/null) || continue
-  [ -n "$uid" ] && [ -n "$caps" ] || continue
+  [ -n "$uid_state" ] && [ -n "$caps" ] || continue
   seen=1
-  [ "$uid" != "0" ] || exit 1
+  [ "$uid_state" = "nonroot" ] || exit 1
   case "$caps" in *[!0]*) exit 1 ;; esac
 done
 			[ "$seen" = "1" ]`
