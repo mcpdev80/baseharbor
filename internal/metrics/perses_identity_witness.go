@@ -105,14 +105,16 @@ func keycloakMetricSignals(m application.Manifest, placement capability.Provider
 	if refErr != nil {
 		return false, false
 	}
-	nativeSignalPresent := false
-	for _, signal := range reference.Observability.Signals {
-		if signal.Name == keycloakMetricsSignalID && signal.Mode == capability.ObservabilityNative {
-			nativeSignalPresent = true
+	var expectedSignal *capability.ProviderObservabilitySignal
+	for i := range reference.Observability.Signals {
+		signal := &reference.Observability.Signals[i]
+		if signal.Name == keycloakMetricsSignalID && signal.Kind == capability.ObservabilityMetrics &&
+			signal.Collectable() && signal.Mode == capability.ObservabilityNative {
+			expectedSignal = signal
 			break
 		}
 	}
-	if !nativeSignalPresent {
+	if expectedSignal == nil {
 		return false, false
 	}
 
@@ -150,9 +152,10 @@ func keycloakMetricSignals(m application.Manifest, placement capability.Provider
 		// shape and descriptor verification mode instead of accepting legacy
 		// records that only happen to use the signal name.
 		if strings.TrimSpace(source.Target) != "keycloak:9000" ||
-			source.Mode != capability.ObservabilityNative ||
-			source.Protocol != "openmetrics" ||
-			source.Verification != capability.ObservabilityVerifyBackend {
+			source.Mode != expectedSignal.Mode ||
+			source.Protocol != expectedSignal.Protocol ||
+			source.Path != expectedSignal.Path ||
+			source.Verification != expectedSignal.Verification {
 			continue
 		}
 		metricPresent = true

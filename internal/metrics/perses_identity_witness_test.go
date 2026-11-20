@@ -199,6 +199,7 @@ func TestIdentityWitnessRejectsLegacyOrMismatchedSignalRecords(t *testing.T) {
 		{name: "legacy signal id", mutate: func(s *observability.SignalSource) { s.ID = keycloakMetricsSignalID }},
 		{name: "wrong owner", mutate: func(s *observability.SignalSource) { s.OwnerApplication = "foreign-app" }},
 		{name: "endpoint is not tenant binding", mutate: func(s *observability.SignalSource) { s.Target = "testapp" }},
+		{name: "wrong path", mutate: func(s *observability.SignalSource) { s.Path = "/admin/metrics" }},
 		{name: "non-native mode", mutate: func(s *observability.SignalSource) { s.Mode = "" }},
 		{name: "unverified descriptor", mutate: func(s *observability.SignalSource) { s.Verification = capability.ObservabilityVerifyNone }},
 	}
