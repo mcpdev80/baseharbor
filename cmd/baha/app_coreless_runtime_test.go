@@ -78,7 +78,7 @@ func TestCorelessFreshWorkloadRuntimeLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	var missingOut bytes.Buffer
-	if err := runWithIO(ctx, []string{"up", "--yes", "--skip-memory-preflight"}, &missingOut, &missingOut); err == nil {
+	if err := runWithIOAsTestOperator(ctx, []string{"up", "--yes", "--skip-memory-preflight"}, &missingOut, &missingOut); err == nil {
 		t.Fatal("empty repository reported successful deployment")
 	}
 	if _, err := os.Stat(filepath.Join(root, ".baseharbor", "apps")); !errors.Is(err, os.ErrNotExist) {
@@ -90,7 +90,7 @@ func TestCorelessFreshWorkloadRuntimeLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	var out bytes.Buffer
-	if err := runWithIO(ctx, []string{"app", "init", "--quick", "--json"}, &out, &out); err != nil {
+	if err := runWithIOAsTestOperator(ctx, []string{"app", "init", "--quick", "--json"}, &out, &out); err != nil {
 		t.Fatalf("minimal initialization: %v\n%s", err, out.String())
 	}
 	initialized, err := resolveApplication(ctx, application.Store{}, nil, "plan")

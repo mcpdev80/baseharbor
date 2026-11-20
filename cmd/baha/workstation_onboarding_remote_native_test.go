@@ -36,6 +36,7 @@ func TestWorkstationOnboardingRemoteNativeInCI(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
 	defer cancel()
+	ctx = testOperatorContext(ctx)
 	ensureRuntimeIntegrationTrustPlane(t, ctx)
 	name := runtimeIntegrationTrustPlaneTargetName
 	if name == "" || !strings.HasPrefix(name, "w169-ci-bootstrap-") {

@@ -293,7 +293,7 @@ jobs:
         export BASEHARBOR_TARGET="atomic-${{ inputs.runtime }}-${{ inputs.gate }}"
         prebuilt=()
         if [ -n "${{ inputs.candidate_artifact }}" ]; then
-          prebuilt=(BASEHARBOR_PREBUILT_BINARY="$RUNNER_TEMP/pre-release-candidate/baha")
+          prebuilt=(BASEHARBOR_PREBUILT_BINARY="$RUNNER_TEMP/pre-release-candidate/baha-ci-operator-testonly")
         fi
         cd "$workdir"
         env             "${prebuilt[@]}"             BASEHARBOR_SOURCE_REF="$CANDIDATE_SHA"             BASEHARBOR_RUNTIME_IMAGE="$BASEHARBOR_RUNTIME_IMAGE"             BASEHARBOR_TEST_RUNTIME="${{ inputs.runtime }}"             DEMO_ATOMIC_GATE=1             ARTIFACT_DIR="$ARTIFACT_DIR"             bash scripts/acceptance.sh "$GATE"
