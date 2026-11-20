@@ -27,8 +27,17 @@ func TestKeycloakSignalIDGoldenSingleTokenStable(t *testing.T) {
 
 	projectA := bhruntime.ApplicationProjectName("cluster", "alpha", "prod")
 	projectB := bhruntime.ApplicationProjectName("cluster", "beta", "prod")
-	goldenA := keycloakMetricsSignalID(projectA)
-	goldenB := keycloakMetricsSignalID(projectB)
+	// These are the exact IDs emitted by baseline 0428-168. Keep them literal:
+	// deriving the expected value from keycloakMetricsSignalID would make this
+	// test self-referential and unable to catch an accidental identity change.
+	goldenA := "keycloak:bh-cluster-alpha-prod"
+	goldenB := "keycloak:bh-cluster-beta-prod"
+	if got := keycloakMetricsSignalID(projectA); got != goldenA {
+		t.Fatalf("baseline 0428-168 ID for alpha changed: got %q, want %q", got, goldenA)
+	}
+	if got := keycloakMetricsSignalID(projectB); got != goldenB {
+		t.Fatalf("baseline 0428-168 ID for beta changed: got %q, want %q", got, goldenB)
+	}
 	if goldenA == goldenB {
 		t.Fatalf("golden precondition: distinct single-token names must not collapse to one registrationID")
 	}
