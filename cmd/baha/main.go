@@ -28,6 +28,11 @@ var (
 	date    = "unknown"
 )
 
+// operatorAuthRunPathFixture is a package-global override seam removed: the
+// whole-package operator fixture now routes through testOperatorContext (set by
+// testOperatorFixture in operator_test_fixture_test.go), which applies
+// operatorAuthFixtureContext. Production leaves testOperatorContext nil.
+
 func main() {
 	if len(os.Args) == 2 && os.Args[1] == "--baseharbor-hosts-write" {
 		var change localhosts.Change
@@ -148,6 +153,7 @@ func runWithIO(ctx context.Context, args []string, out, errOut io.Writer) error 
 	// verified operator principal and its editor membership here, AFTER the
 	// enforcement setup (WithVerifiedPrincipal stores the principal in the
 	// enforcement state, which a later WithEnforcement would otherwise wipe).
+	// The seam applies operatorAuthFixtureContext (see operator_test_fixture_test.go).
 	if testOperatorContext != nil {
 		ctx = testOperatorContext(ctx)
 	}

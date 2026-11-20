@@ -2,46 +2,29 @@ package main
 
 import (
 	"context"
-	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/identity"
 	"github.com/mcpdev80/baseharbor/internal/operatorauth"
 	"github.com/mcpdev80/baseharbor/internal/tenancy"
 )
 
-// testOperatorFixture installs a verified operator identity for the duration of a
-// test so the production CLI run path (runWithIO) authorizes a mutating
-// operation in a managed environment. It builds the operator identity entirely
-// in-test (a verified principal carrying an editor group plus a membership
-// provider that maps it onto a single tenant editor membership); it never sets
-// authentication, a token, a pin or an env from the lane or workflow
-// (§3.8 letzter Absatz).
+// init installs the whole-package operator-auth seam for the cmd/baha test run.
+// #1594 (develop head 40cb28c75) removed the dev→trusted-local auto-admit, so
+// every cmd/baha test that drives the production CLI run path (runWithIO, a
+// direct command .Run(ctx), or an MCP tool handler) in a managed environment now
+// fails with "Managed-environment machine operations require an authenticated
+// BaseHarbor operator." This seam stamps a verified operator principal carrying
+// the editor group onto the context the runWithIO seam touches, so the whole
+// test package authorizes in-test without any workflow/owner OIDC configuration.
 //
-// The fixture mirrors the already-existing in-test operator pattern used by the
-// operatorauth package (authorization_claims_test.go, authorization_test.go) and
-// the cmd/baha operator_identity_transport_test.go / app_input_resolver_first_run_test.go
-// fixtures, so the same contract the operator-auth tests assert is satisfied here
-// without an operator OIDC configuration coming from the environment.
-//
-// It restores the previous hook through t.Cleanup so the package-global seam does
-// not leak into sibling tests.
-func testOperatorFixture(t *testing.T) {
-	t.Helper()
-	previous := testOperatorContext
+// Production leaves testOperatorContext nil; only the test binary sets it once.
+// It is a single permanent seam rather than a per-test t.Cleanup hook because
+// the failing cells build their contexts at many independent entry points and no
+// single per-test helper can reach them all (see operatorAuthFixtureContext).
+func init() {
 	testOperatorContext = func(ctx context.Context) context.Context {
-		principal := &identity.Principal{
-			Subject:        "operator-fixture",
-			Issuer:         "https://issuer.example",
-			IssuerVerified: true,
-			Groups:         []string{"editor"},
-		}
-		ctx = operatorauth.WithVerifiedPrincipal(ctx, principal)
-		ctx = operatorauth.WithMembershipProvider(ctx, &testOperatorMembershipProvider{
-			memberships: []tenancy.Membership{{TenantID: "tenant-a", Role: "editor"}},
-		})
-		return ctx
+		return operatorAuthFixtureContext(ctx)
 	}
-	t.Cleanup(func() { testOperatorContext = previous })
 }
 
 // testOperatorMembershipProvider is the minimal bounded membership provider that
@@ -56,4 +39,34 @@ func (p *testOperatorMembershipProvider) ResolveClaimMembership(_ context.Contex
 		return nil, operatorauth.ErrClaimsNotVerified
 	}
 	return append([]tenancy.Membership(nil), p.memberships...), nil
+}
+
+// operatorAuthFixtureContext is the single shared collection point for the
+// 0428-198 gate map: it stamps the in-test operator identity onto a context in
+// the exact production order the runWithIO seam documents — WithVerifiedPrincipal
+// carrying an editor group, then a membership provider that maps that principal
+// onto one tenant editor membership. Every context builder in the cmd/baha test
+// package that drives a production command in a managed environment routes its
+// base through this helper instead of building an unauthenticated context: this
+// one helper replaces the dozens of individually wired failing cells that
+// #1594's dev→trusted-local removal broke. Production never calls it.
+//
+// The order matters: WithVerifiedPrincipal stores the principal in the
+// enforcement state, so a later WithEnforcement would wipe it; callers that
+// still need WithEnforcement apply it first (e.g. persesMatrixContext), then
+// this helper. This mirrors the canonical example in
+// cmd/baha/app_input_resolver_first_run_test.go:21-27 and the runWithIO seam in
+// cmd/baha/main.go.
+func operatorAuthFixtureContext(ctx context.Context) context.Context {
+	principal := &identity.Principal{
+		Subject:        "operator-fixture",
+		Issuer:         "https://issuer.example",
+		IssuerVerified: true,
+		Groups:         []string{"editor"},
+	}
+	ctx = operatorauth.WithVerifiedPrincipal(ctx, principal)
+	ctx = operatorauth.WithMembershipProvider(ctx, &testOperatorMembershipProvider{
+		memberships: []tenancy.Membership{{TenantID: "tenant-a", Role: "editor"}},
+	})
+	return ctx
 }

@@ -80,7 +80,7 @@ func TestRestoreBindsOriginalExternalIdentityAndProtectedDestination(t *testing.
 			}
 			t.Run(name+change, func(t *testing.T) {
 				r, secret, otherCA := restoreRegisteredIdentityFixture(t, retained)
-				ctx := machineNoninteractiveContext(t.Context())
+				ctx := machineNoninteractiveContext(operatorAuthFixtureContext(t.Context()))
 				data := applicationRestoreData{manifest: r.Manifest, archiveRevision: strings.Repeat("a", 64)}
 				planned, err := buildApplicationRestorePlan(ctx, r, data)
 				if err != nil {

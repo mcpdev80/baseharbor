@@ -75,7 +75,7 @@ func runRepositoryFixtureApplyCall(ctx context.Context, args []string, run func(
 	default:
 		return errors.New("unsupported repository apply fixture operation")
 	}
-	ctx = withProviderChangeConsent(machineNoninteractiveContext(ctx), nil)
+	ctx = withProviderChangeConsent(machineNoninteractiveContext(operatorAuthFixtureContext(ctx)), nil)
 	err := run(ctx)
 	if err == nil {
 		return nil
