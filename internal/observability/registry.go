@@ -255,13 +255,22 @@ func RegisterProviderSignals(registration ProviderSignalRegistration) error {
 		return err
 	}
 	return mutate(path, func(sources []SignalSource) ([]SignalSource, error) {
-		// The migration seam (card 0428-168): re-book the legacy source of
-		// record INSIDE this mutation, before the (ID, provider) replacement,
-		// so a caller's registration can never drop a source of record that
-		// predates the ID scoping. A record already migrated under a project
-		// grammar is left where the earlier migration placed it.
 		if legacy := registration.Legacy; legacy != nil {
 			sources = RebookLegacySignals(*legacy, sources, registration.ID)
+		}
+		// Normalization-boundary guard (card 0428-166): the Keycloak signal ID
+		// is "keycloak:" + files.Project, which runs the app name through
+		// projectToken (lowercase, "." -> "-"); two DISTINCT names normalizing to
+		// the same project build the SAME registrationID. The (ID, provider)
+		// replacement below would otherwise let the second registration silently
+		// overwrite the first owner's source. Fail closed: a registrationID
+		// already held by a DIFFERENT owner is rejected (no owner vanishes); the
+		// same owner is idempotent.
+		for _, existing := range sources {
+			if existing.ID == registration.ID && existing.Provider == registration.Descriptor.Provider.Kind &&
+				existing.OwnerApplication != "" && existing.OwnerApplication != registration.OwnerApplication {
+				return nil, fmt.Errorf("observability registration id %q already owned by %q, not %q: registration rejected (0428-166 normalization collision guard)", registration.ID, existing.OwnerApplication, registration.OwnerApplication)
+			}
 		}
 		out := sources[:0]
 		for _, existing := range sources {
