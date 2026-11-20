@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/delivery"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/machine"
@@ -112,6 +113,215 @@ func TestSelectiveSecretsPlanHasStableConsentWithoutAuthorityChanges(t *testing.
 	err = authorizeApplicationProviderChanges(withProviderChangeConsent(ctx, &consent), r, nil, io.Discard)
 	if !errors.As(err, &failure) || failure.Code != machine.ErrorConflict {
 		t.Fatalf("changed repository intent accepted earlier consent: %v", err)
+	}
+}
+
+// 0428-119 r2 / CODEX Finding 3, F3 request path: the real apply seam in
+// cmd/baha must treat a registry change that ONLY differs in the external
+// Reference, the OwnerEnvironment, or a duplicate-masked capability set as an
+// authority change and refuse to hand stale consent forward. The test seeds a
+// matching SQL instance into the authoritative provider-registry.json BEFORE the
+// first plan, so both plans already carry it; it then mutates that SAME
+// instance's authority-bearing field and drives authorizeApplicationProviderChanges
+// again: the post-consent revalidation gate must return the typed
+// stale-impact-consent conflict and no deployment state may be allocated.
+//
+// B1 proof: on the ORIGINAL comparators (before F1/F2), the reference/owner-env
+// change alone was misread as equivalent and the stale consent was accepted.
+func TestRequestPathRejectsReferenceRegistryChange(t *testing.T) {
+	registryAuthorityChangeRequest(t, "reference", func(reg *capability.Registry) {
+		for i := range reg.Instances {
+			reg.Instances[i].Reference = "ext/swapped-reference"
+		}
+	})
+}
+
+func TestRequestPathRejectsOwnerEnvironmentRegistryChange(t *testing.T) {
+	registryAuthorityChangeRequest(t, "owner-environment", func(reg *capability.Registry) {
+		for i := range reg.Instances {
+			reg.Instances[i].OwnerEnvironment = "other-env"
+		}
+	})
+}
+
+func TestRequestPathRejectsDuplicateCapabilityMaskingRegistryChange(t *testing.T) {
+	registryAuthorityChangeRequest(t, "capability", func(reg *capability.Registry) {
+		for i := range reg.Instances {
+			reg.Instances[i].Provider.Capabilities = []capability.Kind{capability.SQL, capability.SQL}
+		}
+	})
+}
+
+// 0428-119 r4 / CODEX r3 Finding P1, request path: the real apply seam in
+// cmd/baha must treat a registry change that ONLY differs in the owning manifest
+// name (OwnerApplication, same OwnerApplicationID) as an authority change and
+// refuse to hand stale consent forward. This drives the production
+// authorizeApplicationProviderChanges seam against a persisted, authoritative
+// provider-registry.json.
+//
+// OwnerApplication is only authority-bearing on an APPLICATION-scoped instance
+// (a shared instance may not carry an application owner, so the seed is
+// application-scoped with a valid UUIDv4 owner id). The first plan carries the
+// seeded instance; the mutation then changes only that instance's
+// OwnerApplication to a different manifest name, and the post-consent
+// revalidation gate must fail closed.
+func TestRequestPathRejectsOwnerApplicationRegistryChange(t *testing.T) {
+	configureTestTarget(t)
+	selection := minimalRepositorySelection(t)
+	t.Chdir(selection.RepositoryRoot)
+	intent := "version: 1\napp:\n  name: request-path-consent\n  environment: dev\nworkload:\n  components:\n    - api\nservices:\n  sql: true\n"
+	if err := os.WriteFile(filepath.Join(selection.RepositoryRoot, "baseharbor.yaml"), []byte(intent), 0600); err != nil {
+		t.Fatal(err)
+	}
+	ctx := machineNoninteractiveContext(context.Background())
+	stateRoot, err := deployment.TargetStateRoot("docker-dev")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Seed an APPLICATION-scoped SQL instance (must carry an application owner).
+	seed := capability.NewRegistry()
+	if err := seed.Register(capability.ProviderInstance{
+		ID:                 "sql-app-owned",
+		Provider:           capability.PostgreSQL,
+		Scope:              capability.ScopeApplication,
+		Ownership:          capability.OwnershipBaseHarbor,
+		OwnerApplicationID: "22222222-2222-4222-8222-222222222222",
+		OwnerApplication:   "request-path-consent",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := (capability.RegistryStore{Path: filepath.Join(stateRoot, "provider-registry.json")}).Update(func(reg *capability.Registry) error { *reg = seed; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	if err := runWithIO(ctx, []string{"app", "init", "--quick", "--json"}, io.Discard, io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	r, err := resolveApplication(ctx, application.Store{}, nil, "apply")
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := buildResolvedApplicationPlan(ctx, r)
+	if err != nil || first.ProviderPlan.Impact == nil {
+		t.Fatalf("SQL impact unavailable: %v", err)
+	}
+	challengeErr := authorizeApplicationProviderChanges(ctx, r, nil, io.Discard)
+	var challenge *machine.Error
+	if !errors.As(challengeErr, &challenge) || challenge.Code != machine.ErrorApprovalRequired {
+		t.Fatalf("missing read-only authorization challenge: %v", challengeErr)
+	}
+	consent := application.ProviderChangeConsent{PlanID: first.ProviderPlan.Impact.PlanID, First: true, Second: true}
+
+	// Mutate the authoritative provider registry on disk: change the SAME
+	// seeded instance's OwnerApplication to a different manifest name while
+	// keeping OwnerApplicationID identical. The store validates the mutated
+	// registry before persisting it, so an invalid test setup fails here.
+	store := capability.RegistryStore{Path: filepath.Join(stateRoot, "provider-registry.json")}
+	if err := store.Update(func(reg *capability.Registry) error {
+		for i := range reg.Instances {
+			reg.Instances[i].OwnerApplication = "other-manifest"
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("mutated registry failed validation (test setup): %v", err)
+	}
+
+	// Re-resolve and drive the real apply seam: the changed authority must not
+	// be accepted on the stale consent.
+	r2, err := resolveApplication(ctx, application.Store{}, nil, "apply")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := revalidateApplicationProviderIntent(ctx, r2); err != nil {
+		t.Fatalf("intent revalidation: %v", err)
+	}
+	var failure *machine.Error
+	err = authorizeApplicationProviderChanges(withProviderChangeConsent(ctx, &consent), r2, nil, io.Discard)
+	if !errors.As(err, &failure) || failure.Code != machine.ErrorConflict {
+		t.Fatalf("an OwnerApplication-only registry change was accepted on stale consent at the request seam: %v", err)
+	}
+	// A failed stale-consent authorization must not allocate any deployment:
+	// the fail-closed gate rejects before execution admission.
+	if records, err := deployment.ListDeployments(r2.Target.Name); err != nil || len(records) != 0 {
+		t.Fatalf("stale-authority authorization allocated deployment state: records=%d error=%v", len(records), err)
+	}
+}
+
+func registryAuthorityChangeRequest(t *testing.T, mutate string, apply func(reg *capability.Registry)) {
+	configureTestTarget(t)
+	selection := minimalRepositorySelection(t)
+	t.Chdir(selection.RepositoryRoot)
+	intent := "version: 1\napp:\n  name: request-path-consent\n  environment: dev\nworkload:\n  components:\n    - api\nservices:\n  sql: true\n"
+	if err := os.WriteFile(filepath.Join(selection.RepositoryRoot, "baseharbor.yaml"), []byte(intent), 0600); err != nil {
+		t.Fatal(err)
+	}
+	ctx := machineNoninteractiveContext(context.Background())
+	// Seed the authoritative registry with a shared SQL instance BEFORE the
+	// first plan, so the first plan already carries it and the mutation only
+	// changes that instance's authority-bearing field.
+	stateRoot, err := deployment.TargetStateRoot("docker-dev")
+	if err != nil {
+		t.Fatal(err)
+	}
+	seed := capability.NewRegistry()
+	if err := seed.Register(capability.ProviderInstance{
+		ID:        "postgresql",
+		Provider:  capability.PostgreSQL,
+		Scope:     capability.ScopeShared,
+		Ownership: capability.OwnershipBaseHarbor,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := (capability.RegistryStore{Path: filepath.Join(stateRoot, "provider-registry.json")}).Update(func(reg *capability.Registry) error { *reg = seed; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	if err := runWithIO(ctx, []string{"app", "init", "--quick", "--json"}, io.Discard, io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	r, err := resolveApplication(ctx, application.Store{}, nil, "apply")
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := buildResolvedApplicationPlan(ctx, r)
+	if err != nil || first.ProviderPlan.Impact == nil {
+		t.Fatalf("SQL impact unavailable: %v", err)
+	}
+	challengeErr := authorizeApplicationProviderChanges(ctx, r, nil, io.Discard)
+	var challenge *machine.Error
+	if !errors.As(challengeErr, &challenge) || challenge.Code != machine.ErrorApprovalRequired {
+		t.Fatalf("missing read-only authorization challenge: %v", challengeErr)
+	}
+	consent := application.ProviderChangeConsent{PlanID: first.ProviderPlan.Impact.PlanID, First: true, Second: true}
+
+	// Mutate the authoritative provider registry on disk: change the SAME
+	// seeded instance's authority-bearing field to a change the OLD comparators
+	// misread as equivalent. The store validates the mutated registry before
+	// persisting it, so an invalid test setup fails here.
+	store := capability.RegistryStore{Path: filepath.Join(stateRoot, "provider-registry.json")}
+	if err := store.Update(func(reg *capability.Registry) error {
+		apply(reg)
+		return nil
+	}); err != nil {
+		t.Fatalf("mutated registry failed validation (test setup): %v", err)
+	}
+
+	// Re-resolve and drive the real apply seam: the changed authority must not
+	// be accepted on the stale consent.
+	r2, err := resolveApplication(ctx, application.Store{}, nil, "apply")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := revalidateApplicationProviderIntent(ctx, r2); err != nil {
+		t.Fatalf("intent revalidation: %v", err)
+	}
+	var failure *machine.Error
+	err = authorizeApplicationProviderChanges(withProviderChangeConsent(ctx, &consent), r2, nil, io.Discard)
+	if !errors.As(err, &failure) || failure.Code != machine.ErrorConflict {
+		t.Fatalf("a %s-only registry change was accepted on stale consent at the request seam: %v", mutate, err)
+	}
+	// A failed stale-consent authorization must not allocate any deployment:
+	// the fail-closed gate rejects before execution admission.
+	if records, err := deployment.ListDeployments(r2.Target.Name); err != nil || len(records) != 0 {
+		t.Fatalf("stale-authority authorization allocated deployment state: records=%d error=%v", len(records), err)
 	}
 }
 
