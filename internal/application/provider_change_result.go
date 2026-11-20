@@ -37,10 +37,26 @@ func RecordProviderChangeResult(plan ProviderImpactPlan, outcomes []ProviderExec
 			}
 			// Partial/unexpected effects must stay visible instead of being called a
 			// successful execution of the proposed plan.
-			if continuationRequiresDependencyEvidence(imp) && len(imp.ContinuationDependencies) == 0 || !continuationDependencyOutcomesMatch(out.ContinuationDependencies, imp.ContinuationDependencies, plan.Impacts) {
+			// The guard blocks only when the continuation requires dependency
+			// evidence AND that evidence is missing (len==0) or stale. Go binds
+			// `&&` above `||`, so the operands must be parenthesized: without the
+			// parentheses this parsed as `(A && len==0) || !match`, which collapsed
+			// to its second operand and mislabeled a non-continuation applied
+			// receipt that carried a stray continuation edge as
+			// "continuation-dependency-unverified" instead of applying it. Under the
+			// fail-closed ruling (reviewer decision 2026-11-19): a NON-continuation
+			// operation (A == false) with an applied receipt that STILL carries a
+			// continuation edge is an unexpected edge — secure-by-design, fail
+			// closed. An applied receipt carrying a continuation edge the approved
+			// plan did not verify is an unexpected disposition and fails closed; the
+			// receipt no longer applies cleanly (status=applied).
+			if continuationRequiresDependencyEvidence(imp) && (len(imp.ContinuationDependencies) == 0 || !continuationDependencyOutcomesMatch(out.ContinuationDependencies, imp.ContinuationDependencies, plan.Impacts)) {
 				out.Status = "failed"
 				out.ErrorCode = "continuation-dependency-unverified"
 			} else if !outcomeMatchesImpact(out, imp, plan.Impacts) {
+				out.Status = "failed"
+				out.ErrorCode = "actual-disposition-differs"
+			} else if !unexpectedEdgeAllowed(out, imp) {
 				out.Status = "failed"
 				out.ErrorCode = "actual-disposition-differs"
 			}
@@ -216,4 +232,16 @@ func sameAccess(a, b *ProviderAccess) bool {
 	left, _ := json.Marshal(a)
 	right, _ := json.Marshal(b)
 	return string(left) == string(right)
+}
+
+// unexpectedEdgeAllowed enforces the fail-closed ruling for a NON-continuation
+// operation (continuationRequiresDependencyEvidence == false): an applied
+// receipt must not carry a continuation edge the approved plan did not verify.
+// A continuation operation (continuationRequiresDependencyEvidence == true) keeps
+// its own verification path and is never affected by this check.
+func unexpectedEdgeAllowed(out ProviderExecutionOutcome, imp ProviderImpact) bool {
+	if continuationRequiresDependencyEvidence(imp) {
+		return true
+	}
+	return len(out.ContinuationDependencies) == 0
 }

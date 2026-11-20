@@ -76,6 +76,7 @@
     "gate.mcp",
     "gate.mongodb-runtime",
     "gate.observability",
+    "gate.perses-runtime-smoke",
     "gate.policy",
     "gate.rabbitmq-runtime",
     "gate.reconciliation",
@@ -181,8 +182,10 @@
     {
       "id": "source.cmd.baha.app.identity.selective.runtime.test.go",
       "path": "cmd/baha/app_identity_selective_runtime_test.go",
+      "runtime_specific": true,
       "surfaces": [
-        "source.gate.atomic.docker.lifecycle"
+        "source.gate.atomic.docker.lifecycle",
+        "source.gate.atomic.podman.lifecycle"
       ]
     },
     {
@@ -279,6 +282,20 @@
       "surfaces": [
         "source.gate.atomic.docker.observability",
         "source.gate.atomic.podman.observability"
+      ]
+    },
+    {
+      "id": "source.cmd.baha.app.provider.choice.go",
+      "path": "cmd/baha/app_provider_choice.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities"
+      ]
+    },
+    {
+      "id": "source.cmd.baha.app.provider.choice.test.go",
+      "path": "cmd/baha/app_provider_choice_test.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities"
       ]
     },
     {
@@ -449,6 +466,46 @@
       "surfaces": [
         "source.gate.atomic.docker.lifecycle",
         "source.gate.atomic.podman.lifecycle"
+      ]
+    },
+    {
+      "id": "source.internal.application.runtime.observability.go",
+      "path": "internal/application/runtime_observability.go",
+      "runtime_specific": true,
+      "surfaces": [
+        "source.gate.atomic.docker.observability",
+        "source.gate.atomic.podman.observability"
+      ]
+    },
+    {
+      "id": "source.internal.application.runtime.observability.trace.source.test.go",
+      "path": "internal/application/runtime_observability_trace_source_test.go",
+      "runtime_specific": true,
+      "surfaces": [
+        "source.gate.atomic.docker.observability",
+        "source.gate.atomic.podman.observability"
+      ]
+    },
+    {
+      "id": "source.internal.application.perses.runtime.go",
+      "path": "internal/application/perses_runtime.go",
+      "runtime_specific": true,
+      "surfaces": [
+        "source.gate.atomic.docker.observability"
+      ],
+      "required_test_names": [
+        "TestPersesRuntimeSmokeDockerIsolated"
+      ]
+    },
+    {
+      "id": "source.internal.application.perses.runtime.test.go",
+      "path": "internal/application/perses_runtime_test.go",
+      "runtime_specific": true,
+      "surfaces": [
+        "source.gate.atomic.docker.observability"
+      ],
+      "required_test_names": [
+        "TestPersesRuntimeSmokeDockerIsolated"
       ]
     },
     {
@@ -859,6 +916,22 @@
       ]
     },
     {
+      "id": "source.internal.openbao.bootstrap.auth.go",
+      "path": "internal/openbao/bootstrap_auth.go",
+      "surfaces": [
+        "source.gate.atomic.docker.control.plane.recovery",
+        "source.gate.atomic.podman.control.plane.recovery"
+      ]
+    },
+    {
+      "id": "source.internal.openbao.bootstrap.auth.test.go",
+      "path": "internal/openbao/bootstrap_auth_test.go",
+      "surfaces": [
+        "source.gate.atomic.docker.control.plane.recovery",
+        "source.gate.atomic.podman.control.plane.recovery"
+      ]
+    },
+    {
       "id": "source.internal.openbao.service.issuer.go",
       "path": "internal/openbao/service_issuer.go",
       "surfaces": [
@@ -1204,6 +1277,155 @@
       "surfaces": [
         "source.gate.atomic.podman.data.capabilities"
       ]
+    },
+    {
+      "id": "runtime.podman-service-stop",
+      "path": "internal/runtime/service_stop.go",
+      "surfaces": [
+        "source.gate.atomic.podman.lifecycle"
+      ],
+      "runtime_specific": true,
+      "required_test_names": ["TestSelectedStopAcceptsPinnedContainerName"]
+    },
+    {
+      "id": "runtime.podman-service-stop-tests",
+      "path": "internal/runtime/service_stop_test.go",
+      "surfaces": [
+        "source.gate.atomic.podman.lifecycle"
+      ],
+      "runtime_specific": true,
+      "required_test_names": ["TestSelectedStopAcceptsPinnedContainerName"]
+    },
+    {
+      "id": "source.cmd.baha.app.backend.selective.runtime.test.go",
+      "path": "cmd/baha/app_backend_selective_runtime_test.go",
+      "runtime_specific": true,
+      "surfaces": [
+        "source.gate.integration.docker.coreless.lifecycle",
+        "source.gate.integration.podman.coreless.lifecycle"
+      ],
+      "required_test_names": ["TestSelectiveBackendCleanupPreservesRuntimeBaseline"]
+    },
+    {
+      "id": "source.cmd.baha.app.backend.shared.runtime.test.go",
+      "path": "cmd/baha/app_backend_shared_runtime_test.go",
+      "runtime_specific": true,
+      "surfaces": [
+        "source.gate.integration.docker.coreless.lifecycle",
+        "source.gate.integration.podman.coreless.lifecycle"
+      ]
+    },
+    {
+      "id": "source.cmd.baha.app.application.backend.runtime.test.go",
+      "path": "cmd/baha/app_application_backend_runtime_test.go",
+      "runtime_specific": true,
+      "surfaces": [
+        "source.gate.integration.docker.coreless.lifecycle",
+        "source.gate.integration.podman.coreless.lifecycle"
+      ],
+      "required_test_names": ["TestSelectiveApplicationBackendRuntimeAddRemoveReAdd"]
+    },
+    {
+      "id": "source.scripts.pre.release.integration",
+      "path": "scripts/pre-release-integration.py",
+      "surfaces": ["source.gate.integration.docker.coreless.lifecycle", "source.gate.integration.podman.coreless.lifecycle"],
+      "runtime_specific": true
+    },
+    {
+      "id": "source.workflow.pre.release",
+      "path": ".github/workflows/pre-release.yml",
+      "surfaces": ["source.gate.integration.docker.coreless.lifecycle", "source.gate.integration.podman.coreless.lifecycle"],
+      "runtime_specific": true
+    },
+    {
+      "id": "source.workflow.targeted.integration",
+      "path": ".github/workflows/targeted-integration.yml",
+      "surfaces": ["source.gate.integration.docker.coreless.lifecycle", "source.gate.integration.podman.coreless.lifecycle"],
+      "runtime_specific": true
+    },
+    {
+      "id": "source.cmd.baha.oras.setup.go",
+      "path": "cmd/baha/oras_setup.go",
+      "surfaces": [
+        "source.gate.atomic.docker.guided",
+        "source.gate.atomic.podman.guided"
+      ]
+    },
+    {
+      "id": "source.cmd.baha.oras.setup.test.go",
+      "path": "cmd/baha/oras_setup_test.go",
+      "surfaces": [
+        "source.gate.atomic.docker.guided",
+        "source.gate.atomic.podman.guided"
+      ],
+      "required_test_names": [
+        "TestIncludeInstalledORASOnPath",
+        "TestEnsureORASForCoreUpRequiresExplicitInteractiveConsent"
+      ]
+    },
+    {
+      "id": "source.cmd.baha.rootless.bootstrap.go",
+      "path": "cmd/baha/rootless_bootstrap.go",
+      "surfaces": [
+        "source.gate.atomic.docker.guided"
+      ]
+    },
+    {
+      "id": "source.cmd.baha.rootless.bootstrap.test.go",
+      "path": "cmd/baha/rootless_bootstrap_test.go",
+      "surfaces": [
+        "source.gate.atomic.docker.guided"
+      ],
+      "required_test_names": [
+        "TestRootlessBootstrapEligibilityHonorsExplicitSelection",
+        "TestRootlessSetupConsentNeverAssumesYes",
+        "TestRootlessSubIDRangeValidation",
+        "TestApprovedRootlessSetupCommandSequence",
+        "TestRootlessSetupPartialFailuresNeverRunUnapprovedFallback",
+        "TestRootlessSetupMissingUIDMapAfterInstallFailsClosed",
+        "TestRootlessSetupContextRestoreFailureIsReported",
+        "TestRootlessSudoUsesControllingTTYNotBufferedInput",
+        "TestRootlessSudoWithoutControllingTTYFailsClosed",
+        "TestRootlessUserCommandsUseDirectStdinNoExtraReader"
+      ]
+    },
+    {
+      "id": "source.cmd.baha.runtime.go",
+      "path": "cmd/baha/runtime.go",
+      "surfaces": [
+        "source.gate.atomic.docker.guided",
+        "source.gate.atomic.podman.guided"
+      ]
+},
+    {
+      "id": "source.cmd.baha.app.capability.runtime.test.go",
+      "path": "cmd/baha/app_capability_runtime_test.go",
+      "runtime_specific": true,
+      "surfaces": [
+        "source.gate.integration.docker.coreless.lifecycle",
+        "source.gate.integration.podman.coreless.lifecycle"
+      ],
+      "required_test_names": ["TestApplicationCapabilityLifecycleExistingCore"]
+    },
+    {
+      "id": "source.cmd.baha.app.https.selective.runtime.test.go",
+      "path": "cmd/baha/app_https_selective_runtime_test.go",
+      "runtime_specific": true,
+      "surfaces": [
+        "source.gate.integration.docker.coreless.lifecycle",
+        "source.gate.integration.podman.coreless.lifecycle"
+      ],
+      "required_test_names": ["TestSelectiveHTTPSRuntimeAddRemoveReAdd"]
+    },
+    {
+      "id": "source.cmd.baha.application.otlp.handoff.runtime.test.go",
+      "path": "cmd/baha/application_otlp_handoff_runtime_test.go",
+      "runtime_specific": true,
+      "surfaces": [
+        "source.gate.integration.docker.coreless.lifecycle",
+        "source.gate.integration.podman.coreless.lifecycle"
+      ],
+      "required_test_names": ["TestManagedRegisteredOTLPNativeConsumerHandoff"]
     }
   ],
   "gates": [
@@ -2504,6 +2726,18 @@
       ],
       "source_components": [
         "workstation.onboarding-tests"
+      ],
+      "selection_scope": "focused"
+    },
+    {
+      "id": "native/docker/perses-runtime-smoke",
+      "runtime": "docker",
+      "covers": [
+        "gate.perses-runtime-smoke"
+      ],
+      "source_components": [
+        "source.internal.application.perses.runtime.go",
+        "source.internal.application.perses.runtime.test.go"
       ],
       "selection_scope": "focused"
     },

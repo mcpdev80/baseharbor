@@ -77,7 +77,7 @@ func TestProviderImpactTransitiveAggregateAndSharedConsumers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !p.Complete || p.Attention != "Achtung" || p.ConfirmationsRequired != 2 || len(p.Impacts) != 2 {
+	if !p.Complete || p.Attention != "Warning" || p.ConfirmationsRequired != 2 || len(p.Impacts) != 2 {
 		t.Fatalf("%+v", p)
 	}
 	sql := p.Impacts[1]

@@ -1,0 +1,7 @@
+{
+  "kind": "DashboardUnavailable",
+  "key": "rabbitmq-messaging",
+  "backend": "rabbitmq",
+  "unavailable": true,
+  "reason": "RabbitMQ has no native observability signal in BaseHarbor; the dashboard is unavailable and no exporter is installed"
+}

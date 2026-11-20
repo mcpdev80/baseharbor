@@ -254,29 +254,29 @@ func TestEnvironmentRecordAssociationsRejectsInvalidPersistedEntry(t *testing.T)
 	raw := mustReadEnvironmentRecord(t, "target-a", "prod")
 
 	cases := []struct {
-		name     string
-		mutate   func(record *EnvironmentRecord)
-		wantErr  bool
+		name    string
+		mutate  func(record *EnvironmentRecord)
+		wantErr bool
 	}{
 		{
-			name:     "unknown kind",
-			mutate:   func(r *EnvironmentRecord) { r.Associations[0].SubjectKind = "frobnicate" },
-			wantErr:  true,
+			name:    "unknown kind",
+			mutate:  func(r *EnvironmentRecord) { r.Associations[0].SubjectKind = "frobnicate" },
+			wantErr: true,
 		},
 		{
-			name:     "empty kind",
-			mutate:   func(r *EnvironmentRecord) { r.Associations[0].SubjectKind = "" },
-			wantErr:  true,
+			name:    "empty kind",
+			mutate:  func(r *EnvironmentRecord) { r.Associations[0].SubjectKind = "" },
+			wantErr: true,
 		},
 		{
-			name:     "empty id",
-			mutate:   func(r *EnvironmentRecord) { r.Associations[0].SubjectID = "" },
-			wantErr:  true,
+			name:    "empty id",
+			mutate:  func(r *EnvironmentRecord) { r.Associations[0].SubjectID = "" },
+			wantErr: true,
 		},
 		{
-			name:     "path-bearing id",
-			mutate:   func(r *EnvironmentRecord) { r.Associations[0].SubjectID = "../escape" },
-			wantErr:  true,
+			name:    "path-bearing id",
+			mutate:  func(r *EnvironmentRecord) { r.Associations[0].SubjectID = "../escape" },
+			wantErr: true,
 		},
 	}
 
@@ -449,6 +449,30 @@ func TestRegisterEnvironmentAssociationRejectsInvalidInput(t *testing.T) {
 	}
 	if _, err := RegisterEnvironmentAssociation("target-a", "prod", AssociationKindApp, ""); err == nil {
 		t.Fatal("empty subject id accepted")
+	}
+}
+
+// TestDeregisterEnvironmentAssociationRejectsEnvironmentPathTraversal proves
+// a malformed environment selector cannot escape its canonical environment
+// path and remove a sibling environment's membership.
+func TestDeregisterEnvironmentAssociationRejectsEnvironmentPathTraversal(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("BASEHARBOR_STATE_DIR", root)
+	const target = "target-a"
+	const appID = "app-1"
+	if _, err := RegisterEnvironmentAssociation(target, "prod", AssociationKindApp, appID); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := DeregistrationEnvironmentAssociation(target, "other/../prod", AssociationKindApp, appID); err == nil {
+		t.Fatal("path-bearing environment selector unexpectedly deregistered a binding")
+	}
+	got, err := ListEnvironmentAssociations(target, "prod")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].SubjectID != appID {
+		t.Fatalf("sibling environment membership changed: %+v", got)
 	}
 }
 

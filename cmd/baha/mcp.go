@@ -13,6 +13,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/applicationlifecycle"
 	"github.com/mcpdev80/baseharbor/internal/cli"
+	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/development"
 	"github.com/mcpdev80/baseharbor/internal/evidence"
 	"github.com/mcpdev80/baseharbor/internal/machine"
@@ -274,6 +275,7 @@ func authorizeMCPOperation(ctx context.Context, operationID, target, environment
 		environment = "dev"
 	}
 	target = strings.TrimSpace(target)
+	var localGrant operatorauth.LocalOperationGrant
 	if target == "" {
 		if resolved, err := effectiveTarget(ctx); err == nil {
 			target = resolved.Name
@@ -281,11 +283,12 @@ func authorizeMCPOperation(ctx context.Context, operationID, target, environment
 	}
 	if operatorauth.ManagedEnvironment(environment) {
 		ctx = localWorkloadScope(ctx, operationID)
+		ctx = context.WithValue(ctx, localApplicationIDKey{}, strings.TrimSpace(applicationName))
 		if _, authenticated := operatorauth.PrincipalFromContext(ctx); !authenticated {
-			if authority, local, err := verifiedLocalWorkloadAuthority(ctx, target, environment); err != nil {
+			if grant, local, err := verifiedLocalWorkloadAuthority(ctx, target, environment); err != nil {
 				return err
 			} else if local {
-				ctx = operatorauth.WithVerifiedLocalRuntimeAuthority(ctx, authority)
+				localGrant = grant
 			}
 		}
 		if err := ensureOperatorAuthForBoundary(ctx, target, environment); err != nil {
@@ -303,7 +306,7 @@ func authorizeMCPOperation(ctx context.Context, operationID, target, environment
 			}
 		}
 	}
-	_, err := operatorauth.AuthorizeMachineOperation(ctx, operatorauth.AuthorizationRequest{
+	request := operatorauth.AuthorizationRequest{
 		Operation: operation,
 		Context: operatorauth.OperationContext{
 			Application: strings.TrimSpace(applicationName),
@@ -311,7 +314,19 @@ func authorizeMCPOperation(ctx context.Context, operationID, target, environment
 			Target:      target,
 			Workspace:   strings.TrimSpace(workspace),
 		},
-	})
+	}
+	if localGrant != nil {
+		environmentID, err := deployment.EnvironmentID(target, environment)
+		if err != nil {
+			return err
+		}
+		request.EnvironmentID = environmentID
+		request.TargetEnvironmentID = request.EnvironmentID
+		request.ApplicationID = strings.TrimSpace(applicationName)
+		_, err = operatorauth.AuthorizeMachineOperationWithLocalGrant(ctx, request, localGrant)
+		return err
+	}
+	_, err := operatorauth.AuthorizeMachineOperation(ctx, request)
 	return err
 }
 

@@ -101,8 +101,13 @@ func EnsureLocalIssuer(dir string) (*LocalIssuer, error) {
 	if err != nil {
 		return nil, err
 	}
+	publicKeyDER, err := x509.MarshalPKIXPublicKey(&key.PublicKey)
+	if err != nil {
+		return nil, err
+	}
+	keyIDHash := sha256.Sum256(publicKeyDER)
 	now := time.Now().UTC()
-	ca := &x509.Certificate{SerialNumber: serial, Subject: pkix.Name{CommonName: "BaseHarbor Target Service Authority"}, NotBefore: now.Add(-time.Minute), NotAfter: now.Add(5 * 365 * 24 * time.Hour), IsCA: true, BasicConstraintsValid: true, MaxPathLenZero: true, KeyUsage: x509.KeyUsageCertSign | x509.KeyUsageCRLSign}
+	ca := &x509.Certificate{SerialNumber: serial, Subject: pkix.Name{CommonName: "BaseHarbor Target Service Authority"}, SubjectKeyId: append([]byte(nil), keyIDHash[:20]...), NotBefore: now.Add(-time.Minute), NotAfter: now.Add(5 * 365 * 24 * time.Hour), IsCA: true, BasicConstraintsValid: true, MaxPathLenZero: true, KeyUsage: x509.KeyUsageCertSign | x509.KeyUsageCRLSign}
 	der, err := x509.CreateCertificate(rand.Reader, ca, ca, &key.PublicKey, key)
 	if err != nil {
 		return nil, err
@@ -113,6 +118,19 @@ func EnsureLocalIssuer(dir string) (*LocalIssuer, error) {
 	}
 	data := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})
 	data = append(data, pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: private})...)
+	// Publish the empty revocation list before the authority file. issuer.pem
+	// is the commit marker for a newly created issuer: any failure before its
+	// atomic rename leaves only partial state, which CheckLocalIssuer rejects
+	// instead of silently regenerating or repairing an existing authority.
+	crl, err := x509.CreateRevocationList(rand.Reader, &x509.RevocationList{
+		Number: big.NewInt(1), ThisUpdate: now, NextUpdate: now.Add(24 * time.Hour),
+	}, ca, key)
+	if err != nil {
+		return nil, err
+	}
+	if err := writeLocalIssuerAtomic(filepath.Join(dir, "revocations.pem"), pem.EncodeToMemory(&pem.Block{Type: "X509 CRL", Bytes: crl})); err != nil {
+		return nil, err
+	}
 	if err := writeLocalIssuerAtomic(path, data); err != nil {
 		return nil, err
 	}

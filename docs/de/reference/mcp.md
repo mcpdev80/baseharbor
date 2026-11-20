@@ -64,6 +64,10 @@ Die aktuelle vollständige Registry wird durch Quelltests mit der tatsächlichen
 | `baseharbor.trust.install` | `mutating` | false | true |
 | `baseharbor.app.stop` | `mutating` | false | true |
 | `baseharbor.app.preflight` | `read_only` | false | false |
+| `baseharbor.app.perses.status` | `read_only` | false | false |
+| `baseharbor.app.perses.enable` | `mutating` | false | true |
+| `baseharbor.app.perses.disable` | `mutating` | false | true |
+| `baseharbor.app.perses.remove` | `destructive` | false | true |
 | `baseharbor.secret.list` | `read_only` | false | false |
 | `baseharbor.secret.set` | `mutating` | false | false |
 | `baseharbor.secret.delete` | `destructive` | false | true |

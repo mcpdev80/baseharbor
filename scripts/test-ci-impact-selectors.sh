@@ -33,6 +33,8 @@ for path in \
   cmd/baha/runtime_destroy_all.go \
   cmd/baha/management_remote_installation_destroy.go \
   cmd/baha/app_workload_integration_test.go \
+  internal/providers/runtime/podman/lifecycle.go \
+  internal/providers/runtime/podman/lifecycle_batch_test.go \
   .github/workflows/docker-runtime-acceptance.yml \
   .github/workflows/podman-acceptance.yml; do
   check scripts/ci-single-default-impact.sh "$path" true
