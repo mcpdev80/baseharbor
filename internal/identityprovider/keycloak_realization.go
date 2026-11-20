@@ -130,6 +130,9 @@ func (r *localKeycloakRealization) Apply(ctx context.Context) (KeycloakInstance,
 // without metrics collection keeps every gate fail-closed (no regression of the
 // 080 non-forgeability invariant).
 func (r *localKeycloakRealization) registerKeycloakSignals() error {
+	// Keep each Keycloak project's source distinct in the shared registry.
+	// Other providers include their compose project in the registration ID too.
+	registrationID := "keycloak:" + r.files.Project
 	placement, err := application.ResolveProviderPlacement(r.app, capability.ProviderKeycloak)
 	if err != nil {
 		return err
@@ -156,7 +159,7 @@ func (r *localKeycloakRealization) registerKeycloakSignals() error {
 		}
 	}
 	return observability.RegisterProviderSignals(observability.ProviderSignalRegistration{
-		ID:               "keycloak-metrics",
+		ID:               registrationID,
 		Descriptor:       capability.KeycloakIntegration,
 		Class:            class,
 		Scope:            placement.Scope,
