@@ -96,6 +96,43 @@ func TestMultiInstanceComposeLifecycleInCI(t *testing.T) {
 		if running[i] != want[i] {
 			t.Fatalf("unexpected running services: got %#v want %#v", running, want)
 		}
+		if want[i] == "postgres-analytics" || want[i] == "postgres-primary" {
+			// The official postgres image starts its entrypoint as root to
+			// initialize the data directory, then drops to the unprivileged
+			// postgres user before launching the server. The running server is
+			// verified to run non-root with zero effective capabilities below.
+			allowedEntrypointCaps := []string{"CHOWN", "DAC_READ_SEARCH", "FOWNER", "SETGID", "SETUID"}
+			requirements := containersecurity.Requirements{
+				ReadOnlyRootfs:      true,
+				DropAllCaps:         true,
+				NoNewPrivs:          true,
+				AllowRootEntrypoint: true,
+				AllowedCapAdd:       allowedEntrypointCaps,
+			}
+			if os.Getenv("BASEHARBOR_TEST_RUNTIME") == "podman" {
+				requirements.AllowedEffectiveCaps = []string{"CHOWN", "DAC_READ_SEARCH", "FOWNER", "SETGID", "SETUID"}
+			}
+			if err := containersecurity.VerifyComposeService(ctx, project, want[i], requirements); err != nil {
+				t.Fatalf("%s runtime security: %v", want[i], err)
+			}
+			const processSecurity = `seen=0
+for status in /proc/[0-9]*/status; do
+  [ -r "$status" ] || continue
+  name=$(awk '$1 == "Name:" { print $2; exit }' "$status" 2>/dev/null) || continue
+  case "$name" in postgres*) ;; *) continue ;; esac
+  uid=$(awk '$1 == "Uid:" { print $2; exit }' "$status" 2>/dev/null) || continue
+  caps=$(awk '$1 == "CapEff:" { print $2; exit }' "$status" 2>/dev/null) || continue
+  [ -n "$uid" ] && [ -n "$caps" ] || continue
+  seen=1
+  [ "$uid" != "0" ] || exit 1
+  case "$caps" in *[!0]*) exit 1 ;; esac
+done
+			[ "$seen" = "1" ]`
+			if _, err := compose.ExecProject(ctx, project, files.Compose, files.Env, want[i], "sh", "-ec", processSecurity); err != nil {
+				t.Fatalf("%s postgres server must run non-root without effective capabilities: %v", want[i], err)
+			}
+			continue
+		}
 		if err := containersecurity.VerifyComposeService(ctx, project, want[i], containersecurity.Requirements{
 			ReadOnlyRootfs: true, DropAllCaps: true, NoNewPrivs: true,
 		}); err != nil {
