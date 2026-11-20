@@ -480,7 +480,6 @@ jobs:
     if: github.event_name == 'pull_request' && (github.base_ref == 'develop' || startsWith(github.base_ref, 'lane-') || startsWith(github.base_ref, 'cli2-')) && github.event.pull_request.draft == false && needs.pr_native_impact.outputs.required == 'true'
     strategy:
       fail-fast: false
-      max-parallel: 2
       matrix: ${{ fromJSON(needs.pr_native_impact.outputs.matrix) }}
     runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
     timeout-minutes: 45
@@ -1316,7 +1315,6 @@ jobs:
     if: always() && github.event_name == 'pull_request' && (github.base_ref == 'develop' || startsWith(github.base_ref, 'lane-') || startsWith(github.base_ref, 'cli2-')) && github.event.pull_request.draft == false && needs.pr_plan.outputs.runtime_required == 'true' && needs.pr_candidate.result == 'success' && needs.pr_runner_interface.result == 'success' && (needs.pr_demo_pin.result == 'success' || needs.pr_consumer_pins.result == 'success')
     strategy:
       fail-fast: false
-      max-parallel: 2
       matrix: ${{ fromJSON(needs.pr_plan.outputs.runtime_matrix) }}
     uses: ./.github/workflows/pre-release-runtime-suite.yml
     permissions:
