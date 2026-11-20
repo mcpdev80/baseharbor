@@ -35,7 +35,15 @@ func TestSaveExpectedPreservesConcurrentConfiguration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	other.Targets["other"] = other.Targets["first"]
+	// Distinct stable UID: two Targets may never resolve to one UID, so the
+	// copied definition must carry its own identity, not a duplicate.
+	otherUID, _, uerr := MigrateTargetUID(TargetDefinition{})
+	if uerr != nil {
+		t.Fatal(uerr)
+	}
+	otherDef := other.Targets["first"]
+	otherDef.TargetUID = otherUID
+	other.Targets["other"] = otherDef
 	if err := other.Save(); err != nil {
 		t.Fatal(err)
 	}

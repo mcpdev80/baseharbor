@@ -28,7 +28,7 @@ func remoteApplicationCoreFixture(t *testing.T) (context.Context, deployment.Res
 	}
 	const owner = "11111111-1111-4111-8111-111111111111"
 	cfg.Access["connector"] = deployment.AccessDefinition{Provider: "baseharbor-node-connector", Reference: "node-owned"}
-	cfg.Targets["remote"] = deployment.TargetDefinition{TenantID: owner, Runtime: deployment.RuntimeDefinition{Provider: "podman"}, Access: deployment.TargetAccess{Reference: "connector"}}
+	cfg.Targets["remote"] = deployment.TargetDefinition{TargetUID: mustNewTargetUIDFixture(t), TenantID: owner, Runtime: deployment.RuntimeDefinition{Provider: "podman"}, Access: deployment.TargetAccess{Reference: "connector"}}
 	if err := cfg.Save(); err != nil {
 		t.Fatal(err)
 	}
@@ -137,6 +137,9 @@ func TestBoundApplicationCoreRejectsAnotherLocalInstallationBeforeBootstrap(t *t
 		t.Fatal(err)
 	}
 	cfg.Targets["foreign-local"] = cfg.Targets[core.Name]
+	foreignLocal := cfg.Targets["foreign-local"]
+	foreignLocal.TargetUID = mustNewTargetUIDFixture(t)
+	cfg.Targets["foreign-local"] = foreignLocal
 	if err := cfg.Save(); err != nil {
 		t.Fatal(err)
 	}

@@ -25,6 +25,9 @@ func TestGuidedWithdrawalPreferencesPreserveCanonicalOwners(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg.Targets["other-dev"] = cfg.Targets[target.Name]
+	otherDef := cfg.Targets["other-dev"]
+	otherDef.TargetUID = mustNewTargetUIDFixture(t)
+	cfg.Targets["other-dev"] = otherDef
 	if err := cfg.Save(); err != nil {
 		t.Fatal(err)
 	}
