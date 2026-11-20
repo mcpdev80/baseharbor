@@ -381,11 +381,18 @@ func RenameEnvironment(target, oldName, newName string) (EnvironmentRecord, erro
 			return EnvironmentRecord{}, fmt.Errorf("inspect destination %q: %w", newPath, dErr)
 		}
 		if dest.Identity == source.Identity {
-			// The destination already carries OUR identity: the rename is a no-op
-			// and this record is the result (idempotent, finding 4).
-			return dest, nil
+			// The destination can be a partial prior install: when the source
+			// still exists, continue under the registry lock to reconcile both
+			// records and remove the stale source. If the source is already gone,
+			// the rename completed and this is the idempotent result.
+			if _, sourceErr := os.Stat(oldPath); errors.Is(sourceErr, os.ErrNotExist) {
+				return dest, nil
+			} else if sourceErr != nil {
+				return EnvironmentRecord{}, fmt.Errorf("inspect source %q: %w", oldPath, sourceErr)
+			}
+		} else {
+			return EnvironmentRecord{}, fmt.Errorf("%w: destination %q already exists as %q", ErrEnvironmentAlreadyExists, newName, dest.Identity)
 		}
-		return EnvironmentRecord{}, fmt.Errorf("%w: destination %q already exists as %q", ErrEnvironmentAlreadyExists, newName, dest.Identity)
 	}
 
 	// Take the registry write lock for the whole check → move → remove so a
@@ -465,8 +472,19 @@ func RenameEnvironment(target, oldName, newName string) (EnvironmentRecord, erro
 						return fmt.Errorf("%w: destination %q now holds %q", ErrEnvironmentAlreadyExists, newName, cur.Identity)
 					}
 					// Destination already carries OUR identity: the rename is a
-					// no-op — the record is already correct. Converge on it.
-					moved = cur
+					// prior install may have stopped before source cleanup. Merge
+					// valid memberships from both copies, atomically refresh the
+					// destination, then remove the source so retry completes the
+					// interrupted rename.
+					merged, mErr := mergeRenamedEnvironmentAssociations(source, cur)
+					if mErr != nil {
+						return mErr
+					}
+					record, rErr := persistRenamedEnvironmentIdentity(oldPath, newHome, newPath, newName, merged)
+					if rErr != nil {
+						return rErr
+					}
+					moved = record
 					return nil
 				} else if !errors.Is(rErr, ErrEnvironmentBindingMismatch) {
 					// A corrupt or foreign binding at the destination is a race
@@ -500,7 +518,10 @@ func RenameEnvironment(target, oldName, newName string) (EnvironmentRecord, erro
 }
 
 func persistRenamedEnvironmentIdentity(oldPath, newHome, newPath, newName string, source EnvironmentRecord) (EnvironmentRecord, error) {
-	record := EnvironmentRecord{Target: source.Target, Name: newName, Identity: source.Identity}
+	if err := validateAssociations(source.Associations); err != nil {
+		return EnvironmentRecord{}, fmt.Errorf("source environment identity carries an invalid association: %w", err)
+	}
+	record := EnvironmentRecord{Target: source.Target, Name: newName, Identity: source.Identity, Associations: normalizeAssociations(source.Associations)}
 	data, err := json.MarshalIndent(record, "", "  ")
 	if err != nil {
 		return EnvironmentRecord{}, fmt.Errorf("encode environment identity: %w", err)
@@ -531,6 +552,18 @@ func persistRenamedEnvironmentIdentity(oldPath, newHome, newPath, newName string
 		return EnvironmentRecord{}, fmt.Errorf("remove stale old environment record: %w", err)
 	}
 	return record, nil
+}
+
+func mergeRenamedEnvironmentAssociations(source, destination EnvironmentRecord) (EnvironmentRecord, error) {
+	if err := validateAssociations(source.Associations); err != nil {
+		return EnvironmentRecord{}, fmt.Errorf("source environment identity carries an invalid association: %w", err)
+	}
+	if err := validateAssociations(destination.Associations); err != nil {
+		return EnvironmentRecord{}, fmt.Errorf("destination environment identity carries an invalid association: %w", err)
+	}
+	merged := append(append([]AssociationBinding(nil), source.Associations...), destination.Associations...)
+	source.Associations = normalizeAssociations(merged)
+	return source, nil
 }
 
 // EnvironmentID returns just the durable identity of a (Target, environment)
