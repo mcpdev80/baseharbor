@@ -97,8 +97,9 @@ renders; they never consult a second parallel source of truth.
   is reported explicitly with its machine result instead of a silent reroute.
 - `baha app exec [COMPONENT] [COMMAND [ARG...]] [-c NAME] [--cmd CMD]` opens
   the default shell when no command is given (same as `baha app shell`);
-  `--cmd` takes exactly one command string, delivered safely quoted as one
-  unit. The executed command's exit status is preserved.
+  `--cmd` takes exactly one command string and runs it through the workload's
+  POSIX shell; positional commands remain direct argv. The executed command's
+  exit status is preserved by `baha`.
 - `baha app urls [NAME] [-c NAME]... [--print] [--json]` lists only the
   application's own URLs and the GUI URLs of its bound app/shared services,
   each with its verified/unverified accessibility. Nothing is guessed, invented

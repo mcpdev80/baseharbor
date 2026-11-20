@@ -81,8 +81,9 @@ eine fehlende Wahl aus demselben geheimnissicheren Read-View, den
   ausdrücklich statt stillschweigend umgeleitet gemeldet.
 - `baha app exec [COMPONENT] [COMMAND [ARG...]] [-c NAME] [--cmd CMD]` öffnet
   ohne Command die Standard-Shell (wie `baha app shell`); `--cmd` nimmt genau
-  ein Command-String-Argument sicher zitiert als eine Einheit. Der Exit-Status
-  des ausgeführten Commands bleibt erhalten.
+  einen Command-String und führt ihn über die POSIX-Shell im Workload aus.
+  Positionsargumente bleiben direkte argv-Argumente. `baha` gibt den Exit-Status
+  des ausgeführten Commands weiter.
 - `baha app urls [NAME] [-c NAME]... [--print] [--json]` listet nur die URLs
   der Anwendung selbst und die GUI-URLs ihrer gebundenen App-/Shared-Dienste,
   jeweils mit verifiziertem oder ungeprüftem Zugriffsstatus. Nichts wird

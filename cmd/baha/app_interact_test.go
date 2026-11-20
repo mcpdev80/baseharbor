@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"syscall"
@@ -24,8 +25,8 @@ import (
 // Card 0428-063: guided app logs/exec/urls paths. These tests pin the slice:
 // guidance reads the SAME delivered read-view/status logic; missing choices
 // guide (unique derived, ambiguous listed); --no-input and non-terminals never
-// block and fail closed with actionable options; -c selections, safe quoting
-// of --cmd, exit-status preservation, app-bound URL listing with verified or
+// block and fail closed with actionable options; -c selections, workload-shell
+// parsing of --cmd, exit-status preservation, app-bound URL listing with verified or
 // unknown accessibility; and fail-closed authorization on remote Targets after
 // the app.show precedent.
 
@@ -167,6 +168,19 @@ func TestGuidedLogsParsesTailComponentsAndFollowJSONSplit(t *testing.T) {
 	if _, err := parseLogsOptions([]string{"--tail"}); err == nil {
 		t.Fatal("--tail without a value must fail closed")
 	}
+	filtered, err := parseLogsOptions([]string{"-c", "api,worker", "-c", "api", "--tail", "25", "-f"})
+	if err != nil || len(filtered.components) != 2 || filtered.components[0] != "api" || filtered.components[1] != "worker" {
+		t.Fatalf("repeated/comma-separated filters should deduplicate: %+v err=%v", filtered, err)
+	}
+	if got := workloadLogsCommandArgs(filtered, filtered.components); !reflect.DeepEqual(got, []string{"logs", "--tail", "25", "--follow", "api", "worker"}) {
+		t.Fatalf("selected component filters must reach the Compose invocation: %v", got)
+	}
+	if err := validateWorkloadLogComponents(filtered.components, []string{"api", "worker"}); err != nil {
+		t.Fatalf("declared component filters should pass validation: %v", err)
+	}
+	if err := validateWorkloadLogComponents([]string{"api", "database"}, []string{"api", "worker"}); err == nil {
+		t.Fatal("unknown component filters must fail closed")
+	}
 }
 
 func TestGuidedLogsJSONNeverFollowsAndFailsClosedNoninteractive(t *testing.T) {
@@ -228,6 +242,38 @@ func TestGuidedLogsValidationHappensBeforeAnyRuntimeCall(t *testing.T) {
 	}
 }
 
+func TestManagedLogGuidanceDoesNotClaimUnavailableReads(t *testing.T) {
+	var out bytes.Buffer
+	err := reportManagedLogGuidance(outputHuman, &out, resolvedApplication{
+		Target:   deployment.ResolvedTarget{Name: "local"},
+		Manifest: application.Manifest{Name: "demo", Environment: "dev"},
+	}, []string{"api", "worker"})
+	if err == nil || !strings.Contains(err.Error(), "not exposed") {
+		t.Fatalf("managed streaming stays explicitly unavailable: %v", err)
+	}
+	if strings.Contains(out.String(), "--tail") || !strings.Contains(out.String(), "no logs were read") {
+		t.Fatalf("guidance must not claim bounded reads that are unavailable: %s", out.String())
+	}
+	out.Reset()
+	if err := reportManagedLogGuidance(outputJSON, &out, resolvedApplication{
+		Target:   deployment.ResolvedTarget{Name: "local"},
+		Manifest: application.Manifest{Name: "demo", Environment: "dev"},
+	}, []string{"api", "worker"}); err != nil {
+		t.Fatal(err)
+	}
+	var result map[string]any
+	if err := json.Unmarshal(out.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	if _, exists := result["component"]; exists {
+		t.Fatalf("multiple filters must not be mislabeled as one component: %v", result)
+	}
+	components, ok := result["components"].([]any)
+	if !ok || len(components) != 2 || components[0] != "api" || components[1] != "worker" {
+		t.Fatalf("managed JSON must retain the multi-component selection: %v", result)
+	}
+}
+
 func TestGuidedExecParsesComponentCmdAndExitStatus(t *testing.T) {
 	selector, service, command, err := parseWorkloadExecArgs([]string{"api", "env"}, "exec")
 	if err != nil || service != "api" || len(command) != 1 || command[0] != "env" || len(selector) != 0 {
@@ -236,6 +282,15 @@ func TestGuidedExecParsesComponentCmdAndExitStatus(t *testing.T) {
 	selector, service, command, err = parseWorkloadExecArgs([]string{"-c", "api", "--cmd", "echo hi > /tmp/x"}, "exec")
 	if err != nil || service != "api" || len(command) != 1 || command[0] != "echo hi > /tmp/x" {
 		t.Fatalf("--cmd form must keep exactly one command unit: %v %q %v %v", selector, service, command, err)
+	}
+	if !hasWorkloadCommandFlag([]string{"-c", "api", "--cmd", command[0]}) {
+		t.Fatal("--cmd must be distinguished from positional argv")
+	}
+	if got := workloadExecCommandArgs(workloadInvocation{cmd: command[0]}, service); !reflect.DeepEqual(got, []string{"exec", "-T", "api", "sh", "-c", "echo hi > /tmp/x"}) {
+		t.Fatalf("--cmd must reach the workload shell as one command string: %v", got)
+	}
+	if got := workloadExecCommandArgs(workloadInvocation{argv: []string{"printf", "%s", "a b"}}, "api"); !reflect.DeepEqual(got, []string{"exec", "-T", "api", "printf", "%s", "a b"}) {
+		t.Fatalf("positional commands must remain direct argv: %v", got)
 	}
 	selector, service, command, err = parseWorkloadExecArgs([]string{"--app", "mailflow", "api", "ps", "flag"}, "exec")
 	if err != nil || service != "api" || len(command) != 2 || len(selector) != 2 {
@@ -260,6 +315,9 @@ func TestGuidedExecShellDefaultAndNoCommand(t *testing.T) {
 	if _, _, _, err := parseWorkloadExecArgs([]string{"api", "extra", "args"}, "shell"); err == nil {
 		t.Fatal("app shell accepts no command arguments")
 	}
+	if _, _, _, err := parseWorkloadExecArgs([]string{"--cmd", "echo ignored"}, "shell"); err == nil {
+		t.Fatal("app shell must reject --cmd instead of silently opening a shell")
+	}
 }
 
 func TestGuidedExecExitStatusIsPreserved(t *testing.T) {
@@ -273,14 +331,16 @@ func TestGuidedExecExitStatusIsPreserved(t *testing.T) {
 	if cli.ExitCode(preserveWorkloadExitStatus(errors.New("compose is unavailable"))) != 1 {
 		t.Fatal("a plain runtime failure must keep the runtime exit code 1")
 	}
-	var text string
-	if marker, ok := failure.(*cli.PresentedError); ok {
-		text = marker.Err.Error()
-	} else {
+	var marker *cli.PresentedError
+	if !errors.As(failure, &marker) {
 		t.Fatalf("the preserved status must be a presented failure, got %T", failure)
 	}
+	text := marker.Err.Error()
 	if !strings.Contains(text, "7") {
 		t.Fatalf("the exit status must survive in the message: %s", text)
+	}
+	if got := cli.ExitCode(failure); got != 7 {
+		t.Fatalf("the baha process exit status must preserve the child status: got %d want 7", got)
 	}
 }
 

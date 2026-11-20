@@ -37,6 +37,20 @@ func TestRuntimeErrorExitCode(t *testing.T) {
 	}
 }
 
+func TestExitCodeErrorPreservesWrappedProcessStatus(t *testing.T) {
+	err := WithExitCode(7, Presented(errors.New("workload command exited with status 7")))
+	if got := ExitCode(err); got != 7 {
+		t.Fatalf("expected child process status 7, got %d", got)
+	}
+	var presented *PresentedError
+	if !errors.As(err, &presented) {
+		t.Fatalf("the typed status must preserve the presented-error marker: %T", err)
+	}
+	if got := ExitCode(WithExitCode(256, errors.New("invalid status"))); got != 1 {
+		t.Fatalf("out-of-range process status must fall back to runtime failure, got %d", got)
+	}
+}
+
 func TestUnknownCommandSuggestsNearestMatch(t *testing.T) {
 	root := &Command{Name: "baha", Children: []*Command{{Name: "status"}, {Name: "doctor"}}}
 	err := root.Execute(context.Background(), []string{"statsu"}, &bytes.Buffer{}, &bytes.Buffer{})
