@@ -169,11 +169,6 @@ func cliLocalWorkloadOperation(args []string) string {
 	if len(args) > 0 && args[0] == "up" {
 		return "apply"
 	}
-	// Root `doctor` and `app doctor` inspect the same selected workload and
-	// must carry the same invocation-local authorization scope.
-	if len(args) > 0 && args[0] == "doctor" {
-		return "doctor"
-	}
 	return ""
 }
 

@@ -87,6 +87,13 @@ func ciIntegrationManagedLocalGateReason(args []string, target deployment.Resolv
 	}
 	operation := cliLocalWorkloadOperation(args)
 	managedWorkload := operatorauth.LocalWorkloadOperation(operation)
+	// Root doctor inspects the control plane and is authorized as
+	// control-plane.doctor, not as an app-bound local workload operation. The
+	// disposable acceptance gate may use its synthetic operator only for the
+	// exact read-only doctor forms below.
+	if !managedWorkload && ciIntegrationReadOnlyDoctor(args) {
+		managedWorkload = true
+	}
 	// Acceptance gates use the root destroy command to clean up their isolated
 	// local fixture. Keep it limited to the exact selected disposable target.
 	if !managedWorkload && ciIntegrationRootDestroy(args) {
