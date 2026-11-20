@@ -190,53 +190,6 @@ type ProviderSignalRegistration struct {
 	Legacy *LegacyReconciliation
 }
 
-// LegacyReconciliation carries the migration context a registration needs:
-// the legacy source it supersedes, the replacing deployment's project, the
-// caller's application name, and the owner->project maps that name each
-// owning application's canonical compose project, consulted in order.
-type LegacyReconciliation struct {
-	Source            LegacySource
-	Project           string
-	CallerApplication string
-	OwnerProjects     []map[string]string
-}
-
-// CanonicalMigrationIdentity reports whether a legacy record belongs to the
-// calling application itself and the caller's project carries the application
-// token: the record then converges onto the caller's canonical registration
-// identity instead of a derived beside-identity.
-func (r *LegacyReconciliation) CanonicalMigrationIdentity(source SignalSource, registrationID string) bool {
-	return source.Scope == capability.ScopeApplication && source.OwnerApplication != "" &&
-		source.OwnerApplication == r.CallerApplication &&
-		strings.Contains("-"+strings.ToLower(r.Project)+"-", "-"+strings.ToLower(source.OwnerApplication)+"-")
-}
-
-// ProjectFor resolves the compose project a legacy record migrates under: the
-// owner->project maps first (the realization computes those from the Target's
-// own deployments), then the record's own scoped ID project segment (an
-// already-migrated record stays exactly where the first migration booked it),
-// then any scoped record the same owner wrote, and finally the replacing
-// deployment's project.
-func (r *LegacyReconciliation) ProjectFor(source SignalSource, sources []SignalSource) string {
-	for _, ownerProject := range r.OwnerProjects {
-		if project, ok := ownerProject[source.OwnerApplication]; ok && strings.TrimSpace(project) != "" {
-			return project
-		}
-	}
-	if project, ok := scopedProjectOf(source.ID); ok {
-		return project
-	}
-	for _, candidate := range sources {
-		if candidate.OwnerApplication == "" || candidate.OwnerApplication != source.OwnerApplication {
-			continue
-		}
-		if project, ok := projectForApplication(candidate, source.OwnerApplication); ok {
-			return project
-		}
-	}
-	return r.Project
-}
-
 func RegisterProviderSignals(registration ProviderSignalRegistration) error {
 	if strings.TrimSpace(registration.ID) == "" {
 		return errors.New("provider observability registration requires id")
@@ -308,32 +261,7 @@ func RegisterProviderSignals(registration ProviderSignalRegistration) error {
 		// predates the ID scoping. A record already migrated under a project
 		// grammar is left where the earlier migration placed it.
 		if legacy := registration.Legacy; legacy != nil {
-			migrated := make([]SignalSource, 0, len(sources))
-			for _, existing := range sources {
-				if !legacy.Source.matches(existing) {
-					migrated = append(migrated, existing)
-					continue
-				}
-				// The canonical identity of the application that OWNS the
-				// record is its own registration identity; the record then
-				// continues there (the scoping convergence). A record no
-				// owner-identity resolves to migrates BESIDE every current
-				// registration under its derived identity - the owner's
-				// canonical APPLICATION project with the legacy signal name -
-				// never onto the caller's registration ID.
-				if legacy.CanonicalMigrationIdentity(existing, registration.ID) {
-					move := existing
-					move.ID = registration.ID
-					migrated = append(migrated, move)
-					continue
-				}
-				move := existing
-				own := canonicalApplicationProject(legacy.ProjectFor(existing, sources), existing.OwnerApplication)
-				move.ID = legacy.Source.ScopedID(existing.Provider, own)
-				move = stampLegacyTarget(move, own)
-				migrated = append(migrated, move)
-			}
-			sources = migrated
+			sources = RebookLegacySignals(*legacy, sources, registration.ID)
 		}
 		out := sources[:0]
 		for _, existing := range sources {
@@ -574,50 +502,6 @@ func ReconcileMatching(owned func(SignalSource) bool, desired []SignalSource) er
 // RegistryHasSignal reports whether the registry still carries one exact
 // signal registration. Unlike the placement-filtered listings it sees every
 // provider and owner under an ID, so reconciliation and prune contracts - and
-// their tests - assert retention and reclamation through it.
-func RegistryHasSignal(id string, provider capability.ProviderKind, kind SignalKind) (bool, error) {
-	path, err := registryPath()
-	if err != nil {
-		return false, err
-	}
-	sources, err := read(path)
-	if errors.Is(err, os.ErrNotExist) {
-		return false, nil
-	}
-	if err != nil {
-		return false, err
-	}
-	for _, source := range sources {
-		if source.ID == id && source.Provider == provider && source.Kind == kind {
-			return true, nil
-		}
-	}
-	return false, nil
-}
-
-// RegistryHasSource reports whether the registry carries (id, provider, kind)
-// with the exact owning application - the predicate the legacy migration's
-// tests use to prove a re-booked record kept its owner verbatim.
-func RegistryHasSource(id string, provider capability.ProviderKind, kind SignalKind, ownerApplication string) (bool, error) {
-	path, err := registryPath()
-	if err != nil {
-		return false, err
-	}
-	sources, err := read(path)
-	if errors.Is(err, os.ErrNotExist) {
-		return false, nil
-	}
-	if err != nil {
-		return false, err
-	}
-	for _, source := range sources {
-		if source.ID == id && source.Provider == provider && source.Kind == kind &&
-			source.OwnerApplication == ownerApplication {
-			return true, nil
-		}
-	}
-	return false, nil
-}
 
 // SignalKindForSignal maps a descriptor signal kind onto the registry's
 // SignalKind, the exported twin of the internal registration path.
@@ -906,25 +790,6 @@ func read(path string) ([]SignalSource, error) {
 		if err := source.Validate(); err != nil {
 			return nil, fmt.Errorf("invalid observability signal source %s/%q: %w", source.Kind, source.ID, err)
 		}
-	}
-	return sources, nil
-}
-
-// ListAll returns every source of record in the registry, unfiltered. It
-// exists for callers (the legacy signal migration and its tests) that must
-// map owners to their deployments across the whole registry, which the
-// kind- and placement-scoped List surface cannot express.
-func ListAll() ([]SignalSource, error) {
-	path, err := registryPath()
-	if err != nil {
-		return nil, err
-	}
-	sources, err := read(path)
-	if errors.Is(err, os.ErrNotExist) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
 	}
 	return sources, nil
 }
