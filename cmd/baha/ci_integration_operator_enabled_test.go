@@ -202,6 +202,19 @@ func TestCIIntegrationOperatorIsExplicitlyScopedToManagedLocalGate(t *testing.T)
 	if err := registerInstallationForTarget(t, target.Name); err != nil {
 		t.Fatalf("register local Core fixture: %v", err)
 	}
+	for _, args := range [][]string{{"status"}, {"status", "--json"}, {"status", "--output", "json"}} {
+		if !ciIntegrationReadOnlyStatus(args) {
+			t.Errorf("canonical read-only status %v was not recognized", args)
+		}
+		if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), args)); !ok {
+			t.Errorf("read-only managed-gate status %v did not receive its CI operator", args)
+		}
+	}
+	for _, args := range [][]string{{"status", "--fix"}, {"status", "--yes"}, {"status", "--json", "--fix"}, {"status", "--output", "text"}} {
+		if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), args)); ok {
+			t.Errorf("mutating or noncanonical managed-gate status %v unexpectedly received its CI operator", args)
+		}
+	}
 
 	t.Setenv("BASEHARBOR_DEMO_OPERATOR_GATE", "")
 	if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), plan)); ok {
