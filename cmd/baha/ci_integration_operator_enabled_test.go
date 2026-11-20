@@ -293,12 +293,12 @@ func TestCIIntegrationOperatorAllowsOnlyGuidedDeveloperDomainAndAppNew(t *testin
 	if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), []string{"dev", "domain"})); !ok {
 		t.Fatal("exact guided developer-domain probe did not receive its CI operator")
 	}
-	for _, args := range [][]string{{"app", "new"}, {"app", "edit"}, {"app", "footprint", "show", "-o", "json"}} {
+	for _, args := range [][]string{{"app", "new"}, {"app", "edit"}, {"app", "footprint", "show", "-o", "json"}, {"mcp", "serve"}} {
 		if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), args)); !ok {
 			t.Errorf("exact guided app acceptance operation %v did not receive its CI operator", args)
 		}
 	}
-	for _, args := range [][]string{{"dev", "domain", "--json"}, {"dev", "credentials"}, {"dev", "token"}, {"app", "new", "--yes"}, {"app", "edit", "--yes"}, {"app", "footprint", "show", "--json"}} {
+	for _, args := range [][]string{{"dev", "domain", "--json"}, {"dev", "credentials"}, {"dev", "token"}, {"app", "new", "--yes"}, {"app", "edit", "--yes"}, {"app", "footprint", "show", "--json"}, {"mcp"}, {"mcp", "serve", "--help"}, {"mcp", "serve", "extra"}} {
 		if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), args)); ok {
 			t.Errorf("noncanonical or unrelated developer command %v unexpectedly received the CI operator", args)
 		}
@@ -309,6 +309,9 @@ func TestCIIntegrationOperatorAllowsOnlyGuidedDeveloperDomainAndAppNew(t *testin
 	t.Setenv("BASEHARBOR_TARGET", lifecycle.Name)
 	if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), []string{"dev", "domain"})); ok {
 		t.Fatal("guided developer-domain exception escaped into another selected gate")
+	}
+	if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), []string{"mcp", "serve"})); ok {
+		t.Fatal("guided MCP server exception escaped into another selected gate")
 	}
 }
 

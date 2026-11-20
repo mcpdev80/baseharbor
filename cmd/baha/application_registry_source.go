@@ -229,6 +229,11 @@ func (s RegistrySource) run(ctx context.Context, action, ref string) (string, er
 		// complete repository@digest identity so it can prove that the response
 		// belongs to the requested image repository.
 		args = append(args, "--full-reference")
+		// The isolated CI registry on localhost speaks plain HTTP. Keep this
+		// exception local; configured enterprise registries retain HTTPS.
+		if isLocalRuntimeImageReference(ref) {
+			args = append(args, "--plain-http")
+		}
 	}
 	args = append(args, ref)
 	return run(ctx, "oras", args...)
