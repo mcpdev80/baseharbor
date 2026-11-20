@@ -192,7 +192,7 @@ func TestObservabilityFullStackAcceptanceInCI(t *testing.T) {
 	}
 
 	if err := runWithIO(withProviderChangeConsent(ctx, consent), []string{"--verbose", "app", "apply"}, &out, &out); err != nil {
-		t.Fatal("full-stack observability apply failed")
+		t.Fatalf("full-stack observability apply failed: %v\n%s", err, out.String())
 	}
 	if !strings.Contains(out.String(), "application and requested infrastructure verified") {
 		t.Fatal("apply output missing final verified-ready state")
