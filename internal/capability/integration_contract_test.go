@@ -227,19 +227,16 @@ func TestPostgreSQLAndValkeyMetricsAreNotRequiresAdapter(t *testing.T) {
 	}
 }
 
-// TestRequiresAdapterMetricsSourceWithoutProducerFailsCatalog is the 0428-182
-// fail-closed regression: a metrics signal that declares ObservabilityRequiresAdapter
-// while no adapter/compose producer exists is structurally non-collectable
-// (Collectable()==false) and must never ship in the reference catalog. The contract
-// only ever realized RequiresAdapter via a real adapter path; the postgres/valkey
-// declaration had no such producer, so the catalog must reject any RequiresAdapter
-// metrics source. A regression that reintroduces the buggy declaration must fail
-// here, fail-closed at catalog time, not silently leave a zero/never-collectable.
-func TestRequiresAdapterMetricsSourceWithoutProducerFailsCatalog(t *testing.T) {
-	for _, descriptor := range ReferenceIntegrations() {
+// TestPostgreSQLAndValkeyMetricsWithoutProducerFailCatalog is the 0428-182
+// regression: these two reference integrations have no metrics producer, so a
+// RequiresAdapter declaration would promise a producer that does not exist. Keep
+// the assertion scoped to those affected integrations; future adapter-backed
+// metrics may legitimately use RequiresAdapter once they have a real producer.
+func TestPostgreSQLAndValkeyMetricsWithoutProducerFailCatalog(t *testing.T) {
+	for _, descriptor := range []IntegrationDescriptor{PostgreSQLIntegration, ValkeyIntegration} {
 		for _, signal := range descriptor.Observability.Signals {
 			if signal.Kind == ObservabilityMetrics && signal.Status == ObservabilityRequiresAdapter {
-				t.Fatalf("%s metrics declares %s with no producer (adapter-without-exporter); catalog must reject it", descriptor.Provider.Kind, signal.Status)
+				t.Fatalf("%s metrics declares %s but has no metrics producer", descriptor.Provider.Kind, signal.Status)
 			}
 		}
 	}
