@@ -96,7 +96,7 @@ func TestMachineCoverageCIRealTreeAndJSONClassification(t *testing.T) {
 func TestMCPRegistrationCIInProcessDiscoverAndInvoke(t *testing.T) {
 	configureTestTarget(t)
 	session := workspaceMutationClient(t)
-	ctx := context.Background()
+	ctx := testOperatorContext(context.Background())
 	result, err := session.ListTools(ctx, nil)
 	if err != nil || result == nil || len(result.Tools) == 0 {
 		t.Fatalf("in-process tools/list failed: %+v %v", result, err)
