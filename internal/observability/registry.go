@@ -499,10 +499,6 @@ func ReconcileMatching(owned func(SignalSource) bool, desired []SignalSource) er
 	})
 }
 
-// RegistryHasSignal reports whether the registry still carries one exact
-// signal registration. Unlike the placement-filtered listings it sees every
-// provider and owner under an ID, so reconciliation and prune contracts - and
-
 // SignalKindForSignal maps a descriptor signal kind onto the registry's
 // SignalKind, the exported twin of the internal registration path.
 func SignalKindForSignal(kind capability.ObservabilitySignalKind) (SignalKind, error) {

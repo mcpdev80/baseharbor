@@ -387,16 +387,12 @@ func RegistryHasSource(id string, provider capability.ProviderKind, kind SignalK
 	return false, nil
 }
 
+// RegistryHasSignal reports whether the registry still carries one exact
+// signal registration. Unlike the placement-filtered listings it sees every
+// provider and owner under an ID, so reconciliation and prune contracts - and
 // their tests - assert retention and reclamation through it.
 func RegistryHasSignal(id string, provider capability.ProviderKind, kind SignalKind) (bool, error) {
-	path, err := registryPath()
-	if err != nil {
-		return false, err
-	}
-	sources, err := read(path)
-	if errors.Is(err, os.ErrNotExist) {
-		return false, nil
-	}
+	sources, err := ListAll()
 	if err != nil {
 		return false, err
 	}
