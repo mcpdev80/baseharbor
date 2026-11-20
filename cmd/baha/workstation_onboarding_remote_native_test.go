@@ -113,7 +113,7 @@ func TestWorkstationOnboardingRemoteNativeInCI(t *testing.T) {
 		t.Setenv("BASEHARBOR_STATE_DIR", workstationRoot)
 		t.Setenv("BASEHARBOR_TARGET", "")
 		var output bytes.Buffer
-		if err := runOnboardImport(ctx, []string{invitation}, &output); err != nil {
+		if err := runOnboardImport(testOperatorContext(ctx), []string{invitation}, &output); err != nil {
 			t.Fatalf("fresh workstation cannot enroll against the live Core: %v", err)
 		}
 		cfg, err := deployment.LoadConfig()
