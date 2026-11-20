@@ -569,9 +569,9 @@ func httpsPersesClient(t *testing.T, dir string) *http.Client {
 				Timeout: 5 * time.Second,
 			}).DialContext,
 			TLSClientConfig: &tls.Config{
-				RootCAs:    pool,
+				RootCAs:      pool,
 				Certificates: []tls.Certificate{cert},
-				ServerName: "localhost",
+				ServerName:   "localhost",
 			},
 		},
 	}
