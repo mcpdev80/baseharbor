@@ -158,6 +158,30 @@ func (r *localKeycloakRealization) registerKeycloakSignals() error {
 			Target:  "keycloak:9000",
 		}
 	}
+
+	// 0428-168 migration: the pre-scoping runtime wrote its Keycloak metrics
+	// source of record under the literal id "keycloak-metrics". The new scoping
+	// ID would otherwise replace that entry and drop it from the registry
+	// (ListMetrics/RegistryHasSignal see nothing of record, and its own Remove
+	// cannot find it). Re-book the legacy source onto the scoping ID before the
+	// new registration, so the source stays visible and removable under its new
+	// ID. The reconciliation is idempotent and no-mutation: an already-migrated
+	// registry and a legacy source already carried under the scoping ID leave
+	// the file untouched, and a same-ID registration of a foreign provider is
+	// never rewritten. The new scoping-ID registration then replaces the
+	// re-booked entry cleanly, exactly as it replaces any current ID.
+	if err := observability.ReconcileLegacySignals(
+		observability.LegacySource{
+			ID:        observability.LegacyKeycloakMetricsID,
+			Providers: []capability.ProviderKind{capability.ProviderKeycloak},
+		},
+		registrationID,
+		map[capability.ProviderKind]struct{}{capability.ProviderKeycloak: {}},
+		nil,
+	); err != nil {
+		return err
+	}
+
 	return observability.RegisterProviderSignals(observability.ProviderSignalRegistration{
 		ID:               registrationID,
 		Descriptor:       capability.KeycloakIntegration,
