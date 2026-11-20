@@ -154,6 +154,9 @@ func assertOrganizationParityEffective(t *testing.T, effective orgconfig.Effecti
 
 func TestOrganizationCheckDoesNotReplaceAndUpdateRequiresApproval(t *testing.T) {
 	root := t.TempDir()
+	if err := os.Chmod(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(root, "config"))
 	t.Setenv("XDG_CACHE_HOME", filepath.Join(root, "cache"))
 	source := filepath.Join(root, "organization.yaml")
