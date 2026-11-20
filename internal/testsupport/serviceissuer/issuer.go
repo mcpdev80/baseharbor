@@ -5,6 +5,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
@@ -144,6 +145,27 @@ func (i *Issuer) BaseSerial(_ context.Context) (string, error) {
 
 func (i *Issuer) BaseExpiry(_ context.Context) (time.Time, error) {
 	return i.ca.NotAfter.UTC(), nil
+}
+
+func (i *Issuer) CertificateFor(t testing.TB, commonName string, dnsNames []string, ips []net.IP) tls.Certificate {
+	t.Helper()
+	if len(ips) == 0 {
+		ips = append(append([]net.IP(nil), ips...), net.ParseIP("127.0.0.1"), net.ParseIP("::1"))
+	}
+	issued, err := i.Issue(context.Background(), serviceaccess.CertificateRequest{
+		CommonName:  commonName,
+		DNSNames:    append([]string(nil), dnsNames...),
+		IPAddresses: ips,
+		TTL:         time.Hour,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pair, err := tls.X509KeyPair(issued.Certificate, issued.PrivateKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return pair
 }
 
 var _ serviceaccess.Issuer = (*Issuer)(nil)
