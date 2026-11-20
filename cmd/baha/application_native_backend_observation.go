@@ -100,30 +100,14 @@ func observeNativeBackendProviderFacts(ctx context.Context, resolved resolvedApp
 	for _, instance := range registry.Instances {
 		resources, err := nativeBackendOwnedResourceUnion(intents, files, &instance)
 		if err != nil || len(resources) == 0 {
-			// A Target-registered application SQL instance can be intentionally
-			// absent from the previous applied workload. Derive only its
-			// canonical inspection names from the retained Target binding;
-			// the actual runtime inspector must still prove measured absence.
-			if instance.Provider.Kind != capability.ProviderPostgreSQL ||
-				instance.Scope != capability.ScopeApplication ||
-				instance.Ownership != capability.OwnershipBaseHarbor ||
-				instance.OwnerApplicationID != resolved.Manifest.ApplicationID ||
-				instance.OwnerEnvironment != resolved.Manifest.Environment {
+			// A Target-registered application SQL or document-database instance
+			// can be intentionally absent from the previous applied workload.
+			// Derive only canonical inspection names from its retained binding;
+			// the runtime inspector must still prove measured presence/absence.
+			inspectionManifest, ok := nativeBackendBindingInspectionManifest(resolved.Manifest, instance, registry.Bindings)
+			if !ok {
 				continue
 			}
-			name := ""
-			for _, binding := range registry.Bindings {
-				if binding.ProviderInstanceID == instance.ID &&
-					binding.ApplicationID == resolved.Manifest.ApplicationID &&
-					binding.Environment == resolved.Manifest.Environment &&
-					binding.Resource.Kind == capability.SQL {
-					name = binding.Resource.Name
-				}
-			}
-			if name == "" {
-				continue
-			}
-			inspectionManifest := application.WithSQLInstances(resolved.Manifest, name)
 			resources, err = application.NativeBackendInstanceResources(inspectionManifest, files, instance)
 			if err != nil || len(resources) == 0 {
 				continue
@@ -135,4 +119,34 @@ func observeNativeBackendProviderFacts(ctx context.Context, resolved resolvedApp
 		count, state := observeCanonicalProviderContainers(provider.Kind(), files.Project, resources, containers)
 		facts[instance.ID] = application.ProviderFact{Target: resolved.Target.Name, State: state, Core: application.CoreNotRequired, Dependencies: []string{}, Containers: application.Quantity{Value: &count, Classification: "measured", Source: "protected canonical applied backend intent and native ownership inventory"}, MemoryBytes: application.Quantity{Classification: "unknown"}}
 	}
+}
+
+func nativeBackendBindingInspectionManifest(manifest application.Manifest, instance capability.ProviderInstance, bindings []capability.ProviderBinding) (application.Manifest, bool) {
+	if instance.Scope != capability.ScopeApplication || instance.Ownership != capability.OwnershipBaseHarbor ||
+		instance.OwnerApplicationID != manifest.ApplicationID || instance.OwnerEnvironment != manifest.Environment {
+		return application.Manifest{}, false
+	}
+	var kind capability.Kind
+	var withName func(application.Manifest, string) application.Manifest
+	switch instance.Provider.Kind {
+	case capability.ProviderPostgreSQL:
+		kind = capability.SQL
+		withName = func(m application.Manifest, name string) application.Manifest {
+			return application.WithSQLInstances(m, name)
+		}
+	case capability.ProviderMongoDB:
+		kind = capability.DocumentDatabase
+		withName = func(m application.Manifest, name string) application.Manifest {
+			return application.WithDocumentDatabaseInstances(m, name)
+		}
+	default:
+		return application.Manifest{}, false
+	}
+	for _, binding := range bindings {
+		if binding.ProviderInstanceID == instance.ID && binding.ApplicationID == manifest.ApplicationID &&
+			binding.Environment == manifest.Environment && binding.Resource.Kind == kind && binding.Resource.Name != "" {
+			return withName(manifest, binding.Resource.Name), true
+		}
+	}
+	return application.Manifest{}, false
 }
