@@ -779,9 +779,11 @@ def openbao_retry_checks(diff, repository='.', context_repository=None,
 
 
 def supported_pr_target_branch(branch):
-    """Accept develop and non-empty stacked-lane PR targets only."""
+    """Accept develop and non-empty lane/CLI stack PR targets only."""
     return (branch == 'develop' or
-            isinstance(branch, str) and branch.startswith('lane-') and len(branch) > 5)
+            isinstance(branch, str) and (
+                branch.startswith('lane-') and len(branch) > 5 or
+                branch.startswith('cli2-') and len(branch) > 5))
 
 
 
