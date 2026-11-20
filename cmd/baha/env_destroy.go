@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/evidence"
@@ -31,8 +32,8 @@ func envDestroyCommand() *cli.Command {
 			{
 				Name:    "destroy",
 				Summary: "Destroy an environment and its environment-scoped deployments",
-				Usage:   "baha env destroy [NAME] [--keep-data | --delete-data] [--yes | --no-input] [-o json|--output json|--json]",
-				Long:    "Removes the selected environment's identity after previewing its environment-scoped deployments. Global apps (deployed in other environments), other environments, shared services and node hosts are preserved. Data choice defaults to KEEP (persistent data and recovery material are retained); --delete-data requests permanent data deletion and requires a separate explicit consent.",
+				Usage:   "baha env destroy [NAME] [--keep-data | --delete-data [--confirm-delete-data]] [--yes | --no-input] [-o json|--output json|--json]",
+				Long:    "Retires the selected environment's scoped deployments before removing its identity. KEEP stops scoped runtimes while retaining persistent data, recovery material and deployment owners; --delete-data permanently destroys scoped deployments and requires separate explicit consent. Global apps deployed in other environments, other environments, shared services and node hosts are preserved.",
 				Run:     envDestroyCommandRun,
 			},
 		},
@@ -49,7 +50,7 @@ func inspectEnvCommand(ctx context.Context, args []string, out, errOut io.Writer
 	case "destroy":
 		return envDestroyCommandRun(ctx, args[1:], out, errOut)
 	case "--help", "-h":
-		fmt.Fprintln(out, "Usage: baha env [show|destroy <NAME>] [-o json|--output json|--json]")
+		fmt.Fprintln(out, "Usage: baha env [show|destroy <NAME> [--keep-data|--delete-data [--confirm-delete-data]]] [-o json|--output json|--json]")
 		fmt.Fprintln(out, "  show       Resolve and report the durable identity of the selected environment.")
 		fmt.Fprintln(out, "  destroy    Destroy an environment and its environment-scoped deployments.")
 		return nil
@@ -85,7 +86,7 @@ func envDestroyCommandRun(ctx context.Context, args []string, out, errOut io.Wri
 	if err != nil {
 		return err
 	}
-	envName, dataChoice, confirmed, err := parseEnvDestroyArgs(filtered)
+	envName, dataChoice, confirmed, deleteDataConfirmed, err := parseEnvDestroyArgs(filtered)
 	if err != nil {
 		return err
 	}
@@ -134,25 +135,35 @@ func envDestroyCommandRun(ctx context.Context, args []string, out, errOut io.Wri
 
 	// Without confirmation we stop here (the operator can re-run with --yes).
 	if !confirmed {
-		fmt.Fprintln(errOut, "No changes were made. Re-run with --yes to destroy the environment and its environment-scoped deployments.")
+		fmt.Fprintln(errOut, "No changes were made. Re-run with --yes to retire the scoped deployments and remove the environment identity after all steps succeed.")
 		return nil
 	}
 
 	// Explicit separate consent for destructive data deletion.
 	if dataChoice == deployment.EnvironmentDestroyDeleteData {
-		if !confirmedDataDeletion(ctx, out) {
+		if !confirmedDataDeletion(ctx, out, deleteDataConfirmed) {
 			fmt.Fprintln(errOut, "Data deletion consent not given; no changes were made.")
 			return nil
 		}
 	}
 
-	if err := deployment.DestroyEnvironmentIdentity(target.Name, envName, dataChoice); err != nil {
+	ctx = withApplicationInput(ctx, runtimeInput)
+	ctx = withTargetOverride(ctx, target.Name)
+	lifecycleOut, lifecycleErr := out, errOut
+	if format == outputJSON {
+		lifecycleOut, lifecycleErr = io.Discard, io.Discard
+	}
+	apply := func(applyCtx context.Context, dep deployment.EnvironmentDestroyDeployment, choice deployment.EnvironmentDestroyDataChoice) error {
+		return executeEnvironmentScopedDestroy(applyCtx, dep, choice, lifecycleOut, lifecycleErr)
+	}
+	if err := applyAndRemoveEnvironmentIdentity(ctx, target.Name, envName, scope, apply); err != nil {
+		fmt.Fprintf(errOut, "Environment destroy incomplete; identity retained so the operation can be retried: %v\n", err)
 		return err
 	}
 
-	detail := "environment identity removed; environment-scoped deployments left in place (data preserved)"
+	detail := "environment identity removed; scoped runtimes retired; persistent data, recovery material and deployment owners retained"
 	if dataChoice == deployment.EnvironmentDestroyDeleteData {
-		detail = "environment identity removed and environment-scoped data deletion consented"
+		detail = "environment-scoped deployments and owned data destroyed; environment identity removed"
 	}
 	if auditErr := recordEnvDestroyAudit(target.Name, envName, detail); auditErr != nil {
 		fmt.Fprintf(errOut, "Warning: could not record destroy audit: %v\n", auditErr)
@@ -179,7 +190,11 @@ func renderEnvDestroyPlan(out io.Writer, scope deployment.EnvironmentDestroyScop
 	if len(scope.Scoped) == 0 {
 		fmt.Fprintln(out, "No environment-scoped deployments found.")
 	} else {
-		fmt.Fprintln(out, "Would be removed (environment-scoped):")
+		if scope.DataChoice == string(deployment.EnvironmentDestroyKeepData) {
+			fmt.Fprintln(out, "Would be stopped (environment-scoped; data and deployment owners retained):")
+		} else {
+			fmt.Fprintln(out, "Would be destroyed (environment-scoped; owned data and deployment registrations removed):")
+		}
 		for _, d := range scope.Scoped {
 			fmt.Fprintf(out, "  - %s (%s) [%s]\n", d.Application, d.ApplicationID, d.Scope)
 		}
@@ -202,11 +217,92 @@ func renderEnvDestroyPlan(out io.Writer, scope deployment.EnvironmentDestroyScop
 	}
 }
 
+// executeEnvironmentScopedDestroy delegates each exact deployment identity to
+// the existing application lifecycle. KEEP uses app-stop semantics so its
+// canonical deployment owner and persistent/recovery data remain available;
+// DELETE uses full destruction. UUID selection avoids routing by a mutable app
+// name and confines each operation to the authorized deployment.
+func executeEnvironmentScopedDestroy(ctx context.Context, dep deployment.EnvironmentDestroyDeployment, choice deployment.EnvironmentDestroyDataChoice, out, errOut io.Writer) error {
+	args := []string{"--uuid", dep.DeploymentID, "--yes"}
+	if choice == deployment.EnvironmentDestroyKeepData {
+		ctx = context.WithValue(ctx, applicationStopModeKey{}, true)
+	}
+	return executeApplicationDestroyLifecycle(ctx, application.Store{}, args, out, errOut)
+}
+
+// applyEnvironmentDestroyScope applies only verified scoped deployments. It
+// verifies each lifecycle's durable result before moving to the next member;
+// on any error the caller retains the environment identity, allowing a retry
+// to recompute the remaining/current scope safely.
+func applyEnvironmentDestroyScope(ctx context.Context, scope deployment.EnvironmentDestroyScope, apply func(context.Context, deployment.EnvironmentDestroyDeployment, deployment.EnvironmentDestroyDataChoice) error) error {
+	if apply == nil {
+		return fmt.Errorf("environment destroy lifecycle is unavailable")
+	}
+	choice, err := deployment.EnvironmentDestroyDataChoice(scope.DataChoice).Validate()
+	if err != nil {
+		return err
+	}
+	if scope.IsFailClosed() {
+		return fmt.Errorf("environment destroy scope is fail-closed: %s", strings.Join(scope.FailClosed, "; "))
+	}
+	for _, dep := range scope.Scoped {
+		if !dep.OwnerVerified || dep.DeploymentID == "" || dep.Environment != scope.Environment || dep.Scope != "scoped" {
+			return fmt.Errorf("deployment ownership is not verified for %s; refusing environment destroy", dep.Application)
+		}
+		if err := apply(ctx, dep, choice); err != nil {
+			return fmt.Errorf("process scoped deployment %s (%s): %w", dep.Application, dep.DeploymentID, err)
+		}
+		present, err := environmentDestroyDeploymentPresent(scope.Target, dep.DeploymentID)
+		if err != nil {
+			return fmt.Errorf("verify scoped deployment %s (%s): %w", dep.Application, dep.DeploymentID, err)
+		}
+		if choice == deployment.EnvironmentDestroyKeepData && !present {
+			return fmt.Errorf("verify retained deployment owner %s (%s): deployment record is missing", dep.Application, dep.DeploymentID)
+		}
+		if choice == deployment.EnvironmentDestroyDeleteData && present {
+			return fmt.Errorf("verify destroyed deployment %s (%s): deployment record remains", dep.Application, dep.DeploymentID)
+		}
+	}
+	return nil
+}
+
+func applyAndRemoveEnvironmentIdentity(ctx context.Context, target, envName string, scope deployment.EnvironmentDestroyScope, apply func(context.Context, deployment.EnvironmentDestroyDeployment, deployment.EnvironmentDestroyDataChoice) error) error {
+	if scope.Target != target || scope.Environment != envName {
+		return fmt.Errorf("environment destroy scope binding changed; expected %s/%s, got %s/%s", target, envName, scope.Target, scope.Environment)
+	}
+	if _, err := deployment.EnvironmentDestroyDataChoice(scope.DataChoice).Validate(); err != nil {
+		return err
+	}
+	if err := applyEnvironmentDestroyScope(ctx, scope, apply); err != nil {
+		return err
+	}
+	if err := deployment.DestroyEnvironmentIdentity(target, envName, deployment.EnvironmentDestroyDataChoice(scope.DataChoice)); err != nil {
+		return fmt.Errorf("remove environment identity after verified deployment processing: %w", err)
+	}
+	return nil
+}
+
+func environmentDestroyDeploymentPresent(target, deploymentID string) (bool, error) {
+	records, err := deployment.ListDeployments(target)
+	if err != nil {
+		return false, err
+	}
+	for _, record := range records {
+		if record.Identity.DeploymentID == deploymentID {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 // confirmedDataDeletion prompts for a typed confirmation when the operator is
-// on a terminal; non-interactive callers (no-input) never block because the
-// caller already required --yes for the destructive choice.
-func confirmedDataDeletion(ctx context.Context, out io.Writer) bool {
+// on a terminal. A non-interactive invocation must provide the separate
+// --confirm-delete-data flag in addition to --yes.
+func confirmedDataDeletion(ctx context.Context, out io.Writer, explicitFlag bool) bool {
 	if noInput(ctx) {
+		return explicitFlag
+	}
+	if explicitFlag {
 		return true
 	}
 	fmt.Fprintln(out, "Type DELETE to confirm permanent data deletion of environment-scoped data:")
@@ -252,7 +348,7 @@ func resolveEnvSelection() (deployment.ResolvedTarget, string, error) {
 
 // parseEnvDestroyArgs parses the positional environment NAME, the data-choice
 // flag and the confirmation flag.
-func parseEnvDestroyArgs(args []string) (envName string, dataChoice deployment.EnvironmentDestroyDataChoice, confirmed bool, err error) {
+func parseEnvDestroyArgs(args []string) (envName string, dataChoice deployment.EnvironmentDestroyDataChoice, confirmed, deleteDataConfirmed bool, err error) {
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
 		switch {
@@ -264,11 +360,13 @@ func parseEnvDestroyArgs(args []string) (envName string, dataChoice deployment.E
 			dataChoice = deployment.EnvironmentDestroyKeepData
 		case arg == "--delete-data":
 			dataChoice = deployment.EnvironmentDestroyDeleteData
+		case arg == "--confirm-delete-data":
+			deleteDataConfirmed = true
 		case strings.HasPrefix(arg, "-"):
-			return "", "", false, usageError("unknown option "+arg, "Run 'baha env destroy --help' for available options.")
+			return "", "", false, false, usageError("unknown option "+arg, "Run 'baha env destroy --help' for available options.")
 		default:
 			if envName != "" {
-				return "", "", false, usageError("baha env destroy accepts at most one NAME", "Inside an environment scope omit NAME.")
+				return "", "", false, false, usageError("baha env destroy accepts at most one NAME", "Inside an environment scope omit NAME.")
 			}
 			envName = arg
 		}
@@ -277,17 +375,20 @@ func parseEnvDestroyArgs(args []string) (envName string, dataChoice deployment.E
 		dataChoice = deployment.EnvironmentDestroyKeepData
 	}
 	if _, valErr := dataChoice.Validate(); valErr != nil {
-		return "", "", false, valErr
+		return "", "", false, false, valErr
+	}
+	if deleteDataConfirmed && dataChoice != deployment.EnvironmentDestroyDeleteData {
+		return "", "", false, false, usageError("--confirm-delete-data requires --delete-data", "Specify both flags to explicitly authorize non-interactive data deletion.")
 	}
 	if strings.TrimSpace(envName) == "" {
 		envName = strings.TrimSpace(os.Getenv("BASEHARBOR_ENVIRONMENT"))
 	}
 	if strings.TrimSpace(envName) == "" {
-		return "", "", false, machine.NewError(machine.ErrorConflict,
+		return "", "", false, false, machine.NewError(machine.ErrorConflict,
 			"no environment selected: pass NAME or set BASEHARBOR_ENVIRONMENT",
 			"Run 'baha env destroy <NAME>' or set BASEHARBOR_ENVIRONMENT.", false)
 	}
-	return envName, dataChoice, confirmed, nil
+	return envName, dataChoice, confirmed, deleteDataConfirmed, nil
 }
 
 // envShowResult is the JSON payload for `baha env show`.
