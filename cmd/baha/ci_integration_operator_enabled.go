@@ -4,9 +4,12 @@ package main
 
 import (
 	"context"
+	"errors"
 	"os"
+	"path/filepath"
 	"strings"
 
+	"github.com/mcpdev80/baseharbor/internal/coreinstallation"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/identity"
 	"github.com/mcpdev80/baseharbor/internal/operatorauth"
@@ -36,6 +39,9 @@ func withCIIntegrationOperator(ctx context.Context, args []string) context.Conte
 	if err == nil && target.AccessProvider == "baseharbor-core" {
 		return ciIntegrationOperatorContext(ctx)
 	}
+	if err == nil && target.AccessProvider == "local" && target.TenantID == "" && ciIntegrationLocalCoreBootstrap(args, target) {
+		return ciIntegrationOperatorContext(ctx)
+	}
 	// Bootstrap is the only local operation that may need a synthetic
 	// operator: it must create the currently selected target, and that target
 	// must not already resolve. Existing local workload operations therefore
@@ -44,6 +50,40 @@ func withCIIntegrationOperator(ctx context.Context, args []string) context.Conte
 		return ctx
 	}
 	return ciIntegrationOperatorContext(ctx)
+}
+
+func ciIntegrationLocalCoreBootstrap(args []string, target deployment.ResolvedTarget) bool {
+	runtime := strings.TrimSpace(os.Getenv("BASEHARBOR_TEST_RUNTIME"))
+	if len(args) != 2 || args[0] != "up" || args[1] != "--yes" ||
+		(runtime != "docker" && runtime != "podman") || target.Name == "" || target.RuntimeProvider != runtime ||
+		target.Name != strings.TrimSpace(os.Getenv("BASEHARBOR_TARGET")) {
+		return false
+	}
+	// This test-only authority is limited to the fresh, explicitly registered
+	// temporary project used by the atomic acceptance gate. Never inject it for
+	// an ordinary repository workload or for an already installed Core.
+	allowedRoot := strings.TrimSpace(os.Getenv("BASEHARBOR_DEMO_ALLOWED_PROJECT_ROOT"))
+	if allowedRoot == "" {
+		return false
+	}
+	allowedRoot, err := filepath.EvalSymlinks(allowedRoot)
+	if err != nil {
+		return false
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		return false
+	}
+	cwd, err = filepath.EvalSymlinks(cwd)
+	if err != nil || cwd != allowedRoot || !strings.HasPrefix(filepath.Base(allowedRoot), "baseharbor-core-bootstrap.") {
+		return false
+	}
+	root, err := targetRuntimeStateRoot(target)
+	if err != nil {
+		return false
+	}
+	_, err = coreinstallation.Load(root)
+	return errors.Is(err, os.ErrNotExist)
 }
 
 func ciIntegrationTargetCreate(args []string) bool {

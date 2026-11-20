@@ -291,7 +291,7 @@ func authorizeMCPOperation(ctx context.Context, operationID, target, environment
 				localGrant = grant
 			}
 		}
-		if err := ensureOperatorAuthForBoundary(ctx, target, environment); err != nil {
+		if err := ensureManagedEnvironmentOperatorBoundary(ctx, target, environment, localGrant); err != nil {
 			if machine.Classify(err).Code == machine.ErrorRuntimeUnavailable {
 				return err
 			}
@@ -328,6 +328,18 @@ func authorizeMCPOperation(ctx context.Context, operationID, target, environment
 	}
 	_, err := operatorauth.AuthorizeMachineOperation(ctx, request)
 	return err
+}
+
+func ensureManagedEnvironmentOperatorBoundary(ctx context.Context, target, environment string, localGrant operatorauth.LocalOperationGrant) error {
+	// A verified local runtime grant is the authority for this one local
+	// workload operation. Requiring an OIDC operator as well would reject the
+	// grant after its runtime proof has already succeeded. Remote, managed-Core,
+	// and all other operations have no local grant and remain fail-closed on
+	// their configured operator-auth boundary.
+	if localGrant != nil {
+		return nil
+	}
+	return ensureOperatorAuthForBoundary(ctx, target, environment)
 }
 
 func authorizeResolvedMCPOperation(ctx context.Context, operationID string, resolved resolvedApplication, workspace string) error {
