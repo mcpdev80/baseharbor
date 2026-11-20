@@ -94,13 +94,6 @@ func ciIntegrationManagedLocalGateReason(args []string, target deployment.Resolv
 	if !managedWorkload && ciIntegrationReadOnlyDoctor(args) {
 		managedWorkload = true
 	}
-	// Root status resolves the selected local Target and reports its managed
-	// application state. The disposable runtime gates need that read-only probe
-	// after guided adoption, where the local runtime grant is intentionally not
-	// an operator identity. Admit only its exact read-only output forms.
-	if !managedWorkload && ciIntegrationReadOnlyStatus(args) {
-		managedWorkload = true
-	}
 	// On a selected disposable local Target, guided acceptance starts from a
 	// clean installation and drives the root init wizard before workload
 	// operations exist. Keep this bootstrap exception exact to `baha init`.
@@ -146,16 +139,6 @@ func ciIntegrationReadOnlyDoctor(args []string) bool {
 		return args[1] == "--json"
 	}
 	return len(args) == 3 && args[0] == "doctor" && args[1] == "--output" && args[2] == "json"
-}
-
-func ciIntegrationReadOnlyStatus(args []string) bool {
-	if len(args) == 1 && args[0] == "status" {
-		return true
-	}
-	if len(args) == 2 && args[0] == "status" {
-		return args[1] == "--json" || args[1] == "--output=json" || args[1] == "-ojson"
-	}
-	return len(args) == 3 && args[0] == "status" && (args[1] == "--output" || args[1] == "-o") && args[2] == "json"
 }
 
 func ciIntegrationRootInit(args []string) bool {

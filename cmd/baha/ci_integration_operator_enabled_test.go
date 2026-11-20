@@ -202,17 +202,9 @@ func TestCIIntegrationOperatorIsExplicitlyScopedToManagedLocalGate(t *testing.T)
 	if err := registerInstallationForTarget(t, target.Name); err != nil {
 		t.Fatalf("register local Core fixture: %v", err)
 	}
-	for _, args := range [][]string{{"status"}, {"status", "--json"}, {"status", "-o", "json"}, {"status", "--output", "json"}, {"status", "--output=json"}, {"status", "-ojson"}} {
-		if !ciIntegrationReadOnlyStatus(args) {
-			t.Errorf("canonical read-only status %v was not recognized", args)
-		}
-		if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), args)); !ok {
-			t.Errorf("read-only managed-gate status %v did not receive its CI operator", args)
-		}
-	}
-	for _, args := range [][]string{{"status", "--fix"}, {"status", "--yes"}, {"status", "--json", "--fix"}, {"status", "--output", "text"}, {"status", "-o", "json", "--fix"}} {
+	for _, args := range [][]string{{"status"}, {"status", "--json"}, {"status", "-o", "json"}, {"status", "--output", "json"}, {"status", "--output=json"}, {"status", "-ojson"}, {"status", "--fix"}, {"status", "--yes"}, {"status", "--json", "--fix"}, {"status", "--output", "text"}, {"status", "-o", "json", "--fix"}} {
 		if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), args)); ok {
-			t.Errorf("mutating or noncanonical managed-gate status %v unexpectedly received its CI operator", args)
+			t.Errorf("root status %v unexpectedly received a synthetic CI operator instead of using local runtime authorization", args)
 		}
 	}
 
