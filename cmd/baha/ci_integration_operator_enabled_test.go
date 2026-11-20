@@ -127,12 +127,12 @@ func TestCIIntegrationOperatorIsExplicitlyScopedToManagedLocalGate(t *testing.T)
 	if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), []string{"destroy", "--all", "--yes", "--json"})); !ok {
 		t.Fatal("exact managed local gate did not receive its CI operator for empty-target cleanup")
 	}
-	for _, args := range [][]string{{"doctor"}, {"doctor", "--json"}, {"doctor", "--verbose"}, {"doctor", "--output", "json"}} {
+	for _, args := range [][]string{{"doctor"}, {"doctor", "--json"}, {"doctor", "--output", "json"}} {
 		if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), args)); !ok {
 			t.Errorf("read-only managed-gate doctor %v did not receive its CI operator", args)
 		}
 	}
-	for _, args := range [][]string{{"doctor", "--fix"}, {"doctor", "--json", "--fix"}, {"doctor", "--output", "text"}} {
+	for _, args := range [][]string{{"doctor", "--fix"}, {"doctor", "--yes"}, {"doctor", "--json", "--fix"}, {"doctor", "--output", "text"}} {
 		if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), args)); ok {
 			t.Errorf("mutating or noncanonical managed-gate doctor %v unexpectedly received its CI operator", args)
 		}

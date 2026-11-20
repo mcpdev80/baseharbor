@@ -79,14 +79,14 @@ func ciIntegrationManagedLocalGateReason(args []string, target deployment.Resolv
 		target.TenantID != "" || target.RuntimeProvider != runtime {
 		return fmt.Sprintf("target-or-gate-mismatch gate=%q workflow_gate=%q runtime=%q target=%q env_target=%q access=%q tenant_set=%t target_runtime=%q", gate, strings.TrimSpace(os.Getenv("GATE")), runtime, target.Name, strings.TrimSpace(os.Getenv("BASEHARBOR_TARGET")), target.AccessProvider, strings.TrimSpace(target.TenantID) != "", target.RuntimeProvider)
 	}
+	// The candidate's regular CLI scope now recognizes root doctor as the
+	// local workload doctor operation. Keep this synthetic gate narrower: it
+	// may exercise read-only probes, never `doctor --fix`.
+	if len(args) > 0 && args[0] == "doctor" && !ciIntegrationReadOnlyDoctor(args) {
+		return "doctor-not-read-only-or-noncanonical: " + strings.Join(args, " ")
+	}
 	operation := cliLocalWorkloadOperation(args)
 	managedWorkload := operatorauth.LocalWorkloadOperation(operation)
-	// The atomic gates use the root doctor as a read-only runtime probe. Keep
-	// this exception to its exact non-mutating forms; in particular, never
-	// grant the operator to `doctor --fix`.
-	if !managedWorkload && ciIntegrationReadOnlyDoctor(args) {
-		managedWorkload = true
-	}
 	// Acceptance gates use the root destroy command to clean up their isolated
 	// local fixture. Keep it limited to the exact selected disposable target.
 	if !managedWorkload && ciIntegrationRootDestroy(args) {
@@ -123,7 +123,7 @@ func ciIntegrationReadOnlyDoctor(args []string) bool {
 		return true
 	}
 	if len(args) == 2 && args[0] == "doctor" {
-		return args[1] == "--json" || args[1] == "--verbose"
+		return args[1] == "--json"
 	}
 	return len(args) == 3 && args[0] == "doctor" && args[1] == "--output" && args[2] == "json"
 }
