@@ -34,9 +34,10 @@ func TestCLILocalWorkloadOperationIncludesGrantBackedRoots(t *testing.T) {
 		{name: "root plan with options", args: []string{"plan", "demo", "--output", "json"}, want: "plan"},
 		{name: "root up", args: []string{"up"}, want: "apply"},
 		{name: "root up with options", args: []string{"up", "--yes"}, want: "apply"},
+		{name: "root doctor", args: []string{"doctor"}, want: "doctor"},
 		{name: "app plan", args: []string{"app", "plan"}, want: "plan"},
 		{name: "app apply", args: []string{"app", "apply"}, want: "apply"},
-		{name: "other root command", args: []string{"doctor"}},
+		{name: "other root command", args: []string{"version"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
