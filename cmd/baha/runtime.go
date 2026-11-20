@@ -35,6 +35,7 @@ type runtimeUpOptions struct {
 	TrustHostCA         bool
 	SkipMemoryPreflight bool
 	CandidateConsent    string
+	WorkloadPorts       map[string]string
 }
 
 func runtimeUpCommand(ctx context.Context, args []string, out, errOut io.Writer) error {
@@ -47,6 +48,13 @@ func runtimeUpCommand(ctx context.Context, args []string, out, errOut io.Writer)
 	defer restoreEnvironment()
 	ctx = withMemoryPreflightOverride(ctx, opts.SkipMemoryPreflight)
 	ctx = withAssumeYes(ctx, opts.Yes)
+	// The documented --workload-port NAME=PORT is a persistent host-port
+	// selector. Route the parsed local value through the same context leaf the
+	// remote management path sets so the flag reaches the workload the same way
+	// on the local up path, or the documentation stops promising it.
+	if len(opts.WorkloadPorts) > 0 {
+		ctx = withRequestedWorkloadPorts(ctx, opts.WorkloadPorts)
+	}
 	if opts.ControlPlaneOnly {
 		selected, err := effectiveTarget(ctx)
 		if err != nil {
@@ -140,8 +148,44 @@ func parseRuntimeUpOptions(args []string) (runtimeUpOptions, error) {
 			}
 		case strings.HasPrefix(arg, "--confirm-candidate="):
 			opts.CandidateConsent = strings.TrimPrefix(arg, "--confirm-candidate=")
+		case arg == "--workload-port":
+			if opts.WorkloadPorts == nil {
+				opts.WorkloadPorts = map[string]string{}
+			}
+			if len(args) <= i+1 || strings.HasPrefix(args[i+1], "-") {
+				return opts, usageError("--workload-port requires NAME=PORT", "Pass --workload-port NAME=PORT.")
+			}
+			i++
+			value := args[i]
+			name, port, ok := strings.Cut(value, "=")
+			if !ok || !validWorkloadEnvironmentName(name) || strings.TrimSpace(port) != port {
+				return opts, usageError("invalid workload port", "Pass --workload-port NAME=PORT with a valid environment name and port.")
+			}
+			if _, duplicate := opts.WorkloadPorts[name]; duplicate {
+				return opts, usageError("duplicate workload port", "Pass each --workload-port NAME=PORT once.")
+			}
+			if _, err := parsePort(port); err != nil {
+				return opts, usageError("invalid workload port", "Choose a TCP port from 1 through 65535.")
+			}
+			opts.WorkloadPorts[name] = port
+		case strings.HasPrefix(arg, "--workload-port="):
+			value := strings.TrimPrefix(arg, "--workload-port=")
+			name, port, ok := strings.Cut(value, "=")
+			if !ok || !validWorkloadEnvironmentName(name) || strings.TrimSpace(port) != port {
+				return opts, usageError("invalid workload port", "Pass --workload-port NAME=PORT with a valid environment name and port.")
+			}
+			if opts.WorkloadPorts == nil {
+				opts.WorkloadPorts = map[string]string{}
+			}
+			if _, duplicate := opts.WorkloadPorts[name]; duplicate {
+				return opts, usageError("duplicate workload port", "Pass each --workload-port NAME=PORT once.")
+			}
+			if _, err := parsePort(port); err != nil {
+				return opts, usageError("invalid workload port", "Choose a TCP port from 1 through 65535.")
+			}
+			opts.WorkloadPorts[name] = port
 		case strings.HasPrefix(arg, "-"):
-			return opts, unknownOptionUsage("baha up", arg, "--yes", "-y", "--control-plane-only", "--trust-host-ca", "--skip-memory-preflight", "--environment", "-e", "--postgres-port", "--openbao-port", "--recovery-file", "--confirm-candidate")
+			return opts, unknownOptionUsage("baha up", arg, "--yes", "-y", "--control-plane-only", "--trust-host-ca", "--skip-memory-preflight", "--environment", "-e", "--postgres-port", "--openbao-port", "--recovery-file", "--confirm-candidate", "--workload-port")
 		default:
 			if opts.Name != "" {
 				return opts, usageError("baha up accepts at most one NAME", "Run 'baha up --help' for usage.")
