@@ -241,15 +241,15 @@ func analyzeSecurityConfig(policy WorkloadSecurityPolicy, config renderedSecurit
 }
 
 func ResolveWorkloadSecurityPolicy(m Manifest) (WorkloadSecurityPolicy, error) {
-	return ResolveWorkloadSecurityPolicyWithDevPolicy(m, TrustedLocalForDevEnvironment(m.Environment))
+	// This compatibility API has no trusted policy source. Unknown policy is
+	// managed regardless of environment name.
+	return ResolveWorkloadSecurityPolicyWithDevPolicy(m, false)
 }
 
 // ResolveWorkloadSecurityPolicyWithDevPolicy is the policy-aware form. The
-// development mode is now an explicit decision (devDev) rather than an implicit
-// name match: a caller with an explicit policy layer passes its own value, and
-// the historical mapping (dev/development → development mode, anything else →
-// managed) is preserved by ResolveWorkloadSecurityPolicy. The env override can
-// still not downgrade a managed environment into development.
+// development mode is now an explicit decision rather than an implicit name
+// match. Callers without a trusted policy source must pass false. The env
+// override still cannot downgrade managed policy into development.
 func ResolveWorkloadSecurityPolicyWithDevPolicy(m Manifest, devMode bool) (WorkloadSecurityPolicy, error) {
 	baseMode := "managed"
 	if devMode {
@@ -302,20 +302,11 @@ func workloadSecurityMode(m Manifest) (string, error) {
 	return policy.Mode, nil
 }
 
-// TrustedLocalForDevEnvironment is the historical, documented mapping used to
-// preserve current observable behavior for callers that resolve workload
-// security policy by name without an explicit policy layer: dev/development are
-// development mode, every other environment is managed. It is a single, visible
-// decision point — the name no longer reaches into the policy switch. Callers
-// with an explicit policy source should pass that policy via
-// ResolveWorkloadSecurityPolicyWithDevPolicy instead.
+// TrustedLocalForDevEnvironment is retained for source compatibility.
+// Environment names do not establish trusted-local development mode, so this
+// helper always fails closed.
 func TrustedLocalForDevEnvironment(environment string) bool {
-	switch strings.ToLower(strings.TrimSpace(environment)) {
-	case "dev", "development":
-		return true
-	default:
-		return false
-	}
+	return false
 }
 
 func dangerousLinuxCapability(value string) bool {
