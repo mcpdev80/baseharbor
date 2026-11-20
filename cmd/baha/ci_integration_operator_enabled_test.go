@@ -293,12 +293,12 @@ func TestCIIntegrationOperatorAllowsOnlyGuidedDeveloperDomainAndAppNew(t *testin
 	if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), []string{"dev", "domain"})); !ok {
 		t.Fatal("exact guided developer-domain probe did not receive its CI operator")
 	}
-	for _, args := range [][]string{{"app", "new"}, {"app", "edit"}} {
+	for _, args := range [][]string{{"app", "new"}, {"app", "edit"}, {"app", "footprint", "show", "-o", "json"}} {
 		if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), args)); !ok {
-			t.Errorf("exact guided app wizard %v did not receive its CI operator", args)
+			t.Errorf("exact guided app acceptance operation %v did not receive its CI operator", args)
 		}
 	}
-	for _, args := range [][]string{{"dev", "domain", "--json"}, {"dev", "credentials"}, {"dev", "token"}, {"app", "new", "--yes"}, {"app", "edit", "--yes"}} {
+	for _, args := range [][]string{{"dev", "domain", "--json"}, {"dev", "credentials"}, {"dev", "token"}, {"app", "new", "--yes"}, {"app", "edit", "--yes"}, {"app", "footprint", "show", "--json"}} {
 		if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), args)); ok {
 			t.Errorf("noncanonical or unrelated developer command %v unexpectedly received the CI operator", args)
 		}

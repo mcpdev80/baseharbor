@@ -118,6 +118,9 @@ func ciIntegrationManagedLocalGateReason(args []string, target deployment.Resolv
 	if !managedWorkload && gate == "guided" && ciIntegrationGuidedAppEdit(args) {
 		managedWorkload = true
 	}
+	if !managedWorkload && gate == "guided" && ciIntegrationGuidedFootprintShow(args) {
+		managedWorkload = true
+	}
 	// The observability acceptance gate reads the disposable demo workload's
 	// logs to verify its query path. Raw logs may contain secrets, so this
 	// exception exists only in the separately tagged CI binary and is limited
@@ -204,6 +207,10 @@ func ciIntegrationGuidedAppNew(args []string) bool {
 
 func ciIntegrationGuidedAppEdit(args []string) bool {
 	return len(args) == 2 && args[0] == "app" && args[1] == "edit"
+}
+
+func ciIntegrationGuidedFootprintShow(args []string) bool {
+	return len(args) == 5 && args[0] == "app" && args[1] == "footprint" && args[2] == "show" && args[3] == "-o" && args[4] == "json"
 }
 
 func ciIntegrationConfigureStatusOperatorBoundary(target string) error {
