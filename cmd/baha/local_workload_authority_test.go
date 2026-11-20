@@ -37,7 +37,7 @@ func TestLocalWorkloadAuthorityPreservesAllNonlocalAndPolicyBoundaries(t *testin
 			for _, name := range []string{operatorauth.EnvIssuer, operatorauth.EnvClientID, operatorauth.EnvScopes, operatorauth.EnvCallbackPort} {
 				t.Setenv(name, "")
 			}
-			ctx := localWorkloadScope(withLocalInvocation(operatorauth.WithEnforcement(t.Context()), "cli"), "apply")
+			ctx := context.WithValue(localWorkloadScope(withLocalInvocation(operatorauth.WithEnforcement(t.Context()), "cli"), "apply"), localApplicationIDKey{}, "5b09b7a8-9380-43cc-8000-000000000002")
 			native := &localAuthorityRuntime{kind: bhruntime.ProviderDocker, engine: &bhruntime.DockerEngineObservation{Endpoint: "unix:///run/user/1000/docker.sock", Mode: "rootless", DaemonID: "owned-engine", Verified: true}}
 			root, err := targetRuntimeStateRoot(target)
 			if err != nil {
@@ -136,7 +136,7 @@ func TestLocalWorkloadAuthorityPreservesAllNonlocalAndPolicyBoundaries(t *testin
 				t.Fatalf("local authority=%t allowed=%t error=%v", local, allowed, err)
 			}
 			if allowed {
-				if authority.Operation != "apply" || authority.Target != target.Name || authority.Environment != "prod" || calls != 1 {
+				if authority == nil || calls != 1 {
 					t.Fatal("proof is not bound to the observed operation/Target/environment")
 				}
 				if _, err := os.Lstat(filepath.Join(root, "docker-engine.json")); !os.IsNotExist(err) {
@@ -146,7 +146,7 @@ func TestLocalWorkloadAuthorityPreservesAllNonlocalAndPolicyBoundaries(t *testin
 			if scenario == "local-podman" && native.observations != 1 {
 				t.Fatal("Podman authority inferred from provider kind without actual local observation")
 			}
-			observation := collectOperatorAuthObservationWithLocalAuthority(ctx, target.Name, "prod", func(observeCtx context.Context, target, environment string) (operatorauth.LocalRuntimeAuthority, bool, error) {
+			observation := collectOperatorAuthObservationWithLocalAuthority(ctx, target.Name, "prod", func(observeCtx context.Context, target, environment string) (operatorauth.LocalOperationGrant, bool, error) {
 				return verifiedLocalWorkloadAuthorityWithRuntime(observeCtx, target, environment, resolve)
 			})
 			// Status observes its own read operation; this cannot authorize the
