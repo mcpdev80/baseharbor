@@ -107,10 +107,3 @@ func validateName(name string) error {
 	}
 	return nil
 }
-
-// ValidateName checks a human-readable environment selector without
-// allocating a new identity. Callers that resolve environment state paths must
-// validate the selector before joining it to a filesystem path.
-func ValidateName(name string) error {
-	return validateName(name)
-}
