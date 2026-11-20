@@ -206,8 +206,8 @@ func TestCIIntegrationOperatorIsExplicitlyScopedToManagedLocalGate(t *testing.T)
 		if !ciIntegrationManagedLocalGate(args, target) {
 			t.Errorf("read-only root status %v was not admitted to the selected local gate", args)
 		}
-		if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), args)); !ok {
-			t.Errorf("root status %v did not receive the scoped test-only operator for application readiness", args)
+		if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), args)); ok {
+			t.Errorf("root status %v unexpectedly received a synthetic CI operator instead of using local runtime authority", args)
 		}
 	}
 	for _, args := range [][]string{{"status", "--fix"}, {"status", "--yes"}, {"status", "--json", "--fix"}, {"status", "--output", "text"}, {"status", "-o", "json", "--fix"}} {
