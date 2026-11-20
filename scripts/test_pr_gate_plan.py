@@ -2867,6 +2867,33 @@ class AuthorityPackageCompletenessTests(unittest.TestCase):
         result = planner.plan(diff(paths('internal/serviceaccess/new_package/auth.go')), REQ, MAP_26)
         self.assertEqual('unresolved', result['coverage_status'])
 
+    def test_operatorauth_source_and_tests_select_real_package_runner(self):
+        for path in ('internal/operatorauth/config.go',
+                     'internal/operatorauth/config_explicit_policy_test.go'):
+            for status in ('added', 'modified'):
+                with self.subTest(path=path, status=status):
+                    result = planner.plan(diff([{'path': path, 'status': status}]), REQ, MAP_26)
+                    self.assertEqual('resolved', result['coverage_status'], result)
+                    self.assertTrue({'authority-package-tests', 'source-contracts',
+                                     'cli-build', 'cli-vet'} <=
+                                    {row['id'] for row in result['required_validation_checks']})
+                    self.assertEqual([], result['selected_gates'])
+
+    def test_workload_security_policy_files_run_application_package_tests(self):
+        for path in planner.WORKLOAD_SECURITY_POLICY_FILES:
+            for status in ('added', 'modified'):
+                with self.subTest(path=path, status=status):
+                    result = planner.plan(diff([{'path': path, 'status': status}]), REQ, MAP_26)
+                    self.assertEqual('resolved', result['coverage_status'], result)
+                    self.assertIn('source-contracts',
+                                  {row['id'] for row in result['required_validation_checks']})
+                    self.assertEqual([], result['selected_gates'])
+        removed = planner.plan(diff([{'path': 'internal/application/workload_security.go',
+                                      'status': 'deleted'}]), REQ, MAP_26)
+        self.assertEqual('unresolved', removed['coverage_status'])
+        unrelated = planner.plan(diff(paths('internal/application/unknown_policy.go')), REQ, MAP_26)
+        self.assertEqual('unresolved', unrelated['coverage_status'])
+
 
 class RuntimePackageCompletenessTests(unittest.TestCase):
     def test_nested_runtime_tests_are_actually_selected_without_native_matrix(self):

@@ -102,6 +102,14 @@ class CheckRoutingTests(unittest.TestCase):
                                   if 'TestObservabilityFullStackAcceptanceInCI' in step.get('run', ''))
                 self.assertLess(oras, acceptance)
 
+        dispatch_inputs = (observability.get('on') or observability.get(True))['workflow_dispatch']['inputs']
+        self.assertEqual({'description': 'Run both Docker and rootless Podman acceptance jobs',
+                          'required': False, 'default': True, 'type': 'boolean'},
+                         dispatch_inputs['all_runtimes'])
+        self.assertIn('inputs.all_runtimes', observability['jobs']['docker']['if'])
+        self.assertIn('inputs.all_runtimes', observability['jobs']['podman']['if'])
+        self.assertIn('github.ref_name, \'/podman/\'', observability['jobs']['podman']['if'])
+
         native_script = (ROOT / 'scripts/ci-native-pr-gate.sh').read_text()
         self.assertRegex(native_script,
                          r'native/docker/perses-runtime-smoke\)\s+export BASEHARBOR_PERSES_RUNTIME_SMOKE=1\s+run_exact_test TestPersesRuntimeSmokeDockerIsolated 5m ./internal/application')

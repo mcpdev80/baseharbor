@@ -21,6 +21,11 @@ on:
         required: false
         default: develop
         type: string
+      all_runtimes:
+        description: Run both Docker and rootless Podman acceptance jobs
+        required: false
+        default: true
+        type: boolean
   push:
     branches:
       - 'runtime-validation/observability/**'
