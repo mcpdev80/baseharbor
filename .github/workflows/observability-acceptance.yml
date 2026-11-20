@@ -62,6 +62,9 @@ jobs:
           go-version-file: go.mod
           cache: false
 
+      - name: Install verified ORAS for native Core bootstrap
+        run: bash scripts/ci-install-oras.sh
+
       - name: Reset persistent runner state
         shell: bash
         timeout-minutes: 3
@@ -131,6 +134,9 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
+
+      - name: Install verified ORAS for native Core bootstrap
+        run: bash scripts/ci-install-oras.sh
 
       - name: Reset persistent runner state
         shell: bash

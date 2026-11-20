@@ -1413,6 +1413,24 @@ def targeted_plan(diff, requirements, mapping, repository='.',
             if (path == 'internal/logs/journal_provider_render_test.go' and
                     path_status.get(path) not in ('added', 'modified')):
                 unresolved.append('journal provider regression removal requires review: ' + path)
+        elif path in ('internal/application/perses_runtime.go',
+                      'internal/application/perses_runtime_test.go'):
+            # The Perses implementation and its opt-in smoke test are bound to
+            # the existing Docker observability gate and exact native smoke
+            # trigger declared in pr-gate-coverage.json.
+            area = 'application-perses-runtime-smoke'
+            require(CODE_CHECKS)
+            selected.add('atomic/docker/observability')
+        elif path in ('internal/application/runtime_observability.go',
+                      'internal/application/runtime_observability_trace_source_test.go'):
+            # The reviewed application observability emission and source
+            # regression drive the existing end-to-end observability gates;
+            # those workflows execute TestObservabilityFullStackAcceptanceInCI
+            # on real Docker and rootless Podman/Quadlet runtimes.
+            area = 'application-observability-acceptance'
+            require(CODE_CHECKS)
+            selected.update(('atomic/docker/observability',
+                             'atomic/podman/observability'))
         elif path.startswith('internal/application/'):
             area = 'application-implementation-unresolved'
             require(CODE_CHECKS)

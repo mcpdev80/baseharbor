@@ -1649,6 +1649,43 @@ class SharedBackendResolutionMappingTests(unittest.TestCase):
         self.assertIn('cli-build', checks)
         self.assertIn('cli-vet', checks)
 
+    def test_application_observability_source_and_regression_select_both_gates(self):
+        expected = ['atomic/docker/observability', 'atomic/podman/observability']
+        for path in ('internal/application/runtime_observability.go',
+                     'internal/application/runtime_observability_trace_source_test.go'):
+            with self.subTest(path=path):
+                result = planner.plan(diff(paths(path)), REQ, MAP_26)
+                self.assertEqual('resolved', result['coverage_status'])
+                self.assertEqual(expected, result['selected_gates'])
+                self.assertFalse(result['unresolved_coverage'])
+                checks = {item['id'] for item in result['required_validation_checks']}
+                self.assertIn('source-contracts', checks)
+        unrelated = planner.plan(diff(paths('internal/application/footprint.go')), REQ, MAP_26)
+        self.assertEqual('unresolved', unrelated['coverage_status'])
+        self.assertTrue(unrelated['unresolved_coverage'])
+        self.assertNotEqual(expected, unrelated['selected_gates'])
+
+    def test_application_observability_mapping_does_not_hide_unreviewed_paths(self):
+        result = planner.plan(diff(paths('internal/application/runtime_observability.go',
+                                          'internal/application/provider_union.go')),
+                              REQ, MAP_26)
+        self.assertEqual('unresolved', result['coverage_status'])
+        self.assertTrue(result['unresolved_coverage'])
+        self.assertIn('internal/application/provider_union.go',
+                      ' '.join(result['unresolved_coverage']))
+
+    def test_perses_runtime_files_select_only_docker_observability(self):
+        for path in ('internal/application/perses_runtime.go',
+                     'internal/application/perses_runtime_test.go'):
+            with self.subTest(path=path):
+                result = planner.plan(diff(paths(path)), REQ, MAP_26)
+                self.assertEqual('resolved', result['coverage_status'])
+                self.assertEqual(['atomic/docker/observability'], result['selected_gates'])
+                self.assertFalse(result['unresolved_coverage'])
+        unrelated = planner.plan(diff(paths('internal/application/provider_union.go')), REQ, MAP_26)
+        self.assertEqual('unresolved', unrelated['coverage_status'])
+        self.assertNotEqual(['atomic/docker/observability'], unrelated['selected_gates'])
+
     def test_app_observability_acceptance_bundled_with_unreviewed_stays_unresolved(self):
         # fail-closed: resolved observability test + an unreviewed second file
         # keeps the whole PR unresolved.
