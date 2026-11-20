@@ -153,9 +153,9 @@ func ciIntegrationReadOnlyStatus(args []string) bool {
 		return true
 	}
 	if len(args) == 2 && args[0] == "status" {
-		return args[1] == "--json"
+		return args[1] == "--json" || args[1] == "--output=json" || args[1] == "-ojson"
 	}
-	return len(args) == 3 && args[0] == "status" && args[1] == "--output" && args[2] == "json"
+	return len(args) == 3 && args[0] == "status" && (args[1] == "--output" || args[1] == "-o") && args[2] == "json"
 }
 
 func ciIntegrationRootInit(args []string) bool {
