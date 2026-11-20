@@ -124,6 +124,14 @@ func TestCIIntegrationOperatorIsExplicitlyScopedToManagedLocalGate(t *testing.T)
 	if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), plan)); ok {
 		t.Fatal("Coreless local lifecycle unexpectedly received the managed-gate operator")
 	}
+	if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), []string{"init"})); !ok {
+		t.Fatal("exact guided init on the disposable gate target did not receive its CI operator")
+	}
+	for _, args := range [][]string{{"init", "--fix"}, {"init", "--json"}, {"version"}} {
+		if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), args)); ok {
+			t.Errorf("noncanonical or unrelated command %v unexpectedly received the CI operator", args)
+		}
+	}
 	if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), []string{"destroy", "--all", "--yes", "--json"})); !ok {
 		t.Fatal("exact managed local gate did not receive its CI operator for empty-target cleanup")
 	}

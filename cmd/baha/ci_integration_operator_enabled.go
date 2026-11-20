@@ -94,6 +94,12 @@ func ciIntegrationManagedLocalGateReason(args []string, target deployment.Resolv
 	if !managedWorkload && ciIntegrationReadOnlyDoctor(args) {
 		managedWorkload = true
 	}
+	// On a selected disposable local Target, guided acceptance starts from a
+	// clean installation and drives the root init wizard before workload
+	// operations exist. Keep this bootstrap exception exact to `baha init`.
+	if !managedWorkload && ciIntegrationRootInit(args) {
+		managedWorkload = true
+	}
 	// Acceptance gates use the root destroy command to clean up their isolated
 	// local fixture. Keep it limited to the exact selected disposable target.
 	if !managedWorkload && ciIntegrationRootDestroy(args) {
@@ -112,11 +118,11 @@ func ciIntegrationManagedLocalGateReason(args []string, target deployment.Resolv
 		return "runtime-state-root-failed: " + err.Error()
 	}
 	_, err = coreinstallation.Load(root)
-	if err != nil && errors.Is(err, os.ErrNotExist) && (ciIntegrationRootDestroy(args) || ciIntegrationReadOnlyDoctor(args)) {
-		// A selected acceptance gate may inspect or clean up its disposable
-		// Target before bootstrap or after a failed bootstrap. Permit only the
-		// exact read-only probe or idempotent cleanup; malformed or unreadable
-		// installations still fail closed.
+	if err != nil && errors.Is(err, os.ErrNotExist) && (ciIntegrationRootDestroy(args) || ciIntegrationReadOnlyDoctor(args) || ciIntegrationRootInit(args)) {
+		// A selected acceptance gate may bootstrap, inspect, or clean up its
+		// disposable Target before bootstrap or after a failed bootstrap. Permit
+		// only exact init, read-only probe, or idempotent cleanup forms; malformed
+		// or unreadable installations still fail closed.
 		return ""
 	}
 	if err != nil {
@@ -133,6 +139,10 @@ func ciIntegrationReadOnlyDoctor(args []string) bool {
 		return args[1] == "--json"
 	}
 	return len(args) == 3 && args[0] == "doctor" && args[1] == "--output" && args[2] == "json"
+}
+
+func ciIntegrationRootInit(args []string) bool {
+	return len(args) == 1 && args[0] == "init"
 }
 
 func ciIntegrationRootDestroy(args []string) bool {
