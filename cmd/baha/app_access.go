@@ -205,6 +205,9 @@ func appLogsCommand(store application.Store) *cli.Command {
 
 func validateWorkloadLogComponents(selected, candidates []string) error {
 	if len(candidates) == 0 {
+		if len(selected) > 0 {
+			return usageError("application contract does not declare workload components", "Run 'baha app status' to inspect the application workload before requesting component logs.")
+		}
 		return nil
 	}
 	for _, component := range selected {

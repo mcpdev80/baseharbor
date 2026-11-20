@@ -181,6 +181,9 @@ func TestGuidedLogsParsesTailComponentsAndFollowJSONSplit(t *testing.T) {
 	if err := validateWorkloadLogComponents([]string{"api", "database"}, []string{"api", "worker"}); err == nil {
 		t.Fatal("unknown component filters must fail closed")
 	}
+	if err := validateWorkloadLogComponents([]string{"database"}, nil); err == nil {
+		t.Fatal("component filters must fail closed when the application declares no workload components")
+	}
 }
 
 func TestGuidedLogsJSONNeverFollowsAndFailsClosedNoninteractive(t *testing.T) {
