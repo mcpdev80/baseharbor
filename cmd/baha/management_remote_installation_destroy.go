@@ -130,7 +130,7 @@ func remoteInstallationDestroy(ctx context.Context, target deployment.ResolvedTa
 	}
 	if acknowledged == nil {
 		value, err := readProviderImpactAcknowledgements(bufio.NewReader(input), out, application.ProviderImpactPlan{
-			PlanID: plan.Scope.PlanID, ConfirmationsRequired: plan.Scope.ConfirmationsRequired, Destructive: plan.Scope.Destructive,
+			PlanID: plan.Scope.PlanID, Attention: plan.Scope.Attention, ConfirmationsRequired: plan.Scope.ConfirmationsRequired, Destructive: plan.Scope.Destructive,
 		})
 		if err != nil {
 			return err

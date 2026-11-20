@@ -25,6 +25,10 @@ Der versionierte Vertrag enthält dokumentierte `baha` Befehle und Flags, die `b
 Interne Go-Pakete sind keine öffentliche API, es sei denn, explizit dokumentiert.
 
 Das Manifest v1 bleibt die unterstützte v0.4 Kompatibilitätsoberfläche. v0.4 fügt anbieterneutrale Kontrakt-/Laufzeitnähte hinter dieser Oberfläche hinzu, anstatt Anwendungen zu zwingen, ihr Manifest für zukünftige Anbieter umzuschreiben.
+### Optionale Beobachtbarkeits-Verwaltungsoberfläche
+
+Beobachtbarkeits-Backends (Prometheus, Loki, Tempo) sind optionale, opt-in Datenanbieter, kein Pflicht-Core-Bundle. Für v0.4.28 ist die Visualisierungsoberfläche die optionale **Perses** (fixiert bei v0.55.1, Image `persesdev/perses:v0.55.1`; der Provider-Pin steht getrennt von der BaseHarbor-Eigenversion). Perses ist eine provider-basierte, Dashboard-as-Code-Oberfläche, keine Anwendungsfähigkeit und kein Teil des Pflicht-Core-Bundles. Die Visualisierungsoberfläche Perses ist optional; ihr Status kann `not_configured`, `configured_unverified` oder `verified` lauten. Die normative Zustandsdefinition steht in docs/spec/management-access-v1.md. Die Daten-Backends Prometheus, Loki und Tempo bleiben unabhängig davon verfügbar, ob eine Visualisierungsoberfläche gewählt wird.
+
 
 ## Entwicklung versus Veröffentlichungen
 
@@ -78,6 +82,17 @@ Quellregel: Die Release-Ausgabe und Release-Notes müssen den genauen BaseHarbor
 ## Vorbereitung der Freisetzung
 
 Normale Releases werden auf `develop` vorbereitet und erst nach Prüfung des unveränderlichen Kandidaten nach `main` übernommen. Hotfixes beginnen auf `main`. Der [vollständige Release-Audit](https://github.com/mcpdev80/baseharbor/blob/develop/docs/internal/pre-release-documentation-audit.md) umfasst Implementierung, Ökosystem, EN/DE-Dokumentation, Pages-Kandidatenbuild, Changelog und verständliche Release Notes.
+
+Der Pre-Release-Workflow protokolliert den exakten Kandidaten-SHA und den
+abgerufenen `develop`-Tip-SHA, den seine Abstammungsprüfung verwendet. Ein
+normaler Kandidat muss diesen `develop`-Tip enthalten. Publish erfasst bei der
+Tag-Prüfung einen `develop`-SHA und übergibt genau diesen unveränderlichen Wert
+an den wiederverwendeten Pre-Release-Workflow; der Tag muss in derselben
+`develop`-Historie integriert sein. Die Workflow-Zusammenfassung schreibt eine
+Qualifikationszeile mit Kandidaten-, `develop`- und Demo-SHA sowie der gewählten
+Suite, damit das Release-Dossier die genaue Quellpaarung belegen kann. Vierteilige
+Hotfixes verwenden den dokumentierten Pfad über `main`; ihre Änderungen werden
+nach der Veröffentlichung nach `develop` übernommen.
 
 1. Implementierung, Verträge, Dokumentation und Release Notes fertigstellen.
 2. Exakte Core-, Demo-, Console- und Connector-Commits festlegen, soweit sie zum Release gehören.

@@ -158,7 +158,10 @@ func quadletRenderProjectService(result *QuadletProject, composePath, project st
 		result.CompletedServices[dependency] = true
 	}
 	unitBase := project + "-" + sanitizeQuadletName(serviceName)
-	containerName := unitBase
+	containerName := strings.TrimSpace(service.ContainerName)
+	if containerName == "" {
+		containerName = unitBase
+	}
 
 	image, err := quadletRenderServiceImage(result, composePath, project, serviceName, unitBase, service)
 	if err != nil {

@@ -105,7 +105,7 @@ func TestTargetDefinitionRequiresTwoCurrentAcknowledgements(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if plan.Scope.Attention != "Achtung" || plan.Scope.ConfirmationsRequired != 2 || plan.Scope.Complete || len(plan.Functions) < 2 {
+	if plan.Scope.Attention != "Warning" || plan.Scope.ConfirmationsRequired != 2 || plan.Scope.Complete || len(plan.Functions) < 2 {
 		t.Fatal("unverified access/consumer consequences not disclosed")
 	}
 	for _, consent := range []*application.ProviderChangeConsent{nil, {PlanID: plan.Scope.PlanID, First: true}, {PlanID: plan.Scope.PlanID, Second: true}, {PlanID: "stale", First: true, Second: true}} {

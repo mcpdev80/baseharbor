@@ -104,7 +104,7 @@ func TestCoreStopAuthorizesEveryManagedConsumerBeforeAcknowledgement(t *testing.
 func TestCoreStopUsesStableScopeRequiresTwoAcknowledgementsAndBindsCredentialBytes(t *testing.T) {
 	files := coreStopFixture(t)
 	p, err := buildControlPlaneStopPlan(t.Context())
-	if err != nil || p.Scope.Attention != "Achtung" || p.Scope.ConfirmationsRequired != 2 || p.Scope.Complete || p.Scope.Destructive || len(p.Services) == 0 || len(p.Materials) == 0 {
+	if err != nil || p.Scope.Attention != "Warning" || p.Scope.ConfirmationsRequired != 2 || p.Scope.Complete || p.Scope.Destructive || len(p.Services) == 0 || len(p.Materials) == 0 {
 		t.Fatalf("Core stop plan: %+v %v", p, err)
 	}
 	for i := 0; i < 10; i++ {

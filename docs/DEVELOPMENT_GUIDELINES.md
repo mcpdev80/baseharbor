@@ -116,9 +116,33 @@ Branches are temporary work surfaces, not long-lived history.
 - Long-lived branches are limited to explicitly designated integration or maintained work tracks such as `main`, `develop` and intentionally retained active feature/test branches.
 - Before deleting a diverged branch, verify that any required changes are already present in the target branch or are intentionally obsolete.
 
+## Local fast check
+
+Before pushing CI, planner, or workflow changes, run:
+
+```bash
+scripts/ci-fast-check.sh
+```
+
+It checks changed Go formatting, readability, workflow policy and syntax, plus
+focused CI routing and fallback tests. It skips native Docker/Podman and release
+checks. Set `CI_BASE_REF` when comparing against a branch other than
+`origin/develop`.
+
 ## CI checks and commit receipts
 
 CI, Pre-Release and Release execute normal tests and use their job results directly. No gate manifests, Actions run/job re-verification, evidence reuse or extra receipt approval chain is part of acceptance. After an authorized merge, the only CI receipt records merge SHA and PR number. See [minimal CI receipts](development/minimal-ci-receipts.md). Rulesets stay disabled during this repair.
+
+For `develop` and `lane-*` PRs, `PR · Trusted Plan` loads its planner and final
+verifier from the verified target base (or the pinned compatibility controller
+for older bases). Unknown valid paths/check IDs select broad relevant checks;
+invalid diffs or unverifiable inputs fail.
+
+Workflow and `scripts/` changes run candidate-added validation commands on a
+read-only hosted runner. Failures are advisory and stay outside `PR Selected
+Checks`. Candidate native checks may run separately; add them to
+`pr_selected_final.needs` only after their policy merges into the base. With
+Rulesets off, the candidate workflow is not external merge protection.
 
 ## Development process
 

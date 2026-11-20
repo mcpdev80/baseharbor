@@ -19,6 +19,7 @@ type machineTargetCreateInput struct {
 	DockerMode            string                             `json:"docker_mode,omitempty"`
 	Name                  string                             `json:"name"`
 	TenantID              string                             `json:"tenant_id,omitempty"`
+	UID                   string                             `json:"uid,omitempty"`
 	RuntimeProvider       string                             `json:"runtime_provider"`
 	AccessProvider        string                             `json:"access_provider,omitempty"`
 	Access                string                             `json:"access"`
@@ -81,6 +82,25 @@ func createTargetDefinition(ctx context.Context, input machineTargetCreateInput)
 	if _, exists := cfg.Targets[name]; exists {
 		return targetMutationResult{}, machine.Wrap(machine.ErrorInternal, fmt.Errorf("target %q already exists", name), "Run baha target list to inspect existing targets, or choose another target name.", false)
 	}
+	// Stable target identity: resolve a fresh UID for the new Target and reject
+	// a collision against any UID already held by another Target. The name stays
+	// addressable; the UID is the canonical system key. No data moves on disk —
+	// only the written definition carries the UID. The UID is distinct from
+	// TenantID (Core installation ownership): this field stays its ownership path.
+	uids, err := deployment.ResolveTargetUIDs(cfg)
+	if err != nil {
+		return targetMutationResult{}, machine.Wrap(machine.ErrorValidationFailed, err, "Resolve stable Target identities.", false)
+	}
+	if deployment.CheckTargetUIDCollision(uids, name, strings.TrimSpace(input.UID)) {
+		return targetMutationResult{}, machine.Wrap(machine.ErrorConflict, deployment.ErrTargetUIDCollision, "Choose a distinct Target UID.", false)
+	}
+	uid, created, err := deployment.MigrateTargetUID(deployment.TargetDefinition{TargetUID: strings.TrimSpace(input.UID)})
+	if err != nil {
+		return targetMutationResult{}, machine.Wrap(machine.ErrorValidationFailed, err, "Validate stable Target UID.", false)
+	}
+	if created {
+		input.UID = uid
+	}
 	if existing, exists := cfg.Access[accessName]; exists {
 		if existing.Provider != accessProvider || existing.Reference != reference {
 			return targetMutationResult{}, targetAccessConflictError(accessName)
@@ -89,6 +109,7 @@ func createTargetDefinition(ctx context.Context, input machineTargetCreateInput)
 		cfg.Access[accessName] = deployment.AccessDefinition{Provider: accessProvider, Reference: reference}
 	}
 	cfg.Targets[name] = deployment.TargetDefinition{
+		TargetUID:        strings.ToLower(strings.TrimSpace(input.UID)),
 		TenantID:         strings.TrimSpace(input.TenantID),
 		Runtime:          deployment.RuntimeDefinition{Provider: runtimeProvider, DockerEndpoint: strings.TrimSpace(input.DockerEndpoint), DockerContext: strings.TrimSpace(input.DockerContext), DockerMode: strings.TrimSpace(input.DockerMode)},
 		Access:           deployment.TargetAccess{Reference: accessName},

@@ -49,9 +49,10 @@ func configureTestTarget(t *testing.T) deployment.ResolvedTarget {
 		},
 		Targets: map[string]deployment.TargetDefinition{
 			"docker-dev": {
-				Runtime: deployment.RuntimeDefinition{Provider: "docker"},
-				Access:  deployment.TargetAccess{Reference: "local-docker"},
-				Scope:   "local",
+				TargetUID: mustNewTargetUIDFixture(t),
+				Runtime:   deployment.RuntimeDefinition{Provider: "docker"},
+				Access:    deployment.TargetAccess{Reference: "local-docker"},
+				Scope:     "local",
 			},
 		},
 	}
@@ -128,6 +129,22 @@ func configureIsolatedEmptyRuntimeTarget(t *testing.T, name, runtimeProvider str
 // an owner by default, so it is equivalent but documented for clarity.
 func configureTestTargetWithOwner(t *testing.T) deployment.ResolvedTarget {
 	return configureTestTarget(t)
+}
+
+// mustNewTargetUIDFixture returns a fresh, valid, unique stable Target UID for
+// test fixtures. Fixtures use it so they write configs that already carry a
+// populated UID — this keeps the config non-legacy, so the read-triggered UID
+// migration in LoadConfig stays a no-op and tests that hold the decoded config
+// in memory (and later compare it against the on-disk protected owner) are not
+// surprised by an on-read rewrite. A fresh value per call keeps two fixtures
+// from colliding.
+func mustNewTargetUIDFixture(t *testing.T) string {
+	t.Helper()
+	uid, err := deployment.NewTargetUID()
+	if err != nil {
+		t.Fatalf("generate fixture target uid: %v", err)
+	}
+	return uid
 }
 
 // isolatedTargetName returns a per-process, per-test unique Target name whose

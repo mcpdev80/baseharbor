@@ -142,6 +142,7 @@ func convergeManagedLogsBeforeWorkload(ctx context.Context, out io.Writer, files
 		[]string{prepared.manifest.Name},
 		prepared.includeApplicationProviders,
 		prepared.includePlatformProviders,
+		prepared.manifest.Environment,
 	)
 	if err != nil {
 		return fmt.Errorf("resolve provider log sources: %w", err)

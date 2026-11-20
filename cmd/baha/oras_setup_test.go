@@ -129,8 +129,8 @@ func TestIncludeInstalledORASOnPath(t *testing.T) {
 	if err := includeInstalledORASOnPath(); err != nil {
 		t.Fatal(err)
 	}
-	if got := filepath.SplitList(os.Getenv("PATH")); len(got) != 2 || got[0] != original || got[1] != binDir {
-		t.Fatalf("PATH = %v, want system path followed by %s", got, binDir)
+	if got := filepath.SplitList(os.Getenv("PATH")); len(got) != 2 || got[0] != binDir || got[1] != original {
+		t.Fatalf("PATH = %v, want user-local %s before system path", got, binDir)
 	}
 }
 

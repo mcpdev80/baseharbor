@@ -55,19 +55,19 @@ func (e *RuntimeSourceExecutor) Execute(_ context.Context, request runtimeoperat
 		if err := e.writeTarget(request, source); err != nil {
 			return runtimeoperation.Result{}, err
 		}
-		return runtimeoperation.Result{ResourceID: runtimeMetricsResourceID(request), Binding: source.binding(request)}, nil
+		return runtimeoperation.Result{ResourceID: runtimeMetricsResourceID(e, request), Binding: source.binding(request)}, nil
 	case "runtime.get":
 		source, err := e.readTarget(request)
 		if err != nil {
 			return runtimeoperation.Result{}, err
 		}
-		return runtimeoperation.Result{ResourceID: runtimeMetricsResourceID(request), Binding: source.binding(request)}, nil
+		return runtimeoperation.Result{ResourceID: runtimeMetricsResourceID(e, request), Binding: source.binding(request)}, nil
 	case "runtime.delete":
 		path := e.targetPath(request)
 		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return runtimeoperation.Result{}, fmt.Errorf("delete runtime metrics source: %w", err)
 		}
-		return runtimeoperation.Result{ResourceID: runtimeMetricsResourceID(request)}, nil
+		return runtimeoperation.Result{ResourceID: runtimeMetricsResourceID(e, request)}, nil
 	default:
 		return runtimeoperation.Result{}, errors.New("unsupported runtime metrics operation")
 	}
@@ -200,16 +200,27 @@ func (e *RuntimeSourceExecutor) readTarget(request runtimeoperation.Request) (ru
 }
 
 func (e *RuntimeSourceExecutor) targetPath(request runtimeoperation.Request) string {
-	return filepath.Join(e.targetsDir, runtimeTargetFileName(request))
+	return filepath.Join(e.targetsDir, runtimeTargetFileName(e, request))
 }
 
-func runtimeTargetFileName(request runtimeoperation.Request) string {
-	sum := sha256.Sum256([]byte(request.Application + "\x00" + request.CallerService + "\x00" + request.ResourceName))
+func runtimeTargetFileName(e *RuntimeSourceExecutor, request runtimeoperation.Request) string {
+	// The key formula for a runtime-metrics target file is defined here and nowhere else.
+	// The environment is part of the key because every group this executor stores labels
+	// its environment (see writeTarget) and readTarget asserts it: two environments of one
+	// application tuple must not share one file in a targets directory they share, such as
+	// the broker's global runtime-metrics directory.
+	//
+	// Existing files are keys without the environment ("runtime-<hex(application, caller
+	// service, resource name)>"). They are not renamed silently: readTarget fails closed on
+	// them with "runtime metrics target ownership mismatch" or not-found, and the next
+	// runtime.create in the same deployment rewrites the source under the new key (see
+	// the retention note in 0428-125 evidence).
+	sum := sha256.Sum256([]byte(e.environment + "\x00" + request.Application + "\x00" + request.CallerService + "\x00" + request.ResourceName))
 	return "runtime-" + hex.EncodeToString(sum[:12]) + ".json"
 }
 
-func runtimeMetricsResourceID(request runtimeoperation.Request) string {
-	sum := sha256.Sum256([]byte(request.Application + "\x00" + request.CallerService + "\x00" + request.ResourceName))
+func runtimeMetricsResourceID(e *RuntimeSourceExecutor, request runtimeoperation.Request) string {
+	sum := sha256.Sum256([]byte(e.environment + "\x00" + request.Application + "\x00" + request.CallerService + "\x00" + request.ResourceName))
 	return "res-metrics-" + hex.EncodeToString(sum[:12])
 }
 

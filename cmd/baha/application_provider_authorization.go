@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"reflect"
 
@@ -51,8 +52,28 @@ func authorizeApplicationProviderChanges(ctx context.Context, resolved resolvedA
 	if err != nil {
 		return err
 	}
-	if current.ProviderPlan.Impact == nil || current.ProviderPlan.Impact.PlanID != plan.ProviderPlan.Impact.PlanID {
+	if current.ProviderPlan.Impact == nil {
+		if out != nil {
+			fmt.Fprintln(out, "authorization mismatch: provider-plan-id-after-revalidation")
+		}
 		return providerImpactConsentError(*plan.ProviderPlan.Impact, &application.ProviderChangeError{Code: "stale-impact-consent"})
+	}
+	// Hunt 916 (A-F1/B2/C3): the plan id is the digest of the CONSENT
+	// AUTHORITY (provider_change_plan.go, provider_consent_authority.go), so
+	// the raw post-consent comparison recognizes an unchanged plan even when
+	// a transient observation artifact (unverifiable classification flip of
+	// unchanged material, re-derived revision, clock sample) churned the old
+	// raw digest. As the second gate, the frozen authority surfaces decide
+	// before staleness fires: only display-path differences that never reach
+	// the digest stabilize; every genuine authority change keeps the
+	// fail-closed stale-impact-consent path.
+	if current.ProviderPlan.Impact.PlanID != plan.ProviderPlan.Impact.PlanID {
+		if err := application.ValidateProviderImpactRevalidation(*current.ProviderPlan.Impact, *plan.ProviderPlan.Impact); err != nil {
+			if out != nil {
+				fmt.Fprintln(out, "authorization mismatch: provider-plan-id-after-revalidation")
+			}
+			return providerImpactConsentError(*plan.ProviderPlan.Impact, err)
+		}
 	}
 	return validateApplicationProviderExecution(resolved, current.ProviderPlan.Impact)
 }

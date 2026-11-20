@@ -39,7 +39,7 @@ func acknowledgeProviderImpact(ctx context.Context, in io.Reader, out io.Writer,
 
 func printProviderImpact(out io.Writer, plan application.ProviderImpactPlan) error {
 	if plan.Attention != "" {
-		fmt.Fprintln(out, "Achtung: review the concrete consequences and required acknowledgements below.")
+		fmt.Fprintln(out, application.ProviderImpactConsentCatalog().ProviderImpactLead)
 	}
 	encoder := json.NewEncoder(out)
 	encoder.SetIndent("", "  ")
@@ -55,11 +55,22 @@ func providerImpactConsentError(plan application.ProviderImpactPlan, err error) 
 	return classified
 }
 
+// providerImpactAttentionLead renders the structured attention marker as the
+// prose "Warning: " lead the consent catalog uses. Every stage that
+// acknowledges consequences prints the same marker; the gate itself keys on
+// attention presence, so the lead never changes semantics.
+func providerImpactAttentionLead(plan application.ProviderImpactPlan) string {
+	if plan.Attention == "" {
+		return ""
+	}
+	return "Warning: "
+}
+
 func readProviderApplyAcknowledgement(reader *bufio.Reader, out io.Writer, plan application.ProviderImpactPlan) (application.ProviderChangeConsent, error) {
 	consent := application.ProviderChangeConsent{PlanID: plan.PlanID}
-	label := "Apply these changes?"
+	label := providerImpactAttentionLead(plan) + "Apply these changes?"
 	if plan.Destructive {
-		label = "Apply these changes and permanently delete the listed data?"
+		label = providerImpactAttentionLead(plan) + "Apply these changes and permanently delete the listed data?"
 	}
 	accepted, err := promptYesNo(reader, out, label, false)
 	if err != nil || !accepted {
@@ -77,11 +88,11 @@ func readProviderApplyAcknowledgement(reader *bufio.Reader, out io.Writer, plan 
 func readProviderImpactAcknowledgements(reader *bufio.Reader, out io.Writer, plan application.ProviderImpactPlan) (application.ProviderChangeConsent, error) {
 	consent := application.ProviderChangeConsent{PlanID: plan.PlanID}
 	for stage := 1; stage <= plan.ConfirmationsRequired; stage++ {
-		label := "Confirm the displayed provider changes"
+		label := providerImpactAttentionLead(plan) + "Confirm the displayed provider changes"
 		if plan.Destructive {
-			label = "Achtung: confirm the displayed changes and permanent data deletion"
+			label = application.ProviderImpactConsentCatalog().ProviderDestructiveConfirm
 		} else if plan.ConfirmationsRequired == 2 {
-			label = "Achtung: confirm the displayed outcome without a working alternative"
+			label = application.ProviderImpactConsentCatalog().ProviderTwoStageConfirm
 		}
 		fmt.Fprintf(out, "%s (%d/%d, plan %s)? [y/N]: ", label, stage, plan.ConfirmationsRequired, plan.PlanID)
 		answer, err := reader.ReadString('\n')
@@ -101,7 +112,7 @@ func readProviderImpactAcknowledgements(reader *bufio.Reader, out io.Writer, pla
 	// The two consequence acknowledgements do not grant data deletion. Collect
 	// that separate decision only after every required plan stage was accepted.
 	if plan.Destructive {
-		fmt.Fprintf(out, "Achtung: separately authorize permanent deletion of the displayed owned data (plan %s)? [y/N]: ", plan.PlanID)
+		fmt.Fprintf(out, application.ProviderImpactConsentCatalog().ProviderDestructiveDataConsentPrompt, plan.PlanID)
 		answer, err := reader.ReadString('\n')
 		if err != nil && !errors.Is(err, io.EOF) {
 			return consent, err
