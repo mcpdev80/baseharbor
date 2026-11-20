@@ -49,6 +49,10 @@ func withCIIntegrationOperator(ctx context.Context, args []string) context.Conte
 		// available for this operation; use only the exact gate-scoped test
 		// operator so CI does not try to start an interactive OIDC setup.
 		if ciIntegrationReadOnlyStatus(args) {
+			if err := ciIntegrationConfigureStatusOperatorBoundary(target.Name); err != nil {
+				ciIntegrationOperatorTrace("managed-local-status-boundary-failed", args, target, err)
+				return ctx
+			}
 			ciIntegrationOperatorTrace("managed-local-status-test-operator", args, target, nil)
 			return ciIntegrationOperatorContext(ctx)
 		}
@@ -167,6 +171,18 @@ func ciIntegrationReadOnlyStatus(args []string) bool {
 		return args[1] == "--json" || args[1] == "--output=json" || args[1] == "-ojson"
 	}
 	return len(args) == 3 && args[0] == "status" && (args[1] == "--output" || args[1] == "-o") && args[2] == "json"
+}
+
+func ciIntegrationConfigureStatusOperatorBoundary(target string) error {
+	// The disposable runtime gate uses the same verified issuer as
+	// ciIntegrationOperatorContext. Root status needs the stored boundary to
+	// report the scoped test session as authenticated after Core is installed.
+	return persistOperatorAuthBoundary(target, "dev", operatorauth.Config{
+		Provider: "external-oidc",
+		Issuer:   "https://issuer.test",
+		ClientID: "ci-acceptance",
+		Scopes:   []string{"openid", "profile", "email"},
+	})
 }
 
 func ciIntegrationObservabilityLogProbe(args []string) bool {

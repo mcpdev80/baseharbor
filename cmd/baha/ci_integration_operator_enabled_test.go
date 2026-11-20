@@ -210,6 +210,10 @@ func TestCIIntegrationOperatorIsExplicitlyScopedToManagedLocalGate(t *testing.T)
 			t.Errorf("root status %v did not receive the scoped test-only operator for its managed app boundary", args)
 		}
 	}
+	stored, found, err := resolveStoredOperatorAuthBoundary(target.Name, "dev")
+	if err != nil || !found || stored.Issuer != "https://issuer.test" || stored.ClientID != "ci-acceptance" {
+		t.Fatalf("status gate did not persist its isolated test OIDC boundary: found=%t config=%+v err=%v", found, stored, err)
+	}
 	for _, args := range [][]string{{"status", "--fix"}, {"status", "--yes"}, {"status", "--json", "--fix"}, {"status", "--output", "text"}, {"status", "-o", "json", "--fix"}} {
 		if ciIntegrationManagedLocalGate(args, target) {
 			t.Errorf("mutating or noncanonical root status %v was admitted to the selected local gate", args)
