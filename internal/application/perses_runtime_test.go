@@ -7,6 +7,7 @@ import (
 	"encoding/pem"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -129,6 +130,72 @@ func TestPersesComposeRenderedWhenSelected(t *testing.T) {
 	}
 	if strings.Contains(deselectedRendered, "  "+persesService+":") {
 		t.Fatalf("deselected Perses must render no compose service (fail-closed):\n%s", deselectedRendered)
+	}
+}
+
+// TestPersesDatabaseVolumeReplacementRegression pins the fix for the hosted
+// runner tmpfs mountpoint defect: the pinned, distroless Perses image has no
+// /etc/perses/database directory and its rootfs is read-only, and Perses 0.55.1
+// extracts the shipped plugin archives into /etc/perses/plugins at startup.
+// Both paths must be writable on the read-only rootfs. The Perses service must
+// therefore mount /etc/perses/plugins on a dedicated, application-scoped named
+// volume (the writable extraction target), keep /etc/perses/database writable
+// via a tmpfs of its own (the mountpoint is created by runc even though the
+// image ships no such directory), and both mounts must be declared. The test
+// goes RED the moment the named plugin volume is removed, the plugin path is
+// reverted to a tmpfs, or the named volume is declared under the wrong key.
+func TestPersesDatabaseVolumeReplacementRegression(t *testing.T) {
+	selected := persesRuntimeManifest(t, true)
+	selectedFiles := persesRuntimeFiles(t, selected)
+	rendered, err := RuntimeComposeYAMLForProject(selected, selectedFiles)
+	if err != nil {
+		t.Fatalf("render selected Perses compose: %v", err)
+	}
+	persesService := runtimeServiceName("perses", defaultServiceInstance)
+
+	var compose struct {
+		Services map[string]struct {
+			Volumes []string `yaml:"volumes"`
+			Tmpfs   []string `yaml:"tmpfs"`
+		} `yaml:"services"`
+		Volumes map[string]struct {
+			Name string `yaml:"name"`
+		} `yaml:"volumes"`
+	}
+	if err := yaml.Unmarshal([]byte(rendered), &compose); err != nil {
+		t.Fatalf("decode selected Perses compose: %v", err)
+	}
+
+	// The Perses database folder is writable via a tmpfs of its own: runc
+	// creates the mountpoint even though the distroless image has no such
+	// directory, and the file-database folder is ephemeral per deployment.
+	if !strings.Contains(rendered, serviceaccess.PersesDatabaseContainerPath+":rw,noexec,nosuid,nodev") {
+		t.Fatalf("Perses must mount a tmpfs at %s for the writable database folder:\n%s", serviceaccess.PersesDatabaseContainerPath, rendered)
+	}
+
+	// The shipped plugin archives extract into /etc/perses/plugins; that path
+	// must be a dedicated, application-scoped NAMED VOLUME (not a tmpfs): a
+	// tmpfs there would re-trigger the runc mountpoint failure on the runner
+	// and block the extraction the hosted runner must support.
+	pluginsVolumeKey := persesService + "-plugins"
+	if _, ok := compose.Volumes[pluginsVolumeKey]; !ok {
+		t.Fatalf("selected Perses must declare a dedicated database volume %q:\n%s", pluginsVolumeKey, rendered)
+	}
+	mounted := false
+	for _, mount := range compose.Services[persesService].Volumes {
+		if mount == pluginsVolumeKey+":/"+strings.TrimPrefix(serviceaccess.PersesPluginsContainerPath, "/") {
+			mounted = true
+		}
+	}
+	if !mounted {
+		t.Fatalf("Perses service must mount the dedicated plugin volume at %s, got %q:\n%s", serviceaccess.PersesPluginsContainerPath, compose.Services[persesService].Volumes, rendered)
+	}
+	// The plugin path must never be a tmpfs: that mountpoint is what the hosted
+	// runner rejects.
+	for _, mount := range compose.Services[persesService].Tmpfs {
+		if strings.Contains(mount, serviceaccess.PersesPluginsContainerPath) {
+			t.Fatalf("Perses must not mount a tmpfs at %s (hosted-runner mountpoint defect):\n%s", serviceaccess.PersesPluginsContainerPath, rendered)
+		}
 	}
 }
 
@@ -389,9 +456,19 @@ func TestPersesRuntimeSmokeDockerIsolated(t *testing.T) {
 		states, err := runtime.ServiceStatesProjectFilesEnv(ctx, files.Project, files.Dir, nil, files.Compose)
 		if err == nil {
 			for _, s := range states {
-				if strings.HasPrefix(s.Service, "perses") && s.State == "running" && len(s.Publishers) > 0 {
-					running = true
-					hostPort = s.Publishers[0].PublishedPort
+				if !strings.HasPrefix(s.Service, "perses") || s.State != "running" || len(s.Publishers) == 0 {
+					continue
+				}
+				// The loopback management surface publishes its host port on one
+				// of its publishers (the internal ports report PublishedPort 0).
+				// Take the first publisher that actually maps a host port, so the
+				// probe reaches the gateway rather than an internal container port.
+				for _, p := range s.Publishers {
+					if p.PublishedPort != 0 {
+						running = true
+						hostPort = p.PublishedPort
+						break
+					}
 				}
 			}
 		}
@@ -411,22 +488,29 @@ func TestPersesRuntimeSmokeDockerIsolated(t *testing.T) {
 	// Perses 0.55.1 extracts the shipped plugin archives into /etc/perses/plugins
 	// and serves the loaded modules from GET /api/v1/plugins. Under a read-only
 	// root filesystem without a writable extraction target the extraction fails
-	// (the server starts, but the endpoint reports 0 modules). The writable
-	// tmpfs projection added to the Perses service makes the path extractable;
+	// (the server starts, but the endpoint reports 0 modules). The dedicated
+	// named volume at PersesPluginsContainerPath makes the path extractable;
 	// the endpoint must therefore report the shipped UI plugin.
-	body := fetchPersesHTTPS(t, ctx, hostPort)
+	body := fetchPersesHTTPS(t, ctx, hostPort, files.Dir)
 	if !strings.Contains(body, "BarChart") && !strings.Contains(body, "Dashboard") && !strings.Contains(body, "panels") {
 		t.Fatalf("Perses GET /api/v1/plugins must report the shipped UI plugin after extraction, got body:\n%s", body)
 	}
 }
 
 // fetchPersesHTTPS performs an HTTPS GET to the running Perses UI over the
-// loopback host port. It trusts the loopback-only bind and the projected
-// serviceaccess certificate so the isolated smoke can assert the shipped UI
-// plugin actually loads after the extraction target is writable.
-func fetchPersesHTTPS(t *testing.T, ctx context.Context, port int) string {
+// loopback host port. It verifies the projected serviceaccess certificate
+// against the projected CA and presents the projected mTLS client identity so
+// the smoke can assert the shipped UI plugin actually loads after the
+// extraction target is writable.
+func fetchPersesHTTPS(t *testing.T, ctx context.Context, port int, dir string) string {
 	t.Helper()
-	url := fmt.Sprintf("https://127.0.0.1:%d/api/v1/plugins", port)
+	// Authority is the DNS name "localhost", not the loopback IP. The gateway
+	// is a Caddy reverse proxy that serves Perses under its canonical name;
+	// addressing it by numeric IP authority returns HTTP 421 (a misdirected
+	// request under HTTP/2) and, on a loopback QUIC-capable listener, an
+	// application-protocol alert, because the connection is never bound to the
+	// named virtual host the contract serves (docs/how-to/developer-access.md:157).
+	url := fmt.Sprintf("https://localhost:%d/api/v1/plugins", port)
 	deadline := time.Now().Add(30 * time.Second)
 	var lastErr error
 	for time.Now().Before(deadline) {
@@ -434,7 +518,7 @@ func fetchPersesHTTPS(t *testing.T, ctx context.Context, port int) string {
 		if err != nil {
 			t.Fatalf("build perses probe request: %v", err)
 		}
-		resp, err := httpsInsecureClient.Do(req)
+		resp, err := httpsPersesClient(t, dir).Do(req)
 		if err == nil {
 			defer resp.Body.Close()
 			data, readErr := io.ReadAll(resp.Body)
@@ -454,19 +538,43 @@ func fetchPersesHTTPS(t *testing.T, ctx context.Context, port int) string {
 	return ""
 }
 
-// httpsInsecureClient talks to the loopback-only Perses over HTTPS with the
-// projected certificate trusted, so the smoke can assert the loaded plugin
-// modules without a real CA chain.
-var httpsInsecureClient = &http.Client{
-	Transport: &http.Transport{
-		TLSClientConfig: &tls.Config{
-			RootCAs: func() *x509.CertPool {
-				pool := x509.NewCertPool()
-				return pool
-			}(),
-			InsecureSkipVerify: true,
+// httpsPersesClient returns a loopback-only HTTPS client that verifies the
+// gateway certificate against the projected CA and presents the projected mTLS
+// client certificate the Perses gateway requires, so the smoke can reach the
+// authenticated plugin endpoint. The client key lives in the run's
+// service-access pki projection under dir. The dialer routes "localhost" to
+// the loopback IP so SNI still names the canonical server, not the numeric
+// authority the Caddy proxy refuses.
+func httpsPersesClient(t *testing.T, dir string) *http.Client {
+	t.Helper()
+	certDir := filepath.Join(dir, "providers", "perses-management", "gateway", "service-access", "pki")
+	ca, err := os.ReadFile(filepath.Join(certDir, "ca.pem"))
+	if err != nil {
+		t.Fatalf("read projected mTLS CA bundle at %s: %v", certDir, err)
+	}
+	pool := x509.NewCertPool()
+	if !pool.AppendCertsFromPEM(ca) {
+		t.Fatalf("projected mTLS CA bundle at %s is not a valid PEM certificate", certDir)
+	}
+	cert, err := tls.LoadX509KeyPair(
+		filepath.Join(certDir, "client-cert.pem"),
+		filepath.Join(certDir, "client-key.pem"),
+	)
+	if err != nil {
+		t.Fatalf("load projected mTLS client key pair at %s: %v", certDir, err)
+	}
+	return &http.Client{
+		Transport: &http.Transport{
+			DialContext: (&net.Dialer{
+				Timeout: 5 * time.Second,
+			}).DialContext,
+			TLSClientConfig: &tls.Config{
+				RootCAs:    pool,
+				Certificates: []tls.Certificate{cert},
+				ServerName: "localhost",
+			},
 		},
-	},
+	}
 }
 
 // persesRuntimeEnvironment is a package helper so tests can build a minimal
