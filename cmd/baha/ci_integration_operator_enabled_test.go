@@ -10,8 +10,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/operatorauth"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 func TestCIIntegrationOperatorTraceKeepsMachineErrorStreamClean(t *testing.T) {
@@ -312,6 +314,47 @@ func TestCIIntegrationOperatorAllowsOnlyGuidedDeveloperDomainAndAppNew(t *testin
 	}
 	if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), []string{"mcp", "serve"})); ok {
 		t.Fatal("guided MCP server exception escaped into another selected gate")
+	}
+}
+
+func TestCIIntegrationGuidedMCPPrincipalCanOnlySeeFootprintTool(t *testing.T) {
+	t.Setenv("DEMO_ATOMIC_GATE", "1")
+	t.Setenv("BASEHARBOR_TEST_RUNTIME", "docker")
+	t.Setenv("GATE", "guided")
+	t.Setenv("BASEHARBOR_DEMO_OPERATOR_GATE", "guided")
+	target := configureIsolatedEmptyRuntimeTarget(t, "atomic-docker-guided", "docker")
+	t.Setenv("BASEHARBOR_TARGET", target.Name)
+	if err := registerInstallationForTarget(t, target.Name); err != nil {
+		t.Fatalf("register guided Core fixture: %v", err)
+	}
+
+	ctx := withCIIntegrationOperator(context.Background(), []string{"mcp", "serve"})
+	if _, ok := operatorauth.PrincipalFromContext(ctx); !ok {
+		t.Fatal("exact guided MCP process did not receive the test-only principal")
+	}
+	server := newMCPServerForContext(ctx, application.DefaultStore())
+	serverTransport, clientTransport := mcp.NewInMemoryTransports()
+	serverSession, err := server.Connect(ctx, serverTransport, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = serverSession.Close() })
+	client := mcp.NewClient(&mcp.Implementation{Name: "guided-footprint-allowlist-test", Version: "v1"}, nil)
+	clientSession, err := client.Connect(ctx, clientTransport, &mcp.ClientSessionOptions{ProtocolVersion: "2026-07-28"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = clientSession.Close() })
+
+	listed, err := clientSession.ListTools(ctx, &mcp.ListToolsParams{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(listed.Tools) != 1 || listed.Tools[0].Name != "baseharbor.app.footprint.show" {
+		t.Fatalf("guided test MCP server tools = %v, want only baseharbor.app.footprint.show", listed.Tools)
+	}
+	if _, err := clientSession.CallTool(ctx, &mcp.CallToolParams{Name: "baseharbor.app.destroy", Arguments: map[string]any{"name": "demo"}}); err == nil {
+		t.Fatal("guided test MCP server exposed a mutating app.destroy tool")
 	}
 }
 

@@ -57,7 +57,11 @@ func withCIIntegrationOperator(ctx context.Context, args []string) context.Conte
 			return ciIntegrationOperatorContext(ctx)
 		}
 		ciIntegrationOperatorTrace("managed-local-gate", args, target, nil)
-		return ciIntegrationOperatorContext(ctx)
+		operatorContext := ciIntegrationOperatorContext(ctx)
+		if strings.TrimSpace(os.Getenv("BASEHARBOR_DEMO_OPERATOR_GATE")) == "guided" && ciIntegrationGuidedMCPServe(args) {
+			return context.WithValue(operatorContext, ciMCPToolsetContextKey{}, true)
+		}
+		return operatorContext
 	} else {
 		ciIntegrationOperatorTrace("managed-local-gate-rejected: "+managedGateReason, args, target, err)
 	}

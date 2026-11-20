@@ -214,18 +214,11 @@ func mcpCommand(store application.Store) *cli.Command {
 
 func runMCPServer(ctx context.Context, store application.Store) error {
 	ctx = withLocalInvocation(ctx, "stdio")
-	return newMCPServer(store).Run(ctx, &drainingMCPTransport{reader: os.Stdin, writer: mcpStdoutWriter{os.Stdout}, timeout: time.Minute})
+	return newMCPServerForContext(ctx, store).Run(ctx, &drainingMCPTransport{reader: os.Stdin, writer: mcpStdoutWriter{os.Stdout}, timeout: time.Minute})
 }
 
 func newMCPServer(store application.Store) *mcp.Server {
-	server := mcp.NewServer(&mcp.Implementation{
-		Name:    "baseharbor",
-		Version: version,
-	}, &mcp.ServerOptions{
-		SupportedProtocolVersions: []string{"2026-07-28", "2025-11-25"},
-		Capabilities:              &mcp.ServerCapabilities{},
-	})
-
+	server := newMCPServerBase()
 	registerMCPReadTools(server, store)
 	registerMCPRuntimeExplorerMutationTools(server)
 	registerMCPLifecycleTools(server, store)
@@ -244,6 +237,29 @@ func newMCPServer(store application.Store) *mcp.Server {
 	registerMCPPlatformTools(server)
 	registerMCPControlPlaneTools(server)
 	registerMCPReleaseTools(server)
+	return server
+}
+
+type ciMCPToolsetContextKey struct{}
+
+func newMCPServerForContext(ctx context.Context, store application.Store) *mcp.Server {
+	if onlyFootprint, _ := ctx.Value(ciMCPToolsetContextKey{}).(bool); onlyFootprint {
+		server := newMCPServerBase()
+		registerMCPFootprintShowTool(server, store)
+		return server
+	}
+	return newMCPServer(store)
+}
+
+func newMCPServerBase() *mcp.Server {
+	server := mcp.NewServer(&mcp.Implementation{
+		Name:    "baseharbor",
+		Version: version,
+	}, &mcp.ServerOptions{
+		SupportedProtocolVersions: []string{"2026-07-28", "2025-11-25"},
+		Capabilities:              &mcp.ServerCapabilities{},
+	})
+
 	return server
 }
 
