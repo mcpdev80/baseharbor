@@ -34,7 +34,7 @@ func TestInstallationDestroyCurrentChildrenInterruptedVolumeAndRetry(t *testing.
 	if kind != "docker" && kind != "podman" {
 		t.Fatal("explicit native runtime required")
 	}
-	t.Cleanup(func() { cleanupInstallationDestroyNativeFixture(kind) })
+	t.Cleanup(func() { cleanupInstallationDestroyNativeFixture(t, kind) })
 	var out bytes.Buffer
 	operator := &identity.Principal{
 		Issuer:         "https://issuer.example",
@@ -286,27 +286,37 @@ func TestInstallationDestroyCurrentChildrenInterruptedVolumeAndRetry(t *testing.
 	t.Log("actual full-installation child reset, partial native deletion, preserved foreign authority and fresh current-plan retry completed; selected native data/configuration/owners absent")
 }
 
-func cleanupInstallationDestroyNativeFixture(runtime string) {
-	for _, args := range [][]string{
-		{"ps", "-aq", "--filter", "name=bh-installation-retry-native-"},
-		{"network", "ls", "-q", "--filter", "name=baseharbor-installation-retry-native"},
-		{"network", "ls", "-q", "--filter", "name=baseharbor-identity-core-installation-retry-native"},
-		{"volume", "ls", "-q", "--filter", "name=bh-installation-retry-native"},
-	} {
-		output, err := exec.Command(runtime, args...).Output()
-		if err != nil {
-			continue
+func cleanupInstallationDestroyNativeFixture(t *testing.T, runtime string) {
+	t.Helper()
+	projects := []string{
+		"bh-installation-retry-native-shared",
+		"bh-installation-retry-native-core-shared",
+		"baseharbor-installation-retry-native",
+		"baseharbor-identity-core-installation-retry-native",
+	}
+	for _, project := range projects {
+		label := "label=com.docker.compose.project=" + project
+		for _, resource := range []struct {
+			listArgs []string
+			remove   []string
+		}{
+			{listArgs: []string{"ps", "-aq", "--filter", label}, remove: []string{"rm", "--force"}},
+			{listArgs: []string{"network", "ls", "-q", "--filter", label}, remove: []string{"network", "rm"}},
+			{listArgs: []string{"volume", "ls", "-q", "--filter", label}, remove: []string{"volume", "rm"}},
+		} {
+			output, err := exec.Command(runtime, resource.listArgs...).Output()
+			if err != nil {
+				t.Errorf("list own native fixture resources for project %q: %v", project, err)
+				continue
+			}
+			ids := strings.Fields(string(output))
+			if len(ids) == 0 {
+				continue
+			}
+			removeArgs := append(append([]string(nil), resource.remove...), ids...)
+			if output, err := exec.Command(runtime, removeArgs...).CombinedOutput(); err != nil {
+				t.Errorf("remove own native fixture resources for project %q: %v: %s", project, err, strings.TrimSpace(string(output)))
+			}
 		}
-		ids := strings.Fields(string(output))
-		if len(ids) == 0 {
-			continue
-		}
-		removeArgs := append([]string{"rm", "--force"}, ids...)
-		if args[0] == "network" {
-			removeArgs = append([]string{"network", "rm"}, ids...)
-		} else if args[0] == "volume" {
-			removeArgs = append([]string{"volume", "rm"}, ids...)
-		}
-		_ = exec.Command(runtime, removeArgs...).Run()
 	}
 }
