@@ -130,6 +130,11 @@ func TestWorkstationOnboardingRemoteNativeInCI(t *testing.T) {
 		if workstationTarget == "" {
 			t.Fatal("import did not configure a remotely authenticated Core Target")
 		}
+		if err := deployment.SetOperatorAuthForTargetEnvironment(workstationTarget, "dev", deployment.OperatorAuthEnvironmentConfig{
+			Provider: "external-oidc", Issuer: "https://issuer.test", ClientID: "cli-test",
+		}); err != nil {
+			t.Fatalf("configure isolated operator-auth boundary for imported Target: %v", err)
+		}
 	})
 	t.Run("RemoteDeployment", func(t *testing.T) {
 		if workstationTarget == "" {
@@ -176,7 +181,7 @@ func TestWorkstationOnboardingRemoteNativeInCI(t *testing.T) {
 			}
 			var stdout, stderr bytes.Buffer
 			if err := runWithIOAsTestOperator(ctx, append([]string{"--no-input"}, args...), &stdout, &stderr); err != nil {
-				t.Fatalf("remote CLI operation %v failed over the enrolled device: %v", args, err)
+				t.Fatalf("remote CLI operation %v failed over the enrolled device: %v\nstdout:\n%s\nstderr:\n%s", args, err, stdout.String(), stderr.String())
 			}
 			if len(args) > 1 && args[1] == "status" {
 				var observed application.StatusResult

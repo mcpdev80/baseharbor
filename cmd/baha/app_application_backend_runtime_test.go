@@ -96,11 +96,15 @@ func qualifyApplicationBackendLifecycle(t *testing.T, service string) {
 		t.Fatal(err)
 	}
 	writeApplicationBackendIntent(t, service, true)
-	if err := runWithIO(ctx, []string{"app", "init", "--quick", "--json"}, &bytes.Buffer{}, &bytes.Buffer{}); err != nil {
+	// Fresh app adoption allocates its canonical ID during initialization, so
+	// there is no application UID yet to bind the local runtime grant to. Use
+	// the explicit test operator only for this bootstrap boundary; subsequent
+	// lifecycle operations retain the Coreless local-runtime grant path.
+	if err := runWithIOAsTestOperator(ctx, []string{"app", "init", "--quick", "--json"}, &bytes.Buffer{}, &bytes.Buffer{}); err != nil {
 		t.Fatalf("initialize application backend: %v", err)
 	}
 	t.Cleanup(func() {
-		cleanupCtx, cleanupCancel := context.WithTimeout(machineNoninteractiveContext(context.Background()), 2*time.Minute)
+		cleanupCtx, cleanupCancel := context.WithTimeout(testOperatorContext(machineNoninteractiveContext(context.Background())), 2*time.Minute)
 		defer cleanupCancel()
 		current, err := resolveApplication(cleanupCtx, application.Store{}, nil, "status")
 		if err != nil {
