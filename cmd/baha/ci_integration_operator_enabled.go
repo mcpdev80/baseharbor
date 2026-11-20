@@ -81,10 +81,9 @@ func ciIntegrationManagedLocalGateReason(args []string, target deployment.Resolv
 	}
 	operation := cliLocalWorkloadOperation(args)
 	managedWorkload := operatorauth.LocalWorkloadOperation(operation)
-	// The guided acceptance suite first removes the previous installation
-	// before constructing a clean application fixture. Keep this root command
-	// exception inside the exact disposable guided gate.
-	if !managedWorkload && gate == "guided" && len(args) > 0 && args[0] == "destroy" {
+	// Acceptance gates use the root destroy command to clean up their isolated
+	// local fixture. Keep it limited to the exact selected disposable target.
+	if !managedWorkload && ciIntegrationRootDestroy(args) {
 		managedWorkload = true
 	}
 	// Recovery gates also exercise the root `down` command against the local
@@ -100,10 +99,22 @@ func ciIntegrationManagedLocalGateReason(args []string, target deployment.Resolv
 		return "runtime-state-root-failed: " + err.Error()
 	}
 	_, err = coreinstallation.Load(root)
+	if err != nil && errors.Is(err, os.ErrNotExist) && ciIntegrationRootDestroy(args) {
+		// A selected acceptance gate may clean up its disposable Target before
+		// bootstrap or after a failed bootstrap. Permit only exact idempotent
+		// cleanup; malformed or unreadable installations still fail closed.
+		return ""
+	}
 	if err != nil {
 		return "core-installation-not-loadable: " + err.Error()
 	}
 	return ""
+}
+
+func ciIntegrationRootDestroy(args []string) bool {
+	plain := len(args) == 3 && args[0] == "destroy" && args[1] == "--all" && args[2] == "--yes"
+	json := len(args) == 4 && args[0] == "destroy" && args[1] == "--all" && args[2] == "--yes" && args[3] == "--json"
+	return plain || json
 }
 
 func ciIntegrationOperatorTrace(reason string, args []string, target deployment.ResolvedTarget, err error) {
@@ -119,7 +130,9 @@ func ciIntegrationOperatorTrace(reason string, args []string, target deployment.
 
 func ciIntegrationLocalCoreBootstrap(args []string, target deployment.ResolvedTarget) bool {
 	runtime := strings.TrimSpace(os.Getenv("BASEHARBOR_TEST_RUNTIME"))
-	if len(args) != 2 || args[0] != "up" || args[1] != "--yes" ||
+	canonicalUp := len(args) == 2 && args[0] == "up" && args[1] == "--yes"
+	jsonUp := len(args) == 3 && args[0] == "up" && args[1] == "--yes" && args[2] == "--json"
+	if (!canonicalUp && !jsonUp) ||
 		(runtime != "docker" && runtime != "podman") || target.Name == "" || target.RuntimeProvider != runtime ||
 		target.Name != strings.TrimSpace(os.Getenv("BASEHARBOR_TARGET")) {
 		return false

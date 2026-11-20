@@ -58,6 +58,10 @@ func runControlPlaneRestartAcceptance(t *testing.T, ha bool) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 17*time.Minute)
 	defer cancel()
+	// The helpers below call the runtime lifecycle directly instead of going
+	// through runWithIOAsTestOperator for every step. Carry the same explicit
+	// test operator context through start, stop, recovery, and cleanup.
+	ctx = testOperatorContext(ctx)
 
 	runtimeCommand := strings.TrimSpace(os.Getenv("BASEHARBOR_TEST_RUNTIME"))
 	if runtimeCommand == "" {

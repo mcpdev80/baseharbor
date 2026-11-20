@@ -30,8 +30,14 @@ func TestCIIntegrationOperatorIsLimitedToRemoteCoreAndTargetBootstrap(t *testing
 	if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), []string{"up", "--yes"})); !ok {
 		t.Fatal("fresh isolated local Core bootstrap did not receive its CI operator")
 	}
+	if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), []string{"up", "--yes", "--json"})); !ok {
+		t.Fatal("fresh isolated local Core JSON bootstrap did not receive its CI operator")
+	}
 	if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), []string{"up", "--yes", "--force"})); ok {
 		t.Fatal("noncanonical local Core bootstrap unexpectedly received the CI operator")
+	}
+	if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), []string{"up", "--json", "--yes"})); ok {
+		t.Fatal("noncanonical local Core JSON bootstrap unexpectedly received the CI operator")
 	}
 	t.Setenv("BASEHARBOR_DEMO_ALLOWED_PROJECT_ROOT", "")
 	if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), []string{"up", "--yes"})); ok {
@@ -84,6 +90,9 @@ func TestCIIntegrationOperatorIsExplicitlyScopedToManagedLocalGate(t *testing.T)
 	if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), plan)); ok {
 		t.Fatal("Coreless local lifecycle unexpectedly received the managed-gate operator")
 	}
+	if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), []string{"destroy", "--all", "--yes", "--json"})); !ok {
+		t.Fatal("exact managed local gate did not receive its CI operator for empty-target cleanup")
+	}
 	if err := registerInstallationForTarget(t, target.Name); err != nil {
 		t.Fatalf("register local Core fixture: %v", err)
 	}
@@ -117,19 +126,25 @@ func TestCIIntegrationOperatorAllowsRootDestroyOnlyForGuidedGate(t *testing.T) {
 	t.Setenv("BASEHARBOR_DEMO_OPERATOR_GATE", "guided")
 	target := configureIsolatedEmptyRuntimeTarget(t, "atomic-docker-guided", "docker")
 	t.Setenv("BASEHARBOR_TARGET", target.Name)
+	rootDestroy := []string{"destroy", "--all", "--yes"}
+	if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), []string{"destroy", "--all", "--yes", "--json"})); !ok {
+		t.Fatal("exact guided atomic gate did not receive its CI operator for JSON cleanup of an empty Target")
+	}
 	if err := registerInstallationForTarget(t, target.Name); err != nil {
 		t.Fatalf("register local Core fixture: %v", err)
 	}
-	rootDestroy := []string{"destroy", "--all", "--yes"}
 	if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), rootDestroy)); !ok {
 		t.Fatal("exact guided atomic gate did not receive its CI operator for the documented root destroy step")
+	}
+	if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), []string{"destroy", "--all", "--yes", "--force"})); ok {
+		t.Fatal("guided root destroy exception unexpectedly authorized a noncanonical cleanup command")
 	}
 	if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), []string{"down"})); ok {
 		t.Fatal("guided root destroy exception unexpectedly authorized another root command")
 	}
 	t.Setenv("GATE", "lifecycle")
 	t.Setenv("BASEHARBOR_DEMO_OPERATOR_GATE", "lifecycle")
-	if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), rootDestroy)); ok {
-		t.Fatal("guided root destroy exception escaped its exact gate")
+	if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), []string{"destroy", "--all", "--yes", "--json", "--force"})); ok {
+		t.Fatal("guided root destroy exception unexpectedly authorized noncanonical flags")
 	}
 }
