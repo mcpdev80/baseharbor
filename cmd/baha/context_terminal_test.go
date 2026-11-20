@@ -222,8 +222,8 @@ func TestContextWrapperCallsRealCommandViaCommand(t *testing.T) {
 		t.Fatalf("bash wrapper must call 'command baha' (recursion guard):\n%s", body)
 	}
 	fishBody := contextWrapperBody("fish")
-	if !strings.Contains(fishBody, "command -- baha") {
-		t.Fatalf("fish wrapper must call 'command -- baha' (recursion guard):\n%s", fishBody)
+	if !strings.Contains(fishBody, "command baha") {
+		t.Fatalf("fish wrapper must call 'command baha' (recursion guard):\n%s", fishBody)
 	}
 	if strings.Contains(fishBody, "(baha context show") {
 		t.Fatalf("fish wrapper must not call its own function recursively:\n%s", fishBody)
@@ -490,7 +490,7 @@ func TestEndToEndInstalledZshAndFishWrappers(t *testing.T) {
 		args = append(args, driverFile)
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		cmd := exec.CommandContext(ctx, shellPath, args...)
-		cmd.Env = envWithout(os.Environ(), contextShellVar)
+		cmd.Env = append(envWithout(os.Environ(), contextShellVar), "SHELL="+shellPath)
 		var stdout, stderr bytes.Buffer
 		cmd.Stdout, cmd.Stderr = &stdout, &stderr
 		err = cmd.Run()
