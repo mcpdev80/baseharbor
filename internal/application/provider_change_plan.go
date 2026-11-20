@@ -100,7 +100,18 @@ func DescribeProviderChanges(snapshot ResolutionSnapshot, union ProviderPlan, re
 	}
 	// Hash all relevant authoritative state, including ownership, binding and
 	// dependency changes that may not alter a displayed provider count.
-	canonical := snapshot.Registry
+	// The PlanID digest binds CURRENT AUTHORITY: it must be invariant under
+	// the volatile observation surface (unverifiable/verified classification
+	// flips of unchanged material, the re-derived observation revision, the
+	// wall-clock sample). Hunt 916 A-F1/B2: without this fold the post-consent
+	// revalidation computes a different PlanID while the classifier flaps and
+	// the apply livelocks on stale-impact-consent. The digest input replaces
+	// the projected classification with the state the underlying material
+	// proves: a concrete observation record wins, an unverifiable
+	// realization with no concrete witness carries no state at all.
+	stableSnapshot := snapshot
+	stableSnapshot.Facts = consentAuthorityDigestFacts(snapshot, observation)
+	canonical := stableSnapshot.Registry
 	canonical.Instances = append([]capability.ProviderInstance(nil), canonical.Instances...)
 	canonical.Bindings = append([]capability.ProviderBinding(nil), canonical.Bindings...)
 	sort.Slice(canonical.Instances, func(i, j int) bool { return canonical.Instances[i].ID < canonical.Instances[j].ID })
@@ -109,13 +120,109 @@ func DescribeProviderChanges(snapshot ResolutionSnapshot, union ProviderPlan, re
 		b, _ := json.Marshal(canonical.Bindings[j])
 		return string(a) < string(b)
 	})
-	raw, err := impactDigestInput(p, canonical, snapshot, union)
+	stable := consentAuthorityNormalize(p, snapshot, observation)
+	raw, err := impactDigestInput(stable, canonical, stableSnapshot, union)
 	if err != nil {
 		return p, err
 	}
 	hash := sha256.Sum256(raw)
 	p.PlanID = hex.EncodeToString(hash[:])
+	authority := BuildConsentAuthority(p, snapshot, union, observation)
+	p.Authority = &authority
 	return p, nil
+}
+
+// consentAuthorityDigestFacts canonicalizes the fact view for the consent
+// digest: providers whose runtime classification folded into the unverifiable
+// Layer-1 default carry no state information in the digest — the concrete
+// state the observation record proved (or the unknown marker) replaces the
+// projected "unverifiable" token. Verified realizations mirror the fact
+// exactly (provider_change_validation.go:219), so verified facts are unchanged.
+func consentAuthorityDigestFacts(s ResolutionSnapshot, o ProviderImpactObservation) map[string]ProviderFact {
+	facts := make(map[string]ProviderFact, len(s.Facts))
+	for id, f := range s.Facts {
+		c := f
+		if c.State == ProviderUnverifiable {
+			if observed, has := o.Providers[id]; has && observed.Realization.State != ProviderUnverifiable {
+				// The observation record proves the concrete runtime state the
+				// adapters saw; the projected classification adds nothing.
+				c.State = observed.Realization.State
+			} else if !has {
+				// No observation record at all: the cycle proved nothing, and
+				// the unknown marker keeps that distinguishable from a
+				// provider an adapter inspected and could not classify.
+				c.State = ""
+			}
+			// has && realization unverifiable: the projected fact state is
+			// already the right token.
+		}
+		facts[id] = c
+	}
+	return facts
+}
+
+// consentAuthorityDependenciesKnown is the canonicalized dependency-knowledge
+// check: the Layer-1 default projects an unknown dependency inventory as nil,
+// but the material/effect observation of the same provider may still prove
+// the inventory. Knowledge must not depend on the nil/empty normalization
+// order, only on what was actually proven.
+func consentAuthorityDependenciesKnown(s ResolutionSnapshot, o ProviderImpactObservation, id string) bool {
+	if f, ok := s.Facts[id]; ok && f.Dependencies != nil {
+		return true
+	}
+	fact, observed := o.Providers[id]
+	if !observed {
+		return false
+	}
+	if fact.Realization.State != ProviderUnverifiable || fact.InventoryComplete {
+		return true
+	}
+	for _, m := range fact.Materials {
+		if m.Verified {
+			return true
+		}
+	}
+	return false
+}
+
+// consentAuthorityNormalize projects a computed plan onto the canonical
+// authority view used by the digest and revalidation: the impact-before
+// realization carries the observation-proven state instead of the Layer-1
+// classification token. Countdown samples are stripped by
+// stableValidityImpact inside impactDigestInput.
+func consentAuthorityNormalize(p ProviderImpactPlan, s ResolutionSnapshot, o ProviderImpactObservation) ProviderImpactPlan {
+	stable := p
+	stable.Impacts = append([]ProviderImpact(nil), p.Impacts...)
+	for i, impact := range p.Impacts {
+		c := impact
+		if c.Before.State == ProviderUnverifiable {
+			// Same fold rule as consentAuthorityDigestFacts, applied to the
+			// projection helper's output (observedRealization mirrors the
+			// fact for unknown observations, or the record for observed ones).
+			// A concrete state is folded only when the realization was actually
+			// VERIFIED with evidence (0428-119 r2); an unwitnessed record
+			// leaves the unknown marker, so the frozen surface never borrows a
+			// verified runtime state.
+			if observed, has := o.Providers[c.InstanceID]; has && observed.Realization.Verified && observed.Realization.Evidence != "" {
+				c.Before.State = observed.Realization.State
+			} else if !has {
+				c.Before.State = ""
+			}
+		}
+		if c.After != nil {
+			a := *c.After
+			if a.State == ProviderUnverifiable {
+				if observed, has := o.Providers[a.InstanceID]; has && observed.Realization.Verified && observed.Realization.Evidence != "" {
+					a.State = observed.Realization.State
+				} else if !has {
+					a.State = ""
+				}
+			}
+			c.After = &a
+		}
+		stable.Impacts[i] = c
+	}
+	return stable
 }
 
 func describeProviderChange(s ResolutionSnapshot, union ProviderPlan, o ProviderImpactObservation, instances map[string]capability.ProviderInstance, changes map[string]ProviderChangeRequest, uses []ProviderFunctionUse, r ProviderChangeRequest) (ProviderImpact, bool, bool, bool, error) {
@@ -137,7 +244,7 @@ func describeProviderChange(s ResolutionSnapshot, union ProviderPlan, o Provider
 		imp.Notices = append(imp.Notices, "provider change metadata is unknown")
 	}
 	fact, observed := o.Providers[instance.ID]
-	known = known && observed && fact.InventoryComplete && s.Facts[instance.ID].Dependencies != nil
+	known = known && observed && fact.InventoryComplete && consentAuthorityDependenciesKnown(s, o, instance.ID)
 	imp.Effects = append(imp.Effects, fact.Effects...)
 	imp.Prerequisites = append([]ProviderPrerequisite{}, fact.Prerequisites...)
 	if !observed || !fact.InventoryComplete {

@@ -124,6 +124,9 @@ nav:
       - MCP / agent interface: reference/mcp.md
       - CLI / machine coverage: reference/cli-machine-coverage.md
       - Machine operation recipes: how-to/machine-operations.md
+      - CI consumption of a release: how-to/ci-consumption.md
+      - GitHub Actions example: example/github-actions/README.md
+      - GitLab CI example: example/gitlab-ci/README.md
       - Machine Interface v1: spec/machine-interface-v1.md
       - Protected Machine HTTP v1: spec/machine-http-v1.md
       - Runtime Explorer v1: spec/runtime-explorer-v1.md

@@ -85,7 +85,7 @@ func UnregisterApplicationAt(ctx context.Context, runtime Runtime, issuer servic
 	if p.Scope == capability.ScopeApplication || len(registrations) == 0 {
 		return DestroyProviderAt(ctx, runtime, dataDir, namespace, m)
 	}
-	providerSources, err := providerLogSources(p, registrations)
+	providerSources, err := providerLogSources(p, registrations, m.Environment)
 	if err != nil {
 		return err
 	}

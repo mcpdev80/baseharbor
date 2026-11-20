@@ -137,6 +137,11 @@ type ProviderFiles struct {
 	ProviderSecurityDir string
 	Registrations       string
 	RuntimeCA           string
+	// CompositionState is the observable state of the Prometheus provider
+	// composition (see ProviderCompositionState). It is never empty once
+	// EnsureProviderFilesWithRuntimeCAAt returns successfully; a zero effective
+	// target count is a documented expected state, not an error.
+	CompositionState string
 }
 
 type sourceRegistration struct {

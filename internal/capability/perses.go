@@ -44,13 +44,15 @@ var PersesManagementUIInterface = ProviderInterface{
 // deliberately NOT an IntegrationDescriptor and therefore declaring no
 // application capability kind (Metrics, Logs, Traces, ...).
 //
-// The Perses management surface is deliberately NOT an IntegrationDescriptor:
-// binding it to a capability kind would supply a capability claim the contract
-// forbids, because Perses never IMPLEMENTS a metrics/logs/traces capability on
-// its own — it only visualises the surface the backend data owner already ships.
-// A real capability kind (Metrics, Logs, Traces, ...) would be a false claim,
-// so this contract uses a purpose-specific management-tool/surface type that
-// declares no capability kind and carries only what is genuinely true:
+// Luna REQUEST_CHANGES (act-luna-1575-r1.md, PR #1575) rejected the r2
+// IntegrationDescriptor because binding Perses to the Metrics capability kind
+// supplied a fake capability claim the task forbids: Perses never IMPLEMENTS a
+// metrics/logs/traces capability on its own, it only visualises the surface the
+// backend data owner already ships. A valid IntegrationDescriptor must declare
+// a real capability, so a genuine capability claim is impossible without lying.
+// The surface is therefore deliberately NOT an IntegrationDescriptor: this
+// contract uses a purpose-specific management-tool/surface type that declares
+// no capability kind and carries only what is genuinely true:
 //
 //   - the Perses management provider kind (PersesProviderKind),
 //   - the product version axis, which is DISTINCT from any provider
@@ -240,6 +242,11 @@ func persesStatusNotConfiguredInstance() *PersesStatus {
 // It never returns "verified": a real Perses health probe is required for that,
 // and this Core defines the optional seam only. Pin validation alone must never
 // map into "verified"/"ready".
+//
+// The declaration check is deliberately release-only. Operator authorization is
+// a separate question with its own fail-closed verdict; see
+// PersesConfiguredStatusNow, which ANDs the two so no status path can report a
+// configured surface that is not actually protected.
 func PersesStatusNow(selected bool) *PersesStatus {
 	if !selected {
 		status := PersesStatusNotConfigured
@@ -250,6 +257,19 @@ func PersesStatusNow(selected bool) *PersesStatus {
 		return &status
 	}
 	status := PersesStatusConfiguredUnverified
+	return &status
+}
+
+// PersesConfiguredStatusNow is the fail-closed variant of PersesStatusNow: a
+// surface is "configured" only when the pinned release validates AND its
+// effective security policy validates. An anonymous or unrestricted surface is
+// never configured, so the public status cannot advertise management access
+// that would in fact be an unauthenticated datasource proxy.
+func PersesConfiguredStatusNow(selected bool, policy PersesSecurityPolicy) *PersesStatus {
+	status := PersesStatusNotConfigured
+	if selected && ValidatePersesSecurityPolicy(policy) == nil {
+		status = PersesStatusConfiguredUnverified
+	}
 	return &status
 }
 
@@ -298,4 +318,52 @@ func PersesManagementSurfaceUnprovisioned() PersesManagementSurface {
 		Provisioned:             false,
 		Reachability:            PersesReachabilityUnverified,
 	}
+}
+
+// hostProviderMetricsNativeVerified reports that the shipped reference provider
+// catalog declares a real, native, backend-verified host/provider metrics
+// signal (the "collector-metrics" observability signal). It is the witness the
+// host/container dashboards require so a positive availability verdict is never
+// self-confirmed by the same manifest declaration it is meant to establish.
+func hostProviderMetricsNativeVerified() bool {
+	for _, descriptor := range ReferenceIntegrations() {
+		for _, signal := range descriptor.Observability.Signals {
+			if signal.Name != "collector-metrics" {
+				continue
+			}
+			return signal.Kind == ObservabilityMetrics &&
+				signal.Status == ObservabilitySupported &&
+				signal.Mode == ObservabilityNative &&
+				signal.Verification == ObservabilityVerifyBackend
+		}
+	}
+	return false
+}
+
+// ResolveHostDashboardSignalStatus maps the manifest truth to the authoritative
+// resolved observability-signal verdict the Perses host/container dashboards
+// consume. It is a read-only resolver: it never runs a backend probe and never
+// builds the enable-path resolver (that is a parallel owner task, 0428-080).
+//
+// Fail closed on BOTH axes. The host dashboard is realized as "supported" only
+// when:
+//   - the manifest authoritatively declares the observability backend selected
+//     AND the Perses surface pinned (observabilityManagementUI && persesSelected
+//     and the pinned Perses release validates); AND
+//   - the shipped reference provider catalog declares a real, native,
+//     backend-verified host/provider metrics signal (hostProviderMetricsNativeVerified).
+//
+// Any missing axis resolves to the empty status, which the dashboard reports
+// as unavailable-preserving.
+func ResolveHostDashboardSignalStatus(observabilityManagementUI bool, persesSelected bool) ObservabilitySupportStatus {
+	if !observabilityManagementUI || !persesSelected {
+		return ""
+	}
+	if ValidatePersesRelease(PersesDefaultRelease) != nil {
+		return ""
+	}
+	if !hostProviderMetricsNativeVerified() {
+		return ""
+	}
+	return ObservabilitySupported
 }

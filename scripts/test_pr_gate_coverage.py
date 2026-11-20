@@ -134,6 +134,34 @@ class CoverageCatalogTests(unittest.TestCase):
         self.assertEqual(["source.gate.atomic.docker.lifecycle",
                           "source.gate.atomic.podman.lifecycle"], component["surfaces"])
 
+    def test_perses_runtime_smoke_selects_only_its_docker_native_check(self):
+        current = json.loads((ROOT / "pr-gate-coverage.json").read_text())
+        paths = ("internal/application/perses_runtime.go",
+                 "internal/application/perses_runtime_test.go")
+        for path in paths:
+            with self.subTest(path=path):
+                selected = coverage_module.resolve_native_checks([path], current)
+                self.assertEqual(["native/docker/perses-runtime-smoke"], selected)
+                component = next(row for row in current["components"] if row["path"] == path)
+                self.assertEqual(["TestPersesRuntimeSmokeDockerIsolated"],
+                                 component["required_test_names"])
+        self.assertEqual([], coverage_module.resolve_native_checks(
+            ["internal/application/manifest.go"], current))
+
+    def test_application_observability_source_and_test_select_both_gates(self):
+        current = json.loads((ROOT / "pr-gate-coverage.json").read_text())
+        expected = ["atomic/docker/observability", "atomic/podman/observability"]
+        for path in ("internal/application/runtime_observability.go",
+                     "internal/application/runtime_observability_trace_source_test.go"):
+            with self.subTest(path=path):
+                selected, unresolved = coverage_module.resolve_covered_gates([path], current)
+                self.assertEqual(expected, selected)
+                self.assertEqual([], unresolved)
+        selected, unresolved = coverage_module.resolve_covered_gates(
+            ["internal/application/provider_union.go"], current)
+        self.assertEqual([], selected)
+        self.assertEqual(["internal/application/provider_union.go"], unresolved)
+
     def test_coreless_backend_baseline_has_both_integration_gate_owners_and_test_anchor(self):
         current = json.loads((ROOT / "pr-gate-coverage.json").read_text())
         path = "cmd/baha/app_backend_selective_runtime_test.go"

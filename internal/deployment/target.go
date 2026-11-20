@@ -199,12 +199,6 @@ func LoadConfig() (Config, error) {
 		return Config{}, fmt.Errorf("read BaseHarbor config: %w", err)
 	}
 	if len(bytes.TrimSpace(data)) == 0 {
-		// An EXISTING but empty/whitespace-only config.yaml is a malformed
-		// configuration, not a clean absent-config default. The user pointed
-		// BaseHarbor at this path on purpose, so an emptied or untouched file
-		// must fail loud with an actionable error rather than silently falling
-		// through to the implicit defaults (BF-05). Only a genuinely absent
-		// file may keep the clean default below.
 		return Config{}, fmt.Errorf("%w: %s", ErrConfigEmpty, path)
 	}
 	cfg, err := decodeConfig(data)
@@ -212,14 +206,9 @@ func LoadConfig() (Config, error) {
 		return Config{}, err
 	}
 	// Stable target identity migration: fill the missing TargetUID for any
-	// legacy Target and persist it exactly once. The write is idempotent — a
-	// second read finds no empty UID and performs no write — and it never moves
-	// Target data directories; only the missing config field is filled. A
-	// collision among the generated UIDs fails closed and persists nothing.
-	// Legacy Targets have no Core installation, so this uses a direct CAS
-	// read-modify-write on the protected configuration owner (no installation
-	// lock required) rather than SaveExpected's mutation framing.
-	return migrateAndPersistTargetUIDs(path, cfg, data)
+	// legacy Target and persist it exactly once using the protected config
+	// owner. The migration is idempotent and preserves target data locations.
+	return migrateAndPersistTargetUIDs(cfg, data)
 }
 
 // migrateAndPersistTargetUIDs fills the missing stable Target UID for any
@@ -230,7 +219,7 @@ func LoadConfig() (Config, error) {
 // untouched: target names, data directories and the ownership TenantID are not
 // modified. The write is a single CAS; a subsequent call with an already
 // migrated configuration performs no write at all.
-func migrateAndPersistTargetUIDs(path string, cfg Config, expected []byte) (Config, error) {
+func migrateAndPersistTargetUIDs(cfg Config, expected []byte) (Config, error) {
 	migrated, changed, err := MigrateLegacyTargetUIDs(cfg)
 	if err != nil {
 		return Config{}, err
@@ -238,62 +227,11 @@ func migrateAndPersistTargetUIDs(path string, cfg Config, expected []byte) (Conf
 	if len(changed) == 0 {
 		return cfg, nil
 	}
-	// Persist the migrated configuration exactly once via a direct CAS
-	// read-modify-write. Legacy Targets have no Core installation lock, so this
-	// bypasses SaveExpected's mutation framing and instead re-reads the file,
-	// re-applies the migration, and only writes if the on-disk content still
-	// matches what we read; a concurrent change fails closed and persists
-	// nothing. The write is idempotent: a second read finds no empty UID and
-	// performs no write at all.
-	return writeMigratedTargetUIDs(path, expected, migrated)
-}
-
-// writeMigratedTargetUIDs atomically persists the migrated configuration at
-// path. path is the protected configuration owner; expected is the exact raw
-// owner bytes already read, used for the compare-and-swap. It never moves Target
-// data directories; only the missing config fields are filled. An empty changed
-// set is a no-op.
-func writeMigratedTargetUIDs(path string, expected []byte, migrated Config) (Config, error) {
-	data, err := yaml.Marshal(migrated)
-	if err != nil {
-		return Config{}, fmt.Errorf("encode BaseHarbor config: %w", err)
-	}
-	if len(data) > 8<<20 {
-		return Config{}, errors.New("Target configuration exceeds the supported owner size")
-	}
-	// CAS guard: refuse if the file changed between our read and our write.
-	if expected != nil {
-		current, rerr := os.ReadFile(path)
-		if rerr != nil {
-			return Config{}, fmt.Errorf("read BaseHarbor config for UID migration: %w", rerr)
-		}
-		if !bytes.Equal(current, expected) {
-			return Config{}, ErrConfigurationChanged
-		}
-	}
-	tmp, err := os.CreateTemp(filepath.Dir(path), ".config-*")
-	if err != nil {
+	// Use the same protected owner, lifecycle lock, and byte-level CAS as every
+	// other configuration mutation. This prevents a read-time migration from
+	// replacing a concurrent user save with stale configuration.
+	if err := migrated.SaveExpected(expected); err != nil {
 		return Config{}, err
-	}
-	tmpName := tmp.Name()
-	defer os.Remove(tmpName)
-	if err := tmp.Chmod(0600); err != nil {
-		tmp.Close()
-		return Config{}, err
-	}
-	if _, err := tmp.Write(data); err != nil {
-		tmp.Close()
-		return Config{}, fmt.Errorf("write BaseHarbor config: %w", err)
-	}
-	if err := tmp.Sync(); err != nil {
-		tmp.Close()
-		return Config{}, err
-	}
-	if err := tmp.Close(); err != nil {
-		return Config{}, err
-	}
-	if err := os.Rename(tmpName, path); err != nil {
-		return Config{}, fmt.Errorf("replace BaseHarbor config: %w", err)
 	}
 	return migrated, nil
 }

@@ -162,3 +162,56 @@ func TestPersesCatalogValidationBehaviorPreserved(t *testing.T) {
 		}
 	}
 }
+
+// TestResolveHostDashboardSignalStatusFailClosed pins the fail-closed resolver
+// the Perses host dashboards consume: the host dashboard is realized as
+// "supported" ONLY when the observability backend AND the Perses surface are
+// selected and the pinned release validates AND the shipped reference provider
+// catalog declares a real, native, backend-verified host/provider metrics
+// signal. Any missing axis resolves to the empty (unavailable-preserving)
+// status. This is the Luna-r1/r4 stop: no positive runtime availability without
+// authoritative manifest selection AND an actual verified host/container metric
+// signal, never a result self-confirmed by the same declaration it is meant to
+// establish.
+func TestResolveHostDashboardSignalStatusFailClosed(t *testing.T) {
+	if got := ResolveHostDashboardSignalStatus(false, false); got != "" {
+		t.Fatalf("no observability backend + Perses selected must fail closed to empty status, got %q", got)
+	}
+	if got := ResolveHostDashboardSignalStatus(true, false); got != "" {
+		t.Fatalf("Perses not selected must fail closed to empty status, got %q", got)
+	}
+	if got := ResolveHostDashboardSignalStatus(false, true); got != "" {
+		t.Fatalf("observability backend not selected must fail closed to empty status, got %q", got)
+	}
+	if got := ResolveHostDashboardSignalStatus(true, true); got != ObservabilitySupported {
+		t.Fatalf("observability + Perses selected with valid pinned release + native host/metrics signal must resolve to ObservabilitySupported, got %q", got)
+	}
+}
+
+// TestResolveHostDashboardSignalStatusRequiresNativeSignalWitness pins the Luna
+// r4 acceptance: positive availability is NOT self-confirmed by the manifest
+// declaration alone. It requires an actual, native, backend-verified
+// host/provider metrics signal in the shipped reference contract. When that
+// signal witness is absent, unknown, or not backend-verified, availability stays
+// the empty (unavailable-preserving) status even when both manifest booleans are
+// set and the pin validates.
+func TestResolveHostDashboardSignalStatusRequiresNativeSignalWitness(t *testing.T) {
+	// The shipped contract declares collector-metrics (native + backend-verified),
+	// so with both manifest booleans set it must be available.
+	if got := ResolveHostDashboardSignalStatus(true, true); got != ObservabilitySupported {
+		t.Fatalf("shipped native collector-metrics signal must resolve to ObservabilitySupported, got %q", got)
+	}
+	// The witness scan must find the native, backend-verified collector-metrics
+	// signal in the shipped catalog.
+	if !hostProviderMetricsNativeVerified() {
+		t.Fatal("shipped catalog must declare a native backend-verified collector-metrics signal")
+	}
+	// Non-forgeability: a caller that can only assert the manifest selection
+	// booleans (never holding the resolved signal witness) cannot flip the host
+	// dashboard to available. The only way the manifest declares support without
+	// a verified native metric signal is an adapter-only / non-verified
+	// provider-metrics signal, which hostProviderMetricsNativeVerified rejects
+	// (it requires Status=Supported, Mode=Native, Verification=VerifyBackend).
+	// The public resolver gates on that witness, so manifest selection alone is
+	// insufficient — the positive result needs the actual verified metric signal.
+}

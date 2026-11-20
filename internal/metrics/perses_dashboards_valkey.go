@@ -1,7 +1,6 @@
 package metrics
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -240,19 +239,6 @@ func persesValkeyPanelJSON(entry PersesValkeyPanelCatalogEntry) ([]byte, error) 
 		})
 	}
 	return marshalIndentNoEscape(entry.Dashboard)
-}
-
-// marshalIndentNoEscape marshals v with two-space indentation and without HTML
-// escaping, so & and < are emitted literally in the Perses-native JSON.
-func marshalIndentNoEscape(v any) ([]byte, error) {
-	var buf bytes.Buffer
-	enc := json.NewEncoder(&buf)
-	enc.SetEscapeHTML(false)
-	enc.SetIndent("", "  ")
-	if err := enc.Encode(v); err != nil {
-		return nil, err
-	}
-	return bytes.TrimRight(buf.Bytes(), "\n"), nil
 }
 
 // PersesValkeyDashboardAvailability returns the availability verdict of the

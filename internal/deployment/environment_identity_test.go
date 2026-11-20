@@ -172,6 +172,99 @@ func TestGetEnvironmentRejectsInvalidTargetOrName(t *testing.T) {
 	}
 }
 
+func TestEnvironmentPathNamesRejectTraversalBeforeAccess(t *testing.T) {
+	t.Run("get rejects existing traversed record", func(t *testing.T) {
+		root := t.TempDir()
+		t.Setenv("BASEHARBOR_STATE_DIR", root)
+		outsidePath := writeTraversedEnvironmentRecord(t, root)
+		before, err := os.ReadFile(outsidePath)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if _, err := GetEnvironment("target-a", "../outside"); err == nil {
+			t.Fatal("GetEnvironment accepted a traversing environment name")
+		}
+		after, err := os.ReadFile(outsidePath)
+		if err != nil {
+			t.Fatalf("traversed record was removed: %v", err)
+		}
+		if string(after) != string(before) {
+			t.Fatal("traversed record was modified")
+		}
+	})
+
+	t.Run("rename rejects traversed old name before reading it", func(t *testing.T) {
+		root := t.TempDir()
+		t.Setenv("BASEHARBOR_STATE_DIR", root)
+		outsidePath := writeTraversedEnvironmentRecord(t, root)
+		before, err := os.ReadFile(outsidePath)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if _, err := RenameEnvironment("target-a", "../outside", "safe"); err == nil {
+			t.Fatal("RenameEnvironment accepted a traversing old name")
+		}
+		after, err := os.ReadFile(outsidePath)
+		if err != nil {
+			t.Fatalf("traversed source record was removed: %v", err)
+		}
+		if string(after) != string(before) {
+			t.Fatal("traversed source record was modified")
+		}
+	})
+
+	t.Run("rename rejects traversed new name before creating it", func(t *testing.T) {
+		root := t.TempDir()
+		t.Setenv("BASEHARBOR_STATE_DIR", root)
+		original, err := GetEnvironment("target-a", "prod")
+		if err != nil {
+			t.Fatal(err)
+		}
+		outsidePath := filepath.Join(root, "targets", "target-a", ".baseharbor", "outside", environmentRecordFile)
+		outsideDir := filepath.Dir(outsidePath)
+
+		if _, err := RenameEnvironment("target-a", "prod", "../outside"); err == nil {
+			t.Fatal("RenameEnvironment accepted a traversing new name")
+		}
+		if _, err := os.Stat(outsideDir); !os.IsNotExist(err) {
+			t.Fatalf("traversed destination directory was created: %v", err)
+		}
+		if _, err := os.Stat(outsidePath); !os.IsNotExist(err) {
+			t.Fatalf("traversed destination was created: %v", err)
+		}
+		after, err := GetEnvironment("target-a", "prod")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if after.Identity != original.Identity {
+			t.Fatalf("source identity changed after rejected rename: %q != %q", after.Identity, original.Identity)
+		}
+	})
+}
+
+func writeTraversedEnvironmentRecord(t *testing.T, root string) string {
+	t.Helper()
+	identity, err := environment.NewID()
+	if err != nil {
+		t.Fatal(err)
+	}
+	record := EnvironmentRecord{Target: "target-a", Name: "../outside", Identity: identity}
+	data, err := json.Marshal(record)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "targets", "target-a", ".baseharbor", "outside", environmentRecordFile)
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
 // TestEnvironmentRecordSerializesNameAndIdentitySeparately proves the two core
 // contract fields — Name (mutable selector) and Identity (durable UUID) — are
 // written to their own distinct json fields. A previous regression wrote the
@@ -272,6 +365,141 @@ func TestRenameRetainsIdentityIsThePersistedContract(t *testing.T) {
 	}
 	if decoded.Identity != orig.Identity {
 		t.Fatalf("renamed record changed identity: %q", decoded.Identity)
+	}
+}
+
+func TestRenamePreservesEnvironmentAssociations(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("BASEHARBOR_STATE_DIR", root)
+	const target = "target-a"
+	const oldName = "prod"
+	const newName = "production"
+	const appID = "app-rename-preserve"
+	if _, err := RegisterEnvironmentAssociation(target, oldName, AssociationKindApp, appID); err != nil {
+		t.Fatal(err)
+	}
+
+	moved, err := RenameEnvironment(target, oldName, newName)
+	if err != nil {
+		t.Fatalf("RenameEnvironment: %v", err)
+	}
+	if len(moved.Associations) != 1 || moved.Associations[0] != (AssociationBinding{SubjectKind: AssociationKindApp, SubjectID: appID}) {
+		t.Fatalf("rename result lost environment associations: %+v", moved.Associations)
+	}
+	associations, err := ListEnvironmentAssociations(target, newName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(associations) != 1 || associations[0].SubjectID != appID {
+		t.Fatalf("renamed environment associations = %+v, want app %q", associations, appID)
+	}
+}
+
+func TestRenameRetryCleansSourceAfterInterruptedInstall(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("BASEHARBOR_STATE_DIR", root)
+	const target = "target-a"
+	const oldName = "prod"
+	const newName = "production"
+	const appID = "app-rename-retry"
+	if _, err := RegisterEnvironmentAssociation(target, oldName, AssociationKindApp, appID); err != nil {
+		t.Fatal(err)
+	}
+	source, err := GetEnvironment(target, oldName)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Simulate a crash after installing the destination record but before
+	// removing the source. The old implementation also omitted Associations
+	// from that installed destination, so retry must reconcile both records.
+	newHome, newPath, err := environmentStateRoot(target, newName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(newHome, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	interrupted := EnvironmentRecord{
+		Target:   target,
+		Name:     newName,
+		Identity: source.Identity,
+		Associations: []AssociationBinding{{
+			SubjectKind: AssociationKindNode,
+			SubjectID:   "node-after-crash",
+		}},
+	}
+	blob, err := json.MarshalIndent(interrupted, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(newPath, blob, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	retried, err := RenameEnvironment(target, oldName, newName)
+	if err != nil {
+		t.Fatalf("retry RenameEnvironment after interrupted install: %v", err)
+	}
+	if len(retried.Associations) != 2 {
+		t.Fatalf("retry lost source associations: %+v", retried.Associations)
+	}
+	_, oldPath, err := environmentStateRoot(target, oldName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(oldPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("retry left stale source identity at %q: %v", oldPath, err)
+	}
+	associations, err := ListEnvironmentAssociations(target, newName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(associations) != 2 {
+		t.Fatalf("retry destination associations = %+v, want source and post-crash memberships", associations)
+	}
+	got := map[string]AssociationSubjectKind{}
+	for _, association := range associations {
+		got[association.SubjectID] = association.SubjectKind
+	}
+	if got[appID] != AssociationKindApp || got["node-after-crash"] != AssociationKindNode {
+		t.Fatalf("retry destination memberships lost source or destination data: %+v", associations)
+	}
+}
+
+func TestInstallRenameRefusesMismatchedDestination(t *testing.T) {
+	root := t.TempDir()
+	oldHome := filepath.Join(root, "old")
+	newHome := filepath.Join(root, "new")
+	if err := os.MkdirAll(oldHome, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(newHome, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	oldPath := filepath.Join(oldHome, environmentRecordFile)
+	newPath := filepath.Join(newHome, environmentRecordFile)
+	source := EnvironmentRecord{Target: "target-a", Name: "old", Identity: "00000000-0000-4000-8000-000000000001"}
+	if _, err := persistEnvironmentRecord(oldHome, oldPath, source.Target, source.Name, source.Identity, nil); err != nil {
+		t.Fatal(err)
+	}
+	foreign := []byte("{\"target\":\"target-b\",\"name\":\"new\",\"id\":\"00000000-0000-4000-8000-000000000002\"}\n")
+	if err := os.WriteFile(newPath, foreign, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := installRenamedEnvironmentIdentity(oldPath, newHome, newPath, "target-a", "new", source); !errors.Is(err, ErrEnvironmentBindingMismatch) {
+		t.Fatalf("expected mismatched destination refusal, got %v", err)
+	}
+	after, err := os.ReadFile(newPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(after) != string(foreign) {
+		t.Fatalf("foreign destination was overwritten: got %s", after)
+	}
+	if _, err := os.Stat(oldPath); err != nil {
+		t.Fatalf("source identity was removed after refusal: %v", err)
 	}
 }
 
@@ -491,5 +719,107 @@ func TestLegacyStateReuseViaGetEnvironment(t *testing.T) {
 	}
 	if moved.Identity != legacyID {
 		t.Fatalf("rename changed legacy identity: %q -> %q", legacyID, moved.Identity)
+	}
+}
+
+// TestRenameDoesNotClobberConcurrentDestinationCreator is the deterministic
+// regression for the review #1 finding. The pre-lock destination guard in
+// RenameEnvironment only saw newPath as absent; two concurrent renames of
+// DIFFERENT sources can each clear that guard while dst is still absent, then
+// one wins the lock, writes its identity into dst, releases the lock, and the
+// other wins the lock next. Its source is still present, so it reaches the
+// install with os.Rename(tmpName, newPath) and — without the fix — overwrites
+// the identity the other rename just wrote (a silent UID overwrite: two writers
+// both succeeded, the destination's identity flipped). The fix re-validates dst
+// under the lock on the source-present path and refuses rather than replacing a
+// foreign identity.
+//
+// Two pools of renames move two different sources onto the same still-absent
+// destination. The destination must settle on exactly ONE identity: every
+// successful rename after the first must observe the SAME dst identity that a
+// prior successful rename observed. A flip in the observed dst identity between
+// two successful renames is the clobber.
+func TestRenameDoesNotClobberConcurrentDestinationCreator(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("BASEHARBOR_STATE_DIR", root)
+
+	srcA, err := GetEnvironment("target-a", "race-a-src")
+	if err != nil {
+		t.Fatal(err)
+	}
+	srcB, err := GetEnvironment("target-a", "race-b-src")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if srcA.Identity == srcB.Identity {
+		t.Fatal("setup: two sources share an identity")
+	}
+	const dst = "race-dst"
+
+	var wg sync.WaitGroup
+	const workers = 16
+	// observed[i] is the dst identity the i-th successful rename saw.
+	observed := make([]string, workers)
+	// A mutex-protected view of the last observed dst identity, to detect a
+	// flip between concurrent successful renames (the clobber).
+	var mu sync.Mutex
+	lastSeen := map[string]bool{}
+	successCount := 0
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			name := "race-a-src"
+			if i%2 == 1 {
+				name = "race-b-src"
+			}
+			for j := 0; j < 60; j++ {
+				rec, rErr := RenameEnvironment("target-a", name, dst)
+				if rErr != nil {
+					continue
+				}
+				mu.Lock()
+				lastSeen[rec.Identity] = true
+				successCount++
+				observed[i] = rec.Identity
+				mu.Unlock()
+			}
+		}(i)
+	}
+	wg.Wait()
+
+	// If the fix works, exactly one identity ever exists at dst: the first
+	// writer claims it, every later writer either converges onto it or refuses.
+	if len(lastSeen) != 1 {
+		keys := make([]string, 0, len(lastSeen))
+		for k := range lastSeen {
+			keys = append(keys, k)
+		}
+		t.Fatalf("dst identity flipped across concurrent renames: %v — a rename clobbered another's freshly written identity", keys)
+	}
+	if successCount == 0 {
+		t.Fatal("no rename succeeded; expected at least one winner at dst")
+	}
+
+	// Exactly one identity remains at dst, stable and valid, never a source ID.
+	final, err := GetEnvironment("target-a", dst)
+	if err != nil {
+		t.Fatalf("final read of destination: %v", err)
+	}
+	if err := environment.Validate(final.Identity); err != nil {
+		t.Fatalf("destination identity invalid: %v", err)
+	}
+	if final.Identity == srcA.Identity && final.Identity == srcB.Identity {
+		t.Fatal("dst identity cannot equal both sources")
+	}
+	reopen, err := GetEnvironment("target-a", dst)
+	if err != nil {
+		t.Fatalf("reopen destination: %v", err)
+	}
+	if reopen.Identity != final.Identity {
+		t.Fatalf("dst identity not stable: %q -> %q", final.Identity, reopen.Identity)
+	}
+	if _, statErr := os.Stat(filepath.Join(root, "targets", "target-a", ".baseharbor", "environments", dst, "environment.json")); statErr != nil {
+		t.Fatalf("destination record missing: %v", statErr)
 	}
 }

@@ -8,13 +8,15 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/observability"
 )
 
-// keycloakMetricsSignalID mirrors the native openmetrics signal declared for the
-// Keycloak provider in capability/reference.go; the witness reads this ID.
-const keycloakMetricsSignalUnitTestID = "keycloak-metrics"
+// keycloakMetricsSignalID is the per-project registry identity for the native
+// OpenMetrics signal declared in capability/reference.go.
+func keycloakMetricsSignalID(project string) string {
+	return "keycloak:" + project
+}
 
-func keycloakSignalTestApp(t *testing.T, metricsEnabled bool) application.Manifest {
+func keycloakSignalTestApp(t *testing.T, name string, metricsEnabled bool) application.Manifest {
 	t.Helper()
-	app := application.New("alpha", "dev", false, false, false)
+	app := application.New(name, "dev", false, false, false)
 	app = application.WithIdentity(app)
 	if metricsEnabled {
 		app.Metrics.Sources = []application.MetricsSourceRequirement{{Name: "app", Service: "api", Port: 8080, Path: "/metrics"}}
@@ -32,7 +34,7 @@ func keycloakSignalTestApp(t *testing.T, metricsEnabled bool) application.Manife
 func TestKeycloakSignalRegistrationRegistersNativeMetricsSignal(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("BASEHARBOR_STATE_DIR", dir)
-	app := keycloakSignalTestApp(t, true)
+	app := keycloakSignalTestApp(t, "alpha", true)
 
 	r := &localKeycloakRealization{
 		app:       app,
@@ -54,13 +56,14 @@ func TestKeycloakSignalRegistrationRegistersNativeMetricsSignal(t *testing.T) {
 		false,
 		true,
 		true,
+		app.Environment,
 	)
 	if err != nil {
 		t.Fatalf("List: %v", err)
 	}
 	found := false
 	for _, source := range sources {
-		if source.Provider != capability.ProviderKeycloak || source.ID != keycloakMetricsSignalUnitTestID {
+		if source.Provider != capability.ProviderKeycloak || source.ID != keycloakMetricsSignalID(r.files.Project) {
 			continue
 		}
 		found = true
@@ -80,7 +83,7 @@ func TestKeycloakSignalRegistrationRegistersNativeMetricsSignal(t *testing.T) {
 func TestKeycloakSignalRegistrationFailsClosedWithoutMetrics(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("BASEHARBOR_STATE_DIR", dir)
-	app := keycloakSignalTestApp(t, false)
+	app := keycloakSignalTestApp(t, "alpha", false)
 
 	r := &localKeycloakRealization{
 		app:       app,
@@ -102,13 +105,67 @@ func TestKeycloakSignalRegistrationFailsClosedWithoutMetrics(t *testing.T) {
 		false,
 		true,
 		true,
+		app.Environment,
 	)
 	if err != nil {
 		t.Fatalf("List: %v", err)
 	}
 	for _, source := range sources {
-		if source.Provider == capability.ProviderKeycloak && source.ID == keycloakMetricsSignalUnitTestID {
+		if source.Provider == capability.ProviderKeycloak && source.ID == keycloakMetricsSignalID(r.files.Project) {
 			t.Fatalf("keycloak-metrics signal registered while metrics collection is disabled (fail-closed broken): %#v", source)
+		}
+	}
+}
+
+func TestKeycloakSignalRegistrationKeepsProjectsDistinct(t *testing.T) {
+	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
+	apps := []application.Manifest{
+		keycloakSignalTestApp(t, "alpha", true),
+		keycloakSignalTestApp(t, "beta", true),
+	}
+	projects := []string{"identity-alpha", "identity-beta"}
+	for i, app := range apps {
+		r := &localKeycloakRealization{
+			app:       app,
+			namespace: "target",
+			files:     KeycloakFiles{Project: projects[i], ConsumerNetwork: "baseharbor-identity"},
+		}
+		if err := r.registerKeycloakSignals(); err != nil {
+			t.Fatalf("registerKeycloakSignals for %s: %v", app.Name, err)
+		}
+	}
+
+	ids := make(map[string]bool, len(apps))
+	for i, app := range apps {
+		placement, err := application.ResolveProviderPlacement(app, capability.ProviderKeycloak)
+		if err != nil {
+			t.Fatalf("ResolveProviderPlacement for %s: %v", app.Name, err)
+		}
+		sources, err := observability.List(
+			observability.SignalMetrics,
+			placement,
+			[]string{app.Name},
+			false,
+			true,
+			true,
+			app.Environment,
+		)
+		if err != nil {
+			t.Fatalf("List for %s: %v", app.Name, err)
+		}
+		wantID := keycloakMetricsSignalID(projects[i])
+		if ids[wantID] {
+			t.Fatalf("project IDs unexpectedly collide: %q", wantID)
+		}
+		ids[wantID] = true
+		found := false
+		for _, source := range sources {
+			if source.Provider == capability.ProviderKeycloak && source.ID == wantID {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatalf("Keycloak metrics source for project %q missing after registering both projects: %#v", projects[i], sources)
 		}
 	}
 }
