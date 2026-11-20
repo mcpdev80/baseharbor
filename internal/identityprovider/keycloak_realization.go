@@ -15,6 +15,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/devaccess"
 	"github.com/mcpdev80/baseharbor/internal/devgateway"
 	"github.com/mcpdev80/baseharbor/internal/observability"
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
 
@@ -163,26 +164,15 @@ func (r *localKeycloakRealization) registerKeycloakSignals() error {
 	// source of record under the literal id "keycloak-metrics". The new scoping
 	// ID would otherwise replace that entry and drop it from the registry
 	// (ListMetrics/RegistryHasSignal see nothing of record, and its own Remove
-	// cannot find it). Re-book the legacy source onto the scoping ID before the
-	// new registration so the source stays visible and removable under its new
-	// ID. The reconciliation is idempotent and no-mutation: an already-migrated
-	// registry and a source already under the scoping ID leave the file
-	// untouched, and a same-ID registration of a foreign provider is never
-	// rewritten. The new scoping-ID registration then replaces the re-booked
-	// entry cleanly, exactly as it replaces any current ID.
-	if err := observability.ReconcileLegacySignals(
-		observability.LegacySource{
-			ID:        observability.LegacyKeycloakMetricsID,
-			Providers: []capability.ProviderKind{capability.ProviderKeycloak},
-		},
-		registrationID,
-		map[capability.ProviderKind]struct{}{capability.ProviderKeycloak: {}},
-		nil,
-	); err != nil {
-		return err
-	}
-
-	return observability.RegisterProviderSignals(observability.ProviderSignalRegistration{
+	// cannot find it). The migration runs FIRST, inside the same change-aware
+	// path under the existing registry state lock: it re-books every legacy
+	// source of record onto a DERIVED identity - the owning application's
+	// canonical project with the legacy signal name - never onto this caller's
+	// registration ID, so the registration below can neither overwrite nor
+	// delete it. The record's owner and every other field stay verbatim. With
+	// nothing to migrate the step writes no byte at all (idempotent,
+	// no-mutation).
+	registration := observability.ProviderSignalRegistration{
 		ID:               registrationID,
 		Descriptor:       capability.KeycloakIntegration,
 		Class:            class,
@@ -191,7 +181,158 @@ func (r *localKeycloakRealization) registerKeycloakSignals() error {
 		OwnerApplication: r.app.Name,
 		Enabled:          map[observability.SignalKind]bool{observability.SignalMetrics: metricsEnabled},
 		Signals:          signals,
-	})
+	}
+	// The owner->project maps the migration consults, in precedence order: the
+	// caller's own canonical project first (so the caller's own record
+	// converges onto its canonical registration identity), then every
+	// Keycloak installation recorded on this Target, so a foreign owner's
+	// record migrates onto ITS grammar, never the caller's.
+	registration.Legacy = &observability.LegacyReconciliation{
+		Source: observability.LegacySource{
+			ID:        observability.LegacyKeycloakMetricsID,
+			Providers: []capability.ProviderKind{capability.ProviderKeycloak},
+		},
+		Project:           r.files.Project,
+		CallerApplication: r.app.Name,
+		OwnerProjects:     r.ownerProjectMaps(placement),
+	}
+	return observability.RegisterProviderSignals(registration)
+}
+
+// ownerProjectMaps lists the owner->project maps the migration consults. The
+// caller's own canonical project comes first; the state scan (providers/
+// keycloak/applications/<name>/<environment>) enumerates the Target's other
+// installations. When the scan finds NO application state at all - a legacy,
+// pre-scoping deployment wrote none, which is exactly the migration case -
+// the owners currently holding the unscoped literal fall back to the canonical
+// identity grammar the current runtime computes for them.
+func (r *localKeycloakRealization) ownerProjectMaps(placement capability.ProviderPlacement) []map[string]string {
+	maps := []map[string]string{{r.app.Name: legacyMigrationProject(r.namespace, r.app, placement, r.files.Project)}}
+	dir := r.dataDir
+	if strings.TrimSpace(dir) == "" {
+		if resolved, err := bhruntime.DataDir(""); err == nil {
+			dir = resolved
+		}
+	}
+	recorded, err := ListKeycloakOwnerProjects(dir, r.namespace)
+	if err == nil && len(recorded) > 0 {
+		maps = append(maps, recorded)
+		return maps
+	}
+	if err == nil && len(recorded) == 0 {
+		if derived := legacyLiteralOwners(r.namespace); len(derived) > 0 {
+			maps = append(maps, derived)
+		}
+	}
+	return maps
+}
+
+// legacyLiteralOwners collects owner->canonical identity project for every
+// application that holds the unscoped legacy Keycloak source of record in the
+// registry right now. It is the last-resort recovery when the Target carries
+// no application placement state: the record's owner token is known, and the
+// current runtime's project formula for that owner is
+// "bh-<target>-<app>-identity-<environment>". The environment is the one the
+// registering deployment lives in.
+func legacyLiteralOwners(namespace string) map[string]string {
+	sources, err := observability.ListAll()
+	if err != nil {
+		return nil
+	}
+	owners := map[string]string{}
+	for _, source := range sources {
+		if source.ID != observability.LegacyKeycloakMetricsID || source.Provider != capability.ProviderKeycloak {
+			continue
+		}
+		if source.Scope != capability.ScopeApplication || strings.TrimSpace(source.OwnerApplication) == "" {
+			continue
+		}
+		owners[source.OwnerApplication] = legacyOwnerProject(namespace, source.OwnerApplication)
+	}
+	if len(owners) == 0 {
+		return nil
+	}
+	return owners
+}
+
+// legacyOwnerProject is the canonical identity project formula the current
+// runtime writes for an application's Keycloak placement resource.
+func legacyOwnerProject(namespace, application string) string {
+	return bhruntime.ApplicationProjectName(namespace, application+"-identity", identityDeploymentEnvironment())
+}
+
+// identityDeploymentEnvironment reports the environment of the deployment
+// running the migration: the state root the registry itself resolves through
+// carries the canonical project name, whose trailing token is the environment
+// (bhruntime derives state paths per deployment environment).
+func identityDeploymentEnvironment() string {
+	dir, err := bhruntime.DataDir("")
+	if err != nil {
+		return "dev"
+	}
+	tokens := strings.Split(strings.ToLower(filepath.Base(dir)), "-")
+	if len(tokens) >= 2 {
+		if env := tokens[len(tokens)-1]; env != "" && !reservedIdentityToken(env) {
+			return env
+		}
+	}
+	return "dev"
+}
+
+// reservedIdentityToken reports whether a state-dir token is platform
+// vocabulary rather than an environment name: a token the environment token
+// never equals (the reserved placement-resource vocabulary).
+func reservedIdentityToken(token string) bool {
+	switch token {
+	case "shared", "postgres", "openbao", "runtime-executor", "object-storage",
+		"metrics", "prometheus", "logs", "loki", "traces", "tempo",
+		"telemetry", "otel-collector", "seaweedfs", "identity":
+		return true
+	default:
+		return false
+	}
+}
+
+// legacyMigrationProject names the canonical compose project an application
+// placement's identity resource carries.
+func legacyMigrationProject(namespace string, app application.Manifest, placement capability.ProviderPlacement, callerProject string) string {
+	if placement.Scope != capability.ScopeApplication {
+		return callerProject
+	}
+	// The canonical compose project of an app placement is the identity
+	// project keycloakStateIdentity computes ("bh-<target>-<app>-identity
+	// -<environment>").
+	return bhruntime.ApplicationProjectName(namespace, app.Name+"-identity", app.Environment)
+}
+
+// ListKeycloakOwnerProjects recovers the owner->project map from the Keycloak
+// state directories under dataDir: each application placement stores its
+// manifest identity in "applications/<name>/<environment>", which yields the
+// owner token, and its compose project is the canonical application project
+// name for that placement. Shared placements contribute no application owner.
+func ListKeycloakOwnerProjects(dataDir, namespace string) (map[string]string, error) {
+	root := filepath.Join(filepath.Clean(dataDir), "providers", "keycloak", "applications")
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	projects := map[string]string{}
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		envs, err := os.ReadDir(filepath.Join(root, name))
+		if err != nil || len(envs) == 0 {
+			continue
+		}
+		environment := envs[len(envs)-1].Name()
+		projects[name] = bhruntime.ApplicationProjectName(namespace, name+"-identity", environment)
+	}
+	return projects, nil
 }
 
 func (r *localKeycloakRealization) Existing(ctx context.Context) (KeycloakInstance, error) {

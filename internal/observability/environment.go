@@ -148,9 +148,9 @@ func projectTokenFromID(source SignalSource) (string, bool) {
 func trailingProjectEnvironment(source SignalSource, value string) (string, bool) {
 	value = strings.TrimSpace(value)
 	value = strings.TrimPrefix(value, "runtime://")
-	if strings.Contains(value, "/") {
+	if idx := strings.Index(value, "/"); idx >= 0 {
 		// runtime://<project>/<service> — isolate the project segment first.
-		value = value[:strings.Index(value, "/")]
+		value = value[:idx]
 	}
 	if idx := strings.Index(value, ":"); idx >= 0 {
 		// "<provider>:<project>[:<service>]" — a real application-provider ID

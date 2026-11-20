@@ -1,216 +1,205 @@
 package observability
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/capability"
 )
 
-// legacyKeycloakSource names the pre-scoping "keycloak-metrics" registration the
-// runtime wrote before 0428-1707 made the ID scoping-aware.
-var legacyKeycloakSource = LegacySource{
-	ID:        "keycloak-metrics",
-	Providers: []capability.ProviderKind{capability.ProviderKeycloak},
-}
-
-// TestLegacyKeycloakMetricsSourceIsCorpseProvesTheBug pins the leiche exactly:
-// a pre-existing legacy "keycloak-metrics" source of record is silently dropped
-// by the new scoping-ID registration, so it is gone from List and unremovable by
-// its own ID. This test PASSES against the buggy code (witnesses the corpse) and
-// FAILS once the migration re-books it. The finding depends on it.
-func TestLegacyKeycloakMetricsSourceIsCorpseProvesTheBug(t *testing.T) {
+// TestLegacyKeycloakMetricsSourceCorpseProvesTheBug fixes the PRE-migration
+// behaviour the review demanded as the witness for P4: the unscoped literal
+// "keycloak-metrics" is present in the registry file but NOT visible through
+// the app-scoped list surface, because the route-2 environment derivation
+// cannot resolve an environment from an ID that carries no project. That is
+// the "corpse": the record exists yet no owner can ever list or remove it
+// through the contract, and the ID-scoping registration drops it silently.
+func TestLegacyKeycloakMetricsSourceCorpseProvesTheBug(t *testing.T) {
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
-
-	const legacyID = "keycloak-metrics"
-
-	// 1. The pre-deploy legacy source, written exactly as the OLD code did it:
-	// an app-scoped Keycloak metrics source under the literal id.
 	if err := Update(MetricsSource{
-		ID: legacyID, Provider: capability.ProviderKeycloak, Class: SourceApplicationProvider,
-		Scope: capability.ScopeApplication, OwnerApplication: "app-a",
-		Network: "baseharbor-app-a-dev", Target: "keycloak:9000", Path: "/metrics", Scheme: "http",
+		ID:               LegacyKeycloakMetricsID,
+		Provider:         capability.ProviderKeycloak,
+		Class:            SourceApplicationProvider,
+		Scope:            capability.ScopeApplication,
+		OwnerApplication: "alpha",
+		Network:          "baseharbor-alpha-dev",
+		Target:           "keycloak:9000",
+		Path:             "/metrics",
+		Scheme:           "http",
 	}); err != nil {
 		t.Fatalf("write legacy source: %v", err)
 	}
-	if ok, err := RegistryHasSignal(legacyID, capability.ProviderKeycloak, SignalMetrics); err != nil {
+	// Present in the registry (the file and the raw predicate see it).
+	if ok, err := RegistryHasSignal(LegacyKeycloakMetricsID, capability.ProviderKeycloak, SignalMetrics); err != nil {
 		t.Fatal(err)
 	} else if !ok {
-		t.Fatalf("legacy source not present immediately after write")
+		t.Fatal("legacy source not present after its own write")
 	}
-
-	// 2. The NEW code runs its first scoping-ID registration (a sibling
-	// Keycloak project, different owner application). Without the migration the
-	// legacy source of record is dropped.
-	const newID = "keycloak:project-b"
-	if err := RegisterProviderSignals(ProviderSignalRegistration{
-		ID:               newID,
-		Descriptor:       capability.KeycloakIntegration,
-		Class:            SourceApplicationProvider,
-		Scope:            capability.ScopeApplication,
-		OwnerApplication: "app-b",
-		Enabled:          map[SignalKind]bool{SignalMetrics: true},
-		Signals:          map[string]ProviderSignalRuntime{"keycloak-metrics": {Network: "baseharbor-app-b-dev", Target: "keycloak:9000"}},
-	}); err != nil {
-		t.Fatalf("new scoping-ID registration: %v", err)
-	}
-
-	// 3. The corpse: the legacy source is gone from List for its own caller.
-	list, err := ListMetrics(capability.ProviderPlacement{Scope: capability.ScopeApplication}, []string{"app-a"}, true, true, "dev")
+	// NOT visible through the app-scoped list contract: the unscoped literal
+	// fails closed on the environment derivation. This is the loss the
+	// migration must make observable.
+	list, err := ListMetrics(capability.ProviderPlacement{Scope: capability.ScopeApplication}, []string{"alpha"}, true, true, "dev")
 	if err != nil {
-		t.Fatalf("List: %v", err)
+		t.Fatalf("ListMetrics: %v", err)
 	}
-	for _, s := range list {
-		if s.ID == legacyID {
-			t.Fatalf("legacy %q still present after new registration -> corpse NOT reproduced: %#v", legacyID, list)
-		}
-	}
-
-	// 4. Because it is gone, it is unremovable by its own ID.
-	_ = Remove(legacyID)
-	if ok, err := RegistryHasSignal(legacyID, capability.ProviderKeycloak, SignalMetrics); err != nil {
-		t.Fatal(err)
-	} else if ok {
-		t.Fatalf("legacy source unexpectedly still present after its own Remove")
-	}
-}
-
-// TestReconcileLegacySignalsRebooksTheCorpse proves the FIX: the first new
-// scoping-ID registration re-reads the legacy source of record and re-books it
-// under the new ID, so it stays visible and removable by its new ID and the
-// legacy ID is gone from List.
-func TestReconcileLegacySignalsRebooksTheCorpse(t *testing.T) {
-	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
-
-	const legacyID = "keycloak-metrics"
-	const newID = "keycloak:project-b"
-
-	if err := Update(MetricsSource{
-		ID: legacyID, Provider: capability.ProviderKeycloak, Class: SourceApplicationProvider,
-		Scope: capability.ScopeApplication, OwnerApplication: "app-a",
-		Network: "baseharbor-app-a-dev", Target: "keycloak:9000", Path: "/metrics", Scheme: "http",
-	}); err != nil {
-		t.Fatalf("write legacy source: %v", err)
-	}
-
-	// The NEW registration carries the reconciliation seam: it re-books the
-	// legacy Keycloak source onto the scoping ID instead of dropping it.
-	if err := ReconcileLegacySignals(legacyKeycloakSource, newID,
-		map[capability.ProviderKind]struct{}{capability.ProviderKeycloak: {}}, nil); err != nil {
-		t.Fatalf("ReconcileLegacySignals: %v", err)
-	}
-	if err := RegisterProviderSignals(ProviderSignalRegistration{
-		ID:               newID,
-		Descriptor:       capability.KeycloakIntegration,
-		Class:            SourceApplicationProvider,
-		Scope:            capability.ScopeApplication,
-		OwnerApplication: "app-b",
-		Enabled:          map[SignalKind]bool{SignalMetrics: true},
-		Signals:          map[string]ProviderSignalRuntime{"keycloak-metrics": {Network: "baseharbor-app-b-dev", Target: "keycloak:9000"}},
-	}); err != nil {
-		t.Fatalf("new scoping-ID registration: %v", err)
-	}
-
-	// The legacy ID is gone from List (re-booked onto the new ID).
-	if ok, err := RegistryHasSignal(legacyID, capability.ProviderKeycloak, SignalMetrics); err != nil {
-		t.Fatal(err)
-	} else if ok {
-		t.Fatalf("legacy %q still present after reconciliation -> not re-booked", legacyID)
-	}
-
-	// The source is now visible and removable by its new scoping ID.
-	if ok, err := RegistryHasSignal(newID, capability.ProviderKeycloak, SignalMetrics); err != nil {
-		t.Fatal(err)
-	} else if !ok {
-		t.Fatalf("re-booked source %q not present", newID)
-	}
-	if err := Remove(newID); err != nil {
-		t.Fatalf("Remove(%q): %v", newID, err)
-	}
-	if ok, err := RegistryHasSignal(newID, capability.ProviderKeycloak, SignalMetrics); err != nil {
-		t.Fatal(err)
-	} else if ok {
-		t.Fatalf("re-booked source still present after its own Remove")
-	}
-}
-
-// TestReconcileLegacySignalsIdempotentAndNoMutation proves the two migration
-// regression guards: (a) a second reconciliation on an already-migrated
-// registry changes nothing, and (b) a legacy source already carried under the
-// new scoping ID is never rewritten.
-func TestReconcileLegacySignalsIdempotentAndNoMutation(t *testing.T) {
-	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
-
-	const legacyID = "keycloak-metrics"
-	const newID = "keycloak:project-b"
-
-	// Case (a): no legacy source at all, reconcile is a no-op that leaves the
-	// registry empty (nothing to re-book, nothing written).
-	if err := ReconcileLegacySignals(legacyKeycloakSource, newID,
-		map[capability.ProviderKind]struct{}{capability.ProviderKeycloak: {}}, nil); err != nil {
-		t.Fatalf("reconcile on empty registry: %v", err)
-	}
-	if ok, err := RegistryHasSignal(newID, capability.ProviderKeycloak, SignalMetrics); err != nil {
-		t.Fatal(err)
-	} else if ok {
-		t.Fatalf("reconcile on empty registry wrote a source it did not own")
-	}
-
-	// Case (b): a source already carried under the new scoping ID is not
-	// rewritten by a reconciliation.
-	if err := Update(MetricsSource{
-		ID: newID, Provider: capability.ProviderKeycloak, Class: SourceApplicationProvider,
-		Scope: capability.ScopeApplication, OwnerApplication: "app-b",
-		Network: "baseharbor-app-b-dev", Target: "keycloak:9000", Path: "/metrics", Scheme: "http",
-	}); err != nil {
-		t.Fatalf("write new-ID source: %v", err)
-	}
-	before, err := readSignalsForTest(t)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := ReconcileLegacySignals(legacyKeycloakSource, newID,
-		map[capability.ProviderKind]struct{}{capability.ProviderKeycloak: {}}, nil); err != nil {
-		t.Fatalf("reconcile on already-migrated registry: %v", err)
-	}
-	after, err := readSignalsForTest(t)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(before) != len(after) {
-		t.Fatalf("reconcile changed the registry size %d -> %d (not idempotent)", len(before), len(after))
-	}
-	for i := range before {
-		if before[i].ID != after[i].ID || before[i].OwnerApplication != after[i].OwnerApplication {
-			t.Fatalf("reconcile rewrote an already-migrated source: before %#v after %#v", before, after)
+	for _, source := range list {
+		if source.ID == LegacyKeycloakMetricsID {
+			t.Fatal("the unscoped literal must NOT be listable pre-migration (route-2 fails closed)")
 		}
 	}
 }
 
-// TestReconcileLegacySignalsForeignProviderUntouched proves a same-ID legacy
-// registration under a provider the new identity does not own is never
-// rewritten, so cross-provider identity spaces stay disjoint (boundary to the
-// two-project separation owned by card 0428-166).
-func TestReconcileLegacySignalsForeignProviderUntouched(t *testing.T) {
-	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
-
-	const legacyID = "keycloak-metrics"
-
-	// A legacy "keycloak-metrics" under a DIFFERENT provider (Prometheus) must
-	// survive a reconciliation that only owns Keycloak.
+// TestMigrateScopedReBooksObservablyForOwner proves the migration half on the
+// observability contract: after MigrateScoped the record stands under the
+// canonical project-scoped identity, WITH ITS OWNER VERBATIM, resolves an
+// environment through the route-2 derivation, IS visible through the app-scoped
+// list for its owner, and is removable by that identity. A re-run on the same
+// registry changes no byte (idempotent, no-mutation).
+func TestMigrateScopedReBooksObservablyForOwner(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("BASEHARBOR_STATE_DIR", dir)
 	if err := Update(MetricsSource{
-		ID: legacyID, Provider: capability.ProviderPrometheus, Class: SourceApplicationProvider,
-		Scope: capability.ScopeApplication, OwnerApplication: "app-z",
-		Network: "baseharbor-app-z-dev", Target: "prometheus:9090", Path: "/metrics", Scheme: "http",
+		ID:               LegacyKeycloakMetricsID,
+		Provider:         capability.ProviderKeycloak,
+		Class:            SourceApplicationProvider,
+		Scope:            capability.ScopeApplication,
+		OwnerApplication: "alpha",
+		Network:          "baseharbor-alpha-dev",
+		Target:           "keycloak:9000",
+		Path:             "/metrics",
+		Scheme:           "http",
 	}); err != nil {
-		t.Fatalf("write foreign-provider source: %v", err)
+		t.Fatalf("write legacy source: %v", err)
 	}
-	if err := ReconcileLegacySignals(legacyKeycloakSource, "keycloak:project-b",
-		map[capability.ProviderKind]struct{}{capability.ProviderKeycloak: {}}, nil); err != nil {
-		t.Fatalf("reconcile: %v", err)
+	legacy := LegacySource{ID: LegacyKeycloakMetricsID, Providers: []capability.ProviderKind{capability.ProviderKeycloak}}
+	ownerProjects := map[string]string{"alpha": "bh-target-alpha-identity-dev"}
+	migrated, err := legacy.MigrateScoped("bh-target-bravo-identity-dev", ownerProjects)
+	if err != nil {
+		t.Fatalf("MigrateScoped: %v", err)
 	}
-	if ok, err := RegistryHasSignal(legacyID, capability.ProviderPrometheus, SignalMetrics); err != nil {
+	if !migrated {
+		t.Fatal("the legacy literal was not re-booked")
+	}
+	migratedID := "keycloak:bh-target-alpha-dev:keycloak-metrics"
+	if ok, err := RegistryHasSignal(LegacyKeycloakMetricsID, capability.ProviderKeycloak, SignalMetrics); err != nil {
+		t.Fatal(err)
+	} else if ok {
+		t.Fatal("legacy literal still present after migration")
+	}
+	if ok, err := RegistryHasSource(migratedID, capability.ProviderKeycloak, SignalMetrics, "alpha"); err != nil {
 		t.Fatal(err)
 	} else if !ok {
-		t.Fatalf("foreign-provider legacy source was rewritten by a Keycloak-only reconciliation")
+		t.Fatalf("migrated record vanished or lost its owner: %q", migratedID)
+	}
+	source, ok := func() (SignalSource, bool) {
+		sources, err := ListAll()
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, candidate := range sources {
+			if candidate.ID == migratedID {
+				return candidate, true
+			}
+		}
+		return SignalSource{}, false
+	}()
+	if !ok {
+		t.Fatalf("migrated record missing from the registry: %q", migratedID)
+	}
+	if env, resolved := SourceEnvironment(source); !resolved || env != "dev" {
+		t.Fatalf("the migrated record's environment must resolve to dev, got %q ok=%v", env, resolved)
+	}
+	list, err := ListMetrics(capability.ProviderPlacement{Scope: capability.ScopeApplication}, []string{"alpha"}, true, true, "dev")
+	if err != nil {
+		t.Fatalf("ListMetrics: %v", err)
+	}
+	found := false
+	for _, entry := range list {
+		if entry.ID == migratedID && entry.OwnerApplication == "alpha" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("the migrated record is not observable for its owner through the list contract: %#v", list)
+	}
+	if err := Remove(migratedID); err != nil {
+		t.Fatalf("Remove(migrated): %v", err)
+	}
+	if ok, err := RegistryHasSignal(migratedID, capability.ProviderKeycloak, SignalMetrics); err != nil {
+		t.Fatal(err)
+	} else if ok {
+		t.Fatal("migrated record still present after Remove by its identity")
+	}
+}
+
+// TestMigrateScopedIsIdempotentAndWritesNoByte proves P2 on the persistence
+// level: a second migration against an already-migrated registry returns
+// migrated=false... actually it re-books nothing (no match) and leaves the
+// registry file BYTE-IDENTICAL, same mtime-safe content; and a migration that
+// finds no legacy literal at all against a MISSING file never creates it.
+func TestMigrateScopedIsIdempotentAndWritesNoByte(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("BASEHARBOR_STATE_DIR", dir)
+	// No legacy literal exists at all: the change-aware path must not create
+	// the registry file.
+	legacy := LegacySource{ID: LegacyKeycloakMetricsID, Providers: []capability.ProviderKind{capability.ProviderKeycloak}}
+	migrated, err := legacy.MigrateScoped("bh-target-bravo-identity-dev")
+	if err != nil {
+		t.Fatalf("MigrateScoped on empty state: %v", err)
+	}
+	if migrated {
+		t.Fatal("nothing exists, so nothing may report as migrated")
+	}
+	path := filepath.Join(dir, "observability", "signals.json")
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("a no-op migration must not create the registry file (stat err=%v)", err)
+	}
+	// Now write a legacy literal, migrate twice, and compare bytes.
+	if err := Update(MetricsSource{
+		ID: LegacyKeycloakMetricsID, Provider: capability.ProviderKeycloak,
+		Class: SourceApplicationProvider, Scope: capability.ScopeApplication,
+		OwnerApplication: "alpha", Network: "baseharbor-alpha-dev",
+		Target: "keycloak:9000", Path: "/metrics", Scheme: "http",
+	}); err != nil {
+		t.Fatalf("write legacy source: %v", err)
+	}
+	if _, err := legacy.MigrateScoped("bh-target-bravo-identity-dev", map[string]string{"alpha": "bh-target-alpha-identity-dev"}); err != nil {
+		t.Fatalf("first MigrateScoped: %v", err)
+	}
+	first, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read after first migration: %v", err)
+	}
+	second, err := legacy.MigrateScoped("bh-target-bravo-identity-dev", map[string]string{"alpha": "bh-target-alpha-identity-dev"})
+	if err != nil {
+		t.Fatalf("second MigrateScoped: %v", err)
+	}
+	if second {
+		t.Fatal("an already-migrated registry must report migrated=false")
+	}
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read after second migration: %v", err)
+	}
+	if string(first) != string(after) {
+		t.Fatalf("a no-op migration rewrote the registry file:\nfirst=%s\nafter=%s", first, after)
+	}
+}
+
+// TestMigrateScopedNeverCollidesWithCallersRegistration proves the disjointness
+// the review demands: the derived identity "<provider>:<project>:<legacy-id>"
+// can never equal a caller's "<provider>:<project>" registration identity, so
+// the (ID, provider) replacement inside one registration mutation cannot select
+// the migrated record.
+func TestMigrateScopedNeverCollidesWithCallersRegistration(t *testing.T) {
+	legacy := LegacySource{ID: LegacyKeycloakMetricsID, Providers: []capability.ProviderKind{capability.ProviderKeycloak}}
+	derived := legacy.ScopedID(capability.ProviderKeycloak, "bh-target-alpha-dev")
+	registration := "keycloak:bh-target-alpha"
+	if derived == registration {
+		t.Fatalf("derived identity %q collapses onto the caller's registration identity", derived)
+	}
+	if len(filepath.SplitList(derived)) != 3 || len(filepath.SplitList(registration)) != 2 {
+		t.Fatalf("grammar drift: scoped=%q registration=%q", derived, registration)
 	}
 }
