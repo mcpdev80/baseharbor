@@ -452,6 +452,30 @@ func TestRegisterEnvironmentAssociationRejectsInvalidInput(t *testing.T) {
 	}
 }
 
+// TestDeregisterEnvironmentAssociationRejectsEnvironmentPathTraversal proves
+// a malformed environment selector cannot escape its canonical environment
+// path and remove a sibling environment's membership.
+func TestDeregisterEnvironmentAssociationRejectsEnvironmentPathTraversal(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("BASEHARBOR_STATE_DIR", root)
+	const target = "target-a"
+	const appID = "app-1"
+	if _, err := RegisterEnvironmentAssociation(target, "prod", AssociationKindApp, appID); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := DeregistrationEnvironmentAssociation(target, "other/../prod", AssociationKindApp, appID); err == nil {
+		t.Fatal("path-bearing environment selector unexpectedly deregistered a binding")
+	}
+	got, err := ListEnvironmentAssociations(target, "prod")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].SubjectID != appID {
+		t.Fatalf("sibling environment membership changed: %+v", got)
+	}
+}
+
 // TestRegisterEnvironmentAssociationDistinctKindsAreDistinct proves an app and
 // a node with the same subject id are two distinct bindings, because the (kind,
 // id) tuple is the membership key and the kind keeps the three identity roles

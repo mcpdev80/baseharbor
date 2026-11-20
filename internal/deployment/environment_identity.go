@@ -62,8 +62,8 @@ func environmentStateRoot(target, environmentName string) (string, string, error
 		return "", "", err
 	}
 	name := strings.TrimSpace(environmentName)
-	if name == "" {
-		return "", "", fmt.Errorf("environment name is empty")
+	if err := environment.ValidateName(name); err != nil {
+		return "", "", err
 	}
 	targetRoot, err := TargetStateRoot(target)
 	if err != nil {
