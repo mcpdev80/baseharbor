@@ -487,6 +487,38 @@ func materializeLokiServiceAccessPKI(t *testing.T, files logs.ProviderFiles) {
 	if err := os.WriteFile(filepath.Join(dir, "server-key.pem"), serverKeyPEM, 0o600); err != nil {
 		t.Fatal(err)
 	}
+	clientKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	client := &x509.Certificate{
+		SerialNumber: big.NewInt(3),
+		Subject:      pkix.Name{CommonName: "loki-client"},
+		NotBefore:    time.Now().Add(-time.Hour),
+		NotAfter:     time.Now().Add(24 * time.Hour),
+		KeyUsage:     x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
+	}
+	clientDER, err := x509.CreateCertificate(rand.Reader, client, ca, &clientKey.PublicKey, caKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	clientCertPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: clientDER})
+	clientKeyDER, err := x509.MarshalPKCS8PrivateKey(clientKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	clientKeyPEM := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: clientKeyDER})
+	// serviceaccess.ExistingTLSMaterial requires the client material when the
+	// resolved Loki policy demands mTLS (dev is treated as managed / fail-closed).
+	// Write the client keypair signed by the same test CA so the health client
+	// and the capture server share one trust chain.
+	if err := os.WriteFile(filepath.Join(dir, "client-cert.pem"), clientCertPEM, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "client-key.pem"), clientKeyPEM, 0o600); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // TestPersesLokiDatasourceMultiSourceQueryOneSelectorPerSource asserts the
