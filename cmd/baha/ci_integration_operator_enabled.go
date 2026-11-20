@@ -159,6 +159,18 @@ func ciIntegrationOperatorTrace(reason string, args []string, target deployment.
 	if err != nil {
 		message += " cause=" + err.Error()
 	}
+	// Preserve test-only authorization decisions in the existing failure
+	// diagnostics artifact. Runtime-gate failure handling prints this file,
+	// while the JSON error stream remains untouched.
+	if artifactDir := strings.TrimSpace(os.Getenv("ARTIFACT_DIR")); artifactDir != "" {
+		diagnosticDir := filepath.Join(artifactDir, "runtime-diagnostics")
+		if os.MkdirAll(diagnosticDir, 0o700) == nil {
+			if file, openErr := os.OpenFile(filepath.Join(diagnosticDir, "ci-operator.log"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600); openErr == nil {
+				_, _ = fmt.Fprintln(file, message)
+				_ = file.Close()
+			}
+		}
+	}
 	// Acceptance helpers parse machine-readable errors from stderr. Keep the
 	// diagnostic trace out of that stream on GitHub Actions, where the job
 	// summary provides a separate channel for test-only diagnostics.

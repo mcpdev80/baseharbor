@@ -16,7 +16,9 @@ import (
 
 func TestCIIntegrationOperatorTraceKeepsMachineErrorStreamClean(t *testing.T) {
 	t.Setenv("BASEHARBOR_DEMO_OPERATOR_TRACE", "1")
-	summary := filepath.Join(t.TempDir(), "summary.md")
+	dir := t.TempDir()
+	summary := filepath.Join(dir, "summary.md")
+	t.Setenv("ARTIFACT_DIR", dir)
 	t.Setenv("GITHUB_STEP_SUMMARY", summary)
 	reader, writer, err := os.Pipe()
 	if err != nil {
@@ -43,6 +45,13 @@ func TestCIIntegrationOperatorTraceKeepsMachineErrorStreamClean(t *testing.T) {
 	}
 	if !strings.Contains(string(data), `decision=managed-local-gate command="destroy --all --yes --json"`) {
 		t.Fatalf("test-only operator trace missing from job summary: %s", data)
+	}
+	data, err = os.ReadFile(filepath.Join(dir, "runtime-diagnostics", "ci-operator.log"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), `decision=managed-local-gate command="destroy --all --yes --json"`) {
+		t.Fatalf("test-only operator trace missing from runtime diagnostics: %s", data)
 	}
 }
 
