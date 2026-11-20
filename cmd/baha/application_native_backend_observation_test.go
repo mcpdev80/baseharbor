@@ -14,12 +14,15 @@ func TestNativeBackendBindingInspectionManifestRestoresMongoResources(t *testing
 		Scope: capability.ScopeApplication, Ownership: capability.OwnershipBaseHarbor,
 		OwnerApplicationID: manifest.ApplicationID, OwnerEnvironment: manifest.Environment,
 	}
-	binding := capability.ProviderBinding{
+	bindings := []capability.ProviderBinding{{
 		ApplicationID: manifest.ApplicationID, Environment: manifest.Environment, ProviderInstanceID: instance.ID,
 		Resource: capability.Resource{Application: manifest.Name, Kind: capability.DocumentDatabase, Name: "records", Provider: capability.ProviderMongoDB},
-	}
+	}, {
+		ApplicationID: manifest.ApplicationID, Environment: manifest.Environment, ProviderInstanceID: instance.ID,
+		Resource: capability.Resource{Application: manifest.Name, Kind: capability.DocumentDatabase, Name: "audit", Provider: capability.ProviderMongoDB},
+	}}
 
-	inspection, ok := nativeBackendBindingInspectionManifest(manifest, instance, []capability.ProviderBinding{binding})
+	inspection, ok := nativeBackendBindingInspectionManifest(manifest, instance, bindings)
 	if !ok {
 		t.Fatal("canonical retained MongoDB binding did not produce an inspection manifest")
 	}
@@ -30,14 +33,16 @@ func TestNativeBackendBindingInspectionManifestRestoresMongoResources(t *testing
 	if len(resources) == 0 {
 		t.Fatal("canonical retained MongoDB binding produced no native inspection resources")
 	}
-	found := false
+	found := map[string]bool{}
 	for _, resource := range resources {
-		if resource.Kind == "container" && resource.Name == "selective-foundation-mongodb-records-1" {
-			found = true
+		if resource.Kind == "container" {
+			found[resource.Name] = true
 		}
 	}
-	if !found {
-		t.Fatalf("MongoDB resources do not include canonical retained instance: %+v", resources)
+	for _, name := range []string{"selective-foundation-mongodb-audit-1", "selective-foundation-mongodb-records-1"} {
+		if !found[name] {
+			t.Fatalf("MongoDB resources do not include every canonical retained instance; missing %s in %+v", name, resources)
+		}
 	}
 }
 
@@ -60,6 +65,11 @@ func TestNativeBackendBindingInspectionManifestRejectsUnboundMongo(t *testing.T)
 		{name: "wrong app", edit: func(_ *capability.ProviderInstance, b *capability.ProviderBinding) { b.ApplicationID = "other" }},
 		{name: "wrong environment", edit: func(_ *capability.ProviderInstance, b *capability.ProviderBinding) { b.Environment = "production" }},
 		{name: "wrong resource kind", edit: func(_ *capability.ProviderInstance, b *capability.ProviderBinding) { b.Resource.Kind = capability.SQL }},
+		{name: "wrong resource app", edit: func(_ *capability.ProviderInstance, b *capability.ProviderBinding) { b.Resource.Application = "other" }},
+		{name: "wrong resource provider", edit: func(_ *capability.ProviderInstance, b *capability.ProviderBinding) {
+			b.Resource.Provider = capability.ProviderPostgreSQL
+		}},
+		{name: "empty resource name", edit: func(_ *capability.ProviderInstance, b *capability.ProviderBinding) { b.Resource.Name = "" }},
 		{name: "foreign owner", edit: func(i *capability.ProviderInstance, _ *capability.ProviderBinding) {
 			i.Ownership = capability.OwnershipExternal
 		}},

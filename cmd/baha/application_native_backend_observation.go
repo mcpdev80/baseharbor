@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
@@ -127,26 +128,39 @@ func nativeBackendBindingInspectionManifest(manifest application.Manifest, insta
 		return application.Manifest{}, false
 	}
 	var kind capability.Kind
-	var withName func(application.Manifest, string) application.Manifest
+	var provider capability.ProviderKind
+	var withNames func(application.Manifest, ...string) application.Manifest
 	switch instance.Provider.Kind {
 	case capability.ProviderPostgreSQL:
-		kind = capability.SQL
-		withName = func(m application.Manifest, name string) application.Manifest {
-			return application.WithSQLInstances(m, name)
+		kind, provider = capability.SQL, capability.ProviderPostgreSQL
+		withNames = func(m application.Manifest, names ...string) application.Manifest {
+			return application.WithSQLInstances(m, names...)
 		}
 	case capability.ProviderMongoDB:
-		kind = capability.DocumentDatabase
-		withName = func(m application.Manifest, name string) application.Manifest {
-			return application.WithDocumentDatabaseInstances(m, name)
+		kind, provider = capability.DocumentDatabase, capability.ProviderMongoDB
+		withNames = func(m application.Manifest, names ...string) application.Manifest {
+			return application.WithDocumentDatabaseInstances(m, names...)
 		}
 	default:
 		return application.Manifest{}, false
 	}
+	namesByResource := map[string]struct{}{}
 	for _, binding := range bindings {
-		if binding.ProviderInstanceID == instance.ID && binding.ApplicationID == manifest.ApplicationID &&
-			binding.Environment == manifest.Environment && binding.Resource.Kind == kind && binding.Resource.Name != "" {
-			return withName(manifest, binding.Resource.Name), true
+		if binding.ProviderInstanceID != instance.ID || binding.ApplicationID != manifest.ApplicationID || binding.Environment != manifest.Environment {
+			continue
 		}
+		if binding.Resource.Application != manifest.Name || binding.Resource.Kind != kind || binding.Resource.Provider != provider || binding.Resource.Name == "" {
+			return application.Manifest{}, false
+		}
+		namesByResource[binding.Resource.Name] = struct{}{}
 	}
-	return application.Manifest{}, false
+	if len(namesByResource) == 0 {
+		return application.Manifest{}, false
+	}
+	names := make([]string, 0, len(namesByResource))
+	for name := range namesByResource {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return withNames(manifest, names...), true
 }
