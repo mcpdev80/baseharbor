@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 )
 
@@ -161,14 +163,12 @@ func adoptLegacySelection(legacyPath, canonical string) (bool, error) {
 		}
 		return false, fmt.Errorf("inspect legacy organization selection %q: %w", legacyPath, err)
 	}
-	// Fail closed: a symlink or any non-regular entry must not be adopted.
-	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
-		return false, fmt.Errorf("rejecting legacy organization selection at %q: symlink or non-regular entry", legacyPath)
+	uid := uint32(os.Geteuid())
+	if err := validateLegacySelection(info, legacyPath, uid); err != nil {
+		return false, err
 	}
-	// Refuse to read a world-writable source: an attacker may have pre-created or
-	// replaced the file between the stat and the read.
-	if info.Mode().Perm()&0o002 != 0 {
-		return false, fmt.Errorf("rejecting world-writable legacy organization selection at %q", legacyPath)
+	if err := validateLegacyAncestors(filepath.Dir(legacyPath), uid); err != nil {
+		return false, err
 	}
 
 	// Never clobber an existing (private) selection.
@@ -178,7 +178,25 @@ func adoptLegacySelection(legacyPath, canonical string) (bool, error) {
 		return false, fmt.Errorf("inspect canonical organization selection %q: %w", canonical, err)
 	}
 
-	data, err := os.ReadFile(legacyPath)
+	// Open once, then validate the opened inode before reading. This closes the
+	// Lstat-to-ReadFile replacement window: a substituted symlink or foreign
+	// inode will not match the validated entry and cannot be imported.
+	f, err := os.Open(legacyPath)
+	if err != nil {
+		return false, fmt.Errorf("read legacy organization selection %q: %w", legacyPath, err)
+	}
+	defer f.Close()
+	openedInfo, err := f.Stat()
+	if err != nil {
+		return false, fmt.Errorf("inspect opened legacy organization selection %q: %w", legacyPath, err)
+	}
+	if !os.SameFile(info, openedInfo) {
+		return false, fmt.Errorf("rejecting changed legacy organization selection at %q", legacyPath)
+	}
+	if err := validateLegacySelection(openedInfo, legacyPath, uid); err != nil {
+		return false, err
+	}
+	data, err := io.ReadAll(f)
 	if err != nil {
 		return false, fmt.Errorf("read legacy organization selection %q: %w", legacyPath, err)
 	}
@@ -186,6 +204,66 @@ func adoptLegacySelection(legacyPath, canonical string) (bool, error) {
 		return false, err
 	}
 	return true, nil
+}
+
+func validateLegacySelection(info os.FileInfo, path string, uid uint32) error {
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("rejecting legacy organization selection at %q: non-regular entry", path)
+	}
+	owner, ok := fileOwnerUID(info)
+	if !ok || owner != uid {
+		return fmt.Errorf("rejecting legacy organization selection at %q: file is not owned by the current user", path)
+	}
+	if info.Mode().Perm()&0o022 != 0 {
+		return fmt.Errorf("rejecting group- or world-writable legacy organization selection at %q", path)
+	}
+	return nil
+}
+
+func fileOwnerUID(info os.FileInfo) (uint32, bool) {
+	if info == nil || info.Sys() == nil {
+		return 0, false
+	}
+	v := reflect.Indirect(reflect.ValueOf(info.Sys()))
+	if !v.IsValid() || v.Kind() != reflect.Struct {
+		return 0, false
+	}
+	uid := v.FieldByName("Uid")
+	if !uid.IsValid() || !uid.CanUint() {
+		return 0, false
+	}
+	return uint32(uid.Uint()), true
+}
+
+// validateLegacyAncestors allows a migration only through directories owned
+// by root or the current user. A writable ancestor must be sticky, which
+// protects entries from replacement by other users (as in /tmp).
+func validateLegacyAncestors(dir string, uid uint32) error {
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return fmt.Errorf("resolve legacy organization selection directory: %w", err)
+	}
+	for current := filepath.Clean(abs); ; current = filepath.Dir(current) {
+		info, err := os.Lstat(current)
+		if err != nil {
+			return fmt.Errorf("inspect legacy organization selection directory %q: %w", current, err)
+		}
+		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("rejecting legacy organization selection: untrusted directory %q", current)
+		}
+		owner, ok := fileOwnerUID(info)
+		if !ok || (owner != uid && owner != 0) {
+			return fmt.Errorf("rejecting legacy organization selection: directory %q has untrusted owner", current)
+		}
+		if info.Mode().Perm()&0o022 != 0 && info.Mode()&os.ModeSticky == 0 {
+			return fmt.Errorf("rejecting legacy organization selection: writable directory %q is not trusted", current)
+		}
+		parent := filepath.Dir(current)
+		if parent == current {
+			break
+		}
+	}
+	return nil
 }
 
 // migrateToCanonical writes data into canonical using a temp+rename within the

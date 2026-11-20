@@ -336,6 +336,9 @@ func TestWorldWritableMigrationAdoptsOnceThenFreezes(t *testing.T) {
 
 	// The resolved selection location is world-writable (broken XDG_CONFIG_HOME).
 	root := t.TempDir() // 0777 world-writable
+	if err := os.Chmod(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(root, "config"))
 
 	// Seed a stale /tmp selection at the (world-writable) resolved path.
@@ -347,7 +350,13 @@ func TestWorldWritableMigrationAdoptsOnceThenFreezes(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(seedPath), 0o777); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Chmod(filepath.Dir(seedPath), 0o777); err != nil {
+	if err := os.Chmod(filepath.Dir(filepath.Dir(seedPath)), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(filepath.Dir(filepath.Dir(filepath.Dir(seedPath))), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(filepath.Dir(seedPath), os.ModeSticky|0o777); err != nil {
 		t.Fatal(err)
 	}
 	if !isWorldWritableDir(filepath.Dir(seedPath)) {
@@ -472,7 +481,13 @@ func TestWorldWritableMigrationRejectsForeignSymlink(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(legacyPath), 0o777); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Chmod(filepath.Dir(legacyPath), 0o777); err != nil {
+	if err := os.Chmod(filepath.Dir(filepath.Dir(legacyPath)), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(filepath.Dir(filepath.Dir(filepath.Dir(legacyPath))), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(filepath.Dir(legacyPath), os.ModeSticky|0o777); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Symlink(foreignPath, legacyPath); err != nil {
@@ -522,11 +537,14 @@ func TestWorldWritableMigrationFrozenWhenSourceAndTargetRemoved(t *testing.T) {
 	t.Setenv("HOME", privateHome)
 
 	root := t.TempDir()
+	if err := os.Chmod(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
 	cfgDir := filepath.Join(root, "config")
 	if err := os.MkdirAll(cfgDir, 0o777); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Chmod(cfgDir, 0o777); err != nil {
+	if err := os.Chmod(cfgDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("XDG_CONFIG_HOME", cfgDir)
@@ -539,7 +557,13 @@ func TestWorldWritableMigrationFrozenWhenSourceAndTargetRemoved(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(legacyPath), 0o777); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Chmod(filepath.Dir(legacyPath), 0o777); err != nil {
+	if err := os.Chmod(filepath.Dir(filepath.Dir(legacyPath)), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(filepath.Dir(filepath.Dir(filepath.Dir(legacyPath))), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(filepath.Dir(legacyPath), os.ModeSticky|0o777); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(legacyPath, []byte(seed), 0o600); err != nil {
@@ -595,6 +619,71 @@ func TestWorldWritableMigrationFrozenWhenSourceAndTargetRemoved(t *testing.T) {
 	}
 }
 
+type fileInfoWithSys struct {
+	os.FileInfo
+	sys any
+}
+
+func (i fileInfoWithSys) Sys() any { return i.sys }
+
+func TestWorldWritableMigrationRejectsForeignOwnedRegularFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "active.json")
+	if err := os.WriteFile(path, []byte(`{"resolution":{},"config":{}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Lstat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	owner, ok := fileOwnerUID(info)
+	if !ok {
+		t.Fatal("test requires file ownership metadata")
+	}
+	foreign := struct{ Uid uint32 }{Uid: owner + 1} // model a foreign owner without chown.
+	if err := validateLegacySelection(fileInfoWithSys{FileInfo: info, sys: foreign}, path, owner); err == nil {
+		t.Fatal("foreign-owned regular legacy selection must be rejected")
+	}
+	if err := validateLegacySelection(info, path, owner); err != nil {
+		t.Fatalf("current-user-owned 0600 regular file should pass the owner check: %v", err)
+	}
+}
+
+func TestWorldWritableMigrationRejectsUntrustedDirectoryAncestor(t *testing.T) {
+	root := t.TempDir()
+	if err := os.Chmod(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(root, "config", "baseharbor", "organization")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(filepath.Dir(dir), 0o777); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(dir, os.ModeSticky|0o777); err != nil {
+		t.Fatal(err)
+	}
+	legacy := filepath.Join(dir, legacyTempSelectionRel)
+	seed := []byte(`{"resolution":{"resolved_revision":"foreign-dir","source":{"kind":"local","location":"x"}},"config":` + testConfigJSON(t) + `}`)
+	if err := os.WriteFile(legacy, seed, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	canonical := filepath.Join(root, "private", "active.json")
+	if _, err := adoptLegacySelection(legacy, canonical); err == nil {
+		t.Fatal("migration through a non-sticky writable ancestor must fail closed")
+	}
+	got, err := os.ReadFile(legacy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != string(seed) {
+		t.Fatal("rejected migration changed the legacy source")
+	}
+	if _, err := os.Lstat(canonical); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("rejected migration created canonical selection: %v", err)
+	}
+}
+
 // TestWorldWritableMigrationFrozenWhenSourceAndTargetBothRemoved is the exact
 // regression the r3/r4 reviews required: after a successful migration, if BOTH
 // the private canonical active.json AND the legacy /tmp source are removed
@@ -611,11 +700,14 @@ func TestWorldWritableMigrationFrozenWhenSourceAndTargetBothRemoved(t *testing.T
 	t.Setenv("HOME", privateHome)
 
 	root := t.TempDir()
+	if err := os.Chmod(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
 	cfgDir := filepath.Join(root, "config")
 	if err := os.MkdirAll(cfgDir, 0o777); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Chmod(cfgDir, 0o777); err != nil {
+	if err := os.Chmod(cfgDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("XDG_CONFIG_HOME", cfgDir)
@@ -628,7 +720,13 @@ func TestWorldWritableMigrationFrozenWhenSourceAndTargetBothRemoved(t *testing.T
 	if err := os.MkdirAll(filepath.Dir(legacyPath), 0o777); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Chmod(filepath.Dir(legacyPath), 0o777); err != nil {
+	if err := os.Chmod(filepath.Dir(filepath.Dir(legacyPath)), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(filepath.Dir(filepath.Dir(filepath.Dir(legacyPath))), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(filepath.Dir(legacyPath), os.ModeSticky|0o777); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(legacyPath, []byte(seed), 0o600); err != nil {
