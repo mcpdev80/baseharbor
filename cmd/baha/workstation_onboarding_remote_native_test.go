@@ -162,7 +162,7 @@ func TestWorkstationOnboardingRemoteNativeInCI(t *testing.T) {
 				// The server supplies the hash of its exact verified source, which
 				// is then explicitly confirmed by this CI automation.
 				var output, errorsOut bytes.Buffer
-				attempt := runWithIO(ctx, append([]string{"--no-input"}, args...), &output, &errorsOut)
+				attempt := runWithIOAsTestOperator(ctx, append([]string{"--no-input"}, args...), &output, &errorsOut)
 				var denied *machine.Error
 				if !errors.As(attempt, &denied) || denied.CauseCode != "candidate_confirmation_required" {
 					t.Fatalf("unconfirmed remote candidate was not refused with a typed consent challenge: %v", attempt)
@@ -174,7 +174,7 @@ func TestWorkstationOnboardingRemoteNativeInCI(t *testing.T) {
 				args = append(args, "--confirm-candidate", match[1])
 			}
 			var stdout, stderr bytes.Buffer
-			if err := runWithIO(ctx, append([]string{"--no-input"}, args...), &stdout, &stderr); err != nil {
+			if err := runWithIOAsTestOperator(ctx, append([]string{"--no-input"}, args...), &stdout, &stderr); err != nil {
 				t.Fatalf("remote CLI operation %v failed over the enrolled device: %v", args, err)
 			}
 			if len(args) > 1 && args[1] == "status" {
@@ -225,7 +225,7 @@ func TestWorkstationOnboardingRemoteNativeInCI(t *testing.T) {
 		t.Chdir(workloadDir)
 		var stdout, stderr bytes.Buffer
 		destroyCtx := withApplicationInput(ctx, strings.NewReader("y\ny\n"))
-		if err := runWithIO(destroyCtx, []string{"app", "destroy", "onboard-native", "--yes"}, &stdout, &stderr); err != nil {
+		if err := runWithIOAsTestOperator(destroyCtx, []string{"app", "destroy", "onboard-native", "--yes"}, &stdout, &stderr); err != nil {
 			t.Fatalf("remote application destroy failed: %v\nstdout:\n%s\nstderr:\n%s", err, stdout.String(), stderr.String())
 		}
 		if _, err := deployment.LoadConfig(); err != nil {

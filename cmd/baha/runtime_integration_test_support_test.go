@@ -841,7 +841,7 @@ func ensureRuntimeIntegrationTrustPlane(t *testing.T, ctx context.Context) {
 
 		var out bytes.Buffer
 		if os.Getenv("BASEHARBOR_TEST_RUNTIME") == "podman" {
-			if err := runWithIO(ctx, []string{"target", "create", bootstrapTarget, "--runtime-provider", "podman", "--access", "local", "--access-provider", "local", "--reference", "local", "--default"}, &out, &out); err != nil {
+			if err := runWithIOAsTestOperator(ctx, []string{"target", "create", bootstrapTarget, "--runtime-provider", "podman", "--access", "local", "--access-provider", "local", "--reference", "local", "--default"}, &out, &out); err != nil {
 				runtimeIntegrationTrustPlaneErr = err
 				return
 			}
@@ -851,13 +851,13 @@ func ensureRuntimeIntegrationTrustPlane(t *testing.T, ctx context.Context) {
 			// configured before the single shared `up` below; this target has
 			// its own `<name>-default` native network and management Core, so
 			// the gate never sees the ambient `local` Core.
-			if err := runWithIO(ctx, []string{"target", "create", bootstrapTarget, "--runtime-provider", "docker", "--access", "local", "--access-provider", "local", "--reference", "local", "--default"}, &out, &out); err != nil {
+			if err := runWithIOAsTestOperator(ctx, []string{"target", "create", bootstrapTarget, "--runtime-provider", "docker", "--access", "local", "--access-provider", "local", "--reference", "local", "--default"}, &out, &out); err != nil {
 				runtimeIntegrationTrustPlaneErr = err
 				return
 			}
 			out.Reset()
 		}
-		if err := runWithIO(ctx, []string{"up", "--control-plane-only", "--yes"}, &out, &out); err != nil {
+		if err := runWithIOAsTestOperator(ctx, []string{"up", "--control-plane-only", "--yes"}, &out, &out); err != nil {
 			runtimeIntegrationTrustPlaneErr = err
 			return
 		}
@@ -908,7 +908,7 @@ func ensureRuntimeIntegrationTrustPlane(t *testing.T, ctx context.Context) {
 		}
 		recoveryPath := filepath.Join(dir, "recovery.json")
 		out.Reset()
-		runtimeIntegrationTrustPlaneErr = runWithIO(ctx, []string{"openbao", "bootstrap", "--recovery-file", recoveryPath}, &out, &out)
+		runtimeIntegrationTrustPlaneErr = runWithIOAsTestOperator(ctx, []string{"openbao", "bootstrap", "--recovery-file", recoveryPath}, &out, &out)
 	})
 	if runtimeIntegrationTrustPlaneErr != nil {
 		t.Fatalf("prepare BaseHarbor integration trust plane: %v", runtimeIntegrationTrustPlaneErr)

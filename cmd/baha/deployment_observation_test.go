@@ -89,11 +89,11 @@ func TestRejectedApplyAndTargetTeardownKeepSourcesWithoutGhostApplyingState(t *t
 		t.Fatal("teardown removed repository contract")
 	}
 	var out bytes.Buffer
-	if err := runWithIO(context.Background(), []string{"app", "list"}, &out, io.Discard); err != nil || !strings.Contains(out.String(), "not_applied") || strings.Contains(out.String(), "applying") {
+	if err := runWithIOAsTestOperator(context.Background(), []string{"app", "list"}, &out, io.Discard); err != nil || !strings.Contains(out.String(), "not_applied") || strings.Contains(out.String(), "applying") {
 		t.Fatalf("list still claims applying: %s %v", out.String(), err)
 	}
 	out.Reset()
-	if err := runWithIO(context.Background(), []string{"status"}, &out, io.Discard); err != nil || !strings.Contains(out.String(), "NOT APPLIED") {
+	if err := runWithIOAsTestOperator(context.Background(), []string{"status"}, &out, io.Discard); err != nil || !strings.Contains(out.String(), "NOT APPLIED") {
 		t.Fatalf("status disagrees: %s %v", out.String(), err)
 	}
 	// Even partial runtime state must survive, and cannot be relabeled as absent.

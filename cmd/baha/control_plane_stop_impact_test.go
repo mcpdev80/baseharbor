@@ -144,7 +144,7 @@ func TestCoreStopUsesStableScopeRequiresTwoAcknowledgementsAndBindsCredentialByt
 func TestCoreStopCLIJSONAndMCPExposeSameCurrentScopeWithoutEnvironmentConsentReuse(t *testing.T) {
 	coreStopFixture(t)
 	var out bytes.Buffer
-	err := runWithIO(withProviderChangeConsent(t.Context(), nil), []string{"down", "--json"}, &out, io.Discard)
+	err := runWithIOAsTestOperator(withProviderChangeConsent(t.Context(), nil), []string{"down", "--json"}, &out, io.Discard)
 	var cliFailure *machine.Error
 	if !errors.As(err, &cliFailure) || cliFailure.Code != machine.ErrorApprovalRequired || out.Len() != 0 {
 		t.Fatalf("CLI stop bypass or JSON progress leak: %v %s", err, out.String())

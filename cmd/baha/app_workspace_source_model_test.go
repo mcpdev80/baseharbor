@@ -33,7 +33,7 @@ func runWorkspaceSourceModelCLI(t *testing.T, args ...string) (bytes.Buffer, byt
 func runWorkspaceSourceModelCLIContext(t *testing.T, ctx context.Context, args ...string) (bytes.Buffer, bytes.Buffer, error) {
 	t.Helper()
 	var out, errOut bytes.Buffer
-	err := runWithIO(ctx, append([]string{"app", "workspace"}, args...), &out, &errOut)
+	err := runWithIOAsTestOperator(ctx, append([]string{"app", "workspace"}, args...), &out, &errOut)
 	return out, errOut, err
 }
 
@@ -476,38 +476,38 @@ func TestWorkspaceRootNamespaceMirrorsSourceModelCommands(t *testing.T) {
 		t.Fatal(err)
 	}
 	var out, errOut bytes.Buffer
-	if err := runWithIO(context.Background(), []string{"workspace", "init", "--manifest", manifest, "--local", "mono=" + dir, "--component", "api=mono@svc"}, &out, &errOut); err != nil {
+	if err := runWithIOAsTestOperator(context.Background(), []string{"workspace", "init", "--manifest", manifest, "--local", "mono=" + dir, "--component", "api=mono@svc"}, &out, &errOut); err != nil {
 		t.Fatalf("root-namespace init failed: %v\n%s\n%s", err, out.String(), errOut.String())
 	}
 	out.Reset()
-	if err := runWithIO(context.Background(), []string{"workspace", "component", "list", "--manifest", manifest}, &out, &errOut); err != nil {
+	if err := runWithIOAsTestOperator(context.Background(), []string{"workspace", "component", "list", "--manifest", manifest}, &out, &errOut); err != nil {
 		t.Fatalf("root-namespace component list failed: %v\n%s", err, errOut.String())
 	}
 	if !strings.Contains(out.String(), "api -> mono (local @svc)") {
 		t.Fatalf("root-namespace list output = %s", out.String())
 	}
 	out.Reset()
-	if err := runWithIO(context.Background(), []string{"workspace", "path", "mono", "--manifest", manifest}, &out, &errOut); err != nil {
+	if err := runWithIOAsTestOperator(context.Background(), []string{"workspace", "path", "mono", "--manifest", manifest}, &out, &errOut); err != nil {
 		t.Fatalf("root-namespace path failed: %v\n%s", err, errOut.String())
 	}
 	if !strings.Contains(out.String(), filepath.Base(dir)) {
 		t.Fatalf("root-namespace path output = %s", out.String())
 	}
 	out.Reset()
-	if err := runWithIO(context.Background(), []string{"workspace", "source", "add", "--manifest", manifest, "--oci", "img=ghcr.io/example/x@sha256:deadbeef"}, &out, &errOut); err != nil {
+	if err := runWithIOAsTestOperator(context.Background(), []string{"workspace", "source", "add", "--manifest", manifest, "--oci", "img=ghcr.io/example/x@sha256:deadbeef"}, &out, &errOut); err != nil {
 		t.Fatalf("root-namespace source add failed: %v\n%s", err, errOut.String())
 	}
-	if err := runWithIO(context.Background(), []string{"workspace", "component", "remove", "api", "--manifest", manifest}, &out, &errOut); err != nil {
+	if err := runWithIOAsTestOperator(context.Background(), []string{"workspace", "component", "remove", "api", "--manifest", manifest}, &out, &errOut); err != nil {
 		t.Fatalf("root-namespace component remove failed: %v\n%s", err, errOut.String())
 	}
-	if err := runWithIO(context.Background(), []string{"workspace", "source", "remove", "mono", "--manifest", manifest}, &out, &errOut); err != nil {
+	if err := runWithIOAsTestOperator(context.Background(), []string{"workspace", "source", "remove", "mono", "--manifest", manifest}, &out, &errOut); err != nil {
 		t.Fatalf("root-namespace source remove failed: %v\n%s", err, errOut.String())
 	}
 	if !strings.Contains(out.String(), "removed source mono") {
 		t.Fatalf("root-namespace remove output = %s", out.String())
 	}
 	// Refusing the last source stays actionable in both namespaces.
-	if err := runWithIO(context.Background(), []string{"workspace", "source", "remove", "img", "--manifest", manifest}, &out, &errOut); err == nil {
+	if err := runWithIOAsTestOperator(context.Background(), []string{"workspace", "source", "remove", "img", "--manifest", manifest}, &out, &errOut); err == nil {
 		t.Fatal("root namespace removed the last source")
 	}
 }
@@ -523,11 +523,11 @@ func TestWorkspaceSourceModelMachineParity(t *testing.T) {
 	}
 	var second bytes.Buffer
 	var first bytes.Buffer
-	if err := runWithIO(context.Background(), []string{"app", "workspace", "show", "--manifest", manifest, "-o", "json"}, &first, &second); err != nil {
+	if err := runWithIOAsTestOperator(context.Background(), []string{"app", "workspace", "show", "--manifest", manifest, "-o", "json"}, &first, &second); err != nil {
 		t.Fatal(err)
 	}
 	var again bytes.Buffer
-	if err := runWithIO(context.Background(), []string{"app", "workspace", "show", "--manifest", manifest, "-o", "json"}, &again, &second); err != nil {
+	if err := runWithIOAsTestOperator(context.Background(), []string{"app", "workspace", "show", "--manifest", manifest, "-o", "json"}, &again, &second); err != nil {
 		t.Fatal(err)
 	}
 	if first.String() != again.String() {
@@ -627,7 +627,7 @@ func TestWorkspaceSourceModelPreservesExistingMachineSemantics(t *testing.T) {
 		t.Fatal(err)
 	}
 	var out, errOut bytes.Buffer
-	if err := runWithIO(context.Background(), []string{"agent", "describe"}, &out, &errOut); err != nil {
+	if err := runWithIOAsTestOperator(context.Background(), []string{"agent", "describe"}, &out, &errOut); err != nil {
 		t.Fatalf("agent describe failed: %v\n%s", err, errOut.String())
 	}
 	for _, required := range []string{"baseharbor.workspace.init", "baseharbor.workspace.map", "baseharbor.workspace.show", "baseharbor.workspace.resolve", "baseharbor.workspace.status", "baseharbor.workspace.update"} {

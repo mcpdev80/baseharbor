@@ -61,7 +61,7 @@ func TestRepositoryReinitializationReusesActualIdentityOwners(t *testing.T) {
 				if mode == "quick-json" {
 					args = append(args, "--json")
 				}
-				err = runWithIO(context.Background(), args, &bytes.Buffer{}, &bytes.Buffer{})
+				err = runWithIOAsTestOperator(context.Background(), args, &bytes.Buffer{}, &bytes.Buffer{})
 			} else {
 				proposal := application.WithWorkloadComponents(detectedApplicationManifest("demo", "dev", true, false, false, false, true), "api")
 				err = writeRepositoryManifest(context.Background(), proposal, &bytes.Buffer{})

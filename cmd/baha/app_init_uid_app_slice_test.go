@@ -45,7 +45,7 @@ func TestUIDAppSliceFirstCreateThenCheckoutReuseIdentityNoAuthoredLeak(t *testin
 	}
 
 	var out, errOut bytes.Buffer
-	if err := runWithIO(context.Background(), []string{"app", "init", "--quick", "--no-input"}, &out, &errOut); err != nil {
+	if err := runWithIOAsTestOperator(context.Background(), []string{"app", "init", "--quick", "--no-input"}, &out, &errOut); err != nil {
 		t.Fatalf("checkout init: %v %s", err, errOut.String())
 	}
 
@@ -80,7 +80,7 @@ func TestUIDAppSliceFirstCreateThenCheckoutReuseIdentityNoAuthoredLeak(t *testin
 	// A second init on the same checkout must refuse (already exists) and must
 	// neither drift the identity nor create a second canonical owner.
 	out.Reset()
-	if err := runWithIO(context.Background(), []string{"app", "init", "--quick", "--no-input"}, &out, &errOut); err != nil {
+	if err := runWithIOAsTestOperator(context.Background(), []string{"app", "init", "--quick", "--no-input"}, &out, &errOut); err != nil {
 		t.Fatalf("repeat init: %v %s", err, errOut.String())
 	}
 	if !strings.Contains(out.String(), "already exists") {
@@ -159,7 +159,7 @@ func TestUIDAppSliceLegacyImportReusesExistingCanonicalIdentity(t *testing.T) {
 	existingID := legacy.ApplicationID
 
 	var out, errOut bytes.Buffer
-	if err := runWithIO(context.Background(), []string{"app", "init", "--quick", "--no-input"}, &out, &errOut); err != nil {
+	if err := runWithIOAsTestOperator(context.Background(), []string{"app", "init", "--quick", "--no-input"}, &out, &errOut); err != nil {
 		t.Fatalf("legacy init: %v %s", err, errOut.String())
 	}
 
@@ -266,7 +266,7 @@ func TestUIDAppSliceConcurrentFirstCreateConvergesOnOneOwner(t *testing.T) {
 			// hazard): that transient "unknown option" is a parse failure of
 			// an incomplete detection, not a defect, and the single-owner
 			// assertions below still decide the outcome.
-			err := runWithIO(context.Background(), []string{"app", "init", "--quick", "--no-input"}, &out, &errOut)
+			err := runWithIOAsTestOperator(context.Background(), []string{"app", "init", "--quick", "--no-input"}, &out, &errOut)
 			// Read the identity this racer's init converged on: the canonical
 			// store holds exactly one owner for the name once first create is
 			// serialized, whether this racer won it or met the fail-closed
@@ -395,7 +395,7 @@ func TestUIDAppSliceNoIDLeakIntoNormalMachineOutput(t *testing.T) {
 	}
 
 	var out, errOut bytes.Buffer
-	if err := runWithIO(context.Background(), []string{"app", "init", "--quick", "--no-input"}, &out, &errOut); err != nil {
+	if err := runWithIOAsTestOperator(context.Background(), []string{"app", "init", "--quick", "--no-input"}, &out, &errOut); err != nil {
 		t.Fatalf("init: %v %s", err, errOut.String())
 	}
 	initOut := out.String()

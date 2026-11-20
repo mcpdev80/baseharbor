@@ -44,7 +44,7 @@ func TestRepositoryWorkflowRealLifecycle(t *testing.T) {
 	}
 
 	var out bytes.Buffer
-	if err := runWithIO(ctx, []string{"app", "init", "repo-e2e", "--sql", "--cache"}, &out, &out); err != nil {
+	if err := runWithIOAsTestOperator(ctx, []string{"app", "init", "repo-e2e", "--sql", "--cache"}, &out, &out); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(root, "baseharbor.yaml")); err != nil {
@@ -84,12 +84,12 @@ func TestRepositoryWorkflowRealLifecycle(t *testing.T) {
 
 	for _, command := range [][]string{{"app", "status"}, {"app", "doctor"}} {
 		out.Reset()
-		if err := runWithIO(ctx, command, &out, &out); err != nil {
+		if err := runWithIOAsTestOperator(ctx, command, &out, &out); err != nil {
 			t.Fatalf("%v failed: %v\n%s", command, err, out.String())
 		}
 	}
 	out.Reset()
-	if err := runWithIO(ctx, []string{"app", "env", "--path"}, &out, &out); err != nil {
+	if err := runWithIOAsTestOperator(ctx, []string{"app", "env", "--path"}, &out, &out); err != nil {
 		t.Fatal(err)
 	}
 	envPath := strings.TrimSpace(out.String())

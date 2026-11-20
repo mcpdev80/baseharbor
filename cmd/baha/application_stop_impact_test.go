@@ -150,7 +150,7 @@ func mustJSONStopTest(t *testing.T, value any) []byte {
 func TestApplicationStopCLIJSONMCPExposeSameRequiredAcknowledgement(t *testing.T) {
 	r := retainedNativeBackendFixture(t)
 	var out bytes.Buffer
-	err := runWithIO(withProviderChangeConsent(t.Context(), nil), []string{"app", "down", "--yes", "--json"}, &out, io.Discard)
+	err := runWithIOAsTestOperator(withProviderChangeConsent(t.Context(), nil), []string{"app", "down", "--yes", "--json"}, &out, io.Discard)
 	var cliFailure *machine.Error
 	if !errors.As(err, &cliFailure) || cliFailure.Code != machine.ErrorApprovalRequired || out.Len() != 0 {
 		t.Fatalf("CLI stop consent semantics or JSON contamination: %v %s", err, out.String())
@@ -188,13 +188,14 @@ func TestApplicationStopHTTPUsesCurrentScopeAndCannotEscapeAuthorizedContext(t *
 	r := retainedNativeBackendFixture(t)
 	executor := &bahaMachineExecutor{store: r.Store}
 	selected := machine.OperationContext{Application: r.Manifest.Name, Environment: r.Manifest.Environment, Target: r.Target.Name}
-	_, httpErr := executor.Execute(t.Context(), machine.Operation{ID: "app.stop"}, selected, json.RawMessage(`{}`), nil)
+	ctx := testOperatorContext(t.Context())
+	_, httpErr := executor.Execute(ctx, machine.Operation{ID: "app.stop"}, selected, json.RawMessage(`{}`), nil)
 	var httpFailure *machine.Error
 	if !errors.As(httpErr, &httpFailure) || httpFailure.Code != machine.ErrorApprovalRequired {
 		t.Fatalf("HTTP stop did not require current impact acknowledgement: %v", httpErr)
 	}
 	httpPlan, _ := json.Marshal(httpFailure.Details)
-	local, err := buildApplicationStopPlan(context.WithValue(t.Context(), applicationStopModeKey{}, true), r)
+	local, err := buildApplicationStopPlan(context.WithValue(ctx, applicationStopModeKey{}, true), r)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -203,13 +204,13 @@ func TestApplicationStopHTTPUsesCurrentScopeAndCannotEscapeAuthorizedContext(t *
 		t.Fatal("HTTP stop uses a different consequence authority")
 	}
 	for _, raw := range []json.RawMessage{json.RawMessage(`{"target":"foreign"}`), json.RawMessage(`{"environment":"foreign"}`), json.RawMessage(`{"name":"foreign"}`)} {
-		_, err := executor.Execute(t.Context(), machine.Operation{ID: "app.stop"}, selected, raw, nil)
+		_, err := executor.Execute(ctx, machine.Operation{ID: "app.stop"}, selected, raw, nil)
 		if !errors.As(err, &httpFailure) || httpFailure.Code != machine.ErrorPolicyDenied || httpFailure.CauseCode != "operation_context_mismatch" {
 			t.Fatalf("HTTP stop escaped authorized selectors: %v", err)
 		}
 	}
 	for _, raw := range []json.RawMessage{json.RawMessage(`{"approval":true}`), json.RawMessage(`{"provider_change_consent":{"first":false,"first":true}}`)} {
-		_, err := executor.Execute(t.Context(), machine.Operation{ID: "app.stop"}, selected, raw, nil)
+		_, err := executor.Execute(ctx, machine.Operation{ID: "app.stop"}, selected, raw, nil)
 		if !errors.As(err, &httpFailure) || httpFailure.Code != machine.ErrorValidationFailed {
 			t.Fatalf("generic or ambiguous acknowledgement reached stop authority: %v", err)
 		}

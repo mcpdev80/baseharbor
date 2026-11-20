@@ -304,7 +304,7 @@ func TestParseRuntimeUpOptionsAcceptsEnvironmentEqualsForm(t *testing.T) {
 
 // TestUpNameResumesThroughCommandEntrypoint proves the R4 stop criterion: the
 // three up-NAME claims run through the top-level command entrypoint
-// `runWithIO(argv ["up", NAME])`, not through a direct resolveRegisteredApplication
+// `runWithIOAsTestOperator(argv ["up", NAME])`, not through a direct resolveRegisteredApplication
 // call. The direct-call cell (TestUpNameResumesRegisteredDeploymentAcceptsParity)
 // stays for the parser/resolver unit; this test proves the alias routes NAME.
 //
@@ -348,7 +348,7 @@ func TestUpNameResumesThroughCommandEntrypoint(t *testing.T) {
 	// Core, so success as well as a post-resolution failure is accepted below.
 	t.Chdir(repoRoot)
 	var registeredOut bytes.Buffer
-	registeredErr := runWithIO(machineNoninteractiveContext(t.Context()),
+	registeredErr := runWithIOAsTestOperator(machineNoninteractiveContext(t.Context()),
 		[]string{"up", name, "--yes", "--skip-memory-preflight", "--plain"},
 		&registeredOut, &registeredOut)
 	if registeredErr != nil && strings.Contains(registeredErr.Error(), "no registered deployment") {
@@ -361,7 +361,7 @@ func TestUpNameResumesThroughCommandEntrypoint(t *testing.T) {
 	// resumes materialized runtime state and can return not-applied. A failed
 	// resume must never be mistaken for an unknown deployment name.
 	var appUpOut bytes.Buffer
-	appUpErr := runWithIO(machineNoninteractiveContext(t.Context()),
+	appUpErr := runWithIOAsTestOperator(machineNoninteractiveContext(t.Context()),
 		[]string{"app", "up", name, "--yes", "--skip-memory-preflight", "--plain"},
 		&appUpOut, &appUpOut)
 	if appUpErr != nil && strings.Contains(appUpErr.Error(), "no registered deployment") {
@@ -379,7 +379,7 @@ func TestUpNameResumesThroughCommandEntrypoint(t *testing.T) {
 	// reach resolveRegisteredApplication at all.
 	t.Chdir(repoRoot)
 	var unknownOut bytes.Buffer
-	unknownErr := runWithIO(machineNoninteractiveContext(t.Context()),
+	unknownErr := runWithIOAsTestOperator(machineNoninteractiveContext(t.Context()),
 		[]string{"up", "does-not-exist-xyz", "--yes", "--skip-memory-preflight", "--plain"},
 		&unknownOut, &unknownOut)
 	if unknownErr == nil {

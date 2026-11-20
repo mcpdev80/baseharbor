@@ -30,7 +30,7 @@ func TestCore921ActualCommandTreeHelpAndReadOnlyEntry(t *testing.T) {
 	} {
 		output.Reset()
 		errors.Reset()
-		if err := runWithIO(context.Background(), path, &output, &errors); err != nil {
+		if err := runWithIOAsTestOperator(context.Background(), path, &output, &errors); err != nil {
 			t.Fatalf("%v --help: %v, %s", path, err, errors.String())
 		}
 		if !strings.Contains(strings.ToLower(output.String()), path[len(path)-2]) &&

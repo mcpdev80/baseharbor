@@ -143,7 +143,7 @@ workload:
 
 	for _, command := range [][]string{{"app", "status"}, {"app", "doctor"}} {
 		out.Reset()
-		if err := runWithIO(ctx, command, &out, &out); err != nil {
+		if err := runWithIOAsTestOperator(ctx, command, &out, &out); err != nil {
 			t.Fatalf("%v failed: %v\n%s", command, err, out.String())
 		}
 		if !strings.Contains(out.String(), "workload") {
@@ -279,7 +279,7 @@ networks:
 
 	for _, command := range [][]string{{"app", "status"}, {"app", "doctor"}} {
 		out.Reset()
-		if err := runWithIO(ctx, command, &out, &out); err != nil {
+		if err := runWithIOAsTestOperator(ctx, command, &out, &out); err != nil {
 			t.Fatalf("%v failed for workload-only app: %v\n%s", command, err, out.String())
 		}
 		if !strings.Contains(out.String(), "workload") {
@@ -466,7 +466,7 @@ networks:
 	}
 	backupFile := filepath.Join(backupDir, "pinned.bhbackup")
 	backupCmd := []string{"app", "backup", "--password-file", passwordFile, "--output", backupFile}
-	if err := runWithIO(ctx, backupCmd, &out, &out); err != nil {
+	if err := runWithIOAsTestOperator(ctx, backupCmd, &out, &out); err != nil {
 		t.Fatalf("backup pinned-workload application: %v\n%s", err, out.String())
 	}
 	if _, statErr := os.Stat(backupFile); statErr != nil {

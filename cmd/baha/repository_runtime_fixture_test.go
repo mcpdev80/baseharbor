@@ -29,7 +29,7 @@ import (
 func runRepositoryFixtureApply(ctx context.Context, args []string, out *bytes.Buffer) error {
 	err := runRepositoryFixtureApplyCall(ctx, args, func(callCtx context.Context) error {
 		out.Reset()
-		return runWithIO(callCtx, args, out, out)
+		return runWithIOAsTestOperator(callCtx, args, out, out)
 	})
 	if err != nil {
 		// The plain fixture apply/app up binds a repository-owned candidate. The
@@ -41,7 +41,7 @@ func runRepositoryFixtureApply(ctx context.Context, args []string, out *bytes.Bu
 		if digest := extractCandidateConfirmDigest(out.String()); digest != "" {
 			return runRepositoryFixtureApplyCall(ctx, args, func(callCtx context.Context) error {
 				out.Reset()
-				return runWithIO(withCandidateConsentDigest(callCtx, digest), args, out, out)
+				return runWithIOAsTestOperator(withCandidateConsentDigest(callCtx, digest), args, out, out)
 			})
 		}
 	}
@@ -467,7 +467,7 @@ func TestRepositoryFixtureStateAllowsOnlyIdentityMetadata(t *testing.T) {
 	ctx := t.Context()
 	// Exercise the actual authoring command, including InitializeIdentity and
 	// Store.Sync/ensureStateGitIgnore, instead of a reduced resolver-only setup.
-	if err := runWithIO(ctx, []string{"app", "init", "plain", "--sql", "--cache"}, io.Discard, io.Discard); err != nil {
+	if err := runWithIOAsTestOperator(ctx, []string{"app", "init", "plain", "--sql", "--cache"}, io.Discard, io.Discard); err != nil {
 		t.Fatal(err)
 	}
 	selection, err := application.ResolveRepositoryEnvironment(root, "")

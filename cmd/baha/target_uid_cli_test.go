@@ -39,7 +39,7 @@ func TestCLITargetCreateGeneratesStableUID(t *testing.T) {
 	setupUIDTestRoot(t)
 
 	var out bytes.Buffer
-	if err := runWithIO(context.Background(), []string{
+	if err := runWithIOAsTestOperator(context.Background(), []string{
 		"target", "create", "podman-prod",
 		"--runtime-provider", "podman",
 		"--access", "local-docker",
@@ -77,7 +77,7 @@ func TestCLITargetUIDStableAcrossReads(t *testing.T) {
 	setupUIDTestRoot(t)
 
 	var out bytes.Buffer
-	if err := runWithIO(context.Background(), []string{
+	if err := runWithIOAsTestOperator(context.Background(), []string{
 		"target", "create", "alpha",
 		"--runtime-provider", "docker",
 		"--access", "local-docker",
@@ -94,7 +94,7 @@ func TestCLITargetUIDStableAcrossReads(t *testing.T) {
 
 	// Second read through the real CLI: list must not churn the UID.
 	var listOut bytes.Buffer
-	if err := runWithIO(context.Background(), []string{"target", "list", "-o", "json"}, &listOut, &listOut); err != nil {
+	if err := runWithIOAsTestOperator(context.Background(), []string{"target", "list", "-o", "json"}, &listOut, &listOut); err != nil {
 		t.Fatalf("CLI target list: %v; output=%s", err, listOut.String())
 	}
 	cfg2, _ := deployment.LoadConfig()
@@ -133,7 +133,7 @@ func TestCLITargetUIDCollisionFailsClosedOnRead(t *testing.T) {
 	}
 
 	var out bytes.Buffer
-	err = runWithIO(context.Background(), []string{"target", "list", "-o", "json"}, &out, &out)
+	err = runWithIOAsTestOperator(context.Background(), []string{"target", "list", "-o", "json"}, &out, &out)
 	if err == nil {
 		t.Fatal("corrupted config with two Targets sharing a UID must fail closed at the CLI")
 	}

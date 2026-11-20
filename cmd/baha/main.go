@@ -141,7 +141,7 @@ func runWithIO(ctx context.Context, args []string, out, errOut io.Writer) error 
 	}
 	ctx = withTargetOverride(ctx, target)
 	ctx = cli.WithOutputOptions(ctx, opts)
-	ctx = operatorauth.WithEnforcement(ctx)
+	ctx = operatorauth.WithEnforcementIfAbsent(ctx)
 	membershipProvider := newCLIOperatorMembershipProvider()
 	defer membershipProvider.Close()
 	ctx = operatorauth.WithMembershipProviderIfAbsent(ctx, membershipProvider)

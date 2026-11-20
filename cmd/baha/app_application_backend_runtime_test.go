@@ -51,7 +51,7 @@ func TestSelectiveApplicationBackendIntentInitializesFromActualCLI(t *testing.T)
 			for _, enabled := range []bool{true, false, true} {
 				writeApplicationBackendIntent(t, service, enabled)
 				var output bytes.Buffer
-				if err := runWithIO(machineNoninteractiveContext(context.Background()), []string{"app", "init", "--quick", "--json"}, &output, &output); err != nil {
+				if err := runWithIOAsTestOperator(machineNoninteractiveContext(context.Background()), []string{"app", "init", "--quick", "--json"}, &output, &output); err != nil {
 					t.Fatalf("actual CLI initialization for backend=%s enabled=%t: %v\n%s", service, enabled, err, output.String())
 				}
 			}
@@ -96,7 +96,7 @@ func qualifyApplicationBackendLifecycle(t *testing.T, service string) {
 		t.Fatal(err)
 	}
 	writeApplicationBackendIntent(t, service, true)
-	if err := runWithIO(ctx, []string{"app", "init", "--quick", "--json"}, &bytes.Buffer{}, &bytes.Buffer{}); err != nil {
+	if err := runWithIOAsTestOperator(ctx, []string{"app", "init", "--quick", "--json"}, &bytes.Buffer{}, &bytes.Buffer{}); err != nil {
 		t.Fatalf("initialize application backend: %v", err)
 	}
 	t.Cleanup(func() {

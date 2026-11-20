@@ -102,7 +102,7 @@ func TestApplicationCapabilityLifecycleExistingCore(t *testing.T) {
 			})
 			if kind == "https" {
 				out.Reset()
-				if err := runWithIO(ctx, []string{"app", "init", "--input", "tls_mode=local", "--yes"}, &out, &out); err != nil {
+				if err := runWithIOAsTestOperator(ctx, []string{"app", "init", "--input", "tls_mode=local", "--yes"}, &out, &out); err != nil {
 					t.Fatalf("HTTPS inputs: %v\n%s", err, out.String())
 				}
 			}
@@ -122,7 +122,7 @@ func TestApplicationCapabilityLifecycleExistingCore(t *testing.T) {
 				if len(command) > 1 && command[1] == "apply" {
 					commandCtx = coreBootstrapFixtureConsent(t, ctx)
 				}
-				if err := runWithIO(commandCtx, command, &out, &out); err != nil {
+				if err := runWithIOAsTestOperator(commandCtx, command, &out, &out); err != nil {
 					t.Fatalf("%v: %v\n%s", command, err, out.String())
 				}
 			}
@@ -177,7 +177,7 @@ func TestApplicationCapabilityLifecycleExistingCore(t *testing.T) {
 					t.Fatal(err)
 				}
 				out.Reset()
-				if err := runWithIO(coreBootstrapFixtureConsent(t, ctx), []string{"app", "apply", "--skip-memory-preflight"}, &out, &out); err != nil {
+				if err := runWithIOAsTestOperator(coreBootstrapFixtureConsent(t, ctx), []string{"app", "apply", "--skip-memory-preflight"}, &out, &out); err != nil {
 					t.Fatalf("capability removal: %v\n%s", err, out.String())
 				}
 				if err := os.Chdir(appRoot); err != nil {
@@ -211,7 +211,7 @@ func TestApplicationCapabilityLifecycleExistingCore(t *testing.T) {
 					t.Fatal(err)
 				}
 				out.Reset()
-				if err := runWithIO(coreBootstrapFixtureConsent(t, ctx), []string{"app", "apply", "--skip-memory-preflight"}, &out, &out); err != nil {
+				if err := runWithIOAsTestOperator(coreBootstrapFixtureConsent(t, ctx), []string{"app", "apply", "--skip-memory-preflight"}, &out, &out); err != nil {
 					t.Fatalf("reattach retained test scope: %v\n%s", err, out.String())
 				}
 				if err := os.Chdir(appRoot); err != nil {
@@ -269,7 +269,7 @@ func qualifyCoreBackedSecretsLifecycle(t *testing.T, ctx context.Context, runtim
 			t.Fatalf("write Core-backed Secrets intent enabled=%t: %v", enabled, err)
 		}
 		var out bytes.Buffer
-		if err := runWithIO(coreBootstrapFixtureConsent(t, ctx), []string{"app", "apply", "--skip-memory-preflight"}, &out, &out); err != nil {
+		if err := runWithIOAsTestOperator(coreBootstrapFixtureConsent(t, ctx), []string{"app", "apply", "--skip-memory-preflight"}, &out, &out); err != nil {
 			t.Fatalf("Core-backed Secrets apply enabled=%t: %v\n%s", enabled, err, out.String())
 		}
 		current, err := resolveApplication(ctx, application.Store{}, nil, "status")
@@ -319,7 +319,7 @@ func qualifyCoreBackedSecretsLifecycle(t *testing.T, ctx context.Context, runtim
 		t.Fatalf("restore Core-backed Secrets intent for reactivation: %v", err)
 	}
 	var out bytes.Buffer
-	if err := runWithIO(coreBootstrapFixtureConsent(t, ctx), []string{"app", "apply", "--skip-memory-preflight"}, &out, &out); err != nil {
+	if err := runWithIOAsTestOperator(coreBootstrapFixtureConsent(t, ctx), []string{"app", "apply", "--skip-memory-preflight"}, &out, &out); err != nil {
 		t.Fatalf("reactivate Core-backed Secrets application: %v\n%s", err, out.String())
 	}
 	reactivated, err := resolveApplication(ctx, application.Store{}, nil, "status")

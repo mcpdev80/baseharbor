@@ -389,7 +389,7 @@ func runManagedProviderOnlyReadinessRegression(t *testing.T, ctx context.Context
 		resetCoreBootstrapFixtureApplication(t, cleanup)
 	}()
 	var output runtimeAcceptanceOutput
-	if err := runWithIO(coreBootstrapFixtureConsent(t, ctx), []string{"app", "apply"}, &output, &output); err != nil {
+	if err := runWithIOAsTestOperator(coreBootstrapFixtureConsent(t, ctx), []string{"app", "apply"}, &output, &output); err != nil {
 		t.Fatalf("provider-only apply: %v\n%s", err, output.String())
 	}
 	resolved, err := resolveApplication(ctx, application.DefaultStore(), nil, "readiness regression")
@@ -415,7 +415,7 @@ func runManagedProviderOnlyReadinessRegression(t *testing.T, ctx context.Context
 		t.Fatalf("provider-only status: %+v %v", status, err)
 	}
 	output.Reset()
-	if err := runWithIO(ctx, []string{"app", "show", "--output", "json"}, &output, &output); err != nil {
+	if err := runWithIOAsTestOperator(ctx, []string{"app", "show", "--output", "json"}, &output, &output); err != nil {
 		t.Fatal(err)
 	}
 	var overview applicationOverview
@@ -423,7 +423,7 @@ func runManagedProviderOnlyReadinessRegression(t *testing.T, ctx context.Context
 		t.Fatalf("provider-only app show disagrees with READY: %+v %v", overview, err)
 	}
 	output.Reset()
-	if err := runWithIO(ctx, []string{"app", "doctor"}, &output, &output); err != nil {
+	if err := runWithIOAsTestOperator(ctx, []string{"app", "doctor"}, &output, &output); err != nil {
 		t.Fatalf("provider-only doctor: %v\n%s", err, output.String())
 	}
 	t.Log("Provider-only shared SQL: app show/status/doctor agree without any application-project container")
@@ -463,7 +463,7 @@ func runManagedReadinessAndBackupRegression(t *testing.T, ctx context.Context) {
 		resetCoreBootstrapFixtureApplication(t, cleanup)
 	}()
 	var output runtimeAcceptanceOutput
-	if err := runWithIO(coreBootstrapFixtureConsent(t, ctx), []string{"app", "apply"}, &output, &output); err != nil {
+	if err := runWithIOAsTestOperator(coreBootstrapFixtureConsent(t, ctx), []string{"app", "apply"}, &output, &output); err != nil {
 		runtime, runtimeErr := detectRuntimeForTarget(ctx, mustEffectiveTestTarget(t, ctx))
 		if runtimeErr == nil {
 			containers, _ := runtime.ListRuntimeContainers(ctx)
@@ -512,7 +512,7 @@ func runManagedReadinessAndBackupRegression(t *testing.T, ctx context.Context) {
 			t.Fatalf("overview disagrees with READY: %+v %v", overview, err)
 		}
 		var doctor runtimeAcceptanceOutput
-		if err := runWithIO(ctx, []string{"app", "doctor"}, &doctor, &doctor); err != nil {
+		if err := runWithIOAsTestOperator(ctx, []string{"app", "doctor"}, &doctor, &doctor); err != nil {
 			t.Fatalf("doctor after backup: %v\n%s", err, doctor.String())
 		}
 	}
@@ -524,7 +524,7 @@ func runManagedReadinessAndBackupRegression(t *testing.T, ctx context.Context) {
 	for _, name := range []string{"first", "second"} {
 		archive := filepath.Join(t.TempDir(), name+".bhbackup")
 		output.Reset()
-		if err := runWithIO(ctx, []string{"app", "backup", "--password-file", password, "--output", archive}, &output, &output); err != nil {
+		if err := runWithIOAsTestOperator(ctx, []string{"app", "backup", "--password-file", password, "--output", archive}, &output, &output); err != nil {
 			t.Fatalf("backup: %v\n%s", err, output.String())
 		}
 		info, err := os.Stat(archive)
@@ -566,7 +566,7 @@ func runGeneratedSecretDeliveryRegression(t *testing.T, ctx context.Context) {
 		resetCoreBootstrapFixtureApplication(t, cleanup)
 	}()
 	var output runtimeAcceptanceOutput
-	err = runWithIO(generatedCoreBootstrapFixtureConsent(t, ctx), []string{"up", "--yes"}, &output, &output)
+	err = runWithIOAsTestOperator(generatedCoreBootstrapFixtureConsent(t, ctx), []string{"up", "--yes"}, &output, &output)
 	var missing *machine.Error
 	if !errors.As(err, &missing) || missing.Code != machine.ErrorRequiredSecretMissing {
 		t.Fatalf("non-TTY first up must fail closed for missing secret: %v\n%s", err, output.String())
@@ -576,10 +576,10 @@ func runGeneratedSecretDeliveryRegression(t *testing.T, ctx context.Context) {
 	if err := os.WriteFile(secretPath, payload, 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := runWithIO(ctx, []string{"app", "secret", "set", "API_TOKEN", "--file", secretPath}, &output, &output); err != nil {
+	if err := runWithIOAsTestOperator(ctx, []string{"app", "secret", "set", "API_TOKEN", "--file", secretPath}, &output, &output); err != nil {
 		t.Fatalf("supply required managed secret: %v\n%s", err, output.String())
 	}
-	if err := runWithIO(coreBootstrapFixtureConsent(t, ctx), []string{"up", "--yes"}, &output, &output); err != nil {
+	if err := runWithIOAsTestOperator(coreBootstrapFixtureConsent(t, ctx), []string{"up", "--yes"}, &output, &output); err != nil {
 		t.Fatalf("resume generated application: %v\n%s", err, output.String())
 	}
 	status, err := collectApplicationStatus(ctx, application.DefaultStore(), nil)
@@ -721,7 +721,7 @@ func resetCoreBootstrapFixtureApplication(t *testing.T, ctx context.Context) {
 	}
 	ack := &application.ProviderChangeConsent{PlanID: plan.Scope.PlanID, First: true, Second: true, DeleteData: true}
 	var out runtimeAcceptanceOutput
-	if err := runWithIO(withProviderChangeConsent(ctx, ack), []string{"app", "destroy", "--yes", "--full-reset"}, &out, &out); err != nil {
+	if err := runWithIOAsTestOperator(withProviderChangeConsent(ctx, ack), []string{"app", "destroy", "--yes", "--full-reset"}, &out, &out); err != nil {
 		t.Errorf("fixture reset failed; owner/source retained: %v\n%s", err, out.String())
 	}
 }

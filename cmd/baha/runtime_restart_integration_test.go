@@ -82,7 +82,7 @@ func runControlPlaneRestartAcceptance(t *testing.T, ha bool) {
 		targetArgs = []string{"target", "create", targetName, "--provider", runtimeCommand, "--access", targetName, "--reference", "local", "--default"}
 	}
 	var targetOut bytes.Buffer
-	if err := runWithIO(ctx, targetArgs, &targetOut, &targetOut); err != nil {
+	if err := runWithIOAsTestOperator(ctx, targetArgs, &targetOut, &targetOut); err != nil {
 		t.Fatalf("create restart target: %v\n%s", err, targetOut.String())
 	}
 	if output, err := exec.CommandContext(

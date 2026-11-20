@@ -170,7 +170,7 @@ func TestAppPruneRemovesDanglingRecord(t *testing.T) {
 	}
 
 	var out, errOut strings.Builder
-	if pErr := runWithIO(context.Background(), []string{"app", "prune", "gone"}, &out, &errOut); pErr != nil {
+	if pErr := runWithIOAsTestOperator(context.Background(), []string{"app", "prune", "gone"}, &out, &errOut); pErr != nil {
 		t.Fatalf("prune of dangling record failed: %v", pErr)
 	}
 	if !strings.Contains(out.String(), "Removed dangling deployment record") {
@@ -210,7 +210,7 @@ func TestAppPruneRefusesMultipleMatches(t *testing.T) {
 	}
 
 	var out, errOut strings.Builder
-	pErr := runWithIO(context.Background(), []string{"app", "prune", "shared"}, &out, &errOut)
+	pErr := runWithIOAsTestOperator(context.Background(), []string{"app", "prune", "shared"}, &out, &errOut)
 	if pErr == nil {
 		t.Fatalf("prune must refuse a name that matches multiple records, got output: %s", out.String())
 	}
@@ -260,7 +260,7 @@ func TestAppPruneRefusesRecordWithAppliedIntent(t *testing.T) {
 	}
 
 	var out, errOut strings.Builder
-	if pErr := runWithIO(context.Background(), []string{"app", "prune", "applied"}, &out, &errOut); pErr == nil {
+	if pErr := runWithIOAsTestOperator(context.Background(), []string{"app", "prune", "applied"}, &out, &errOut); pErr == nil {
 		t.Fatal("prune must refuse a record with an applied intent snapshot")
 	}
 	// The record must still exist: a refused prune leaves the record intact.
@@ -289,7 +289,7 @@ func TestAppPruneRefusesNoName(t *testing.T) {
 	beforeHash := sha256Hex(before)
 
 	var out, errOut strings.Builder
-	pErr := runWithIO(context.Background(), []string{"app", "prune"}, &out, &errOut)
+	pErr := runWithIOAsTestOperator(context.Background(), []string{"app", "prune"}, &out, &errOut)
 	if pErr == nil {
 		t.Fatalf("baha app prune with no name must refuse, got output:\n%s", out.String())
 	}
@@ -322,7 +322,7 @@ func TestAppPruneRefusesMultipleNames(t *testing.T) {
 		t.Fatalf("target state root: %v", err)
 	}
 	var out, errOut strings.Builder
-	pErr := runWithIO(context.Background(), []string{"app", "prune", "gone", "gone2"}, &out, &errOut)
+	pErr := runWithIOAsTestOperator(context.Background(), []string{"app", "prune", "gone", "gone2"}, &out, &errOut)
 	if pErr == nil {
 		t.Fatalf("baha app prune with two names must refuse")
 	}
@@ -344,7 +344,7 @@ func TestAppPruneJSONOnlyValid(t *testing.T) {
 	_ = id
 
 	var out, errOut strings.Builder
-	if pErr := runWithIO(context.Background(), []string{"app", "prune", "gonejson", "--json"}, &out, &errOut); pErr != nil {
+	if pErr := runWithIOAsTestOperator(context.Background(), []string{"app", "prune", "gonejson", "--json"}, &out, &errOut); pErr != nil {
 		t.Fatalf("prune --json of dangling record failed: %v", pErr)
 	}
 	log := strings.TrimSpace(out.String())
@@ -367,7 +367,7 @@ func TestAppPruneHumanHasNoJSONTrailer(t *testing.T) {
 	id := danglingRecordFixture(t, "gonehuman", "dev", "16161616-1616-4161-8161-161616161616")
 	_ = id
 	var out, errOut strings.Builder
-	if pErr := runWithIO(context.Background(), []string{"app", "prune", "gonehuman"}, &out, &errOut); pErr != nil {
+	if pErr := runWithIOAsTestOperator(context.Background(), []string{"app", "prune", "gonehuman"}, &out, &errOut); pErr != nil {
 		t.Fatalf("human prune failed: %v", pErr)
 	}
 	log := out.String()
@@ -412,7 +412,7 @@ func TestAppPruneLiveSourceUnchangedOnRefusal(t *testing.T) {
 	sibBefore, _ := os.ReadFile(sibPath)
 
 	var out, errOut strings.Builder
-	if pErr := runWithIO(context.Background(), []string{"app", "prune", "liveapp"}, &out, &errOut); pErr == nil {
+	if pErr := runWithIOAsTestOperator(context.Background(), []string{"app", "prune", "liveapp"}, &out, &errOut); pErr == nil {
 		t.Fatalf("prune must refuse a source-present live application")
 	}
 	// The live record must still exist, byte-identical.
@@ -460,7 +460,7 @@ func TestAppPruneRefusesDanglingRecordWithAppliedIntent(t *testing.T) {
 		t.Fatalf("fixture unreadable: %v", readErr)
 	}
 	var out, errOut strings.Builder
-	pErr := runWithIO(context.Background(), []string{"app", "prune", "ghost"}, &out, &errOut)
+	pErr := runWithIOAsTestOperator(context.Background(), []string{"app", "prune", "ghost"}, &out, &errOut)
 	if pErr == nil {
 		t.Fatal("prune must refuse a dangling record that still carries an applied intent snapshot")
 	}

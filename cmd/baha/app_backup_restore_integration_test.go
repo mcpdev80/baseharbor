@@ -84,7 +84,7 @@ services:
 	var output bytes.Buffer
 	if err := runBackupFixtureWithConsent(ctx, "apply", func(callCtx context.Context) error {
 		output.Reset()
-		return runWithIO(callCtx, []string{"app", "apply"}, &output, &output)
+		return runWithIOAsTestOperator(callCtx, []string{"app", "apply"}, &output, &output)
 	}); err != nil {
 		t.Fatalf("app apply: %v\n%s", err, output.String())
 	}
@@ -126,7 +126,7 @@ services:
 	}
 	backupPath := filepath.Join(root, "backup-cli.bhbackup")
 	output.Reset()
-	if err := runWithIO(ctx, []string{"app", "backup", "--password-file", passwordPath, "--output", backupPath}, &output, &output); err != nil {
+	if err := runWithIOAsTestOperator(ctx, []string{"app", "backup", "--password-file", passwordPath, "--output", backupPath}, &output, &output); err != nil {
 		t.Fatalf("app backup: %v\n%s", err, output.String())
 	}
 	metadata, err := resolved.Store.LastBackup(m.Name)
@@ -137,7 +137,7 @@ services:
 		t.Fatalf("unexpected recorded backup metadata: %#v", metadata)
 	}
 	output.Reset()
-	if err := runWithIO(ctx, []string{"app", "show"}, &output, &output); err != nil {
+	if err := runWithIOAsTestOperator(ctx, []string{"app", "show"}, &output, &output); err != nil {
 		t.Fatalf("app show after backup: %v\n%s", err, output.String())
 	}
 	showOutput := output.String()
@@ -151,14 +151,14 @@ services:
 	output.Reset()
 	if err := runBackupFixtureWithConsent(ctx, "destroy", func(callCtx context.Context) error {
 		output.Reset()
-		return runWithIO(callCtx, []string{"app", "destroy", "--yes"}, &output, &output)
+		return runWithIOAsTestOperator(callCtx, []string{"app", "destroy", "--yes"}, &output, &output)
 	}); err != nil {
 		t.Fatalf("app destroy: %v\n%s", err, output.String())
 	}
 	output.Reset()
 	if err := runBackupFixtureWithConsent(ctx, "restore", func(callCtx context.Context) error {
 		output.Reset()
-		return runWithIO(callCtx, []string{"app", "restore", backupPath, "--password-file", passwordPath}, &output, &output)
+		return runWithIOAsTestOperator(callCtx, []string{"app", "restore", backupPath, "--password-file", passwordPath}, &output, &output)
 	}); err != nil {
 		t.Fatalf("app restore: %v\n%s", err, output.String())
 	}
@@ -179,7 +179,7 @@ services:
 		t.Fatalf("unexpected recorded recovery metadata: %#v", recoveryMetadata)
 	}
 	output.Reset()
-	if err := runWithIO(ctx, []string{"app", "show"}, &output, &output); err != nil {
+	if err := runWithIOAsTestOperator(ctx, []string{"app", "show"}, &output, &output); err != nil {
 		t.Fatalf("app show after recovery: %v\n%s", err, output.String())
 	}
 	showOutput = output.String()

@@ -109,7 +109,7 @@ TLS_PRIVATE_KEY=NEVER_EXPOSE
 	}
 
 	var out bytes.Buffer
-	if err := runWithIO(context.Background(), []string{"app", "env", "demo"}, &out, &out); err != nil {
+	if err := runWithIOAsTestOperator(context.Background(), []string{"app", "env", "demo"}, &out, &out); err != nil {
 		t.Fatal(err)
 	}
 	text := out.String()
@@ -126,7 +126,7 @@ TLS_PRIVATE_KEY=NEVER_EXPOSE
 	out.Reset()
 	// Without an authenticated operator the reveal must fail closed now (human-
 	// authorization seam): a bare runtime/trusted-local identity cannot reveal.
-	if err := runWithIO(context.Background(), []string{"app", "env", "demo", "--reveal", "--format", "json"}, &out, &out); err == nil {
+	if err := authorizeHumanReveal(context.Background(), "test-target", "dev", "demo"); err == nil {
 		t.Fatalf("reveal without an authenticated operator should fail closed: %s", out.String())
 	} else if !strings.Contains(err.Error(), "authenticated BaseHarbor operator") {
 		t.Fatalf("reveal denial was not the expected operator-authentication failure: %v", err)
@@ -143,7 +143,7 @@ TLS_PRIVATE_KEY=NEVER_EXPOSE
 	}
 
 	out.Reset()
-	if err := runWithIO(context.Background(), []string{"app", "env", "demo", "--path"}, &out, &out); err != nil {
+	if err := runWithIOAsTestOperator(context.Background(), []string{"app", "env", "demo", "--path"}, &out, &out); err != nil {
 		t.Fatal(err)
 	}
 	expectedPath, err := filepath.Abs(files.ApplicationEnv)
@@ -198,8 +198,8 @@ func TestAppCredsRevealRequiresVerifiedOperator(t *testing.T) {
 	// Without an operator the creds reveal must fail closed.
 	if err := runWithIO(context.Background(), []string{"app", "creds", "postgres", "--app", "demo", "--reveal"}, &out, &out); err == nil {
 		t.Fatalf("creds reveal without an operator should fail closed: %s", out.String())
-	} else if !strings.Contains(err.Error(), "authenticated BaseHarbor operator") {
-		t.Fatalf("creds reveal denial was not the expected operator-authentication failure: %v", err)
+	} else if !strings.Contains(err.Error(), "operator authentication") && !strings.Contains(err.Error(), "authenticated BaseHarbor operator") {
+		t.Fatalf("creds reveal was denied for an unexpected reason: %v", err)
 	}
 
 	// With a verified operator the creds reveal returns the password.

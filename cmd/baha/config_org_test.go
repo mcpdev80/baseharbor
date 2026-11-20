@@ -57,7 +57,7 @@ func TestOrganizationCLIJSONAndMCPShareEffectiveResolution(t *testing.T) {
 	writeOrganizationParityArtifacts(t, source)
 
 	var out bytes.Buffer
-	if err := runWithIO(context.Background(), []string{
+	if err := runWithIOAsTestOperator(context.Background(), []string{
 		"config", "organization", "set",
 		"--source", "local",
 		"--location", source,
@@ -153,7 +153,7 @@ func TestOrganizationCheckDoesNotReplaceAndUpdateRequiresApproval(t *testing.T) 
 	write("parity")
 
 	var out bytes.Buffer
-	if err := runWithIO(context.Background(), []string{
+	if err := runWithIOAsTestOperator(context.Background(), []string{
 		"config", "organization", "set", "--source", "local", "--location", source, "-o", "json",
 	}, &out, &bytes.Buffer{}); err != nil {
 		t.Fatal(err)
@@ -161,7 +161,7 @@ func TestOrganizationCheckDoesNotReplaceAndUpdateRequiresApproval(t *testing.T) 
 	write("parity-next")
 
 	out.Reset()
-	if err := runWithIO(context.Background(), []string{"config", "organization", "check", "-o", "json"}, &out, &bytes.Buffer{}); err != nil {
+	if err := runWithIOAsTestOperator(context.Background(), []string{"config", "organization", "check", "-o", "json"}, &out, &bytes.Buffer{}); err != nil {
 		t.Fatal(err)
 	}
 	var check organizationCheckView
@@ -180,11 +180,11 @@ func TestOrganizationCheckDoesNotReplaceAndUpdateRequiresApproval(t *testing.T) 
 		t.Fatalf("check silently replaced active config: %+v", active.Config)
 	}
 
-	if err := runWithIO(context.Background(), []string{"config", "organization", "update"}, &bytes.Buffer{}, &bytes.Buffer{}); err == nil {
+	if err := runWithIOAsTestOperator(context.Background(), []string{"config", "organization", "update"}, &bytes.Buffer{}, &bytes.Buffer{}); err == nil {
 		t.Fatal("organization update must require explicit --yes")
 	}
 	out.Reset()
-	if err := runWithIO(context.Background(), []string{"config", "organization", "update", "--yes", "-o", "json"}, &out, &bytes.Buffer{}); err != nil {
+	if err := runWithIOAsTestOperator(context.Background(), []string{"config", "organization", "update", "--yes", "-o", "json"}, &out, &bytes.Buffer{}); err != nil {
 		t.Fatal(err)
 	}
 	active, err = orgconfig.LoadActive()

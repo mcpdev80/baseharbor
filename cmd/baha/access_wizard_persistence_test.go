@@ -74,7 +74,7 @@ func runWizardWithInput(t *testing.T, args []string, input string) (string, erro
 	t.Cleanup(func() { os.Stdin = old; appNewInput = oldApp })
 
 	var stdout, stderr bytes.Buffer
-	outErr := runWithIO(machineNoninteractiveContext(context.Background()), args, &stdout, &stderr)
+	outErr := runWithIOAsTestOperator(machineNoninteractiveContext(context.Background()), args, &stdout, &stderr)
 	return stdout.String() + stderr.String(), outErr
 }
 
