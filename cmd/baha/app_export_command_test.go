@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,8 +12,10 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/applicationbackup"
+	"github.com/mcpdev80/baseharbor/internal/applicationsecret"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/devaccess"
+	"github.com/mcpdev80/baseharbor/internal/identity"
 	"github.com/mcpdev80/baseharbor/internal/operatorauth"
 )
 
@@ -305,5 +308,120 @@ func TestAppExportManagedSecretWithoutOperatorFailsClosed(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "authenticated BaseHarbor operator") {
 		t.Fatalf("expected the operator-authentication denial for a managed-secret export without a verified operator; got: %v", err)
+	}
+}
+
+type appExportSecretReaderFake struct {
+	listItems []applicationsecret.Metadata
+	values    map[string][]byte
+	listErr   error
+	getErr    error
+}
+
+func (f *appExportSecretReaderFake) List(context.Context, string) ([]applicationsecret.Metadata, error) {
+	if f.listErr != nil {
+		return nil, f.listErr
+	}
+	return append([]applicationsecret.Metadata(nil), f.listItems...), nil
+}
+
+func (f *appExportSecretReaderFake) GetMany(_ context.Context, _ string, keys []string) (map[string][]byte, error) {
+	if f.getErr != nil {
+		return nil, f.getErr
+	}
+	values := make(map[string][]byte, len(keys))
+	for _, key := range keys {
+		values[key] = append([]byte(nil), f.values[key]...)
+	}
+	return values, nil
+}
+
+func appExportAuthorizedTestContext() context.Context {
+	ctx := operatorauth.WithEnforcement(context.Background())
+	ctx = operatorauth.WithVerifiedPrincipal(ctx, &identity.Principal{
+		Issuer:         "https://issuer.example",
+		Subject:        "export-operator",
+		Groups:         []string{"editor"},
+		IssuerVerified: true,
+	})
+	return operatorauth.WithMembershipProvider(ctx, readGrantingMembershipProvider{})
+}
+
+func appExportTestResolved() resolvedApplication {
+	return resolvedApplication{
+		Target: deployment.ResolvedTarget{Name: "export-target"},
+		Manifest: application.Manifest{
+			Version: 1, ApplicationID: "11111111-1111-4111-8111-111111111111",
+			Name: "mailflow", Environment: "dev", Services: application.Services{Secrets: true},
+		},
+	}
+}
+
+func TestAppExportManagedSecretsAuthorizedSelectionProducesEncryptedEntry(t *testing.T) {
+	const value = "managed-secret-sentinel-export-4f92c1"
+	reader := &appExportSecretReaderFake{
+		listItems: []applicationsecret.Metadata{{Name: "API_TOKEN", Present: true}},
+		values:    map[string][]byte{"API_TOKEN": []byte(value)},
+	}
+	passwordPath := filepath.Join(t.TempDir(), "password")
+	const password = "correct horse battery staple"
+	if err := os.WriteFile(passwordPath, []byte(password+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	outputPath := filepath.Join(t.TempDir(), "managed-export.bhexport")
+	var out bytes.Buffer
+	factory := func(context.Context, resolvedApplication) (appExportSecretReader, error) { return reader, nil }
+	if err := executeResolvedApplicationExport(appExportAuthorizedTestContext(), appExportTestResolved(), []string{"secrets/openbao"}, outputPath, passwordPath, &out, factory); err != nil {
+		t.Fatalf("authorized managed-secret export failed: %v", err)
+	}
+	data, err := os.ReadFile(outputPath)
+	if err != nil {
+		t.Fatalf("export artifact missing: %v", err)
+	}
+	_, entries, err := applicationbackup.OpenExport(data, []byte(password))
+	if err != nil {
+		t.Fatalf("OpenExport() failed: %v", err)
+	}
+	if len(entries) != 1 || entries[0].Name != "secrets/openbao/API_TOKEN" || string(entries[0].Data) != value {
+		t.Fatalf("managed secret export entries = %#v", entries)
+	}
+	if strings.Contains(out.String(), value) {
+		t.Fatalf("managed secret leaked to command output: %q", value)
+	}
+	var envelope struct {
+		Ciphertext string `json:"ciphertext"`
+	}
+	if err := json.Unmarshal(data, &envelope); err != nil {
+		t.Fatalf("export is not an encrypted JSON envelope: %v", err)
+	}
+	if strings.Contains(envelope.Ciphertext, value) {
+		t.Fatalf("ciphertext contains managed secret in plaintext: %q", value)
+	}
+}
+
+func TestAppExportManagedSecretBackendErrorsAreRedacted(t *testing.T) {
+	const sentinel = "managed-secret-error-sentinel-53ab"
+	for _, phase := range []string{"list", "read"} {
+		t.Run(phase, func(t *testing.T) {
+			reader := &appExportSecretReaderFake{listItems: []applicationsecret.Metadata{{Name: "API_TOKEN", Present: true}}}
+			if phase == "list" {
+				reader.listErr = errors.New(sentinel)
+			} else {
+				reader.getErr = errors.New(sentinel)
+			}
+			passwordPath := filepath.Join(t.TempDir(), "password")
+			if err := os.WriteFile(passwordPath, []byte("correct horse battery staple\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			var out bytes.Buffer
+			factory := func(context.Context, resolvedApplication) (appExportSecretReader, error) { return reader, nil }
+			err := executeResolvedApplicationExport(appExportAuthorizedTestContext(), appExportTestResolved(), []string{"secrets/openbao"}, filepath.Join(t.TempDir(), "export.bhexport"), passwordPath, &out, factory)
+			if err == nil {
+				t.Fatal("managed secret backend error was accepted")
+			}
+			if strings.Contains(err.Error()+out.String(), sentinel) {
+				t.Fatalf("managed secret backend error leaked detail %q: %v", sentinel, err)
+			}
+		})
 	}
 }
