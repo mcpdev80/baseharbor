@@ -92,6 +92,10 @@ Aktuelle Daten liefert `baha agent describe -o json` (`cli_coverage`). Nach Code
 | `baha config organization show` | semantisch | CLI -o json / typed MCP result | baseharbor.organization.inspect |  |
 | `baha config organization update` | semantisch | CLI -o json / typed MCP result | baseharbor.organization.update |  |
 | `baha config prompt` | Darstellung |  |  | Client-local shell prompt display preferences; explicit target arguments and target inspection provide semantic context. |
+ | `baha context` | Darstellung |  |  | Command group; invoke its supported subcommands. |
+ | `baha context clear` | Darstellung |  |  | Process-level unset of the per-terminal BASEHARBOR_TARGET plus a hint; nothing is persisted, so machine clients simply omit --target to resolve configured defaults. |
+ | `baha context show` | Darstellung |  |  | Repository-bound presentation of the effective per-terminal selection and the winning precedence level (explicit flag, shell-env, or configured default); machine clients read the same decision through their own explicit-argument resolution. |
+ | `baha context use` | Darstellung |  |  | Emits the shell snippet that sets BASEHARBOR_TARGET for the current shell process only; no on-disk state. The per-terminal value lives in the shell-process environment (carried via the completion hook); machine clients resolve the same precedence through explicit --target, the BASEHARBOR_TARGET env, or the configured default target. |
 | `baha connect` | semantisch | CLI -o json / typed MCP result | baseharbor.connectivity.connect |  |
 | `baha connections` | semantisch | CLI -o json / typed MCP result | baseharbor.connectivity.list |  |
 | `baha destroy` | semantisch | CLI -o json / typed MCP result | baseharbor.installation.destroy | Entfernt die gesamte Installation. Entfernte Core-Targets werden über die authentifizierte Machine-API abgebaut; lokale Docker-/Podman-Targets behalten den nativen Ablauf. Autorisiert jedes gefundene Deployment und verlangt Eigentums- sowie Datenlöschungsbestätigung. |
