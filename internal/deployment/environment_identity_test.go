@@ -368,6 +368,141 @@ func TestRenameRetainsIdentityIsThePersistedContract(t *testing.T) {
 	}
 }
 
+func TestRenamePreservesEnvironmentAssociations(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("BASEHARBOR_STATE_DIR", root)
+	const target = "target-a"
+	const oldName = "prod"
+	const newName = "production"
+	const appID = "app-rename-preserve"
+	if _, err := RegisterEnvironmentAssociation(target, oldName, AssociationKindApp, appID); err != nil {
+		t.Fatal(err)
+	}
+
+	moved, err := RenameEnvironment(target, oldName, newName)
+	if err != nil {
+		t.Fatalf("RenameEnvironment: %v", err)
+	}
+	if len(moved.Associations) != 1 || moved.Associations[0] != (AssociationBinding{SubjectKind: AssociationKindApp, SubjectID: appID}) {
+		t.Fatalf("rename result lost environment associations: %+v", moved.Associations)
+	}
+	associations, err := ListEnvironmentAssociations(target, newName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(associations) != 1 || associations[0].SubjectID != appID {
+		t.Fatalf("renamed environment associations = %+v, want app %q", associations, appID)
+	}
+}
+
+func TestRenameRetryCleansSourceAfterInterruptedInstall(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("BASEHARBOR_STATE_DIR", root)
+	const target = "target-a"
+	const oldName = "prod"
+	const newName = "production"
+	const appID = "app-rename-retry"
+	if _, err := RegisterEnvironmentAssociation(target, oldName, AssociationKindApp, appID); err != nil {
+		t.Fatal(err)
+	}
+	source, err := GetEnvironment(target, oldName)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Simulate a crash after installing the destination record but before
+	// removing the source. The old implementation also omitted Associations
+	// from that installed destination, so retry must reconcile both records.
+	newHome, newPath, err := environmentStateRoot(target, newName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(newHome, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	interrupted := EnvironmentRecord{
+		Target:   target,
+		Name:     newName,
+		Identity: source.Identity,
+		Associations: []AssociationBinding{{
+			SubjectKind: AssociationKindNode,
+			SubjectID:   "node-after-crash",
+		}},
+	}
+	blob, err := json.MarshalIndent(interrupted, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(newPath, blob, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	retried, err := RenameEnvironment(target, oldName, newName)
+	if err != nil {
+		t.Fatalf("retry RenameEnvironment after interrupted install: %v", err)
+	}
+	if len(retried.Associations) != 2 {
+		t.Fatalf("retry lost source associations: %+v", retried.Associations)
+	}
+	_, oldPath, err := environmentStateRoot(target, oldName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(oldPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("retry left stale source identity at %q: %v", oldPath, err)
+	}
+	associations, err := ListEnvironmentAssociations(target, newName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(associations) != 2 {
+		t.Fatalf("retry destination associations = %+v, want source and post-crash memberships", associations)
+	}
+	got := map[string]AssociationSubjectKind{}
+	for _, association := range associations {
+		got[association.SubjectID] = association.SubjectKind
+	}
+	if got[appID] != AssociationKindApp || got["node-after-crash"] != AssociationKindNode {
+		t.Fatalf("retry destination memberships lost source or destination data: %+v", associations)
+	}
+}
+
+func TestInstallRenameRefusesMismatchedDestination(t *testing.T) {
+	root := t.TempDir()
+	oldHome := filepath.Join(root, "old")
+	newHome := filepath.Join(root, "new")
+	if err := os.MkdirAll(oldHome, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(newHome, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	oldPath := filepath.Join(oldHome, environmentRecordFile)
+	newPath := filepath.Join(newHome, environmentRecordFile)
+	source := EnvironmentRecord{Target: "target-a", Name: "old", Identity: "00000000-0000-4000-8000-000000000001"}
+	if _, err := persistEnvironmentRecord(oldHome, oldPath, source.Target, source.Name, source.Identity, nil); err != nil {
+		t.Fatal(err)
+	}
+	foreign := []byte("{\"target\":\"target-b\",\"name\":\"new\",\"id\":\"00000000-0000-4000-8000-000000000002\"}\n")
+	if err := os.WriteFile(newPath, foreign, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := installRenamedEnvironmentIdentity(oldPath, newHome, newPath, "target-a", "new", source); !errors.Is(err, ErrEnvironmentBindingMismatch) {
+		t.Fatalf("expected mismatched destination refusal, got %v", err)
+	}
+	after, err := os.ReadFile(newPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(after) != string(foreign) {
+		t.Fatalf("foreign destination was overwritten: got %s", after)
+	}
+	if _, err := os.Stat(oldPath); err != nil {
+		t.Fatalf("source identity was removed after refusal: %v", err)
+	}
+}
+
 // TestRenameReopeningByNameIsIdempotent proves that reopening an already-renamed
 // environment returns the same UUID without allocating a new one or duplicating
 // state.

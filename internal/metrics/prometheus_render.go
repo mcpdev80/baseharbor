@@ -195,6 +195,7 @@ scrape_configs:
   - job_name: baseharbor-applications
     file_sd_configs:
       - files:
+          - /etc/prometheus/targets/application--*--*--*.json
           - /etc/prometheus/targets/*--*--*.json
 `)
 	for i, registration := range registrations {
