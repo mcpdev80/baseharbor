@@ -13,6 +13,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/coreinstallation"
+	"github.com/mcpdev80/baseharbor/internal/observability"
 	"github.com/mcpdev80/baseharbor/internal/provideroperation"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
@@ -390,6 +391,12 @@ func DestroyAllSharedBackendsAt(ctx context.Context, compose bhruntime.RuntimePr
 			continue
 		}
 		if err := os.RemoveAll(files.Dir); err != nil {
+			result = errors.Join(result, err)
+		}
+		if err := observability.PruneOwnedPlatformSources(capability.ProviderPostgreSQL, observability.SourcePlatformProvider, capability.ScopeShared, "environment:"+environment, nil); err != nil {
+			result = errors.Join(result, err)
+		}
+		if err := observability.PruneOwnedPlatformSources(capability.ProviderValkey, observability.SourcePlatformProvider, capability.ScopeShared, "environment:"+environment, nil); err != nil {
 			result = errors.Join(result, err)
 		}
 	}
