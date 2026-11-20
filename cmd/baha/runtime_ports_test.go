@@ -329,7 +329,7 @@ func TestUpNameResumesThroughCommandEntrypoint(t *testing.T) {
 	// realization (no running Core) whether or not a daemon is available.
 	target := configureIsolatedTestTarget(t)
 	selection := minimalRepositorySelection(t)
-	initialized, err := resolveRepositoryLifecycleIntent(t.Context(), target, selection, "init")
+	initialized, err := resolveRepositoryLifecycleIntent(testOperatorContext(t.Context()), target, selection, "init")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -435,7 +435,7 @@ func TestParseUpParsesIdenticalToAppUpEnforcesParity(t *testing.T) {
 func TestUpNameResumesRegisteredDeploymentAcceptsParity(t *testing.T) {
 	target := configureTestTarget(t)
 	selection := minimalRepositorySelection(t)
-	initialized, err := resolveRepositoryLifecycleIntent(t.Context(), target, selection, "init")
+	initialized, err := resolveRepositoryLifecycleIntent(testOperatorContext(t.Context()), target, selection, "init")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -471,7 +471,7 @@ func TestUpNameResumesRegisteredDeploymentAcceptsParity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resolved, err := resolveRegisteredApplication(t.Context(), target, targetRoot, name, "", "up", "")
+	resolved, err := resolveRegisteredApplication(testOperatorContext(t.Context()), target, targetRoot, name, "", "up", "")
 	if err != nil {
 		t.Fatalf("up NAME must resume the registered deployment %q: %v", name, err)
 	}

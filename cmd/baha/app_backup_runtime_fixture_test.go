@@ -496,7 +496,7 @@ func TestGuidedBackupFixtureConsentIsFreshAndDoesNotRetryStalePlans(t *testing.T
 func TestGuidedBackupFixtureRestoreRequiresItsOwnDestructiveScope(t *testing.T) {
 	r := retainedNativeBackendFixture(t)
 	data := applicationRestoreData{manifest: r.Manifest, archiveRevision: strings.Repeat("a", 64)}
-	plan, err := buildApplicationRestorePlan(t.Context(), r, data)
+	plan, err := buildApplicationRestorePlan(testOperatorContext(t.Context()), r, data)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -505,11 +505,11 @@ func TestGuidedBackupFixtureRestoreRequiresItsOwnDestructiveScope(t *testing.T) 
 	if err != nil || ack == nil || !ack.First || !ack.Second || !ack.DeleteData || ack.PlanID != plan.Scope.PlanID {
 		t.Fatalf("explicit fixture restore scope missing: %v", err)
 	}
-	if err := authorizeApplicationRestore(withProviderChangeConsent(t.Context(), ack), r, data, io.Discard); err != nil {
+	if err := authorizeApplicationRestore(withProviderChangeConsent(testOperatorContext(t.Context()), ack), r, data, io.Discard); err != nil {
 		t.Fatal("actual restore authority rejected current explicit consent", err)
 	}
 	data.archiveRevision = strings.Repeat("b", 64)
-	if err := authorizeApplicationRestore(withProviderChangeConsent(t.Context(), ack), r, data, io.Discard); err == nil {
+	if err := authorizeApplicationRestore(withProviderChangeConsent(testOperatorContext(t.Context()), ack), r, data, io.Discard); err == nil {
 		t.Fatal("changed archive reused restore approval")
 	}
 	for _, operation := range []string{"apply", "destroy"} {

@@ -94,7 +94,7 @@ func TestCorelessApplicationDownConsentNamesWorkloadUnavailability(t *testing.T)
 		t.Fatalf("coreless down bypassed explicit workload consent: %v", err)
 	}
 	var output bytes.Buffer
-	err = runWithIO(machineNoninteractiveContext(t.Context()), []string{"app", "down", "--yes", "--json"}, &output, io.Discard)
+	err = runWithIOAsTestOperator(machineNoninteractiveContext(t.Context()), []string{"app", "down", "--yes", "--json"}, &output, io.Discard)
 	if !errors.As(err, &failure) || failure.Code != machine.ErrorApprovalRequired {
 		t.Fatalf("app down --yes bypassed workload consent: %v\n%s", err, output.String())
 	}

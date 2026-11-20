@@ -291,7 +291,8 @@ func TestDoctorNotDeployedVersusIncomplete(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			checks := collectControlPlaneDoctorChecks(context.Background())
+			ctx := testOperatorContext(context.Background())
+			checks := collectControlPlaneDoctorChecks(ctx)
 			if controlPlaneNotDeployed(checks) != (artifact == "") {
 				t.Fatalf("wrong state %+v", checks)
 			}
@@ -300,7 +301,7 @@ func TestDoctorNotDeployedVersusIncomplete(t *testing.T) {
 					t.Fatalf("absence reported as HA failure: %+v", checks)
 				}
 			}
-			report, err := inspectControlPlaneDoctor(context.Background())
+			report, err := inspectControlPlaneDoctor(ctx)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -382,7 +383,7 @@ func TestContextualCLIErrorHintsAndContracts(t *testing.T) {
 }
 func createDuplicateTargetForBugTest(t *testing.T) error {
 	t.Helper()
-	_, err := createTargetDefinition(context.Background(), machineTargetCreateInput{Name: "docker-dev", RuntimeProvider: "docker", Access: "local-docker", Reference: "local"})
+	_, err := createTargetDefinition(testOperatorContext(context.Background()), machineTargetCreateInput{Name: "docker-dev", RuntimeProvider: "docker", Access: "local-docker", Reference: "local"})
 	if err == nil {
 		t.Fatal("duplicate accepted")
 	}

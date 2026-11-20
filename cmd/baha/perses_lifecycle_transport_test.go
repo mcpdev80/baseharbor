@@ -209,7 +209,7 @@ func TestPersesLifecycleMCPSharedSeamRunsApplyLifecycle(t *testing.T) {
 	var enableMCPResult persesLifecycleResult
 	server := newMCPServer(application.DefaultStore())
 	serverTransport, clientTransport := mcp.NewInMemoryTransports()
-	serverSession, err := server.Connect(t.Context(), serverTransport, nil)
+	serverSession, err := server.Connect(testOperatorContext(t.Context()), serverTransport, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -234,7 +234,7 @@ func TestPersesLifecycleMCPSharedSeamRunsApplyLifecycle(t *testing.T) {
 		t.Run(tc.action, func(t *testing.T) {
 			persesMatrixSetSelected(t, fixture, tc.from)
 			before := *applyCalls
-			result, callErr := session.CallTool(t.Context(), &mcp.CallToolParams{
+			result, callErr := session.CallTool(testOperatorContext(t.Context()), &mcp.CallToolParams{
 				Name:      tc.tool,
 				Arguments: map[string]any{"approval": true},
 			})

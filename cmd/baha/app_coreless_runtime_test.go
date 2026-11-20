@@ -297,7 +297,7 @@ func corelessAcceptanceDestroyConsent(plan applicationDestructionPlan) *applicat
 
 func TestCorelessAcceptanceDestroyConsentBindsCurrentDestructivePlan(t *testing.T) {
 	resolved := retainedNativeBackendFixture(t)
-	plan, err := buildApplicationDestructionPlan(t.Context(), resolved, true)
+	plan, err := buildApplicationDestructionPlan(testOperatorContext(t.Context()), resolved, true)
 	if err != nil {
 		t.Fatal(err)
 	}

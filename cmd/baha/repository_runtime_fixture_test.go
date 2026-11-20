@@ -614,7 +614,7 @@ func TestRepositoryFixtureApplyReResolvesUnallocatedSQLCacheProposal(t *testing.
 		t.Fatal(err)
 	}
 	var identities []string
-	err := runRepositoryFixtureApplyCall(t.Context(), []string{"app", "apply"}, func(ctx context.Context) error {
+	err := runRepositoryFixtureApplyCall(testOperatorContext(t.Context()), []string{"app", "apply"}, func(ctx context.Context) error {
 		resolved, err := resolveApplication(ctx, application.Store{}, nil, "apply")
 		if err != nil {
 			return err

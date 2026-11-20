@@ -89,7 +89,7 @@ func TestDockerTargetIntentCLIAndMachineConfiguration(t *testing.T) {
 	if err := runWithIOAsTestOperator(context.Background(), []string{"target", "create", "cli-rootless", "--provider", "docker", "--access", "local-docker", "--reference", "local", "--docker-context", "rootless", "--docker-mode", "rootless"}, &out, &out); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := createTargetDefinition(context.Background(), machineTargetCreateInput{Name: "machine-rootless", RuntimeProvider: "docker", Access: "local-docker", Reference: "local", DockerContext: "rootless", DockerMode: "rootless"}); err != nil {
+	if _, err := createTargetDefinition(testOperatorContext(context.Background()), machineTargetCreateInput{Name: "machine-rootless", RuntimeProvider: "docker", Access: "local-docker", Reference: "local", DockerContext: "rootless", DockerMode: "rootless"}); err != nil {
 		t.Fatal(err)
 	}
 	cfg, err := deployment.LoadConfig()

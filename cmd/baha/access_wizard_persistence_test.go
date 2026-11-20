@@ -17,6 +17,9 @@ import (
 func writeTestActiveConfig(t *testing.T, targets []string, operation string, profiles []orgconfig.Profile) {
 	t.Helper()
 	root := t.TempDir()
+	if err := os.Chmod(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
 	t.Setenv("BASEHARBOR_STATE_DIR", root)
 	t.Chdir(root)
 

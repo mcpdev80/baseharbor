@@ -365,6 +365,28 @@ func authorizeCurrentMCPContext(ctx context.Context, operationID, targetName, en
 	return authorizeMCPOperation(ctx, operationID, target.Name, environment, "", workspace)
 }
 
+// authorizeTargetCreation uses the current configured target for policy when
+// one exists, preserving its operator session. For first-target bootstrap, it
+// falls back to the name being created rather than requiring that name to
+// resolve before the create. Managed environments still pass through the same
+// operator authentication and operation policy checks.
+func authorizeTargetCreation(ctx context.Context, targetName string) error {
+	environment := "dev"
+	if cwd, err := os.Getwd(); err == nil {
+		if selection, selectionErr := application.ResolveRepositoryEnvironment(cwd, ""); selectionErr == nil {
+			environment = selection.Manifest.Environment
+		}
+	}
+	policyTarget := strings.TrimSpace(targetName)
+	if current, err := effectiveTarget(ctx); err == nil {
+		// Existing selections retain their existing operator session and policy.
+		// When the selected name is the target being bootstrapped, resolution
+		// fails and authorization is instead bound to the requested new name.
+		policyTarget = current.Name
+	}
+	return authorizeMCPOperation(ctx, "target.create", policyTarget, environment, "", "")
+}
+
 // machineApplicationArgs builds the CLI argument shape of one application
 // command. A --uuid selector travels as a trailing option pair so it never
 // counts toward the one-NAME limit of resolveApplicationEnvironment — the

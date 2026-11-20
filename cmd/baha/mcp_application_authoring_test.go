@@ -117,7 +117,7 @@ func TestRepositoryAdoptionReusesRetainedCanonicalIdentity(t *testing.T) {
 	}
 	intent := prior
 	intent.ApplicationID = ""
-	result, err := persistRepositoryApplication(context.Background(), root, intent, nil)
+	result, err := persistRepositoryApplication(testOperatorContext(context.Background()), root, intent, nil)
 	if err != nil || result.ApplicationID != prior.ApplicationID {
 		t.Fatalf("retained retry owner changed: %+v %v", result, err)
 	}

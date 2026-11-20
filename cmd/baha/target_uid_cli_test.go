@@ -69,6 +69,31 @@ func TestCLITargetCreateGeneratesStableUID(t *testing.T) {
 	}
 }
 
+func TestCLITargetCreateCanBootstrapSelectedTargetName(t *testing.T) {
+	setupUIDTestRoot(t)
+	t.Setenv("BASEHARBOR_TARGET", "first-target")
+
+	var out bytes.Buffer
+	err := runWithIOAsTestOperator(context.Background(), []string{
+		"target", "create", "first-target",
+		"--runtime-provider", "docker",
+		"--access", "local-docker",
+		"--access-provider", "local",
+		"--reference", "local",
+		"--default",
+	}, &out, &out)
+	if err != nil {
+		t.Fatalf("CLI target create with its own name selected: %v; output=%s", err, out.String())
+	}
+	cfg, err := deployment.LoadConfig()
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if _, ok := cfg.Targets["first-target"]; !ok {
+		t.Fatal("selected bootstrap target was not persisted")
+	}
+}
+
 // TestCLITargetUIDStableAcrossReads proves the user-facing create + two reads
 // yield ONE stable UID: the first create persists it, and a second
 // `baha target list` (which loads the config through the migration seam)

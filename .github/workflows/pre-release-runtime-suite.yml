@@ -282,6 +282,7 @@ jobs:
         PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         GATE: ${{ inputs.gate }}
         RUNTIME: ${{ inputs.runtime }}
+        GOFLAGS: -tags=baseharbor_ci_operator_testonly
       run: |
         set -euo pipefail
         exec > >(tee "$RUNNER_TEMP/gate-output.log") 2>&1

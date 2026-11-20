@@ -588,7 +588,7 @@ func TestAppPruneMCPPreservesTargetOverride(t *testing.T) {
 	server := mcp.NewServer(&mcp.Implementation{Name: "test", Version: "v1"}, nil)
 	registerMCPAppPruneTool(server, store)
 	serverTransport, clientTransport := mcp.NewInMemoryTransports()
-	serverSession, err := server.Connect(context.Background(), serverTransport, nil)
+	serverSession, err := server.Connect(testOperatorContext(context.Background()), serverTransport, nil)
 	if err != nil {
 		t.Fatalf("connect MCP server: %v", err)
 	}
@@ -605,7 +605,7 @@ func TestAppPruneMCPPreservesTargetOverride(t *testing.T) {
 	// is exactly what the r2 code did: it dropped input.Target to the ambient
 	// target. Pinning a target that is NOT the ambient one must change the
 	// outcome to a successful resolution.
-	negativeResult, negativeErr := clientSession.CallTool(context.Background(), &mcp.CallToolParams{
+	negativeResult, negativeErr := clientSession.CallTool(testOperatorContext(context.Background()), &mcp.CallToolParams{
 		Name: "baseharbor.app.prune",
 		Arguments: map[string]any{
 			"name": "onlypinned",
@@ -626,7 +626,7 @@ func TestAppPruneMCPPreservesTargetOverride(t *testing.T) {
 
 	// Pin the SECOND target via input.Target. The record is not on the ambient
 	// "boot" target, so a correctly preserved override must find it here.
-	result, callErr := clientSession.CallTool(context.Background(), &mcp.CallToolParams{
+	result, callErr := clientSession.CallTool(testOperatorContext(context.Background()), &mcp.CallToolParams{
 		Name: "baseharbor.app.prune",
 		Arguments: map[string]any{
 			"name":   "onlypinned",
@@ -723,7 +723,7 @@ func TestAppPruneMCPIdentityStabilityThroughAuthorizationAndMutation(t *testing.
 	server := mcp.NewServer(&mcp.Implementation{Name: "test", Version: "v1"}, nil)
 	registerMCPAppPruneTool(server, store)
 	serverTransport, clientTransport := mcp.NewInMemoryTransports()
-	serverSession, sErr := server.Connect(context.Background(), serverTransport, nil)
+	serverSession, sErr := server.Connect(testOperatorContext(context.Background()), serverTransport, nil)
 	if sErr != nil {
 		t.Fatalf("connect MCP server: %v", sErr)
 	}
@@ -765,7 +765,7 @@ func TestAppPruneMCPIdentityStabilityThroughAuthorizationAndMutation(t *testing.
 	}
 	t.Cleanup(func() { pruneDriftHook = savedHook })
 
-	result, callErr := clientSession.CallTool(context.Background(), &mcp.CallToolParams{
+	result, callErr := clientSession.CallTool(testOperatorContext(context.Background()), &mcp.CallToolParams{
 		Name:      "baseharbor.app.prune",
 		Arguments: map[string]any{"name": "solo", "target": "boot"},
 	})
@@ -837,7 +837,7 @@ func TestAppPruneMCPHappyPathRemovesUniquelyResolvedRecord(t *testing.T) {
 	server := mcp.NewServer(&mcp.Implementation{Name: "test", Version: "v1"}, nil)
 	registerMCPAppPruneTool(server, store)
 	serverTransport, clientTransport := mcp.NewInMemoryTransports()
-	serverSession, sErr := server.Connect(context.Background(), serverTransport, nil)
+	serverSession, sErr := server.Connect(testOperatorContext(context.Background()), serverTransport, nil)
 	if sErr != nil {
 		t.Fatalf("connect MCP server: %v", sErr)
 	}

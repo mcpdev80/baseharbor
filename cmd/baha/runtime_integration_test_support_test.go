@@ -818,21 +818,6 @@ func ensureRuntimeIntegrationTrustPlane(t *testing.T, ctx context.Context) {
 			runtimeIntegrationTrustPlaneErr = err
 			return
 		}
-		if err := os.Setenv("BASEHARBOR_TARGET", bootstrapTarget); err != nil {
-			runtimeIntegrationTrustPlaneErr = err
-			return
-		}
-		// Always restore the selection, including when OpenBao was already
-		// initialized or when bootstrap fails. Otherwise a later lifecycle
-		// test silently inherits this bootstrap target.
-		defer func() {
-			if err := os.Unsetenv("BASEHARBOR_TARGET"); err != nil && runtimeIntegrationTrustPlaneErr == nil {
-				runtimeIntegrationTrustPlaneErr = err
-			}
-			if runtimeIntegrationTrustPlaneErr == nil {
-				runtimeIntegrationTrustPlaneErr = mutatePersistedTarget("", true)
-			}
-		}()
 		// The shared rootless daemon is the integration endpoint. An active
 		// CLI context (the prepare step's setuptool registers "rootless")
 		// takes precedence over DOCKER_HOST inside the engine resolver, so
@@ -857,6 +842,25 @@ func ensureRuntimeIntegrationTrustPlane(t *testing.T, ctx context.Context) {
 			}
 			out.Reset()
 		}
+		// Select the target only after creating it. Selecting the fresh name
+		// first makes target.create resolve an unconfigured target during its
+		// own authorization preflight, preventing the bootstrap config from
+		// being written and leaving teardown with an unconfigured name.
+		if err := os.Setenv("BASEHARBOR_TARGET", bootstrapTarget); err != nil {
+			runtimeIntegrationTrustPlaneErr = err
+			return
+		}
+		// Always restore the selection, including when OpenBao was already
+		// initialized or when bootstrap fails. Otherwise a later lifecycle
+		// test silently inherits this bootstrap target.
+		defer func() {
+			if err := os.Unsetenv("BASEHARBOR_TARGET"); err != nil && runtimeIntegrationTrustPlaneErr == nil {
+				runtimeIntegrationTrustPlaneErr = err
+			}
+			if runtimeIntegrationTrustPlaneErr == nil {
+				runtimeIntegrationTrustPlaneErr = mutatePersistedTarget("", true)
+			}
+		}()
 		if err := runWithIOAsTestOperator(ctx, []string{"up", "--control-plane-only", "--yes"}, &out, &out); err != nil {
 			runtimeIntegrationTrustPlaneErr = err
 			return

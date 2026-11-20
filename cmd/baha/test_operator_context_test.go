@@ -17,12 +17,14 @@ func runWithIOAsTestOperator(ctx context.Context, args []string, out, errOut io.
 
 func testOperatorContext(ctx context.Context) context.Context {
 	if _, ok := operatorauth.PrincipalFromContext(ctx); ok {
-		return operatorauth.WithMembershipProviderIfAbsent(ctx, &readGrantingMembershipProvider{})
+		ctx = operatorauth.WithMembershipProviderIfAbsent(ctx, &readGrantingMembershipProvider{})
+		return operatorauth.WithEnforcementIfAbsent(ctx)
 	}
 	principal := &identity.Principal{
 		Issuer: "https://issuer.test", Subject: "cli-test-operator",
 		IssuerVerified: true, Groups: []string{"editor"},
 	}
 	ctx = operatorauth.WithVerifiedPrincipal(ctx, principal)
-	return operatorauth.WithMembershipProviderIfAbsent(ctx, &readGrantingMembershipProvider{})
+	ctx = operatorauth.WithMembershipProviderIfAbsent(ctx, &readGrantingMembershipProvider{})
+	return operatorauth.WithEnforcementIfAbsent(ctx)
 }

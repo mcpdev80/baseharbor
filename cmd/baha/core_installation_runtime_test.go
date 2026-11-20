@@ -671,7 +671,7 @@ func TestGeneratedBootstrapConsentRetainsCurrentIntent(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Chdir(root)
-	ctx := machineNoninteractiveContext(t.Context())
+	ctx := machineNoninteractiveContext(testOperatorContext(t.Context()))
 	beforeInitialization := coreBootstrapFixtureConsent(t, ctx)
 	consent := generatedCoreBootstrapFixtureConsent(t, ctx)
 	resolved, err := resolveApplication(ctx, application.Store{}, nil, "apply")

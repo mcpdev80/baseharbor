@@ -491,7 +491,7 @@ func appEditMCPNativeCorelessPrerequisites(t *testing.T) {
 	t.Setenv(application.ProviderScopeEnv(capability.ProviderPostgreSQL), string(capability.ScopeApplication))
 	resolved := corelessResolvedFixture(t)
 	resolved.Manifest = application.WithSQLInstances(appEditMCPNativeManifest(), "default")
-	ctx := machineNoninteractiveContext(context.Background())
+	ctx := machineNoninteractiveContext(testOperatorContext(context.Background()))
 	// Execute the actual production prerequisite and MCP authorization owners.
 	// Neither depends on a management installation for local development SQL.
 	if err := requireResolvedApplicationCore(ctx, resolved, strings.NewReader(""), io.Discard); err != nil {

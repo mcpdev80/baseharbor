@@ -18,15 +18,16 @@ import (
 
 func TestRejectedApplyAndTargetTeardownKeepSourcesWithoutGhostApplyingState(t *testing.T) {
 	target := configureTestTarget(t)
+	ctx := testOperatorContext(context.Background())
 	root := httpsAdoptionFixture(t, false)
 	t.Chdir(root)
 	m := application.Manifest{Version: application.CurrentVersion, ApplicationID: application.MustNewApplicationID(), Name: "demo", Environment: "dev", Workload: application.WorkloadConfig{Components: []string{"demo-app"}}}
 	mustWriteInitializedAuthoredManifest(t, application.RepositoryManifestName, m)
-	resolved, err := resolveApplication(context.Background(), application.DefaultStore(), nil, "apply")
+	resolved, err := resolveApplication(ctx, application.DefaultStore(), nil, "apply")
 	if err != nil {
 		t.Fatal(err)
 	}
-	pending, err := recordPendingDeployment(context.Background(), resolved)
+	pending, err := recordPendingDeployment(ctx, resolved)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -35,7 +36,7 @@ func TestRejectedApplyAndTargetTeardownKeepSourcesWithoutGhostApplyingState(t *t
 	}
 	inputs := repositoryInitEnvPathFromStateRoot(resolved.stateRoot())
 	mustWriteWizardTestFile(t, inputs, "BASEHARBOR_APP_HOSTNAME=localhost\n")
-	if err := executeApplicationApplyLifecycle(context.Background(), application.DefaultStore(), nil, io.Discard, io.Discard); err == nil {
+	if err := executeApplicationApplyLifecycle(ctx, application.DefaultStore(), nil, io.Discard, io.Discard); err == nil {
 		t.Fatal("invalid workload contract applied")
 	}
 	failed, err := deployment.LoadDeploymentRecord(pending.Identity)
@@ -50,7 +51,7 @@ func TestRejectedApplyAndTargetTeardownKeepSourcesWithoutGhostApplyingState(t *t
 	if err := deployment.SaveDeploymentRecord(failed); err != nil {
 		t.Fatal(err)
 	}
-	inactive, err := inactiveTargetDeployments(context.Background(), target.Name)
+	inactive, err := inactiveTargetDeployments(ctx, target.Name)
 	if err != nil || len(inactive) != 1 {
 		t.Fatalf("inactive registration: %#v %v", inactive, err)
 	}
