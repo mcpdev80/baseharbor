@@ -301,6 +301,15 @@ jobs:
       - name: Prepare verified rootless runtime
         run: bash scripts/ci-core-rootless-runtime.sh
 
+      - name: Install interactive shells for the shell-wrapper path
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y zsh fish
+          echo "zsh: $(command -v zsh)"
+          echo "fish: $(command -v fish)"
+
       - name: Reset persistent runner state
         id: reset
         shell: bash
@@ -1201,6 +1210,15 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
+      - name: Install interactive shells for the shell-wrapper path
+        if: matrix.shard == 'cli-3'
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y zsh fish
+          echo "zsh: $(command -v zsh)"
+          echo "fish: $(command -v fish)"
       - name: Execute selected Go tests with isolated PostgreSQL
         shell: bash
         run: bash scripts/pr-unit-database.sh "${{ matrix.shard }}"
