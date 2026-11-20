@@ -128,7 +128,7 @@ func appCredsCommand(store application.Store) *cli.Command {
 			if reveal {
 				// Revealing the password/URI is a human-only operation: require
 				// an authenticated operator on the separate secret.reveal seam.
-				if err := authorizeHumanReveal(ctx, resolved.Target.Name, resolved.Manifest.Environment, resolved.Manifest.Name); err != nil {
+				if err := authorizeHumanReveal(ctx, resolved.Target.Name, resolved.Manifest.Environment, resolved.Manifest.ApplicationID); err != nil {
 					return err
 				}
 				fmt.Fprintf(out, "PASSWORD=%s\nURI=%s\n", binding.Password, binding.URI)

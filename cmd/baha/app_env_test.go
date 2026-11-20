@@ -15,6 +15,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/mcpdev80/baseharbor/internal/identity"
+	"github.com/mcpdev80/baseharbor/internal/machine"
 	"github.com/mcpdev80/baseharbor/internal/operatorauth"
 	"github.com/mcpdev80/baseharbor/internal/tenancy"
 	"github.com/mcpdev80/baseharbor/internal/testsupport/serviceissuer"
@@ -152,6 +153,38 @@ TLS_PRIVATE_KEY=NEVER_EXPOSE
 	}
 	if strings.TrimSpace(out.String()) != expectedPath {
 		t.Fatalf("unexpected application env path: %q want %q", strings.TrimSpace(out.String()), expectedPath)
+	}
+}
+
+func TestHumanRevealRequiresAuthorizedMembership(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		group       string
+		memberships []tenancy.Membership
+		wantCause   string
+	}{
+		{name: "no membership", group: "visitor", wantCause: "claim_membership_unresolved"},
+		{name: "membership without permission", group: "guest", memberships: []tenancy.Membership{{TenantID: "tenant-a", Role: "guest"}}, wantCause: "tenant_permission_denied"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			principal := &identity.Principal{
+				Issuer:         "https://issuer.example",
+				Subject:        "operator-without-reveal-access",
+				IssuerVerified: true,
+				Groups:         []string{tc.group},
+			}
+			ctx := operatorauth.WithEnforcement(context.Background())
+			ctx = operatorauth.WithVerifiedPrincipal(ctx, principal)
+			ctx = operatorauth.WithMembershipProvider(ctx, &firstRunMembershipProvider{memberships: tc.memberships})
+
+			err := authorizeHumanReveal(ctx, "target-a", "dev", "application-a")
+			if err == nil {
+				t.Fatal("verified operator without reveal permission revealed application secrets")
+			}
+			if got := machine.Classify(err).CauseCode; got != tc.wantCause {
+				t.Fatalf("reveal denial cause = %q, want %q: %v", got, tc.wantCause, err)
+			}
+		})
 	}
 }
 
