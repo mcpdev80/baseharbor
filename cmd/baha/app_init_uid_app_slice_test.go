@@ -214,20 +214,11 @@ func TestUIDAppSliceConcurrentFirstCreateConvergesOnOneOwner(t *testing.T) {
 	if err := os.MkdirAll(root, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	// This is the REAL CLI surface (the 0428-051 shape): every racer drives
-	// baha app init through runWithIO from the same fresh source root, so the
-	// race reaches the actual init path AND the system-owned canonical store's
-	// atomic Create underneath it. The store serializes first create, so the
-	// canonical identity must converge to exactly one owner: at least one
-	// racer succeeds, every racer reports the same surviving ID, and a
-	// silently vanishing racer can never make the test green (the outcome
-	// slice below fails closed). The deterministic store-level Create race is
-	// pinned by TestConcurrentInitNeverCreatesDoubleApplicationIDRegistration
-	// Shared-process publish hazards (the 0428-050 CWD-leak lineage: a racer
-	// briefly observing a source tree a sibling is mid-publish renaming or
-	// truncating) are tolerated as transient below; they cannot fake a win
-	// because the surviving canonical store must still hold exactly one owner
-	// whose ID equals the convergence ID.
+	// Each worker drives the real CLI surface, but cwd changes must be
+	// serialized because the working directory is process-global. The actual
+	// concurrent first-create race is covered directly by
+	// TestConcurrentInitNeverCreatesDoubleApplicationIDRegistration; this test
+	// checks that repeated CLI attempts converge on that one surviving owner.
 	if err := os.WriteFile(filepath.Join(root, "compose.yaml"), []byte("services:\n  api:\n    image: example.invalid/raced:api\n    labels:\n      io.baseharbor.workload.protocol: https\n    ports:\n      - '8080:8080'\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -245,10 +236,13 @@ func TestUIDAppSliceConcurrentFirstCreateConvergesOnOneOwner(t *testing.T) {
 		uid string // the identity this racer's init converged on
 	}
 	results := make([]outcome, racers)
+	var cwdMu sync.Mutex
 	for i := 0; i < racers; i++ {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
+			cwdMu.Lock()
+			defer cwdMu.Unlock()
 			m := application.New("raced", "dev", false, false, false)
 			m.ApplicationID = sharedID
 			m = application.WithHTTPExposure(m, "api", "api", 8080, "https")
@@ -259,13 +253,7 @@ func TestUIDAppSliceConcurrentFirstCreateConvergesOnOneOwner(t *testing.T) {
 				return
 			}
 			var out, errOut bytes.Buffer
-			// Exactly the surface the rest of this slice drives: the argv
-			// form 'baha app init --quick --no-input'. Under concurrency the
-			// quick-mode manifest detection can briefly observe a source
-			// tree a sibling is mid-publish renaming (the 0428-050 CWD
-			// hazard): that transient "unknown option" is a parse failure of
-			// an incomplete detection, not a defect, and the single-owner
-			// assertions below still decide the outcome.
+			// Exercise the CLI surface used by the other tests in this slice.
 			err := runWithIOAsTestOperator(context.Background(), []string{"app", "init", "--quick", "--no-input"}, &out, &errOut)
 			// Read the identity this racer's init converged on: the canonical
 			// store holds exactly one owner for the name once first create is
@@ -308,30 +296,9 @@ func TestUIDAppSliceConcurrentFirstCreateConvergesOnOneOwner(t *testing.T) {
 			}
 			continue
 		}
-		// The single-owner guard must fail losers closed either through the
-		// canonical store's ErrExists sentinel (the store-level surface of the
-		// contract) or through the manifest-exists refusal of the init path
-		// itself. Both are the documented refusal; the detection-phase
-		// refusals below only ever appear when a sibling is mid-publish and
-		// are covered by the hazard comment. Anything else is a defect.
-		if errors.Is(r.err, application.ErrExists) ||
-			strings.Contains(r.err.Error(), "already exists") ||
-			// The shared-process CWD hazard (0428-050 regression on #1579): a
-			// racer can briefly observe a directory another racer removed or
-			// renamed mid-publish (getwd/open failures, transient ENOENT/
-			// ENOTEMPTY), or parse an empty file a sibling truncated. Those
-			// are retried first-create races, not defects; a silently failing
-			// worker still cannot turn the test green because the surviving
-			// canonical store must hold exactly one owner below.
-			strings.Contains(r.err.Error(), "current directory") ||
-			strings.Contains(r.err.Error(), "no such file or directory") ||
-			strings.Contains(r.err.Error(), "directory not empty") ||
-			strings.Contains(r.err.Error(), "unknown option") ||
-			strings.Contains(r.err.Error(), "could not resolve the repository workload source") ||
-			strings.Contains(r.err.Error(), "metrics endpoint was detected but its workload service/port is ambiguous") ||
-			strings.Contains(r.err.Error(), "invalid character") ||
-			strings.Contains(r.err.Error(), "unexpected end of") ||
-			strings.Contains(r.err.Error(), "yaml:") {
+		// Once the first attempt writes the manifest, later attempts must fail
+		// with the documented existing-application guard.
+		if errors.Is(r.err, application.ErrExists) || strings.Contains(r.err.Error(), "already exists") {
 			continue
 		}
 		t.Fatalf("concurrent init racer %d failed with an unexpected error: %v", i, r.err)

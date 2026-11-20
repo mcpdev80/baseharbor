@@ -143,6 +143,10 @@ func TestCoreStopUsesStableScopeRequiresTwoAcknowledgementsAndBindsCredentialByt
 
 func TestCoreStopCLIJSONAndMCPExposeSameCurrentScopeWithoutEnvironmentConsentReuse(t *testing.T) {
 	coreStopFixture(t)
+	// The command must not depend on any consent inherited from the caller's
+	// process environment. Seed the ambient value only after the CLI denial is
+	// verified, then prove that MCP ignores it as well.
+	t.Setenv(providerChangeConsentEnv, "")
 	var out bytes.Buffer
 	err := runWithIOAsTestOperator(withProviderChangeConsent(t.Context(), nil), []string{"down", "--json"}, &out, io.Discard)
 	var cliFailure *machine.Error

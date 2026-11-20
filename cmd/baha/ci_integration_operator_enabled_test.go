@@ -4,13 +4,47 @@ package main
 
 import (
 	"context"
+	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/operatorauth"
 )
+
+func TestCIIntegrationOperatorTraceKeepsMachineErrorStreamClean(t *testing.T) {
+	t.Setenv("BASEHARBOR_DEMO_OPERATOR_TRACE", "1")
+	summary := filepath.Join(t.TempDir(), "summary.md")
+	t.Setenv("GITHUB_STEP_SUMMARY", summary)
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	previousStderr := os.Stderr
+	os.Stderr = writer
+	defer func() { os.Stderr = previousStderr }()
+
+	ciIntegrationOperatorTrace("managed-local-gate", []string{"destroy", "--all", "--yes", "--json"}, deployment.ResolvedTarget{Name: "atomic-docker-guided", RuntimeProvider: "docker", AccessProvider: "local"}, nil)
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	stderr, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(stderr) != 0 {
+		t.Fatalf("test-only trace contaminated machine error stream: %q", stderr)
+	}
+	data, err := os.ReadFile(summary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), `decision=managed-local-gate command="destroy --all --yes --json"`) {
+		t.Fatalf("test-only operator trace missing from job summary: %s", data)
+	}
+}
 
 func TestCIIntegrationOperatorIsLimitedToRemoteCoreAndTargetBootstrap(t *testing.T) {
 	t.Setenv("DEMO_ATOMIC_GATE", "1")
@@ -92,6 +126,16 @@ func TestCIIntegrationOperatorIsExplicitlyScopedToManagedLocalGate(t *testing.T)
 	}
 	if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), []string{"destroy", "--all", "--yes", "--json"})); !ok {
 		t.Fatal("exact managed local gate did not receive its CI operator for empty-target cleanup")
+	}
+	for _, args := range [][]string{{"doctor"}, {"doctor", "--json"}, {"doctor", "--verbose"}, {"doctor", "--output", "json"}} {
+		if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), args)); !ok {
+			t.Errorf("read-only managed-gate doctor %v did not receive its CI operator", args)
+		}
+	}
+	for _, args := range [][]string{{"doctor", "--fix"}, {"doctor", "--json", "--fix"}, {"doctor", "--output", "text"}} {
+		if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), args)); ok {
+			t.Errorf("mutating or noncanonical managed-gate doctor %v unexpectedly received its CI operator", args)
+		}
 	}
 	if err := registerInstallationForTarget(t, target.Name); err != nil {
 		t.Fatalf("register local Core fixture: %v", err)

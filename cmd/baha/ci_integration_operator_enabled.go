@@ -81,6 +81,12 @@ func ciIntegrationManagedLocalGateReason(args []string, target deployment.Resolv
 	}
 	operation := cliLocalWorkloadOperation(args)
 	managedWorkload := operatorauth.LocalWorkloadOperation(operation)
+	// The atomic gates use the root doctor as a read-only runtime probe. Keep
+	// this exception to its exact non-mutating forms; in particular, never
+	// grant the operator to `doctor --fix`.
+	if !managedWorkload && ciIntegrationReadOnlyDoctor(args) {
+		managedWorkload = true
+	}
 	// Acceptance gates use the root destroy command to clean up their isolated
 	// local fixture. Keep it limited to the exact selected disposable target.
 	if !managedWorkload && ciIntegrationRootDestroy(args) {
@@ -99,16 +105,27 @@ func ciIntegrationManagedLocalGateReason(args []string, target deployment.Resolv
 		return "runtime-state-root-failed: " + err.Error()
 	}
 	_, err = coreinstallation.Load(root)
-	if err != nil && errors.Is(err, os.ErrNotExist) && ciIntegrationRootDestroy(args) {
-		// A selected acceptance gate may clean up its disposable Target before
-		// bootstrap or after a failed bootstrap. Permit only exact idempotent
-		// cleanup; malformed or unreadable installations still fail closed.
+	if err != nil && errors.Is(err, os.ErrNotExist) && (ciIntegrationRootDestroy(args) || ciIntegrationReadOnlyDoctor(args)) {
+		// A selected acceptance gate may inspect or clean up its disposable
+		// Target before bootstrap or after a failed bootstrap. Permit only the
+		// exact read-only probe or idempotent cleanup; malformed or unreadable
+		// installations still fail closed.
 		return ""
 	}
 	if err != nil {
 		return "core-installation-not-loadable: " + err.Error()
 	}
 	return ""
+}
+
+func ciIntegrationReadOnlyDoctor(args []string) bool {
+	if len(args) == 1 && args[0] == "doctor" {
+		return true
+	}
+	if len(args) == 2 && args[0] == "doctor" {
+		return args[1] == "--json" || args[1] == "--verbose"
+	}
+	return len(args) == 3 && args[0] == "doctor" && args[1] == "--output" && args[2] == "json"
 }
 
 func ciIntegrationRootDestroy(args []string) bool {
@@ -124,6 +141,17 @@ func ciIntegrationOperatorTrace(reason string, args []string, target deployment.
 	message := fmt.Sprintf("[ci-operator-testonly] decision=%s command=%q target=%q runtime=%q access=%q tenant_set=%t", reason, strings.Join(args, " "), target.Name, target.RuntimeProvider, target.AccessProvider, strings.TrimSpace(target.TenantID) != "")
 	if err != nil {
 		message += " cause=" + err.Error()
+	}
+	// Acceptance helpers parse machine-readable errors from stderr. Keep the
+	// diagnostic trace out of that stream on GitHub Actions, where the job
+	// summary provides a separate channel for test-only diagnostics.
+	if summary := strings.TrimSpace(os.Getenv("GITHUB_STEP_SUMMARY")); summary != "" {
+		file, openErr := os.OpenFile(summary, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+		if openErr == nil {
+			_, _ = fmt.Fprintln(file, message)
+			_ = file.Close()
+		}
+		return
 	}
 	fmt.Fprintln(os.Stderr, message)
 }
