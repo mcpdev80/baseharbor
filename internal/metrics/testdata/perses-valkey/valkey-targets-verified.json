@@ -1,0 +1,60 @@
+{
+  "kind": "Dashboard",
+  "metadata": {
+    "name": "valkey-targets",
+    "version": 0
+  },
+  "spec": {
+    "display": {
+      "name": "BaseHarbor Valkey target",
+      "description": "Valkey provider container up-signal scraped by BaseHarbor Prometheus."
+    },
+    "datasources": {
+      "prometheus": {
+        "kind": "prometheus",
+        "name": "valkey",
+        "default": true
+      }
+    },
+    "panels": {
+      "valkey-up": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Valkey provider up"
+          },
+          "plugin": {
+            "kind": "graph"
+          },
+          "queries": [
+            {
+              "kind": "query",
+              "spec": {
+                "kind": "graph"
+              }
+            }
+          ]
+        }
+      }
+    },
+    "layouts": [
+      {
+        "kind": "grid",
+        "spec": {
+          "items": [
+            {
+              "x": 0,
+              "y": 0,
+              "width": 24,
+              "height": 6,
+              "content": {
+                "$ref": "#/spec/panels/valkey-up"
+              }
+            }
+          ]
+        }
+      }
+    ],
+    "duration": "5m"
+  }
+}
