@@ -14,6 +14,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/machine"
+	"github.com/mcpdev80/baseharbor/internal/operatorauth"
 	"github.com/mcpdev80/baseharbor/internal/orgconfig"
 )
 
@@ -52,6 +53,9 @@ func TestAgentDescribeJSON(t *testing.T) {
 func TestMCPGenericClientDiscoversCompleteSemanticSurfaceAndExercisesReadOnlyTools(t *testing.T) {
 	// Contract fixtures have no engine; never inspect a runner's daemon.
 	t.Setenv("PATH", t.TempDir())
+	t.Setenv(operatorauth.EnvIssuer, "https://issuer.example")
+	t.Setenv(operatorauth.EnvClientID, "baseharbor-test")
+	ctx := operatorAuthFixtureContext(operatorauth.WithEnforcement(context.Background()))
 	target := configureTestTarget(t)
 	root := t.TempDir()
 	manifest := application.Manifest{
@@ -82,18 +86,31 @@ func TestMCPGenericClientDiscoversCompleteSemanticSurfaceAndExercisesReadOnlyToo
 	registerTestDeployment(t, target, manifest, root, filepath.Join(root, application.RepositoryManifestName))
 	server := newMCPServer(store)
 	serverTransport, clientTransport := mcp.NewInMemoryTransports()
-	serverSession, err := server.Connect(context.Background(), serverTransport, nil)
+	serverSession, err := server.Connect(ctx, serverTransport, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = serverSession.Close() })
 
 	client := mcp.NewClient(&mcp.Implementation{Name: "baseharbor-test-client", Version: "v1"}, nil)
-	clientSession, err := client.Connect(context.Background(), clientTransport, &mcp.ClientSessionOptions{ProtocolVersion: "2026-07-28"})
+	clientSession, err := client.Connect(ctx, clientTransport, &mcp.ClientSessionOptions{ProtocolVersion: "2026-07-28"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = clientSession.Close() })
+
+	unauthServerTransport, unauthClientTransport := mcp.NewInMemoryTransports()
+	unauthServerSession, err := server.Connect(context.Background(), unauthServerTransport, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = unauthServerSession.Close() })
+	unauthClient := mcp.NewClient(&mcp.Implementation{Name: "baseharbor-unauthenticated-test-client", Version: "v1"}, nil)
+	unauthClientSession, err := unauthClient.Connect(context.Background(), unauthClientTransport, &mcp.ClientSessionOptions{ProtocolVersion: "2026-07-28"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = unauthClientSession.Close() })
 
 	list, err := clientSession.ListTools(context.Background(), nil)
 	if err != nil {
@@ -147,7 +164,7 @@ func TestMCPGenericClientDiscoversCompleteSemanticSurfaceAndExercisesReadOnlyToo
 	}
 	for _, tc := range calls {
 		t.Run(tc.name, func(t *testing.T) {
-			result, err := clientSession.CallTool(context.Background(), &mcp.CallToolParams{Name: tc.name, Arguments: tc.args})
+			result, err := clientSession.CallTool(ctx, &mcp.CallToolParams{Name: tc.name, Arguments: tc.args})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -183,7 +200,7 @@ func TestMCPGenericClientDiscoversCompleteSemanticSurfaceAndExercisesReadOnlyToo
 				parent := t.TempDir()
 				name := "agent-" + tc.stack
 				root := filepath.Join(parent, name)
-				result, err := clientSession.CallTool(context.Background(), &mcp.CallToolParams{
+				result, err := clientSession.CallTool(ctx, &mcp.CallToolParams{
 					Name: "baseharbor.app.new",
 					Arguments: map[string]any{
 						"directory":    parent,
@@ -233,7 +250,7 @@ func TestMCPGenericClientDiscoversCompleteSemanticSurfaceAndExercisesReadOnlyToo
 		if err := writeInitializedAuthoredManifest(t, filepath.Join(prodRoot, application.RepositoryManifestName), prodManifest, 0o644); err != nil {
 			t.Fatal(err)
 		}
-		result, err := clientSession.CallTool(context.Background(), &mcp.CallToolParams{
+		result, err := unauthClientSession.CallTool(context.Background(), &mcp.CallToolParams{
 			Name:      "baseharbor.inspect",
 			Arguments: map[string]any{"path": prodRoot},
 		})
@@ -255,7 +272,7 @@ func TestMCPGenericClientDiscoversCompleteSemanticSurfaceAndExercisesReadOnlyToo
 	t.Run("managed mutation fails closed before filesystem mutation", func(t *testing.T) {
 		parent := t.TempDir()
 		name := "managed-denied"
-		result, err := clientSession.CallTool(context.Background(), &mcp.CallToolParams{
+		result, err := unauthClientSession.CallTool(context.Background(), &mcp.CallToolParams{
 			Name: "baseharbor.app.new",
 			Arguments: map[string]any{
 				"directory":   parent,
@@ -283,7 +300,7 @@ func TestMCPGenericClientDiscoversCompleteSemanticSurfaceAndExercisesReadOnlyToo
 	})
 
 	t.Run("destroy requires explicit approval", func(t *testing.T) {
-		result, err := clientSession.CallTool(context.Background(), &mcp.CallToolParams{
+		result, err := clientSession.CallTool(ctx, &mcp.CallToolParams{
 			Name:      "baseharbor.destroy",
 			Arguments: map[string]any{"name": manifest.Name, "approval": false},
 		})
