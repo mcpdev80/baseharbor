@@ -254,7 +254,8 @@ func RegisterProviderSignals(registration ProviderSignalRegistration) error {
 	if err != nil {
 		return err
 	}
-	return mutate(path, func(sources []SignalSource) ([]SignalSource, error) {
+	var registrationErr error
+	err = mutate(path, func(sources []SignalSource) ([]SignalSource, error) {
 		if legacy := registration.Legacy; legacy != nil {
 			sources = RebookLegacySignals(*legacy, sources, registration.ID)
 		}
@@ -269,7 +270,12 @@ func RegisterProviderSignals(registration ProviderSignalRegistration) error {
 		for _, existing := range sources {
 			if existing.ID == registration.ID && existing.Provider == registration.Descriptor.Provider.Kind &&
 				existing.OwnerApplication != "" && existing.OwnerApplication != registration.OwnerApplication {
-				return nil, fmt.Errorf("observability registration id %q already owned by %q, not %q: registration rejected (0428-166 normalization collision guard)", registration.ID, existing.OwnerApplication, registration.OwnerApplication)
+				// Keep any successful legacy rebooking from this same locked
+				// mutation, while refusing to replace the scoped owner's source.
+				// Returning an error from the callback would make mutateChanged
+				// discard every callback edit, including that migration.
+				registrationErr = fmt.Errorf("observability registration id %q already owned by %q, not %q: registration rejected (0428-166 normalization collision guard)", registration.ID, existing.OwnerApplication, registration.OwnerApplication)
+				return sources, nil
 			}
 		}
 		out := sources[:0]
@@ -282,6 +288,10 @@ func RegisterProviderSignals(registration ProviderSignalRegistration) error {
 		out = append(out, desired...)
 		return out, nil
 	})
+	if err != nil {
+		return err
+	}
+	return registrationErr
 }
 
 func RuntimeTarget(project, service string) string {
