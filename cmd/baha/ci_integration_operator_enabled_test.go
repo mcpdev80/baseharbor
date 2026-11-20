@@ -122,6 +122,51 @@ func TestCIIntegrationOperatorIsLimitedToRemoteCoreAndTargetBootstrap(t *testing
 	}
 }
 
+func TestCIIntegrationOperatorAllowsOnlyGuidedCoreRebootstrapRoot(t *testing.T) {
+	t.Setenv("DEMO_ATOMIC_GATE", "1")
+	t.Setenv("BASEHARBOR_TEST_RUNTIME", "docker")
+	t.Setenv("GATE", "guided")
+	t.Setenv("BASEHARBOR_DEMO_OPERATOR_GATE", "guided")
+	target := configureIsolatedEmptyRuntimeTarget(t, "atomic-docker-guided", "docker")
+	t.Setenv("BASEHARBOR_TARGET", target.Name)
+	demoRoot := t.TempDir()
+	coreRoot := filepath.Join(demoRoot, "tests", ".guided-control-plane")
+	if err := os.MkdirAll(coreRoot, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("DEMO_ROOT", demoRoot)
+	t.Chdir(coreRoot)
+	if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), []string{"up", "--yes"})); !ok {
+		t.Fatal("guided Core rebootstrap in its exact disposable fixture root did not receive its CI operator")
+	}
+	if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), []string{"up", "--yes", "--json"})); !ok {
+		t.Fatal("canonical guided Core JSON rebootstrap did not receive its CI operator")
+	}
+	if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), []string{"up", "--yes", "--force"})); ok {
+		t.Fatal("noncanonical guided Core rebootstrap unexpectedly received its CI operator")
+	}
+	root, err := targetRuntimeStateRoot(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "installation.json"), []byte("{"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), []string{"up", "--yes"})); ok {
+		t.Fatal("guided Core rebootstrap unexpectedly received its CI operator for a present but unreadable installation")
+	}
+	t.Setenv("GATE", "lifecycle")
+	t.Setenv("BASEHARBOR_DEMO_OPERATOR_GATE", "lifecycle")
+	lifecycle := configureIsolatedEmptyRuntimeTarget(t, "atomic-docker-lifecycle", "docker")
+	t.Setenv("BASEHARBOR_TARGET", lifecycle.Name)
+	if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), []string{"up", "--yes"})); ok {
+		t.Fatal("guided Core rebootstrap exception escaped into another selected gate")
+	}
+}
+
 func TestCIIntegrationOperatorIsExplicitlyScopedToManagedLocalGate(t *testing.T) {
 	t.Setenv("DEMO_ATOMIC_GATE", "1")
 	t.Setenv("BASEHARBOR_TEST_RUNTIME", "docker")

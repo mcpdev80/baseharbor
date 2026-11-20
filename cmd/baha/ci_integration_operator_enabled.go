@@ -197,20 +197,32 @@ func ciIntegrationLocalCoreBootstrap(args []string, target deployment.ResolvedTa
 	// This test-only authority is limited to the fresh, explicitly registered
 	// temporary project used by the atomic acceptance gate. Never inject it for
 	// an ordinary repository workload or for an already installed Core.
-	allowedRoot := strings.TrimSpace(os.Getenv("BASEHARBOR_DEMO_ALLOWED_PROJECT_ROOT"))
-	if allowedRoot == "" {
-		return false
-	}
-	allowedRoot, err := filepath.EvalSymlinks(allowedRoot)
-	if err != nil {
-		return false
-	}
 	cwd, err := os.Getwd()
 	if err != nil {
 		return false
 	}
 	cwd, err = filepath.EvalSymlinks(cwd)
-	if err != nil || cwd != allowedRoot || !strings.HasPrefix(filepath.Base(allowedRoot), "baseharbor-core-bootstrap.") {
+	if err != nil {
+		return false
+	}
+	allowedRoot := strings.TrimSpace(os.Getenv("BASEHARBOR_DEMO_ALLOWED_PROJECT_ROOT"))
+	allowed := false
+	if allowedRoot != "" {
+		allowedRoot, err = filepath.EvalSymlinks(allowedRoot)
+		allowed = err == nil && cwd == allowedRoot && strings.HasPrefix(filepath.Base(allowedRoot), "baseharbor-core-bootstrap.")
+	}
+	// The guided gate reboots Core once after clearing its previous runtime. It
+	// uses this fixed fixture directory rather than core-bootstrap.sh's temp
+	// project, so bind that one exact root-up to the selected guided gate.
+	if !allowed && (canonicalUp || jsonUp) && strings.TrimSpace(os.Getenv("GATE")) == "guided" &&
+		strings.TrimSpace(os.Getenv("BASEHARBOR_DEMO_OPERATOR_GATE")) == "guided" {
+		demoRoot := strings.TrimSpace(os.Getenv("DEMO_ROOT"))
+		if demoRoot != "" {
+			demoCoreRoot, rootErr := filepath.EvalSymlinks(filepath.Join(demoRoot, "tests", ".guided-control-plane"))
+			allowed = rootErr == nil && cwd == demoCoreRoot
+		}
+	}
+	if !allowed {
 		return false
 	}
 	root, err := targetRuntimeStateRoot(target)
