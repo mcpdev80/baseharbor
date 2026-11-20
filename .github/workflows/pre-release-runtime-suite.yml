@@ -125,9 +125,7 @@ jobs:
       shell: bash
       run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
     - name: Set up Go
-      if: inputs.reuse_from == '' && (inputs.candidate_artifact == '' || inputs.gate == 'backup-restore' || inputs.gate == 'observability' || inputs.gate == 'lifecycle' || inputs.gate
-        == 'rabbitmq-runtime' || inputs.gate == 'mongodb-runtime' || inputs.gate == 'durable-key-value' || inputs.gate
-        == 'control-plane-recovery' || inputs.gate == 'loki-runtime' || inputs.gate == 'tempo-runtime')
+      if: inputs.reuse_from == '' && inputs.runtime != 'static'
       uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
       with:
         go-version-file: go.mod
@@ -301,6 +299,7 @@ jobs:
             go build -trimpath -tags=baseharbor_ci_operator_testonly -ldflags="-s -w -X main.commit=$CANDIDATE_SHA -X main.date=unknown" -o "$testonly" ./cmd/baha
           fi
           chmod 0755 "$testonly"
+          "$testonly" version | grep -F "$CANDIDATE_SHA"
           prebuilt=(BASEHARBOR_PREBUILT_BINARY="$testonly")
         fi
         cd "$workdir"
