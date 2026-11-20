@@ -183,6 +183,9 @@ jobs:
       run: |
         set -euo pipefail
         chmod 0755 "$RUNNER_TEMP/pre-release-candidate/baha"
+        if [ -f "$RUNNER_TEMP/pre-release-candidate/baha-ci-operator-testonly" ]; then
+          chmod 0755 "$RUNNER_TEMP/pre-release-candidate/baha-ci-operator-testonly"
+        fi
         archive="$RUNNER_TEMP/pre-release-candidate/baseharbor-runtime-pre-release.tar"
         test -s "$archive"
         if [ "${{ inputs.runtime }}" = "podman" ]; then
@@ -293,7 +296,12 @@ jobs:
         export BASEHARBOR_TARGET="atomic-${{ inputs.runtime }}-${{ inputs.gate }}"
         prebuilt=()
         if [ -n "${{ inputs.candidate_artifact }}" ]; then
-          prebuilt=(BASEHARBOR_PREBUILT_BINARY="$RUNNER_TEMP/pre-release-candidate/baha-ci-operator-testonly")
+          testonly="$RUNNER_TEMP/pre-release-candidate/baha-ci-operator-testonly"
+          if [ ! -f "$testonly" ]; then
+            go build -trimpath -tags=baseharbor_ci_operator_testonly -ldflags="-s -w -X main.commit=$CANDIDATE_SHA -X main.date=unknown" -o "$testonly" ./cmd/baha
+          fi
+          chmod 0755 "$testonly"
+          prebuilt=(BASEHARBOR_PREBUILT_BINARY="$testonly")
         fi
         cd "$workdir"
         env             "${prebuilt[@]}"             BASEHARBOR_SOURCE_REF="$CANDIDATE_SHA"             BASEHARBOR_RUNTIME_IMAGE="$BASEHARBOR_RUNTIME_IMAGE"             BASEHARBOR_TEST_RUNTIME="${{ inputs.runtime }}"             DEMO_ATOMIC_GATE=1             ARTIFACT_DIR="$ARTIFACT_DIR"             bash scripts/acceptance.sh "$GATE"
