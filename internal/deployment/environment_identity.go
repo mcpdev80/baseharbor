@@ -466,35 +466,7 @@ func RenameEnvironment(target, oldName, newName string) (EnvironmentRecord, erro
 			// concurrent creator's UID with ours. Re-read newPath here under the
 			// same lock and fail closed when it now carries a different identity
 			// — a rename must never clobber another (Target, environment)'s UID.
-			if existing, nErr := os.Stat(newPath); nErr == nil && !existing.IsDir() {
-				if cur, rErr := readEnvironmentRecord(newPath, target, newName); rErr == nil {
-					if cur.Identity != source.Identity {
-						return fmt.Errorf("%w: destination %q now holds %q", ErrEnvironmentAlreadyExists, newName, cur.Identity)
-					}
-					// Destination already carries OUR identity: the rename is a
-					// prior install may have stopped before source cleanup. Merge
-					// valid memberships from both copies, atomically refresh the
-					// destination, then remove the source so retry completes the
-					// interrupted rename.
-					merged, mErr := mergeRenamedEnvironmentAssociations(source, cur)
-					if mErr != nil {
-						return mErr
-					}
-					record, rErr := persistRenamedEnvironmentIdentity(oldPath, newHome, newPath, newName, merged)
-					if rErr != nil {
-						return rErr
-					}
-					moved = record
-					return nil
-				} else if !errors.Is(rErr, ErrEnvironmentBindingMismatch) {
-					// A corrupt or foreign binding at the destination is a race
-					// between a rename and a concurrent creator we cannot resolve
-					// here; refuse so the caller retries with the authoritative
-					// identity rather than risk a silent clobber.
-					return fmt.Errorf("inspect destination %q: %w", newPath, rErr)
-				}
-			}
-			record, rErr := persistRenamedEnvironmentIdentity(oldPath, newHome, newPath, newName, source)
+			record, rErr := installRenamedEnvironmentIdentity(oldPath, newHome, newPath, target, newName, source)
 			if rErr != nil {
 				return rErr
 			}
@@ -515,6 +487,27 @@ func RenameEnvironment(target, oldName, newName string) (EnvironmentRecord, erro
 		// holder. Mirrors the non-blocking lock discipline: refuse, never block.
 		time.Sleep(time.Millisecond)
 	}
+}
+
+func installRenamedEnvironmentIdentity(oldPath, newHome, newPath, target, newName string, source EnvironmentRecord) (EnvironmentRecord, error) {
+	if existing, statErr := os.Stat(newPath); statErr == nil && !existing.IsDir() {
+		cur, readErr := readEnvironmentRecord(newPath, target, newName)
+		if readErr != nil {
+			if !errors.Is(readErr, ErrEnvironmentBindingMismatch) {
+				return EnvironmentRecord{}, fmt.Errorf("inspect destination %q: %w", newPath, readErr)
+			}
+		} else {
+			if cur.Identity != source.Identity {
+				return EnvironmentRecord{}, fmt.Errorf("%w: destination %q now holds %q", ErrEnvironmentAlreadyExists, newName, cur.Identity)
+			}
+			merged, err := mergeRenamedEnvironmentAssociations(source, cur)
+			if err != nil {
+				return EnvironmentRecord{}, err
+			}
+			source = merged
+		}
+	}
+	return persistRenamedEnvironmentIdentity(oldPath, newHome, newPath, newName, source)
 }
 
 func persistRenamedEnvironmentIdentity(oldPath, newHome, newPath, newName string, source EnvironmentRecord) (EnvironmentRecord, error) {
