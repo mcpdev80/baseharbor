@@ -76,6 +76,7 @@
     "gate.mcp",
     "gate.mongodb-runtime",
     "gate.observability",
+    "gate.perses-runtime-smoke",
     "gate.policy",
     "gate.rabbitmq-runtime",
     "gate.reconciliation",
@@ -465,6 +466,46 @@
       "surfaces": [
         "source.gate.atomic.docker.lifecycle",
         "source.gate.atomic.podman.lifecycle"
+      ]
+    },
+    {
+      "id": "source.internal.application.runtime.observability.go",
+      "path": "internal/application/runtime_observability.go",
+      "runtime_specific": true,
+      "surfaces": [
+        "source.gate.atomic.docker.observability",
+        "source.gate.atomic.podman.observability"
+      ]
+    },
+    {
+      "id": "source.internal.application.runtime.observability.trace.source.test.go",
+      "path": "internal/application/runtime_observability_trace_source_test.go",
+      "runtime_specific": true,
+      "surfaces": [
+        "source.gate.atomic.docker.observability",
+        "source.gate.atomic.podman.observability"
+      ]
+    },
+    {
+      "id": "source.internal.application.perses.runtime.go",
+      "path": "internal/application/perses_runtime.go",
+      "runtime_specific": true,
+      "surfaces": [
+        "source.gate.atomic.docker.observability"
+      ],
+      "required_test_names": [
+        "TestPersesRuntimeSmokeDockerIsolated"
+      ]
+    },
+    {
+      "id": "source.internal.application.perses.runtime.test.go",
+      "path": "internal/application/perses_runtime_test.go",
+      "runtime_specific": true,
+      "surfaces": [
+        "source.gate.atomic.docker.observability"
+      ],
+      "required_test_names": [
+        "TestPersesRuntimeSmokeDockerIsolated"
       ]
     },
     {
@@ -2685,6 +2726,18 @@
       ],
       "source_components": [
         "workstation.onboarding-tests"
+      ],
+      "selection_scope": "focused"
+    },
+    {
+      "id": "native/docker/perses-runtime-smoke",
+      "runtime": "docker",
+      "covers": [
+        "gate.perses-runtime-smoke"
+      ],
+      "source_components": [
+        "source.internal.application.perses.runtime.go",
+        "source.internal.application.perses.runtime.test.go"
       ],
       "selection_scope": "focused"
     },

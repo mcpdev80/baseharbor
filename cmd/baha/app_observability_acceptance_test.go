@@ -32,6 +32,10 @@ func TestObservabilityFullStackAcceptanceInCI(t *testing.T) {
 		t.Fatalf("detect runtime: %v", err)
 	}
 	ensureRuntimeIntegrationTrustPlane(t, ctx)
+	// The package bootstrap intentionally leaves an invalid target sentinel in
+	// the environment so tests must opt into their real, owned Core explicitly.
+	// This acceptance uses the package-owned Core with a test-scoped application.
+	isolateRuntimeForTest(t, "observability-fullstack")
 
 	t.Setenv(application.ProviderScopeEnv(capability.ProviderPostgreSQL), string(capability.ScopeApplication))
 	t.Setenv(application.ProviderScopeEnv(capability.ProviderValkey), string(capability.ScopeApplication))
@@ -187,8 +191,22 @@ func TestObservabilityFullStackAcceptanceInCI(t *testing.T) {
 		t.Fatalf("impact consent validation failed: %v", err)
 	}
 
-	if err := runWithIO(withProviderChangeConsent(ctx, consent), []string{"--verbose", "app", "apply"}, &out, &out); err != nil {
-		t.Fatal("full-stack observability apply failed")
+	applyCtx := withProviderChangeConsent(ctx, consent)
+	applyArgs := []string{"--verbose", "app", "apply"}
+	if err := runWithIO(applyCtx, applyArgs, &out, &out); err != nil {
+		// Repository-owned candidates require a separate exact-source approval.
+		// The first attempt fails closed before recording deployment state and
+		// returns the digest this test automation must acknowledge explicitly.
+		digest := candidateConsentDigestFromError(err)
+		if digest == "" {
+			t.Fatalf("full-stack observability apply failed: %v\n%s", err, out.String())
+		}
+		out.Reset()
+		applyCtx = withCandidateConsentDigest(applyCtx, digest)
+		applyArgs = append(applyArgs, "--confirm-candidate", digest)
+		if retryErr := runWithIO(applyCtx, applyArgs, &out, &out); retryErr != nil {
+			t.Fatalf("full-stack observability apply failed after exact candidate consent: %v\n%s", retryErr, out.String())
+		}
 	}
 	if !strings.Contains(out.String(), "application and requested infrastructure verified") {
 		t.Fatal("apply output missing final verified-ready state")

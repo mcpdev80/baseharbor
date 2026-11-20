@@ -77,6 +77,20 @@ AUTHORITY_PACKAGE_CHECKS = [
 AUTHORITY_PACKAGES = ('internal/coreinstallation', 'internal/stableid', 'internal/serviceaccess',
                       'internal/installauthority')
 
+OPERATORAUTH_POLICY_FILES = {
+    'internal/operatorauth/config.go',
+    'internal/operatorauth/config_explicit_policy_test.go',
+}
+
+# The explicit workload-security policy helper and its focused regression are
+# pure policy-resolution code. The exact package test command in CODE_CHECKS
+# executes both files; no native runtime behavior is changed by this policy
+# adapter (the legacy entry point retains its existing name mapping).
+WORKLOAD_SECURITY_POLICY_FILES = {
+    'internal/application/workload_security.go',
+    'internal/application/workload_security_explicit_policy_test.go',
+}
+
 
 DELIVERY_PACKAGE_CHECKS = [{'id': 'delivery-package-tests', 'owner': 'delivery owner and selection contract',
     'command': 'python3 scripts/pr-check-runner.py execute --check delivery-package-tests --repository .'}]
@@ -1413,6 +1427,29 @@ def targeted_plan(diff, requirements, mapping, repository='.',
             if (path == 'internal/logs/journal_provider_render_test.go' and
                     path_status.get(path) not in ('added', 'modified')):
                 unresolved.append('journal provider regression removal requires review: ' + path)
+        elif path in ('internal/application/perses_runtime.go',
+                      'internal/application/perses_runtime_test.go'):
+            # The Perses implementation and its opt-in smoke test are bound to
+            # the existing Docker observability gate and exact native smoke
+            # trigger declared in pr-gate-coverage.json.
+            area = 'application-perses-runtime-smoke'
+            require(CODE_CHECKS)
+            selected.add('atomic/docker/observability')
+        elif path in ('internal/application/runtime_observability.go',
+                      'internal/application/runtime_observability_trace_source_test.go'):
+            # The reviewed application observability emission and source
+            # regression drive the existing end-to-end observability gates;
+            # those workflows execute TestObservabilityFullStackAcceptanceInCI
+            # on real Docker and rootless Podman/Quadlet runtimes.
+            area = 'application-observability-acceptance'
+            require(CODE_CHECKS)
+            selected.update(('atomic/docker/observability',
+                             'atomic/podman/observability'))
+        elif path in WORKLOAD_SECURITY_POLICY_FILES:
+            area = 'application-workload-security-policy'
+            require(CODE_CHECKS)
+            if path_status.get(path) not in ('added', 'modified'):
+                unresolved.append('workload-security policy source/test removal or rename needs review: ' + path)
         elif path.startswith('internal/application/'):
             area = 'application-implementation-unresolved'
             require(CODE_CHECKS)
@@ -1504,6 +1541,11 @@ def targeted_plan(diff, requirements, mapping, repository='.',
                  for package in AUTHORITY_PACKAGES):
             area = 'authority-package'
             require(AUTHORITY_PACKAGE_CHECKS + CODE_CHECKS + CLI_CHECKS)
+        elif path in OPERATORAUTH_POLICY_FILES:
+            area = 'operatorauth-explicit-policy'
+            require(AUTHORITY_PACKAGE_CHECKS + CODE_CHECKS + CLI_CHECKS)
+            if path_status.get(path) not in ('added', 'modified'):
+                unresolved.append('operatorauth policy source/test removal or rename needs review: ' + path)
         elif path.startswith('contracts/') and path.endswith(('.go', '.json')):
             area = 'contract'
             require(CODE_CHECKS)

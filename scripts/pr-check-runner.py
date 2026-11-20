@@ -162,7 +162,8 @@ def execute_validation(check, repository):
     if check == 'authority-package-tests':
         # Some slices precede stableid; test every present authority package.
         packages = ['./' + name for name in ('internal/coreinstallation',
-                    'internal/stableid', 'internal/serviceaccess', 'internal/installauthority')
+                    'internal/stableid', 'internal/serviceaccess', 'internal/installauthority',
+                    'internal/operatorauth')
                     if (Path(repository) / name).is_dir()]
         if not packages:
             raise RuntimeError('no authority packages found')
