@@ -98,9 +98,16 @@ class CheckRoutingTests(unittest.TestCase):
             with self.subTest(job=job_name):
                 oras = next(i for i, step in enumerate(job_steps)
                             if step.get('run') == 'bash scripts/ci-install-oras.sh')
+                publish = next(i for i, step in enumerate(job_steps)
+                               if step.get('run') == 'bash scripts/ci-local-oci-registry.sh publish "$BASEHARBOR_RUNTIME_IMAGE" localhost:5000/baseharbor-runtime:observability-ci')
                 acceptance = next(i for i, step in enumerate(job_steps)
                                   if 'TestObservabilityFullStackAcceptanceInCI' in step.get('run', ''))
+                cleanup = next(i for i, step in enumerate(job_steps)
+                               if step.get('run') == 'bash scripts/ci-local-oci-registry.sh cleanup')
                 self.assertLess(oras, acceptance)
+                self.assertLess(publish, acceptance)
+                self.assertLess(oras, publish)
+                self.assertEqual('always()', job_steps[cleanup].get('if'))
 
         dispatch_inputs = (observability.get('on') or observability.get(True))['workflow_dispatch']['inputs']
         self.assertEqual({'description': 'Run both Docker and rootless Podman acceptance jobs',
