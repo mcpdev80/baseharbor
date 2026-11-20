@@ -27,7 +27,6 @@ func TestApplicationCapabilityLifecycleExistingCore(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(machineNoninteractiveContext(context.Background()), 25*time.Minute)
 	defer cancel()
-	ctx = testOperatorContext(ctx)
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
 	target := configureTestTargetEmpty(t)
 	if os.Getenv("BASEHARBOR_TEST_RUNTIME") == "podman" {
@@ -60,10 +59,19 @@ func TestApplicationCapabilityLifecycleExistingCore(t *testing.T) {
 		t.Fatalf("explicit management install: %v\n%s", err, out.String())
 	}
 	t.Logf("explicit Core installation_id=%s target=%s", first.ID, target.Name)
+	// The managed Core path requires an explicit operator-auth policy even in
+	// this isolated acceptance runtime. Bind the fixture principal to that same
+	// Target/environment so app doctor exercises the configured authenticated
+	// path instead of failing on a missing policy.
+	if err := deployment.SetOperatorAuthForTargetEnvironment(target.Name, "dev", deployment.OperatorAuthEnvironmentConfig{
+		Provider: "external-oidc", Issuer: "https://issuer.test", ClientID: "cli-test",
+	}); err != nil {
+		t.Fatalf("configure isolated operator-auth boundary: %v", err)
+	}
 	t.Cleanup(func() {
 		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 3*time.Minute)
 		defer cleanupCancel()
-		if err := approvedNativeFixtureCleanup(t, machineNoninteractiveContext(cleanupCtx), &bytes.Buffer{}); err != nil {
+		if err := approvedNativeFixtureCleanup(t, testOperatorContext(machineNoninteractiveContext(cleanupCtx)), &bytes.Buffer{}); err != nil {
 			t.Errorf("isolated Core cleanup: %v", err)
 		}
 	})
@@ -99,11 +107,11 @@ func TestApplicationCapabilityLifecycleExistingCore(t *testing.T) {
 					return
 				}
 				defer os.Chdir(previous)
-				resetCoreBootstrapFixtureApplication(parent, machineNoninteractiveContext(cleanupCtx))
+				resetCoreBootstrapFixtureApplication(parent, testOperatorContext(machineNoninteractiveContext(cleanupCtx)))
 			})
 			if kind == "https" {
 				out.Reset()
-				if err := runWithIOAsTestOperator(ctx, []string{"app", "init", "--input", "tls_mode=local", "--yes"}, &out, &out); err != nil {
+				if err := runWithIO(ctx, []string{"app", "init", "--input", "tls_mode=local", "--yes"}, &out, &out); err != nil {
 					t.Fatalf("HTTPS inputs: %v\n%s", err, out.String())
 				}
 			}
@@ -123,7 +131,7 @@ func TestApplicationCapabilityLifecycleExistingCore(t *testing.T) {
 				if len(command) > 1 && command[1] == "apply" {
 					commandCtx = coreBootstrapFixtureConsent(t, ctx)
 				}
-				if err := runWithIOAsTestOperator(commandCtx, command, &out, &out); err != nil {
+				if err := runWithIO(commandCtx, command, &out, &out); err != nil {
 					t.Fatalf("%v: %v\n%s", command, err, out.String())
 				}
 			}
@@ -178,7 +186,7 @@ func TestApplicationCapabilityLifecycleExistingCore(t *testing.T) {
 					t.Fatal(err)
 				}
 				out.Reset()
-				if err := runWithIOAsTestOperator(coreBootstrapFixtureConsent(t, ctx), []string{"app", "apply", "--skip-memory-preflight"}, &out, &out); err != nil {
+				if err := runWithIO(coreBootstrapFixtureConsent(t, ctx), []string{"app", "apply", "--skip-memory-preflight"}, &out, &out); err != nil {
 					t.Fatalf("capability removal: %v\n%s", err, out.String())
 				}
 				if err := os.Chdir(appRoot); err != nil {
@@ -212,7 +220,7 @@ func TestApplicationCapabilityLifecycleExistingCore(t *testing.T) {
 					t.Fatal(err)
 				}
 				out.Reset()
-				if err := runWithIOAsTestOperator(coreBootstrapFixtureConsent(t, ctx), []string{"app", "apply", "--skip-memory-preflight"}, &out, &out); err != nil {
+				if err := runWithIO(coreBootstrapFixtureConsent(t, ctx), []string{"app", "apply", "--skip-memory-preflight"}, &out, &out); err != nil {
 					t.Fatalf("reattach retained test scope: %v\n%s", err, out.String())
 				}
 				if err := os.Chdir(appRoot); err != nil {
@@ -270,7 +278,7 @@ func qualifyCoreBackedSecretsLifecycle(t *testing.T, ctx context.Context, runtim
 			t.Fatalf("write Core-backed Secrets intent enabled=%t: %v", enabled, err)
 		}
 		var out bytes.Buffer
-		if err := runWithIOAsTestOperator(coreBootstrapFixtureConsent(t, ctx), []string{"app", "apply", "--skip-memory-preflight"}, &out, &out); err != nil {
+		if err := runWithIO(coreBootstrapFixtureConsent(t, ctx), []string{"app", "apply", "--skip-memory-preflight"}, &out, &out); err != nil {
 			t.Fatalf("Core-backed Secrets apply enabled=%t: %v\n%s", enabled, err, out.String())
 		}
 		current, err := resolveApplication(ctx, application.Store{}, nil, "status")
@@ -320,7 +328,7 @@ func qualifyCoreBackedSecretsLifecycle(t *testing.T, ctx context.Context, runtim
 		t.Fatalf("restore Core-backed Secrets intent for reactivation: %v", err)
 	}
 	var out bytes.Buffer
-	if err := runWithIOAsTestOperator(coreBootstrapFixtureConsent(t, ctx), []string{"app", "apply", "--skip-memory-preflight"}, &out, &out); err != nil {
+	if err := runWithIO(coreBootstrapFixtureConsent(t, ctx), []string{"app", "apply", "--skip-memory-preflight"}, &out, &out); err != nil {
 		t.Fatalf("reactivate Core-backed Secrets application: %v\n%s", err, out.String())
 	}
 	reactivated, err := resolveApplication(ctx, application.Store{}, nil, "status")

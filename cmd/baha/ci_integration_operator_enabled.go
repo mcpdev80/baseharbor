@@ -5,7 +5,9 @@ package main
 import (
 	"context"
 	"os"
+	"strings"
 
+	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/identity"
 	"github.com/mcpdev80/baseharbor/internal/operatorauth"
 	"github.com/mcpdev80/baseharbor/internal/tenancy"
@@ -17,6 +19,17 @@ import (
 // is running. Release and ordinary CI binaries do not contain this path.
 func withCIIntegrationOperator(ctx context.Context) context.Context {
 	if os.Getenv("DEMO_ATOMIC_GATE") != "1" {
+		return ctx
+	}
+	// Local Docker/Podman acceptance must exercise the real in-process runtime
+	// grant. Inject the CI operator only for an enrolled remote Core Target,
+	// where the workflow is exercising the human/operator path.
+	cfg, err := deployment.LoadConfig()
+	if err != nil {
+		return ctx
+	}
+	target, err := cfg.ResolveTarget(strings.TrimSpace(os.Getenv("BASEHARBOR_TARGET")), "")
+	if err != nil || target.AccessProvider != "baseharbor-core" {
 		return ctx
 	}
 	principal := &identity.Principal{

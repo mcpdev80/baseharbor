@@ -62,7 +62,6 @@ func TestSelectiveApplicationBackendIntentInitializesFromActualCLI(t *testing.T)
 func qualifyApplicationBackendLifecycle(t *testing.T, service string) {
 	ctx, cancel := context.WithTimeout(machineNoninteractiveContext(context.Background()), 10*time.Minute)
 	defer cancel()
-	ctx = testOperatorContext(ctx)
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
 	target := configureTestTargetEmpty(t)
 	if os.Getenv("BASEHARBOR_TEST_RUNTIME") == "podman" {
@@ -97,7 +96,7 @@ func qualifyApplicationBackendLifecycle(t *testing.T, service string) {
 		t.Fatal(err)
 	}
 	writeApplicationBackendIntent(t, service, true)
-	if err := runWithIOAsTestOperator(ctx, []string{"app", "init", "--quick", "--json"}, &bytes.Buffer{}, &bytes.Buffer{}); err != nil {
+	if err := runWithIO(ctx, []string{"app", "init", "--quick", "--json"}, &bytes.Buffer{}, &bytes.Buffer{}); err != nil {
 		t.Fatalf("initialize application backend: %v", err)
 	}
 	t.Cleanup(func() {

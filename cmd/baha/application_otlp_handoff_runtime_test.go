@@ -113,6 +113,7 @@ func TestManagedRegisteredOTLPNativeConsumerHandoff(t *testing.T) {
 	t.Cleanup(func() {
 		cleanup, stop := context.WithTimeout(machineNoninteractiveContext(context.Background()), 3*time.Minute)
 		defer stop()
+		cleanup = testOperatorContext(cleanup)
 		if err := approvedNativeFixtureCleanup(t, cleanup, &bytes.Buffer{}); err != nil {
 			t.Errorf("owned OTLP fixture cleanup: %v", err)
 		}
