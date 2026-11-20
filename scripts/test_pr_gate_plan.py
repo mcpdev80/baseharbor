@@ -2869,7 +2869,9 @@ class AuthorityPackageCompletenessTests(unittest.TestCase):
 
     def test_operatorauth_source_and_tests_select_real_package_runner(self):
         for path in ('internal/operatorauth/config.go',
-                     'internal/operatorauth/config_explicit_policy_test.go'):
+                     'internal/operatorauth/config_explicit_policy_test.go',
+                     'internal/operatorauth/local_runtime.go',
+                     'internal/operatorauth/local_runtime_test.go'):
             for status in ('added', 'modified'):
                 with self.subTest(path=path, status=status):
                     result = planner.plan(diff([{'path': path, 'status': status}]), REQ, MAP_26)

@@ -80,6 +80,8 @@ AUTHORITY_PACKAGES = ('internal/coreinstallation', 'internal/stableid', 'interna
 OPERATORAUTH_POLICY_FILES = {
     'internal/operatorauth/config.go',
     'internal/operatorauth/config_explicit_policy_test.go',
+    'internal/operatorauth/local_runtime.go',
+    'internal/operatorauth/local_runtime_test.go',
 }
 
 # The explicit workload-security policy helper and its focused regression are
