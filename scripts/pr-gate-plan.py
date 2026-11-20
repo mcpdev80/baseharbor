@@ -76,6 +76,11 @@ AUTHORITY_PACKAGE_CHECKS = [
 ]
 AUTHORITY_PACKAGES = ('internal/coreinstallation', 'internal/stableid', 'internal/serviceaccess',
                       'internal/installauthority')
+SERVICEACCESS_POLICY_FILES = {
+    'internal/serviceaccess/policy.go',
+    'internal/serviceaccess/policy_explicit_test.go',
+    'internal/serviceaccess/policy_test.go',
+}
 
 OPERATORAUTH_POLICY_FILES = {
     'internal/operatorauth/config.go',
@@ -1544,6 +1549,11 @@ def targeted_plan(diff, requirements, mapping, repository='.',
             area = 'delivery-package'
             require(DELIVERY_PACKAGE_CHECKS)
             require(CLI_CHECKS)
+        elif path in SERVICEACCESS_POLICY_FILES:
+            area = 'serviceaccess-explicit-policy'
+            require(AUTHORITY_PACKAGE_CHECKS + CODE_CHECKS)
+            if path_status.get(path) not in ('added', 'modified'):
+                unresolved.append('serviceaccess policy source/test removal or rename needs review: ' + path)
         elif any(re.fullmatch(re.escape(package) + r'/[^/]+\.go', path)
                  for package in AUTHORITY_PACKAGES):
             area = 'authority-package'
