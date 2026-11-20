@@ -77,6 +77,14 @@ type OperatorAuthEnvironmentConfig struct {
 }
 
 type TargetDefinition struct {
+	// TargetUID is the stable, Core-side identity for this Target. It is
+	// generated at create time and reused by another checkout/Core without any
+	// manual request; the name stays addressable while the UID is the canonical
+	// system key. It is deliberately distinct from TenantID (the Core
+	// installation ownership path), from any workstation alias, and from a
+	// deployment id. An empty value marks a Target created before stable
+	// identity existed; such a definition migrates idempotently on read.
+	TargetUID        string                                   `yaml:"target-uid,omitempty" json:"target_uid,omitempty"`
 	TenantID         string                                   `yaml:"tenant-id,omitempty" json:"tenant_id,omitempty"`
 	Runtime          RuntimeDefinition                        `yaml:"runtime" json:"runtime"`
 	Access           TargetAccess                             `yaml:"access" json:"access"`
@@ -110,6 +118,7 @@ type ResolvedTarget struct {
 	DockerEndpoint   string                  `json:"docker_endpoint,omitempty"`
 	DockerContext    string                  `json:"docker_context,omitempty"`
 	DockerMode       string                  `json:"docker_mode,omitempty"`
+	UID              string                  `json:"uid,omitempty"`
 	TenantID         string                  `json:"tenant_id,omitempty"`
 	Name             string                  `json:"name"`
 	RuntimeProvider  string                  `json:"runtime_provider"`
@@ -190,15 +199,41 @@ func LoadConfig() (Config, error) {
 		return Config{}, fmt.Errorf("read BaseHarbor config: %w", err)
 	}
 	if len(bytes.TrimSpace(data)) == 0 {
-		// An EXISTING but empty/whitespace-only config.yaml is a malformed
-		// configuration, not a clean absent-config default. The user pointed
-		// BaseHarbor at this path on purpose, so an emptied or untouched file
-		// must fail loud with an actionable error rather than silently falling
-		// through to the implicit defaults (BF-05). Only a genuinely absent
-		// file may keep the clean default below.
 		return Config{}, fmt.Errorf("%w: %s", ErrConfigEmpty, path)
 	}
-	return decodeConfig(data)
+	cfg, err := decodeConfig(data)
+	if err != nil {
+		return Config{}, err
+	}
+	// Stable target identity migration: fill the missing TargetUID for any
+	// legacy Target and persist it exactly once using the protected config
+	// owner. The migration is idempotent and preserves target data locations.
+	return migrateAndPersistTargetUIDs(cfg, data)
+}
+
+// migrateAndPersistTargetUIDs fills the missing stable Target UID for any
+// legacy Target in cfg and atomically persists the migrated configuration
+// through the protected configuration owner. expected is the exact raw owner
+// bytes just read, used for the compare-and-swap so a concurrent configuration
+// change refuses rather than overwriting. changed definitions are left otherwise
+// untouched: target names, data directories and the ownership TenantID are not
+// modified. The write is a single CAS; a subsequent call with an already
+// migrated configuration performs no write at all.
+func migrateAndPersistTargetUIDs(cfg Config, expected []byte) (Config, error) {
+	migrated, changed, err := MigrateLegacyTargetUIDs(cfg)
+	if err != nil {
+		return Config{}, err
+	}
+	if len(changed) == 0 {
+		return cfg, nil
+	}
+	// Use the same protected owner, lifecycle lock, and byte-level CAS as every
+	// other configuration mutation. This prevents a read-time migration from
+	// replacing a concurrent user save with stale configuration.
+	if err := migrated.SaveExpected(expected); err != nil {
+		return Config{}, err
+	}
+	return migrated, nil
 }
 
 // dirExistsAndHasBaseharborState reports whether the user's BaseHarbor config
@@ -306,8 +341,10 @@ func (c Config) saveAt(path string, revalidate func() error) error {
 	if err := file.Close(); err != nil {
 		return err
 	}
-	if err := revalidate(); err != nil {
-		return err
+	if revalidate != nil {
+		if err := revalidate(); err != nil {
+			return err
+		}
 	}
 	if err := os.Rename(tmp, path); err != nil {
 		return fmt.Errorf("replace BaseHarbor config: %w", err)
@@ -347,6 +384,11 @@ func (c Config) Validate() error {
 		}
 		if target.TenantID != "" && !targetTenantID.MatchString(target.TenantID) {
 			return fmt.Errorf("target %q tenant-id must be a canonical UUID", name)
+		}
+		if uid := strings.TrimSpace(target.TargetUID); uid != "" {
+			if err := ValidateTargetUID(uid); err != nil {
+				return fmt.Errorf("target %q: %w", name, err)
+			}
 		}
 		if err := ValidateTargetName(name); err != nil {
 			return err
@@ -391,6 +433,13 @@ func (c Config) Validate() error {
 		if _, ok := c.Targets[c.DefaultTarget]; !ok {
 			return fmt.Errorf("default target %q is not configured", c.DefaultTarget)
 		}
+	}
+	// Stable target identity uniqueness: two distinct Targets may never resolve
+	// to one UID, because that poisons the name->UID resolution for both. An
+	// empty UID (pre-stable-identity definition) is allowed; a present UID must
+	// be unique across every configured Target.
+	if err := validateTargetUIDUniqueness(c); err != nil {
+		return err
 	}
 	if value := strings.TrimSpace(c.Prompt.Preset); value != "" {
 		switch value {
@@ -445,6 +494,7 @@ func (c Config) ResolveTarget(explicit, activated string) (ResolvedTarget, error
 		DockerEndpoint:   target.Runtime.DockerEndpoint,
 		DockerContext:    target.Runtime.DockerContext,
 		DockerMode:       target.Runtime.DockerMode,
+		UID:              target.TargetUID,
 		Name:             name,
 		TenantID:         target.TenantID,
 		RuntimeProvider:  target.Runtime.Provider,
