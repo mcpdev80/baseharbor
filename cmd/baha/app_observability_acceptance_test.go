@@ -191,8 +191,22 @@ func TestObservabilityFullStackAcceptanceInCI(t *testing.T) {
 		t.Fatalf("impact consent validation failed: %v", err)
 	}
 
-	if err := runWithIO(withProviderChangeConsent(ctx, consent), []string{"--verbose", "app", "apply"}, &out, &out); err != nil {
-		t.Fatalf("full-stack observability apply failed: %v\n%s", err, out.String())
+	applyCtx := withProviderChangeConsent(ctx, consent)
+	applyArgs := []string{"--verbose", "app", "apply"}
+	if err := runWithIO(applyCtx, applyArgs, &out, &out); err != nil {
+		// Repository-owned candidates require a separate exact-source approval.
+		// The first attempt fails closed before recording deployment state and
+		// returns the digest this test automation must acknowledge explicitly.
+		digest := candidateConsentDigestFromError(err)
+		if digest == "" {
+			t.Fatalf("full-stack observability apply failed: %v\n%s", err, out.String())
+		}
+		out.Reset()
+		applyCtx = withCandidateConsentDigest(applyCtx, digest)
+		applyArgs = append(applyArgs, "--confirm-candidate", digest)
+		if retryErr := runWithIO(applyCtx, applyArgs, &out, &out); retryErr != nil {
+			t.Fatalf("full-stack observability apply failed after exact candidate consent: %v\n%s", retryErr, out.String())
+		}
 	}
 	if !strings.Contains(out.String(), "application and requested infrastructure verified") {
 		t.Fatal("apply output missing final verified-ready state")
