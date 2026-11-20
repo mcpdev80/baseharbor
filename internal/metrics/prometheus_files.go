@@ -216,6 +216,23 @@ func writeApplicationTargetFile(dir string, source observability.MetricsSource) 
 	return nil
 }
 
+type providerSecurityFile struct {
+	label  string
+	source string
+	target string
+}
+
+func providerSecurityFileCopies(token string, source observability.MetricsSource) []providerSecurityFile {
+	files := []providerSecurityFile{{label: "CA", source: source.Security.TrustFile, target: token + "-ca.pem"}}
+	if source.Security.ClientCertificate != "" {
+		files = append(files,
+			providerSecurityFile{label: "client certificate", source: source.Security.ClientCertificate, target: token + "-client.pem"},
+			providerSecurityFile{label: "client key", source: source.Security.ClientKey, target: token + "-client-key.pem"},
+		)
+	}
+	return files
+}
+
 func syncProviderSecurity(dir string, sources []observability.MetricsSource) error {
 	if err := os.RemoveAll(dir); err != nil {
 		return err
@@ -237,29 +254,7 @@ func syncProviderSecurity(dir string, sources []observability.MetricsSource) err
 		if !source.Security.TLSRequired {
 			continue
 		}
-		token := providerSourceToken(source.ID)
-		files := []struct {
-			label  string
-			source string
-			target string
-		}{
-			{label: "CA", source: source.Security.TrustFile, target: token + "-ca.pem"},
-		}
-		if source.Security.ClientCertificate != "" {
-			files = append(files,
-				struct {
-					label  string
-					source string
-					target string
-				}{label: "client certificate", source: source.Security.ClientCertificate, target: token + "-client.pem"},
-				struct {
-					label  string
-					source string
-					target string
-				}{label: "client key", source: source.Security.ClientKey, target: token + "-client-key.pem"},
-			)
-		}
-		for _, file := range files {
+		for _, file := range providerSecurityFileCopies(providerSourceToken(source.ID), source) {
 			data, err := os.ReadFile(file.source)
 			if err != nil {
 				return fmt.Errorf("read provider metrics %s for %s: %w", file.label, source.ID, err)
@@ -275,7 +270,6 @@ func syncProviderSecurity(dir string, sources []observability.MetricsSource) err
 	}
 	return bhruntime.NormalizeContainerReadableProjection(dir)
 }
-
 func hasSecureProviderMetrics(sources []observability.MetricsSource) bool {
 	for _, source := range sources {
 		if source.Security.TLSRequired {
