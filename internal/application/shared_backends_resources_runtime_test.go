@@ -21,46 +21,62 @@ func (noopRuntimeEmbeds) DestroyProjectRemoveOrphans(context.Context, string, st
 	return nil
 }
 
-// registerSharedPlatformSource writes one platform-scoped observability source
-// under a specific SharingBoundary ("environment:<env>"), mirroring how shared
-// postgres/valkey register during ensure.
-func registerSharedPlatformSource(t *testing.T, env string, provider capability.ProviderKind) {
+// registerSharedPlatformSource goes through the productive RegisterProviderSignals
+// path (the owner's 0428-166 collision/owner-guard in provider_registration.go),
+// with a real provider-kind and a real shared SharingBoundary, so the regression
+// proves the shared-destroy prune against the same registration key a real
+// deploy writes - not a registry write that bypasses that guard.
+func registerSharedPlatformSource(t *testing.T, env string, descriptor capability.IntegrationDescriptor) {
 	t.Helper()
-	source := observability.SignalSource{
-		ID:              string(provider) + ":shared:" + env,
-		Kind:            observability.SignalLogs,
-		Provider:        provider,
+	kind := descriptor.Provider.Kind
+	id := string(kind) + ":shared:" + env
+	if err := observability.RegisterProviderSignals(observability.ProviderSignalRegistration{
+		ID:              id,
+		Descriptor:      descriptor,
 		Class:           observability.SourcePlatformProvider,
 		Scope:           capability.ScopeShared,
 		SharingBoundary: "environment:" + env,
-		Target:          "postgres",
-		Protocol:        "stdout-stderr",
+		Enabled:         map[observability.SignalKind]bool{observability.SignalLogs: true, observability.SignalTraces: true},
+		Signals:         map[string]observability.ProviderSignalRuntime{"logs": {Target: "shared"}, "traces": {Target: "shared"}},
+	}); err != nil {
+		t.Fatalf("register shared platform source env %q provider %q: %v", env, kind, err)
 	}
-	if err := observability.UpdateSignal(source); err != nil {
-		t.Fatalf("register shared platform source env %q: %v", env, err)
+}
+
+func sharedPlatformCounts(t *testing.T, boundary string) map[string]int {
+	t.Helper()
+	logs, err := observability.ListLogs(
+		capability.ProviderPlacement{Scope: capability.ScopeShared, SharingBoundary: boundary},
+		nil, true, true, "",
+	)
+	if err != nil {
+		t.Fatal(err)
 	}
+	counts := map[string]int{}
+	for _, s := range logs {
+		counts[string(s.Provider)]++
+	}
+	return counts
 }
 
 // TestSharedDestroyRemovesOwnedPlatformSources asserts that DestroyAllSharedBackendsAt
 // tears down exactly the platform-scoped observability rows it owns (the one
-// environment directory present) and that a following re-registration with a
-// fresh owner succeeds.
+// environment directory present) for BOTH postgres and valkey, and that a
+// following re-registration with a fresh owner succeeds through the productive
+// registration path.
 func TestSharedDestroyRemovesOwnedPlatformSources(t *testing.T) {
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
 
-	// Two environments own platform-scoped rows; only "core" is on disk.
-	registerSharedPlatformSource(t, "core", capability.ProviderPostgreSQL)
-	registerSharedPlatformSource(t, "other", capability.ProviderPostgreSQL)
+	// "core" owns one postgres + one valkey platform source; "other" owns the
+	// same pair under a different boundary. Only "core" is on disk.
+	registerSharedPlatformSource(t, "core", capability.PostgreSQLIntegration)
+	registerSharedPlatformSource(t, "core", capability.ValkeyIntegration)
+	registerSharedPlatformSource(t, "other", capability.PostgreSQLIntegration)
+	registerSharedPlatformSource(t, "other", capability.ValkeyIntegration)
 
-	registryBefore, err := observability.ListLogs(
-		capability.ProviderPlacement{Scope: capability.ScopeShared, SharingBoundary: "environment:core"},
-		nil, true, true, "",
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(registryBefore) != 1 {
-		t.Fatalf("expected 1 core platform source before destroy, got %d", len(registryBefore))
+	before := sharedPlatformCounts(t, "environment:core")
+	if before["postgresql"] != 1 || before["valkey"] != 1 {
+		t.Fatalf("precondition: expected 1 postgres + 1 valkey under core, got %v", before)
 	}
 
 	dataDir := t.TempDir()
@@ -72,40 +88,31 @@ func TestSharedDestroyRemovesOwnedPlatformSources(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Owned environment removed.
-	afterCore, err := observability.ListLogs(
-		capability.ProviderPlacement{Scope: capability.ScopeShared, SharingBoundary: "environment:core"},
-		nil, true, true, "",
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(afterCore) != 0 {
-		t.Fatalf("owned platform sources not removed by shared destroy: %#v", afterCore)
+	if after := sharedPlatformCounts(t, "environment:core"); len(after) != 0 {
+		t.Fatalf("owned platform sources (both providers) not removed by shared destroy: %#v", after)
 	}
 
-	// Re-registration with a fresh owner now succeeds for the same boundary.
-	registerSharedPlatformSource(t, "core", capability.ProviderPostgreSQL)
-	afterRe, err := observability.ListLogs(
-		capability.ProviderPlacement{Scope: capability.ScopeShared, SharingBoundary: "environment:core"},
-		nil, true, true, "",
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(afterRe) != 1 {
-		t.Fatalf("re-registration did not recover, got %d sources", len(afterRe))
+	// Re-registration with a fresh owner now succeeds for the same boundary,
+	// through the productive RegisterProviderSignals guard.
+	registerSharedPlatformSource(t, "core", capability.PostgreSQLIntegration)
+	registerSharedPlatformSource(t, "core", capability.ValkeyIntegration)
+	after := sharedPlatformCounts(t, "environment:core")
+	if after["postgresql"] != 1 || after["valkey"] != 1 {
+		t.Fatalf("re-registration did not recover (stale owner survived): %#v", after)
 	}
 }
 
-// TestSharedDestroyPreservesForeignPlatformSources is the cross-tenant wipe guard:
-// destroying one environment must NOT remove platform-scoped rows owned by a
-// different environment. This is the most dangerous variant and must stay green.
+// TestSharedDestroyPreservesForeignPlatformSources is the cross-tenant wipe
+// guard: destroying "core" must NOT remove the postgres + valkey platform rows
+// owned by a different boundary ("other"). The most dangerous variant; must stay
+// green for BOTH providers.
 func TestSharedDestroyPreservesForeignPlatformSources(t *testing.T) {
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
 
-	registerSharedPlatformSource(t, "core", capability.ProviderPostgreSQL)
-	registerSharedPlatformSource(t, "other", capability.ProviderPostgreSQL)
+	registerSharedPlatformSource(t, "core", capability.PostgreSQLIntegration)
+	registerSharedPlatformSource(t, "core", capability.ValkeyIntegration)
+	registerSharedPlatformSource(t, "other", capability.PostgreSQLIntegration)
+	registerSharedPlatformSource(t, "other", capability.ValkeyIntegration)
 
 	dataDir := t.TempDir()
 	if err := setupSharedBackendDir(t, dataDir, "core"); err != nil {
@@ -116,16 +123,9 @@ func TestSharedDestroyPreservesForeignPlatformSources(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// The foreign environment's row must survive.
-	afterOther, err := observability.ListLogs(
-		capability.ProviderPlacement{Scope: capability.ScopeShared, SharingBoundary: "environment:other"},
-		nil, true, true, "",
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(afterOther) != 1 {
-		t.Fatalf("foreign platform source was wiped by shared destroy (cross-tenant): %#v", afterOther)
+	after := sharedPlatformCounts(t, "environment:other")
+	if after["postgresql"] != 1 || after["valkey"] != 1 {
+		t.Fatalf("foreign platform sources were wiped by shared destroy (cross-tenant, both providers): %#v", after)
 	}
 }
 
