@@ -44,11 +44,13 @@ func withCIIntegrationOperator(ctx context.Context, args []string) context.Conte
 		return ciIntegrationOperatorContext(ctx)
 	}
 	if managedGateReason := ciIntegrationManagedLocalGateReason(args, target, err); managedGateReason == "" {
-		// Root status observes the selected local runtime. A synthetic operator
-		// would switch the observation to OIDC and hide local-runtime authority.
+		// Application status in this disposable gate also evaluates the managed
+		// operator boundary. Once Core is installed, local runtime grants are not
+		// available for this operation; use only the exact gate-scoped test
+		// operator so CI does not try to start an interactive OIDC setup.
 		if ciIntegrationReadOnlyStatus(args) {
-			ciIntegrationOperatorTrace("managed-local-status-observation", args, target, nil)
-			return ctx
+			ciIntegrationOperatorTrace("managed-local-status-test-operator", args, target, nil)
+			return ciIntegrationOperatorContext(ctx)
 		}
 		ciIntegrationOperatorTrace("managed-local-gate", args, target, nil)
 		return ciIntegrationOperatorContext(ctx)
