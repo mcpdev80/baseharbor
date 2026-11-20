@@ -15,6 +15,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/identityprovider"
 	metricsprovider "github.com/mcpdev80/baseharbor/internal/metrics"
 	"github.com/mcpdev80/baseharbor/internal/observability"
+	"github.com/mcpdev80/baseharbor/internal/operatorauth"
 )
 
 // newIdentityGateManifest builds a manifest with the identity provider selected
@@ -132,6 +133,23 @@ func driveIdentityStatusJSON(t *testing.T, ctx context.Context, perses bool) ide
 	return decoded
 }
 
+func configureIdentityStatusOperatorAuth(t *testing.T) {
+	t.Helper()
+	t.Setenv("XDG_RUNTIME_DIR", t.TempDir())
+	issuer := startManagedOperatorOIDCServer(t)
+	t.Setenv(operatorauth.EnvIssuer, issuer)
+	t.Setenv(operatorauth.EnvClientID, "baseharbor-cli")
+	t.Setenv(operatorauth.EnvScopes, "openid,profile")
+	t.Setenv(operatorauth.EnvCallbackPort, "0")
+	t.Setenv("BASEHARBOR_NO_BROWSER", "1")
+	var out, errOut bytes.Buffer
+	ctx := operatorauth.WithEnforcement(context.Background())
+	codePath := os.Getenv("BASEHARBOR_OPERATOR_OIDC_AUTH_CODE_FILE")
+	if err := operatorLoginCommand().Run(ctx, []string{"-e", "dev", "--no-browser", "--auth-code-file", codePath}, &out, &errOut); err != nil {
+		t.Fatalf("authenticate test operator: %v\nstdout: %s\nstderr: %s", err, out.String(), errOut.String())
+	}
+}
+
 // TestIdentityDashboardEligibleRequiresConfiguredVerifiedPerses is the gate
 // regression the reviewer required. It drives the genuine local status command
 // for BOTH manifest faces and asserts identity_dashboard_eligible is true ONLY
@@ -143,6 +161,7 @@ func TestIdentityDashboardEligibleRequiresConfiguredVerifiedPerses(t *testing.T)
 	t.Setenv("BASEHARBOR_STATE_DIR", "")
 	ctx := t.Context()
 	target := configureTestTarget(t)
+	configureIdentityStatusOperatorAuth(t)
 	m := application.New("perses-identity-gate", "dev", false, false, false)
 	m.Services.Identity = true
 	seedIdentityMetricsWitness(t, m, target.Name)
@@ -228,6 +247,7 @@ func TestIdentityDashboardEligibleGatesOnKeycloakWitness(t *testing.T) {
 	t.Setenv("BASEHARBOR_STATE_DIR", "")
 	ctx := t.Context()
 	configureTestTarget(t)
+	configureIdentityStatusOperatorAuth(t)
 	// Do NOT seed the witness: identity selected but no real Keycloak signal.
 	decoded := driveIdentityStatusJSON(t, ctx, true)
 	if *decoded.Perses != string(capability.PersesStatusConfiguredUnverified) {
