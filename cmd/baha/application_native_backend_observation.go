@@ -146,10 +146,11 @@ func nativeBackendBindingInspectionManifest(manifest application.Manifest, insta
 	}
 	namesByResource := map[string]struct{}{}
 	for _, binding := range bindings {
-		if binding.ProviderInstanceID != instance.ID || binding.ApplicationID != manifest.ApplicationID || binding.Environment != manifest.Environment {
+		if binding.ProviderInstanceID != instance.ID {
 			continue
 		}
-		if binding.Resource.Application != manifest.Name || binding.Resource.Kind != kind || binding.Resource.Provider != provider || binding.Resource.Name == "" {
+		if binding.ApplicationID != manifest.ApplicationID || binding.Environment != manifest.Environment ||
+			binding.Resource.Application != manifest.Name || binding.Resource.Kind != kind || binding.Resource.Provider != provider || binding.Resource.Name == "" {
 			return application.Manifest{}, false
 		}
 		namesByResource[binding.Resource.Name] = struct{}{}

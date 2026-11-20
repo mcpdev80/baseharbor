@@ -83,4 +83,20 @@ func TestNativeBackendBindingInspectionManifestRejectsUnboundMongo(t *testing.T)
 			}
 		})
 	}
+	for _, tc := range []struct {
+		name string
+		edit func(*capability.ProviderBinding)
+	}{
+		{name: "conflicting app", edit: func(b *capability.ProviderBinding) { b.ApplicationID = "other" }},
+		{name: "conflicting environment", edit: func(b *capability.ProviderBinding) { b.Environment = "production" }},
+		{name: "unscoped legacy environment", edit: func(b *capability.ProviderBinding) { b.Environment = "" }},
+	} {
+		t.Run("valid plus "+tc.name, func(t *testing.T) {
+			conflict := valid
+			tc.edit(&conflict)
+			if _, ok := nativeBackendBindingInspectionManifest(manifest, instance, []capability.ProviderBinding{valid, conflict}); ok {
+				t.Fatal("partially inconsistent MongoDB binding set was accepted")
+			}
+		})
+	}
 }
