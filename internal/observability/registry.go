@@ -289,6 +289,35 @@ func UpdateSignal(source SignalSource) error {
 	})
 }
 
+// PruneOwnedPlatformSources removes (or marks reusable by keepIDs) exactly the
+// platform-scoped observability registrations that share one SharingBoundary —
+// the shared resource that is being destroyed. Rows for a different
+// SharingBoundary (a foreign tenant/environment) are preserved; this is the
+// fail-closed guard against cross-tenant wipe when shared backends are torn
+// down and a fresh owner re-registers the same boundary.
+func PruneOwnedPlatformSources(provider capability.ProviderKind, class SourceClass, scope capability.ProviderScope, sharingBoundary string, keepIDs map[string]struct{}) error {
+	sharingBoundary = strings.TrimSpace(sharingBoundary)
+	if sharingBoundary == "" {
+		return errors.New("observability platform-source prune requires a sharing boundary")
+	}
+	path, err := registryPath()
+	if err != nil {
+		return err
+	}
+	return mutate(path, func(sources []SignalSource) ([]SignalSource, error) {
+		out := sources[:0]
+		for _, source := range sources {
+			if source.Provider == provider && source.Class == class && source.Scope == scope && strings.TrimSpace(source.SharingBoundary) == sharingBoundary {
+				if _, keep := keepIDs[source.ID]; !keep {
+					continue
+				}
+			}
+			out = append(out, source)
+		}
+		return out, nil
+	})
+}
+
 // ReconcileSignals replaces every signal of one source identity with the
 // desired set, in one atomic registry mutation.
 //
