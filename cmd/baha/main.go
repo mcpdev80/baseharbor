@@ -149,10 +149,22 @@ func runWithIO(ctx context.Context, args []string, out, errOut io.Writer) error 
 	ctx = operatorauth.WithInteractive(ctx, os.Stdin, out, errOut)
 	ctx = localCLIProviderConsentContext(ctx, filtered)
 	ctx = withLocalInvocation(ctx, "cli")
-	if len(filtered) > 1 && filtered[0] == "app" {
-		ctx = localWorkloadScope(ctx, applicationBoundaryOperation(filtered[1]))
+	if operation := cliLocalWorkloadOperation(filtered); operation != "" {
+		ctx = localWorkloadScope(ctx, operation)
 	}
 	return rootCommand().Execute(ctx, filtered, out, errOut)
+}
+
+func cliLocalWorkloadOperation(args []string) string {
+	if len(args) > 1 && args[0] == "app" {
+		return applicationBoundaryOperation(args[1])
+	}
+	// The root `plan` command is a read-only shorthand for `app plan`, and its
+	// authorization path must receive the same local-runtime scope.
+	if len(args) > 0 && args[0] == "plan" {
+		return "plan"
+	}
+	return ""
 }
 
 func extractGlobalOutputOptions(args []string) ([]string, cli.OutputOptions, bool, string, error) {

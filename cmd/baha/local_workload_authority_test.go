@@ -24,6 +24,27 @@ type localAuthorityRuntime struct {
 	observations int
 }
 
+func TestCLILocalWorkloadOperationIncludesRootPlanOnly(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{name: "root plan", args: []string{"plan"}, want: "plan"},
+		{name: "root plan with options", args: []string{"plan", "demo", "--output", "json"}, want: "plan"},
+		{name: "app plan", args: []string{"app", "plan"}, want: "plan"},
+		{name: "app apply", args: []string{"app", "apply"}, want: "apply"},
+		{name: "other root command", args: []string{"doctor"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := cliLocalWorkloadOperation(tt.args); got != tt.want {
+				t.Fatalf("cliLocalWorkloadOperation(%v) = %q, want %q", tt.args, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestVerifiedLocalRuntimeGrantSatisfiesManagedEnvironmentBoundary(t *testing.T) {
 	target := configureTestTarget(t)
 	for _, name := range []string{operatorauth.EnvIssuer, operatorauth.EnvClientID, operatorauth.EnvScopes, operatorauth.EnvCallbackPort} {

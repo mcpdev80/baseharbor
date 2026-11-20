@@ -37,8 +37,8 @@ func runWithIOAndOperator(ctx context.Context, args []string, out, errOut io.Wri
 	ctx = operatorauth.WithInteractive(ctx, os.Stdin, out, errOut)
 	ctx = localCLIProviderConsentContext(ctx, filtered)
 	ctx = withLocalInvocation(ctx, "cli")
-	if len(filtered) > 1 && filtered[0] == "app" {
-		ctx = localWorkloadScope(ctx, applicationBoundaryOperation(filtered[1]))
+	if operation := cliLocalWorkloadOperation(filtered); operation != "" {
+		ctx = localWorkloadScope(ctx, operation)
 	}
 	return rootCommand().Execute(ctx, filtered, out, errOut)
 }
