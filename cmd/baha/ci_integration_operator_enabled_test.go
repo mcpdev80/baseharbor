@@ -109,3 +109,27 @@ func TestCIIntegrationOperatorIsExplicitlyScopedToManagedLocalGate(t *testing.T)
 		t.Fatal("managed local gate operator escaped the atomic acceptance fixture")
 	}
 }
+
+func TestCIIntegrationOperatorAllowsRootDestroyOnlyForGuidedGate(t *testing.T) {
+	t.Setenv("DEMO_ATOMIC_GATE", "1")
+	t.Setenv("BASEHARBOR_TEST_RUNTIME", "docker")
+	t.Setenv("GATE", "guided")
+	t.Setenv("BASEHARBOR_DEMO_OPERATOR_GATE", "guided")
+	target := configureIsolatedEmptyRuntimeTarget(t, "atomic-docker-guided", "docker")
+	t.Setenv("BASEHARBOR_TARGET", target.Name)
+	if err := registerInstallationForTarget(t, target.Name); err != nil {
+		t.Fatalf("register local Core fixture: %v", err)
+	}
+	rootDestroy := []string{"destroy", "--all", "--yes"}
+	if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), rootDestroy)); !ok {
+		t.Fatal("exact guided atomic gate did not receive its CI operator for the documented root destroy step")
+	}
+	if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), []string{"down"})); ok {
+		t.Fatal("guided root destroy exception unexpectedly authorized another root command")
+	}
+	t.Setenv("GATE", "lifecycle")
+	t.Setenv("BASEHARBOR_DEMO_OPERATOR_GATE", "lifecycle")
+	if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), rootDestroy)); ok {
+		t.Fatal("guided root destroy exception escaped its exact gate")
+	}
+}

@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -30,19 +31,26 @@ func withCIIntegrationOperator(ctx context.Context, args []string) context.Conte
 	// All subsequent local workload operations remain on the runtime-grant path.
 	cfg, err := deployment.LoadConfig()
 	if err != nil {
+		ciIntegrationOperatorTrace("config-load-failed", args, deployment.ResolvedTarget{}, err)
 		if !ciIntegrationTargetCreate(args) {
 			return ctx
 		}
+		ciIntegrationOperatorTrace("target-create-bootstrap", args, deployment.ResolvedTarget{}, nil)
 		return ciIntegrationOperatorContext(ctx)
 	}
 	target, err := cfg.ResolveTarget(strings.TrimSpace(os.Getenv("BASEHARBOR_TARGET")), "")
 	if err == nil && target.AccessProvider == "baseharbor-core" {
+		ciIntegrationOperatorTrace("remote-core-target", args, target, nil)
 		return ciIntegrationOperatorContext(ctx)
 	}
-	if err == nil && ciIntegrationManagedLocalGate(args, target) {
+	if managedGateReason := ciIntegrationManagedLocalGateReason(args, target, err); managedGateReason == "" {
+		ciIntegrationOperatorTrace("managed-local-gate", args, target, nil)
 		return ciIntegrationOperatorContext(ctx)
+	} else {
+		ciIntegrationOperatorTrace("managed-local-gate-rejected: "+managedGateReason, args, target, err)
 	}
 	if err == nil && target.AccessProvider == "local" && target.TenantID == "" && ciIntegrationLocalCoreBootstrap(args, target) {
+		ciIntegrationOperatorTrace("local-core-bootstrap", args, target, nil)
 		return ciIntegrationOperatorContext(ctx)
 	}
 	// Bootstrap is the only local operation that may need a synthetic
@@ -56,30 +64,57 @@ func withCIIntegrationOperator(ctx context.Context, args []string) context.Conte
 }
 
 func ciIntegrationManagedLocalGate(args []string, target deployment.ResolvedTarget) bool {
+	return ciIntegrationManagedLocalGateReason(args, target, nil) == ""
+}
+
+func ciIntegrationManagedLocalGateReason(args []string, target deployment.ResolvedTarget, targetErr error) string {
+	if targetErr != nil {
+		return "target-resolution-failed: " + targetErr.Error()
+	}
 	gate := strings.TrimSpace(os.Getenv("BASEHARBOR_DEMO_OPERATOR_GATE"))
 	runtime := strings.TrimSpace(os.Getenv("BASEHARBOR_TEST_RUNTIME"))
 	if gate == "" || gate != strings.TrimSpace(os.Getenv("GATE")) ||
 		(runtime != "docker" && runtime != "podman") || target.Name != "atomic-"+runtime+"-"+gate ||
 		target.Name != strings.TrimSpace(os.Getenv("BASEHARBOR_TARGET")) || target.AccessProvider != "local" ||
 		target.TenantID != "" || target.RuntimeProvider != runtime {
-		return false
+		return fmt.Sprintf("target-or-gate-mismatch gate=%q workflow_gate=%q runtime=%q target=%q env_target=%q access=%q tenant_set=%t target_runtime=%q", gate, strings.TrimSpace(os.Getenv("GATE")), runtime, target.Name, strings.TrimSpace(os.Getenv("BASEHARBOR_TARGET")), target.AccessProvider, strings.TrimSpace(target.TenantID) != "", target.RuntimeProvider)
 	}
 	operation := cliLocalWorkloadOperation(args)
 	managedWorkload := operatorauth.LocalWorkloadOperation(operation)
+	// The guided acceptance suite first removes the previous installation
+	// before constructing a clean application fixture. Keep this root command
+	// exception inside the exact disposable guided gate.
+	if !managedWorkload && gate == "guided" && len(args) > 0 && args[0] == "destroy" {
+		managedWorkload = true
+	}
 	// Recovery gates also exercise the root `down` command against the local
 	// Core. Keep this alias scoped to that explicit fixture.
 	if !managedWorkload && gate == "control-plane-recovery" && len(args) > 0 && args[0] == "down" {
 		managedWorkload = true
 	}
 	if !managedWorkload {
-		return false
+		return "command-not-in-managed-workload-set: " + strings.Join(args, " ")
 	}
 	root, err := targetRuntimeStateRoot(target)
 	if err != nil {
-		return false
+		return "runtime-state-root-failed: " + err.Error()
 	}
 	_, err = coreinstallation.Load(root)
-	return err == nil
+	if err != nil {
+		return "core-installation-not-loadable: " + err.Error()
+	}
+	return ""
+}
+
+func ciIntegrationOperatorTrace(reason string, args []string, target deployment.ResolvedTarget, err error) {
+	if os.Getenv("BASEHARBOR_DEMO_OPERATOR_TRACE") != "1" {
+		return
+	}
+	message := fmt.Sprintf("[ci-operator-testonly] decision=%s command=%q target=%q runtime=%q access=%q tenant_set=%t", reason, strings.Join(args, " "), target.Name, target.RuntimeProvider, target.AccessProvider, strings.TrimSpace(target.TenantID) != "")
+	if err != nil {
+		message += " cause=" + err.Error()
+	}
+	fmt.Fprintln(os.Stderr, message)
 }
 
 func ciIntegrationLocalCoreBootstrap(args []string, target deployment.ResolvedTarget) bool {
