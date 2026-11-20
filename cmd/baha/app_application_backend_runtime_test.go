@@ -131,7 +131,7 @@ func qualifyApplicationBackendLifecycle(t *testing.T, service string) {
 	var appID string
 	for phase, enabled := range []bool{true, false, true} {
 		writeApplicationBackendIntent(t, service, enabled)
-		applySelectiveIdentityIntent(t, ctx)
+		applySelectiveBackendIntentWithLocalGrant(t, ctx)
 		current, err := resolveApplication(ctx, application.Store{}, nil, "status")
 		if err != nil {
 			t.Fatal(err)
@@ -216,11 +216,35 @@ func qualifyApplicationBackendLifecycle(t *testing.T, service string) {
 						t.Fatal("application stop lost observed owned persistent volume")
 					}
 				}
-				applySelectiveIdentityIntent(t, ctx)
+				applySelectiveBackendIntentWithLocalGrant(t, ctx)
 				qualifyApplicationBackendRetainedData(t, ctx, files, service, retainedDataIntermediatePhase, &originalIdentity)
 				t.Logf("application backend=%s acknowledged stop/resume: selected runtime withdrawn, observed data volumes preserved, original authenticated data and credentials work after resume", service)
 			}
 		}
 		t.Logf("application backend=%s phase=%d needed=%t selected containers=%d retained volumes=%d", service, phase, enabled, containers, volumes)
+	}
+}
+
+func applySelectiveBackendIntentWithLocalGrant(t *testing.T, ctx context.Context) {
+	t.Helper()
+	resolved, err := resolveApplication(ctx, application.Store{}, nil, "apply")
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := buildResolvedApplicationPlan(ctx, resolved)
+	if err != nil {
+		t.Fatal(err)
+	}
+	applyCtx, candidateDigest := withConfirmCandidateDigestForResolved(ctx, resolved)
+	if resolved.FromRepository && candidateDigest == "" {
+		t.Fatal("repository candidate has no verifiable confirmation digest")
+	}
+	if impact := plan.ProviderPlan.Impact; impact != nil {
+		applyCtx = withProviderChangeConsent(applyCtx, &application.ProviderChangeConsent{PlanID: impact.PlanID, First: true, Second: true})
+	}
+	var output bytes.Buffer
+	if err := runWithIO(applyCtx, []string{"app", "apply", "--skip-memory-preflight"}, &output, &output); err != nil {
+		t.Logf("Coreless local grant failed application backend plan: complete=%t changes=%+v", plan.ProviderPlan.Complete, plan.ProviderPlan.Changes)
+		t.Fatalf("apply application backend with local runtime grant: %v\n%s", err, output.String())
 	}
 }

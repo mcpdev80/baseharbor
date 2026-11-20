@@ -42,6 +42,14 @@ func TestWorkstationOnboardingRemoteNativeInCI(t *testing.T) {
 	if name == "" || !strings.HasPrefix(name, "w169-ci-bootstrap-") {
 		t.Fatalf("isolated Core fixture unavailable: %q", name)
 	}
+	// The remote Core runs app doctor for this deployment, so its own local
+	// Target configuration must describe the operator-auth boundary. The
+	// imported workstation's profile is not consulted by the Core.
+	if err := deployment.SetOperatorAuthForTargetEnvironment(name, "dev", deployment.OperatorAuthEnvironmentConfig{
+		Provider: "external-oidc", Issuer: "https://issuer.test", ClientID: "cli-test",
+	}); err != nil {
+		t.Fatalf("configure isolated operator-auth boundary on Core Target: %v", err)
+	}
 
 	t.Run("CoreReady", func(t *testing.T) {
 		provider, err := testruntime.Resolve(ctx)
@@ -129,11 +137,6 @@ func TestWorkstationOnboardingRemoteNativeInCI(t *testing.T) {
 		}
 		if workstationTarget == "" {
 			t.Fatal("import did not configure a remotely authenticated Core Target")
-		}
-		if err := deployment.SetOperatorAuthForTargetEnvironment(workstationTarget, "dev", deployment.OperatorAuthEnvironmentConfig{
-			Provider: "external-oidc", Issuer: "https://issuer.test", ClientID: "cli-test",
-		}); err != nil {
-			t.Fatalf("configure isolated operator-auth boundary for imported Target: %v", err)
 		}
 	})
 	t.Run("RemoteDeployment", func(t *testing.T) {
