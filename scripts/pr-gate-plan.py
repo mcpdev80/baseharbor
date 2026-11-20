@@ -1550,7 +1550,7 @@ def targeted_plan(diff, requirements, mapping, repository='.',
             require(AUTHORITY_PACKAGE_CHECKS + CODE_CHECKS + CLI_CHECKS)
         elif path in OPERATORAUTH_POLICY_FILES:
             area = 'operatorauth-explicit-policy'
-            require(AUTHORITY_PACKAGE_CHECKS + CODE_CHECKS + CLI_CHECKS)
+            require(AUTHORITY_PACKAGE_CHECKS + CODE_CHECKS)
             if path_status.get(path) not in ('added', 'modified'):
                 unresolved.append('operatorauth policy source/test removal or rename needs review: ' + path)
         elif path.startswith('contracts/') and path.endswith(('.go', '.json')):

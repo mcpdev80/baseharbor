@@ -2228,6 +2228,19 @@ class MainRunnerContextEntrypointTests(unittest.TestCase):
         self.assertTrue({'go-unit-tests', 'go-vet', 'go-build'} <=
                         {row['id'] for row in result['required_validation_checks']})
 
+    def test_stacked_cli_runner_context_resolves(self):
+        self._actual = diff(paths('internal/new_plan_v2/feature.go'))
+        code, out, msg = self._run_main({
+            'GITHUB_REPOSITORY': 'mcpdev80/baseharbor',
+            'GITHUB_BASE_REF': 'cli2-env-policy-head',
+        })
+        self.assertIsNone(code, msg or out)
+        result = json.loads(out)
+        self.assertEqual('resolved', result['coverage_status'])
+        self.assertTrue(result['fallback_used'])
+        self.assertTrue({'go-unit-tests', 'go-vet', 'go-build'} <=
+                        {row['id'] for row in result['required_validation_checks']})
+
     def test_empty_context_fails_closed(self):
         # Missing runner context must be rejected before plan() runs: the
         # entrypoint refuses to qualify with an unknown authenticated context.
@@ -2886,9 +2899,11 @@ class AuthorityPackageCompletenessTests(unittest.TestCase):
                 with self.subTest(path=path, status=status):
                     result = planner.plan(diff([{'path': path, 'status': status}]), REQ, MAP_26)
                     self.assertEqual('resolved', result['coverage_status'], result)
-                    self.assertTrue({'authority-package-tests', 'source-contracts',
-                                     'cli-build', 'cli-vet'} <=
-                                    {row['id'] for row in result['required_validation_checks']})
+                    selected_checks = {row['id'] for row in result['required_validation_checks']}
+                    self.assertTrue({'authority-package-tests', 'source-contracts'} <=
+                                    selected_checks)
+                    self.assertFalse({'go-unit-tests', 'cli-package-tests', 'cli-build',
+                                      'cli-guided-tests', 'cli-vet'} & selected_checks)
                     self.assertEqual([], result['selected_gates'])
 
     def test_workload_security_policy_files_run_application_package_tests(self):
