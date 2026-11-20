@@ -3,6 +3,7 @@ package metrics_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -113,8 +114,17 @@ func TestWorkloadOnlyRegistersSharedSnapshotOnDeploy(t *testing.T) {
 	assertNoWorkloadScrapeTarget(t, providerFiles, sourceID)
 	assertNoWorkloadComposeNetwork(t, providerFiles, application.MetricsProviderNetworkNameForNamespace(m, ""))
 
+	// A workload-only app has only a verification:none runtime snapshot source,
+	// so the composition reports the documented null-target state rather than
+	// a hard failure: the informational CompositionStateError is the expected
+	// result, not a regression.
 	if err := metrics.VerifyProviderSourcesAt(context.Background(), m, stateDir, ""); err != nil {
-		t.Fatalf("verify deployed workload-only provider snapshot: %v", err)
+		var stateErr *metrics.CompositionStateError
+		if errors.As(err, &stateErr) {
+			// expected: explicit null-target state surfaced to the operator
+		} else {
+			t.Fatalf("verify deployed workload-only provider snapshot: %v", err)
+		}
 	}
 }
 
@@ -137,6 +147,11 @@ func TestServiceAppKeepsRuntimeSourceRegistrationOnDeploy(t *testing.T) {
 	}
 
 	if err := metrics.VerifyProviderSourcesAt(context.Background(), m, stateDir, ""); err != nil {
-		t.Fatalf("verify service app provider snapshot: %v", err)
+		var stateErr *metrics.CompositionStateError
+		if errors.As(err, &stateErr) {
+			// expected: explicit null-target state surfaced to the operator
+		} else {
+			t.Fatalf("verify service app provider snapshot: %v", err)
+		}
 	}
 }

@@ -216,6 +216,23 @@ func writeApplicationTargetFile(dir string, source observability.MetricsSource) 
 	return nil
 }
 
+type providerSecurityFile struct {
+	label  string
+	source string
+	target string
+}
+
+func providerSecurityFileCopies(token string, source observability.MetricsSource) []providerSecurityFile {
+	files := []providerSecurityFile{{label: "CA", source: source.Security.TrustFile, target: token + "-ca.pem"}}
+	if source.Security.ClientCertificate != "" {
+		files = append(files,
+			providerSecurityFile{label: "client certificate", source: source.Security.ClientCertificate, target: token + "-client.pem"},
+			providerSecurityFile{label: "client key", source: source.Security.ClientKey, target: token + "-client-key.pem"},
+		)
+	}
+	return files
+}
+
 func syncProviderSecurity(dir string, sources []observability.MetricsSource) error {
 	if err := os.RemoveAll(dir); err != nil {
 		return err
@@ -237,29 +254,7 @@ func syncProviderSecurity(dir string, sources []observability.MetricsSource) err
 		if !source.Security.TLSRequired {
 			continue
 		}
-		token := providerSourceToken(source.ID)
-		files := []struct {
-			label  string
-			source string
-			target string
-		}{
-			{label: "CA", source: source.Security.TrustFile, target: token + "-ca.pem"},
-		}
-		if source.Security.ClientCertificate != "" {
-			files = append(files,
-				struct {
-					label  string
-					source string
-					target string
-				}{label: "client certificate", source: source.Security.ClientCertificate, target: token + "-client.pem"},
-				struct {
-					label  string
-					source string
-					target string
-				}{label: "client key", source: source.Security.ClientKey, target: token + "-client-key.pem"},
-			)
-		}
-		for _, file := range files {
+		for _, file := range providerSecurityFileCopies(providerSourceToken(source.ID), source) {
 			data, err := os.ReadFile(file.source)
 			if err != nil {
 				return fmt.Errorf("read provider metrics %s for %s: %w", file.label, source.ID, err)
@@ -275,7 +270,6 @@ func syncProviderSecurity(dir string, sources []observability.MetricsSource) err
 	}
 	return bhruntime.NormalizeContainerReadableProjection(dir)
 }
-
 func hasSecureProviderMetrics(sources []observability.MetricsSource) bool {
 	for _, source := range sources {
 		if source.Security.TLSRequired {
@@ -304,6 +298,50 @@ func providerMetricNetworks(sources []observability.MetricsSource) []string {
 	}
 	sort.Strings(result)
 	return result
+}
+
+// EffectiveProviderTargetCount reports how many of the given provider sources
+// actually produce a Prometheus scrape target after composition. A source with
+// Verification == ObservabilityVerifyNone is correctly skipped here (its signal is
+// realised through the OTLP/Tempo receiver, not a Prometheus endpoint), so it
+// never contributes a file_sd target or a provider network. The count is the
+// single authoritative counter for the composition; callers use it to emit an
+// explicit state instead of silently composing zero scrape targets.
+func EffectiveProviderTargetCount(sources []observability.MetricsSource) int {
+	count := 0
+	for _, source := range sources {
+		if source.Verification == capability.ObservabilityVerifyNone {
+			continue
+		}
+		if strings.TrimSpace(source.Target) == "" {
+			continue
+		}
+		count++
+	}
+	return count
+}
+
+// ProviderCompositionState renders the observable state of a Prometheus provider
+// composition. A non-nil result means the placement has one or more effective
+// scrape targets. A zero effective target count is a documented, expected state
+// (every source is Verification == ObservabilityVerifyNone): it is reported as an
+// explicit state, not a hard error, so the blind spot hunt-918 befund 6 no
+// longer surfaces as silent silence. Callers that treat the composition as a
+// mutation must still fail closed; this message only makes the count visible.
+func ProviderCompositionState(sources []observability.MetricsSource) string {
+	// Guard the empty source list first. A zero effective count with NO provider
+	// sources is not "all Verification=none"; it is "no provider metrics sources
+	// at all" (e.g. an app-only / provider-less metrics app). Reporting the
+	// Verification=none null-target message here would be a false
+	// null-provider-target status, so the two cases are distinct states.
+	if len(sources) == 0 {
+		return "metrics provider composition: no provider metrics sources registered (no provider targets, nothing to scrape)"
+	}
+	effective := EffectiveProviderTargetCount(sources)
+	if effective > 0 {
+		return fmt.Sprintf("metrics provider composition: %d effective scrape target(s)", effective)
+	}
+	return "metrics provider composition: null effective scrape targets after composition (all provider sources are Verification=none; signals flow to the OTLP/Tempo receiver, not Prometheus)"
 }
 
 func EnsureProviderFiles(ctx context.Context, issuer serviceaccess.Issuer, m application.Manifest) (ProviderFiles, error) {
@@ -399,6 +437,7 @@ func EnsureProviderFilesWithRuntimeCAAt(ctx context.Context, issuer serviceacces
 		return ProviderFiles{}, err
 	}
 	providerNetworks := providerMetricNetworks(providerSources)
+	files.CompositionState = ProviderCompositionState(providerSources)
 
 	if strings.TrimSpace(runtimeCASource) != "" {
 		caData, err := os.ReadFile(runtimeCASource)
@@ -618,6 +657,7 @@ func UnregisterSharedApplicationAt(ctx context.Context, runtime Runtime, issuer 
 		return err
 	}
 	providerNetworks := providerMetricNetworks(providerSources)
+	files.CompositionState = ProviderCompositionState(providerSources)
 
 	_, caErr := os.Stat(files.RuntimeCA)
 	hasRuntimeCA := caErr == nil
