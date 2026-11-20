@@ -75,11 +75,6 @@ func contextShowCommand() *cli.Command {
 	}
 }
 
-// contextShellVar is the env var the per-terminal selection lives in. It is the
-// single source of truth this slice reads and emits; the shell hook and the
-// existing target selection both resolve through it.
-const contextShellVar = "BASEHARBOR_TARGET"
-
 // supportedShells enumerates the shells this slice can emit an activation snippet
 // and hook for. Unsupported shells are rejected with a clear reason, never silently.
 func supportedShells() []string {

@@ -217,14 +217,7 @@ func bashCompletionScript() string {
     done < <(command baha __complete "${words[@]}")
 }
 complete -o default -F _baha_completion baha
-` + bashContextHook()
-}
-
-// bashContextHook installs the one-time per-terminal context hook so the shell
-// re-resolves the effective context before each command, keeping BASEHARBOR_TARGET
-// in sync with the last 'baha context use' without any on-disk marker.
-func bashContextHook() string {
-	return activationPrefix("bash")
+` + contextInteractiveInstall("bash")
 }
 
 func zshCompletionScript() string {
@@ -242,14 +235,7 @@ _baha_completion() {
     compadd -d descriptions -- "${values[@]}"
 }
 compdef _baha_completion baha
-` + zshContextHook()
-}
-
-// zshContextHook installs the one-time per-terminal context hook so the shell
-// re-resolves the effective context before each command, keeping BASEHARBOR_TARGET
-// in sync with the last 'baha context use' without any on-disk marker.
-func zshContextHook() string {
-	return activationPrefix("zsh")
+` + contextInteractiveInstall("zsh")
 }
 
 func fishCompletionScript() string {
@@ -260,12 +246,5 @@ func fishCompletionScript() string {
     command baha __complete $tokens
 end
 complete -c baha -f -a '(__baha_complete)'
-` + fishContextHook()
-}
-
-// fishContextHook installs the one-time per-terminal context hook so the shell
-// re-resolves the effective context before each prompt, keeping BASEHARBOR_TARGET
-// in sync with the last 'baha context use' without any on-disk marker.
-func fishContextHook() string {
-	return activationPrefix("fish")
+` + contextInteractiveInstall("fish")
 }
