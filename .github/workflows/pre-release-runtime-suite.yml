@@ -303,7 +303,7 @@ jobs:
           prebuilt=(BASEHARBOR_PREBUILT_BINARY="$testonly")
         fi
         cd "$workdir"
-        env             "${prebuilt[@]}"             BASEHARBOR_SOURCE_REF="$CANDIDATE_SHA"             BASEHARBOR_RUNTIME_IMAGE="$BASEHARBOR_RUNTIME_IMAGE"             BASEHARBOR_TEST_RUNTIME="${{ inputs.runtime }}"             DEMO_ATOMIC_GATE=1             ARTIFACT_DIR="$ARTIFACT_DIR"             bash scripts/acceptance.sh "$GATE"
+        env             "${prebuilt[@]}"             BASEHARBOR_SOURCE_REF="$CANDIDATE_SHA"             BASEHARBOR_RUNTIME_IMAGE="$BASEHARBOR_RUNTIME_IMAGE"             BASEHARBOR_TEST_RUNTIME="${{ inputs.runtime }}"             BASEHARBOR_DEMO_OPERATOR_GATE="$GATE"             DEMO_ATOMIC_GATE=1             ARTIFACT_DIR="$ARTIFACT_DIR"             bash scripts/acceptance.sh "$GATE"
         if [ "$GATE" = backup-restore ] && [ "$GITHUB_EVENT_NAME" = pull_request ]; then
           cd "$GITHUB_WORKSPACE"
           test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"

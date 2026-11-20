@@ -39,6 +39,9 @@ func withCIIntegrationOperator(ctx context.Context, args []string) context.Conte
 	if err == nil && target.AccessProvider == "baseharbor-core" {
 		return ciIntegrationOperatorContext(ctx)
 	}
+	if err == nil && ciIntegrationManagedLocalGate(args, target) {
+		return ciIntegrationOperatorContext(ctx)
+	}
 	if err == nil && target.AccessProvider == "local" && target.TenantID == "" && ciIntegrationLocalCoreBootstrap(args, target) {
 		return ciIntegrationOperatorContext(ctx)
 	}
@@ -50,6 +53,33 @@ func withCIIntegrationOperator(ctx context.Context, args []string) context.Conte
 		return ctx
 	}
 	return ciIntegrationOperatorContext(ctx)
+}
+
+func ciIntegrationManagedLocalGate(args []string, target deployment.ResolvedTarget) bool {
+	gate := strings.TrimSpace(os.Getenv("BASEHARBOR_DEMO_OPERATOR_GATE"))
+	runtime := strings.TrimSpace(os.Getenv("BASEHARBOR_TEST_RUNTIME"))
+	if gate == "" || gate != strings.TrimSpace(os.Getenv("GATE")) ||
+		(runtime != "docker" && runtime != "podman") || target.Name != "atomic-"+runtime+"-"+gate ||
+		target.Name != strings.TrimSpace(os.Getenv("BASEHARBOR_TARGET")) || target.AccessProvider != "local" ||
+		target.TenantID != "" || target.RuntimeProvider != runtime {
+		return false
+	}
+	operation := cliLocalWorkloadOperation(args)
+	managedWorkload := operatorauth.LocalWorkloadOperation(operation)
+	// Recovery gates also exercise the root `down` command against the local
+	// Core. Keep this alias scoped to that explicit fixture.
+	if !managedWorkload && gate == "control-plane-recovery" && len(args) > 0 && args[0] == "down" {
+		managedWorkload = true
+	}
+	if !managedWorkload {
+		return false
+	}
+	root, err := targetRuntimeStateRoot(target)
+	if err != nil {
+		return false
+	}
+	_, err = coreinstallation.Load(root)
+	return err == nil
 }
 
 func ciIntegrationLocalCoreBootstrap(args []string, target deployment.ResolvedTarget) bool {

@@ -72,3 +72,40 @@ func TestCIIntegrationOperatorIsLimitedToRemoteCoreAndTargetBootstrap(t *testing
 		t.Fatal("CI operator escaped the disposable acceptance gate")
 	}
 }
+
+func TestCIIntegrationOperatorIsExplicitlyScopedToManagedLocalGate(t *testing.T) {
+	t.Setenv("DEMO_ATOMIC_GATE", "1")
+	t.Setenv("BASEHARBOR_TEST_RUNTIME", "docker")
+	t.Setenv("GATE", "lifecycle")
+	target := configureIsolatedEmptyRuntimeTarget(t, "atomic-docker-lifecycle", "docker")
+	t.Setenv("BASEHARBOR_TARGET", target.Name)
+	t.Setenv("BASEHARBOR_DEMO_OPERATOR_GATE", "lifecycle")
+	plan := []string{"plan"}
+	if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), plan)); ok {
+		t.Fatal("Coreless local lifecycle unexpectedly received the managed-gate operator")
+	}
+	if err := registerInstallationForTarget(t, target.Name); err != nil {
+		t.Fatalf("register local Core fixture: %v", err)
+	}
+
+	t.Setenv("BASEHARBOR_DEMO_OPERATOR_GATE", "")
+	if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), plan)); ok {
+		t.Fatal("managed local lifecycle unexpectedly received an operator without explicit gate opt-in")
+	}
+	t.Setenv("BASEHARBOR_DEMO_OPERATOR_GATE", "lifecycle")
+	if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), plan)); !ok {
+		t.Fatal("explicit managed local lifecycle gate did not receive its CI operator")
+	}
+	if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), []string{"target", "create", target.Name})); ok {
+		t.Fatal("target creation unexpectedly received the managed lifecycle operator")
+	}
+	t.Setenv("BASEHARBOR_DEMO_OPERATOR_GATE", "backup-restore")
+	if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), plan)); ok {
+		t.Fatal("mismatched gate opt-in unexpectedly received the CI operator")
+	}
+	t.Setenv("BASEHARBOR_DEMO_OPERATOR_GATE", "lifecycle")
+	t.Setenv("DEMO_ATOMIC_GATE", "0")
+	if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), plan)); ok {
+		t.Fatal("managed local gate operator escaped the atomic acceptance fixture")
+	}
+}
