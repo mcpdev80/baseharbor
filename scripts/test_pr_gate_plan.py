@@ -2880,6 +2880,18 @@ class AuthorityPackageCompletenessTests(unittest.TestCase):
         result = planner.plan(diff(paths('internal/serviceaccess/new_package/auth.go')), REQ, MAP_26)
         self.assertEqual('unresolved', result['coverage_status'])
 
+    def test_serviceaccess_policy_files_skip_unrelated_cli_runtime_tests(self):
+        for path in planner.SERVICEACCESS_POLICY_FILES:
+            for status in ('added', 'modified'):
+                with self.subTest(path=path, status=status):
+                    result = planner.plan(diff([{'path': path, 'status': status}]), REQ, MAP_26)
+                    self.assertEqual('resolved', result['coverage_status'], result)
+                    checks = {row['id'] for row in result['required_validation_checks']}
+                    self.assertTrue({'authority-package-tests', 'source-contracts'} <= checks)
+                    self.assertFalse({'go-unit-tests', 'cli-package-tests', 'cli-build',
+                                      'cli-guided-tests', 'cli-vet'} & checks)
+                    self.assertEqual([], result['selected_gates'])
+
     def test_operatorauth_source_and_tests_select_real_package_runner(self):
         for path in ('internal/operatorauth/config.go',
                      'internal/operatorauth/config_explicit_policy_test.go',
