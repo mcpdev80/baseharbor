@@ -44,12 +44,13 @@ func withCIIntegrationOperator(ctx context.Context, args []string) context.Conte
 		return ciIntegrationOperatorContext(ctx)
 	}
 	if managedGateReason := ciIntegrationManagedLocalGateReason(args, target, err); managedGateReason == "" {
-		// Root status is a read-only observation on the selected local runtime.
-		// Let the production local authority path evaluate it; a synthetic
-		// operator would switch observation to OIDC and hide runtime-grant state.
+		// Root status also performs application readiness observations that use
+		// the operator-auth boundary. Keep that path runnable in the disposable
+		// acceptance fixture with the same scoped test-only operator as other
+		// managed-gate commands; this is not evidence of a production local grant.
 		if ciIntegrationReadOnlyStatus(args) {
-			ciIntegrationOperatorTrace("managed-local-status-observation", args, target, nil)
-			return ctx
+			ciIntegrationOperatorTrace("managed-local-status-test-operator", args, target, nil)
+			return ciIntegrationOperatorContext(ctx)
 		}
 		ciIntegrationOperatorTrace("managed-local-gate", args, target, nil)
 		return ciIntegrationOperatorContext(ctx)
@@ -95,6 +96,13 @@ func ciIntegrationManagedLocalGateReason(args []string, target deployment.Resolv
 	operation := cliLocalWorkloadOperation(args)
 	managedWorkload := operatorauth.LocalWorkloadOperation(operation)
 	if !managedWorkload && ciIntegrationReadOnlyStatus(args) {
+		managedWorkload = true
+	}
+	// The observability acceptance gate reads the disposable demo workload's
+	// logs to verify its query path. Raw logs may contain secrets, so this
+	// exception exists only in the separately tagged CI binary and is limited
+	// to the exact selected gate and canonical fixture application.
+	if !managedWorkload && gate == "observability" && ciIntegrationObservabilityLogProbe(args) {
 		managedWorkload = true
 	}
 	// Root doctor inspects the control plane and is authorized as
@@ -159,6 +167,10 @@ func ciIntegrationReadOnlyStatus(args []string) bool {
 		return args[1] == "--json" || args[1] == "--output=json" || args[1] == "-ojson"
 	}
 	return len(args) == 3 && args[0] == "status" && (args[1] == "--output" || args[1] == "-o") && args[2] == "json"
+}
+
+func ciIntegrationObservabilityLogProbe(args []string) bool {
+	return len(args) == 3 && args[0] == "app" && args[1] == "logs" && args[2] == "demo-app"
 }
 
 func ciIntegrationRootInit(args []string) bool {

@@ -206,8 +206,8 @@ func TestCIIntegrationOperatorIsExplicitlyScopedToManagedLocalGate(t *testing.T)
 		if !ciIntegrationManagedLocalGate(args, target) {
 			t.Errorf("read-only root status %v was not admitted to the selected local gate", args)
 		}
-		if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), args)); ok {
-			t.Errorf("root status %v unexpectedly received a synthetic CI operator instead of using local runtime authorization", args)
+		if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), args)); !ok {
+			t.Errorf("root status %v did not receive the scoped test-only operator for application readiness", args)
 		}
 	}
 	for _, args := range [][]string{{"status", "--fix"}, {"status", "--yes"}, {"status", "--json", "--fix"}, {"status", "--output", "text"}, {"status", "-o", "json", "--fix"}} {
@@ -268,5 +268,47 @@ func TestCIIntegrationOperatorAllowsRootDestroyOnlyForGuidedGate(t *testing.T) {
 	t.Setenv("BASEHARBOR_DEMO_OPERATOR_GATE", "lifecycle")
 	if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), []string{"destroy", "--all", "--yes", "--json", "--force"})); ok {
 		t.Fatal("guided root destroy exception unexpectedly authorized noncanonical flags")
+	}
+}
+
+func TestCIIntegrationOperatorAllowsOnlyObservabilityLogProbe(t *testing.T) {
+	t.Setenv("DEMO_ATOMIC_GATE", "1")
+	t.Setenv("BASEHARBOR_TEST_RUNTIME", "docker")
+	t.Setenv("GATE", "observability")
+	t.Setenv("BASEHARBOR_DEMO_OPERATOR_GATE", "observability")
+	target := configureIsolatedEmptyRuntimeTarget(t, "atomic-docker-observability", "docker")
+	t.Setenv("BASEHARBOR_TARGET", target.Name)
+	if err := registerInstallationForTarget(t, target.Name); err != nil {
+		t.Fatalf("register local Core fixture: %v", err)
+	}
+
+	probe := []string{"app", "logs", "demo-app"}
+	if !ciIntegrationManagedLocalGate(probe, target) {
+		t.Fatal("canonical disposable observability log probe was not admitted")
+	}
+	if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), probe)); !ok {
+		t.Fatal("canonical disposable observability log probe did not receive its CI-only operator")
+	}
+
+	for _, args := range [][]string{
+		{"app", "logs", "demo-app", "--follow"},
+		{"app", "logs", "other-app"},
+		{"logs", "demo-app"},
+	} {
+		if ciIntegrationManagedLocalGate(args, target) {
+			t.Errorf("noncanonical log probe %v was admitted", args)
+		}
+		if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), args)); ok {
+			t.Errorf("noncanonical log probe %v received a CI-only operator", args)
+		}
+	}
+
+	t.Setenv("GATE", "lifecycle")
+	t.Setenv("BASEHARBOR_DEMO_OPERATOR_GATE", "lifecycle")
+	if ciIntegrationManagedLocalGate(probe, target) {
+		t.Fatal("observability log probe escaped into another selected gate")
+	}
+	if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), probe)); ok {
+		t.Fatal("observability log probe received an operator in another selected gate")
 	}
 }
