@@ -128,17 +128,9 @@ func appCredsCommand(store application.Store) *cli.Command {
 				fmt.Fprintf(out, "USERNAME=%s\n", binding.Username)
 			}
 			if reveal {
-				// Fail-closed audit (access-wizard slice): the human --reveal
-				// path is the single clearest secret-exposure deviation in the
-				// identity/access surface (audit-access F1 / contract v1 §9).
-				// The value was already authorized by resolveAccessBinding
-				// (app.connection); the per-reveal audit records WHO revealed
-				// WHAT for accountability without leaking the secret into the
-				// event. A recording failure is carried on errOut but does not
-				// hide an already-authorized value — audit is not a second
-				// authorization gate here.
+				// Record the audit event before releasing credential values.
 				if err := recordConnectionRevealAudit(ctx, resolved, kind, binding.Instance); err != nil {
-					fmt.Fprintln(errOut, err)
+					return fmt.Errorf("record connection reveal audit: %w", err)
 				}
 				fmt.Fprintf(out, "PASSWORD=%s\nURI=%s\n", binding.Password, binding.URI)
 			} else {
@@ -227,12 +219,8 @@ func appExecCommand(store application.Store) *cli.Command {
 }
 
 // recordConnectionRevealAudit appends a per-reveal audit event for the human
-// `baha app creds --reveal` path. It mirrors recordApplicationAudit for the
-// identity/access slice: the value was already authorized by
-// resolveAccessBinding (app.connection), so this records accountability
-// (who revealed what, on which target/app/environment/capability) without
-// writing the secret into the event. Best-effort — a recording failure is
-// returned so the caller can surface it, but it is not a second authorization.
+// `baha app creds --reveal` path. It records who revealed what, on which
+// target/app/environment/capability, without writing the secret into the event.
 func recordConnectionRevealAudit(ctx context.Context, resolved resolvedApplication, kind, instance string) error {
 	event := evidence.NewAuditEvent(
 		ctx,

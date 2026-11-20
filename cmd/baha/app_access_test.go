@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -132,6 +133,53 @@ func TestAppCredsRevealWritesPerRevealAuditEvent(t *testing.T) {
 	}
 	if strings.Contains(out.String(), "PASSWORD=") {
 		t.Fatalf("JSON --reveal leaked the secret: %q", out.String())
+	}
+}
+
+func TestAppCredsRevealFailsClosedWhenAuditWriteFails(t *testing.T) {
+	target := configureTestTarget(t)
+	t.Setenv(application.ProviderScopeEnv(capability.ProviderPostgreSQL), string(capability.ScopeApplication))
+	dir := t.TempDir()
+	old, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(old)
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+
+	m := application.New("demo", "dev", true, false, false)
+	store := testDeploymentStore(t, target, m)
+	if _, err := store.Create(m); err != nil {
+		t.Fatal(err)
+	}
+	registerTestDeployment(t, target, m, "", "")
+	if _, err := application.EnsureRuntime(context.Background(), serviceissuer.New(t), store, m); err != nil {
+		t.Fatal(err)
+	}
+	targetStateRoot, err := deployment.TargetStateRoot(target.Name)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Make the audit directory path unusable after the credential binding is
+	// ready, so the reveal audit fails before the command can print a secret.
+	auditPath := filepath.Join(targetStateRoot, "evidence")
+	if err := os.RemoveAll(auditPath); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(auditPath, []byte("not a directory"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var out, errOut bytes.Buffer
+	err = runWithIO(context.Background(), []string{"app", "creds", "postgres", "default", "--app", "demo", "--reveal"}, &out, &errOut)
+	if err == nil {
+		t.Fatal("expected connection reveal to fail when its audit event cannot be written")
+	}
+	if strings.Contains(out.String(), "PASSWORD=") || strings.Contains(out.String(), "URI=") {
+		t.Fatalf("connection secret was emitted despite the audit failure (output length %d)", out.Len())
 	}
 }
 
