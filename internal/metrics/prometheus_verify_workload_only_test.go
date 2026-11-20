@@ -3,6 +3,7 @@ package metrics
 import (
 	"context"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -95,6 +96,83 @@ func TestVerifyProviderAndApplicationSourcesSkipsOnlySnapshotMetadata(t *testing
 	}
 	if strings.Contains(joined, logicalID) {
 		t.Fatalf("queries %q include snapshot-only workload source %q", joined, logicalID)
+	}
+}
+
+// 0428-203 regression: a same-ID application-class source that switches from a
+// verifying Verification mode to VerificationNone must no longer carry its
+// previously emitted scrape target in the exported surface. Asserted through
+// the real exported TargetsDir, not an internal helper. The verifier wait
+// semantics (0428-143) are unchanged: this asserts only the exported target set.
+func TestVerifyApplicationSourceVerificationNoneRetiresPreviouslyEmitted(t *testing.T) {
+	stateDir := t.TempDir()
+	t.Setenv("BASEHARBOR_STATE_DIR", stateDir)
+	t.Setenv(application.MetricsEnabledEnv, "true")
+	t.Setenv(application.ProviderScopeEnv(capability.ProviderPrometheus), "application")
+
+	m := application.WithWorkloadComponents(application.New("alpha", "dev", false, false, false), "api")
+	issuer := serviceissuer.New(t)
+
+	const srcID = "application:metrics:alpha:dev:declared"
+	register := func(capability.ObservabilityVerificationMode) {
+		if err := observability.Update(observability.MetricsSource{
+			ID:               srcID,
+			Provider:         capability.ProviderPrometheus,
+			Class:            observability.SourceApplication,
+			Scope:            capability.ScopeApplication,
+			OwnerApplication: m.Name,
+			Network:          application.MetricsProviderNetworkNameForNamespace(m, ""),
+			Target:           application.MetricsTargetAliasFor(m.Name, m.Environment, "api") + ":8080",
+			Path:             "/metrics",
+			Verification:     capability.ObservabilityVerifyBackend,
+		}); err != nil {
+			t.Fatalf("register source: %v", err)
+		}
+	}
+
+	// 1. Emit the target under a verifying mode through the real exporter.
+	register(capability.ObservabilityVerifyBackend)
+	files, err := EnsureProviderFiles(context.Background(), issuer, m)
+	if err != nil {
+		t.Fatalf("EnsureProviderFiles (verifying): %v", err)
+	}
+	emittedName := appTargetFileName(observability.MetricsSource{ID: srcID})
+	if _, err := os.Stat(filepath.Join(files.TargetsDir, emittedName)); err != nil {
+		t.Fatalf("expected emitted target present in exported surface: %v", err)
+	}
+
+	// 2. Switch the SAME id to Verification=none.
+	if err := observability.Update(observability.MetricsSource{
+		ID:               srcID,
+		Provider:         capability.ProviderPrometheus,
+		Class:            observability.SourceApplication,
+		Scope:            capability.ScopeApplication,
+		OwnerApplication: m.Name,
+		Network:          application.MetricsProviderNetworkNameForNamespace(m, ""),
+		Target:           application.MetricsTargetAliasFor(m.Name, m.Environment, "api") + ":8080",
+		Path:             "/metrics",
+		Verification:     capability.ObservabilityVerifyNone,
+	}); err != nil {
+		t.Fatalf("switch source to none: %v", err)
+	}
+	after, err := EnsureProviderFiles(context.Background(), issuer, m)
+	if err != nil {
+		t.Fatalf("EnsureProviderFiles (none): %v", err)
+	}
+
+	// 3. Assert the previously emitted target is gone from the exported surface.
+	entries, err := os.ReadDir(after.TargetsDir)
+	if err != nil {
+		t.Fatalf("read exported surface: %v", err)
+	}
+	for _, entry := range entries {
+		if entry.Name() == emittedName {
+			t.Fatalf("stale emitted target %q still present after switch to Verification=none", emittedName)
+		}
+	}
+	// The exporter must not write a new file for the none source either.
+	if _, err := os.Stat(filepath.Join(after.TargetsDir, emittedName)); !os.IsNotExist(err) {
+		t.Fatalf("none source produced a target file: %v", err)
 	}
 }
 
