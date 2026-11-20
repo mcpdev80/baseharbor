@@ -89,6 +89,10 @@ Inspect current data with `baha agent describe -o json` (`cli_coverage`). Update
 | `baha config prompt` | presentation |  |  | Client-local shell prompt display preferences; explicit target arguments and target inspection provide semantic context. |
 | `baha connect` | semantic | CLI -o json / typed MCP result | baseharbor.connectivity.connect |  |
 | `baha connections` | semantic | CLI -o json / typed MCP result | baseharbor.connectivity.list |  |
+| `baha context` | presentation |  |  | Command group; invoke its supported subcommands. |
+| `baha context clear` | presentation |  |  | Process-level unset of the per-terminal BASEHARBOR_TARGET plus a hint; nothing is persisted, so machine clients simply omit --target to resolve configured defaults. |
+| `baha context show` | presentation |  |  | Repository-bound presentation of the effective per-terminal selection and the winning precedence level (explicit flag, shell-env, or configured default); machine clients read the same decision through their own explicit-argument resolution. |
+| `baha context use` | presentation |  |  | Emits the shell snippet that sets BASEHARBOR_TARGET for the current shell process only; no on-disk state. The per-terminal value lives in the shell-process environment (carried via the completion hook); machine clients resolve the same precedence through explicit --target, the BASEHARBOR_TARGET env, or the configured default target. |
 | `baha destroy` | semantic | CLI -o json / typed MCP result | baseharbor.control-plane.destroy | Always targets complete installation destruction regardless of repository; use baha app destroy for one application and baha down to stop Core services. Authorizes every discovered deployment. All destruction retains ownership checks and explicit approval. |
 | `baha dev` | presentation |  |  | Command group; invoke its supported subcommands. |
 | `baha dev cleanup` | excluded |  |  | Workstation-local removal of owned hosts and CA trust, preserving other connections; explicit host operator approval required. No Core or application mutation. |
