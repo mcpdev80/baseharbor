@@ -55,22 +55,24 @@ func activationSnippet(shell, target, envVar string) string {
 // shell uses its native function mechanism; bash and zsh are distinguished (a
 // single Bash string must not be reused for zsh). The body always calls the
 // real program with 'command', never a bare 'baha', so the recursion guard
-// holds. The wrapper parses 'context show' output to recover the target the
-// user just set, then exports it in the parent shell.
+// holds. For `context use`, it evaluates the sourceable snippet returned by
+// that same invocation; it never re-queries the old effective context.
 func contextWrapperBody(shell string) string {
 	switch shell {
 	case "fish":
 		return strings.Join([]string{
 			"function _baha_context_wrapper",
 			"    set -l _baha_argv $argv",
-			"    command -- baha $_baha_argv",
-			"    set -e _baha_argv",
-			"    set -l _baha_ctx (baha context show 2>/dev/null | sed -n 's/^Effective context: //p')",
-			"    if test -n \"$_baha_ctx\"",
-			"        set -gx BASEHARBOR_TARGET \"$_baha_ctx\"",
-			"    else",
+			"    set -l _baha_out (command -- baha $_baha_argv)",
+			"    set -l _baha_status $status",
+			"    printf '%s\\n' $_baha_out",
+			"    if test \"$_baha_status\" -eq 0; and test (count $_baha_argv) -ge 3; and test $_baha_argv[1] = context; and test $_baha_argv[2] = use",
+			"        eval (string join \\n -- $_baha_out)",
+			"    else if test \"$_baha_status\" -eq 0; and test (count $_baha_argv) -ge 2; and test $_baha_argv[1] = context; and test $_baha_argv[2] = clear",
 			"        set -e BASEHARBOR_TARGET",
 			"    end",
+			"    set -e _baha_argv _baha_out",
+			"    return $_baha_status",
 			"end",
 			"function baha --wraps _baha_context_wrapper --commands --description \"wrap baha for per-terminal context\"",
 			"    _baha_context_wrapper $argv",
@@ -81,22 +83,18 @@ func contextWrapperBody(shell string) string {
 			"_baha_context_wrapper() {",
 			"    local _baha_out",
 			"    _baha_out=\"$(command baha \"$@\")\"",
-			"    case \"$*\" in",
-			"        *context\\ use*)",
-			"            local _baha_ctx",
-			"            _baha_ctx=\"$(command baha context show 2>/dev/null | sed -n 's/^Effective context: //p')\"",
-			"            if [ -n \"$_baha_ctx\" ]; then",
-			"                export BASEHARBOR_TARGET=\"$_baha_ctx\"",
-			"            else",
-			"                unset BASEHARBOR_TARGET",
-			"            fi",
+			"    local _baha_status=$?",
+			"    case \"$1:$2\" in",
+			"        context:use)",
+			"            if [ $_baha_status -eq 0 ]; then eval \"$_baha_out\"; fi",
 			"            ;;",
-			"        *context\\ clear*)",
-			"            unset BASEHARBOR_TARGET",
+			"        context:clear)",
+			"            if [ $_baha_status -eq 0 ]; then unset BASEHARBOR_TARGET; fi",
 			"            ;;",
 			"    esac",
 			"    printf '%s\\n' \"$_baha_out\"",
 			"    unset _baha_out",
+			"    return $_baha_status",
 			"}",
 			"if ! type -t baha >/dev/null 2>&1 || [ \"$(type -t baha)\" != function ]; then",
 			"    baha() { _baha_context_wrapper \"$@\"; }",

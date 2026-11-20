@@ -9,8 +9,10 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/cli"
+	"github.com/mcpdev80/baseharbor/internal/deployment"
 )
 
 // context_terminal_test.go — tests for card 0428-068 (per-terminal context).
@@ -120,12 +122,34 @@ func TestContextPrecedenceTerminalEnvWinsOverDefault(t *testing.T) {
 func TestContextPrecedenceDefaultFallback(t *testing.T) {
 	configureTestTarget(t)
 	os.Unsetenv(contextShellVar)
+	if err := writePersistedTarget("docker-dev"); err != nil {
+		t.Fatal(err)
+	}
 	origin, target, err := effectiveContextOrigin(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if target != "docker-dev" || origin != "configured-default" {
-		t.Fatalf("configured-default should win with no terminal env, got target=%q origin=%q", target, origin)
+	if target != "docker-dev" || origin != "persisted" {
+		t.Fatalf("existing persisted selection should be the fallback, got target=%q origin=%q", target, origin)
+	}
+}
+
+func TestContextSelectionFailsClosedForAmbiguousTargets(t *testing.T) {
+	configureTestTarget(t)
+	cfg, err := deployment.LoadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.DefaultTarget = ""
+	other := cfg.Targets["docker-dev"]
+	other.TargetUID = mustNewTargetUIDFixture(t)
+	cfg.Targets["docker-other"] = other
+	if err := cfg.Save(); err != nil {
+		t.Fatal(err)
+	}
+	os.Unsetenv(contextShellVar)
+	if _, _, err := effectiveContextOrigin(context.Background()); err == nil {
+		t.Fatal("context show must use the normal fail-closed selection when several targets have no selection")
 	}
 }
 
@@ -200,6 +224,9 @@ func TestContextWrapperCallsRealCommandViaCommand(t *testing.T) {
 	fishBody := contextWrapperBody("fish")
 	if !strings.Contains(fishBody, "command -- baha") {
 		t.Fatalf("fish wrapper must call 'command -- baha' (recursion guard):\n%s", fishBody)
+	}
+	if strings.Contains(fishBody, "(baha context show") {
+		t.Fatalf("fish wrapper must not call its own function recursively:\n%s", fishBody)
 	}
 }
 
@@ -327,6 +354,7 @@ func TestEndToEndBashInteractiveContextUseAndClear(t *testing.T) {
 	bin, cleanup := buildBahaBin(t)
 	defer cleanup()
 	cfg := configureTestTarget(t) // sets XDG_CONFIG_HOME/HOME with a docker-dev target
+	configureSecondContextTarget(t)
 
 	// Generate the bash wrapper.
 	var complete bytes.Buffer
@@ -344,12 +372,16 @@ func TestEndToEndBashInteractiveContextUseAndClear(t *testing.T) {
 	driver := strings.Join([]string{
 		"export PATH=" + binDir(bin) + ":$PATH",
 		". " + setupFile,
-		"before=\"${" + contextShellVar + ":-<empty>}\"",
-		"baha context use " + cfg.Name + " >/dev/null 2>&1 || true",
+		"export " + contextShellVar + "=" + cfg.Name,
+		"baha context use --invalid >/dev/null 2>&1; use_status=$?",
+		"baha context clear --invalid >/dev/null 2>&1; clear_status=$?",
+		"preserved=\"${" + contextShellVar + ":-<empty>}\"",
+		"baha context use prod >/dev/null 2>&1 || exit 41",
 		"after=\"${" + contextShellVar + ":-<empty>}\"",
-		"baha context clear >/dev/null 2>&1 || true",
+		"baha context clear >/dev/null 2>&1 || exit 42",
 		"cleared=\"${" + contextShellVar + ":-<empty>}\"",
 		"printf 'AFTER_IS=%s\\n' \"$after\"",
+		"printf 'USE_STATUS=%s CLEAR_STATUS=%s PRESERVED=%s\\n' \"$use_status\" \"$clear_status\" \"$preserved\"",
 		"printf 'CLEARED_IS=%s\\n' \"$cleared\"",
 	}, "\n")
 	driverFile := filepath.Join(t.TempDir(), "driver.sh")
@@ -365,12 +397,136 @@ func TestEndToEndBashInteractiveContextUseAndClear(t *testing.T) {
 		t.Fatalf("bash -i: %v\nstderr:\n%s", err, stderr.String())
 	}
 	out := stdout.String()
-	if !strings.Contains(out, "AFTER_IS="+cfg.Name) {
-		t.Fatalf("after 'context use', parent shell must see %q, got:\n%s", cfg.Name, out)
+	if !strings.Contains(out, "AFTER_IS=prod") {
+		t.Fatalf("after 'context use prod', parent shell must see the requested target, got:\n%s", out)
+	}
+	if !strings.Contains(out, "USE_STATUS=2 CLEAR_STATUS=2 PRESERVED=docker-dev") {
+		t.Fatalf("wrapper must preserve CLI failure status and keep the prior selection on failed commands, got:\n%s", out)
 	}
 	if !strings.Contains(out, "CLEARED_IS=<empty>") {
 		t.Fatalf("after 'context clear', parent shell must see unset, got:\n%s", out)
 	}
+
+	// A second independent shell starts from the configured default. The first
+	// shell's `prod` selection must not leak into it.
+	secondDriver := strings.Join([]string{
+		"export PATH=" + binDir(bin) + ":$PATH",
+		". " + setupFile,
+		"test -z \"${" + contextShellVar + ":-}\" || exit 43",
+		"baha context show",
+	}, "\n")
+	secondFile := filepath.Join(t.TempDir(), "second-driver.sh")
+	if err := os.WriteFile(secondFile, []byte(secondDriver), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	second := exec.Command("bash", "-i", secondFile)
+	second.Env = envWithout(os.Environ(), contextShellVar)
+	var secondOut, secondErr bytes.Buffer
+	second.Stdout, second.Stderr = &secondOut, &secondErr
+	if err := second.Run(); err != nil {
+		t.Fatalf("second independent bash: %v\nstderr:\n%s", err, secondErr.String())
+	}
+	if !strings.Contains(secondOut.String(), "Effective context: docker-dev (configured-default)") {
+		t.Fatalf("second shell must retain its own default context, got:\n%s", secondOut.String())
+	}
+}
+
+func TestEndToEndInstalledZshAndFishWrappers(t *testing.T) {
+	for _, shell := range []string{"zsh", "fish"} {
+		shellPath, err := exec.LookPath(shell)
+		if err != nil {
+			t.Logf("%s is not installed; generated wrapper remains covered structurally", shell)
+			continue
+		}
+		bin, cleanup := buildBahaBin(t)
+		cfg := configureTestTarget(t)
+		configureSecondContextTarget(t)
+		setup := runCompletionForShell(t, shell)
+		setupFile := filepath.Join(t.TempDir(), "context-"+shell+".fish")
+		if err := os.WriteFile(setupFile, []byte(setup), 0o644); err != nil {
+			cleanup()
+			t.Fatal(err)
+		}
+		var driver string
+		var args []string
+		if shell == "zsh" {
+			driver = strings.Join([]string{
+				"export PATH=" + binDir(bin) + ":$PATH",
+				"source " + setupFile,
+				"export " + contextShellVar + "=" + cfg.Name,
+				"baha context clear --invalid >/dev/null 2>&1; clear_status=$?",
+				"preserved=$" + contextShellVar,
+				"baha context use prod",
+				"print -r -- AFTER=$" + contextShellVar,
+				"baha context clear",
+				"print -r -- CLEARED=${" + contextShellVar + ":-EMPTY} CLEAR_STATUS=$clear_status PRESERVED=$preserved",
+			}, "\n")
+			args = []string{"-f", "-i"}
+		} else {
+			setupFile = filepath.Join(filepath.Dir(setupFile), "context-fish.fish")
+			if err := os.WriteFile(setupFile, []byte(setup), 0o644); err != nil {
+				cleanup()
+				t.Fatal(err)
+			}
+			driver = strings.Join([]string{
+				"set -gx PATH " + binDir(bin) + " $PATH",
+				"source " + setupFile,
+				"set -gx " + contextShellVar + " " + cfg.Name,
+				"baha context clear --invalid >/dev/null 2>&1; set -l clear_status $status",
+				"set -l preserved $" + contextShellVar,
+				"baha context use prod",
+				"echo AFTER=$" + contextShellVar,
+				"baha context clear",
+				"if set -q " + contextShellVar + "; echo CLEARED=unexpected; else; echo CLEARED=EMPTY; end",
+				"echo CLEAR_STATUS=$clear_status PRESERVED=$preserved",
+			}, "\n")
+			args = []string{"--no-config", "-i"}
+		}
+		driverFile := filepath.Join(t.TempDir(), "driver-"+shell)
+		if err := os.WriteFile(driverFile, []byte(driver), 0o644); err != nil {
+			cleanup()
+			t.Fatal(err)
+		}
+		args = append(args, driverFile)
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		cmd := exec.CommandContext(ctx, shellPath, args...)
+		cmd.Env = envWithout(os.Environ(), contextShellVar)
+		var stdout, stderr bytes.Buffer
+		cmd.Stdout, cmd.Stderr = &stdout, &stderr
+		err = cmd.Run()
+		cancel()
+		cleanup()
+		if err != nil {
+			t.Fatalf("%s wrapper: %v\nstdout:\n%s\nstderr:\n%s", shell, err, stdout.String(), stderr.String())
+		}
+		if !strings.Contains(stdout.String(), "AFTER=prod") || !strings.Contains(stdout.String(), "CLEARED=EMPTY") || !strings.Contains(stdout.String(), "CLEAR_STATUS=2") || !strings.Contains(stdout.String(), "PRESERVED=docker-dev") {
+			t.Fatalf("%s wrapper must apply use and clear in the parent shell; got:\n%s\nstderr:\n%s", shell, stdout.String(), stderr.String())
+		}
+	}
+}
+
+func configureSecondContextTarget(t *testing.T) {
+	t.Helper()
+	cfg, err := deployment.LoadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	definition := cfg.Targets["docker-dev"]
+	definition.TargetUID = mustNewTargetUIDFixture(t)
+	cfg.Targets["prod"] = definition
+	if err := cfg.Save(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func envWithout(env []string, name string) []string {
+	filtered := make([]string, 0, len(env)+1)
+	for _, entry := range env {
+		if !strings.HasPrefix(entry, name+"=") {
+			filtered = append(filtered, entry)
+		}
+	}
+	return filtered
 }
 
 // buildBahaBin compiles the baha binary into a temp dir and returns its path and

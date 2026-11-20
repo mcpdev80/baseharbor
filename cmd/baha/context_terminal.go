@@ -188,24 +188,33 @@ func effectiveContextOrigin(ctx context.Context) (string, string, error) {
 	if override := targetOverrideFromContext(ctx); override != "" {
 		return "explicit-flag", override, nil
 	}
-	if env := strings.TrimSpace(os.Getenv(contextShellVar)); env != "" {
-		if targetExists(env) {
-			return "shell-env", env, nil
-		}
-	}
 	cfg, err := deployment.LoadConfig()
 	if err != nil {
 		return "", "", err
 	}
-	if cfg.DefaultTarget != "" && targetExists(cfg.DefaultTarget) {
-		return "configured-default", cfg.DefaultTarget, nil
+	env := strings.TrimSpace(os.Getenv(contextShellVar))
+	selected, err := selectedTargetName("", env, cfg)
+	if err != nil {
+		return "", "", err
 	}
-	if len(cfg.Targets) == 1 {
-		for name := range cfg.Targets {
-			return "unique-configured", name, nil
-		}
+	if selected == "" {
+		return "", "", nil
 	}
-	return "", "", nil
+	if env != "" {
+		return "shell-env", selected, nil
+	}
+	if persisted, persistErr := readPersistedTarget(); persistErr != nil {
+		return "", "", persistErr
+	} else if persisted != "" && selected == persisted {
+		return "persisted", selected, nil
+	}
+	if selected == cfg.DefaultTarget {
+		return "configured-default", selected, nil
+	}
+	if selected == "local" {
+		return "implicit-local", selected, nil
+	}
+	return "unique-configured", selected, nil
 }
 
 // targetExists reports whether name is a configured target, without full
