@@ -65,6 +65,7 @@ type SignalSource struct {
 	Network            string                                   `json:"network,omitempty"`
 	Target             string                                   `json:"target"`
 	Protocol           string                                   `json:"protocol"`
+	Scheme             string                                   `json:"scheme,omitempty"`
 	Path               string                                   `json:"path,omitempty"`
 	Mode               capability.ObservabilityRealizationMode  `json:"mode,omitempty"`
 	SemanticConvention string                                   `json:"semantic_convention,omitempty"`
@@ -95,6 +96,9 @@ func (s SignalSource) Validate() error {
 	}
 	switch s.Kind {
 	case SignalMetrics:
+		if s.Scheme != "" && s.Scheme != "http" && s.Scheme != "https" {
+			return fmt.Errorf("unsupported observability metrics scheme %q", s.Scheme)
+		}
 		if strings.TrimSpace(s.Network) == "" || !strings.HasPrefix(strings.TrimSpace(s.Path), "/") {
 			return errors.New("observability metrics source requires network and absolute path")
 		}
@@ -131,6 +135,7 @@ type MetricsSource struct {
 	Path             string
 	Scheme           string
 	Security         Security
+	Verification     capability.ObservabilityVerificationMode `json:"-"`
 }
 
 func (s MetricsSource) Validate() error {
@@ -143,13 +148,14 @@ func (s MetricsSource) signal() SignalSource {
 		scheme = "http"
 	}
 	security := s.Security
-	if scheme == "https" {
+	if scheme == "https" && s.Class != SourceApplication {
 		security.TLSRequired = true
 	}
 	return SignalSource{
 		ID: s.ID, Kind: SignalMetrics, Provider: s.Provider, Class: s.Class,
 		Scope: s.Scope, SharingBoundary: s.SharingBoundary, OwnerApplication: s.OwnerApplication,
-		Network: s.Network, Target: s.Target, Protocol: "openmetrics", Path: s.Path, Security: security,
+		Network: s.Network, Target: s.Target, Protocol: "openmetrics", Scheme: scheme, Path: s.Path,
+		Verification: s.Verification, Security: security,
 	}
 }
 
@@ -271,6 +277,45 @@ func ParseRuntimeTarget(target string) (project, service string, ok bool) {
 	return project, service, true
 }
 
+// PruneProviderSignals removes the named signal kinds from exactly one source
+// identity without touching its other signals. Registry entries are read-
+// modify-written as a whole file, so this is the mechanism a caller uses when
+// one signal of one identity is no longer valid while the rest of the
+// registration stands.
+//
+// The predicate carries the full registration key: RegisterProviderSignals
+// replaces entries by ID plus provider, so IDs are only unique per provider.
+// Matching the provider as well keeps a same-ID registration made by another
+// provider, environment or owner application untouched.
+func PruneProviderSignals(id string, provider capability.ProviderKind, kinds ...SignalKind) error {
+	return pruneSignals(func(source SignalSource) bool {
+		return source.ID == id && source.Provider == provider
+	}, kinds)
+}
+
+func pruneSignals(owned func(SignalSource) bool, kinds []SignalKind) error {
+	path, err := registryPath()
+	if err != nil {
+		return err
+	}
+	drop := map[SignalKind]struct{}{}
+	for _, kind := range kinds {
+		drop[kind] = struct{}{}
+	}
+	return mutate(path, func(sources []SignalSource) ([]SignalSource, error) {
+		out := sources[:0]
+		for _, source := range sources {
+			if owned(source) {
+				if _, unwanted := drop[source.Kind]; unwanted {
+					continue
+				}
+			}
+			out = append(out, source)
+		}
+		return out, nil
+	})
+}
+
 func PruneOwnedProviderInstances(provider capability.ProviderKind, class SourceClass, scope capability.ProviderScope, ownerApplication string, keepIDs map[string]struct{}) error {
 	path, err := registryPath()
 	if err != nil {
@@ -335,14 +380,49 @@ func UpdateSignal(source SignalSource) error {
 	})
 }
 
+// ReconcileSignals replaces every signal of one source identity with the
+// desired set, in one atomic registry mutation.
+//
+// Registry IDs are only unique per provider: RegisterProviderSignals keys
+// entry replacement on ID plus provider, so the same identity string can
+// legitimately exist under two providers (for example a shared collector
+// source and an external-OTLP registration). Reconciliation therefore scopes
+// removal to the providers the identity is owned by, and a same-ID
+// registration under another provider is never touched.
 func ReconcileSignals(id string, desired []SignalSource) error {
+	owned := map[capability.ProviderKind]struct{}{}
+	for i := range desired {
+		if desired[i].Provider == "" {
+			return fmt.Errorf("observability signal reconciliation source %q has no provider", id)
+		}
+		owned[desired[i].Provider] = struct{}{}
+	}
+	return ReconcileProviderSignals(id, owned, desired)
+}
+
+// ReconcileProviderSignals is the explicit-ownership form of ReconcileSignals:
+// the owned set names every provider whose registrations of this ID the caller
+// replaces, independently of the desired set. A caller whose policy disables
+// all of an identity's signals passes an empty desired set together with the
+// provider it manages - the stale signals of exactly that provider are then
+// reclaimed while same-ID registrations of foreign providers stay untouched.
+// Each desired signal's provider must be inside the owned set.
+func ReconcileProviderSignals(id string, owned map[capability.ProviderKind]struct{}, desired []SignalSource) error {
 	id = strings.TrimSpace(id)
 	if id == "" {
 		return errors.New("observability signal reconciliation requires id")
 	}
+	for kind := range owned {
+		if kind == "" {
+			return fmt.Errorf("observability signal reconciliation id %q names an empty provider", id)
+		}
+	}
 	for i := range desired {
 		if desired[i].ID != id {
 			return fmt.Errorf("observability signal reconciliation id %q does not match source id %q", id, desired[i].ID)
+		}
+		if _, ok := owned[desired[i].Provider]; !ok {
+			return fmt.Errorf("observability signal reconciliation source %q has a provider outside the owned set", id)
 		}
 		if err := desired[i].Validate(); err != nil {
 			return err
@@ -355,13 +435,77 @@ func ReconcileSignals(id string, desired []SignalSource) error {
 	return mutate(path, func(sources []SignalSource) ([]SignalSource, error) {
 		out := sources[:0]
 		for _, source := range sources {
-			if source.ID != id {
-				out = append(out, source)
+			if _, taken := owned[source.Provider]; source.ID == id && taken {
+				continue
 			}
+			out = append(out, source)
 		}
 		out = append(out, desired...)
 		return out, nil
 	})
+}
+
+// ReconcileMatching replaces exactly the registry entries a caller-owned
+// predicate selects with the desired set, in one atomic mutation. It is the
+// predicate form of ReconcileProviderSignals for identity spaces that are not
+// keyed on ID plus provider: the class-application workload log signals are one
+// such space, where the reconciliation boundary is the ID prefix of an
+// application/environment, so neither the ID-keyed reconciles nor a provider
+// claim (which would delete the metrics twin of the same workload) fit.
+// Entries the predicate does not select are never touched, and every desired
+// source must satisfy the predicate itself - a caller cannot widen the boundary
+// of what it replaces by passing foreign entries alongside its own.
+func ReconcileMatching(owned func(SignalSource) bool, desired []SignalSource) error {
+	if owned == nil {
+		return errors.New("observability signal reconciliation requires a predicate")
+	}
+	for i := range desired {
+		if err := desired[i].Validate(); err != nil {
+			return err
+		}
+		if !owned(desired[i]) {
+			return fmt.Errorf("observability signal reconciliation source %q lies outside the owned predicate", desired[i].ID)
+		}
+	}
+	path, err := registryPath()
+	if err != nil {
+		return err
+	}
+	return mutate(path, func(sources []SignalSource) ([]SignalSource, error) {
+		out := sources[:0]
+		for _, source := range sources {
+			if owned(source) {
+				continue
+			}
+			out = append(out, source)
+		}
+		out = append(out, desired...)
+		return out, nil
+	})
+}
+
+// RegistryHasSignal reports whether the registry still carries one exact
+// signal registration. Unlike the placement-filtered listings it sees every
+// provider and owner under an ID, so reconciliation and prune contracts - and
+// their tests - assert retention and reclamation through it.
+func RegistryHasSignal(id string, provider capability.ProviderKind, kind SignalKind) (bool, error) {
+	path, err := registryPath()
+	if err != nil {
+		return false, err
+	}
+	sources, err := read(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	for _, source := range sources {
+		if source.ID == id && source.Provider == provider && source.Kind == kind {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func Remove(id string) error {
@@ -380,7 +524,7 @@ func Remove(id string) error {
 	})
 }
 
-func List(kind SignalKind, placement capability.ProviderPlacement, applications []string, includeApplicationProviders, includePlatformProviders bool) ([]SignalSource, error) {
+func List(kind SignalKind, placement capability.ProviderPlacement, applications []string, includeApplicationSources, includeApplicationProviders, includePlatformProviders bool, requestedEnvironment string) ([]SignalSource, error) {
 	path, err := registryPath()
 	if err != nil {
 		return nil, err
@@ -405,7 +549,9 @@ func List(kind SignalKind, placement capability.ProviderPlacement, applications 
 		}
 		switch source.Class {
 		case SourceApplication:
-			continue
+			if !includeApplicationSources {
+				continue
+			}
 		case SourceApplicationProvider:
 			if !includeApplicationProviders {
 				continue
@@ -414,6 +560,17 @@ func List(kind SignalKind, placement capability.ProviderPlacement, applications 
 			if !includePlatformProviders {
 				continue
 			}
+		}
+		// Central environment filter (card 0428-121, route 2): only an
+		// app-scoped caller is scoped to a single environment, so the
+		// comparing guard applies there — an app-scoped source is visible only
+		// when it resolves to the caller's requested environment. A source whose
+		// environment cannot be resolved or resolves elsewhere is excluded
+		// (fail-closed) — no cross-environment visibility leak. Shared-platform
+		// callers are not environment-scoped: they aggregate the allowed app
+		// sources under the shared/platform boundary rule applied downstream.
+		if placement.Scope == capability.ScopeApplication && source.Scope == capability.ScopeApplication && !SourceMatchesEnvironment(source, requestedEnvironment) {
+			continue
 		}
 		switch placement.Scope {
 		case capability.ScopeShared:
@@ -441,29 +598,107 @@ func List(kind SignalKind, placement capability.ProviderPlacement, applications 
 	return out, nil
 }
 
-func ListLogs(placement capability.ProviderPlacement, applications []string, includeApplicationProviders, includePlatformProviders bool) ([]SignalSource, error) {
-	return List(SignalLogs, placement, applications, includeApplicationProviders, includePlatformProviders)
+func ListLogs(placement capability.ProviderPlacement, applications []string, includeApplicationProviders, includePlatformProviders bool, requestedEnvironment string) ([]SignalSource, error) {
+	return List(SignalLogs, placement, applications, false, includeApplicationProviders, includePlatformProviders, requestedEnvironment)
 }
 
-func ListTraces(placement capability.ProviderPlacement, applications []string, includeApplicationProviders, includePlatformProviders bool) ([]SignalSource, error) {
-	return List(SignalTraces, placement, applications, includeApplicationProviders, includePlatformProviders)
+func ApplicationMetricsSourceID(application, environment, source string) string {
+	return "application:metrics:" + strings.TrimSpace(application) + ":" + strings.TrimSpace(environment) + ":" + strings.TrimSpace(source)
 }
 
-func ListMetrics(placement capability.ProviderPlacement, applications []string, includeApplicationProviders, includePlatformProviders bool) ([]MetricsSource, error) {
-	signals, err := List(SignalMetrics, placement, applications, includeApplicationProviders, includePlatformProviders)
+// SourceMatchesEnvironment is the single source-driven environment predicate of
+// the list surface (card 0428-121, route 2): an app-scoped source is visible
+// only when it resolves to an explicit or unambiguously derivable environment
+// that equals the caller's requested environment (case-normalised). The
+// requested environment is the owning application's manifest environment — the
+// capability ProviderPlacement carries none on this base, so no caller passes
+// one and the dimension is threaded through the list wrappers explicitly. A
+// source whose environment cannot be resolved, or resolves to a different or
+// ambiguous environment (for example a hyphenated legacy "prod-west" read as
+// "west", or a reserved project token), fails closed: it appears in no single
+// environment result instead of leaking into another. Shared/platform sources
+// are not environment-scoped here; they keep the shared/platform boundary rule
+// applied downstream.
+func SourceMatchesEnvironment(source SignalSource, requestedEnvironment string) bool {
+	requestedEnvironment = strings.TrimSpace(requestedEnvironment)
+	environment, ok := SourceEnvironment(source)
+	if !ok {
+		return false
+	}
+	return strings.ToLower(environment) == strings.ToLower(requestedEnvironment)
+}
+
+func PruneApplicationMetrics(application, environment string, keepIDs map[string]struct{}) error {
+	application = strings.TrimSpace(application)
+	environment = strings.TrimSpace(environment)
+	if application == "" || environment == "" {
+		return errors.New("application metrics pruning requires application and environment")
+	}
+	prefix := "application:metrics:" + application + ":" + environment + ":"
+	path, err := registryPath()
+	if err != nil {
+		return err
+	}
+	return mutate(path, func(sources []SignalSource) ([]SignalSource, error) {
+		out := sources[:0]
+		for _, source := range sources {
+			if source.Class == SourceApplication && source.Kind == SignalMetrics && strings.HasPrefix(source.ID, prefix) {
+				if _, keep := keepIDs[source.ID]; !keep {
+					continue
+				}
+			}
+			out = append(out, source)
+		}
+		return out, nil
+	})
+}
+
+func ListApplicationMetrics(placement capability.ProviderPlacement, applications []string, requestedEnvironment string) ([]MetricsSource, error) {
+	signals, err := List(SignalMetrics, placement, applications, true, false, false, requestedEnvironment)
 	if err != nil {
 		return nil, err
 	}
 	out := make([]MetricsSource, 0, len(signals))
 	for _, source := range signals {
-		scheme := "http"
-		if source.Security.TLSRequired {
-			scheme = "https"
+		if source.Class != SourceApplication {
+			continue
+		}
+		scheme := source.Scheme
+		if scheme == "" {
+			scheme = "http"
+			if source.Security.TLSRequired {
+				scheme = "https"
+			}
 		}
 		out = append(out, MetricsSource{
 			ID: source.ID, Provider: source.Provider, Class: source.Class, Scope: source.Scope,
 			SharingBoundary: source.SharingBoundary, OwnerApplication: source.OwnerApplication,
-			Network: source.Network, Target: source.Target, Path: source.Path, Scheme: scheme, Security: source.Security,
+			Network: source.Network, Target: source.Target, Path: source.Path,
+			Scheme: scheme, Security: source.Security, Verification: source.Verification,
+		})
+	}
+	return out, nil
+}
+
+func ListMetrics(placement capability.ProviderPlacement, applications []string, includeApplicationProviders, includePlatformProviders bool, requestedEnvironment string) ([]MetricsSource, error) {
+	signals, err := List(SignalMetrics, placement, applications, false, includeApplicationProviders, includePlatformProviders, requestedEnvironment)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]MetricsSource, 0, len(signals))
+	for _, source := range signals {
+		scheme := source.Scheme
+		if scheme == "" {
+			scheme = "http"
+			if source.Security.TLSRequired {
+				scheme = "https"
+			}
+		}
+		out = append(out, MetricsSource{
+			ID: source.ID, Provider: source.Provider, Class: source.Class, Scope: source.Scope,
+			SharingBoundary: source.SharingBoundary, OwnerApplication: source.OwnerApplication,
+			Network: source.Network, Target: source.Target, Path: source.Path, Scheme: scheme,
+			Security: source.Security, Verification: source.Verification,
 		})
 	}
 	return out, nil

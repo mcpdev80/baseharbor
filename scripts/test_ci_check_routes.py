@@ -52,12 +52,60 @@ class CheckRoutingTests(unittest.TestCase):
         cls.script = next(step['run'] for step in cls.ci['jobs']['pr_validations']['steps']
                           if step.get('name') == 'Execute existing validation owner without publication')
 
+    def test_migration_controller_is_an_immutable_commit(self):
+        env = next(step['env'] for step in self.ci['jobs']['pr_plan']['steps']
+                   if 'MIGRATION_CONTROLLER' in step.get('env', {}))
+        self.assertRegex(env['MIGRATION_CONTROLLER'], r'^[0-9a-f]{40}$')
+
     def test_stacked_lane_prs_trigger_the_full_pr_check_graph(self):
         workflow = (ROOT / '.github/workflows/ci.yml').read_text()
         self.assertIn("      - 'lane-*'", workflow)
         self.assertIn("startsWith(github.base_ref, 'lane-')", workflow)
         self.assertIn('BASE_REF: ${{ github.base_ref }}', workflow)
         self.assertIn('target_tip="$BASE_SHA"', workflow)
+
+    def test_docker_dispatch_uses_selected_ref_and_receipt_check_only_runs_after_tests(self):
+        workflow = (ROOT / '.github/workflows/docker-runtime-acceptance.yml').read_text()
+        dispatch = workflow.split('  workflow_dispatch:\n', 1)[1].split('\n  push:\n', 1)[0]
+        self.assertIn('required: false', dispatch)
+        self.assertNotIn('default:', dispatch)
+        self.assertNotIn('release/v0.4.21', dispatch)
+        self.assertIn('ref: ${{ inputs.ref || github.sha }}', workflow)
+        check = workflow.split('      - name: Verify all eight executed runtime tests\n', 1)[1]
+        for step in ['runtime_preflight', 'runtime_integration', 'recovery',
+                     'log_ingestion', 'trace_ingestion']:
+            self.assertIn(f"steps.{step}.outcome == 'success'", check)
+        podman = (ROOT / '.github/workflows/podman-acceptance.yml').read_text()
+        podman_dispatch = podman.split('  workflow_dispatch:\n', 1)[1].split('\n  push:\n', 1)[0]
+        self.assertIn('required: false', podman_dispatch)
+        self.assertNotIn('default:', podman_dispatch)
+        self.assertIn('ref: ${{ inputs.ref || github.sha }}', podman)
+
+    def test_candidate_checks_are_advisory_and_final_uses_only_trusted_base_plan(self):
+        workflow = (ROOT / '.github/workflows/ci.yml').read_text()
+        advisory = self.ci['jobs']['pr_candidate_advisory']
+        final = self.ci['jobs']['pr_selected_final']
+        required_final = load('pr-required-final')
+        self.assertTrue(advisory['continue-on-error'])
+        self.assertEqual({'contents': 'read'}, advisory['permissions'])
+        self.assertEqual(list(required_final.BASE_WORKFLOW_JOBS), final['needs'])
+        self.assertNotIn('pr_candidate_advisory', final['needs'])
+        advisory_run = next(step['run'] for step in advisory['steps']
+                            if 'pr-candidate-advisory.py' in step.get('run', ''))
+        self.assertIn('--base-plan pr-plan.json', advisory_run)
+        self.assertIn('--diff pr-diff.json', advisory_run)
+        self.assertIn('candidate_advisory_required', self.ci['jobs']['pr_plan']['outputs'])
+
+        final_run = next(step['run'] for step in final['steps']
+                         if 'pr-required-final.py' in step.get('run', ''))
+        self.assertIn('git show "$CONTROLLER_SHA:scripts/pr-required-final.py"', final_run)
+        self.assertIn('--plan pr-plan.json', final_run)
+        self.assertNotIn('--base-plan pr-plan.json', final_run)
+        plan_job = workflow[workflow.index('  pr_plan:'):workflow.index('  pr_candidate_advisory:')]
+        self.assertIn('for policy_file in pr-gate-plan.py', plan_job)
+        self.assertIn('git show "$controller:scripts/$policy_file"', plan_job)
+        self.assertIn('controller="$effective_base"', workflow)
+        self.assertIn('controller="$MIGRATION_CONTROLLER"', workflow)
 
     def test_versionless_release_qualification_job_names(self):
         workflow = (ROOT / '.github/workflows/pre-release.yml').read_text()

@@ -137,8 +137,10 @@ func providerComposeYAMLWithProviderNetworksAndAccess(placement Placement, regis
 		b.WriteString("    cap_drop:\n      - ALL\n")
 		b.WriteString("    security_opt:\n      - no-new-privileges:true\n")
 		b.WriteString("    networks:\n      access: {}\n")
-		for i := range registrations {
-			fmt.Fprintf(&b, "      metrics-%d: {}\n", i)
+		for i, registration := range registrations {
+			if registration.Network != "" {
+				fmt.Fprintf(&b, "      metrics-%d: {}\n", i)
+			}
 		}
 		for i := range providerNetworks {
 			fmt.Fprintf(&b, "      provider-%d: {}\n", i)
@@ -162,7 +164,9 @@ func providerComposeYAMLWithProviderNetworksAndAccess(placement Placement, regis
 	b.WriteString("  access:\n    internal: true\n")
 	fmt.Fprintf(&b, "  publish:\n    name: %s\n", strconv.Quote(PublishNetworkName(placement.Project)))
 	for i, registration := range registrations {
-		fmt.Fprintf(&b, "  metrics-%d:\n    name: %s\n", i, strconv.Quote(registration.Network))
+		if registration.Network != "" {
+			fmt.Fprintf(&b, "  metrics-%d:\n    name: %s\n", i, strconv.Quote(registration.Network))
+		}
 	}
 	for i, network := range providerNetworks {
 		fmt.Fprintf(&b, "  provider-%d:\n    external: true\n    name: %s\n", i, strconv.Quote(network))

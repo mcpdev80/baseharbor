@@ -50,6 +50,18 @@ class TargetedDevelopWorkflowTests(unittest.TestCase):
         self.assertIn("assert job['result'] == expected", release)
         self.assertIn('test "$ONLY_GATES" = "integration/docker/remote-target,integration/podman/remote-target,integration/static/live-console"', release)
 
+    def test_pre_release_binds_develop_tip_and_records_qualification_line(self):
+        release = (Path(__file__).parents[1] / ".github/workflows/pre-release.yml").read_text()
+        self.assertIn('develop_sha: ${{ steps.release.outputs.develop_sha }}', release)
+        self.assertIn('git merge-base --is-ancestor "$develop_sha" "$core_sha"', release)
+        self.assertIn('test "$INPUT_DEVELOP_SHA" = "$develop_sha"', release)
+        self.assertIn('git merge-base --is-ancestor "$develop_sha" HEAD', release)
+        self.assertIn('git merge-base --is-ancestor HEAD "$develop_sha"', release)
+        self.assertIn('value: ${{ jobs.source_prepare.outputs.candidate_sha }}', release)
+        self.assertIn('value: ${{ jobs.source_prepare.outputs.develop_sha }}', release)
+        self.assertIn('Qualification binding: tag=%s candidate_sha=%s develop_tip_sha=%s demo_sha=%s suite=%s', release)
+        self.assertIn('docs/reference/releases.md#hotfix-releases', release)
+
     def test_development_is_not_blocked_by_moving_consumer_heads(self):
         content = self.workflow
         self.assertNotIn("      - develop", content)

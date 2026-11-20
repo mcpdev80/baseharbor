@@ -364,7 +364,7 @@ func TestWithdrawnSharedBackendRetainsOriginalApplicationInventory(t *testing.T)
 			if err := os.MkdirAll(files.Dir, 0700); err != nil {
 				t.Fatal(err)
 			}
-			canonical, err := application.RuntimeComposeYAMLForProject(r.Manifest, files.ResourceProject)
+			canonical, err := application.RuntimeComposeYAMLForProject(r.Manifest, files)
 			if err != nil {
 				t.Fatal(err)
 			}

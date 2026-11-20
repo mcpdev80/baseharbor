@@ -19,7 +19,7 @@ func NativeBackendResources(m Manifest, files RuntimeFiles) ([]bhruntime.Project
 	if !HasApplicationScopedRuntimeServices(m) {
 		return []bhruntime.ProjectResource{}, nil
 	}
-	canonical, err := RuntimeComposeYAMLForProject(m, files.ResourceProject)
+	canonical, err := RuntimeComposeYAMLForProject(m, files)
 	if err != nil {
 		return nil, err
 	}
@@ -91,7 +91,7 @@ func CheckExistingNativeBackendInventory(files RuntimeFiles, candidates ...Manif
 		if m.Validate() != nil {
 			continue
 		}
-		canonical, err := RuntimeComposeYAMLForProject(m, files.ResourceProject)
+		canonical, err := RuntimeComposeYAMLForProject(m, files)
 		if err != nil {
 			return err
 		}

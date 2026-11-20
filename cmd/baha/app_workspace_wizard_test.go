@@ -50,7 +50,7 @@ func TestWorkspaceWizardCreatesPortableModelAndLocalMapping(t *testing.T) {
 		".",
 		"y",
 		"external",
-		"4",
+		"5",
 		"external-source",
 		"ghcr.io/example/external@sha256:deadbeef",
 		"n",
@@ -122,7 +122,7 @@ func TestWorkspaceWizardCancelDoesNotWriteState(t *testing.T) {
 	defer func() { appWorkspaceInput = oldInput }()
 	appWorkspaceInput = strings.NewReader(strings.Join([]string{
 		"app",
-		"2",
+		"3",
 		"app-image",
 		"ghcr.io/example/app:latest",
 		"n",

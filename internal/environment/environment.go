@@ -69,7 +69,7 @@ func New(name string) (Environment, error) {
 	if err != nil {
 		return Environment{}, err
 	}
-	if err := validateName(name); err != nil {
+	if err := ValidateName(name); err != nil {
 		return Environment{}, err
 	}
 	return Environment{ID: id, Name: strings.TrimSpace(name)}, nil
@@ -79,7 +79,7 @@ func New(name string) (Environment, error) {
 // environment never changes its identity, matching the durable-identity
 // guarantee in ADR 0017.
 func (e Environment) Rename(name string) (Environment, error) {
-	if err := validateName(name); err != nil {
+	if err := ValidateName(name); err != nil {
 		return Environment{}, err
 	}
 	return Environment{ID: e.ID, Name: strings.TrimSpace(name)}, nil
@@ -89,6 +89,13 @@ func (e Environment) Rename(name string) (Environment, error) {
 // BaseHarbor environment names so a renamed name cannot smuggle a path or
 // escape the state namespace.
 var namePattern = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$`)
+
+// ValidateName checks that a logical environment name is a valid slug. Callers
+// that use the name in a filesystem path must validate it before resolving or
+// touching that path.
+func ValidateName(name string) error {
+	return validateName(name)
+}
 
 func validateName(name string) error {
 	name = strings.TrimSpace(name)

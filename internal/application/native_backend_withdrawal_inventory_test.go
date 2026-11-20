@@ -23,7 +23,7 @@ func TestNativeBackendWithdrawalRequiresExistingExecutableCanonicalOwner(t *test
 	if err := os.WriteFile(files.Env, environment, 0600); err != nil {
 		t.Fatal(err)
 	}
-	canonical, err := RuntimeComposeYAMLForProject(prior, files.ResourceProject)
+	canonical, err := RuntimeComposeYAMLForProject(prior, files)
 	if err != nil {
 		t.Fatal(err)
 	}

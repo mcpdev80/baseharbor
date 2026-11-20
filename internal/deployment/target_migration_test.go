@@ -7,6 +7,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/mcpdev80/baseharbor/internal/coreinstallation"
 )
 
 // TestLoadConfigMigratesLegacyTargetIdempotent proves the read seam
@@ -74,6 +76,62 @@ func TestLoadConfigMigratesLegacyTargetIdempotent(t *testing.T) {
 	// The runtime definition is untouched by migration.
 	if cfg1.Targets["docker-legacy"].Runtime.Provider != "docker" {
 		t.Fatal("migration altered the runtime definition")
+	}
+}
+
+func TestLegacyTargetUIDMigrationRespectsConfigurationLock(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("BASEHARBOR_STATE_DIR", root)
+	path, err := ConfigPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	legacy := []byte("version: 1\n" +
+		"access:\n" +
+		"  local-docker:\n" +
+		"    provider: docker\n" +
+		"    reference: local\n" +
+		"targets:\n" +
+		"  docker-legacy:\n" +
+		"    runtime:\n" +
+		"      provider: docker\n" +
+		"    access:\n" +
+		"      reference: local-docker\n")
+	if err := os.WriteFile(path, legacy, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := decodeConfig(legacy)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	unlock, err := coreinstallation.AcquireStateFileLock(filepath.Dir(path))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := migrateAndPersistTargetUIDs(cfg, legacy); err == nil {
+		unlock()
+		t.Fatal("legacy UID migration bypassed the existing configuration lock")
+	}
+	unlock()
+	unchanged, err := os.ReadFile(path)
+	if err != nil || !bytes.Equal(unchanged, legacy) {
+		t.Fatalf("failed migration changed config: %v", err)
+	}
+
+	migrated, err := migrateAndPersistTargetUIDs(cfg, legacy)
+	if err != nil {
+		t.Fatalf("migration after unlocking: %v", err)
+	}
+	if migrated.Targets["docker-legacy"].TargetUID == "" {
+		t.Fatal("successful migration did not assign a stable Target UID")
+	}
+	persisted, err := os.ReadFile(path)
+	if err != nil || bytes.Equal(persisted, legacy) || !strings.Contains(string(persisted), "target-uid:") {
+		t.Fatalf("successful migration was not persisted: %v", err)
 	}
 }
 

@@ -43,6 +43,13 @@ capability: database.sql/v1
 
 A concrete product version or image digest is realization metadata. It MUST NOT replace the provider implementation version or the capability specification version.
 
+An optional management tool such as Perses is realized behind the backend data
+owner's existing optional management-ui interface. The Perses product version and
+image digest are realization metadata: they MUST NOT be exposed as a provider
+implementation version or a capability specification version, and a selected but
+unprovisioned Perses surface is reported as unsupported (fail-closed "not
+configured"), never as configured.
+
 ## Capabilities
 
 A provider MUST declare the semantics it supports.
