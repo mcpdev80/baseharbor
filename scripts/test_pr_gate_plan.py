@@ -2016,6 +2016,14 @@ class MainRunnerContextEntrypointTests(unittest.TestCase):
         self.assertIsNone(code)
         self.assertIn('"coverage_status": "resolved"', out)
 
+    def test_stacked_cli_base_context_resolves(self):
+        code, out, msg = self._run_main({
+            'GITHUB_REPOSITORY': 'mcpdev80/baseharbor',
+            'GITHUB_BASE_REF': 'cli2-env-policy-head',
+        })
+        self.assertIsNone(code)
+        self.assertIn('\"coverage_status\": \"resolved\"', out)
+
     def test_empty_context_fails_closed(self):
         # Missing runner context must be rejected before plan() runs: the
         # entrypoint refuses to qualify with an unknown authenticated context.

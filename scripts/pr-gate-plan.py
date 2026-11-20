@@ -1690,8 +1690,11 @@ def main():
     # context yields an unresolved plan, never a trusted one.
     context_repository = os.environ.get('GITHUB_REPOSITORY', '').strip()
     context_target_branch = os.environ.get('GITHUB_BASE_REF', '').strip()
-    if (context_repository != 'mcpdev80/baseharbor' or
-            context_target_branch != 'develop'):
+    supported_target = (
+        context_target_branch == 'develop' or
+        context_target_branch.startswith('lane-') and len(context_target_branch) > 5 or
+        context_target_branch.startswith('cli2-') and len(context_target_branch) > 5)
+    if context_repository != 'mcpdev80/baseharbor' or not supported_target:
         raise SystemExit(
             'refusing to qualify without authenticated runner context: '
             'GITHUB_REPOSITORY=%r GITHUB_BASE_REF=%r'
