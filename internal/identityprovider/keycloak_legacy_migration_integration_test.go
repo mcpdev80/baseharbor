@@ -1,8 +1,10 @@
 package identityprovider
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -455,6 +457,11 @@ func TestRegisterKeycloakSignalsCommitsLegacyRebookBeforeRejectingCollision(t *t
 	if err := rA.registerKeycloakSignals(); err != nil {
 		t.Fatalf("register initial scoped owner: %v", err)
 	}
+	scopedID := keycloakMetricsSignalID(projectA)
+	scopedBefore, err := sourceByIDAndProvider(scopedID, capability.ProviderKeycloak)
+	if err != nil {
+		t.Fatalf("capture scoped owner before collision: %v", err)
+	}
 
 	// Add an independent pre-scoping record after the scoped owner exists. Its
 	// own state entry lets the registration migration derive the correct ID.
@@ -472,9 +479,8 @@ func TestRegisterKeycloakSignalsCommitsLegacyRebookBeforeRejectingCollision(t *t
 		t.Fatal("colliding registration must be rejected")
 	}
 
-	// The existing scoped source is byte-for-byte equivalent in its relevant
-	// ownership/endpoint contract; no partial replacement by appB is allowed.
-	scopedID := keycloakMetricsSignalID(projectA)
+	// The existing scoped source must remain exactly equal across every field;
+	// no partial replacement by appB is allowed.
 	sources, err := observability.ListAll()
 	if err != nil {
 		t.Fatalf("ListAll after rejected registration: %v", err)
@@ -483,8 +489,8 @@ func TestRegisterKeycloakSignalsCommitsLegacyRebookBeforeRejectingCollision(t *t
 	for _, source := range sources {
 		if source.ID == scopedID && source.Provider == capability.ProviderKeycloak {
 			foundScoped = true
-			if source.OwnerApplication != appA.Name || source.Target != "keycloak:9000" {
-				t.Fatalf("existing scoped owner was changed: %#v", source)
+			if !reflect.DeepEqual(source, scopedBefore) {
+				t.Fatalf("existing scoped owner changed:\nbefore: %#v\nafter:  %#v", scopedBefore, source)
 			}
 		}
 	}
@@ -524,6 +530,96 @@ func TestRegisterKeycloakSignalsCommitsLegacyRebookBeforeRejectingCollision(t *t
 	} else if ok {
 		t.Fatal("derived legacy source remains after removal")
 	}
+}
+
+// TestRegisterKeycloakSignalsPreservesCanonicalLegacyOwnerOnCollision guards
+// the self-owner variant of the collision path. AppB's legacy record ordinarily
+// migrates to the registration ID, but that ID is already occupied by appA.
+// The registration must be rejected while preserving the legacy record under
+// its literal ID and avoiding a duplicate appB source at the colliding ID.
+func TestRegisterKeycloakSignalsPreservesCanonicalLegacyOwnerOnCollision(t *testing.T) {
+	dir := keycloakTestDataDir(t)
+	t.Setenv("BASEHARBOR_STATE_DIR", dir)
+	t.Setenv(application.ProviderScopeEnv(capability.ProviderKeycloak), string(capability.ScopeApplication))
+
+	appA := keycloakSignalTestApp(t, "my.identity", true)
+	appB := keycloakSignalTestApp(t, "my-identity", true)
+	for _, app := range []application.Manifest{appA, appB} {
+		writeKeycloakStateDirs(t, dir, app)
+	}
+	projectA := bhruntime.ApplicationProjectName("target", appA.Name+"-identity", appA.Environment)
+	projectB := bhruntime.ApplicationProjectName("target", appB.Name+"-identity", appB.Environment)
+	if projectA != projectB {
+		t.Fatalf("test fixture must collide after normalization: %q != %q", projectA, projectB)
+	}
+	rA := &localKeycloakRealization{app: appA, namespace: "target", dataDir: dir, files: KeycloakFiles{Project: projectA, ConsumerNetwork: "baseharbor-identity"}}
+	if err := rA.registerKeycloakSignals(); err != nil {
+		t.Fatalf("register existing scoped owner: %v", err)
+	}
+
+	legacyBefore := observability.MetricsSource{
+		ID: observability.LegacyKeycloakMetricsID, Provider: capability.ProviderKeycloak,
+		Class: observability.SourceApplicationProvider, Scope: capability.ScopeApplication,
+		OwnerApplication: appB.Name, Network: "baseharbor-my-identity-dev",
+		Target: "keycloak:9000", Path: "/metrics", Scheme: "http",
+	}
+	if err := observability.Update(legacyBefore); err != nil {
+		t.Fatalf("write appB legacy source: %v", err)
+	}
+	legacySnapshot, err := sourceByIDAndProvider(observability.LegacyKeycloakMetricsID, capability.ProviderKeycloak)
+	if err != nil {
+		t.Fatalf("capture appB legacy source: %v", err)
+	}
+
+	rB := &localKeycloakRealization{app: appB, namespace: "target", dataDir: dir, files: KeycloakFiles{Project: projectB, ConsumerNetwork: "baseharbor-identity"}}
+	if err := rB.registerKeycloakSignals(); err == nil {
+		t.Fatal("appB registration must be rejected because appA owns the colliding registration ID")
+	}
+
+	sources, err := observability.ListAll()
+	if err != nil {
+		t.Fatalf("ListAll after rejected registration: %v", err)
+	}
+	registrationID := keycloakMetricsSignalID(projectA)
+	registrationSources := 0
+	for _, source := range sources {
+		if source.ID == registrationID && source.Provider == capability.ProviderKeycloak {
+			registrationSources++
+			if source.OwnerApplication != appA.Name {
+				t.Fatalf("registration ID owner changed to %q, want %q: %#v", source.OwnerApplication, appA.Name, source)
+			}
+		}
+	}
+	if registrationSources != 1 {
+		t.Fatalf("want exactly one source under registration ID %q, got %d: %#v", registrationID, registrationSources, sources)
+	}
+	legacyAfter, err := sourceByIDAndProvider(observability.LegacyKeycloakMetricsID, capability.ProviderKeycloak)
+	if err != nil {
+		t.Fatalf("read preserved appB legacy source: %v", err)
+	}
+	if !reflect.DeepEqual(legacyAfter, legacySnapshot) {
+		t.Fatalf("appB legacy source was not conserved under its literal ID:\nbefore: %#v\nafter:  %#v", legacySnapshot, legacyAfter)
+	}
+	derivedB := observability.LegacySource{ID: observability.LegacyKeycloakMetricsID, Providers: []capability.ProviderKind{capability.ProviderKeycloak}}.
+		ScopedID(capability.ProviderKeycloak, bhruntime.ApplicationProjectName("target", appB.Name, appB.Environment))
+	if ok, err := observability.RegistryHasSignal(derivedB, capability.ProviderKeycloak, observability.SignalMetrics); err != nil {
+		t.Fatal(err)
+	} else if ok {
+		t.Fatalf("rejected appB registration created a second scoped source %q", derivedB)
+	}
+}
+
+func sourceByIDAndProvider(id string, provider capability.ProviderKind) (observability.SignalSource, error) {
+	sources, err := observability.ListAll()
+	if err != nil {
+		return observability.SignalSource{}, err
+	}
+	for _, source := range sources {
+		if source.ID == id && source.Provider == provider {
+			return source, nil
+		}
+	}
+	return observability.SignalSource{}, fmt.Errorf("source %q for provider %q not found", id, provider)
 }
 
 // TestRegisterKeycloakSignalsAbortsOnUnreadableLegacyRegistry proves the

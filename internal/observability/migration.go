@@ -291,6 +291,23 @@ func RebookLegacySignals(r LegacyReconciliation, sources []SignalSource, registr
 			continue
 		}
 		if r.CanonicalMigrationIdentity(existing, registrationID) {
+			// Do not move this legacy record onto a registration identity
+			// already owned by another application. The caller will reject the
+			// registration, and retaining the literal source is safer than
+			// persisting a second owner under the colliding ID. Other legacy
+			// records in this same pass can still be rebooked normally.
+			conflict := false
+			for _, candidate := range sources {
+				if candidate.ID == registrationID && candidate.Provider == existing.Provider &&
+					candidate.OwnerApplication != "" && candidate.OwnerApplication != existing.OwnerApplication {
+					conflict = true
+					break
+				}
+			}
+			if conflict {
+				migrated = append(migrated, existing)
+				continue
+			}
 			move := existing
 			move.ID = registrationID
 			migrated = append(migrated, move)
