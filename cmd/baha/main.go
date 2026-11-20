@@ -145,7 +145,7 @@ func runWithIO(ctx context.Context, args []string, out, errOut io.Writer) error 
 	membershipProvider := newCLIOperatorMembershipProvider()
 	defer membershipProvider.Close()
 	ctx = operatorauth.WithMembershipProviderIfAbsent(ctx, membershipProvider)
-	ctx = withCIIntegrationOperator(ctx)
+	ctx = withCIIntegrationOperator(ctx, filtered)
 	ctx = operatorauth.WithInteractive(ctx, os.Stdin, out, errOut)
 	ctx = localCLIProviderConsentContext(ctx, filtered)
 	ctx = withLocalInvocation(ctx, "cli")
