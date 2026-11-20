@@ -91,6 +91,10 @@ Find exact options with `baha COMMAND --help`. [Global options](global-options.m
 | `baha config prompt` | Configure the optional BaseHarbor shell prompt segment | `baha config prompt [--enable\|--disable] [--preset minimal\|compact\|accessible\|detailed\|none] [--position before-path\|after-path\|right] [--environment never\|critical-only\|always] [--show-application\|--hide-application] [--text-only\|--color-output] [--prod-indicator TEXT] [--label TARGET=LABEL] [--color KEY=VALUE]` | [↗](organization-policy.md) |
 | `baha connect` | Allow one explicit application service to reach another | `baha connect SOURCE TARGET` | [↗](security-trust.md) |
 | `baha connections` | List explicit cross-application connectivity policy | `baha connections` | [↗](security-trust.md) |
+| `baha context` | Select the per-terminal BaseHarbor context (Bash, Zsh or Fish) | `baha context use [--shell bash\|zsh\|fish] TARGET \| clear \| show` | [↗](applications.md) |
+| `baha context clear` | Clear the per-terminal selection in the current process | `baha context clear [--shell bash\|zsh\|fish]` | [↗](applications.md) |
+| `baha context show` | Report the effective per-terminal selection and winning precedence level | `baha context show` | [↗](applications.md) |
+| `baha context use` | Emit the per-terminal activation snippet for TARGET | `baha context use [--shell bash\|zsh\|fish] TARGET` | [↗](applications.md) |
 | `baha destroy` | Remove the complete BaseHarbor installation with explicit consequence consent | `baha destroy [--yes]` | [↗](core.md) |
 | `baha dev` | Manage local development conveniences | `baha dev <credentials\|domain\|hosts\|cleanup>` | [↗](development.md) |
 | `baha dev cleanup` | Remove this Target's owned workstation hosts and CA trust | `baha dev cleanup --yes` | [↗](development.md) |
