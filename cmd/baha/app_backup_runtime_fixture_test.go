@@ -309,9 +309,12 @@ func backupFixtureConsent(operation string, cause error) (*application.ProviderC
 			return nil, err
 		}
 	case applicationDestructionPlan:
-		// This opt-in recovery test explicitly authorizes replacement of its
-		// own selected data, separately from retirement's retain-data consent.
-		if operation != "restore" || plan.Scope.Owner.Owner != "application-restore" || !plan.Scope.Destructive {
+		// The opt-in disaster-recovery fixture may explicitly replace its own
+		// selected data during restore, or destroy its own disposable deployment.
+		// Neither grant can authorize the other operation or a retained plan.
+		allowedScope := operation == "restore" && plan.Scope.Owner.Owner == "application-restore" ||
+			operation == "destroy" && plan.Scope.Owner.Owner == "application-deployment"
+		if !allowedScope || !plan.Scope.Destructive {
 			return nil, cause
 		}
 		ack = application.ProviderChangeConsent{PlanID: plan.Scope.PlanID, First: true, Second: plan.Scope.ConfirmationsRequired == 2, DeleteData: true}
@@ -671,6 +674,25 @@ func TestGuidedBackupFixtureProviderRetryRefreshesCandidateConsent(t *testing.T)
 	})
 	if err != nil || calls != 4 {
 		t.Fatalf("backup fixture provider retry calls=%d err=%v", calls, err)
+	}
+}
+
+func TestGuidedBackupFixtureDestroyRequiresItsOwnDestructiveScope(t *testing.T) {
+	r := retainedNativeBackendFixture(t)
+	plan, err := buildApplicationDestructionPlan(testOperatorContext(t.Context()), r, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cause := applicationDestructionPlanError(plan, &application.ProviderChangeError{Code: "impact-confirmation-required"})
+	ack, err := backupFixtureConsent("destroy", cause)
+	if err != nil || ack == nil || !ack.First || !ack.Second || !ack.DeleteData || ack.PlanID != plan.Scope.PlanID {
+		t.Fatalf("explicit fixture destroy scope missing: %v", err)
+	}
+	if _, err := backupFixtureConsent("restore", cause); err == nil {
+		t.Fatal("destroy scope authorized restore")
+	}
+	if _, err := backupFixtureConsent("apply", cause); err == nil {
+		t.Fatal("destroy scope authorized apply")
 	}
 }
 
