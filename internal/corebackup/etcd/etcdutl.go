@@ -92,7 +92,10 @@ func (e IsolatedEtcdutl) RestoreIsolated(ctx context.Context, archive, destinati
 	}
 	args := []string{"snapshot", "restore", archive, "--data-dir", destination, "--name", e.MemberName, "--initial-cluster", e.InitialCluster, "--initial-advertise-peer-urls", e.InitialAdvertisePeerURLs, "--initial-cluster-token", token}
 	cmd := exec.CommandContext(ctx, e.Binary, args...)
-	cmd.Env = []string{"PATH=/usr/bin:/bin"}
+	// Isolation means never executing inside the running distroless etcd
+	// container and writing to a fresh target data-dir; it does not mean
+	// excluding the parent environment. Inherit os.Environ() after PATH.
+	cmd.Env = append([]string{"PATH=/usr/bin:/bin"}, os.Environ()...)
 	cmd.Stdout = nil
 	cmd.Stderr = nil
 	if err := cmd.Run(); err != nil {

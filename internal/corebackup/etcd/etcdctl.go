@@ -91,8 +91,11 @@ func (s EtcdctlSource) Snapshot(ctx context.Context, dest io.Writer) (SnapshotIn
 	}
 	archive := filepath.Join(scratch, "snapshot.db")
 	// Only the approved endpoints are used. No token/certificate bytes in argv.
+	// Pin the approved etcdctl keys first, then inherit the parent environment
+	// (os.Environ) so exported variables reach the child; the child is a direct
+	// descendant of the baha CLI and must inherit it.
 	cmd := exec.CommandContext(ctx, s.Etcdctl, "snapshot", "save", archive)
-	cmd.Env = []string{
+	cmd.Env = append([]string{
 		"PATH=/usr/bin:/bin", "ETCDCTL_API=3",
 		// Maintenance.Snapshot streams from one member, after all configured
 		// endpoints have attested the owning cluster.
@@ -100,7 +103,7 @@ func (s EtcdctlSource) Snapshot(ctx context.Context, dest io.Writer) (SnapshotIn
 		"ETCDCTL_CACERT=" + s.TLS.CA,
 		"ETCDCTL_CERT=" + s.TLS.Cert,
 		"ETCDCTL_KEY=" + s.TLS.Key,
-	}
+	}, os.Environ()...)
 	if err := cmd.Run(); err != nil {
 		return SnapshotInfo{}, errors.New("etcd maintenance snapshot failed")
 	}
@@ -110,8 +113,10 @@ func (s EtcdctlSource) Snapshot(ctx context.Context, dest io.Writer) (SnapshotIn
 	if err := safeRegular(archive); err != nil {
 		return SnapshotInfo{}, err
 	}
+	// etcdutl snapshot status integrity check. Inherit the parent environment
+	// (os.Environ) after the pinned PATH.
 	verify := exec.CommandContext(ctx, s.Etcdutl, "snapshot", "status", archive, "--write-out=json")
-	verify.Env = []string{"PATH=/usr/bin:/bin"}
+	verify.Env = append([]string{"PATH=/usr/bin:/bin"}, os.Environ()...)
 	statusJSON, err := verify.Output()
 	if err != nil {
 		return SnapshotInfo{}, errors.New("etcdutl snapshot status integrity check failed")
@@ -153,12 +158,13 @@ func (s EtcdctlSource) attestEndpointStatus(ctx context.Context) (SnapshotInfo, 
 	var result SnapshotInfo
 	for _, endpoint := range s.Endpoints {
 		cmd := exec.CommandContext(ctx, s.Etcdctl, "--endpoints="+endpoint, "endpoint", "status", "--write-out=json")
-		cmd.Env = []string{
+		// Pin PATH, API and TLS trust, then inherit the parent environment.
+		cmd.Env = append([]string{
 			"PATH=/usr/bin:/bin", "ETCDCTL_API=3",
 			"ETCDCTL_CACERT=" + s.TLS.CA,
 			"ETCDCTL_CERT=" + s.TLS.Cert,
 			"ETCDCTL_KEY=" + s.TLS.Key,
-		}
+		}, os.Environ()...)
 		output, err := cmd.Output()
 		if err != nil || len(output) > 32768 {
 			return SnapshotInfo{}, errors.New("etcd endpoint status authentication failed")
