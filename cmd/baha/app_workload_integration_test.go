@@ -198,6 +198,7 @@ func TestRepositoryComposeWorkloadOnlyLifecycleInCI(t *testing.T) {
 		t.Fatalf("detect compose: %v", err)
 	}
 	isolateRuntimeForTest(t, "compose-workload-only")
+	configureRuntimeIntegrationTestOperatorAuth(t)
 
 	root := t.TempDir()
 	old, err := os.Getwd()

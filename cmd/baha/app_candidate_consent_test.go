@@ -99,6 +99,13 @@ func TestConsentRejectsWrongDigestWriteNothing(t *testing.T) {
 	ctxWrong := withCandidateConsentDigest(context.Background(), wrong)
 	if _, err := recordDeploymentBeforeMutation(ctxWrong, r, "applying", wrong); err == nil {
 		t.Fatal("wrong confirm digest accepted; candidate must fail closed")
+	} else {
+		if !errors.Is(err, errCandidateConsentDigestMismatch) {
+			t.Fatalf("wrong digest error lost mismatch classification: %v", err)
+		}
+		if got := candidateConsentDigestFromError(err); got != want {
+			t.Fatalf("stale digest refresh=%q, want current exact candidate %q", got, want)
+		}
 	}
 	// The applying mutation must have persisted NO consent: the candidate is
 	// only bound on a matching digest, and a wrong digest writes nothing new.

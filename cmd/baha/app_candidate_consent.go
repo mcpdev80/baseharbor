@@ -47,6 +47,10 @@ func withCandidateConsentDigest(ctx context.Context, digest string) context.Cont
 	return context.WithValue(ctx, candidateConsentOverrideKey{}, strings.TrimSpace(digest))
 }
 
+func clearCandidateConsentDigest(ctx context.Context) context.Context {
+	return context.WithValue(ctx, candidateConsentOverrideKey{}, "")
+}
+
 // candidateConsentOverride returns the raw confirm digest from the context, or
 // an empty string when none was supplied.
 func candidateConsentOverride(ctx context.Context) string {
