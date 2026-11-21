@@ -55,7 +55,7 @@ func TestAppListAllTargetsStillRequiresAuthorizationWithoutTargetConfig(t *testi
 	if errors.Is(err, deployment.ErrConfigMissing) {
 		t.Fatalf("anonymous all-targets call must fail at the operator-auth gate, not surface ErrConfigMissing: %v", err)
 	}
-	if !strings.Contains(err.Error(), "Managed-environment machine operations require an authenticated BaseHarbor operator") {
+	if !strings.EqualFold(err.Error(), "Managed-environment machine operations require an authenticated BaseHarbor operator.") {
 		t.Fatalf("anonymous all-targets call must surface the operator-auth gate text; got %q", err.Error())
 	}
 	if out.Len() != 0 {
