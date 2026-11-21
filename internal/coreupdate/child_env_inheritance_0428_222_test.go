@@ -69,6 +69,105 @@ func TestDCSBootProbeInheritsParentEnv(t *testing.T) {
 	assertSentinelInCoreupdateEnvFile(t, out, sentinelKey, sentinelVal)
 }
 
+// TestDCSBootProbePinsOverrideInherited proves the security property that this
+// round closes: an inherited ETCDCTL_* key must NOT override the boot probe's
+// pin, because Go's env-dedup is last-wins and the probe now builds the child
+// env via envpin.PinnedEnv (drop inherited, append pins last). One case per
+// pinned key is required by card 0428-222 rc3.
+func TestDCSBootProbePinsOverrideInherited(t *testing.T) {
+	// Keys the parent must NOT be able to override.
+	overrideKeys := []string{"PATH", "ETCDCTL_API", "ETCDCTL_CACERT", "ETCDCTL_CERT", "ETCDCTL_KEY"}
+
+	root := t.TempDir()
+	out := filepath.Join(root, "child_env.txt")
+
+	pki, err := dcspki.Ensure(filepath.Join(root, "pki"), []string{"localhost"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	prev := map[string]string{}
+	had := map[string]bool{}
+	for _, k := range overrideKeys {
+		p, h := os.LookupEnv(k)
+		prev[k], had[k] = p, h
+		if err := os.Setenv(k, "INHERITED-"+k); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Cleanup(func() {
+		for _, k := range overrideKeys {
+			if had[k] {
+				_ = os.Setenv(k, prev[k])
+			} else {
+				_ = os.Unsetenv(k)
+			}
+		}
+	})
+
+	endpoints := []string{"https://one:2379", "https://two:2379", "https://three:2379"}
+	var script strings.Builder
+	script.WriteString("#!/bin/sh\n")
+	script.WriteString("env > " + quoteShell(out) + "\n")
+	script.WriteString("case \"$1\" in\n")
+	for i, endpoint := range endpoints {
+		status := map[string]any{"header": map[string]any{"cluster_id": 789, "member_id": i + 1, "revision": 100}, "leader": 1, "version": "3.7.2"}
+		data, err := json.Marshal([]map[string]any{{"Endpoint": endpoint, "Status": status}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		fmt.Fprintf(&script, "--endpoints=%s) printf '%%s\\n' '%s' ;;\n", endpoint, data)
+	}
+	script.WriteString("*) exit 1 ;;\nesac\n")
+
+	binary := filepath.Join(root, "etcdctl")
+	if err := os.WriteFile(binary, []byte(script.String()), 0700); err != nil {
+		t.Fatal(err)
+	}
+
+	probe := EtcdBootProbe{Binary: binary, Endpoints: endpoints, TLS: etcdbackup.TLSFiles{CA: pki.CA, Cert: pki.ClientCert, Key: pki.ClientKey}, VerifyPatroniDCS: func(context.Context) error { return nil }}
+	if err := probe.Verify(context.Background(), etcdbackup.Identity{Core: "core", Target: "target", Cluster: "123"}, etcdbackup.SnapshotInfo{ClusterID: "123", Revision: 100, Version: "3.7.2"}); err != nil {
+		t.Fatalf("boot probe failed: %v", err)
+	}
+
+	captured := map[string]string{}
+	counts := map[string]int{}
+	for _, line := range splitLines(readFile(t, out)) {
+		if i := strings.IndexByte(line, '='); i >= 0 {
+			counts[line[:i]]++
+			captured[line[:i]] = line[i+1:]
+		}
+	}
+	// For every pinned key the child must see exactly one occurrence, and it must
+	// be the probe's pin, never the parent's INHERITED-<key>. PATH, ETCDCTL_API and
+	// the pinned ETCDCTL_CACERT/CERT/KEY values are asserted against the probe's
+	// real pins below; the inherited value must never appear.
+	for _, k := range overrideKeys {
+		if counts[k] != 1 {
+			t.Fatalf("boot probe child saw key %s %d times; want exactly 1 (captured:\n%s)", k, counts[k], readFile(t, out))
+		}
+		if got := captured[k]; got == "INHERITED-"+k {
+			t.Fatalf("boot probe child saw inherited %s=%q; the pin must drop it (captured:\n%s)", k, got, readFile(t, out))
+		}
+	}
+	// The three ETCDCTL trust keys carry the real pki pin paths; assert the child
+	// never saw an INHERITED-* value for them and that each appears once.
+	for _, key := range []string{"ETCDCTL_API", "ETCDCTL_CACERT", "ETCDCTL_CERT", "ETCDCTL_KEY"} {
+		if captured[key] == "INHERITED-"+key {
+			t.Fatalf("boot probe child saw pin key %s = inherited value (captured:\n%s)", key, readFile(t, out))
+		}
+	}
+}
+
+func readFile(t *testing.T, path string) string {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("did not capture child env: %v", err)
+	}
+	return string(data)
+}
+
 func assertSentinelInCoreupdateEnvFile(t *testing.T, path, key, want string) {
 	t.Helper()
 	data, err := os.ReadFile(path)
