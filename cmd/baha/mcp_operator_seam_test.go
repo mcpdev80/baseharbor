@@ -77,7 +77,8 @@ func TestMCPOperatorSeamReachesGateBothDirections(t *testing.T) {
 	// production denial code, not a transport-level failure.
 	var payload struct {
 		Error *struct {
-			Code string `json:"code"`
+			Code    string `json:"code"`
+			Message string `json:"message"`
 		} `json:"error"`
 	}
 	if err := json.Unmarshal([]byte(anonymousBody), &payload); err != nil {
@@ -85,6 +86,13 @@ func TestMCPOperatorSeamReachesGateBothDirections(t *testing.T) {
 	}
 	if payload.Error == nil || payload.Error.Code != "authentication_failed" {
 		t.Fatalf("anonymous denial error is not a typed authentication_failed machine error: %s", anonymousBody)
+	}
+	// The denial body must carry the exact production gate message verbatim.
+	// source internal/operatorauth/authorization.go:286 and cmd/baha/mcp.go:301.
+	// This pins the literal text so the case goes RED if the production denial
+	// message changes.
+	if payload.Error.Message != "Managed-environment machine operations require an authenticated BaseHarbor operator." {
+		t.Fatalf("anonymous denial does not carry the exact production gate message: %q", payload.Error.Message)
 	}
 	// The anonymous context really did reach the seam and was refused there for a
 	// missing principal, not short-circuited by a precondition: no verified
