@@ -11,8 +11,11 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/mcpdev80/baseharbor/internal/testsupport/envpin"
 )
 
 // TestEtcdEnvInheritsParentEnv proves that a child of the baha CLI inherits the
@@ -284,7 +287,7 @@ func TestPinnedEnvDropsInheritedKeys(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			got := pinnedEnv("PATH=/usr/bin:/bin", "ETCDCTL_API=3",
+			got := envpin.PinnedEnv("PATH=/usr/bin:/bin", "ETCDCTL_API=3",
 				"ETCDCTL_ENDPOINTS=https://etcd-1.internal:2379",
 				"ETCDCTL_CACERT=/pins/ca.pem", "ETCDCTL_CERT=/pins/cert.pem",
 				"ETCDCTL_KEY=/pins/key.pem")
@@ -293,7 +296,7 @@ func TestPinnedEnvDropsInheritedKeys(t *testing.T) {
 			count := 0
 			var finalVal string
 			for _, kv := range got {
-				if i := indexByte(kv, '='); i >= 0 && kv[:i] == key {
+				if i := strings.IndexByte(kv, '='); i >= 0 && kv[:i] == key {
 					count++
 					finalVal = kv[i+1:]
 				}
@@ -490,7 +493,7 @@ func assertPinsInChildEnv(t *testing.T, path string, pins []pinWant) {
 	captured := map[string]string{}
 	counts := map[string]int{}
 	for _, line := range splitLines(string(data)) {
-		if i := indexByte(line, '='); i >= 0 {
+		if i := strings.IndexByte(line, '='); i >= 0 {
 			k, v := line[:i], line[i+1:]
 			counts[k]++
 			captured[k] = v

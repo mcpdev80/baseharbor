@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/mcpdev80/baseharbor/internal/testsupport/envpin"
 	"io"
 	"net/url"
 	"os"
@@ -24,42 +25,6 @@ type EtcdctlSource struct {
 	TLS        TLSFiles
 	ScratchDir string
 	Attest     func(context.Context) (SnapshotInfo, error)
-}
-
-// pinnedEnv builds the child environment so that the controlled etcd keys are
-// never overridable by the parent environment. It copies os.Environ(), removes
-// every key listed in pins, and appends the pin values last. Dropping the key
-// from the inherited copy is mandatory: with Go's env-dedup (last value wins)
-// an inherited ETCDCTL_ENDPOINTS/ETCDCTL_CACERT/... placed before the pin would
-// silently win, making the pinned endpoint and TLS trust swappable by a parent
-// process. The result is therefore independent of Go's dedup rule.
-func pinnedEnv(pins ...string) []string {
-	dropped := make(map[string]struct{}, len(pins))
-	for _, p := range pins {
-		if i := indexByte(p, '='); i >= 0 {
-			dropped[p[:i]] = struct{}{}
-		}
-	}
-	out := make([]string, 0, len(os.Environ())+len(pins))
-	for _, kv := range os.Environ() {
-		if i := indexByte(kv, '='); i >= 0 {
-			if _, bad := dropped[kv[:i]]; bad {
-				continue
-			}
-		}
-		out = append(out, kv)
-	}
-	return append(out, pins...)
-}
-
-// indexByte returns the offset of the first c in s, or -1 when absent.
-func indexByte(s string, c byte) int {
-	for i := 0; i < len(s); i++ {
-		if s[i] == c {
-			return i
-		}
-	}
-	return -1
 }
 
 func trustedBinary(path string) error {
@@ -134,7 +99,7 @@ func (s EtcdctlSource) Snapshot(ctx context.Context, dest io.Writer) (SnapshotIn
 	// The child is a direct descendant of the baha CLI and must inherit it, but
 	// the controlled etcd keys are pinned via pinnedEnv, which drops any inherited
 	// copy of those keys first so the pin is never overridden by the parent env.
-	cmd.Env = pinnedEnv(
+	cmd.Env = envpin.PinnedEnv(
 		"PATH=/usr/bin:/bin", "ETCDCTL_API=3",
 		// Maintenance.Snapshot streams from one member, after all configured
 		// endpoints have attested the owning cluster.
@@ -155,7 +120,7 @@ func (s EtcdctlSource) Snapshot(ctx context.Context, dest io.Writer) (SnapshotIn
 	// Isolation means never executing inside the running etcd container; the
 	// child still inherits the parent env minus the pinned keys.
 	verify := exec.CommandContext(ctx, s.Etcdutl, "snapshot", "status", archive, "--write-out=json")
-	verify.Env = pinnedEnv("PATH=/usr/bin:/bin")
+	verify.Env = envpin.PinnedEnv("PATH=/usr/bin:/bin")
 	statusJSON, err := verify.Output()
 	if err != nil {
 		return SnapshotInfo{}, errors.New("etcdutl snapshot status integrity check failed")
@@ -199,7 +164,7 @@ func (s EtcdctlSource) attestEndpointStatus(ctx context.Context) (SnapshotInfo, 
 		cmd := exec.CommandContext(ctx, s.Etcdctl, "--endpoints="+endpoint, "endpoint", "status", "--write-out=json")
 		// Pin PATH, API and TLS trust via pinnedEnv so a parent ETCDCTL_* key
 		// can never override them.
-		cmd.Env = pinnedEnv(
+		cmd.Env = envpin.PinnedEnv(
 			"PATH=/usr/bin:/bin", "ETCDCTL_API=3",
 			"ETCDCTL_CACERT="+s.TLS.CA,
 			"ETCDCTL_CERT="+s.TLS.Cert,
