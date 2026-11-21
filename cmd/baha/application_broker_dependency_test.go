@@ -32,7 +32,7 @@ func TestRemovingApplicationBrokerRequiresOwnImpactWhileSharedSecretsRemain(t *t
 		t.Fatalf("broker disappearance skipped impact or stopped shared secrets: %+v", requests)
 	}
 	impact, err := application.DescribeProviderChanges(snapshot, plan, requests, application.ProviderImpactObservation{InventoryComplete: false, Revision: "actual-owner-revision", Providers: map[string]application.ProviderImpactFact{}})
-	if err != nil || impact.ConfirmationsRequired != 2 || impact.Attention != "Achtung" {
+	if err != nil || impact.ConfirmationsRequired != 2 || impact.Attention != "Warning" {
 		t.Fatalf("unknown broker effects lack two acknowledgements: %+v %v", impact, err)
 	}
 	if err := application.ValidateProviderChangeConsent(impact, application.ProviderChangeConsent{PlanID: impact.PlanID, First: true}); err == nil {

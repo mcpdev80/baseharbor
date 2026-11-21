@@ -133,11 +133,15 @@ func guidedWorkspaceSource(ctx context.Context, reader *bufio.Reader, out io.Wri
 			if source.Type == development.SourceOCI {
 				label = source.Image
 			}
+			if source.Type == development.SourceLocal {
+				label = source.Path
+			}
 			fmt.Fprintf(out, "  %d. Reuse %s (%s)\n", i+1, source.ID, label)
 		}
 		fmt.Fprintf(out, "  %d. New local repository/worktree\n", len(model.Sources)+1)
-		fmt.Fprintf(out, "  %d. OCI image\n", len(model.Sources)+2)
-		choice, err := promptNumber(reader, out, "Selection", 1, len(model.Sources)+2, len(model.Sources)+1)
+		fmt.Fprintf(out, "  %d. Local directory\n", len(model.Sources)+2)
+		fmt.Fprintf(out, "  %d. OCI image\n", len(model.Sources)+3)
+		choice, err := promptNumber(reader, out, "Selection", 1, len(model.Sources)+3, len(model.Sources)+1)
 		if err != nil {
 			return "", "", err
 		}
@@ -146,7 +150,11 @@ func guidedWorkspaceSource(ctx context.Context, reader *bufio.Reader, out io.Wri
 			if source.Type == development.SourceOCI {
 				return source.ID, "", nil
 			}
-			subPath, err := promptLine(reader, out, "Component path inside checkout", ".")
+			fieldLabel := "Component path inside checkout"
+			if source.Type == development.SourceLocal {
+				fieldLabel = "Component path inside directory"
+			}
+			subPath, err := promptLine(reader, out, fieldLabel, ".")
 			if err != nil {
 				return "", "", err
 			}
@@ -156,17 +164,24 @@ func guidedWorkspaceSource(ctx context.Context, reader *bufio.Reader, out io.Wri
 			return source.ID, subPath, nil
 		}
 		if choice == len(model.Sources)+2 {
+			return guidedWorkspaceLocalDirectory(reader, out, component, model)
+		}
+		if choice == len(model.Sources)+3 {
 			return guidedWorkspaceOCI(reader, out, component, model)
 		}
 	} else {
 		fmt.Fprintln(out, "\nSource")
 		fmt.Fprintln(out, "  1. Local repository/worktree")
-		fmt.Fprintln(out, "  2. OCI image")
-		choice, err := promptNumber(reader, out, "Selection", 1, 2, 1)
+		fmt.Fprintln(out, "  2. Local directory")
+		fmt.Fprintln(out, "  3. OCI image")
+		choice, err := promptNumber(reader, out, "Selection", 1, 3, 1)
 		if err != nil {
 			return "", "", err
 		}
 		if choice == 2 {
+			return guidedWorkspaceLocalDirectory(reader, out, component, model)
+		}
+		if choice == 3 {
 			return guidedWorkspaceOCI(reader, out, component, model)
 		}
 	}
@@ -250,6 +265,43 @@ func guidedWorkspaceOCI(reader *bufio.Reader, out io.Writer, component string, m
 	}
 	model.Sources = append(model.Sources, development.SourceDefinition{ID: sourceID, Type: development.SourceOCI, Image: image})
 	return sourceID, "", nil
+}
+
+func guidedWorkspaceLocalDirectory(reader *bufio.Reader, out io.Writer, component string, model *development.SourceModel) (string, string, error) {
+	fmt.Fprintln(out, "Other directories start from your home folder; use shell Tab to complete paths.")
+	dir, err := promptDirectoryPathFrom(reader, out, "Local directory", "", appWorkspaceInput)
+	if err != nil {
+		return "", "", err
+	}
+	dir, err = expandUserPath(dir)
+	if err != nil {
+		return "", "", err
+	}
+	dir, err = filepath.Abs(dir)
+	if err != nil {
+		return "", "", err
+	}
+	info, err := os.Stat(dir)
+	if err != nil || !info.IsDir() {
+		return "", "", usageError("local directory source is not an existing directory", "Choose an already-present directory; BaseHarbor never creates or deletes it here.")
+	}
+	sourceID, err := promptLine(reader, out, "Source id", component+"-dir")
+	if err != nil {
+		return "", "", err
+	}
+	sourceID = slugifyAppName(sourceID)
+	if sourceID == "" || sourceModelHasID(*model, sourceID) {
+		return "", "", usageError("source id is missing or already exists", "Choose a unique stable source id.")
+	}
+	model.Sources = append(model.Sources, development.SourceDefinition{ID: sourceID, Type: development.SourceLocal, Path: dir})
+	subPath, err := promptLine(reader, out, "Component path inside directory", ".")
+	if err != nil {
+		return "", "", err
+	}
+	if strings.TrimSpace(subPath) == "." {
+		subPath = ""
+	}
+	return sourceID, strings.TrimSpace(subPath), nil
 }
 
 func sourceModelHasID(model development.SourceModel, id string) bool {

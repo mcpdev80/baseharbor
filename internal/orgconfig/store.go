@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strings"
 )
@@ -13,179 +15,6 @@ import (
 type ActiveState struct {
 	Resolution Resolution `json:"resolution"`
 	Config     Config     `json:"config"`
-}
-
-func configRoot() (string, error) {
-	if root := strings.TrimSpace(os.Getenv("BASEHARBOR_STATE_DIR")); root != "" {
-		return filepath.Join(root, "config", "organization"), nil
-	}
-	base, err := os.UserConfigDir()
-	if err != nil || strings.TrimSpace(base) == "" {
-		return "", errors.New("cannot determine BaseHarbor organization config directory")
-	}
-	return filepath.Join(base, "baseharbor", "organization"), nil
-}
-
-// userConfigRoot returns the root-less organization state location with the
-// documented environment precedence (XDG_CONFIG_HOME, then the user config
-// home): the location `baha config organization set` records when the
-// ambient developer installation activates an organization.
-func userConfigRoot() (string, error) {
-	if root := strings.TrimSpace(os.Getenv("XDG_CONFIG_HOME")); root != "" {
-		return filepath.Join(root, "baseharbor", "organization"), nil
-	}
-	home, err := os.UserHomeDir()
-	if err != nil || strings.TrimSpace(home) == "" {
-		return "", errors.New("cannot determine BaseHarbor organization config directory")
-	}
-	return filepath.Join(home, ".config", "baseharbor", "organization"), nil
-}
-
-func cacheRoot() (string, error) {
-	if root := strings.TrimSpace(os.Getenv("BASEHARBOR_STATE_DIR")); root != "" {
-		return filepath.Join(root, "cache", "organization"), nil
-	}
-	if root := strings.TrimSpace(os.Getenv("XDG_CACHE_HOME")); root != "" {
-		return filepath.Join(root, "baseharbor", "organization"), nil
-	}
-	home, err := os.UserHomeDir()
-	if err != nil || strings.TrimSpace(home) == "" {
-		return "", errors.New("cannot determine BaseHarbor organization cache directory")
-	}
-	return filepath.Join(home, ".cache", "baseharbor", "organization"), nil
-}
-
-// StateRootSelected reports whether BASEHARBOR_STATE_DIR selects a dedicated
-// isolated installation root for this invocation. When it does, the
-// installation's organization selection and cached configuration resolve
-// exclusively below that root (BF-01, h-d28 akte;
-// docs/explanation/targets.md): the resolver must never fall through to an
-// ambient organization state left by a different installation, and an ambient
-// resolution's cached artifacts must never answer below an isolated root.
-func StateRootSelected() bool {
-	return stateRootOverride() != ""
-}
-
-// stateRootSelected is the package-internal alias of StateRootSelected.
-func stateRootSelected() bool {
-	return StateRootSelected()
-}
-
-// stateRootOverride returns the trimmed BASEHARBOR_STATE_DIR value: the
-// authoritative isolated installation root for this invocation (the same
-// precedence source deployment.ConfigPath and DataRoot honour).
-func stateRootOverride() string {
-	return strings.TrimSpace(os.Getenv("BASEHARBOR_STATE_DIR"))
-}
-
-func ActivePath() (string, error) {
-	root, err := organizationDirRoot()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(root, "active.json"), nil
-}
-
-// organizationDirRoot selects the organization state directory for the
-// invocation: the isolated installation root's own location under
-// BASEHARBOR_STATE_DIR, the ambient user location otherwise.
-func organizationDirRoot() (string, error) {
-	if root := strings.TrimSpace(os.Getenv("BASEHARBOR_STATE_DIR")); root != "" {
-		return filepath.Join(root, "config", "organization"), nil
-	}
-	return userConfigRoot()
-}
-
-func LoadActive() (ActiveState, error) {
-	state, ok, err := LoadActiveOptional()
-	if err != nil {
-		return ActiveState{}, err
-	}
-	if !ok {
-		return ActiveState{}, fmt.Errorf("%w; run 'baha config organization set'", ErrNotConfigured)
-	}
-	return state, nil
-}
-
-func LoadActiveOptional() (ActiveState, bool, error) {
-	canonical, err := privateCanonicalPath()
-	if err != nil {
-		return ActiveState{}, false, err
-	}
-	legacy, err := legacyActivePath()
-	if err != nil {
-		return ActiveState{}, false, err
-	}
-	path := canonical
-	data, err := os.ReadFile(path)
-	if err != nil {
-		if !errors.Is(err, os.ErrNotExist) {
-			return ActiveState{}, false, fmt.Errorf("read active organization configuration: %w", err)
-		}
-		// The private selection is absent. Two cases:
-		//   - the durable once-only marker is present: the legacy /tmp selection
-		//     was already adopted and frozen, so nothing exists to load and no
-		//     legacy path may be read again — return the normal not-configured
-		//     result;
-		//   - otherwise a one-time migration may still apply if the legacy file
-		//     still exists.
-		if canonicalMigrationFrozen(canonical) {
-			return ActiveState{}, false, nil
-		}
-		adopted, adoptErr := adoptLegacySelection(legacy, canonical)
-		if adoptErr != nil {
-			return ActiveState{}, false, adoptErr
-		}
-		if !adopted {
-			return ActiveState{}, false, nil
-		}
-		// Adopted: the canonical path now holds the migrated selection.
-		data, err = os.ReadFile(canonical)
-		if err != nil {
-			return ActiveState{}, false, fmt.Errorf("read active organization configuration after migration: %w", err)
-		}
-	}
-	return decodeActive(data)
-}
-
-// decodeActive validates a decoded active organization configuration. It is
-// shared by LoadActiveOptional (both the direct-read and one-time-migration
-// paths) so adoption never falls through to a stale read error.
-func decodeActive(data []byte) (ActiveState, bool, error) {
-	var state ActiveState
-	if err := json.Unmarshal(data, &state); err != nil {
-		return ActiveState{}, false, fmt.Errorf("decode active organization configuration: %w", err)
-	}
-	if err := state.Config.Validate(); err != nil {
-		return ActiveState{}, false, fmt.Errorf("validate active organization configuration: %w", err)
-	}
-	if err := state.Resolution.Validate(); err != nil {
-		return ActiveState{}, false, fmt.Errorf("validate active organization resolution: %w", err)
-	}
-	// BF-01 (h-d28): with a dedicated state root selected, organization
-	// state resolves exclusively below that root — the documented override
-	// precedence (docs/explanation/targets.md: the override takes
-	// precedence over XDG data and configuration paths). A resolution
-	// that names a source or cache reference outside the selected root
-	// belongs to a different installation; it must not act inside an
-	// isolated root. A root-local state written through the CLI names its
-	// own location below the root and stays authoritative.
-	if StateRootSelected() && !state.Resolution.selectsWithin(stateRootOverride()) {
-		return ActiveState{}, false, nil
-	}
-	return state, true, nil
-}
-
-// selectsWithin reports whether the resolution's organization state belongs
-// to the given installation state root: its source or cache reference lives
-// below that root, it names the root's own organization state directory, or
-// it carries no location claim at all — an empty resolution is the root's
-// state wherever the root keeps it (BF-01, h-d28 akte).
-func StateRootOwnsOrganizationState(state ActiveState) bool {
-	if !StateRootSelected() {
-		return true
-	}
-	return state.Resolution.selectsWithin(stateRootOverride())
 }
 
 // legacyTempSelectionRel is the relative path (under the world-writable config
@@ -207,10 +36,65 @@ const canonicalFrozenMarker = "active.frozen.tombstone"
 // XDG_CONFIG_HOME. Production never sets it, so the guard stays enforced.
 const worldWritableCheckOptOutEnv = "BASEHARBOR_SKIP_WORLD_WRITABLE_CHECK"
 
+// configRoot returns the canonical user-state directory that holds the persisted
+// organization (target) selection: <user-config-dir>/baseharbor/organization.
+//
+// The persisted selection is authoritative about which registry reads resolve
+// against, so it must never live under a world-writable path (for example a
+// sticky-bit /tmp directory reachable via an attacker-controlled
+// XDG_CONFIG_HOME/BASEHARBOR_STATE_DIR). os.UserConfigDir() honours
+// XDG_CONFIG_HOME when it points at a private user-owned location, but falls
+// back to the user's real config directory (XDG_CONFIG_HOME unset -> ~/.config,
+// macOS ~/Library/Preferences, Windows %APPDATA%); it never resolves to /tmp.
+func configRoot() (string, error) {
+	if root := strings.TrimSpace(os.Getenv("BASEHARBOR_STATE_DIR")); root != "" {
+		return filepath.Join(root, "config", "organization"), nil
+	}
+	base, err := os.UserConfigDir()
+	if err != nil || strings.TrimSpace(base) == "" {
+		return "", errors.New("cannot determine BaseHarbor organization config directory")
+	}
+	return filepath.Join(base, "baseharbor", "organization"), nil
+}
+
+// StateRootSelected reports whether this invocation uses an isolated
+// installation root instead of the ambient user configuration.
+func StateRootSelected() bool {
+	return stateRootOverride() != ""
+}
+
+func stateRootOverride() string {
+	return strings.TrimSpace(os.Getenv("BASEHARBOR_STATE_DIR"))
+}
+
+func cacheRoot() (string, error) {
+	if root := strings.TrimSpace(os.Getenv("BASEHARBOR_STATE_DIR")); root != "" {
+		return filepath.Join(root, "cache", "organization"), nil
+	}
+	if root := strings.TrimSpace(os.Getenv("XDG_CACHE_HOME")); root != "" {
+		return filepath.Join(root, "baseharbor", "organization"), nil
+	}
+	home, err := os.UserHomeDir()
+	if err != nil || strings.TrimSpace(home) == "" {
+		return "", errors.New("cannot determine BaseHarbor organization cache directory")
+	}
+	return filepath.Join(home, ".cache", "baseharbor", "organization"), nil
+}
+
+// ActivePath returns the private, canonical location of the persisted selection
+// under the user config directory. It is never under a world-writable path.
+func ActivePath() (string, error) {
+	root, err := configRoot()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(root, "active.json"), nil
+}
+
 // legacyActivePath returns the prior world-writable location of the persisted
 // selection under the (currently resolved) config root. It is used only for a
 // one-time migration into the private fallback location (see
-// adoptLegacySelection) and is never consulted a second time.
+// migrateFromWorldWritable) and is never consulted a second time.
 func legacyActivePath() (string, error) {
 	root, err := configRoot()
 	if err != nil {
@@ -277,6 +161,11 @@ func privateFallbackPath() (string, error) {
 // frozen read-only with a tombstone marker and a durable once-only marker is
 // written into the private canonical directory so the location can never
 // receive a further write or a second adopt.
+//
+// legacyPath is the world-writable location that was resolved (and refused by
+// SaveActive/LoadActive); canonical is the private fallback the value is adopted
+// into. It returns true when a legacy file was adopted, false when there was
+// nothing to adopt, and a non-nil error on any safety violation.
 func adoptLegacySelection(legacyPath, canonical string) (bool, error) {
 	info, err := os.Lstat(legacyPath)
 	if err != nil {
@@ -285,22 +174,40 @@ func adoptLegacySelection(legacyPath, canonical string) (bool, error) {
 		}
 		return false, fmt.Errorf("inspect legacy organization selection %q: %w", legacyPath, err)
 	}
-	// Fail closed: a symlink or any non-regular entry must not be adopted.
-	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
-		return false, fmt.Errorf("rejecting legacy organization selection at %q: symlink or non-regular entry", legacyPath)
+	uid := uint32(os.Geteuid())
+	if err := validateLegacySelection(info, legacyPath, uid); err != nil {
+		return false, err
 	}
-	// Refuse to read a world-writable source: an attacker may have pre-created or
-	// replaced the file between the stat and the read.
-	if info.Mode().Perm()&0o002 != 0 {
-		return false, fmt.Errorf("rejecting world-writable legacy organization selection at %q", legacyPath)
+	if err := validateLegacyAncestors(filepath.Dir(legacyPath), uid); err != nil {
+		return false, err
 	}
+
 	// Never clobber an existing (private) selection.
 	if _, err := os.Lstat(canonical); err == nil {
 		return false, nil
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return false, fmt.Errorf("inspect canonical organization selection %q: %w", canonical, err)
 	}
-	data, err := os.ReadFile(legacyPath)
+
+	// Open once, then validate the opened inode before reading. This closes the
+	// Lstat-to-ReadFile replacement window: a substituted symlink or foreign
+	// inode will not match the validated entry and cannot be imported.
+	f, err := os.Open(legacyPath)
+	if err != nil {
+		return false, fmt.Errorf("read legacy organization selection %q: %w", legacyPath, err)
+	}
+	defer f.Close()
+	openedInfo, err := f.Stat()
+	if err != nil {
+		return false, fmt.Errorf("inspect opened legacy organization selection %q: %w", legacyPath, err)
+	}
+	if !os.SameFile(info, openedInfo) {
+		return false, fmt.Errorf("rejecting changed legacy organization selection at %q", legacyPath)
+	}
+	if err := validateLegacySelection(openedInfo, legacyPath, uid); err != nil {
+		return false, err
+	}
+	data, err := io.ReadAll(f)
 	if err != nil {
 		return false, fmt.Errorf("read legacy organization selection %q: %w", legacyPath, err)
 	}
@@ -308,6 +215,66 @@ func adoptLegacySelection(legacyPath, canonical string) (bool, error) {
 		return false, err
 	}
 	return true, nil
+}
+
+func validateLegacySelection(info os.FileInfo, path string, uid uint32) error {
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("rejecting legacy organization selection at %q: non-regular entry", path)
+	}
+	owner, ok := fileOwnerUID(info)
+	if !ok || owner != uid {
+		return fmt.Errorf("rejecting legacy organization selection at %q: file is not owned by the current user", path)
+	}
+	if info.Mode().Perm()&0o022 != 0 {
+		return fmt.Errorf("rejecting group- or world-writable legacy organization selection at %q", path)
+	}
+	return nil
+}
+
+func fileOwnerUID(info os.FileInfo) (uint32, bool) {
+	if info == nil || info.Sys() == nil {
+		return 0, false
+	}
+	v := reflect.Indirect(reflect.ValueOf(info.Sys()))
+	if !v.IsValid() || v.Kind() != reflect.Struct {
+		return 0, false
+	}
+	uid := v.FieldByName("Uid")
+	if !uid.IsValid() || !uid.CanUint() {
+		return 0, false
+	}
+	return uint32(uid.Uint()), true
+}
+
+// validateLegacyAncestors allows a migration only through directories owned
+// by root or the current user. A writable ancestor must be sticky, which
+// protects entries from replacement by other users (as in /tmp).
+func validateLegacyAncestors(dir string, uid uint32) error {
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return fmt.Errorf("resolve legacy organization selection directory: %w", err)
+	}
+	for current := filepath.Clean(abs); ; current = filepath.Dir(current) {
+		info, err := os.Lstat(current)
+		if err != nil {
+			return fmt.Errorf("inspect legacy organization selection directory %q: %w", current, err)
+		}
+		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("rejecting legacy organization selection: untrusted directory %q", current)
+		}
+		owner, ok := fileOwnerUID(info)
+		if !ok || (owner != uid && owner != 0) {
+			return fmt.Errorf("rejecting legacy organization selection: directory %q has untrusted owner", current)
+		}
+		if info.Mode().Perm()&0o022 != 0 && info.Mode()&os.ModeSticky == 0 {
+			return fmt.Errorf("rejecting legacy organization selection: writable directory %q is not trusted", current)
+		}
+		parent := filepath.Dir(current)
+		if parent == current {
+			break
+		}
+	}
+	return nil
 }
 
 // migrateToCanonical writes data into canonical using a temp+rename within the
@@ -340,7 +307,10 @@ func migrateToCanonical(src, dst string, data []byte) error {
 		"Original location: "+src+"\n"), 0o600)
 	// Durable once-only marker in the private canonical namespace. Write it
 	// last (after the canonical file is in place) so a crash before the file
-	// lands cannot leave a marker without the migrated selection.
+	// lands cannot leave a marker without the migrated selection. Ignore
+	// failure to write it: a missing marker only makes the once-only
+	// guarantee best-effort, never incorrect — the canonical file is already
+	// authoritative.
 	if err := os.WriteFile(filepath.Join(filepath.Dir(dst), canonicalFrozenMarker), []byte(
 		"# One-time world-writable migration marker.\n"+
 			"Wrote the adopted selection into this private directory. Do NOT re-read\n"+
@@ -350,42 +320,91 @@ func migrateToCanonical(src, dst string, data []byte) error {
 	return nil
 }
 
-// isWorldFrozenTombstone reports whether dir carries the tombstone marker that
-// adoptLegacySelection writes after adopting a stale world-writable selection.
-func isWorldFrozenTombstone(dir string) bool {
-	_, err := os.Stat(filepath.Join(dir, "active.world-writable.tombstone"))
-	return err == nil
-}
-
-// canonicalMigrationFrozen reports whether the private canonical organization
-// directory already carries the durable once-only migration marker.
-func canonicalMigrationFrozen(canonical string) bool {
-	marker := filepath.Join(filepath.Dir(canonical), canonicalFrozenMarker)
-	info, err := os.Lstat(marker)
-	return err == nil && !info.Mode().IsDir()
-}
-
-// isWorldWritableDir reports whether dir is a directory that any local user may
-// write into: a world-writable directory that is not sticky, or a sticky-bit
-// world-writable directory (the classic /tmp pattern).
-func isWorldWritableDir(dir string) bool {
-	info, err := os.Stat(dir)
+func LoadActive() (ActiveState, error) {
+	state, ok, err := LoadActiveOptional()
 	if err != nil {
-		// A missing directory still cannot be trusted under a world-writable
-		// parent.
-		return isWorldWritableDir(filepath.Dir(dir))
+		return ActiveState{}, err
 	}
-	mode := info.Mode()
-	if !mode.IsDir() || mode&0o002 == 0 {
-		return false
+	if !ok {
+		return ActiveState{}, fmt.Errorf("%w; run 'baha config organization set'", ErrNotConfigured)
 	}
-	return true
+	return state, nil
 }
 
-// OrganizationTargetSelection returns the target the organization state
-// selects: the organization's own default when it names one, otherwise the
-// first per-environment target. Empty means the organization state selects
-// no target.
+func LoadActiveOptional() (ActiveState, bool, error) {
+	canonical, err := privateCanonicalPath()
+	if err != nil {
+		return ActiveState{}, false, err
+	}
+	legacy, err := legacyActivePath()
+	if err != nil {
+		return ActiveState{}, false, err
+	}
+	path := canonical
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			return ActiveState{}, false, fmt.Errorf("read active organization configuration: %w", err)
+		}
+		// The private selection is absent. Two cases:
+		//   - the durable once-only marker is present: the legacy /tmp selection
+		//     was already adopted and frozen, so nothing exists to load and no
+		//     legacy path may be read again. Return the normal not-configured
+		//     result (do NOT fall through to decodeActive with nil data, which
+		//     would surface a JSON EOF error instead of ErrNotConfigured);
+		//   - otherwise a one-time migration may still apply if the legacy file
+		//     still exists.
+		if canonicalMigrationFrozen(canonical) {
+			return ActiveState{}, false, nil
+		}
+		adopted, adoptErr := adoptLegacySelection(legacy, canonical)
+		if adoptErr != nil {
+			return ActiveState{}, false, adoptErr
+		}
+		if !adopted {
+			return ActiveState{}, false, nil
+		}
+		// Adopted: the canonical path now holds the migrated selection.
+		data, err = os.ReadFile(canonical)
+		if err != nil {
+			return ActiveState{}, false, fmt.Errorf("read active organization configuration after migration: %w", err)
+		}
+	}
+	state, ok, err := decodeActive(data)
+	if err != nil || !ok {
+		return state, ok, err
+	}
+	if StateRootSelected() && !state.Resolution.selectsWithin(stateRootOverride()) {
+		return ActiveState{}, false, nil
+	}
+	return state, true, nil
+}
+
+// decodeActive validates a decoded active organization configuration. It is
+// shared by LoadActiveOptional (both the direct-read and one-time-migration
+// paths) so adoption never falls through to a stale read error.
+func decodeActive(data []byte) (ActiveState, bool, error) {
+	var state ActiveState
+	if err := json.Unmarshal(data, &state); err != nil {
+		return ActiveState{}, false, fmt.Errorf("decode active organization configuration: %w", err)
+	}
+	if err := state.Config.Validate(); err != nil {
+		return ActiveState{}, false, fmt.Errorf("validate active organization configuration: %w", err)
+	}
+	if err := state.Resolution.Validate(); err != nil {
+		return ActiveState{}, false, fmt.Errorf("validate active organization resolution: %w", err)
+	}
+	return state, true, nil
+}
+
+// StateRootOwnsOrganizationState reports whether an active organization
+// resolution belongs to this invocation's isolated state root.
+func StateRootOwnsOrganizationState(state ActiveState) bool {
+	return !StateRootSelected() || state.Resolution.selectsWithin(stateRootOverride())
+}
+
+// OrganizationTargetSelection returns the organization's default target, or
+// the first configured environment target in stable name order.
 func OrganizationTargetSelection(state ActiveState) string {
 	if target := strings.TrimSpace(state.Config.Defaults.Target); target != "" {
 		return target
@@ -403,10 +422,25 @@ func OrganizationTargetSelection(state ActiveState) string {
 	return ""
 }
 
-// underRoot reports whether path equals or lives below root.
-func underRoot(path, root string) bool {
-	path, root = filepath.Clean(path), filepath.Clean(root)
-	return path == root || strings.HasPrefix(path, root+string(os.PathSeparator))
+func (r Resolution) selectsWithin(root string) bool {
+	root = filepath.Clean(strings.TrimSpace(root))
+	if root == "" {
+		return true
+	}
+	source := filepath.Clean(strings.TrimSpace(r.Source.Location))
+	if source == "" && strings.TrimSpace(r.CachePath) == "" {
+		return true
+	}
+	for _, path := range []string{source, r.CachePath} {
+		path = filepath.Clean(strings.TrimSpace(path))
+		if path == "" {
+			continue
+		}
+		if path == root || strings.HasPrefix(path, root+string(os.PathSeparator)) {
+			return true
+		}
+	}
+	return source == filepath.Join(root, "config", "organization") || source == filepath.Join(root, "config")
 }
 
 func SaveActive(state ActiveState) error {
@@ -424,12 +458,12 @@ func SaveActive(state ActiveState) error {
 	if err != nil {
 		return err
 	}
-	// One-time migration: adopt a stale world-writable /tmp selection into
-	// the private canonical path before writing, so the write lands in the
-	// safe location and never re-touches the /tmp source. The durable
-	// once-only marker in the private canonical namespace is consulted
-	// first so a deleted canonical file cannot restore the stale legacy
-	// selection or force another freeze.
+	// One-time migration: adopt a stale world-writable /tmp selection into the
+	// private canonical path before writing, so the write lands in the safe
+	// location and never re-touches the /tmp source. The durable once-only
+	// marker in the private canonical namespace is consulted first so a deleted
+	// canonical file cannot restore the stale legacy selection or force another
+	// freeze.
 	adopted := false
 	if !canonicalMigrationFrozen(canonical) {
 		var adoptErr error
@@ -441,7 +475,9 @@ func SaveActive(state ActiveState) error {
 	// If the resolved selection location is world-writable and there is no
 	// private selection to write into, the write would land in a
 	// world-writable spot. That is refused: the caller must point
-	// XDG_CONFIG_HOME/BASEHARBOR_STATE_DIR at a private directory.
+	// XDG_CONFIG_HOME/BASEHARBOR_STATE_DIR at a private directory. Once a
+	// private selection exists (after a migration), the write proceeds to that
+	// private location. A non-world-writable private candidate is always safe.
 	if !adopted {
 		if _, statErr := os.Stat(canonical); errors.Is(statErr, os.ErrNotExist) && isWorldWritableCandidate() {
 			return fmt.Errorf("organization selection state resolves to a world-writable path and must be written to a private user directory first")
@@ -470,35 +506,47 @@ func SaveActive(state ActiveState) error {
 	return nil
 }
 
-func (r Resolution) selectsWithin(root string) bool {
-	root = filepath.Clean(strings.TrimSpace(root))
-	if root == "" {
-		return true
-	}
-	source := filepath.Clean(strings.TrimSpace(r.Source.Location))
-	if source == "" && strings.TrimSpace(r.CachePath) == "" {
-		return true
-	}
-	for _, path := range []string{source, r.CachePath} {
-		path = filepath.Clean(strings.TrimSpace(path))
-		if path == "" {
-			continue
-		}
-		if path == root || strings.HasPrefix(path, root+string(os.PathSeparator)) {
-			return true
-		}
-	}
-	return source == filepath.Join(root, "config", "organization") || source == filepath.Join(root, "config")
+// isWorldFrozenTombstone reports whether dir carries the tombstone marker that
+// adoptLegacySelection writes after adopting a stale world-writable selection.
+// Its presence means the selection has already been migrated and the old path
+// must never be written again.
+func isWorldFrozenTombstone(dir string) bool {
+	_, err := os.Stat(filepath.Join(dir, "active.world-writable.tombstone"))
+	return err == nil
 }
 
-// StateRootOwnsOrganizationState reports whether the active organization
-// state is the selected installation root's own state: under a dedicated
-// state root, the state resolves exclusively below that root, so the
-// selection a call consults is this installation's selection — never the
-// organization default of a different installation (BF-01, h-d28 akte;
-// docs/explanation/targets.md: the override takes precedence over XDG data
-// and configuration paths). Without a selected root the state is the
-// root-less user state it has always been.
+// canonicalMigrationFrozen reports whether the private canonical organization
+// directory already carries the durable once-only migration marker. When it
+// does, the legacy /tmp selection has already been adopted and the loader must
+// never consult a legacy path again — even if the canonical active.json was
+// deleted in the meantime. This is consulted before any legacy-path access so
+// a deleted canonical file cannot restore the stale legacy selection.
+func canonicalMigrationFrozen(canonical string) bool {
+	marker := filepath.Join(filepath.Dir(canonical), canonicalFrozenMarker)
+	info, err := os.Lstat(marker)
+	return err == nil && !info.Mode().IsDir()
+}
+
+// isWorldWritableDir reports whether dir is a directory that any local user may
+// write into: a world-writable directory that is not sticky, or a sticky-bit
+// world-writable directory (the classic /tmp pattern). Sticky-bit world-writable
+// dirs still allow any user to create a file at a known path before the
+// application does, so both classes are treated as unsafe for the selection.
+func isWorldWritableDir(dir string) bool {
+	info, err := os.Stat(dir)
+	if err != nil {
+		// A missing directory still cannot be trusted under a world-writable
+		// parent: the caller may pre-create it before SaveActive writes. Fall
+		// back to inspecting the parent so a world-writable XDG_CONFIG_HOME is
+		// rejected even before the org subdir exists.
+		return isWorldWritableDir(filepath.Dir(dir))
+	}
+	mode := info.Mode()
+	if !mode.IsDir() || mode&0o002 == 0 {
+		return false
+	}
+	return true
+}
 
 func writeCache(resolution Resolution, config Config, content []byte, sourceRoot string) (string, error) {
 	root, err := cacheRoot()

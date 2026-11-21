@@ -69,7 +69,7 @@ func StopOwnedProjectServices(ctx context.Context, provider RuntimeServiceStopPr
 	// contract (0427-128: a pinned container_name lives outside
 	// <project>-<service>-1 and must be accepted there too).
 	plannedByService := map[string][]string{}
-	if cfg, ok := provider.(RuntimeConfigProvider); ok && len(composeFiles) > 0 && provider.Kind() != ProviderPodman {
+	if cfg, ok := provider.(RuntimeConfigProvider); ok && len(composeFiles) > 0 {
 		if rendered, rerr := cfg.ConfigJSONProjectFilesEnv(ctx, project, workdir, nil, composeFiles...); rerr == nil && rendered != "" {
 			for _, service := range services {
 				if planned, perr := parsedExpectedContainerNames(rendered, project, service); perr == nil && len(planned) > 0 {

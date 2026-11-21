@@ -17,7 +17,7 @@ import (
 
 // Both consumers use their actual persisted bindings. Removing one consumer
 // must preserve the other's authenticated data access, not merely a container.
-func qualifySharedBackendConsumers(t *testing.T, ctx context.Context, provider bhruntime.RuntimeProvider, first resolvedApplication, inventory application.SharedBackendInventory, service string, originalEnv, firstIdentity [32]byte, volumes []bhruntime.ProjectResource) {
+func qualifySharedBackendConsumers(t *testing.T, ctx context.Context, provider bhruntime.RuntimeProvider, first resolvedApplication, inventory application.SharedBackendInventory, service string, originalEnv, firstIdentity [32]byte, volumes []bhruntime.ProjectResource, baselineIDs map[string]struct{}) {
 	t.Helper()
 	firstRoot, err := os.Getwd()
 	if err != nil {
@@ -113,7 +113,7 @@ func qualifySharedBackendConsumers(t *testing.T, ctx context.Context, provider b
 			}
 		}
 		needed := phase != 1
-		assertSelectedBackendNativeInventory(t, ctx, provider, apps[0], inventory, service, phase+3, needed, len(volumes), apps[1])
+		assertSelectedBackendNativeInventoryWithBaseline(t, ctx, provider, apps[0], inventory, service, phase+3, needed, len(volumes), baselineIDs, apps[1])
 		for index := range apps {
 			active := (index == 0 && phase >= 2) || (index == 1 && (phase == 0 || phase == 3))
 			if !active {

@@ -109,8 +109,11 @@ type MachineActorRef = machine.ActorRef
 type OperationContext = machine.OperationContext
 
 type AuthorizationRequest struct {
-	Operation machine.Operation
-	Context   OperationContext
+	Operation           machine.Operation
+	Context             OperationContext
+	EnvironmentID       string
+	TargetEnvironmentID string
+	ApplicationID       string
 }
 
 type AuthorizationDecision struct {
@@ -127,6 +130,18 @@ type AuthorizationDecision struct {
 }
 
 func AuthorizeMachineOperation(ctx context.Context, request AuthorizationRequest) (AuthorizationDecision, error) {
+	return authorizeMachineOperation(ctx, request, nil, false)
+}
+
+// AuthorizeMachineOperationWithLocalGrant applies the same policy as
+// AuthorizeMachineOperation, with an opaque grant for the local-runtime path.
+// The grant type is intentionally unexported: callers can only pass a value
+// returned by CheckLocalRuntimeGrant.
+func AuthorizeMachineOperationWithLocalGrant(ctx context.Context, request AuthorizationRequest, grant LocalOperationGrant) (AuthorizationDecision, error) {
+	return authorizeMachineOperation(ctx, request, grant, true)
+}
+
+func authorizeMachineOperation(ctx context.Context, request AuthorizationRequest, grant LocalOperationGrant, grantRequired bool) (AuthorizationDecision, error) {
 	operation := request.Operation
 	decision := AuthorizationDecision{
 		ContractVersion:      AuthorizationContractVersion,
@@ -147,6 +162,20 @@ func AuthorizeMachineOperation(ctx context.Context, request AuthorizationRequest
 		decision.Reason = "Machine operation metadata is required for authorization."
 		setAuthorizationDecision(ctx, decision)
 		return decision, machine.NewError(machine.ErrorValidationFailed, decision.Reason, "Use a registered BaseHarbor machine operation.", false)
+	}
+	grantValid := false
+	if grantRequired {
+		grantValid = localRuntimeGrantMatches(grant, request)
+		if !grantValid {
+			decision.ReasonCode = "local_runtime_grant_denied"
+			decision.Reason = "The local runtime grant is missing, mismatched, or already used."
+			setAuthorizationDecision(ctx, decision)
+			return decision, &machine.Error{
+				Code: machine.ErrorPolicyDenied, CauseCode: decision.ReasonCode,
+				Message: decision.Reason, Resource: operation.ID,
+				Next: "Repeat the local runtime check for this exact application and environment operation.",
+			}
+		}
 	}
 
 	principal, ok := PrincipalFromContext(ctx)
@@ -238,7 +267,7 @@ func AuthorizeMachineOperation(ctx context.Context, request AuthorizationRequest
 		setAuthorizationDecision(ctx, decision)
 		return decision, nil
 	}
-	if !ok && localRuntimeAuthorityMatches(ctx, request) {
+	if !ok && grantValid {
 		decision.Allowed = true
 		decision.Actor = MachineActorRef{Mode: "local-runtime", Subject: "local-runtime/" + decision.Context.Target}
 		setAuthorizationDecision(ctx, decision)

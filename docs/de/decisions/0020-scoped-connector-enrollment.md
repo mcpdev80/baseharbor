@@ -33,6 +33,19 @@ Rückgabe der gleichen Leugnung. Verbrauch behält einen Digest der unterzeichne
 Signierungsfehler erfordert eine neue Autorisierung: das verbrauchte Credential ist nicht
 wiederhergestellt, auch nach einem Neustart des Prozesses oder einem mehrdeutigen Ansprechfehler.
 
+Verbrauch (`Consume`) und Identitätseintragung (`RecordIssued`) sind zwei Phasen
+einer Einschreibung, die jeweils in einer eigenen Transaktion abgeschlossen werden.
+Nach dem Commit von `Consume` ist der Grant dauerhaft verbraucht, ohne dass eine
+aktive Knotenidentität existiert; dieses Fenster ist absichtlich und bleibt
+fail-closed. Der verbrauchte Grant wird nie wiederhergestellt; die einzige
+Erholung ist ein frisches `Create` oder `CreateRenewal`. Schlägt `RecordIssued`
+fehl, widerruft `Enroll` das signierte Zertifikat. Die Klausel
+`previous_certificate_serial` in `Consume` und die Bedingungen
+`certificate_serial IS NULL` und `consumed_at IS NOT NULL` in `RecordIssued` verhindern, dass ein konkurrierender
+Antrag die Zertifikatsserial schreibt; eine halb fertige Einschreibung hinterlässt
+daher einen endgültig verbrauchten Grant — nie eine teilweise oder zweite
+Identität für einen Knoten.
+
 Kern überprüft das Ergebnis gegen sein maßgebliches Vertrauensbündel, CSR Public Key,
 scoped URI, client-only Schlüssel-Nutzung, serielle und Ablauf. Eine CA zurückgegeben neben einem Blatt
 Das PEM-Parsing lehnt zusätzliche Anträge ab.
