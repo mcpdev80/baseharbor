@@ -109,7 +109,12 @@ func TestEnvironmentDestroyNativeLifecycle(t *testing.T) {
 	}
 	stopCtx := withApplicationInput(withTargetOverride(ctx, target.Name), runtimeInput)
 	stopCtx = context.WithValue(stopCtx, applicationStopModeKey{}, true)
-	stopPlan, err := buildApplicationStopPlan(stopCtx, resolved)
+	destroyArgs := []string{"--uuid", resolved.DeploymentIdentity.DeploymentID, "--yes"}
+	destroyExecution, err := newApplicationDestroyExecution(stopCtx, application.Store{}, destroyArgs, io.Discard, io.Discard)
+	if err != nil {
+		t.Fatalf("resolve exact native environment-destroy deployment: %v", err)
+	}
+	stopPlan, err := buildApplicationStopPlan(stopCtx, destroyExecution.resolved)
 	if err != nil {
 		t.Fatalf("build exact application stop consent: %v", err)
 	}
