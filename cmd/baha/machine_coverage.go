@@ -123,7 +123,7 @@ var cliMachineOperations = map[string]string{
 	"baha app versions": "app.versions",
 	"baha app update":   "update", "baha app evidence": "evidence", "baha app backup": "backup", "baha app restore": "restore", "baha app destroy": "destroy",
 	"baha app workspace resolve": "workspace.resolve", "baha workspace resolve": "workspace.resolve",
-	"baha app pull": "app.pull",
+	"baha app pull":             "app.pull",
 	"baha app workspace status": "workspace.status", "baha workspace status": "workspace.status", "baha app workspace update": "workspace.update", "baha workspace update": "workspace.update",
 	"baha app workspace init": "workspace.init", "baha workspace init": "workspace.init", "baha app workspace map": "workspace.map", "baha workspace map": "workspace.map",
 	"baha provider list": "provider.list", "baha provider inspect": "provider.inspect", "baha provider verify": "provider.verify", "baha provider add": "provider.add", "baha provider remove": "provider.remove",

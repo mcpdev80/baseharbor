@@ -43,6 +43,7 @@ Exakte Optionen stehen in `baha COMMAND --help`. [Globale Optionen](global-optio
 | `baha app plan` | Show desired resources without changing anything | `baha app plan [NAME] [-o json\|--output json]` | [↗](applications.md) |
 | `baha app preflight` | Validate an application before mutation | `baha app preflight [NAME]` | [↗](applications.md) |
 | `baha app prune` | Remove a dangling deployment record whose source repository is gone | `baha app prune <name>` | [↗](applications.md) |
+| `baha app pull` | Safely pull Git source for the application, optionally bringing it up | `baha app pull [-c COMPONENT[,COMPONENT...]] [--up] [--check] [--manifest PATH] [-o json\|--output json]` | [↗](applications.md) |
 | `baha app restore` | Restore and verify an encrypted application recovery unit | `baha app restore [BACKUP] [NAME] [--password-file FILE] [--json]` | [↗](applications.md) |
 | `baha app runtime-identity` | Manage the app-scoped credential used for dynamic secret references | `baha app runtime-identity <rotate\|revoke> [NAME] [--yes]` | [↗](applications.md) |
 | `baha app runtime-identity revoke` | Immediately revoke the application runtime credential | `baha app runtime-identity revoke [NAME] [--yes]` | [↗](applications.md) |
