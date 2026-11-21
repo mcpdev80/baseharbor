@@ -126,21 +126,14 @@ func appListCommand() *cli.Command {
 			// An all-targets inventory is a read-only installation-wide view. It
 			// must remain available after `destroy --all` removes the Target
 			// configuration, and must not require an effective selected Target.
-			// Resolve the effective Target (and therefore the config lookup) only
-			// for the selected-target form; the all-targets inventory is a
-			// read-only installation-wide listing that must not fail on a config.yaml
-			// the destroy path has already removed.
-			if !allTargets {
-				if err := authorizeCurrentMCPContext(ctx, "app.list", "", "", ""); err != nil {
+			// Still run the normal policy authorization; its optional Target lookup
+			// must not turn a missing config into an authorization bypass.
+			if allTargets {
+				if err := authorizeMCPOperation(ctx, "app.list", "", "dev", "", ""); err != nil {
 					return err
 				}
 			} else if err := authorizeCurrentMCPContext(ctx, "app.list", "", "", ""); err != nil {
-				// A destroyed Target left the config root without config.yaml. The
-				// all-targets inventory is read-only and installation-wide, so a
-				// missing config.yaml is a clean no-config, not a hard failure.
-				if !errors.Is(err, deployment.ErrConfigMissing) {
-					return err
-				}
+				return err
 			}
 			if !allTargets {
 				target, targetErr := effectiveTarget(ctx)
