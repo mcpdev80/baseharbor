@@ -56,7 +56,13 @@ func (p EtcdBootProbe) Verify(ctx context.Context, id etcdbackup.Identity, snaps
 		}
 		members[endpoint] = true
 		cmd := exec.CommandContext(ctx, p.Binary, "--endpoints="+endpoint, "endpoint", "status", "--write-out=json")
-		cmd.Env = []string{"PATH=/usr/bin:/bin", "ETCDCTL_API=3", "ETCDCTL_CACERT=" + p.TLS.CA, "ETCDCTL_CERT=" + p.TLS.Cert, "ETCDCTL_KEY=" + p.TLS.Key}
+		// Pin PATH, API and TLS trust, then inherit the parent environment.
+		cmd.Env = append([]string{
+			"PATH=/usr/bin:/bin", "ETCDCTL_API=3",
+			"ETCDCTL_CACERT=" + p.TLS.CA,
+			"ETCDCTL_CERT=" + p.TLS.Cert,
+			"ETCDCTL_KEY=" + p.TLS.Key,
+		}, os.Environ()...)
 		out, err := cmd.Output()
 		if err != nil || len(out) > 32768 {
 			return errors.New("recovered etcd endpoint status unavailable")
