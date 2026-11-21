@@ -4,6 +4,7 @@ import (
 	"context"
 	"github.com/mcpdev80/baseharbor/internal/applicationsecret"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
+	"github.com/mcpdev80/baseharbor/internal/operatorauth"
 )
 
 type secretMutationResult struct {
@@ -17,6 +18,18 @@ type secretMutationResult struct {
 
 func authorizeApplicationOperation(ctx context.Context, id string, resolved resolvedApplication) error {
 	return authorizeMCPOperation(ctx, id, resolved.Target.Name, resolved.Manifest.Environment, resolved.Manifest.ApplicationID, resolved.ManifestPath)
+}
+
+// authorizeHumanReveal gates any path that would return a managed secret value
+// to a human operator (CLI --reveal, app creds --reveal). It first requires a
+// verified human identity, then applies the registered secret.reveal operation's
+// normal target, environment, membership, and permission checks. Workload reads
+// that do not reveal keep using their existing operation and are unaffected.
+func authorizeHumanReveal(ctx context.Context, target, environment, application string) error {
+	if err := operatorauth.RequireHumanOperator(ctx); err != nil {
+		return err
+	}
+	return authorizeMCPOperation(ctx, "secret.reveal", target, environment, application, "")
 }
 func listApplicationSecrets(ctx context.Context, resolved resolvedApplication) ([]applicationsecret.Metadata, error) {
 	if err := authorizeApplicationOperation(ctx, "secret.list", resolved); err != nil {

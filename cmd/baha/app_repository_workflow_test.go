@@ -37,7 +37,7 @@ func TestRepositoryManifestResolvesWithoutApplicationName(t *testing.T) {
 	}
 
 	var out bytes.Buffer
-	if err := runWithIO(context.Background(), []string{"app", "show"}, &out, &out); err != nil {
+	if err := runWithIOAsTestOperator(context.Background(), []string{"app", "show"}, &out, &out); err != nil {
 		t.Fatal(err)
 	}
 	show := out.String()
@@ -47,7 +47,7 @@ func TestRepositoryManifestResolvesWithoutApplicationName(t *testing.T) {
 		}
 	}
 	out.Reset()
-	if err := runWithIO(context.Background(), []string{"app", "plan"}, &out, &out); err != nil {
+	if err := runWithIOAsTestOperator(context.Background(), []string{"app", "plan"}, &out, &out); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(out.String(), "Plan for mailflow (dev)") {
@@ -84,7 +84,7 @@ func TestRepositoryEnvWithoutNameMasksNamedServiceURLs(t *testing.T) {
 	}
 
 	var out bytes.Buffer
-	if err := runWithIO(context.Background(), []string{"app", "env"}, &out, &out); err != nil {
+	if err := runWithIOAsTestOperator(context.Background(), []string{"app", "env"}, &out, &out); err != nil {
 		t.Fatal(err)
 	}
 	text := out.String()
@@ -111,7 +111,7 @@ func TestAppInitCreatesCommitFriendlyRepositoryManifest(t *testing.T) {
 		t.Fatal(err)
 	}
 	var out bytes.Buffer
-	if err := runWithIO(context.Background(), []string{"app", "init", "demo", "--sql", "--cache"}, &out, &out); err != nil {
+	if err := runWithIOAsTestOperator(context.Background(), []string{"app", "init", "demo", "--sql", "--cache"}, &out, &out); err != nil {
 		t.Fatal(err)
 	}
 	info, err := os.Stat("baseharbor.yaml")
@@ -128,7 +128,7 @@ func TestAppInitCreatesCommitFriendlyRepositoryManifest(t *testing.T) {
 	if m.Name != "demo" || len(application.SQLInstanceNames(m)) != 1 || len(application.CacheInstanceNames(m)) != 1 {
 		t.Fatalf("unexpected generated manifest: %#v", m)
 	}
-	if err := runWithIO(context.Background(), []string{"app", "init", "demo"}, &out, &out); err == nil {
+	if err := runWithIOAsTestOperator(context.Background(), []string{"app", "init", "demo"}, &out, &out); err == nil {
 		t.Fatal("expected init to refuse overwriting repository manifest")
 	}
 }
@@ -150,7 +150,7 @@ func TestAppInitSupportsDeterministicWorkloadSelection(t *testing.T) {
 		t.Fatal(err)
 	}
 	var out bytes.Buffer
-	if err := runWithIO(context.Background(), []string{
+	if err := runWithIOAsTestOperator(context.Background(), []string{
 		"app", "init", "demo",
 		"--sql",
 		"--cache",

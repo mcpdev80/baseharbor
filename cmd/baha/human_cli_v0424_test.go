@@ -13,7 +13,7 @@ import (
 func TestAppDownRejectsUnknownOptionsBeforeRuntime(t *testing.T) {
 	for _, args := range [][]string{{"app", "down", "--yes", "--unknown"}} {
 		var out bytes.Buffer
-		err := runWithIO(context.Background(), args, &out, &out)
+		err := runWithIOAsTestOperator(context.Background(), args, &out, &out)
 		if err == nil {
 			t.Fatalf("%v should fail", args)
 		}
@@ -28,7 +28,7 @@ func TestRootDownDistinguishesUnknownOptionsFromPositionals(t *testing.T) {
 	t.Chdir(t.TempDir())
 	for _, tc := range []struct{ arg, want string }{{"--bogus", "unknown option --bogus"}, {"--yes", "down does not accept --yes"}, {"foo", "positional arguments"}} {
 		var out bytes.Buffer
-		err := runWithIO(context.Background(), []string{"down", tc.arg}, &out, &out)
+		err := runWithIOAsTestOperator(context.Background(), []string{"down", tc.arg}, &out, &out)
 		var usage *cli.UsageError
 		if !errors.As(err, &usage) || !strings.Contains(usage.Message, tc.want) {
 			t.Fatalf("%s: %v", tc.arg, err)
@@ -46,7 +46,7 @@ func TestHumanNewExplicitObjectKinds(t *testing.T) {
 		{"bogus", "unsupported creation type"},
 	} {
 		var out bytes.Buffer
-		err := runWithIO(context.Background(), []string{"--no-input", "new", tc.kind}, &out, &out)
+		err := runWithIOAsTestOperator(context.Background(), []string{"--no-input", "new", tc.kind}, &out, &out)
 		if err == nil || !strings.Contains(err.Error(), tc.next) {
 			t.Fatalf("new %s: want %q, got %v", tc.kind, tc.next, err)
 		}
@@ -55,7 +55,7 @@ func TestHumanNewExplicitObjectKinds(t *testing.T) {
 
 func TestHumanOpenFailsClosedBeforeBrowserInvocation(t *testing.T) {
 	var out bytes.Buffer
-	err := runWithIO(context.Background(), []string{"open", "--unknown"}, &out, &out)
+	err := runWithIOAsTestOperator(context.Background(), []string{"open", "--unknown"}, &out, &out)
 	if err == nil || !strings.Contains(err.Error(), "unknown open option") {
 		t.Fatalf("unrecognized open options must fail before target lookup: %v", err)
 	}
@@ -67,7 +67,7 @@ func TestHumanOpenFailsClosedBeforeBrowserInvocation(t *testing.T) {
 
 func TestTargetDeleteUnknownFlagIsNotNameError(t *testing.T) {
 	var out bytes.Buffer
-	err := runWithIO(context.Background(), []string{"target", "delete", "example", "--bogus"}, &out, &out)
+	err := runWithIOAsTestOperator(context.Background(), []string{"target", "delete", "example", "--bogus"}, &out, &out)
 	if err == nil || !strings.Contains(err.Error(), "unknown target delete option --bogus") {
 		t.Fatalf("target delete must reject undeclared options: %v", err)
 	}
