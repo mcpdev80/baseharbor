@@ -154,14 +154,15 @@ func TestMCPAuthoringAuthorizationDenialPrecedesIdentityPersistence(t *testing.T
 	target := configureTestTarget(t)
 	t.Setenv(operatorauth.EnvIssuer, "")
 	t.Setenv(operatorauth.EnvClientID, "")
-	session := workspaceMutationClient(t)
+	unauthContext := withoutOperatorAuthTestContext(context.Background())
+	session := workspaceMutationClientWithContext(t, unauthContext)
 	for _, operation := range []string{"create", "adopt"} {
 		root := t.TempDir()
 		args := map[string]any{"intent": map[string]any{"Version": 1, "Name": "denied-authoring", "Environment": "prod", "Workload": map[string]any{"Components": []string{"api"}}}}
 		if operation == "adopt" {
 			args["repository"] = root
 		}
-		result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "baseharbor.app." + operation, Arguments: args})
+		result, err := session.CallTool(unauthContext, &mcp.CallToolParams{Name: "baseharbor.app." + operation, Arguments: args})
 		if err != nil || !result.IsError {
 			t.Fatalf("authorization denial bypassed: %v %+v", err, result)
 		}

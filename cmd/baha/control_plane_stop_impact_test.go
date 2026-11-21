@@ -89,7 +89,8 @@ func TestCoreStopAuthorizesEveryManagedConsumerBeforeAcknowledgement(t *testing.
 				t.Fatal(err)
 			}
 			var out bytes.Buffer
-			_, err = authorizeControlPlaneStop(withProviderChangeConsent(t.Context(), &application.ProviderChangeConsent{PlanID: "old", First: true, Second: true}), &out)
+			ctx := withoutOperatorAuthTestContext(t.Context())
+			_, err = authorizeControlPlaneStop(withProviderChangeConsent(ctx, &application.ProviderChangeConsent{PlanID: "old", First: true, Second: true}), &out)
 			if machine.Classify(err).Code != machine.ErrorAuthenticationFailed || out.Len() != 0 {
 				t.Fatalf("managed %s owner bypassed before acknowledgement: %v %s", source, err, out.String())
 			}

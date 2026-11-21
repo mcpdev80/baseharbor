@@ -22,7 +22,8 @@ func TestClientConsentFailsClosedWithoutTerminal(t *testing.T) {
 		t.Fatal(err)
 	}
 	writer.Close()
-	err := requireManagedClientConsent(context.Background(), pipe, &out, "dev", "webshop", "dev", "postgres", "default", "managed-runtime")
+	ctx := operatorAuthFixtureContext(context.Background())
+	err := requireManagedClientConsent(ctx, pipe, &out, "dev", "webshop", "dev", "postgres", "default", "managed-runtime")
 	if err == nil {
 		t.Fatal("unattended approval must be rejected")
 	}
@@ -42,7 +43,7 @@ func TestClientConsentRejectsIncompleteScope(t *testing.T) {
 func TestClientConsentRememberedOnlyForExactScope(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	var out bytes.Buffer
-	ctx := context.Background()
+	ctx := operatorAuthFixtureContext(context.Background())
 	if err := requireManagedClientConsent(ctx, strings.NewReader("yes\n"), &out, "local", "webshop", "dev", "postgres", "default", "managed-runtime"); err != nil {
 		t.Fatal(err)
 	}
@@ -62,7 +63,7 @@ func TestClientConsentRememberedOnlyForExactScope(t *testing.T) {
 
 func TestClientConsentRejectsForgedLongExpiry(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	ctx := context.Background()
+	ctx := operatorAuthFixtureContext(context.Background())
 	if err := requireManagedClientConsent(ctx, strings.NewReader("yes\n"), &bytes.Buffer{}, "local", "webshop", "dev", "postgres", "default", "host-psql"); err != nil {
 		t.Fatal(err)
 	}
