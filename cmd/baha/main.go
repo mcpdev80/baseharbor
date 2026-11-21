@@ -154,8 +154,10 @@ func runWithIO(ctx context.Context, args []string, out, errOut io.Writer) error 
 	// enforcement setup (WithVerifiedPrincipal stores the principal in the
 	// enforcement state, which a later WithEnforcement would otherwise wipe).
 	// The seam applies operatorAuthFixtureContext (see operator_test_fixture_test.go).
-	if testOperatorContext != nil {
-		ctx = testOperatorContext(ctx)
+	if testOperatorContext != nil && operatorAuthTestContextAllowed(ctx) {
+		if _, authenticated := operatorauth.PrincipalFromContext(ctx); !authenticated {
+			ctx = testOperatorContext(ctx)
+		}
 	}
 	membershipProvider := newCLIOperatorMembershipProvider()
 	defer membershipProvider.Close()

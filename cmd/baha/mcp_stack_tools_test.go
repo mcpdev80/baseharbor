@@ -62,11 +62,12 @@ func TestStackManagedDenialPrecedesCLIAndMCPWrites(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := createStackProfile(context.Background(), options.Profile, options.Scope); err == nil {
+	unauthContext := withoutOperatorAuthTestContext(context.Background())
+	if _, err := createStackProfile(unauthContext, options.Profile, options.Scope); err == nil {
 		t.Fatal("managed mutation accepted")
 	}
-	session := workspaceMutationClient(t)
-	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "baseharbor.stack.create", Arguments: machineStackCreateInput{Profile: options.Profile}})
+	session := workspaceMutationClientWithContext(t, unauthContext)
+	result, err := session.CallTool(unauthContext, &mcp.CallToolParams{Name: "baseharbor.stack.create", Arguments: machineStackCreateInput{Profile: options.Profile}})
 	if err != nil || !result.IsError {
 		t.Fatalf("managed mutation accepted: %#v %v", result, err)
 	}

@@ -25,16 +25,20 @@ func workspaceMutationFixture(t *testing.T, environment string) string {
 }
 
 func workspaceMutationClient(t *testing.T) *mcp.ClientSession {
+	return workspaceMutationClientWithContext(t, context.Background())
+}
+
+func workspaceMutationClientWithContext(t *testing.T, ctx context.Context) *mcp.ClientSession {
 	t.Helper()
 	server := newMCPServer(application.DefaultStore())
 	serverTransport, clientTransport := mcp.NewInMemoryTransports()
-	serverSession, err := server.Connect(context.Background(), serverTransport, nil)
+	serverSession, err := server.Connect(ctx, serverTransport, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = serverSession.Close() })
 	client := mcp.NewClient(&mcp.Implementation{Name: "workspace-parity-test", Version: "1"}, nil)
-	session, err := client.Connect(context.Background(), clientTransport, nil)
+	session, err := client.Connect(ctx, clientTransport, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -83,7 +87,8 @@ func TestMCPWorkspaceManagedDenialPrecedesMutation(t *testing.T) {
 	t.Setenv(operatorauth.EnvIssuer, "")
 	t.Setenv(operatorauth.EnvClientID, "")
 	manifest := workspaceMutationFixture(t, "prod")
-	session := workspaceMutationClient(t)
+	unauthContext := withoutOperatorAuthTestContext(context.Background())
+	session := workspaceMutationClientWithContext(t, unauthContext)
 	for _, tool := range []string{"baseharbor.workspace.init", "baseharbor.workspace.map"} {
 		arguments := map[string]any{"manifest": manifest}
 		if tool == "baseharbor.workspace.init" {
@@ -93,7 +98,7 @@ func TestMCPWorkspaceManagedDenialPrecedesMutation(t *testing.T) {
 			arguments["source"] = "backend"
 			arguments["path"] = t.TempDir()
 		}
-		result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: tool, Arguments: arguments})
+		result, err := session.CallTool(unauthContext, &mcp.CallToolParams{Name: tool, Arguments: arguments})
 		if err != nil || !result.IsError {
 			t.Fatalf("managed operation was not denied: %#v %v", result, err)
 		}

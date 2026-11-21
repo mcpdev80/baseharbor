@@ -100,13 +100,14 @@ func TestMCPGenericClientDiscoversCompleteSemanticSurfaceAndExercisesReadOnlyToo
 	t.Cleanup(func() { _ = clientSession.Close() })
 
 	unauthServerTransport, unauthClientTransport := mcp.NewInMemoryTransports()
-	unauthServerSession, err := server.Connect(context.Background(), unauthServerTransport, nil)
+	unauthContext := withoutOperatorAuthTestContext(context.Background())
+	unauthServerSession, err := server.Connect(unauthContext, unauthServerTransport, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = unauthServerSession.Close() })
 	unauthClient := mcp.NewClient(&mcp.Implementation{Name: "baseharbor-unauthenticated-test-client", Version: "v1"}, nil)
-	unauthClientSession, err := unauthClient.Connect(context.Background(), unauthClientTransport, &mcp.ClientSessionOptions{ProtocolVersion: "2026-07-28"})
+	unauthClientSession, err := unauthClient.Connect(unauthContext, unauthClientTransport, &mcp.ClientSessionOptions{ProtocolVersion: "2026-07-28"})
 	if err != nil {
 		t.Fatal(err)
 	}

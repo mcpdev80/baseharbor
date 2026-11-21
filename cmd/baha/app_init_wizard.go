@@ -24,6 +24,16 @@ var appInitInput io.Reader = os.Stdin
 // operator-auth contract is satisfied without any workflow/owner env setting.
 var testOperatorContext func(context.Context) context.Context
 
+type testOperatorContextOptOutKey struct{}
+
+func withoutOperatorAuthTestContext(ctx context.Context) context.Context {
+	return context.WithValue(ctx, testOperatorContextOptOutKey{}, true)
+}
+
+func operatorAuthTestContextAllowed(ctx context.Context) bool {
+	return ctx.Value(testOperatorContextOptOutKey{}) != true
+}
+
 type appProjectDetection struct {
 	Name                     string
 	WorkloadSourceCandidates []repositoryinspect.WorkloadSourceCandidate

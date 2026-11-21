@@ -266,6 +266,14 @@ func machineMCPTool(operationID, description string, openWorld bool) *mcp.Tool {
 }
 
 func authorizeMCPOperation(ctx context.Context, operationID, target, environment, applicationName, workspace string) error {
+	// The test binary installs this fixture only to keep command/MCP unit tests
+	// on the same authenticated contract as the production entrypoint. Tests for
+	// anonymous denial mark their request context with withoutOperatorAuthTestContext.
+	if testOperatorContext != nil && operatorAuthTestContextAllowed(ctx) {
+		if _, authenticated := operatorauth.PrincipalFromContext(ctx); !authenticated {
+			ctx = testOperatorContext(ctx)
+		}
+	}
 	operation, ok := machine.OperationByID(operationID)
 	if !ok {
 		return machine.NewError(machine.ErrorValidationFailed, "Unknown BaseHarbor machine operation.", "Use a registered machine operation.", false)
