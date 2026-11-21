@@ -48,6 +48,13 @@ Helm and Kustomize are not v0.4.20 source adapters.
 
 ## Lifecycle
 
+The default `baha app new` path is create-only: it writes the project files and
+prints the next steps, but does not register a deployment on the selected
+Target. `baha app list` shows registered deployments, so the generated project
+does not appear there until it is initialized and applied. In the generated
+repository, run `baha app init --quick` and then `baha up`. If the selected
+Target requires an operator session, sign in before initialization.
+
 In `baha app new`, choosing `run` creates the project and then shows the exact
 repository candidate identity and confirmation hash before deployment. Confirm
 that candidate to continue. Declining leaves the project files in place and
