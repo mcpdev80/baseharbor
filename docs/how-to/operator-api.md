@@ -180,10 +180,10 @@ The `baha up` and `baha onboard` invitation path remains the documented
 workstation attachment; the OIDC/PostgreSQL configuration here is its server
 side, not an extra step.
 
-The native CI acceptance runs `TestWorkstationOnboardingRemoteNativeInCI` on
-both Docker and Podman. It starts an isolated Core, issues a private invitation,
-imports it into fresh workstation state, verifies authenticated remote CLI
-operations over the enrolled device connection, and removes the test workload.
+The native CI acceptance runs on both Docker and Podman. It starts an isolated
+Core, issues a private invitation, imports it into fresh workstation state,
+verifies authenticated remote CLI operations over the enrolled device
+connection, and removes the test workload.
 The runbook, workstation enrollment, and Core-side invocation are therefore
 checked together on the exact CI source revision; this flow does not require a
 separate physical-VM smoke test. Node Connector outbound sessions and the
