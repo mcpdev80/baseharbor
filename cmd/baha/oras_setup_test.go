@@ -74,8 +74,10 @@ func TestEnsureORASForCoreUpPropagatesInstallFailure(t *testing.T) {
 func TestRuntimeUpRequiresORASBeforeCoreBootstrap(t *testing.T) {
 	t.Chdir(t.TempDir())
 	t.Setenv("PATH", t.TempDir())
+	t.Setenv("HOME", t.TempDir())
 	var output bytes.Buffer
-	err := runtimeUpCommand(context.Background(), []string{"--yes"}, &output, &output)
+	ctx := operatorAuthTestContext(t, context.Background())
+	err := runtimeUpGuided(ctx, strings.NewReader(""), &output, runtimeUpOptions{Yes: true})
 	if err == nil || !strings.Contains(err.Error(), "ORAS is required before Core setup") {
 		t.Fatalf("baha up without ORAS error = %v", err)
 	}

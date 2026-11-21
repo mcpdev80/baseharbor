@@ -34,7 +34,8 @@ func TestRuntimeUpEnsuresRuntimeImageBeforeStartingCore(t *testing.T) {
 	}
 	t.Cleanup(func() { ensureCoreRuntimeImageForTarget = previous })
 
-	err := runtimeUpGuided(context.Background(), strings.NewReader(""), &bytes.Buffer{}, runtimeUpOptions{Yes: true, ControlPlaneOnly: true})
+	ctx := operatorAuthTestContext(t, context.Background())
+	err := runtimeUpGuided(ctx, strings.NewReader(""), &bytes.Buffer{}, runtimeUpOptions{Yes: true, ControlPlaneOnly: true})
 	if !errors.Is(err, want) || !called {
 		t.Fatalf("baha up did not stop at runtime image preflight: called=%t err=%v", called, err)
 	}

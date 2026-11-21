@@ -9,7 +9,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/operatorauth"
 )
 
-func TestOperatorAuthBoundaryDevTrustedLocalAndManagedEnvironmentsFailClosed(t *testing.T) {
+func TestOperatorAuthBoundaryRequiresOperatorForEveryEnvironment(t *testing.T) {
 	t.Setenv(operatorauth.EnvIssuer, "")
 	t.Setenv(operatorauth.EnvClientID, "")
 	t.Setenv(operatorauth.EnvScopes, "")
@@ -19,11 +19,7 @@ func TestOperatorAuthBoundaryDevTrustedLocalAndManagedEnvironmentsFailClosed(t *
 	ctx := operatorauth.WithEnforcement(context.Background())
 	ctx = cli.WithOutputOptions(ctx, cli.OutputOptions{NonInteractive: true})
 
-	if err := ensureOperatorAuthForBoundary(ctx, "local", "dev"); err != nil {
-		t.Fatalf("dev trusted-local boundary unexpectedly required authentication: %v", err)
-	}
-
-	for _, environment := range []string{"test", "prod"} {
+	for _, environment := range []string{"dev", "test", "prod"} {
 		err := ensureOperatorAuthForBoundary(ctx, "local", environment)
 		if !errors.Is(err, operatorauth.ErrConfigurationRequired) {
 			t.Fatalf("%s must fail closed without operator OIDC configuration, got %v", environment, err)
