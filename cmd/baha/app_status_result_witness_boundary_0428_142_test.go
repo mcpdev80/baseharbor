@@ -154,12 +154,18 @@ func TestPersesStatusWitnessEmptyResolvedSignalNeverResolvedProves(t *testing.T)
 	// owner's hard line is that NO output face may assert a positive fact from
 	// the static catalog alone at this head; this test records that boundary by
 	// refusing to claim configured on a source that carries no proven answer.
-	if prom != nil && prom.State == persesBackendConfigured {
-		// Recording the boundary: a supported signal with an empty provenance
-		// must not be rendered configured on either face until a real provider
-		// witness exists upstream (0428-143). This is NOT synthesizing a true;
-		// it documents that the current candidate cannot produce configured
-		// for prometheus without an upstream non-empty witness.
-		t.Logf("[0428-142 r9 boundary] prometheus resolved configured with empty provenance; upstream 0428-143 owns the non-empty witness; the machine/human faces must not claim configured until then")
+	// BEFUND 1 (0428-142 r9, reviewer REQUEST CHANGES): the previous version
+	// only logged inside a `prom.State == configured` branch and passed
+	// regardless of the actual verdict. A negative test that only records a
+	// wrong state, not fails on it, proves nothing. Require the production
+	// witness for the supported signal to be present and exactly unreachable
+	// (a supported signal with an empty provenance cannot yield configured on
+	// either face until a real upstream 0428-143 witness exists); any missing
+	// or different verdict is a hard failure.
+	if prom == nil {
+		t.Fatalf("prometheus witness must be present for the supported signal, got none: %+v", witness)
+	}
+	if prom.State != persesBackendUnreachable {
+		t.Fatalf("prometheus witness for the supported signal with empty provenance must be exactly %q, got %q: %+v", persesBackendUnreachable, prom.State, witness)
 	}
 }
