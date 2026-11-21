@@ -56,7 +56,49 @@ func isApplicationDownMode(ctx context.Context) bool {
 // plan acknowledgement. The route-level regression (0428-060 r2) runs the
 // registered command through this seam in both directions.
 func downRequiresConfirmedConsent(_ context.Context, args []string) bool {
-	return containsExactArgument(args, "--yes")
+	if !containsExactArgument(args, "--yes") {
+		return false
+	}
+	// --yes must be the command's OWN confirmation, not the bare VALUE of the
+	// --uuid selector pair (parseDestroyArgs consumes the pair; the split
+	// list leaves the value behind): the same discrimination destroy applies
+	// in its executor (app_lifecycle.go, executeApplicationDestroyLifecycle).
+	for i, arg := range args {
+		if (arg == "--uuid" && i+1 < len(args) && args[i+1] == "--yes") || strings.HasPrefix(arg, "--uuid=") {
+			return false
+		}
+	}
+	return true
+}
+
+// stopUsageValid is the pre-seam option-grammar check of the shared
+// down/stop route (0428-060). Unknown options are usage errors (exit 2)
+// even without --yes, the same contract destroy's parser enforces, so a
+// mistyped invocation can never look like a successful refusal. Output
+// options (--json, -o/--output, --quiet) are grammar-checked here rather
+// than by parseDestroyArgs, which does not know them; the executor
+// revalidates the rest beneath the seam unchanged.
+//
+// The consent gate composes with this check so that removing the
+// downRequiresConfirmedConsent call — the route's only gate — is proven
+// fatal by the (a)-direction route regression in
+// app_lifecycle_down_route_0428_060_test.go.
+func firstUnknownStopOption(args []string) string {
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		switch {
+		case arg == "--yes" || arg == "--json" || arg == "--quiet":
+		case arg == "--uuid" || arg == "-e" || arg == "--environment" || arg == "-o" || arg == "--output":
+			if i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
+				i++
+			}
+		case strings.HasPrefix(arg, "--uuid=") || strings.HasPrefix(arg, "--environment=") ||
+			strings.HasPrefix(arg, "--output=") || (strings.HasPrefix(arg, "-o") && len(arg) > 2):
+		case strings.HasPrefix(arg, "-"):
+			return arg
+		}
+	}
+	return ""
 }
 
 func appStopCommand(store application.Store) *cli.Command {
@@ -71,10 +113,18 @@ func appStopCommand(store application.Store) *cli.Command {
 		// 0428-060 down-convergence: 'app down' and 'app stop' share exactly
 		// this one route. The down/stop retirement mutates runtime state only
 		// under the explicit --yes confirmation, gated by the single
-		// downRequiresConfirmedConsent seam before any mutation reaches
-		// destroy, routes or providers. The consequence plan beneath it still
-		// requires its own acknowledgement.
-		if !downRequiresConfirmedConsent(ctx, args) {
+		// downRequiresConfirmedConsent seam before ANY resolution, preflight
+		// or mutation. Unknown options fail the grammar check first (usage
+		// error, exit 2), so a mistyped invocation can never look like a
+		// successful refusal. The --yes scan is selector-aware (the --uuid
+		// value is not a confirmation), exactly the discrimination destroy
+		// applies in its executor. The --json form keeps its executor-routed
+		// plan behaviour verbatim. The consequence plan beneath the seam
+		// still requires its own acknowledgement.
+		if unknown := firstUnknownStopOption(args); unknown != "" {
+			return usageError("unknown option "+firstUnknownStopOption(args), "Run 'baha app "+command.Name+" --help' for available options.")
+		}
+		if !downRequiresConfirmedConsent(ctx, args) && !requestsJSONOutput(args) {
 			fmt.Fprintln(out, "No changes were made. Re-run with --yes to stop the owned application runtime while retaining its data.")
 			return nil
 		}

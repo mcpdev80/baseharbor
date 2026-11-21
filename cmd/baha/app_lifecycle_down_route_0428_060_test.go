@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 )
 
@@ -256,6 +257,21 @@ func TestDownRouteWithoutConsentMakesNoChange(t *testing.T) {
 			}
 			if storeAfter := dirBytes(t, resolved.Store.Root); !bytes.Equal(storeAfter, storeBefore) {
 				t.Fatalf("unconfirmed 'app %s' changed the application store", verb)
+			}
+
+			// Same route, unknown option: the usage contract (exit 2) holds
+			// even without --yes — a mistyped invocation is an error, never a
+			// silent successful refusal.
+			command := appDownCommand(application.DefaultStore())
+			if verb == "stop" {
+				command = appStopCommand(application.DefaultStore())
+			}
+			var bogusOut bytes.Buffer
+			if berr := command.Run(ctx, []string{"--bogus"}, &bogusOut, &bogusOut); berr == nil || cli.ExitCode(berr) != 2 {
+				t.Fatalf("unconfirmed 'app %s --bogus' must be a usage error (exit 2), got %v: %s", verb, berr, bogusOut.String())
+			}
+			if strings.Contains(bogusOut.String(), "No changes were made") {
+				t.Fatalf("'app %s --bogus' masqueraded as a successful refusal: %s", verb, bogusOut.String())
 			}
 		})
 	}
