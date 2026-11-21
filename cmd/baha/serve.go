@@ -18,7 +18,7 @@ func serveCommand(store application.Store) *cli.Command {
 		Name:    "serve",
 		Summary: "Run the TLS-protected BaseHarbor runtime/control-plane API",
 		Usage:   "baha serve",
-		Long:    "Starts the TLS-protected BaseHarbor application runtime API. A managed per-application broker is bound to one app/environment, requires mTLS plus the app runtime token, and authenticates to OpenBao only with that application's AppRole. Configure OIDC audiences plus a database URL only for the separate operator control-plane API.",
+		Long:    "Starts the TLS-protected BaseHarbor application runtime API. A managed per-application broker is bound to one app/environment, requires mTLS plus the app runtime token, and authenticates to OpenBao only with that application's AppRole. Configure OIDC audiences plus a database URL only for the separate operator control-plane API. For the operator API on a Core host, see the runbook: https://mcpdev80.github.io/baseharbor/how-to/operator-api/.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 			if len(args) != 0 {
 				return usageError("baha serve does not accept arguments", "Run 'baha serve --help' for usage.")
