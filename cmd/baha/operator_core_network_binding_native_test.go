@@ -34,9 +34,12 @@ func TestCoreDefaultNetworkBindingRejectsUnownedNativeNetwork(t *testing.T) {
 	target := configureIsolatedEmptyRuntimeTarget(t, targetName, kind)
 	files := bhruntime.Files{Project: targetRuntimeProjectName(target), ResourceProject: bhruntime.SharedResourceProjectName(target.Name)}
 	network := bhruntime.ControlPlaneNetworkName(files.ResourceProject)
-	labels := []string{"--label", "com.docker.compose.project=" + files.Project}
-	if kind == "podman" {
-		labels = []string{"--label", "io.podman.compose.project=" + files.Project}
+	// BaseHarbor's own Podman/Quadlet renderer writes both compatibility
+	// project labels. Both remain forgeable and neither is protected owner
+	// inventory, so matching both must still be refused.
+	labels := []string{
+		"--label", "com.docker.compose.project=" + files.Project,
+		"--label", "io.podman.compose.project=" + files.Project,
 	}
 	args := append([]string{"network", "create"}, labels...)
 	args = append(args, network)
