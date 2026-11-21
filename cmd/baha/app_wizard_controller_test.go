@@ -219,6 +219,101 @@ func TestAppWizardControllerStaleAndWrongTargetPreview(t *testing.T) {
 	}
 }
 
+func TestAppWizardControllerObservationRefreshDoesNotInvalidatePreview(t *testing.T) {
+	input := appWizardTestInput(t)
+	calls := 0
+	original := input.Refresh
+	input.Refresh = func(ctx context.Context, d appWizardDecision) (*GuidedReadContext, *application.ProviderImpactPlan, error) {
+		calls++
+		fp, impact, err := original(ctx, d)
+		if err != nil {
+			return nil, nil, err
+		}
+		fact := application.ProviderFact{Target: d.Target, State: application.ProviderRunning, Core: application.CoreNotRequired, Dependencies: []string{}, MemoryBytes: application.Quantity{Classification: "unknown"}}
+		if calls > 1 {
+			n := int64(2048)
+			fact.MemoryBytes = application.Quantity{Value: &n, Classification: "measured", Source: "runtime sample"}
+		}
+		countdown := int64(30 - calls)
+		impact.Impacts = append(impact.Impacts, application.ProviderImpact{Materials: []application.MaterialConsequence{{Meaning: "within observed time window", Before: application.ProviderMaterial{ID: "certificate", ExpiresAt: "2036-11-13T05:39:05Z"}, RemainingValiditySeconds: &countdown}}})
+		fp.Footprint.Existing = []application.ProviderFootprint{{InstanceID: "sql-a", MemoryBytes: fact.MemoryBytes}}
+		fp.SnapshotRevision, err = guidedRevision(guidedRevisionSnapshot(application.ResolutionSnapshot{Target: d.Target, Facts: map[string]application.ProviderFact{"sql-a": fact}}))
+		if err != nil {
+			return nil, nil, err
+		}
+		return fp, impact, nil
+	}
+	w, err := newAppWizardController(context.Background(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w = appWizardAdvance(t, w, appWizardNext)
+	w = appWizardAdvance(t, w, appWizardYes)
+	if _, ok := w.Decision(); !ok {
+		t.Fatal("observation-only refresh prevented decision")
+	}
+}
+
+func TestAppWizardControllerValidityAuthorityChangesInvalidatePreview(t *testing.T) {
+	for _, field := range []string{"expires-at", "meaning"} {
+		t.Run(field, func(t *testing.T) {
+			input := appWizardTestInput(t)
+			calls := 0
+			original := input.Refresh
+			input.Refresh = func(ctx context.Context, d appWizardDecision) (*GuidedReadContext, *application.ProviderImpactPlan, error) {
+				calls++
+				fp, impact, err := original(ctx, d)
+				if err != nil {
+					return nil, nil, err
+				}
+				impact.Impacts = append(impact.Impacts, application.ProviderImpact{Materials: []application.MaterialConsequence{{Meaning: "within observed time window", Before: application.ProviderMaterial{ID: "certificate", ExpiresAt: "2036-11-13T05:39:05Z"}}}})
+				materialImpact := len(impact.Impacts) - 1
+				if calls > 1 {
+					if field == "expires-at" {
+						impact.Impacts[materialImpact].Materials[0].Before.ExpiresAt = "2036-11-12T05:39:05Z"
+					} else {
+						impact.Impacts[materialImpact].Materials[0].Meaning = "actual material validity has expired"
+					}
+				}
+				return fp, impact, nil
+			}
+			w, err := newAppWizardController(context.Background(), input)
+			if err != nil {
+				t.Fatal(err)
+			}
+			w = appWizardAdvance(t, w, appWizardNext)
+			if _, err := w.Step(context.Background(), appWizardYes); err == nil {
+				t.Fatal("accepted changed absolute validity or expiry outcome")
+			}
+		})
+	}
+}
+
+func TestAppWizardControllerProviderPreferenceChangeInvalidatesPreview(t *testing.T) {
+	input := appWizardTestInput(t)
+	calls := 0
+	original := input.Refresh
+	input.Refresh = func(ctx context.Context, d appWizardDecision) (*GuidedReadContext, *application.ProviderImpactPlan, error) {
+		calls++
+		fp, impact, err := original(ctx, d)
+		if err != nil {
+			return nil, nil, err
+		}
+		if calls > 1 {
+			fp.Preferences = []application.ProviderPreference{{Requirement: capability.Requirement{Kind: capability.SQL, Name: "analytics"}, InstanceID: "sql-b", ProviderKind: capability.ProviderPostgreSQL}}
+		}
+		return fp, impact, nil
+	}
+	w, err := newAppWizardController(context.Background(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w = appWizardAdvance(t, w, appWizardNext)
+	if _, err := w.Step(context.Background(), appWizardYes); err == nil {
+		t.Fatal("accepted changed provider preference")
+	}
+}
+
 func TestAppWizardControllerProviderChangeRefreshesConsequences(t *testing.T) {
 	w, err := newAppWizardController(context.Background(), appWizardTestInput(t))
 	if err != nil {
@@ -368,32 +463,41 @@ func TestAppWizardControllerProviderRowsUseRealNewlines(t *testing.T) {
 	}
 }
 
-func TestAppWizardControllerFreshFactsBlocksWithoutTimeout(t *testing.T) {
+func TestAppWizardControllerFreshFactsUsesBoundedRuntimeTimeout(t *testing.T) {
 	input := appWizardTestInput(t)
+	var remaining time.Duration
 	input.Refresh = func(ctx context.Context, d appWizardDecision) (*GuidedReadContext, *application.ProviderImpactPlan, error) {
-		// Block indefinitely – simulates the Cluster B wizard-hang
-		// After fix: freshFacts wraps refresh in context.WithTimeout(30s)
-		// so this test will get a timeout error instead of hanging forever
-		<-ctx.Done()
-		return nil, nil, ctx.Err()
+		deadline, ok := ctx.Deadline()
+		if !ok {
+			t.Fatal("preview refresh has no deadline")
+		}
+		remaining = time.Until(deadline)
+		return nil, nil, errors.New("stop after inspecting preview deadline")
 	}
 	w, err := newAppWizardController(context.Background(), input)
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Step with appWizardNext triggers freshFacts in appWizardNeeds case
-	// With the fix, this should timeout rather than hang forever
-	type testDone struct{}
-	done := make(chan testDone, 1)
-	go func() {
-		w.Step(context.Background(), appWizardNext)
-		done <- testDone{}
-	}()
-	select {
-	case <-done:
-		// Test completed – if the fix is in place, freshFacts timed out
-	case <-time.After(35 * time.Second):
-		t.Fatal("freshFacts blocked indefinitely – no timeout on refresh callback")
+	_, _, err = w.freshFacts(context.Background(), w.intent())
+	if err == nil || err.Error() != "stop after inspecting preview deadline" {
+		t.Fatalf("freshFacts error = %v", err)
+	}
+	if remaining < 119*time.Second || remaining > appWizardPreviewRefreshTimeout {
+		t.Fatalf("preview refresh timeout budget = %s, want about %s", remaining, appWizardPreviewRefreshTimeout)
+	}
+	canceled, cancel := context.WithCancel(context.Background())
+	cancel()
+	input.Refresh = func(ctx context.Context, d appWizardDecision) (*GuidedReadContext, *application.ProviderImpactPlan, error) {
+		<-ctx.Done()
+		return nil, nil, ctx.Err()
+	}
+	w, err = newAppWizardController(context.Background(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _, err = w.freshFacts(canceled, w.intent())
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("freshFacts error after caller cancellation = %v, want context.Canceled", err)
 	}
 }
 

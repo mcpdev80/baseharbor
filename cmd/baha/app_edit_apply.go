@@ -138,6 +138,18 @@ func appEditProjectRequirements(original application.Manifest, requirements []ca
 	return manifest, nil
 }
 
+// appEditProjectDesiredIntent binds the proposed provider preferences to the
+// in-memory desired manifest. An explicit empty slice matters: a read-only
+// registry preview must not inherit persisted preferences for capabilities
+// that this proposal removes.
+func appEditProjectDesiredIntent(original application.Manifest, requirements []capability.Requirement, preferences []application.ProviderPreference) (application.Manifest, error) {
+	manifest, err := appEditProjectRequirements(original, requirements)
+	if err != nil {
+		return application.Manifest{}, err
+	}
+	return application.WithProviderPreferences(manifest, preferences), nil
+}
+
 func appEditDesiredFromDecision(loaded appEditLoaded, decision appWizardDecision) (appEditDesired, error) {
 	if decision.Target == "" || decision.Target != loaded.Target {
 		return appEditDesired{}, errors.New("confirmed edit decision has the wrong Target")
@@ -170,6 +182,7 @@ func appEditDesiredFromDecision(loaded appEditLoaded, decision appWizardDecision
 			preferences = append(preferences, carried)
 		}
 	}
+	manifest = application.WithProviderPreferences(manifest, preferences)
 	if err := manifest.Validate(); err != nil {
 		return appEditDesired{}, err
 	}
@@ -238,7 +251,7 @@ func appEditPreferencesEquivalent(loaded, desired []application.ProviderPreferen
 		selected[preference.Requirement] = true
 	}
 	for _, preference := range loaded {
-		if preference.InstanceID != "" && !selected[preference.Requirement] {
+		if !selected[preference.Requirement] {
 			return false
 		}
 	}
@@ -357,9 +370,6 @@ func appEditApplyConfirmed(ctx context.Context, controller appWizardController, 
 		Presentation: presentation,
 	}
 	if changeErr == nil && result.Status != "complete" {
-		if true {
-			fmt.Printf("DIAG_EXEC result.Status=%v outcomes=%d result=%+v\n", result.Status, len(result.Outcomes), result)
-		}
 		return output, &appMachineError{Code: "partial"}
 	}
 	return output, changeErr

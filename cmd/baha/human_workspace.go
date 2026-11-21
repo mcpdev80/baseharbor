@@ -1,12 +1,16 @@
 package main
 
 import (
-	"github.com/mcpdev80/baseharbor/internal/cli"
 	"strings"
+
+	"github.com/mcpdev80/baseharbor/internal/cli"
 )
 
 // workspace is the canonical advanced developer namespace. It reuses the
-// application workspace operations rather than creating a second domain model.
+// application workspace operations rather than creating a second domain model
+// (card 0428-059): flat leaf commands share the registered Run functions, and
+// the source/component maintenance groups resolve through the same canonical
+// workspace command tree.
 func workspaceNamespaceCommand() *cli.Command {
 	command := appWorkspaceCommand()
 	command.Name = "workspace"

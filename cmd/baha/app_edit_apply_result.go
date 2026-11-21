@@ -136,7 +136,7 @@ func appEditRuntimeExecuteAuthority(store application.Store, args []string, reso
 			if err != nil {
 				return err
 			}
-			if proposal.ApplicationID != desired.ApplicationID || !reflect.DeepEqual(proposal.Plan, plan) {
+			if proposal.ApplicationID != desired.ApplicationID || !application.ProviderImpactPlansEquivalent(proposal.Plan, plan) {
 				return errAppEditPlanDrifted
 			}
 			if err := application.ValidateProviderChangeConsent(plan, consent); err != nil {
@@ -283,7 +283,7 @@ func defaultAppEditAuthorities(store application.Store, args []string) appEditAu
 		if err != nil {
 			return application.ProviderImpactPlan{}, err
 		}
-		desired, err := appEditProjectRequirements(resolved.Manifest, requirements)
+		desired, err := appEditProjectDesiredIntent(resolved.Manifest, requirements, preferences)
 		if err != nil {
 			return application.ProviderImpactPlan{}, err
 		}
@@ -292,11 +292,19 @@ func defaultAppEditAuthorities(store application.Store, args []string) appEditAu
 		}
 		desiredResolved := resolved
 		desiredResolved.Manifest = desired
-		snapshot, _, err := applicationLifecycleSnapshotContext(ctx, resolved, observeApplicationProviderFactsFunc(ctx, resolved))
+		// Resolve the proposal against its desired intent. Building the
+		// snapshot from the pre-edit manifest retains this owner's old binding
+		// as if it were still requested, which can make an explicit replacement
+		// ambiguous before the impact planner can account for the old provider.
+		snapshot, snapshotPreferences, err := applicationLifecycleSnapshotContext(ctx, desiredResolved, observeApplicationProviderFactsFunc(ctx, resolved))
 		if err != nil {
 			return application.ProviderImpactPlan{}, err
 		}
-		return planApplicationProviderImpactForDesired(ctx, desiredResolved, snapshot, preferences)
+		resolvedPreferences, err := mergeAppEditProviderPreferences(snapshotPreferences, preferences)
+		if err != nil {
+			return application.ProviderImpactPlan{}, err
+		}
+		return planApplicationProviderImpactForDesired(ctx, desiredResolved, snapshot, resolvedPreferences)
 	}
 	return appEditAuthorities{
 		Read:    read,
@@ -331,30 +339,66 @@ func defaultAppEditAuthorities(store application.Store, args []string) appEditAu
 func planApplicationProviderImpactForDesired(ctx context.Context, resolved resolvedApplication, snapshot application.ResolutionSnapshot, preferences []application.ProviderPreference) (application.ProviderImpactPlan, error) {
 	union, err := resolveApplicationProviderPlanFromSnapshot(resolved, snapshot, preferences)
 	if err != nil {
-		return application.ProviderImpactPlan{}, err
+		return application.ProviderImpactPlan{}, appMachineProposalStage("resolve-provider-plan", err)
 	}
 	requests := applicationProviderChangeRequests(union)
 	requests, err = nativeBackendChangeRequests(resolved, requests)
 	if err != nil {
-		return application.ProviderImpactPlan{}, err
+		return application.ProviderImpactPlan{}, appMachineProposalStage("native-backend-change-requests", err)
 	}
 	requests, err = standaloneProviderVersionChangeRequests(ctx, resolved, requests)
 	if err != nil {
-		return application.ProviderImpactPlan{}, err
+		return application.ProviderImpactPlan{}, appMachineProposalStage("standalone-provider-version-change-requests", err)
 	}
 	requests, err = backendBindingChangeRequests(resolved, union, requests)
 	if err != nil {
-		return application.ProviderImpactPlan{}, err
+		return application.ProviderImpactPlan{}, appMachineProposalStage("backend-binding-change-requests", err)
 	}
 	requests, err = externalReceiverChangeRequests(resolved, requests)
 	if err != nil {
-		return application.ProviderImpactPlan{}, err
+		return application.ProviderImpactPlan{}, appMachineProposalStage("external-receiver-change-requests", err)
 	}
 	requests, err = externalIdentityChangeRequests(resolved, requests)
 	if err != nil {
-		return application.ProviderImpactPlan{}, err
+		return application.ProviderImpactPlan{}, appMachineProposalStage("external-identity-change-requests", err)
 	}
-	return resolveApplicationProviderImpact(ctx, resolved, snapshot, union, requests)
+	plan, err := resolveApplicationProviderImpact(ctx, resolved, snapshot, union, requests)
+	if err != nil {
+		return application.ProviderImpactPlan{}, appMachineProposalStage("resolve-provider-impact", err)
+	}
+	return plan, nil
+}
+
+// mergeAppEditProviderPreferences carries the exact provider selected by the
+// desired registry projection into the plan when the wizard left selection on
+// Automatic. A concrete provider choice from the current proposal overrides
+// that preview default; an empty Automatic row does not erase it.
+func mergeAppEditProviderPreferences(snapshot, proposal []application.ProviderPreference) ([]application.ProviderPreference, error) {
+	merged := append([]application.ProviderPreference(nil), snapshot...)
+	positions := make(map[capability.Requirement]int, len(merged))
+	for i, preference := range merged {
+		if _, exists := positions[preference.Requirement]; exists {
+			return nil, fmt.Errorf("duplicate projected provider preference for %s/%s", preference.Requirement.Kind, preference.Requirement.Name)
+		}
+		positions[preference.Requirement] = i
+	}
+	seenProposal := make(map[capability.Requirement]bool, len(proposal))
+	for _, preference := range proposal {
+		if seenProposal[preference.Requirement] {
+			return nil, fmt.Errorf("duplicate proposed provider preference for %s/%s", preference.Requirement.Kind, preference.Requirement.Name)
+		}
+		seenProposal[preference.Requirement] = true
+		if preference.InstanceID == "" && preference.ProviderKind == "" {
+			continue
+		}
+		if index, exists := positions[preference.Requirement]; exists {
+			merged[index] = preference
+			continue
+		}
+		positions[preference.Requirement] = len(merged)
+		merged = append(merged, preference)
+	}
+	return merged, nil
 }
 
 // appEditSourceBytes returns the exact authoritative source bytes for a

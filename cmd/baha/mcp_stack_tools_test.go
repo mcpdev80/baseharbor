@@ -19,12 +19,12 @@ func TestMCPStackCreateListShowShareCLIJSON(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "baseharbor.stack.create", Arguments: machineStackCreateInput{Profile: options.Profile, Scope: options.Scope}})
+	result, err := session.CallTool(testOperatorContext(context.Background()), &mcp.CallToolParams{Name: "baseharbor.stack.create", Arguments: machineStackCreateInput{Profile: options.Profile, Scope: options.Scope}})
 	if err != nil || result.IsError {
 		t.Fatalf("create: %#v %v", result, err)
 	}
 	var output bytes.Buffer
-	if err := stackShowCommand().Run(context.Background(), []string{"team-fixture", "-o", "json"}, &output, &bytes.Buffer{}); err != nil {
+	if err := stackShowCommand().Run(testOperatorContext(context.Background()), []string{"team-fixture", "-o", "json"}, &output, &bytes.Buffer{}); err != nil {
 		t.Fatal(err)
 	}
 	var cliResult stackShowResult
@@ -39,7 +39,7 @@ func TestMCPStackCreateListShowShareCLIJSON(t *testing.T) {
 		if tool == "baseharbor.stack.show" {
 			arguments["name"] = "team-fixture"
 		}
-		result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: tool, Arguments: arguments})
+		result, err := session.CallTool(testOperatorContext(context.Background()), &mcp.CallToolParams{Name: tool, Arguments: arguments})
 		if err != nil || result.IsError {
 			payload, _ := json.Marshal(result)
 			t.Fatalf("%s: %s %v", tool, payload, err)
@@ -65,7 +65,7 @@ func TestStackManagedDenialPrecedesCLIAndMCPWrites(t *testing.T) {
 	if _, err := createStackProfile(context.Background(), options.Profile, options.Scope); err == nil {
 		t.Fatal("managed mutation accepted")
 	}
-	session := workspaceMutationClient(t)
+	session := workspaceMutationClientUnauthenticated(t)
 	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "baseharbor.stack.create", Arguments: machineStackCreateInput{Profile: options.Profile}})
 	if err != nil || !result.IsError {
 		t.Fatalf("managed mutation accepted: %#v %v", result, err)

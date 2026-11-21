@@ -13,7 +13,7 @@ import (
 func TestInstallationPlanDisclosesUnregisteredLocalStateWithoutInventingRuntimeOwner(t *testing.T) {
 	r := retainedNativeBackendFixture(t)
 	inventories := []targetDestroyInventory{{Target: r.Target}}
-	before, err := buildRuntimeDestroyImpact(t.Context(), inventories, nil, true)
+	before, err := buildRuntimeDestroyImpact(testOperatorContext(t.Context()), inventories, nil, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -28,11 +28,11 @@ func TestInstallationPlanDisclosesUnregisteredLocalStateWithoutInventingRuntimeO
 	if err := os.MkdirAll(filepath.Join(root, "state"), 0700); err != nil {
 		t.Fatal(err)
 	}
-	after, err := buildRuntimeDestroyImpact(t.Context(), inventories, nil, true)
+	after, err := buildRuntimeDestroyImpact(testOperatorContext(t.Context()), inventories, nil, true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if after.Scope.PlanID == before.Scope.PlanID || after.Scope.Complete || after.Scope.Attention != "Achtung" || after.Scope.ConfirmationsRequired != 2 {
+	if after.Scope.PlanID == before.Scope.PlanID || after.Scope.Complete || after.Scope.Attention != "Warning" || after.Scope.ConfirmationsRequired != 2 {
 		t.Fatal("new unknown local state was not bound/disclosed")
 	}
 	if len(after.Applications) != 1 || after.Applications[0].Scope.Owner.Subject != r.DeploymentIdentity.DeploymentID {
@@ -48,7 +48,7 @@ func TestInstallationPlanDisclosesUnregisteredLocalStateWithoutInventingRuntimeO
 		t.Fatal("concrete unregistered state warning missing from displayed plan")
 	}
 	old := &application.ProviderChangeConsent{PlanID: before.Scope.PlanID, First: true, Second: true, DeleteData: true}
-	if _, err := authorizeRuntimeDestroyImpact(withProviderChangeConsent(t.Context(), old), after, true, io.Discard); err == nil {
+	if _, err := authorizeRuntimeDestroyImpact(withProviderChangeConsent(testOperatorContext(t.Context()), old), after, true, io.Discard); err == nil {
 		t.Fatal("new unknown local state reused old consent")
 	}
 	if _, err := os.Stat(filepath.Join(root, "deployment.json")); !os.IsNotExist(err) {
@@ -62,7 +62,7 @@ func TestInstallationPlanDisclosesUnregisteredLocalStateWithoutInventingRuntimeO
 func TestInstallationUnknownTargetRuntimeIsDisclosureNotDestructionAuthority(t *testing.T) {
 	r := retainedNativeBackendFixture(t)
 	inventories := []targetDestroyInventory{{Target: r.Target}}
-	before, err := buildRuntimeDestroyImpact(t.Context(), inventories, nil, true)
+	before, err := buildRuntimeDestroyImpact(testOperatorContext(t.Context()), inventories, nil, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,11 +73,11 @@ func TestInstallationUnknownTargetRuntimeIsDisclosureNotDestructionAuthority(t *
 	if err := os.MkdirAll(filepath.Join(root, "runtime"), 0700); err != nil {
 		t.Fatal(err)
 	}
-	after, err := buildRuntimeDestroyImpact(t.Context(), inventories, nil, true)
+	after, err := buildRuntimeDestroyImpact(testOperatorContext(t.Context()), inventories, nil, true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if after.Scope.PlanID == before.Scope.PlanID || after.Scope.Complete || after.Scope.Attention != "Achtung" || after.Scope.ConfirmationsRequired != 2 {
+	if after.Scope.PlanID == before.Scope.PlanID || after.Scope.Complete || after.Scope.Attention != "Warning" || after.Scope.ConfirmationsRequired != 2 {
 		t.Fatal("unknown target runtime did not require current explicit consequences")
 	}
 	found := false
@@ -90,7 +90,7 @@ func TestInstallationUnknownTargetRuntimeIsDisclosureNotDestructionAuthority(t *
 		t.Fatal("unknown target runtime was not a typed, current-plan-bound discovery diagnostic")
 	}
 	old := &application.ProviderChangeConsent{PlanID: before.Scope.PlanID, First: true, Second: true, DeleteData: true}
-	if _, err := authorizeRuntimeDestroyImpact(withProviderChangeConsent(t.Context(), old), after, true, io.Discard); err == nil {
+	if _, err := authorizeRuntimeDestroyImpact(withProviderChangeConsent(testOperatorContext(t.Context()), old), after, true, io.Discard); err == nil {
 		t.Fatal("new unknown target reused earlier consent")
 	}
 	if len(after.Applications) != 1 || after.Applications[0].Scope.Owner.Subject != r.DeploymentIdentity.DeploymentID {
@@ -104,7 +104,7 @@ func TestInstallationUnknownTargetRuntimeIsDisclosureNotDestructionAuthority(t *
 		if target.RuntimeProvider != "" {
 			t.Fatal("discovery guessed an engine for unknown target")
 		}
-		inventory, err := collectTargetDestroyInventory(t.Context(), target, false)
+		inventory, err := collectTargetDestroyInventory(testOperatorContext(t.Context()), target, false)
 		if err != nil || inventory.Runtime != nil || len(inventory.Projects) != 0 {
 			t.Fatal("unknown target acquired native mutation authority")
 		}

@@ -17,35 +17,138 @@ class RuntimeMatrix(unittest.TestCase):
     def setUpClass(cls):
         cls.catalog=json.loads(Path(__file__).with_name("release-requirements.json").read_text())
 
+    def test_runtime_neutral_provider_choice_maps_to_docker_data_capabilities(self):
+        root=Path(__file__).resolve().parent
+        coverage_spec=importlib.util.spec_from_file_location(
+            "gate_coverage",root/"validate-pr-gate-coverage.py")
+        coverage_module=importlib.util.module_from_spec(coverage_spec)
+        coverage_spec.loader.exec_module(coverage_module)
+        coverage=json.loads((root/"pr-gate-coverage.json").read_text())
+        selected,unresolved=coverage_module.resolve_covered_gates(
+            ["cmd/baha/app_provider_choice.go","cmd/baha/app_provider_choice_test.go"],coverage)
+        self.assertEqual(["atomic/docker/data-capabilities"],selected)
+        self.assertEqual([],unresolved)
+
     def test_selected_backup_both_runtimes(self):
         result=module.select({"selected_gates":["atomic/podman/backup-restore","atomic/docker/backup-restore"]},self.catalog)
         self.assertEqual(["atomic/docker/backup-restore","atomic/podman/backup-restore"],
                          [r["id"] for r in result["include"]])
         self.assertEqual([],result["unsupported"])
 
-    def test_three_native_gates_all_scheduled_with_bounded_parallelism(self):
+    def test_coreless_integration_gates_dispatch_exact_runtime_jobs(self):
+        gates=["integration/docker/coreless-lifecycle", "integration/podman/coreless-lifecycle"]
+        stage_spec=importlib.util.spec_from_file_location(
+            "stage",Path(__file__).with_name("pr-stage-boundary.py"))
+        stage=importlib.util.module_from_spec(stage_spec)
+        stage_spec.loader.exec_module(stage)
+        staged=stage.stage({
+            "schema":"baseharbor.pr-gate-plan/v1",
+            "selected_gates":gates,
+            "required_validation_checks":[{"id":"cli-package-tests"}],
+            "required_consumer_dependencies":["core","demo"],
+        })
+        self.assertEqual(gates,staged["selected_gates"])
+        self.assertEqual([],staged["deferred_integration_gates"])
+        result=module.select(staged,self.catalog)
+        self.assertEqual(gates,[row["id"] for row in result["integration_include"]])
+        self.assertEqual(["docker", "podman"],
+                         [row["runtime"] for row in result["integration_include"]])
+        self.assertTrue(result["integration_required"])
+        self.assertFalse(result["required"])
+        self.assertEqual([],result["unsupported"])
+        root=Path(__file__).resolve().parent.parent
+        ci=(root/".github/workflows/ci.yml").read_text()
+        targeted=(root/".github/workflows/targeted-integration.yml").read_text()
+        self.assertIn("matrix: ${{ fromJSON(needs.pr_plan.outputs.integration_matrix) }}",ci)
+        self.assertIn("uses: ./.github/workflows/targeted-integration.yml",ci)
+        self.assertIn('ref: ${{ github.sha }}',ci)
+        self.assertIn('gate: ${{ matrix.id }}',ci)
+        self.assertIn("inputs.gate == 'integration/docker/coreless-lifecycle'",targeted)
+        self.assertIn("inputs.gate == 'integration/podman/coreless-lifecycle'",targeted)
+        coreless_shards=re.search(
+            r"(?ms)^  pr_selected_coreless_lifecycle_shards:\n(.*?)(?=^  [a-z0-9_]+:\n|\Z)",
+            targeted,
+        )
+        self.assertIsNotNone(coreless_shards)
+        shard_block = coreless_shards.group(1)
+        self.assertIn(
+            "shard: [foundation, identity-backend, application, core-capability]",
+            shard_block,
+        )
+        self.assertIn("fail-fast: false", shard_block)
+        self.assertIn(
+            "uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e",
+            shard_block,
+        )
+        self.assertIn('python scripts/pre-release-integration.py --gate "$GATE"', shard_block)
+        self.assertIn('--shard "${{ matrix.shard }}"', shard_block)
+        self.assertIn('bash scripts/ci-runtime-reset.sh "${{ inputs.runtime }}"', shard_block)
+        coreless_job=re.search(
+            r"(?ms)^  pr_selected_coreless_lifecycle:\n(.*?)(?=^  [a-z0-9_]+:\n|\Z)",
+            targeted,
+        )
+        self.assertIsNotNone(coreless_job)
+        self.assertIn('needs: pr_selected_coreless_lifecycle_shards', coreless_job.group(1))
+        self.assertIn('SHARDS_RESULT: ${{ needs.pr_selected_coreless_lifecycle_shards.result }}',
+                      coreless_job.group(1))
+        self.assertIn('git show "$controller:scripts/pr-selected-runtime-matrix.py"',ci)
+        self.assertIn('.get("integration_include",[{"id":"not-required"',ci)
+        self.assertIn('.get("integration_required",False)',ci)
+
+    def test_three_native_gates_all_scheduled_without_parallel_cap(self):
         gates=["atomic/docker/backup-restore","atomic/podman/backup-restore","atomic/docker/lifecycle"]
         result=module.select({"selected_gates":gates},self.catalog)
         self.assertEqual(set(gates),{r["id"] for r in result["include"]})
         self.assertEqual([],result["unsupported"])
         workflow=(Path(__file__).resolve().parent.parent/".github/workflows/ci.yml").read_text()
         selected=workflow.split("  pr_runtime_selected:",1)[1].split("  pr_selected_final:",1)[0]
-        self.assertIn("max-parallel: 2",selected)
+        self.assertNotIn("max-parallel:",selected)
+
+    def test_release_runtime_matrices_have_no_concurrency_cap(self):
+        root=Path(__file__).resolve().parent.parent
+        release=(root/".github/workflows/pre-release.yml").read_text()
+        jobs=("runtime_light_gates_docker", "runtime_light_gates_podman",
+              "runtime_heavy_gates_docker", "runtime_heavy_gates_podman",
+              "ha_groups_docker", "ha_groups_podman", "reference_journey")
+        for job in jobs:
+            with self.subTest(job=job):
+                match=re.search(rf"(?ms)^  {job}:\n.*?(?=^  [^ \n]|\Z)",release)
+                self.assertIsNotNone(match)
+                self.assertNotIn("max-parallel:",match.group())
+
+    def test_targeted_integration_concurrency_isolated_by_gate_and_runtime(self):
+        workflow=(Path(__file__).resolve().parent.parent/
+                  ".github/workflows/targeted-integration.yml").read_text()
+        match=re.search(r"(?m)^  group: (.+)$",workflow)
+        self.assertIsNotNone(match)
+        group=match.group(1)
+        self.assertIn("${{ inputs.gate || 'default' }}",group)
+        self.assertIn("${{ inputs.runtime || 'default' }}",group)
+        self.assertIn("cancel-in-progress:",workflow)
+
+        def concurrency_key(ref, sha, gate, runtime):
+            return (f"targeted-integration-{ref}-{sha}-"
+                    f"{gate or 'default'}-{runtime or 'default'}")
+
+        docker=concurrency_key("refs/pull/1649/merge","candidate-sha",
+                               "integration/docker/coreless-lifecycle","docker")
+        podman=concurrency_key("refs/pull/1649/merge","candidate-sha",
+                               "integration/podman/coreless-lifecycle","podman")
+        self.assertNotEqual(docker,podman)
+        self.assertEqual(docker,concurrency_key(
+            "refs/pull/1649/merge","candidate-sha",
+            "integration/docker/coreless-lifecycle","docker"))
 
     def test_executor_job_fetches_the_source_used_by_runtime_regressions(self):
         workflow=(Path(__file__).resolve().parent.parent/".github/workflows/ci.yml").read_text()
-        match=re.search(r'git show ([0-9a-f]{40}):scripts/pr-selected-runtime-matrix\.py',workflow)
-        block=workflow.split('            ci-executor-tests|',1)[1].split('              ;;',1)[0]
-        self.assertIsNotNone(match)
-        self.assertIn('git fetch --no-tags origin ' + match.group(1), block)
-        self.assertLess(block.index('git fetch --no-tags origin ' + match.group(1)),
-                        block.index('execute --check "$VALIDATION"'))
+        block=workflow.split('          git show "$controller:scripts/pr-selected-runtime-matrix.py"',1)[0]
+        self.assertIn('controller="$effective_base"',block)
+        self.assertIn('git show "$controller:scripts/pr-selected-runtime-matrix.py"',workflow)
 
     def test_actual_workflow_pinned_helper_schedules_all_three(self):
         workflow=(Path(__file__).resolve().parent.parent/".github/workflows/ci.yml").read_text()
-        match=re.search(r'git show ([0-9a-f]{40}):scripts/pr-selected-runtime-matrix\.py',workflow)
-        self.assertIsNotNone(match,"workflow must pin exact runtime helper")
-        source=subprocess.check_output(["git","show",match.group(1)+":scripts/pr-selected-runtime-matrix.py"],text=True)
+        self.assertIn('git show "$controller:scripts/pr-selected-runtime-matrix.py"',workflow)
+        source=Path(__file__).with_name("pr-selected-runtime-matrix.py").read_text()
         gates=["atomic/docker/backup-restore","atomic/podman/backup-restore","atomic/docker/lifecycle"]
         with tempfile.TemporaryDirectory() as folder:
             root=Path(folder)
@@ -56,7 +159,20 @@ class RuntimeMatrix(unittest.TestCase):
         result=json.loads(output)
         self.assertEqual(set(gates),{row["id"] for row in result["include"]})
         self.assertEqual([],result["unsupported"])
-        self.assertIn("max-parallel: 2",workflow.split("  pr_runtime_selected:",1)[1].split("  pr_selected_final:",1)[0])
+        self.assertNotIn("max-parallel:",workflow.split("  pr_runtime_selected:",1)[1].split("  pr_selected_final:",1)[0])
+
+    def test_workflow_dispatches_runtime_when_trusted_matrix_requires_it(self):
+        workflow=(Path(__file__).resolve().parent.parent/".github/workflows/ci.yml").read_text()
+        self.assertIn('json.load(open(sys.argv[1]))["required"]', workflow)
+        self.assertNotIn('echo "runtime_required=false"', workflow)
+        self.assertIn("needs.pr_plan.outputs.runtime_required == 'true'", workflow)
+
+    def test_coreless_integration_dispatch_pins_demo_and_is_a_final_dependency(self):
+        workflow=(Path(__file__).resolve().parent.parent/".github/workflows/ci.yml").read_text()
+        demo_job=workflow.split("  pr_demo_pin:",1)[1].split("\n  pr_runner_interface:",1)[0]
+        final_job=workflow.split("  pr_selected_final:",1)[1].split("\n    if:",1)[0]
+        self.assertIn("needs.pr_plan.outputs.integration_required == 'true'", demo_job)
+        self.assertIn("pr_selected_integration", final_job)
 
     def test_unsupported_not_marked_pass(self):
         result=module.select({"selected_gates":["integration/static/public-contracts"]},self.catalog)
@@ -119,6 +235,8 @@ class PodmanBackupWorkflowRoute(unittest.TestCase):
             expression = expression.replace('&&', ' and ').replace('||', ' or ')
             expression = re.sub(r'!(?!=)', 'not ', expression)
             if eval(expression, {'__builtins__': {},
+                                 'always': lambda: True,
+                                 'cancelled': lambda: False,
                                  'startsWith': lambda value, prefix: value.startswith(prefix),
                                  'contains': lambda value, part: part in value}):
                 selected.append(name)

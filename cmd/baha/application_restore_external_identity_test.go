@@ -52,11 +52,11 @@ func restoreRegisteredIdentityFixture(t *testing.T, retained bool) (resolvedAppl
 				t.Fatal(err)
 			}
 		}
-		prepared, err := prepareManagedIdentity(t.Context(), nil, r, nil)
+		prepared, err := prepareManagedIdentity(testOperatorContext(t.Context()), nil, r, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := provisionAndVerifyManagedIdentity(t.Context(), io.Discard, prepared, nil); err != nil {
+		if err := provisionAndVerifyManagedIdentity(testOperatorContext(t.Context()), io.Discard, prepared, nil); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -80,7 +80,7 @@ func TestRestoreBindsOriginalExternalIdentityAndProtectedDestination(t *testing.
 			}
 			t.Run(name+change, func(t *testing.T) {
 				r, secret, otherCA := restoreRegisteredIdentityFixture(t, retained)
-				ctx := machineNoninteractiveContext(t.Context())
+				ctx := machineNoninteractiveContext(testOperatorContext(t.Context()))
 				data := applicationRestoreData{manifest: r.Manifest, archiveRevision: strings.Repeat("a", 64)}
 				planned, err := buildApplicationRestorePlan(ctx, r, data)
 				if err != nil {
@@ -90,7 +90,7 @@ func TestRestoreBindsOriginalExternalIdentityAndProtectedDestination(t *testing.
 				for _, effect := range planned.Effects {
 					found = found || effect.Aspect == "external-identity-recovery"
 				}
-				if !found || planned.Scope.Attention != "Achtung" || planned.Scope.ConfirmationsRequired != 2 {
+				if !found || planned.Scope.Attention != "Warning" || planned.Scope.ConfirmationsRequired != 2 {
 					t.Fatal("original recovery Identity was withdrawn from concrete restore consequences")
 				}
 				files := application.RuntimeFilesFor(r.Store, r.Manifest)

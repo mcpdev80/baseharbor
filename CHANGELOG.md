@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Optional Perses visualization surface for the v0.4.28 release. Perses is a provider-owned, dashboard-as-code surface, not an application capability and is not part of the required Core bundle. The Perses provider pin v0.55.1 (image `persesdev/perses:v0.55.1`) is separate from BaseHarbor’s own release version. When Perses is not selected or configured, that is the normal state and is not an error; when Perses is selected but not provisioned, BaseHarbor reports the Perses visualization surface as `unsupported` rather than "configured".
+
+### Fixed
+
+- Configuration loading now reports an error when the configured state root contains BaseHarbor data but its resolved config is missing or invalid, instead of silently continuing with implicit defaults. A genuinely empty first-run root still uses the default configuration.
+- Registered the Keycloak native OpenMetrics signal when application-provider metrics collection is enabled, so observability consumers can evaluate identity-dashboard eligibility against the real signal.
+
 ## [0.4.27]
 
 ### Added

@@ -93,14 +93,18 @@ type Services struct {
 	ObjectStorageManagementUI    bool
 	IdentityManagementUI         bool
 	ObservabilityManagementUI    bool
-	SQLInstances                 map[string]ServiceInstance
-	CacheInstances               map[string]ServiceInstance
-	KeyValueInstances            map[string]ServiceInstance
-	DocumentDatabaseInstances    map[string]ServiceInstance
-	MessagingQueueInstances      map[string]ServiceInstance
-	MessagingPubSubInstances     map[string]ServiceInstance
-	MessagingStreamInstances     map[string]ServiceInstance
-	ObjectStorageBuckets         map[string]ServiceInstance
+	// Perses selects the optional Perses realization of the observability
+	// management-ui surface instead of the backend's native management surface.
+	// It is a management-surface choice, never an application capability.
+	Perses                    bool
+	SQLInstances              map[string]ServiceInstance
+	CacheInstances            map[string]ServiceInstance
+	KeyValueInstances         map[string]ServiceInstance
+	DocumentDatabaseInstances map[string]ServiceInstance
+	MessagingQueueInstances   map[string]ServiceInstance
+	MessagingPubSubInstances  map[string]ServiceInstance
+	MessagingStreamInstances  map[string]ServiceInstance
+	ObjectStorageBuckets      map[string]ServiceInstance
 }
 
 type IdentityRequirements struct {

@@ -25,6 +25,9 @@ func TestGuidedWithdrawalPreferencesPreserveCanonicalOwners(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg.Targets["other-dev"] = cfg.Targets[target.Name]
+	otherDef := cfg.Targets["other-dev"]
+	otherDef.TargetUID = mustNewTargetUIDFixture(t)
+	cfg.Targets["other-dev"] = otherDef
 	if err := cfg.Save(); err != nil {
 		t.Fatal(err)
 	}
@@ -75,7 +78,7 @@ func TestGuidedWithdrawalPreferencesPreserveCanonicalOwners(t *testing.T) {
 		}
 		paths = append(paths, filepath.Join(deploymentRoot, "deployment.json"), registryPath, recovery)
 		if index == 0 {
-			selected, err = resolveRegisteredApplication(context.Background(), current, root, manifest.Name, manifest.Environment, "destroy", "")
+			selected, err = resolveRegisteredApplication(testOperatorContext(context.Background()), current, root, manifest.Name, manifest.Environment, "destroy", "")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -95,7 +98,7 @@ func TestGuidedWithdrawalPreferencesPreserveCanonicalOwners(t *testing.T) {
 	if _, err := application.PreviewReferenceProviderRegistryAt(selected.TargetStateRoot, invalid); err == nil || !strings.Contains(err.Error(), "unrequested capability") {
 		t.Fatalf("unrequested preference bypassed original validation: %v", err)
 	}
-	withdrawn, retirement, err := buildApplicationRuntimeRetirementPlan(context.Background(), selected)
+	withdrawn, retirement, err := buildApplicationRuntimeRetirementPlan(testOperatorContext(context.Background()), selected)
 	if err != nil {
 		t.Fatalf("actual withdrawal planner retained obsolete desired preference: %v", err)
 	}
@@ -111,7 +114,7 @@ func TestGuidedWithdrawalPreferencesPreserveCanonicalOwners(t *testing.T) {
 		t.Fatal("withdrawal lost the actual preferred provider's release identity")
 	}
 	// Full installation destruction uses the same child retirement authority.
-	impact, err := buildRuntimeDestroyImpact(context.Background(), []targetDestroyInventory{{Target: target}}, nil, true)
+	impact, err := buildRuntimeDestroyImpact(testOperatorContext(context.Background()), []targetDestroyInventory{{Target: target}}, nil, true)
 	if err != nil {
 		t.Fatalf("full destroy child plan rejects saved preference: %v", err)
 	}

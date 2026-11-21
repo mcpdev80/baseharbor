@@ -388,6 +388,42 @@
             "mcp_tool": "baseharbor.app.preflight"
           },
           {
+            "id": "app.perses.status",
+            "description": "Report the optional Perses management surface three-state contract without mutation or a health probe.",
+            "safety": "read_only",
+            "confirmation_required": false,
+            "policy_required": false,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.app.perses.status"
+          },
+          {
+            "id": "app.perses.enable",
+            "description": "Select the optional Perses realization of the observability management-ui surface in the repository manifest.",
+            "safety": "mutating",
+            "confirmation_required": true,
+            "policy_required": false,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.app.perses.enable"
+          },
+          {
+            "id": "app.perses.disable",
+            "description": "Deselect the optional Perses management surface, preserving the backend observability owner.",
+            "safety": "mutating",
+            "confirmation_required": true,
+            "policy_required": false,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.app.perses.disable"
+          },
+          {
+            "id": "app.perses.remove",
+            "description": "Retire only BaseHarbor-owned Perses runtime resources and disable the surface; backends are never removed.",
+            "safety": "destructive",
+            "confirmation_required": true,
+            "policy_required": false,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.app.perses.remove"
+          },
+          {
             "id": "secret.list",
             "description": "List configured secret names without values.",
             "safety": "read_only",
@@ -422,6 +458,14 @@
             "policy_required": false,
             "contract_version": "v1",
             "mcp_tool": "baseharbor.secret.tls-set"
+          },
+          {
+            "id": "secret.reveal",
+            "description": "Human-only authorization seam for managed-secret reveal via a verified operator. Workload/runtime identity never satisfies this; the CLI --reveal paths (app env/creds) route through it and it is excluded from the MCP tool boundary by design.",
+            "safety": "read_only",
+            "confirmation_required": false,
+            "policy_required": true,
+            "contract_version": "v1"
           },
           {
             "id": "node.add",

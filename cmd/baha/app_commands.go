@@ -123,44 +123,62 @@ func appListCommand() *cli.Command {
 					return unknownOptionUsage("baha app list", arg, "--all-targets")
 				}
 			}
-			if err := authorizeCurrentMCPContext(ctx, "app.list", "", "", ""); err != nil {
-				return err
+			var authorizationErr error
+			if allTargets {
+				// The installation-wide inventory intentionally survives removal of
+				// Target configuration. Authenticate the operator without requiring
+				// an effective Target that no longer exists.
+				authorizationErr = authorizeMCPOperation(ctx, "app.list", "", "dev", "", "")
+			} else {
+				authorizationErr = authorizeCurrentMCPContext(ctx, "app.list", "", "", "")
 			}
-			if target, targetErr := effectiveTarget(ctx); targetErr != nil {
-				return targetErr
-			} else if target.AccessProvider != "" && target.AccessProvider != "local" {
-				result, readErr := remoteMachineRead(ctx, target, "app.list", "", "dev", machineApplicationListInput{AllTargets: allTargets, Target: target.Name})
-				if readErr != nil {
-					return readErr
+			if authorizationErr != nil {
+				return authorizationErr
+			}
+			// An all-targets inventory is a read-only installation-wide view. It
+			// must remain available after `destroy --all` removes the Target
+			// configuration, and must not require an effective selected Target.
+			// Remote routing still needs a configured Target, so resolve it only
+			// for the selected-target form.
+			if !allTargets {
+				target, targetErr := effectiveTarget(ctx)
+				if targetErr != nil {
+					return targetErr
 				}
-				var listed machineApplicationListResult
-				if err := json.Unmarshal(result, &listed); err != nil || listed.ContractVersion != machine.ContractVersion {
-					return errors.New("remote Core application list has an invalid contract")
-				}
-				for _, item := range listed.Deployments {
-					if !allTargets && item.Target != target.Name {
-						return errors.New("remote Core application list contains a deployment outside the selected Target")
+				if target.AccessProvider != "" && target.AccessProvider != "local" {
+					result, readErr := remoteMachineRead(ctx, target, "app.list", "", "dev", machineApplicationListInput{AllTargets: allTargets, Target: target.Name})
+					if readErr != nil {
+						return readErr
 					}
-				}
-				if format == outputJSON {
-					return writeJSON(out, listed)
-				}
-				for _, warning := range listed.Warnings {
-					fmt.Fprintf(errOut, "[WARN] incomplete deployment state: %s\n", warning)
-				}
-				if len(listed.Deployments) == 0 {
-					fmt.Fprintln(out, "No deployments registered.")
+					var listed machineApplicationListResult
+					if err := json.Unmarshal(result, &listed); err != nil || listed.ContractVersion != machine.ContractVersion {
+						return errors.New("remote Core application list has an invalid contract")
+					}
+					for _, item := range listed.Deployments {
+						if !allTargets && item.Target != target.Name {
+							return errors.New("remote Core application list contains a deployment outside the selected Target")
+						}
+					}
+					if format == outputJSON {
+						return writeJSON(out, listed)
+					}
+					for _, warning := range listed.Warnings {
+						fmt.Fprintf(errOut, "[WARN] incomplete deployment state: %s\n", warning)
+					}
+					if len(listed.Deployments) == 0 {
+						fmt.Fprintln(out, "No deployments registered.")
+						return nil
+					}
+					fmt.Fprintf(out, "%-20s %-12s %-10s %s\n", "APPLICATION", "ENVIRONMENT", "STATE", "SOURCE")
+					for _, item := range listed.Deployments {
+						source := "MISSING"
+						if item.SourceAvailable {
+							source = "OK"
+						}
+						fmt.Fprintf(out, "%-20s %-12s %-10s %s\n", item.Application, item.Environment, item.State, source)
+					}
 					return nil
 				}
-				fmt.Fprintf(out, "%-20s %-12s %-10s %s\n", "APPLICATION", "ENVIRONMENT", "STATE", "SOURCE")
-				for _, item := range listed.Deployments {
-					source := "MISSING"
-					if item.SourceAvailable {
-						source = "OK"
-					}
-					fmt.Fprintf(out, "%-20s %-12s %-10s %s\n", item.Application, item.Environment, item.State, source)
-				}
-				return nil
 			}
 			if format == outputJSON {
 				result, err := collectMachineApplicationList(ctx, machineApplicationListInput{AllTargets: allTargets})

@@ -22,14 +22,25 @@ func appDownCommand(store application.Store) *cli.Command {
 	command := appStopCommand(store)
 	command.Name = "down"
 	command.Usage = "baha app down [NAME] [--yes]"
+	run := command.Run
+	command.Run = func(ctx context.Context, args []string, out, errOut io.Writer) error {
+		ctx = context.WithValue(ctx, applicationDownModeKey{}, true)
+		return run(ctx, args, out, errOut)
+	}
 	return command
 }
 
 type applicationStopModeKey struct{}
+type applicationDownModeKey struct{}
 
 func isApplicationStopMode(ctx context.Context) bool {
 	stop, _ := ctx.Value(applicationStopModeKey{}).(bool)
 	return stop
+}
+
+func isApplicationDownMode(ctx context.Context) bool {
+	down, _ := ctx.Value(applicationDownModeKey{}).(bool)
+	return down
 }
 
 func appStopCommand(store application.Store) *cli.Command {
@@ -299,7 +310,7 @@ func executeApplicationDestroyLifecycle(ctx context.Context, store application.S
 			if plan.Providers.Impact == nil {
 				return runtimeMutationOwnerError()
 			}
-			if _, err := recordPendingApplicationRuntimeRetirement(execution.resolved, *plan.Providers.Impact); err != nil {
+			if _, err := recordPendingApplicationRuntimeRetirementWithIntent(execution.resolved, *plan.Providers.Impact, intent); err != nil {
 				return err
 			}
 		}

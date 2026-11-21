@@ -370,6 +370,13 @@ var errConsentRequiredForCandidateSubmission = errors.New(
 	"candidate submission requires an explicit operator/automation consent (--confirm-candidate); refusing to record deployment state",
 )
 
+func staleCandidateConsentError(submission delivery.CandidateSubmission) error {
+	digest := delivery.CandidateConsentDigest(submission)
+	message := "candidate confirmation no longer matches the current submission; refusing to record deployment state"
+	hint := "Review the current submission and re-run with --confirm-candidate " + digest + " to acknowledge this exact submission."
+	return fmt.Errorf("%w: %w", errCandidateConsentDigestMismatch, usageError(message, hint))
+}
+
 // errCandidateConsentDigestMismatch is returned when the operator confirm
 // digest does not match the canonical content-hash of the exact submission the
 // candidate leaf validated. Binding a wrong digest would let a stale, partial,
@@ -548,6 +555,13 @@ func recordDeploymentBeforeMutation(ctx context.Context, resolved resolvedApplic
 		// consent binds the exact submission that is about to be written.
 		consent, consErr := finalizeCandidateConsent(rawCandidateConsent, "operator", submission)
 		if consErr != nil {
+			if errors.Is(consErr, errCandidateConsentDigestMismatch) {
+				// Source fingerprints can change between the displayed candidate
+				// confirmation and this final write boundary. Keep refusing the
+				// stale confirmation, but surface the exact current digest so an
+				// operator can review and explicitly confirm the new submission.
+				return deployment.DeploymentRecord{}, staleCandidateConsentError(submission)
+			}
 			return deployment.DeploymentRecord{}, consErr
 		}
 		if consent == nil {

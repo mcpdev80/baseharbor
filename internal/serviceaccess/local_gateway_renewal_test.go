@@ -36,13 +36,10 @@ func TestActualLocalIssuerGatewaySANReconciliationPreservesAuthority(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Establish the local revocation list before reconciliation: a missing CRL
-	// fails closed on the managed-consumption path.
-	if _, issueErr := issuer.Issue(context.Background(), CertificateRequest{CommonName: "bootstrap", TTL: time.Hour}); issueErr != nil {
-		t.Fatal(issueErr)
-	}
-	if err := issuer.Revoke(context.Background(), "01"); err != nil {
-		t.Fatal(err)
+	// A newly materialized issuer must already have a signed empty CRL so its
+	// first legitimate SAN expansion can renew the gateway leaf.
+	if _, err := issuer.revocations(mustLoadCA(t, issuer), false); err != nil {
+		t.Fatalf("new local issuer did not publish its empty CRL: %v", err)
 	}
 	firstCertificate, err := os.ReadFile(first.ServerCertificate)
 	if err != nil {

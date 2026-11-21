@@ -165,5 +165,11 @@ func ReconcileRuntimeComponentObservability(m Manifest, component RuntimeCompone
 		}
 	}
 
-	return observability.ReconcileSignals(component.ID, desired)
+	// The ownership key is explicit: when every policy disables this
+	// component's signals the desired set is empty, and the reconciliation
+	// must still reclaim the component's stale registrations under its own
+	// provider - while a same-ID registration another provider owns stays
+	// untouched.
+	return observability.ReconcileProviderSignals(component.ID,
+		map[capability.ProviderKind]struct{}{component.Provider: {}}, desired)
 }

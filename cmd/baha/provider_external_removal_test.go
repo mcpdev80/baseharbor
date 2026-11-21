@@ -36,7 +36,7 @@ func TestExternalProviderRemovalTransportsShareScopeAndExplicitStages(t *testing
 			consent := application.ProviderChangeConsent{PlanID: scope.PlanID, First: true, Second: true}
 			encoded, _ := json.Marshal(consent)
 			t.Setenv(providerChangeConsentEnv, string(encoded))
-			ctx := context.Background()
+			ctx := testOperatorContext(context.Background())
 			var client *mcp.ClientSession
 			if transport == "mcp" {
 				client = workspaceMutationClient(t)

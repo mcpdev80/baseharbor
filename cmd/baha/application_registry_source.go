@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"os/exec"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/orgconfig"
@@ -227,6 +229,14 @@ func (s RegistrySource) run(ctx context.Context, action, ref string) (string, er
 		// complete repository@digest identity so it can prove that the response
 		// belongs to the requested image repository.
 		args = append(args, "--full-reference")
+		// The isolated CI registry on localhost speaks plain HTTP. Keep this
+		// exception local; configured enterprise registries retain HTTPS.
+		if isLocalRuntimeImageReference(ref) {
+			args = append(args, "--plain-http")
+			if resolve := localRuntimeImageResolveOverride(ref); resolve != "" {
+				args = append(args, "--resolve", resolve)
+			}
+		}
 	}
 	args = append(args, ref)
 	return run(ctx, "oras", args...)
@@ -481,8 +491,7 @@ type localRuntimeImageInspector interface {
 }
 
 func localRuntimeImagePresent(ctx context.Context, compose bhruntime.RuntimeProvider, reference string) bool {
-	repository, _ := splitReference(reference)
-	if repository != "localhost" && !strings.HasPrefix(repository, "localhost/") {
+	if !isLocalRuntimeImageReference(reference) {
 		return false
 	}
 	inspector, ok := compose.(localRuntimeImageInspector)
@@ -491,6 +500,55 @@ func localRuntimeImagePresent(ctx context.Context, compose bhruntime.RuntimeProv
 	}
 	imageID, err := inspector.DirectOutput(ctx, "image", "inspect", "--format", "{{.Id}}", reference)
 	return err == nil && strings.TrimSpace(imageID) != ""
+}
+
+// isLocalRuntimeImageReference recognizes localhost image references with or
+// without a registry port, such as localhost/team/app:tag and
+// localhost:5000/team/app:tag. Other loopback and registry hosts remain remote.
+func isLocalRuntimeImageReference(reference string) bool {
+	repository, _ := splitReference(reference)
+	if repository == "localhost" {
+		return true
+	}
+	authority, _, ok := strings.Cut(repository, "/")
+	if !ok {
+		return false
+	}
+	if authority == "localhost" {
+		return true
+	}
+	host, port, err := net.SplitHostPort(authority)
+	if err != nil || host != "localhost" {
+		return false
+	}
+	portNumber, err := strconv.Atoi(port)
+	return err == nil && portNumber > 0 && portNumber <= 65535
+}
+
+// localRuntimeImageResolveOverride pins localhost OCI lookups to IPv4. Native
+// runtime services in isolated CI bind the local registry to 127.0.0.1; relying
+// on localhost address ordering can make ORAS select ::1 and report the
+// registry unavailable even though the registry is healthy.
+func localRuntimeImageResolveOverride(reference string) string {
+	repository, _ := splitReference(reference)
+	authority, _, ok := strings.Cut(repository, "/")
+	if !ok {
+		return ""
+	}
+	if authority == "localhost" {
+		// Local references without an explicit port use HTTP's standard port
+		// because resolve() adds --plain-http for this narrowly scoped case.
+		return "localhost:80:127.0.0.1"
+	}
+	host, port, err := net.SplitHostPort(authority)
+	if err != nil || host != "localhost" {
+		return ""
+	}
+	portNumber, err := strconv.Atoi(port)
+	if err != nil || portNumber <= 0 || portNumber > 65535 {
+		return ""
+	}
+	return net.JoinHostPort(host, port) + ":127.0.0.1"
 }
 
 // canonicalArtifactRepository normalizes a resolved reference to the canonical

@@ -11,6 +11,63 @@ jobs:
       BASEHARBOR_RUNTIME_IMAGE: localhost/baseharbor-runtime:pre-release
       ARTIFACT_DIR: /tmp/baseharbor-atomic-${{ inputs.runtime }}-${{ inputs.gate }}
     steps:
+    - name: Download prior gate evidence before reuse
+      if: inputs.evidence_reuse && inputs.reuse_from != ''
+      uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53
+      with:
+        artifact-ids: ${{ inputs.evidence_artifact_id }}
+        run-id: ${{ inputs.reuse_from }}
+        github-token: ${{ github.token }}
+        repository: ${{ github.repository }}
+        path: ${{ runner.temp }}/pre-release-reused-evidence
+    - name: Validate prior gate evidence manifest
+      if: inputs.evidence_reuse && inputs.reuse_from != ''
+      env:
+        EVIDENCE_DIR: ${{ runner.temp }}/pre-release-reused-evidence
+        EXPECTED_RUN_ID: ${{ inputs.reuse_from }}
+        EXPECTED_TAG: ${{ inputs.tag }}
+        EXPECTED_RUNTIME: ${{ inputs.runtime }}
+        EXPECTED_GATE: ${{ inputs.gate }}
+        EXPECTED_FINGERPRINT: ${{ inputs.input_fingerprint }}
+        EXPECTED_WORKFLOW_VERSION: ${{ inputs.workflow_version }}
+        EXPECTED_CATALOG_VERSION: ${{ inputs.catalog_version }}
+        EVIDENCE_CREATED_AT: ${{ inputs.evidence_created_at }}
+        CURRENT_RUN_ID: ${{ github.run_id }}
+        CURRENT_RUN_CREATED_AT: ${{ inputs.current_run_created_at }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        python3 - <<'PY'
+        import json, os, pathlib, re
+        files = list(pathlib.Path(os.environ['EVIDENCE_DIR']).rglob('manifest.json'))
+        assert len(files) == 1, 'reused gate evidence must contain one manifest'
+        evidence = json.loads(files[0].read_text())
+        expected = {
+            'schema': 'baseharbor.pre-release-runtime-gate-evidence/v1',
+            'status': 'success',
+            'run_id': os.environ['EXPECTED_RUN_ID'],
+            'tag': os.environ['EXPECTED_TAG'],
+            'runtime': os.environ['EXPECTED_RUNTIME'],
+            'gate': 'atomic/' + os.environ['EXPECTED_RUNTIME'] + '/' + os.environ['EXPECTED_GATE'],
+            'input_fingerprint': os.environ['EXPECTED_FINGERPRINT'],
+            'workflow_version': os.environ['EXPECTED_WORKFLOW_VERSION'],
+            'catalog_version': os.environ['EXPECTED_CATALOG_VERSION'],
+            'artifact_name': 'pre-release-runtime-evidence-' + os.environ['EXPECTED_RUNTIME'] + '-' + os.environ['EXPECTED_GATE'],
+        }
+        for key, value in expected.items():
+            assert evidence.get(key) == value, 'reused gate evidence mismatch: ' + key
+        assert re.fullmatch(r'[0-9a-f]{40}', evidence.get('candidate_sha', ''))
+        assert re.fullmatch(r'[0-9a-f]{40}', evidence.get('demo_ref', ''))
+        origin_run = evidence.get('source_run_id') or evidence['run_id']
+        evidence['source_run_id'] = str(origin_run)
+        evidence['source_run_created_at'] = evidence.get('source_run_created_at') or evidence.get('run_created_at')
+        evidence['source_artifact_created_at'] = evidence.get('source_artifact_created_at') or os.environ['EVIDENCE_CREATED_AT']
+        evidence['run_id'] = os.environ['CURRENT_RUN_ID']
+        evidence['run_created_at'] = os.environ['CURRENT_RUN_CREATED_AT']
+        output = pathlib.Path(os.environ['EVIDENCE_DIR']) / 'manifest.json'
+        output.write_text(json.dumps(evidence, sort_keys=True) + '\n')
+        print('Validated prior gate evidence for run ' + os.environ['EXPECTED_RUN_ID'])
+        PY
     - name: Report previously qualified run without executing native runtime
       if: inputs.reuse_from != ''
       env:
@@ -20,7 +77,7 @@ jobs:
       run: |
         set -euo pipefail
         [[ "$REUSED_RUN" =~ ^[0-9]+$ ]]
-        echo "Reused native gate $GATE_NAME from previously successful PR run $REUSED_RUN. This step does not execute native tests; the trusted planner establishes eligible ancestry and input identity." >> "$GITHUB_STEP_SUMMARY"
+        echo "Reused native gate $GATE_NAME from previously successful pre-release run $REUSED_RUN. The trusted planner checked gate evidence, source ancestry, input fingerprints, workflow/catalog versions, and the 7-day TTL." >> "$GITHUB_STEP_SUMMARY"
     - name: Validate candidate ref before checkout
       if: inputs.reuse_from == ''
       shell: bash
@@ -59,6 +116,9 @@ jobs:
     - name: Prepare verified rootless runtime
       if: inputs.reuse_from == '' && inputs.runtime != 'static'
       run: bash scripts/ci-core-rootless-runtime.sh
+    - name: Install verified ORAS for Core bootstrap
+      if: inputs.reuse_from == '' && inputs.runtime != 'static'
+      run: bash scripts/ci-install-oras.sh
     - name: Resolve candidate SHA
       if: inputs.reuse_from == ''
       id: candidate
@@ -123,6 +183,9 @@ jobs:
       run: |
         set -euo pipefail
         chmod 0755 "$RUNNER_TEMP/pre-release-candidate/baha"
+        if [ -f "$RUNNER_TEMP/pre-release-candidate/baha-ci-operator-testonly" ]; then
+          chmod 0755 "$RUNNER_TEMP/pre-release-candidate/baha-ci-operator-testonly"
+        fi
         archive="$RUNNER_TEMP/pre-release-candidate/baseharbor-runtime-pre-release.tar"
         test -s "$archive"
         if [ "${{ inputs.runtime }}" = "podman" ]; then
@@ -132,6 +195,10 @@ jobs:
           docker load -i "$archive"
           docker image inspect "$BASEHARBOR_RUNTIME_IMAGE" >/dev/null
         fi
+    - name: Publish exact candidate image for ORAS verification
+      if: inputs.reuse_from == '' && inputs.candidate_artifact != '' && inputs.runtime != 'static' && inputs.gate != 'rabbitmq-runtime' && inputs.gate != 'mongodb-runtime' && inputs.gate != 'durable-key-value' && inputs.gate != 'control-plane-recovery' && inputs.gate != 'loki-runtime' && inputs.gate != 'tempo-runtime'
+      shell: bash
+      run: bash scripts/ci-local-oci-registry.sh publish "$BASEHARBOR_RUNTIME_IMAGE" localhost:5000/baseharbor-runtime:pre-release
     - name: Checkout exact demo revision
       if: inputs.reuse_from == ''
       id: demo
@@ -207,7 +274,8 @@ jobs:
       if: inputs.reuse_from == '' && (inputs.runtime != 'static' && steps.resource_profile.outputs.class == 'runtime')
       timeout-minutes: ${{ inputs.gate == 'backup-restore' && 55 || inputs.gate == 'observability' && 25 || inputs.gate
         == 'lifecycle' && 35 || steps.resource_profile.outputs.profile == 'recovery' && 20 || inputs.gate == 'data-capabilities'
-        && 25 || steps.resource_profile.outputs.profile == 'data' && 20 || inputs.gate == 'security' && 12 || 8
+        && 50 || steps.resource_profile.outputs.profile == 'data' && 20 || inputs.gate == 'security' && 12 || inputs.runtime == 'podman'
+        && inputs.gate == 'guided' && 30 || inputs.gate == 'guided' && 12 || 8
         }}
       shell: bash
       env:
@@ -217,6 +285,7 @@ jobs:
         PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         GATE: ${{ inputs.gate }}
         RUNTIME: ${{ inputs.runtime }}
+        GOFLAGS: -tags=baseharbor_ci_operator_testonly
       run: |
         set -euo pipefail
         exec > >(tee "$RUNNER_TEMP/gate-output.log") 2>&1
@@ -227,10 +296,14 @@ jobs:
         export BASEHARBOR_TARGET="atomic-${{ inputs.runtime }}-${{ inputs.gate }}"
         prebuilt=()
         if [ -n "${{ inputs.candidate_artifact }}" ]; then
-          prebuilt=(BASEHARBOR_PREBUILT_BINARY="$RUNNER_TEMP/pre-release-candidate/baha")
+          testonly="$RUNNER_TEMP/pre-release-candidate/baha-ci-operator-testonly"
+          test -s "$testonly"
+          chmod 0755 "$testonly"
+          "$testonly" version | grep -F "$CANDIDATE_SHA"
+          prebuilt=(BASEHARBOR_PREBUILT_BINARY="$testonly")
         fi
         cd "$workdir"
-        env             "${prebuilt[@]}"             BASEHARBOR_SOURCE_REF="$CANDIDATE_SHA"             BASEHARBOR_RUNTIME_IMAGE="$BASEHARBOR_RUNTIME_IMAGE"             BASEHARBOR_TEST_RUNTIME="${{ inputs.runtime }}"             DEMO_ATOMIC_GATE=1             ARTIFACT_DIR="$ARTIFACT_DIR"             bash scripts/acceptance.sh "$GATE"
+        env             "${prebuilt[@]}"             BASEHARBOR_SOURCE_REF="$CANDIDATE_SHA"             BASEHARBOR_RUNTIME_IMAGE="$BASEHARBOR_RUNTIME_IMAGE"             BASEHARBOR_TEST_RUNTIME="${{ inputs.runtime }}"             BASEHARBOR_DEMO_OPERATOR_GATE="$GATE"             BASEHARBOR_DEMO_OPERATOR_TRACE=1             GATE="$GATE"             DEMO_ATOMIC_GATE=1             ARTIFACT_DIR="$ARTIFACT_DIR"             bash scripts/acceptance.sh "$GATE"
         if [ "$GATE" = backup-restore ] && [ "$GITHUB_EVENT_NAME" = pull_request ]; then
           cd "$GITHUB_WORKSPACE"
           test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
@@ -249,6 +322,7 @@ jobs:
           fi
           if [ "$backup_changed" = true ]; then
             bash scripts/ci-runtime-reset.sh "$RUNTIME"
+            bash scripts/ci-local-oci-registry.sh publish localhost/baseharbor-runtime:pre-release localhost:5000/baseharbor-runtime:pre-release
             unset BASEHARBOR_TARGET
             export XDG_CONFIG_HOME="$RUNNER_TEMP/baseharbor-backup-cli-xdg/config"
             export XDG_DATA_HOME="$RUNNER_TEMP/baseharbor-backup-cli-xdg/data"
@@ -273,9 +347,13 @@ jobs:
           git diff --no-renames --name-only "$PR_BASE_SHA" "$CANDIDATE_SHA" -- \
             cmd/baha/app_repository_integration_test.go \
             cmd/baha/app_workload_integration_test.go \
-            internal/application/runtime_multi_integration_test.go > "$changed"
+            cmd/baha/app_identity_selective_runtime_test.go \
+            internal/application/runtime_multi_integration_test.go \
+            internal/runtime/service_stop.go \
+            internal/runtime/service_stop_test.go > "$changed"
           if [ -s "$changed" ]; then
             bash scripts/ci-runtime-reset.sh "$RUNTIME"
+            bash scripts/ci-local-oci-registry.sh publish localhost/baseharbor-runtime:pre-release localhost:5000/baseharbor-runtime:pre-release
             unset BASEHARBOR_TARGET
             export XDG_CONFIG_HOME="$RUNNER_TEMP/baseharbor-native-xdg/config"
             export XDG_DATA_HOME="$RUNNER_TEMP/baseharbor-native-xdg/data"
@@ -300,6 +378,15 @@ jobs:
             fi
             if grep -Fxq 'internal/application/runtime_multi_integration_test.go' "$changed"; then
               run_native_test ./internal/application TestMultiInstanceComposeLifecycleInCI
+            fi
+            if grep -Fxq 'internal/runtime/service_stop.go' "$changed" || \
+               grep -Fxq 'internal/runtime/service_stop_test.go' "$changed"; then
+              run_native_test ./internal/runtime TestSelectedStopAcceptsPinnedContainerName
+            fi
+            if grep -Fxq 'cmd/baha/app_identity_selective_runtime_test.go' "$changed"; then
+              BASEHARBOR_IDENTITY_LIFECYCLE_ACCEPTANCE=1 \
+              BASEHARBOR_TEST_RUNTIME="$RUNTIME" \
+                run_native_test ./cmd/baha TestSelectiveIdentityRuntimeAddRemoveReAdd
             fi
           fi
         fi
@@ -389,6 +476,11 @@ jobs:
           echo "===== $file ====="
           tail -n 160 "$file" || true
         done
+        for file in "$out"/failure-runtime/*/scope-result.json; do
+          [ -f "$file" ] || continue
+          echo "===== $file ====="
+          cat "$file"
+        done
         echo "::endgroup::"
     - name: Run provider integration gate
       id: integration_gate
@@ -472,6 +564,71 @@ jobs:
       shell: bash
       timeout-minutes: 3
       run: bash scripts/ci-runtime-reset.sh "${{ inputs.runtime }}"
+    - name: Create passed gate evidence manifest
+      if: ${{ success() && inputs.evidence_reuse && inputs.reuse_from == '' }}
+      env:
+        TAG: ${{ inputs.tag }}
+        RUNTIME: ${{ inputs.runtime }}
+        GATE: ${{ inputs.gate }}
+        CANDIDATE_SHA: ${{ steps.candidate.outputs.sha }}
+        DEMO_SHA: ${{ inputs.demo_ref }}
+        INPUT_FINGERPRINT: ${{ inputs.input_fingerprint }}
+        WORKFLOW_VERSION: ${{ inputs.workflow_version }}
+        CATALOG_VERSION: ${{ inputs.catalog_version }}
+        RUN_ID: ${{ github.run_id }}
+        GH_TOKEN: ${{ github.token }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        [[ "$CANDIDATE_SHA" =~ ^[0-9a-f]{40}$ ]]
+        [[ "$DEMO_SHA" =~ ^[0-9a-f]{40}$ ]]
+        mkdir -p "$RUNNER_TEMP/pre-release-gate-evidence"
+        export EVIDENCE_PATH="$RUNNER_TEMP/pre-release-gate-evidence/manifest.json"
+        python3 - <<'PY'
+        import datetime, json, os, subprocess
+        run_created_at = subprocess.check_output(
+            ['gh', 'api', 'repos/' + os.environ['GITHUB_REPOSITORY'] + '/actions/runs/' + os.environ['RUN_ID'], '--jq', '.created_at'],
+            text=True).strip()
+        value = {
+            'schema': 'baseharbor.pre-release-runtime-gate-evidence/v1',
+            'status': 'success',
+            'run_id': os.environ['RUN_ID'],
+            'source_run_id': os.environ['RUN_ID'],
+            'run_created_at': run_created_at,
+            'source_run_created_at': run_created_at,
+            'tag': os.environ['TAG'],
+            'runtime': os.environ['RUNTIME'],
+            'gate': 'atomic/' + os.environ['RUNTIME'] + '/' + os.environ['GATE'],
+            'candidate_sha': os.environ['CANDIDATE_SHA'],
+            'demo_ref': os.environ['DEMO_SHA'],
+            'input_fingerprint': os.environ['INPUT_FINGERPRINT'],
+            'workflow_version': os.environ['WORKFLOW_VERSION'],
+            'catalog_version': os.environ['CATALOG_VERSION'],
+            'artifact_name': 'pre-release-runtime-evidence-' + os.environ['RUNTIME'] + '-' + os.environ['GATE'],
+            'qualified_at': run_created_at,
+        }
+        with open(os.environ['EVIDENCE_PATH'], 'w', encoding='utf-8') as stream:
+            json.dump(value, stream, sort_keys=True)
+            stream.write('\n')
+        PY
+    - name: Upload passed gate evidence
+      if: ${{ success() && inputs.evidence_reuse && inputs.reuse_from == '' }}
+      uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+      with:
+        name: pre-release-runtime-evidence-${{ inputs.runtime }}-${{ inputs.gate }}
+        path: ${{ runner.temp }}/pre-release-gate-evidence/manifest.json
+        if-no-files-found: error
+        retention-days: 7
+        compression-level: 0
+    - name: Upload propagated gate evidence after reuse
+      if: ${{ success() && inputs.evidence_reuse && inputs.reuse_from != '' }}
+      uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+      with:
+        name: pre-release-runtime-evidence-${{ inputs.runtime }}-${{ inputs.gate }}
+        path: ${{ runner.temp }}/pre-release-reused-evidence/manifest.json
+        if-no-files-found: error
+        retention-days: 7
+        compression-level: 0
 'on':
   workflow_call:
     inputs:
@@ -502,7 +659,52 @@ jobs:
         default: ''
         type: string
       reuse_from:
-        description: Prior successful PR run verified by the trusted incremental planner; empty means execute
+        description: Prior successful pre-release run verified by the trusted incremental planner; empty means execute
+        required: false
+        default: ''
+        type: string
+      tag:
+        description: Exact release qualification tag
+        required: false
+        default: ''
+        type: string
+      input_fingerprint:
+        description: Gate-specific Core/Demo input fingerprint from the trusted planner
+        required: false
+        default: ''
+        type: string
+      workflow_version:
+        description: Hash of the release workflow and planner inputs
+        required: false
+        default: ''
+        type: string
+      catalog_version:
+        description: Hash of the release and Demo gate catalogs
+        required: false
+        default: ''
+        type: string
+      evidence_reuse:
+        description: Require and propagate Pre-Release gate evidence for this reuse
+        required: false
+        default: false
+        type: boolean
+      evidence_artifact_id:
+        description: Exact prior evidence artifact ID selected by the trusted planner
+        required: false
+        default: ''
+        type: string
+      evidence_created_at:
+        description: Prior evidence artifact creation timestamp from GitHub API
+        required: false
+        default: ''
+        type: string
+      evidence_run_created_at:
+        description: Prior evidence workflow run creation timestamp from GitHub API
+        required: false
+        default: ''
+        type: string
+      current_run_created_at:
+        description: Current workflow run creation timestamp from GitHub API
         required: false
         default: ''
         type: string

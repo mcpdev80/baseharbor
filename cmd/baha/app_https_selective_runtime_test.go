@@ -24,7 +24,7 @@ func TestSelectiveHTTPSRuntimeAddRemoveReAdd(t *testing.T) {
 	ctx, cancel := context.WithTimeout(machineNoninteractiveContext(context.Background()), 8*time.Minute)
 	defer cancel()
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
-	target := configureTestTarget(t)
+	target := configureTestTargetEmpty(t)
 	if os.Getenv("BASEHARBOR_TEST_RUNTIME") == "podman" {
 		cfg, err := deployment.LoadConfig()
 		if err != nil {
@@ -46,6 +46,12 @@ func TestSelectiveHTTPSRuntimeAddRemoveReAdd(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertCorelessHost(t, ctx, provider, target)
+	baselineContainers, err := provider.ListRuntimeContainers(ctx)
+	if err != nil {
+		t.Fatal("inventory isolated HTTPS runtime baseline", err)
+	}
+	baselineIDs := runtimeContainerIDSet(baselineContainers)
+	baselineSnapshot := runtimeContainerSnapshotSet(baselineContainers)
 	t.Chdir(t.TempDir())
 	if err := os.WriteFile("compose.yaml", []byte(corelessHTTPWorkload), 0600); err != nil {
 		t.Fatal(err)
@@ -61,7 +67,7 @@ func TestSelectiveHTTPSRuntimeAddRemoveReAdd(t *testing.T) {
 	}
 	writeIntent(true)
 	var output bytes.Buffer
-	if err := runWithIO(ctx, []string{"app", "init", "--input", "tls_mode=local", "--yes"}, &output, &output); err != nil {
+	if err := runWithIOAsTestOperator(ctx, []string{"app", "init", "--input", "tls_mode=local", "--yes"}, &output, &output); err != nil {
 		t.Fatalf("initialize HTTPS-only workload: %v\n%s", err, output.String())
 	}
 	initialized, err := resolveApplication(ctx, application.Store{}, nil, "plan")
@@ -86,8 +92,10 @@ func TestSelectiveHTTPSRuntimeAddRemoveReAdd(t *testing.T) {
 		if err := destroySelectiveApplicationWithConsent(cleanup); err != nil {
 			t.Errorf("isolated HTTPS workload cleanup: %v", err)
 		}
-		if containers, err := provider.ListRuntimeContainers(cleanup); err != nil || len(containers) != 0 {
-			t.Errorf("isolated HTTPS cleanup leaves containers=%d inspection=%v", len(containers), err)
+		if containers, err := provider.ListRuntimeContainers(cleanup); err != nil {
+			t.Errorf("inspect isolated HTTPS cleanup: %v", err)
+		} else if created, changed := runtimeContainerBaselineDiff(containers, baselineSnapshot); len(created) != 0 || len(changed) != 0 {
+			t.Errorf("isolated HTTPS cleanup did not preserve the runtime baseline: test-created=%v baseline-changed-or-removed=%v", created, changed)
 		}
 	})
 	for phase, enabled := range []bool{true, false, true} {
@@ -112,8 +120,12 @@ func TestSelectiveHTTPSRuntimeAddRemoveReAdd(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		_, changed := runtimeContainerBaselineDiff(containers, baselineSnapshot)
+		if len(changed) != 0 {
+			t.Fatalf("pre-existing runtime containers changed during HTTPS phase %d: %v", phase, changed)
+		}
 		selected := 0
-		for _, container := range containers {
+		for _, container := range runtimeContainersNotInBaseline(containers, baselineIDs) {
 			matched := false
 			for _, resource := range inventory.Resources {
 				if bhruntime.ContainerMatchesProjectResource(provider.Kind(), container, inventory.State.Project, resource) {

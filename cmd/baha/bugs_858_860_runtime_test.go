@@ -92,7 +92,7 @@ func TestBugs858860RuntimeAcceptance(t *testing.T) {
 			var out bytes.Buffer
 			command := func(args ...string) error {
 				out.Reset()
-				err := runWithIO(ctx, args, &out, &out)
+				err := runWithIOAsTestOperator(ctx, args, &out, &out)
 				t.Logf("CLI %v: %v\n%s", args, err, out.String())
 				return err
 			}

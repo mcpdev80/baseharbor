@@ -103,25 +103,25 @@ func TestCoreStopAuthorizesEveryManagedConsumerBeforeAcknowledgement(t *testing.
 
 func TestCoreStopUsesStableScopeRequiresTwoAcknowledgementsAndBindsCredentialBytes(t *testing.T) {
 	files := coreStopFixture(t)
-	p, err := buildControlPlaneStopPlan(t.Context())
-	if err != nil || p.Scope.Attention != "Achtung" || p.Scope.ConfirmationsRequired != 2 || p.Scope.Complete || p.Scope.Destructive || len(p.Services) == 0 || len(p.Materials) == 0 {
+	p, err := buildControlPlaneStopPlan(testOperatorContext(t.Context()))
+	if err != nil || p.Scope.Attention != "Warning" || p.Scope.ConfirmationsRequired != 2 || p.Scope.Complete || p.Scope.Destructive || len(p.Services) == 0 || len(p.Materials) == 0 {
 		t.Fatalf("Core stop plan: %+v %v", p, err)
 	}
 	for i := 0; i < 10; i++ {
-		current, err := buildControlPlaneStopPlan(t.Context())
+		current, err := buildControlPlaneStopPlan(testOperatorContext(t.Context()))
 		if err != nil || current.Scope.PlanID != p.Scope.PlanID {
 			t.Fatal("unstable unchanged owner plan", err)
 		}
 	}
 	for _, ack := range []*application.ProviderChangeConsent{nil, {PlanID: p.Scope.PlanID, First: true}, {PlanID: "stale", First: true, Second: true}} {
-		_, err := authorizeControlPlaneStop(withProviderChangeConsent(t.Context(), ack), io.Discard)
+		_, err := authorizeControlPlaneStop(withProviderChangeConsent(testOperatorContext(t.Context()), ack), io.Discard)
 		var failure *machine.Error
 		if !errors.As(err, &failure) || failure.Details == nil {
 			t.Fatal("missing/stale acknowledgement accepted", err)
 		}
 	}
 	ack := &application.ProviderChangeConsent{PlanID: p.Scope.PlanID, First: true, Second: true}
-	if _, err := authorizeControlPlaneStop(withProviderChangeConsent(t.Context(), ack), io.Discard); err != nil {
+	if _, err := authorizeControlPlaneStop(withProviderChangeConsent(testOperatorContext(t.Context()), ack), io.Discard); err != nil {
 		t.Fatal("deliberately selected outage prohibited", err)
 	}
 	data, err := os.ReadFile(files.Env)
@@ -136,15 +136,19 @@ func TestCoreStopUsesStableScopeRequiresTwoAcknowledgementsAndBindsCredentialByt
 	if err := os.Chtimes(files.Env, info.ModTime(), info.ModTime()); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := authorizeControlPlaneStop(withProviderChangeConsent(t.Context(), ack), io.Discard); err == nil {
+	if _, err := authorizeControlPlaneStop(withProviderChangeConsent(testOperatorContext(t.Context()), ack), io.Discard); err == nil {
 		t.Fatal("same-size same-mtime credential mutation retained acknowledgement")
 	}
 }
 
 func TestCoreStopCLIJSONAndMCPExposeSameCurrentScopeWithoutEnvironmentConsentReuse(t *testing.T) {
 	coreStopFixture(t)
+	// The command must not depend on any consent inherited from the caller's
+	// process environment. Seed the ambient value only after the CLI denial is
+	// verified, then prove that MCP ignores it as well.
+	t.Setenv(providerChangeConsentEnv, "")
 	var out bytes.Buffer
-	err := runWithIO(withProviderChangeConsent(t.Context(), nil), []string{"down", "--json"}, &out, io.Discard)
+	err := runWithIOAsTestOperator(withProviderChangeConsent(t.Context(), nil), []string{"down", "--json"}, &out, io.Discard)
 	var cliFailure *machine.Error
 	if !errors.As(err, &cliFailure) || cliFailure.Code != machine.ErrorApprovalRequired || out.Len() != 0 {
 		t.Fatalf("CLI stop bypass or JSON progress leak: %v %s", err, out.String())

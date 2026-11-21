@@ -16,35 +16,39 @@ import (
 )
 
 func stopSelectiveApplicationWithConsent(ctx context.Context, out io.Writer) error {
+	ctx = context.WithValue(ctx, applicationStopModeKey{}, true)
+	ctx = context.WithValue(ctx, applicationDownModeKey{}, true)
 	resolved, err := resolveApplication(ctx, application.Store{}, nil, "destroy")
 	if err != nil {
 		return err
 	}
-	_, plan, err := buildApplicationRuntimeRetirementPlan(ctx, resolved)
+	plan, err := buildApplicationStopPlan(ctx, resolved)
 	if err != nil {
 		return err
 	}
-	consent := application.ProviderChangeConsent{PlanID: plan.Impact.PlanID, First: true, Second: true}
+	consent := application.ProviderChangeConsent{PlanID: plan.Scope.PlanID, First: true, Second: true}
 	ctx = withProviderChangeConsent(ctx, &consent)
-	ctx = context.WithValue(ctx, applicationStopModeKey{}, true)
-	return runWithIO(ctx, []string{"app", "down", "--yes"}, out, out)
+	return runWithIOAsTestOperator(ctx, []string{"app", "down", "--yes"}, out, out)
 }
 
 // Native fixtures explicitly acknowledge the current retirement plan. Stop
 // preserves provider data; ordinary --yes supplies neither acknowledgement.
 func destroySelectiveApplicationWithConsent(ctx context.Context) error {
+	ctx = context.WithValue(ctx, applicationStopModeKey{}, true)
 	resolved, err := resolveApplication(ctx, application.Store{}, nil, "destroy")
 	if err != nil {
 		return err
 	}
-	_, plan, err := buildApplicationRuntimeRetirementPlan(ctx, resolved)
+	// `app stop` authorizes the workload-stop scope and binds it to the
+	// provider-retirement plan. The destruction scope has a different PlanID,
+	// even though both operations retain data.
+	plan, err := buildApplicationStopPlan(ctx, resolved)
 	if err != nil {
 		return err
 	}
-	consent := application.ProviderChangeConsent{PlanID: plan.Impact.PlanID, First: true, Second: true}
+	consent := application.ProviderChangeConsent{PlanID: plan.Scope.PlanID, First: true, Second: true}
 	ctx = withProviderChangeConsent(ctx, &consent)
-	ctx = context.WithValue(ctx, applicationStopModeKey{}, true)
-	return runWithIO(ctx, []string{"app", "stop", "--yes"}, &bytes.Buffer{}, &bytes.Buffer{})
+	return runWithIOAsTestOperator(ctx, []string{"app", "stop", "--yes"}, &bytes.Buffer{}, &bytes.Buffer{})
 }
 
 func qualifySecretsDefaultRuntimeRetirement(t *testing.T, ctx context.Context, provider bhruntime.RuntimeProvider, root string, before resolvedApplication, originalSecret, originalEnv [32]byte, volumes []bhruntime.ProjectResource) {

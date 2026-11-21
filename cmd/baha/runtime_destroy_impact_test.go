@@ -19,7 +19,7 @@ import (
 
 func currentInstallationDestroyConsent(t *testing.T) context.Context {
 	t.Helper()
-	ctx := t.Context()
+	ctx := testOperatorContext(t.Context())
 	targets, discovery := discoverFullDestroyTargets()
 	if countFullDestroyBlockers(discovery) > 0 {
 		t.Fatal(discovery)
@@ -63,7 +63,7 @@ func TestFullDestroyYesCannotReplacePlanOrDeletionConsent(t *testing.T) {
 	}
 	for _, ack := range []*application.ProviderChangeConsent{nil, {PlanID: valid.PlanID, First: true, DeleteData: true}, {PlanID: valid.PlanID, First: true, Second: true}, {PlanID: "stale", First: true, Second: true, DeleteData: true}} {
 		var out bytes.Buffer
-		err := runtimeDestroyAll(withProviderChangeConsent(t.Context(), ack), []string{"--all", "--yes"}, &out, &out)
+		err := runtimeDestroyAll(withProviderChangeConsent(testOperatorContext(t.Context()), ack), []string{"--all", "--yes"}, &out, &out)
 		if err == nil {
 			t.Fatalf("missing or stale consent deleted state: %s", out.String())
 		}
@@ -79,12 +79,12 @@ func TestFullDestroyYesCannotReplacePlanOrDeletionConsent(t *testing.T) {
 
 func TestDestroyImpactChangesWithExactConfigBytes(t *testing.T) {
 	coreStopFixture(t)
-	target, err := effectiveTarget(t.Context())
+	target, err := effectiveTarget(testOperatorContext(t.Context()))
 	if err != nil {
 		t.Fatal(err)
 	}
 	view := []targetDestroyInventory{{Target: target}}
-	p, err := buildRuntimeDestroyImpact(t.Context(), view, nil, false)
+	p, err := buildRuntimeDestroyImpact(testOperatorContext(t.Context()), view, nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -102,7 +102,7 @@ func TestDestroyImpactChangesWithExactConfigBytes(t *testing.T) {
 	if err := os.WriteFile(path, append(data, '\n'), 0600); err != nil {
 		t.Fatal(err)
 	}
-	changed, err := buildRuntimeDestroyImpact(t.Context(), view, nil, false)
+	changed, err := buildRuntimeDestroyImpact(testOperatorContext(t.Context()), view, nil, false)
 	if err != nil || changed.Scope.PlanID == p.Scope.PlanID {
 		t.Fatal("changed config accepted stale consent", err)
 	}
@@ -159,7 +159,7 @@ func TestInstallationDestroyCLIJSONMCPShareScopeAndRejectAmbientConsent(t *testi
 	t.Setenv("BASEHARBOR_STATE_DIR", filepath.Join(t.TempDir(), "state"))
 	t.Setenv(providerChangeConsentEnv, `{"plan_id":"ambient","first":true,"second":true,"delete_data":true}`)
 	var out bytes.Buffer
-	err := runtimeDestroyCommand(withProviderChangeConsent(t.Context(), nil), []string{"--all", "--yes", "--json"}, &out, &out)
+	err := runtimeDestroyCommand(withProviderChangeConsent(testOperatorContext(t.Context()), nil), []string{"--all", "--yes", "--json"}, &out, &out)
 	var cliFailure *machine.Error
 	if !errors.As(err, &cliFailure) || cliFailure.Code != machine.ErrorApprovalRequired {
 		t.Fatalf("CLI destruction bypass: %v", err)
@@ -169,7 +169,7 @@ func TestInstallationDestroyCLIJSONMCPShareScopeAndRejectAmbientConsent(t *testi
 		t.Fatalf("missing JSON preview on consent denial: %s", out.String())
 	}
 	session := workspaceMutationClient(t)
-	result, err := session.CallTool(t.Context(), &mcp.CallToolParams{Name: "baseharbor.installation.destroy", Arguments: map[string]any{"approval": true}})
+	result, err := session.CallTool(testOperatorContext(t.Context()), &mcp.CallToolParams{Name: "baseharbor.installation.destroy", Arguments: map[string]any{"approval": true}})
 	if err != nil || !result.IsError {
 		t.Fatalf("MCP bypassed plan consent: %+v %v", result, err)
 	}

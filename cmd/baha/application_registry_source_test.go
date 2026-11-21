@@ -3,6 +3,10 @@ package main
 import (
 	"context"
 	"errors"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -87,6 +91,51 @@ func TestResolvePinsImmutableDigestFromNativeTool(t *testing.T) {
 	}
 	if id.ImmutableIdentity() != "registry.example.invalid/org/app@"+digest {
 		t.Fatalf("immutable identity must be repository@digest: %q", id.ImmutableIdentity())
+	}
+}
+
+func TestResolveUsesPlainHTTPOnlyForLocalhostRegistry(t *testing.T) {
+	digest := "sha256:" + strings.Repeat("3", 64)
+	local := &fakeExec{output: []string{"Resolved localhost:5000/baseharbor-runtime@" + digest}}
+	if _, err := (RegistrySource{
+		Kind:      SourceOCIAddressed,
+		Location:  "localhost:5000/baseharbor-runtime",
+		Requested: "pre-release",
+		Exec:      local.fn,
+	}).Resolve(context.Background()); err != nil {
+		t.Fatalf("resolve local HTTP registry: %v", err)
+	}
+	if got, want := local.calls[0], "oras resolve --full-reference --plain-http --resolve localhost:5000:127.0.0.1 localhost:5000/baseharbor-runtime:pre-release"; got != want {
+		t.Fatalf("local registry resolve args = %q, want %q", got, want)
+	}
+
+	remote := &fakeExec{output: []string{"Resolved registry.example.invalid/org/app@" + digest}}
+	if _, err := (RegistrySource{
+		Kind:      SourceOCIAddressed,
+		Location:  "registry.example.invalid/org/app",
+		Requested: "stable",
+		Exec:      remote.fn,
+	}).Resolve(context.Background()); err != nil {
+		t.Fatalf("resolve HTTPS registry: %v", err)
+	}
+	if got, want := remote.calls[0], "oras resolve --full-reference registry.example.invalid/org/app:stable"; got != want {
+		t.Fatalf("remote registry resolve args = %q, want %q", got, want)
+	}
+}
+
+func TestLocalRuntimeImageResolveOverridePinsLoopbackRegistry(t *testing.T) {
+	cases := map[string]string{
+		"localhost/team/app:dev":                   "localhost:80:127.0.0.1",
+		"localhost:5000/team/app:pre-release":      "localhost:5000:127.0.0.1",
+		"registry.example.invalid/team/app:stable": "",
+		"127.0.0.1:5000/team/app:dev":              "",
+	}
+	for reference, want := range cases {
+		t.Run(reference, func(t *testing.T) {
+			if got := localRuntimeImageResolveOverride(reference); got != want {
+				t.Fatalf("localRuntimeImageResolveOverride(%q)=%q want %q", reference, got, want)
+			}
+		})
 	}
 }
 
@@ -227,6 +276,27 @@ func TestResolveRejectsPublicDockerDefault(t *testing.T) {
 	}
 }
 
+func TestIsLocalRuntimeImageReference(t *testing.T) {
+	cases := []struct {
+		reference string
+		want      bool
+	}{
+		{reference: "localhost/team/app:dev", want: true},
+		{reference: "localhost:5000/team/app:pre-release", want: true},
+		{reference: "registry.example.invalid/team/app:dev", want: false},
+		{reference: "127.0.0.1:5000/team/app:dev", want: false},
+		{reference: "localhost.invalid/team/app:dev", want: false},
+		{reference: "localhost:invalid/team/app:dev", want: false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.reference, func(t *testing.T) {
+			if got := isLocalRuntimeImageReference(tc.reference); got != tc.want {
+				t.Fatalf("isLocalRuntimeImageReference(%q)=%t want %t", tc.reference, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestCanonicalArtifactRepositoryStripsTagButKeepsHost(t *testing.T) {
 	cases := map[string]string{
 		"registry.example.invalid/org/app@sha256:" + strings.Repeat("a", 64): "registry.example.invalid/org/app",
@@ -250,5 +320,86 @@ func TestExecArtifactRedactsExitErrorStderr(t *testing.T) {
 	}
 	if strings.Contains(err.Error(), "secret-token") {
 		t.Fatal("stderr secret leaked through execArtifact")
+	}
+}
+
+func TestPodmanLocalRegistryConfigIsScopedAndCleanedUp(t *testing.T) {
+	_, sourceFile, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("could not locate test source file")
+	}
+	script := filepath.Join(filepath.Dir(sourceFile), "..", "..", "scripts", "ci-local-oci-registry.sh")
+	root := t.TempDir()
+	home := filepath.Join(root, "home")
+	fakeBin := filepath.Join(root, "bin")
+	for _, dir := range []string{home, fakeBin} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	commands := map[string]string{
+		"podman": "#!/bin/sh\nexit 0\n",
+		"curl":   "#!/bin/sh\nexit 0\n",
+		"oras":   "#!/bin/sh\necho sha256:" + strings.Repeat("a", 64) + "\n",
+	}
+	for name, body := range commands {
+		path := filepath.Join(fakeBin, name)
+		if err := os.WriteFile(path, []byte(body), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	overrides := map[string]string{
+		"BASEHARBOR_TEST_RUNTIME": "podman",
+		"GITHUB_ENV":              filepath.Join(root, "github-env"),
+		"GITHUB_STEP_SUMMARY":     filepath.Join(root, "github-summary"),
+		"HOME":                    home,
+		"PATH":                    fakeBin + string(os.PathListSeparator) + os.Getenv("PATH"),
+	}
+	env := make([]string, 0, len(os.Environ())+len(overrides))
+	for _, entry := range os.Environ() {
+		key, _, _ := strings.Cut(entry, "=")
+		if _, replaced := overrides[key]; !replaced {
+			env = append(env, entry)
+		}
+	}
+	for key, value := range overrides {
+		env = append(env, key+"="+value)
+	}
+
+	run := func(args ...string) {
+		t.Helper()
+		commandArgs := append([]string{script}, args...)
+		command := exec.Command("bash", commandArgs...)
+		command.Env = env
+		if output, err := command.CombinedOutput(); err != nil {
+			t.Fatalf("ci-local-oci-registry.sh %v failed: %v\n%s", args, err, output)
+		}
+	}
+
+	configDir := filepath.Join(home, ".config", "containers", "registries.conf.d")
+	config := filepath.Join(configDir, "99-baseharbor-pre-release-registry.conf")
+	run("publish", "localhost/baseharbor-runtime:pre-release", "localhost:5000/baseharbor-runtime:pre-release")
+
+	got, err := os.ReadFile(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "[[registry]]\nlocation = \"localhost:5000\"\ninsecure = true\n"
+	if string(got) != want {
+		t.Fatalf("Podman registry drop-in = %q, want only the localhost:5000 insecure registry entry %q", got, want)
+	}
+	entries, err := os.ReadDir(configDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 || entries[0].Name() != filepath.Base(config) {
+		t.Fatalf("unexpected Podman registry drop-ins: %v", entries)
+	}
+
+	run("cleanup")
+	if _, err := os.Stat(config); !os.IsNotExist(err) {
+		t.Fatalf("Podman registry drop-in still exists after cleanup: stat error=%v", err)
 	}
 }

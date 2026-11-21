@@ -27,6 +27,8 @@ const (
 var errAppWizardAbort = errors.New("wizard cancelled without changes")
 var errAppWizardNonInteractive = errors.New("interactive wizard requires a TTY and input")
 
+const appWizardPreviewRefreshTimeout = 120 * time.Second
+
 type appWizardEvent string
 
 const (
@@ -216,7 +218,7 @@ func (w appWizardController) freshFacts(ctx context.Context, d appWizardDecision
 	if w.refresh == nil {
 		return nil, nil, errors.New("current preview authority required")
 	}
-	refreshCtx, refreshCancel := context.WithTimeout(ctx, 30*time.Second)
+	refreshCtx, refreshCancel := context.WithTimeout(ctx, appWizardPreviewRefreshTimeout)
 	defer refreshCancel()
 	fp, impact, err := w.refresh(refreshCtx, d)
 	if err != nil {
@@ -251,7 +253,50 @@ func snapshotAppWizardFacts(fp *GuidedReadContext, impact *application.ProviderI
 	if detached.Footprint == nil || detached.Impact == nil {
 		return nil, nil, nil, errors.New("missing preview data")
 	}
-	return detached.Footprint, detached.Impact, facts, nil
+	preview, err := appWizardSemanticPreviewFacts(detached.Footprint, detached.Impact)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	return detached.Footprint, detached.Impact, preview, nil
+}
+
+// appWizardSemanticPreviewFacts binds the decision to stable intent, provider
+// resolution and consequence-plan data. Memory/container samples are shown in
+// the footprint, but are observation-only evidence and do not change approved
+// ownership or the plan. Keep this normalization aligned with
+// applicationImpactRevisionInput.
+func appWizardSemanticPreviewFacts(fp *GuidedReadContext, impact *application.ProviderImpactPlan) ([]byte, error) {
+	if fp == nil || impact == nil {
+		return nil, errors.New("missing preview data")
+	}
+	semantic := *fp
+	semantic.Footprint = fp.Footprint
+	semantic.Footprint.Existing = append([]application.ProviderFootprint(nil), fp.Footprint.Existing...)
+	for i := range semantic.Footprint.Existing {
+		semantic.Footprint.Existing[i].MemoryBytes = application.Quantity{}
+		semantic.Footprint.Existing[i].Containers = application.Quantity{}
+	}
+	semantic.Footprint.Additional = append([]application.ProviderFootprint(nil), fp.Footprint.Additional...)
+	for i := range semantic.Footprint.Additional {
+		semantic.Footprint.Additional[i].MemoryBytes = application.Quantity{}
+		semantic.Footprint.Additional[i].Containers = application.Quantity{}
+	}
+	stableImpact := *impact
+	stableImpact.Impacts = append([]application.ProviderImpact(nil), impact.Impacts...)
+	for i, item := range impact.Impacts {
+		stableImpact.Impacts[i].Functions = append([]application.FunctionConsequence(nil), item.Functions...)
+		for j := range stableImpact.Impacts[i].Functions {
+			stableImpact.Impacts[i].Functions[j].RemainingValiditySeconds = nil
+		}
+		stableImpact.Impacts[i].Materials = append([]application.MaterialConsequence(nil), item.Materials...)
+		for j := range stableImpact.Impacts[i].Materials {
+			stableImpact.Impacts[i].Materials[j].RemainingValiditySeconds = nil
+		}
+	}
+	return json.Marshal(struct {
+		Footprint *GuidedReadContext
+		Impact    *application.ProviderImpactPlan
+	}{&semantic, &stableImpact})
 }
 
 // Step never invokes a mutation or consent hook. A decision requires verified
@@ -306,10 +351,7 @@ func (w appWizardController) Step(ctx context.Context, event appWizardEvent) (ap
 			if err != nil {
 				return w, err
 			}
-			fresh, err := json.Marshal(struct {
-				Footprint *GuidedReadContext
-				Impact    *application.ProviderImpactPlan
-			}{fp, impact})
+			fresh, err := appWizardSemanticPreviewFacts(fp, impact)
 			if err != nil {
 				return w, err
 			}

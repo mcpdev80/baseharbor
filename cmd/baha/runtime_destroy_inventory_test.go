@@ -30,11 +30,11 @@ func TestFullDestroyInventoryMissingRuntimeExplainsSafeNextStep(t *testing.T) {
 func TestFullDestroyInventoryKeepsReachableTargetsWhenPeerRuntimeIsUnavailable(t *testing.T) {
 	targets := []deployment.ResolvedTarget{{Name: "local", RuntimeProvider: "docker"}, {Name: "podman-peer", RuntimeProvider: "podman"}}
 	runtime := &inventoryTestRuntime{resources: map[string][]bhruntime.ProjectResource{"bh-local-shared": {{Kind: "container", Name: "owned"}}}}
-	plans, err := collectFullDestroyInventoryUsing(t.Context(), targets, func(_ context.Context, target deployment.ResolvedTarget, _ bool) (targetDestroyInventory, error) {
+	plans, err := collectFullDestroyInventoryUsing(testOperatorContext(t.Context()), targets, func(_ context.Context, target deployment.ResolvedTarget, _ bool) (targetDestroyInventory, error) {
 		if target.Name == "podman-peer" {
 			return targetDestroyInventory{Target: target}, fmt.Errorf("detect provider: %w", bhruntime.ErrRuntimeNotFound)
 		}
-		return collectTargetDestroyInventoryWithRuntime(t.Context(), target, runtime, false)
+		return collectTargetDestroyInventoryWithRuntime(testOperatorContext(t.Context()), target, runtime, false)
 	})
 	if err != nil {
 		t.Fatalf("one unavailable Target aborted the independent inventory: %v", err)
@@ -105,7 +105,7 @@ func TestDestroyInventoryResourceMissingErrorCannotHideRemainingResources(t *tes
 				Projects: map[string][]bhruntime.ProjectResource{"owned-project": planned},
 			}
 			var results []fullDestroyResult
-			plan.cleanup(context.Background(), &results)
+			plan.cleanup(testOperatorContext(context.Background()), &results)
 			if countFullDestroyBlockers(results) == 0 {
 				t.Fatalf("unverified resource removal did not block completion: %+v", results)
 			}
@@ -131,7 +131,7 @@ func TestDestroyInventoryAcceptsAbsenceVerifiedByRuntimeOwner(t *testing.T) {
 		}},
 	}
 	var results []fullDestroyResult
-	plan.cleanup(context.Background(), &results)
+	plan.cleanup(testOperatorContext(context.Background()), &results)
 	if countFullDestroyBlockers(results) != 0 || len(results) != 2 {
 		t.Fatalf("runtime-verified absence did not complete: %+v", results)
 	}
@@ -146,7 +146,7 @@ func TestDestroyInventoryPreviewsOlderOwnedVolumeAndExcludesForeignTarget(t *tes
 		"bh-local-shared": {{Kind: "volume", Name: "bh-local-shared_runtime-resource-state"}, {Kind: "container", Name: "provider"}},
 		"bh-other-shared": {{Kind: "container", Name: "foreign"}},
 	}, containers: []bhruntime.RuntimeContainer{{Project: "bh-local-shared", Name: "provider"}, {Project: "bh-other-shared", Name: "foreign"}}}
-	plan, err := collectTargetDestroyInventoryWithRuntime(context.Background(), deployment.ResolvedTarget{Name: "local"}, runtime, false)
+	plan, err := collectTargetDestroyInventoryWithRuntime(testOperatorContext(context.Background()), deployment.ResolvedTarget{Name: "local"}, runtime, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -159,32 +159,32 @@ func TestDestroyInventoryPreviewsOlderOwnedVolumeAndExcludesForeignTarget(t *tes
 		t.Fatal("preview mutated runtime")
 	}
 	results := []fullDestroyResult{}
-	plan.cleanup(context.Background(), &results)
+	plan.cleanup(testOperatorContext(context.Background()), &results)
 	if countFullDestroyBlockers(results) != 0 || len(results) != 2 || len(runtime.resources["bh-other-shared"]) != 1 {
 		t.Fatalf("cleanup crossed ownership or lost concrete evidence: %v", results)
 	}
 }
 func TestDestroyInventoryFailureAndResidualResourcesBlockCompletion(t *testing.T) {
 	runtime := &inventoryTestRuntime{fail: true}
-	if _, err := collectTargetDestroyInventoryWithRuntime(context.Background(), deployment.ResolvedTarget{Name: "local"}, runtime, false); err == nil {
+	if _, err := collectTargetDestroyInventoryWithRuntime(testOperatorContext(context.Background()), deployment.ResolvedTarget{Name: "local"}, runtime, false); err == nil {
 		t.Fatal("unavailable ownership accepted")
 	}
 	if len(runtime.deleted) != 0 {
 		t.Fatal("inventory failure mutated resources")
 	}
 	runtime = &inventoryTestRuntime{retain: true, resources: map[string][]bhruntime.ProjectResource{"bh-local-shared": {{Kind: "volume", Name: "residual"}}}}
-	plan, err := collectTargetDestroyInventoryWithRuntime(context.Background(), deployment.ResolvedTarget{Name: "local"}, runtime, true)
+	plan, err := collectTargetDestroyInventoryWithRuntime(testOperatorContext(context.Background()), deployment.ResolvedTarget{Name: "local"}, runtime, true)
 	if err != nil {
 		t.Fatal(err)
 	}
 	results := []fullDestroyResult{}
-	plan.cleanup(context.Background(), &results)
+	plan.cleanup(testOperatorContext(context.Background()), &results)
 	if countFullDestroyBlockers(results) == 0 {
 		t.Fatal("residual resource reported removed")
 	}
 }
 
-func TestFullDestroyRemovesAcknowledgedRecoveryFileWithoutReadingContents(t *testing.T) {
+func TestFullDestroyPreservesOperatorRecoveryFileWithoutReadingContents(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("XDG_DATA_HOME", t.TempDir())
 	root, err := deployment.TargetStateRoot("orphan")
@@ -212,14 +212,17 @@ func TestFullDestroyRemovesAcknowledgedRecoveryFileWithoutReadingContents(t *tes
 	if err := json.Unmarshal(out.Bytes(), &report); err != nil {
 		t.Fatal(err)
 	}
-	if !report.Destroyed || report.Preview || !report.All || len(report.Preserved) != 0 {
+	if !report.Destroyed || report.Preview || !report.All || len(report.Preserved) != 1 || report.Preserved[0].Resource != "external recovery file" {
 		t.Fatalf("incorrect structured cleanup report: %#v", report)
+	}
+	if report.Impact == nil || len(report.Impact.RecoveryFiles) != 1 || report.Impact.RecoveryFiles[0].Status != "PRESERVED" {
+		t.Fatalf("recovery-file impact was not reported as preserved: %#v", report.Impact)
 	}
 	if strings.Contains(out.String(), "private-recovery-material") || !strings.Contains(out.String(), "external recovery file") {
 		t.Fatal("recovery secret leaked into cleanup inventory")
 	}
-	if _, err := os.Lstat(recovery); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("acknowledged recovery file was not removed: %v", err)
+	if data, err := os.ReadFile(recovery); err != nil || string(data) != "private-recovery-material" {
+		t.Fatalf("operator recovery material was not preserved: %q %v", data, err)
 	}
 }
 
@@ -234,7 +237,7 @@ func TestDestroyInventoryIncludesOwnedCoreIdentityWithoutRunningContainers(t *te
 	}}
 	for _, sharedOnly := range []bool{false, true} {
 		t.Run(fmt.Sprintf("sharedOnly=%t", sharedOnly), func(t *testing.T) {
-			plan, err := collectTargetDestroyInventoryWithRuntime(context.Background(),
+			plan, err := collectTargetDestroyInventoryWithRuntime(testOperatorContext(context.Background()),
 				deployment.ResolvedTarget{Name: "local"}, runtime, sharedOnly)
 			if err != nil {
 				t.Fatal(err)
@@ -252,13 +255,13 @@ func TestDestroyInventoryIncludesOwnedCoreIdentityWithoutRunningContainers(t *te
 			}
 		})
 	}
-	plan, err := collectTargetDestroyInventoryWithRuntime(context.Background(),
+	plan, err := collectTargetDestroyInventoryWithRuntime(testOperatorContext(context.Background()),
 		deployment.ResolvedTarget{Name: "local"}, runtime, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	var results []fullDestroyResult
-	plan.cleanup(context.Background(), &results)
+	plan.cleanup(testOperatorContext(context.Background()), &results)
 	if countFullDestroyBlockers(results) != 0 || len(runtime.resources[identityProject]) != 0 {
 		t.Fatalf("owned stopped Keycloak not destroyed safely: results=%+v remaining=%+v", results, runtime.resources[identityProject])
 	}

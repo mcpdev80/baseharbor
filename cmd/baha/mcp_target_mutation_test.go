@@ -16,7 +16,7 @@ func TestMCPTargetCreateAndDeleteRequireCurrentConsentAndPreserveOwnedState(t *t
 	configureTestTarget(t)
 	session := workspaceMutationClient(t)
 	input := machineTargetCreateInput{Name: "podman-fixture", RuntimeProvider: "podman", Access: "local-podman", Reference: "local"}
-	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "baseharbor.target.create", Arguments: input})
+	result, err := session.CallTool(testOperatorContext(context.Background()), &mcp.CallToolParams{Name: "baseharbor.target.create", Arguments: input})
 	if err != nil || result.IsError {
 		t.Fatalf("create: %#v %v", result, err)
 	}
@@ -38,17 +38,17 @@ func TestMCPTargetCreateAndDeleteRequireCurrentConsentAndPreserveOwnedState(t *t
 	if err := os.WriteFile(owned, []byte("owned"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	result, err = session.CallTool(context.Background(), &mcp.CallToolParams{Name: "baseharbor.target.delete", Arguments: machineTargetDeleteInput{Name: input.Name}})
+	result, err = session.CallTool(testOperatorContext(context.Background()), &mcp.CallToolParams{Name: "baseharbor.target.delete", Arguments: machineTargetDeleteInput{Name: input.Name}})
 	if err != nil || !result.IsError {
 		t.Fatal("target with owned state deleted")
 	}
-	plan, err := buildTargetDefinitionChangePlan(context.Background(), input.Name, "")
+	plan, err := buildTargetDefinitionChangePlan(testOperatorContext(context.Background()), input.Name, "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	consent := application.ProviderChangeConsent{PlanID: plan.Scope.PlanID, First: true, Second: true}
 	var out bytes.Buffer
-	if err := deleteTarget(withProviderChangeConsent(context.Background(), &consent), []string{input.Name, "-o", "json"}, &out, &bytes.Buffer{}); err != nil {
+	if err := deleteTarget(withProviderChangeConsent(testOperatorContext(context.Background()), &consent), []string{input.Name, "-o", "json"}, &out, &bytes.Buffer{}); err != nil {
 		t.Fatal(err)
 	}
 	var deleted targetMutationResult
@@ -58,11 +58,11 @@ func TestMCPTargetCreateAndDeleteRequireCurrentConsentAndPreserveOwnedState(t *t
 	if actual, err := os.ReadFile(owned); err != nil || string(actual) != "owned" {
 		t.Fatal("Target detachment removed owned state", err)
 	}
-	restore, err := buildTargetDefinitionChangePlan(context.Background(), input.Name, deleted.RecoveryFile)
+	restore, err := buildTargetDefinitionChangePlan(testOperatorContext(context.Background()), input.Name, deleted.RecoveryFile)
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err = session.CallTool(context.Background(), &mcp.CallToolParams{Name: "baseharbor.target.create", Arguments: machineTargetCreateInput{Name: input.Name, RecoveryFile: deleted.RecoveryFile, ProviderChangeConsent: &application.ProviderChangeConsent{PlanID: restore.Scope.PlanID, First: true, Second: true}}})
+	result, err = session.CallTool(testOperatorContext(context.Background()), &mcp.CallToolParams{Name: "baseharbor.target.create", Arguments: machineTargetCreateInput{Name: input.Name, RecoveryFile: deleted.RecoveryFile, ProviderChangeConsent: &application.ProviderChangeConsent{PlanID: restore.Scope.PlanID, First: true, Second: true}}})
 	if err != nil || result.IsError {
 		t.Fatalf("MCP restoration: %#v %v", result, err)
 	}

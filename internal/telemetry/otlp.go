@@ -3,6 +3,8 @@ package telemetry
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -287,6 +289,25 @@ func VerifyApplicationAt(ctx context.Context, m application.Manifest, files appl
 }
 
 func (d *Driver) Verify(ctx context.Context, resource capability.Resource, _ capability.Binding) error {
+	return d.verify(ctx, resource, probeTracePayload(d.app))
+}
+
+// VerifyFreshTrace exports a uniquely identified verification trace and returns
+// its ID so a caller can verify that a downstream backend ingested and serves
+// this exact export rather than a trace left by an earlier run.
+func (d *Driver) VerifyFreshTrace(ctx context.Context, resource capability.Resource) (string, error) {
+	var id [16]byte
+	if _, err := rand.Read(id[:]); err != nil {
+		return "", fmt.Errorf("generate fresh OTLP verification trace ID: %w", err)
+	}
+	traceID := hex.EncodeToString(id[:])
+	if err := d.verify(ctx, resource, verificationTracePayload(d.app, id[:])); err != nil {
+		return "", err
+	}
+	return traceID, nil
+}
+
+func (d *Driver) verify(ctx context.Context, resource capability.Resource, payload []byte) error {
 	if resource.Provider == capability.ProviderExternalOTLP && d.externalAuthErr != nil {
 		return d.externalAuthErr
 	}
@@ -315,7 +336,6 @@ func (d *Driver) Verify(ctx context.Context, resource capability.Resource, _ cap
 	} else if d.client == nil {
 		d.client = &http.Client{Timeout: 10 * time.Second}
 	}
-	payload := probeTracePayload(d.app)
 	target := strings.TrimRight(endpoint, "/") + "/v1/traces"
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, target, bytes.NewReader(payload))
 	if err != nil {
@@ -741,46 +761,4 @@ func allocatePort() (int, error) {
 	}
 	defer listener.Close()
 	return listener.Addr().(*net.TCPAddr).Port, nil
-}
-
-func ExportProviderInteractionTrace(ctx context.Context, m application.Manifest, source observability.SignalSource) (string, error) {
-	dataDir, err := bhruntime.DataDir("")
-	if err != nil {
-		return "", err
-	}
-	return ExportProviderInteractionTraceAt(ctx, m, source, dataDir, "")
-}
-
-func ExportProviderInteractionTraceAt(ctx context.Context, m application.Manifest, source observability.SignalSource, dataDir, namespace string) (string, error) {
-	if source.Kind != observability.SignalTraces || source.Protocol != "interaction" {
-		return "", fmt.Errorf("provider interaction trace source %q is not an interaction trace", source.ID)
-	}
-	files, err := ExistingProviderFilesAt(dataDir, namespace)
-	if err != nil {
-		return "", err
-	}
-	endpoint, err := providerEndpoint(files)
-	if err != nil {
-		return "", err
-	}
-	client, err := managedOTLPHTTPClient(m.Environment, files)
-	if err != nil {
-		return "", err
-	}
-	payload, traceID := providerInteractionTracePayload(m, source)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(endpoint, "/")+"/v1/traces", bytes.NewReader(payload))
-	if err != nil {
-		return "", err
-	}
-	req.Header.Set("Content-Type", "application/x-protobuf")
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("export provider interaction trace %s: %w", source.ID, err)
-	}
-	defer resp.Body.Close()
-	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<20))
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return "", fmt.Errorf("export provider interaction trace %s: endpoint returned HTTP %d", source.ID, resp.StatusCode)
-	}
-	return traceID, nil
 }

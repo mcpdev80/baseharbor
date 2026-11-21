@@ -94,7 +94,7 @@ func TestDirectedCrossApplicationConnectivityInCI(t *testing.T) {
 	waitForConnectivityTarget(t, ctx, compose, target, targetFiles)
 
 	var out bytes.Buffer
-	if err := runWithIO(ctx, []string{"connect", source.Name + "/api", target.Name + "/sql"}, &out, &out); err != nil {
+	if err := runWithIOAsTestOperator(ctx, []string{"connect", source.Name + "/api", target.Name + "/sql"}, &out, &out); err != nil {
 		t.Fatalf("connect failed: %v\n%s", err, out.String())
 	}
 	rules, err := application.LoadConnectivityRules()
@@ -182,7 +182,7 @@ func TestDirectedCrossApplicationConnectivityInCI(t *testing.T) {
 	waitForSourceProbe(t, ctx, compose, sourceWorkload, sourceComposeFiles, probe, rule.Target.Port)
 
 	out.Reset()
-	if err := runWithIO(ctx, []string{"disconnect", source.Name + "/api", target.Name + "/sql"}, &out, &out); err != nil {
+	if err := runWithIOAsTestOperator(ctx, []string{"disconnect", source.Name + "/api", target.Name + "/sql"}, &out, &out); err != nil {
 		t.Fatalf("disconnect failed: %v\n%s", err, out.String())
 	}
 	rules, err = application.LoadConnectivityRules()

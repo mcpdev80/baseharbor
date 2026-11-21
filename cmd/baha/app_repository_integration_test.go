@@ -32,6 +32,11 @@ func TestRepositoryWorkflowRealLifecycle(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	isolateRuntimeForTest(t, "repository-workflow")
+	// This integration test uses an isolated application identity on the
+	// authoritative disposable Core. Persist the matching test OIDC boundary so
+	// follow-up status/doctor checks exercise the configured auth path.
+	configureRuntimeIntegrationTestOperatorAuth(t)
+	ctx = testOperatorContext(ctx)
 
 	root := t.TempDir()
 	old, err := os.Getwd()
@@ -44,7 +49,7 @@ func TestRepositoryWorkflowRealLifecycle(t *testing.T) {
 	}
 
 	var out bytes.Buffer
-	if err := runWithIO(ctx, []string{"app", "init", "repo-e2e", "--sql", "--cache"}, &out, &out); err != nil {
+	if err := runWithIOAsTestOperator(ctx, []string{"app", "init", "repo-e2e", "--sql", "--cache"}, &out, &out); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(root, "baseharbor.yaml")); err != nil {
@@ -57,7 +62,9 @@ func TestRepositoryWorkflowRealLifecycle(t *testing.T) {
 	}
 	out.Reset()
 	if err := runRepositoryFixtureApply(ctx, []string{"app", "apply"}, &out); err != nil {
-		t.Fatalf("repository apply failed: %v\n%s", err, out.String())
+		var doctor bytes.Buffer
+		_ = runWithIOAsTestOperator(ctx, []string{"app", "doctor"}, &doctor, &doctor)
+		t.Fatalf("repository apply failed: %v\n%s\napp doctor diagnostics:\n%s", err, out.String(), doctor.String())
 	}
 	if !strings.Contains(out.String(), "application and requested infrastructure verified") {
 		t.Fatalf("unexpected apply output: %s", out.String())
@@ -84,12 +91,12 @@ func TestRepositoryWorkflowRealLifecycle(t *testing.T) {
 
 	for _, command := range [][]string{{"app", "status"}, {"app", "doctor"}} {
 		out.Reset()
-		if err := runWithIO(ctx, command, &out, &out); err != nil {
+		if err := runWithIOAsTestOperator(ctx, command, &out, &out); err != nil {
 			t.Fatalf("%v failed: %v\n%s", command, err, out.String())
 		}
 	}
 	out.Reset()
-	if err := runWithIO(ctx, []string{"app", "env", "--path"}, &out, &out); err != nil {
+	if err := runWithIOAsTestOperator(ctx, []string{"app", "env", "--path"}, &out, &out); err != nil {
 		t.Fatal(err)
 	}
 	envPath := strings.TrimSpace(out.String())

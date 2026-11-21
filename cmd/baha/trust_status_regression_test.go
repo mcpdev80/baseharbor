@@ -23,7 +23,7 @@ func TestTrustStatusAbsentCoreInsideAndOutsideRepository(t *testing.T) {
 				}
 			}
 			for _, format := range []string{"human", "plain", "json"} {
-				ctx := context.Background()
+				ctx := testOperatorContext(context.Background())
 				var args []string
 				if format == "plain" {
 					ctx = cli.WithOutputOptions(ctx, cli.OutputOptions{Plain: true})
@@ -101,7 +101,7 @@ func TestTrustStatusRetainsOwnedRecordsWithoutCore(t *testing.T) {
 		t.Fatal(err)
 	}
 	var out bytes.Buffer
-	if err := trustStatusCommand().Run(context.Background(), nil, &out, &out); err != nil {
+	if err := trustStatusCommand().Run(testOperatorContext(context.Background()), nil, &out, &out); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(out.String(), "PRESERVED  abcdef") || !strings.Contains(out.String(), "missing") {
