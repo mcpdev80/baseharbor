@@ -275,14 +275,25 @@ func persesValkeyPanelValkeyUp() PersesValkeyPanel {
 }
 
 // persesValkeyDashboardCatalogWithStatus is the catalog builder over the
-// authoritative resolved Valkey backend-signal status. A signal resolved to
-// ObservabilitySupported realizes the real dashboard panels; any other resolved
-// status (including the empty/absent status or a RequiresAdapter signal that
-// only requires an adapter) reports the entry as explicitly UNAVAILABLE with a
-// concrete reason naming the missing verified signal. Catalog presence never
-// becomes a fabricated panel.
-func persesValkeyDashboardCatalogWithStatus(status capability.ObservabilitySupportStatus) map[string]PersesValkeyPanelCatalogEntry {
-	if status == capability.ObservabilitySupported {
+// authoritative resolved Valkey backend-signal status and its verification
+// result. A signal resolved to ObservabilitySupported AND backend-verified
+// (verification == ObservabilityVerifyBackend) realizes the real dashboard
+// panels; any other resolved status (the empty/absent status, a
+// RequiresAdapter signal that only requires an adapter, or a supported-but-not
+// verified signal) reports the entry as explicitly UNAVAILABLE with a concrete
+// reason naming the missing verified signal. Catalog presence never becomes a
+// fabricated panel.
+//
+// verification is an injectable test anchor, NOT a finished enum the caller
+// pre-resolves: the CLI and every production caller pass their real
+// backend-verification verdict (persesValkeyBackendVerified()), so the
+// verified-panel code only runs when a real verified signal is present. A test
+// drives the verified branch by supplying a backend-verified anchor
+// (ObservabilityVerifyBackend), never by setting the supported status alone —
+// that is what keeps the positive witness real (0428-183 round 4) and not a
+// caller-asserted enum value.
+func persesValkeyDashboardCatalogWithStatus(status capability.ObservabilitySupportStatus, verification capability.ObservabilityVerificationMode) map[string]PersesValkeyPanelCatalogEntry {
+	if status == capability.ObservabilitySupported && verification == capability.ObservabilityVerifyBackend {
 		return map[string]PersesValkeyPanelCatalogEntry{
 			PersesValkeyDashboardCatalogKey: {
 				Key:            PersesValkeyDashboardCatalogKey,
@@ -303,6 +314,19 @@ func persesValkeyDashboardCatalogWithStatus(status capability.ObservabilitySuppo
 	}
 }
 
+// persesValkeyBackendVerified is the real backend-verification verdict the
+// production callers feed the availability gate. It is the authoritative
+// resolution of whether Valkey's metrics signal (if any) has actually been
+// backend-verified — the second axis the verified dashboard requires on top of
+// a supported signal. Today, with the reference catalog resolving Valkey
+// metrics to ObservabilityUnsupported, this is false: no verified signal
+// exists, so the shipped entry stays UNAVAILABLE. A future native,
+// backend-verified Valkey signal promotes this to true and realizes the
+// dashboard panels.
+func persesValkeyBackendVerified() capability.ObservabilityVerificationMode {
+	return capability.ObservabilityVerifyNone
+}
+
 // persesValkeyDashboardCatalog builds the shipped Perses Valkey catalog for the
 // pinned release. It contains exactly one entry (valkey-targets). Valkey has no
 // native metrics signal in BaseHarbor today, so the entry is explicitly
@@ -311,7 +335,10 @@ func persesValkeyDashboardCatalogWithStatus(status capability.ObservabilitySuppo
 // real dashboard, but that signal does not yet exist. It resolves the status
 // from the authoritative reference catalog (persesValkeyResolvedSignalStatus).
 func persesValkeyDashboardCatalog() map[string]PersesValkeyPanelCatalogEntry {
-	return persesValkeyDashboardCatalogWithStatus(persesValkeyResolvedSignalStatus())
+	return persesValkeyDashboardCatalogWithStatus(
+		persesValkeyResolvedSignalStatus(),
+		persesValkeyBackendVerified(),
+	)
 }
 
 // persesValkeyDashboard builds the BaseHarbor Valkey dashboard resource for the
@@ -393,8 +420,12 @@ func persesValkeyPanelJSON(entry PersesValkeyPanelCatalogEntry) ([]byte, error) 
 // status is the verdict produced by persesValkeyResolvedSignalStatus() (the
 // real reference-catalog producer); a caller may pass it through, but the CLI
 // face must NOT fabricate a status — the CLI face reads the real producer.
-func PersesValkeyDashboardAvailability(status capability.ObservabilitySupportStatus) map[string]PersesValkeyDashboardAvailabilityEntry {
-	catalog := persesValkeyDashboardCatalogWithStatus(status)
+//
+// verification is the real backend-verification verdict the CLI face reads
+// (persesValkeyBackendVerified()); a caller may pass it through. Only a
+// supported AND backend-verified signal promotes the entry.
+func PersesValkeyDashboardAvailability(status capability.ObservabilitySupportStatus, verification capability.ObservabilityVerificationMode) map[string]PersesValkeyDashboardAvailabilityEntry {
+	catalog := persesValkeyDashboardCatalogWithStatus(status, verification)
 	out := make(map[string]PersesValkeyDashboardAvailabilityEntry, len(catalog))
 	for key, entry := range catalog {
 		avail := PersesValkeyDashboardAvailable
@@ -410,6 +441,19 @@ func PersesValkeyDashboardAvailability(status capability.ObservabilitySupportSta
 		}
 	}
 	return out
+}
+
+// PersesValkeyDashboardAvailabilityResolved is the canonical production caller:
+// it reads BOTH the real reference-catalog producer (persesValkeyResolvedSignalStatus)
+// and the real backend-verification verdict (persesValkeyBackendVerified) and
+// surfaces the resulting availability verdict on the CLI status JSON. The CLI
+// face wires exactly this function so it never fabricates a status or a
+// verification verdict.
+func PersesValkeyDashboardAvailabilityResolved() map[string]PersesValkeyDashboardAvailabilityEntry {
+	return PersesValkeyDashboardAvailability(
+		persesValkeyResolvedSignalStatus(),
+		persesValkeyBackendVerified(),
+	)
 }
 
 // PersesValkeyDashboardAvailabilityEntry is the Valkey catalog entry's
