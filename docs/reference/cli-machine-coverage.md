@@ -151,7 +151,7 @@ Inspect current data with `baha agent describe -o json` (`cli_coverage`). Update
 | `baha target delete` | semantic | CLI -o json / typed MCP result | baseharbor.target.delete |  |
 | `baha target list` | semantic | CLI -o json / typed MCP result | baseharbor.target.list |  |
 | `baha target policy` | presentation |  |  | Command group; invoke its supported subcommands. |
-| `baha target policy set` | presentation |  |  | Owner-local protected Target configuration edit with CAS; no remote operator policy mutation is exposed yet. Remote targets refuse this action; machine clients must not bypass the owning Core authority. |
+| `baha target policy set` | presentation |  |  | Owner-local protected Target configuration edit with CAS; remote operator policy mutation for existing Targets is future scope (see card 0427-186). Remote targets refuse this workstation action; machine clients must not bypass the owning Core authority. |
 | `baha target policy show` | semantic | CLI -o json / typed MCP result | baseharbor.target |  |
 | `baha target show` | semantic | CLI -o json / typed MCP result | baseharbor.target |  |
 | `baha trust` | presentation |  |  | Command group; invoke its supported subcommands. |

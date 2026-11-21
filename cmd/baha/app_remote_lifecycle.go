@@ -81,7 +81,23 @@ func restoreRemoteApplication(ctx context.Context, resolved resolvedApplication)
 }
 
 func executeRemoteApplicationApply(ctx context.Context, resolved resolvedApplication, out io.Writer) error {
-	if err := deployment.EvaluateDeploymentAdmission(resolved.Target.DeploymentPolicy, nil); err != nil {
+	// The owning Core must reject configured Target restrictions before any
+	// remote runtime side effect. Load the owner-verified deployment record up
+	// front so the admission evidence is built from Core-owned source facts,
+	// never from client metadata; a missing or unverifiable record keeps
+	// restrictive Targets failing closed. A record that has not yet been bound
+	// (a fresh apply) is not an error here: it simply yields nil evidence and a
+	// restrictive Target fails closed exactly as before.
+	var verifiedRecord *deployment.DeploymentRecord
+	if loaded, loadErr := deployment.LoadDeploymentRecord(resolved.DeploymentIdentity); loadErr == nil {
+		verifiedRecord = &loaded
+	}
+	admissionEvidence := deployment.AdmissionEvidenceForRemoteApply(
+		resolved.SourceAvailable, verifiedRecord,
+		resolved.DeploymentIdentity.ApplicationID, resolved.Manifest.ApplicationID,
+		resolved.Target.DeploymentPolicy != nil && resolved.Target.DeploymentPolicy.RequireApproval,
+	)
+	if err := deployment.EvaluateDeploymentAdmission(resolved.Target.DeploymentPolicy, admissionEvidence); err != nil {
 		return err
 	}
 	unlock, err := lockApplicationTargetLifecycle(resolved, false)
