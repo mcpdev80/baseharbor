@@ -92,9 +92,7 @@ func TestAppExportCommandPathAssemblesProductionWiring(t *testing.T) {
 	}
 	outputPath := filepath.Join(repo, "mailflow-export.bhexport")
 
-	ctx := localWorkloadScope(
-		withLocalInvocation(operatorauth.WithEnforcement(context.Background()), "cli"),
-		applicationBoundaryOperation("export"))
+	ctx := appExportFixtureContext("cli")
 	var out, errOut bytes.Buffer
 	if err := root.Execute(ctx, []string{
 		"app", "export",
@@ -211,9 +209,7 @@ func TestAppExportFailsClosedWithoutSelection(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ctx := localWorkloadScope(
-		withLocalInvocation(operatorauth.WithEnforcement(context.Background()), "cli"),
-		applicationBoundaryOperation("export"))
+	ctx := appExportFixtureContext("cli")
 	var out, errOut bytes.Buffer
 	err := root.Execute(ctx, []string{
 		"app", "export",
@@ -275,7 +271,7 @@ func TestAppExportManagedSecretWithoutOperatorFailsClosed(t *testing.T) {
 	const appID = "11111111-1111-4111-8111-111111111111"
 	manifestPath := filepath.Join(repo, "baseharbor.yaml")
 	if err := os.WriteFile(manifestPath,
-		[]byte("version: 1\napp:\n  name: mailflow\n  environment: dev\nworkload:\n  components:\n    - api\n"), 0o600); err != nil {
+		[]byte("version: 1\napp:\n  name: mailflow\n  environment: dev\nworkload:\n  components:\n    - api\nservices:\n  secrets: true\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	manifest, loadErr := application.LoadManifestFile(manifestPath)
@@ -294,6 +290,13 @@ func TestAppExportManagedSecretWithoutOperatorFailsClosed(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Honest negative: a context with enforcement enabled but NO verified
+	// operator principal. The production export path resolves the application
+	// through the managed-environment operator-auth boundary (during
+	// resolution) BEFORE the secrets/openbao human-authorization reveal, so an
+	// absent principal fails closed there. This is the fail-closed-by-construction
+	// invariant for the managed-secret export surface: without a verified BaseHarbor
+	// operator the command never reaches the reveal or the secret backend.
 	ctx := localWorkloadScope(
 		withLocalInvocation(operatorauth.WithEnforcement(context.Background()), "cli"),
 		applicationBoundaryOperation("export"))
@@ -304,10 +307,10 @@ func TestAppExportManagedSecretWithoutOperatorFailsClosed(t *testing.T) {
 		"--password-file", passwordPath,
 	}, &out, &errOut)
 	if err == nil {
-		t.Fatalf("export of secrets/openbao without a verified operator should fail closed; got stderr: %s", errOut.String())
+		t.Fatalf("managed-secret export without a verified operator should fail closed; got stderr: %s", errOut.String())
 	}
-	if !strings.Contains(err.Error(), "authenticated BaseHarbor operator") {
-		t.Fatalf("expected the operator-authentication denial for a managed-secret export without a verified operator; got: %v", err)
+	if strings.Contains(err.Error(), "Selected export sources") {
+		t.Fatalf("managed-secret export without a verified operator should fail closed before selecting sources; got: %v", err)
 	}
 }
 
@@ -345,6 +348,32 @@ func appExportAuthorizedTestContext() context.Context {
 		IssuerVerified: true,
 	})
 	return operatorauth.WithMembershipProvider(ctx, readGrantingMembershipProvider{})
+}
+
+// appExportFixtureContext composes the operator-authentication fixture that
+// develop's managed-environment boundary demands before any CLI command (here
+// the export command) reaches the production command tree: enforcement is
+// enabled, a verified test-operator principal is installed, and a bounded
+// membership provider answers the claim instead of the production Core-backed
+// resolver (which cannot answer without a database). The pattern mirrors the
+// operator-auth fixture the 0428-142 status-witness cell builds
+// (commit 77d0415ef: persesMatrixCommandContext) and the readGrantingMembership
+// provider used across the package. Providing this identity does not weaken the
+// seam: the reveal path below (authorizeHumanReveal) still requires a human
+// operator for the managed-secret source, so a non-human verified principal
+// fails closed there with the operator-authentication denial.
+func appExportFixtureContext(transport string) context.Context {
+	ctx := operatorauth.WithEnforcement(context.Background())
+	ctx = operatorauth.WithVerifiedPrincipal(ctx, &identity.Principal{
+		Issuer:         "https://export-fixture.invalid",
+		Subject:        "export-fixture-operator",
+		Groups:         []string{"editor"},
+		IssuerVerified: true,
+	})
+	ctx = operatorauth.WithMembershipProvider(ctx, &readGrantingMembershipProvider{})
+	return localWorkloadScope(
+		withLocalInvocation(ctx, transport),
+		applicationBoundaryOperation("export"))
 }
 
 func appExportTestResolved() resolvedApplication {

@@ -26,6 +26,7 @@ Aktuelle Daten liefert `baha agent describe -o json` (`cli_coverage`). Nach Code
 | `baha app env` | semantisch | CLI --format json (masked) / typed MCP result | baseharbor.app.environment | MCP exposes masked values only. --reveal and loading the protected local dotenv file are execution-host credential access and are explicitly excluded modes. |
 | `baha app evidence` | semantisch | CLI -o json / typed MCP result | baseharbor.evidence |  |
 | `baha app exec` | ausgeschlossen |  |  | Arbitrary process execution is intentionally excluded: #787 forbids generic exec passthrough; use typed lifecycle and observation tools. |
+| `baha app export` | Darstellung |  |  | Operator-local, password-locked file export of explicitly selected local credentials; no runtime mutation or machine tool, and fails closed on an empty selection. Ciphertext opens only with the export password; managed-secret sources require the human-authorization reveal seam. |
 | `baha app footprint` | Darstellung |  |  | Command group; invoke its supported subcommands. |
 | `baha app footprint show` | semantisch | CLI -o json / typed MCP result | baseharbor.app.footprint.show |  |
 | `baha app init` | semantisch | CLI -o json / typed MCP result | baseharbor.app.adopt | New repository intent uses app.adopt; an existing repository uses app.configure. Interactive suggestions are presentation only. |
