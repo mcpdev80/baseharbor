@@ -1103,12 +1103,14 @@ jobs:
           out="$RUNNER_TEMP/pr-exact-candidate"
           mkdir -p "$out"
           CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.commit=$GITHUB_SHA -X main.date=unknown" -o "$out/baha" ./cmd/baha
+          CGO_ENABLED=0 go build -trimpath -tags=baseharbor_ci_operator_testonly -ldflags="-s -w -X main.commit=$GITHUB_SHA -X main.date=unknown" -o "$out/baha-ci-operator-testonly" ./cmd/baha
           "$out/baha" version | grep -F "$GITHUB_SHA"
+          "$out/baha-ci-operator-testonly" version | grep -F "$GITHUB_SHA"
           cp deploy/control-plane/Dockerfile.binary "$out/Dockerfile"
           docker build --pull -t localhost/baseharbor-runtime:pre-release "$out"
           docker image inspect localhost/baseharbor-runtime:pre-release >/dev/null
           docker save -o "$out/baseharbor-runtime-pre-release.tar" localhost/baseharbor-runtime:pre-release
-          (cd "$out" && sha256sum baha baseharbor-runtime-pre-release.tar > checksums.sha256)
+          (cd "$out" && sha256sum baha baha-ci-operator-testonly baseharbor-runtime-pre-release.tar > checksums.sha256)
           printf '%s\n' "$GITHUB_SHA" > "$out/candidate.sha"
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:

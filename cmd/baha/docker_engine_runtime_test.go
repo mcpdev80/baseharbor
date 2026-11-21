@@ -113,7 +113,7 @@ func verifyDualDockerCLIAndMCP(t *testing.T, ctx context.Context, target deploym
 	}
 	for _, args := range [][]string{{"--target", target.Name, "target", "show", "--json"}, {"--target", target.Name, "status", "--json"}, {"--target", target.Name, "doctor", "--json"}} {
 		var out, stderr bytes.Buffer
-		if err := runWithIO(ctx, args, &out, &stderr); err != nil {
+		if err := runWithIOAsTestOperator(ctx, args, &out, &stderr); err != nil {
 			t.Fatalf("native read %v failed: %v", args, err)
 		}
 		assertEngine(out.Bytes())

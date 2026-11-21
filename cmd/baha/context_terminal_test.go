@@ -162,6 +162,30 @@ func TestContextShowReportsWinningStage(t *testing.T) {
 	}
 }
 
+// TestContextShowPersistedWinsOverConfiguredDefault is card 0428-178. The
+// configured default (A) and the persisted selection (B) differ; the real
+// `baha context show` command path must report B under the "persisted" origin,
+// never A. It also exercises the command path (not effectiveContextOrigin
+// directly), so the gate and the assertion move together. The mutation proofs
+// below (both directions) prove the persisted-vs-default order is what this
+// test pins: removing the persisted resolution turns it red, and removing the
+// default resolution turns TestContextShowReportsWinningStage red.
+func TestContextShowPersistedWinsOverConfiguredDefault(t *testing.T) {
+	configureTestTarget(t)          // sets DefaultTarget = "docker-dev" (A)
+	configureSecondContextTarget(t) // registers "prod" so the persisted selection exists
+	if err := writePersistedTarget("prod"); err != nil {
+		t.Fatalf("writePersistedTarget(prod): %v", err)
+	}
+	os.Unsetenv(contextShellVar) // no shell-env override
+	got := runContextShowCommand(t)
+	if !strings.Contains(got, "Effective context: prod (persisted)") {
+		t.Fatalf("context show must report persisted 'prod' over configured-default, got:\n%s", got)
+	}
+	if strings.Contains(got, "configured-default") {
+		t.Fatalf("context show must not fall back to configured-default when a selection is persisted, got:\n%s", got)
+	}
+}
+
 // --- clear -------------------------------------------------------------------
 
 func TestContextClearUnsetsInProcess(t *testing.T) {

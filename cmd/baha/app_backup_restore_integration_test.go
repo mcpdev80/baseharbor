@@ -25,8 +25,10 @@ func TestAppBackupRestoreCLIRealDisasterRecovery(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Minute)
 	defer cancel()
+	ctx = testOperatorContext(ctx)
 
 	root := t.TempDir()
+	runtimeRoot := t.TempDir()
 	old, err := os.Getwd()
 	if err != nil {
 		t.Fatal(err)
@@ -36,9 +38,18 @@ func TestAppBackupRestoreCLIRealDisasterRecovery(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	t.Setenv("BASEHARBOR_STATE_DIR", filepath.Join(root, "platform-state"))
+	t.Setenv("BASEHARBOR_STATE_DIR", filepath.Join(runtimeRoot, "platform-state"))
 	t.Setenv("BASEHARBOR_PROVIDER_CHANGE_CONSENT", "")
-	configureAppBackupRuntimeTarget(t, filepath.Join(root, "config"), filepath.Join(root, "data"))
+	configureAppBackupRuntimeTarget(t, filepath.Join(runtimeRoot, "config"), filepath.Join(runtimeRoot, "data"))
+	target, err := effectiveTarget(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := deployment.SetOperatorAuthForTargetEnvironment(target.Name, "dev", deployment.OperatorAuthEnvironmentConfig{
+		Provider: "external-oidc", Issuer: "https://issuer.test", ClientID: "cli-test",
+	}); err != nil {
+		t.Fatalf("configure isolated operator-auth boundary: %v", err)
+	}
 	// LIFO cleanup first executes the owned fixture's cleanup registered below,
 	// then verifies the unrelated native volume before removing only that sentinel.
 	registerBackupForeignVolumeSentinel(t, ctx)
@@ -58,7 +69,7 @@ func TestAppBackupRestoreCLIRealDisasterRecovery(t *testing.T) {
 			return nil
 		},
 		func(cleanupCtx context.Context) error {
-			return approvedNativeFixtureCleanup(t, cleanupCtx, io.Discard)
+			return approvedNativeFixtureCleanup(t, testOperatorContext(cleanupCtx), io.Discard)
 		}); err != nil {
 		t.Fatalf("guided Core start / authenticated OpenBao readiness: %v", err)
 	}
@@ -84,7 +95,11 @@ services:
 	var output bytes.Buffer
 	if err := runBackupFixtureWithConsent(ctx, "apply", func(callCtx context.Context) error {
 		output.Reset()
-		return runWithIO(callCtx, []string{"app", "apply"}, &output, &output)
+		args := []string{"app", "apply"}
+		if digest := candidateConsentOverride(callCtx); digest != "" {
+			args = append(args, "--confirm-candidate", digest)
+		}
+		return runWithIOAsTestOperator(callCtx, args, &output, &output)
 	}); err != nil {
 		t.Fatalf("app apply: %v\n%s", err, output.String())
 	}
@@ -120,13 +135,13 @@ services:
 		t.Fatal(err)
 	}
 
-	passwordPath := filepath.Join(root, "backup-password")
+	passwordPath := filepath.Join(runtimeRoot, "backup-password")
 	if err := os.WriteFile(passwordPath, []byte("correct horse battery staple\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	backupPath := filepath.Join(root, "backup-cli.bhbackup")
+	backupPath := filepath.Join(runtimeRoot, "backup-cli.bhbackup")
 	output.Reset()
-	if err := runWithIO(ctx, []string{"app", "backup", "--password-file", passwordPath, "--output", backupPath}, &output, &output); err != nil {
+	if err := runWithIOAsTestOperator(ctx, []string{"app", "backup", "--password-file", passwordPath, "--output", backupPath}, &output, &output); err != nil {
 		t.Fatalf("app backup: %v\n%s", err, output.String())
 	}
 	metadata, err := resolved.Store.LastBackup(m.Name)
@@ -137,7 +152,7 @@ services:
 		t.Fatalf("unexpected recorded backup metadata: %#v", metadata)
 	}
 	output.Reset()
-	if err := runWithIO(ctx, []string{"app", "show"}, &output, &output); err != nil {
+	if err := runWithIOAsTestOperator(ctx, []string{"app", "show"}, &output, &output); err != nil {
 		t.Fatalf("app show after backup: %v\n%s", err, output.String())
 	}
 	showOutput := output.String()
@@ -151,14 +166,14 @@ services:
 	output.Reset()
 	if err := runBackupFixtureWithConsent(ctx, "destroy", func(callCtx context.Context) error {
 		output.Reset()
-		return runWithIO(callCtx, []string{"app", "destroy", "--yes"}, &output, &output)
+		return runWithIOAsTestOperator(callCtx, []string{"app", "destroy", "--yes"}, &output, &output)
 	}); err != nil {
 		t.Fatalf("app destroy: %v\n%s", err, output.String())
 	}
 	output.Reset()
 	if err := runBackupFixtureWithConsent(ctx, "restore", func(callCtx context.Context) error {
 		output.Reset()
-		return runWithIO(callCtx, []string{"app", "restore", backupPath, "--password-file", passwordPath}, &output, &output)
+		return runWithIOAsTestOperator(callCtx, []string{"app", "restore", backupPath, "--password-file", passwordPath}, &output, &output)
 	}); err != nil {
 		t.Fatalf("app restore: %v\n%s", err, output.String())
 	}
@@ -179,7 +194,7 @@ services:
 		t.Fatalf("unexpected recorded recovery metadata: %#v", recoveryMetadata)
 	}
 	output.Reset()
-	if err := runWithIO(ctx, []string{"app", "show"}, &output, &output); err != nil {
+	if err := runWithIOAsTestOperator(ctx, []string{"app", "show"}, &output, &output); err != nil {
 		t.Fatalf("app show after recovery: %v\n%s", err, output.String())
 	}
 	showOutput = output.String()

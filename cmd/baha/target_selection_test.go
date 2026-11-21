@@ -130,12 +130,12 @@ func TestDeleteTargetBlocksAutomaticSelectionUntilExplicitChoice(t *testing.T) {
 	if err := writePersistedTarget("docker-test"); err != nil {
 		t.Fatal(err)
 	}
-	plan, err := buildTargetDefinitionChangePlan(context.Background(), "docker-test", "")
+	plan, err := buildTargetDefinitionChangePlan(testOperatorContext(context.Background()), "docker-test", "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	consent := application.ProviderChangeConsent{PlanID: plan.Scope.PlanID, First: true, Second: true}
-	if _, err := deleteTargetDefinition(withProviderChangeConsent(context.Background(), &consent), "docker-test"); err != nil {
+	if _, err := deleteTargetDefinition(withProviderChangeConsent(testOperatorContext(context.Background()), &consent), "docker-test"); err != nil {
 		t.Fatal(err)
 	}
 	selected, err := readPersistedTarget()
