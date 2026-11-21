@@ -12,6 +12,9 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/evidence"
+	"github.com/mcpdev80/baseharbor/internal/identity"
+	"github.com/mcpdev80/baseharbor/internal/operatorauth"
+	"github.com/mcpdev80/baseharbor/internal/tenancy"
 	"github.com/mcpdev80/baseharbor/internal/testsupport/serviceissuer"
 )
 
@@ -101,7 +104,7 @@ func TestAppCredsRevealWritesPerRevealAuditEvent(t *testing.T) {
 
 	// Default: masked, no secret in output.
 	var out bytes.Buffer
-	if err := runWithIO(context.Background(), []string{"app", "creds", "postgres", "default", "--app", "demo"}, &out, &out); err != nil {
+	if err := runConnectionRevealWithOperator([]string{"app", "creds", "postgres", "default", "--app", "demo"}, &out, &out); err != nil {
 		t.Fatalf("creds default failed: %v", err)
 	}
 	if text := out.String(); strings.Contains(text, "postgresql://") || strings.Contains(text, "PASSWORD=<masked>") == false {
@@ -111,7 +114,7 @@ func TestAppCredsRevealWritesPerRevealAuditEvent(t *testing.T) {
 	// Explicit human reveal still prints the real value AND records an audit
 	// event with operation "connection-reveal".
 	out.Reset()
-	if err := runWithIO(context.Background(), []string{"app", "creds", "postgres", "default", "--app", "demo", "--reveal"}, &out, &out); err != nil {
+	if err := runConnectionRevealWithOperator([]string{"app", "creds", "postgres", "default", "--app", "demo", "--reveal"}, &out, &out); err != nil {
 		t.Fatalf("creds --reveal failed: %v", err)
 	}
 	if !strings.Contains(out.String(), "PASSWORD=") || !strings.Contains(out.String(), "URI=") {
@@ -127,7 +130,7 @@ func TestAppCredsRevealWritesPerRevealAuditEvent(t *testing.T) {
 
 	// JSON --reveal stays blocked (contract §7).
 	out.Reset()
-	err = runWithIO(context.Background(), []string{"app", "creds", "postgres", "default", "--app", "demo", "--reveal", "--json"}, &out, &out)
+	err = runConnectionRevealWithOperator([]string{"app", "creds", "postgres", "default", "--app", "demo", "--reveal", "--json"}, &out, &out)
 	if err == nil {
 		t.Fatal("expected JSON --reveal to be blocked")
 	}
@@ -174,13 +177,24 @@ func TestAppCredsRevealFailsClosedWhenAuditWriteFails(t *testing.T) {
 	}
 
 	var out, errOut bytes.Buffer
-	err = runWithIO(context.Background(), []string{"app", "creds", "postgres", "default", "--app", "demo", "--reveal"}, &out, &errOut)
+	err = runConnectionRevealWithOperator([]string{"app", "creds", "postgres", "default", "--app", "demo", "--reveal"}, &out, &errOut)
 	if err == nil {
 		t.Fatal("expected connection reveal to fail when its audit event cannot be written")
 	}
 	if strings.Contains(out.String(), "PASSWORD=") || strings.Contains(out.String(), "URI=") {
 		t.Fatalf("connection secret was emitted despite the audit failure (output length %d)", out.Len())
 	}
+}
+
+func runConnectionRevealWithOperator(args []string, out, errOut *bytes.Buffer) error {
+	ctx := operatorauth.WithVerifiedPrincipal(context.Background(), &identity.Principal{
+		Subject: "connection-reveal-fixture", Issuer: "https://issuer.example",
+		IssuerVerified: true, Groups: []string{"editor"},
+	})
+	ctx = operatorauth.WithMembershipProvider(ctx, &firstRunMembershipProvider{
+		memberships: []tenancy.Membership{{TenantID: "tenant-a", Role: "editor"}},
+	})
+	return rootCommand().Execute(ctx, args, out, errOut)
 }
 
 func loadTargetAuditEvents(root string) ([]evidence.AuditEvent, error) {
