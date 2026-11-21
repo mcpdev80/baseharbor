@@ -102,6 +102,8 @@ Inspect current data with `baha agent describe -o json` (`cli_coverage`). Update
 | `baha disconnect` | semantic | CLI -o json / typed MCP result | baseharbor.connectivity.disconnect |  |
 | `baha doctor` | semantic | CLI -o json / typed MCP result | baseharbor.control-plane.doctor | Control-plane mode maps here; --fix uses control-plane.repair and rechecks readiness. Repository mode uses doctor or repair. |
 | `baha down` | semantic | CLI -o json / typed MCP result | baseharbor.control-plane.stop | Control-plane mode maps here; repository application mode uses app.stop. |
+| `baha env` | presentation |  |  | Command group routing to env.show and env.destroy; invoke the supported subcommands explicitly. |
+| `baha env destroy` | presentation |  |  | Environment-scoped identity removal with a CLI JSON impact plan; no machine tool yet (pending semantic MCP coverage). The --o json surface exposes the plan. |
 | `baha init` | semantic | CLI -o json / typed MCP result | baseharbor.app.adopt |  |
 | `baha inspect` | semantic | CLI -o json / typed MCP result | baseharbor.inspect |  |
 | `baha list` | semantic | CLI -o json / typed MCP result | baseharbor.app.list |  |
