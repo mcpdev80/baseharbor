@@ -345,8 +345,12 @@ func TestPersesLokiDatasourceFailClosedWhenEndpointAbsent(t *testing.T) {
 // unprovisioned surface returns a fail-closed error.
 func TestPersesLokiDatasourceVerifyFailsClosedWithoutProbe(t *testing.T) {
 	m := application.New("perses-loki-noop", "dev", false, false, false)
-	if err := logs.VerifyPersesLokiDatasourceHealth(context.Background(), m); err == nil {
+	err := logs.VerifyPersesLokiDatasourceHealth(context.Background(), m)
+	if err == nil {
 		t.Fatal("health must not pass without a real reachable Loki health path")
+	}
+	if !strings.Contains(err.Error(), "perses Loki datasource requires the observability management UI and Perses selected in the manifest") {
+		t.Fatalf("error must be the manifest-selection fail-closed error, got a different failure: %v", err)
 	}
 }
 
@@ -475,9 +479,19 @@ func TestPersesLokiDatasourceVerifyBindsServiceAccessClient(t *testing.T) {
 	if err := rewriteLokiPort(t, m, probePort(t, server)); err != nil {
 		t.Fatalf("rewrite port: %v", err)
 	}
+	// The service-access PKI is left unmaterialized on purpose: the health path
+	// must fail closed on the identity-load BEFORE ever querying the endpoint,
+	// proving the endpoint is bound to the authoritative service-access client
+	// (a caller-supplied transport is never the authority).
 	err := logs.VerifyPersesLokiDatasourceHealth(context.Background(), m)
 	if err == nil {
 		t.Fatal("health must not pass against an unmaterialized service-access PKI")
+	}
+	if !strings.HasPrefix(err.Error(), "perses Loki datasource health client: load Loki service access identity: ") {
+		t.Fatalf("error must be the service-access identity precondition failure, got a different failure: %v", err)
+	}
+	if !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("error must be the missing service-access PKI file stat (os.ErrNotExist), got: %v", err)
 	}
 }
 
