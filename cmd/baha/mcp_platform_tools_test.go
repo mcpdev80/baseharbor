@@ -16,7 +16,7 @@ func TestNewPlatformToolsDenyManagedOperationsBeforeRuntimeOrInput(t *testing.T)
 	configureTestTarget(t)
 	manifest := workspaceMutationFixture(t, "prod")
 	t.Chdir(filepath.Dir(manifest))
-	session := workspaceMutationClient(t)
+	session := workspaceMutationClientUnauthenticated(t)
 	for _, id := range []string{"control-plane.status", "control-plane.doctor", "control-plane.up", "control-plane.stop", "control-plane.repair", "control-plane.destroy", "installation.destroy", "openbao.status", "openbao.bootstrap", "openbao.unseal", "openbao.rotate", "dev.domain", "dev.credentials", "trust.status", "trust.export", "trust.install", "release.check"} {
 		arguments := map[string]any{}
 		switch id {

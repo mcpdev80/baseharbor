@@ -92,7 +92,7 @@ func runSelectiveSecretsRuntimeLifecycle(t *testing.T, shared bool) {
 	}
 	writeIntent(true)
 	var output bytes.Buffer
-	if err := runWithIO(ctx, []string{"app", "init", "--quick", "--json"}, &output, &output); err != nil {
+	if err := runWithIOAsTestOperator(ctx, []string{"app", "init", "--quick", "--json"}, &output, &output); err != nil {
 		t.Fatalf("initialize Secrets-only workload: %v\n%s", err, output.String())
 	}
 	initialized, err := resolveApplication(ctx, application.Store{}, nil, "plan")

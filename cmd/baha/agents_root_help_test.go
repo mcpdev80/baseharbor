@@ -11,7 +11,7 @@ func TestRootAgentsHelpSeparatesDocumentationFromDeployment(t *testing.T) {
 	t.Chdir(t.TempDir())
 	for _, args := range [][]string{{"app", "init", "--help"}, {"init", "--help"}} {
 		var out bytes.Buffer
-		if err := runWithIO(context.Background(), args, &out, &out); err != nil {
+		if err := runWithIOAsTestOperator(context.Background(), args, &out, &out); err != nil {
 			t.Fatal(err)
 		}
 		if !strings.Contains(out.String(), "init --agents [--json]") || strings.Contains(out.String(), "[--agents]") {

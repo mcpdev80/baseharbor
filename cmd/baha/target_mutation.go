@@ -57,11 +57,11 @@ func createTargetDefinition(ctx context.Context, input machineTargetCreateInput)
 		}
 		return changeTargetDefinition(ctx, input.Name, input.RecoveryFile, nil)
 	}
-	if err := authorizeCurrentMCPContext(ctx, "target.create", "", "", ""); err != nil {
-		return targetMutationResult{}, err
-	}
 	name := strings.TrimSpace(input.Name)
 	if err := deployment.ValidateTargetName(name); err != nil {
+		return targetMutationResult{}, err
+	}
+	if err := authorizeTargetCreation(ctx, name); err != nil {
 		return targetMutationResult{}, err
 	}
 	runtimeProvider, accessProvider, accessName, reference, scope, makeDefault := strings.TrimSpace(input.RuntimeProvider), strings.TrimSpace(input.AccessProvider), strings.TrimSpace(input.Access), strings.TrimSpace(input.Reference), strings.TrimSpace(input.Scope), input.Default

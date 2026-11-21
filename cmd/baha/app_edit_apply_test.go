@@ -1194,7 +1194,7 @@ func TestAppEditCommandCompleteProviderEditRunsRealLifecycle(t *testing.T) {
 	} else {
 		t.Setenv("DOCKER_HOST", "unix:///var/run/docker.sock")
 	}
-	target := configureTestTarget(t)
+	target := configureIsolatedTestTarget(t)
 	cfg, err := deployment.LoadConfig()
 	if err != nil {
 		t.Fatal(err)
@@ -1234,11 +1234,12 @@ func TestAppEditCommandCompleteProviderEditRunsRealLifecycle(t *testing.T) {
 	// Establish the real previous workload-only deployment. Its retained
 	// canonical native definition and exact runtime inventory must prove
 	// absence of a SQL provider before the confirmed Edit creates one.
-	setupCtx, setupCancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	setupCtx, setupCancel := context.WithTimeout(testOperatorContext(context.Background()), 3*time.Minute)
 	defer setupCancel()
 	// The repository apply binds the candidate on explicit operator confirmation:
 	// show the canonical confirm hash and require --confirm-candidate with it.
-	confirmCtx := withConfirmCandidateForSetup(setupCtx, target, m.Name, root)
+	confirmCtx := withMemoryPreflightOverride(setupCtx, true)
+	confirmCtx = withConfirmCandidateForSetup(confirmCtx, target, m.Name, root)
 	if err := executeApplicationApplyLifecycle(confirmCtx, application.DefaultStore(), []string{m.Name}, io.Discard, io.Discard); err != nil {
 		t.Fatalf("baseline workload-only lifecycle failed: %v", err)
 	}
@@ -1332,7 +1333,9 @@ func TestAppEditCommandCompleteProviderEditRunsRealLifecycle(t *testing.T) {
 	// the Edit lifecycle reuses the same apply choke point, so carry the canonical
 	// confirm digest for the repository candidate this Edit will bind. Without it
 	// the confirmed Edit fails closed at the candidate consent choke point.
-	editConfirmCtx := withConfirmCandidateForSetup(context.Background(), target, m.Name, root)
+	editConfirmCtx := testOperatorContext(context.Background())
+	editConfirmCtx = withMemoryPreflightOverride(editConfirmCtx, true)
+	editConfirmCtx = withConfirmCandidateForSetup(editConfirmCtx, target, m.Name, root)
 	ctx, cancel := context.WithTimeout(editConfirmCtx, 4*time.Minute)
 	defer cancel()
 	// The confirmed Edit binds the repository candidate on explicit operator
