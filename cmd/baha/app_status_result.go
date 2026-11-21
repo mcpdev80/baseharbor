@@ -37,6 +37,13 @@ type applicationStatusResult struct {
 	Availability             []availability.NegotiationResult                                `json:"availability,omitempty"`
 	Perses                   *capability.PersesStatus                                        `json:"perses,omitempty"`
 	HostContainersDashboards map[string]metricsprovider.PersesHostDashboardAvailabilityEntry `json:"host_containers_dashboards,omitempty"`
+	// IdentityDashboardEligible is the non-forgeable availability of the
+	// Keycloak identity dashboard: eligible ONLY when a real Keycloak native
+	// metrics signal exists for this Target, the identity provider is actually
+	// selected, and the Keycloak placement is a valid, BaseHarbor-owned
+	// authorization (fail-closed). Derived from IdentitySelectionWitness via
+	// NonForgeableAvailable() — never a caller-supplied status boolean.
+	IdentityDashboardEligible bool `json:"identity_dashboard_eligible,omitempty"`
 
 	tlsStatus     *applicationTLSStatus
 	tlsErr        error
@@ -127,10 +134,6 @@ func canonicalDevelopmentManagementSurfaces(resolved resolvedApplication, surfac
 }
 
 func collectApplicationStatusResult(ctx context.Context, store application.Store, args []string) (applicationStatusResult, error) {
-	result, err := collectApplicationStatus(ctx, store, args)
-	if err != nil {
-		return applicationStatusResult{}, err
-	}
 	resolved, err := resolveApplication(ctx, store, args, "status")
 	if err != nil {
 		return applicationStatusResult{}, err
@@ -144,13 +147,50 @@ func collectApplicationStatusResult(ctx context.Context, store application.Store
 	persesStatus := capability.PersesStatusNow(resolved.Manifest.Services.ObservabilityManagementUI && resolved.Manifest.Services.Perses)
 	resolvedHostSignalStatus := capability.ResolveHostDashboardSignalStatus(
 		resolved.Manifest.Services.ObservabilityManagementUI, resolved.Manifest.Services.Perses)
+	// The Keycloak identity dashboard realizes the identity provider, so its
+	// availability is a non-forgeable decision: it is eligible ONLY when the
+	// Perses dashboard is actually selected AND verified (PersesStatusNow maps
+	// manifest truth to not_configured | configured_unverified | verified, and
+	// a real Perses health probe is required to reach verified), a real
+	// Keycloak native metrics signal exists for this Target, the identity
+	// provider is actually selected, and the Keycloak placement is a valid,
+	// BaseHarbor-owned authorization for this Target (fail-closed). The
+	// predicate is verified-only: both not_configured and configured_unverified
+	// fail closed — configured_unverified means no real Perses health path
+	// exists, so eligibility must never be emitted for that state. Resolve the
+	// witness from real primitives before the remote-target early return so the
+	// gate is evaluated on both local and remote-target faces. An eligible
+	// identity-dashboard status can NEVER be emitted while Perses is
+	// not_configured or configured_unverified.
+	identityBackendAvailable := identityDashboardBackendEligible(
+		persesStatus,
+		resolved.Manifest,
+		resolved.TargetStateRoot,
+		resolved.Target.Name,
+	)
+	// Preserve the established remote status contract: its collector restores
+	// the retained remote publication and verifies the selected runtime through
+	// the authenticated Connector session. The Perses identity fields are
+	// manifest/target-bound metadata, so attach them to that actual result rather
+	// than replacing runtime readiness with a synthetic status.
 	if hasRemoteApplicationTarget(resolved) {
-		return applicationStatusResult{StatusResult: result, ApplicationID: resolved.Manifest.ApplicationID,
-			DeploymentID: resolved.DeploymentIdentity.DeploymentID,
-			OperatorAuth: collectOperatorAuthObservation(ctx, resolved.Target.Name, resolved.Manifest.Environment),
-			Perses:       persesStatus,
+		statusCtx, cancel := context.WithTimeout(ctx, applicationStatusTimeout)
+		defer cancel()
+		remoteResult, err := collectRemoteApplicationStatus(statusCtx, resolved)
+		if err != nil {
+			return applicationStatusResult{}, err
+		}
+		return withIdentityDashboardStatus(applicationStatusResult{StatusResult: remoteResult,
+			ApplicationID: resolved.Manifest.ApplicationID,
+			DeploymentID:  resolved.DeploymentIdentity.DeploymentID,
+			OperatorAuth:  collectOperatorAuthObservation(ctx, resolved.Target.Name, resolved.Manifest.Environment),
 			HostContainersDashboards: metricsprovider.PersesHostDashboardAvailability(
-				resolvedHostSignalStatus)}, nil
+				resolvedHostSignalStatus),
+		}, persesStatus, identityBackendAvailable), nil
+	}
+	result, err := collectApplicationStatus(ctx, store, args)
+	if err != nil {
+		return applicationStatusResult{}, err
 	}
 	tlsStatus, tlsObservation, tlsErr := collectApplicationTLSObservation(resolved)
 	if tlsErr != nil || (tlsObservation != nil && !tlsObservation.Healthy) {
@@ -239,7 +279,7 @@ func collectApplicationStatusResult(ctx context.Context, store application.Store
 			}
 		}
 	}
-	return applicationStatusResult{
+	return withIdentityDashboardStatus(applicationStatusResult{
 		StatusResult:             result,
 		ApplicationID:            resolved.Manifest.ApplicationID,
 		DeploymentID:             resolved.DeploymentIdentity.DeploymentID,
@@ -251,10 +291,51 @@ func collectApplicationStatusResult(ctx context.Context, store application.Store
 		RuntimeDocsURL:           runtimeDocsURL,
 		ApplicationURLs:          applicationAccessURLs(resolved, result.Ready),
 		ManagementUI:             managementUI,
-		Perses:                   persesStatus,
 		HostContainersDashboards: metricsprovider.PersesHostDashboardAvailability(resolvedHostSignalStatus),
 		tlsStatus:                tlsStatus,
 		tlsErr:                   tlsErr,
 		serviceTLSErr:            serviceTLSErr,
-	}, nil
+	}, persesStatus, identityBackendAvailable), nil
+}
+
+// withIdentityDashboardStatus binds the same verified-only decision to both
+// local and remote public status results.
+func withIdentityDashboardStatus(result applicationStatusResult, persesStatus *capability.PersesStatus, eligible bool) applicationStatusResult {
+	result.Perses = persesStatus
+	result.IdentityDashboardEligible = eligible
+	return result
+}
+
+// identityDashboardBackendEligible is the verified-only, non-forgeable decision
+// the identity-dashboard gate publishes on BOTH status faces (the local return
+// and the remote-target early return share this one call). It is eligible ONLY
+// when:
+//
+//   - the Perses dashboard is verified (persesStatus == verified). PersesStatusNow
+//     maps manifest truth to not_configured | configured_unverified | verified;
+//     verified requires a real Perses health probe, so a selected, pinned
+//     surface without that probe stays configured_unverified and fails closed.
+//     Both not_configured and configured_unverified therefore fail closed.
+//
+//   - a real, current Keycloak native metrics signal exists for this concrete
+//     Target (MetricCurrent), the identity provider is actually selected, and
+//     the Keycloak placement is a valid, BaseHarbor-owned authorization for this
+//     Target (fail-closed). This is IdentitySelectionWitnessAt().NonForgeableAvailable(),
+//     which binds the signal to this Target's binding so a foreign Target's
+//     signal on the same sharing boundary cannot forge it.
+//
+// It is the single validated entrance for the identity-dashboard availability
+// flag on the status JSON; a caller can never obtain true by supplying a
+// verified status alone without the real witness (fail-closed on both faces).
+func identityDashboardBackendEligible(persesStatus *capability.PersesStatus, m application.Manifest, targetStateRoot, targetName string) bool {
+	// verified-only: not_configured and configured_unverified fail closed.
+	if persesStatus == nil || *persesStatus != capability.PersesStatusVerified {
+		return false
+	}
+	keycloakPlacement, keycloakErr := application.ResolveProviderPlacement(m, capability.ProviderKeycloak)
+	if keycloakErr != nil {
+		return false
+	}
+	identityWitness := metricsprovider.IdentitySelectionWitnessAt(m, keycloakPlacement, targetStateRoot, targetName)
+	return identityWitness.NonForgeableAvailable()
 }
