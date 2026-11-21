@@ -137,6 +137,7 @@ func providerComposeYAMLWithProviderNetworksAndAccess(placement Placement, regis
 		b.WriteString("      - --web.config.file=/etc/prometheus/web-config.yml\n")
 		b.WriteString("    volumes:\n")
 		b.WriteString("      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro\n")
+		b.WriteString("      - ./rules:/etc/prometheus/rules:ro\n")
 		b.WriteString("      - ./targets:/etc/prometheus/targets:ro\n")
 		b.WriteString("      - ./web-config.yml:/etc/prometheus/web-config.yml:ro\n")
 		b.WriteString("      - ./members/service-access/runtime:/run/baseharbor/tls:ro\n")
@@ -220,6 +221,11 @@ func prometheusConfig(registrations []sourceRegistration, hasRuntimeCA bool, pro
 	b.WriteString(`global:
   scrape_interval: 5s
   scrape_timeout: 4s
+
+  evaluation_interval: 5s
+
+rule_files:
+  - /etc/prometheus/rules/*.yml
 
 scrape_configs:
   - job_name: baseharbor-applications
