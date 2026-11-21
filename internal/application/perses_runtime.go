@@ -149,9 +149,17 @@ func writePersesGatewayComposeServices(b *strings.Builder, m Manifest, files Run
 	}
 	// The configuration's advertised address is part of the persisted plan
 	// identity check: the record must name exactly this deployment's Perses
-	// service alias, so a copied-in record cannot masquerade.
+	// service alias, so a copied-in record cannot masquerade. In the
+	// shared-namespace topology the gateway dials the namespace loopback (the
+	// Perses service binds loopback inside the joined namespace and has no
+	// network of its own), so the dial upstream is 127.0.0.1; the advertised
+	// ServiceAddress still carries the deployment alias for the certificate
+	// and configuration identities.
 	wantService := mPersesServiceAlias(m)
-	if plan.ServiceAddress != wantService || plan.Spec.Upstream != "http://"+wantService+":"+strconv.Itoa(serviceaccess.PersesUpstreamPort) {
+	wantUpstream := "http://" + wantService + ":" + strconv.Itoa(serviceaccess.PersesUpstreamPort)
+	loopbackUpstream := "http://127.0.0.1:" + strconv.Itoa(serviceaccess.PersesUpstreamPort)
+	if plan.ServiceAddress != wantService ||
+		(plan.Spec.Upstream != wantUpstream && plan.Spec.Upstream != loopbackUpstream) {
 		return errors.New("the persisted Perses gateway plan does not name this deployment's Perses service address: reconcile the deployment")
 	}
 	if !plan.SharedGatewayNetwork {
