@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/deployment"
 	testruntime "github.com/mcpdev80/baseharbor/internal/testsupport/runtimeprovider"
 )
 
@@ -32,6 +33,34 @@ func TestRepositoryWorkflowRealLifecycle(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	isolateRuntimeForTest(t, "repository-workflow")
+	// This integration test uses an isolated application identity on the
+	// authoritative disposable Core. Persist the matching test OIDC boundary so
+	// follow-up status/doctor checks exercise the configured auth path.
+	target, err := effectiveTarget(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	previousAuth, hadPreviousAuth, err := deployment.OperatorAuthForTargetEnvironment(target.Name, "dev")
+	if err != nil {
+		t.Fatalf("read existing operator-auth boundary: %v", err)
+	}
+	if err := deployment.SetOperatorAuthForTargetEnvironment(target.Name, "dev", deployment.OperatorAuthEnvironmentConfig{
+		Provider: "external-oidc", Issuer: "https://issuer.test", ClientID: "cli-test",
+	}); err != nil {
+		t.Fatalf("configure isolated operator-auth boundary: %v", err)
+	}
+	t.Cleanup(func() {
+		var err error
+		if hadPreviousAuth {
+			err = deployment.SetOperatorAuthForTargetEnvironment(target.Name, "dev", previousAuth)
+		} else {
+			err = deployment.DeleteOperatorAuthForTargetEnvironment(target.Name, "dev")
+		}
+		if err != nil {
+			t.Errorf("restore operator-auth boundary after repository lifecycle: %v", err)
+		}
+	})
+	ctx = testOperatorContext(ctx)
 
 	root := t.TempDir()
 	old, err := os.Getwd()

@@ -25,6 +25,7 @@ func TestAppBackupRestoreCLIRealDisasterRecovery(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Minute)
 	defer cancel()
+	ctx = testOperatorContext(ctx)
 
 	root := t.TempDir()
 	old, err := os.Getwd()
@@ -39,6 +40,15 @@ func TestAppBackupRestoreCLIRealDisasterRecovery(t *testing.T) {
 	t.Setenv("BASEHARBOR_STATE_DIR", filepath.Join(root, "platform-state"))
 	t.Setenv("BASEHARBOR_PROVIDER_CHANGE_CONSENT", "")
 	configureAppBackupRuntimeTarget(t, filepath.Join(root, "config"), filepath.Join(root, "data"))
+	target, err := effectiveTarget(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := deployment.SetOperatorAuthForTargetEnvironment(target.Name, "dev", deployment.OperatorAuthEnvironmentConfig{
+		Provider: "external-oidc", Issuer: "https://issuer.test", ClientID: "cli-test",
+	}); err != nil {
+		t.Fatalf("configure isolated operator-auth boundary: %v", err)
+	}
 	// LIFO cleanup first executes the owned fixture's cleanup registered below,
 	// then verifies the unrelated native volume before removing only that sentinel.
 	registerBackupForeignVolumeSentinel(t, ctx)
@@ -58,7 +68,7 @@ func TestAppBackupRestoreCLIRealDisasterRecovery(t *testing.T) {
 			return nil
 		},
 		func(cleanupCtx context.Context) error {
-			return approvedNativeFixtureCleanup(t, cleanupCtx, io.Discard)
+			return approvedNativeFixtureCleanup(t, testOperatorContext(cleanupCtx), io.Discard)
 		}); err != nil {
 		t.Fatalf("guided Core start / authenticated OpenBao readiness: %v", err)
 	}
