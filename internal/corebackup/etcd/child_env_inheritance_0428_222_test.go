@@ -79,9 +79,9 @@ func TestEtcdEnvInheritsParentEnv(t *testing.T) {
 		}
 		source := EtcdctlSource{
 			Etcdctl: ctl, Etcdutl: utl,
-			Endpoints: []string{"https://etcd-1.internal:2379"},
-			Identity:  Identity{Core: "core-1", Target: "target-1", Cluster: "cluster-1"},
-			TLS:       TLSFiles{CA: ca, Cert: cert, Key: key},
+			Endpoints:  []string{"https://etcd-1.internal:2379"},
+			Identity:   Identity{Core: "core-1", Target: "target-1", Cluster: "cluster-1"},
+			TLS:        TLSFiles{CA: ca, Cert: cert, Key: key},
 			ScratchDir: scratch,
 			Attest: func(context.Context) (SnapshotInfo, error) {
 				return SnapshotInfo{ClusterID: "cluster-1", Version: "3.6.0", Revision: 1}, nil
