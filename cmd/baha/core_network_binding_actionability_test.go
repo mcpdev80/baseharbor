@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -160,4 +161,64 @@ func Test0428207CoreNetworkBindingGuardActivationPathReturnsGuardedError(t *test
 		t.Fatalf("0428-207: real guard must return the protected-owner refusal through inspectCoreDefaultNetworkBinding, got %q", err.Error())
 	}
 	t.Log("0428-207 inspectCoreDefaultNetworkBinding returns the guarded protected-owner refusal through the real production function")
+}
+
+// This exercises the missing-inventory branch from the Core activation entry
+// point. A fake Docker CLI reports an already-existing native Core network but
+// no protected owner inventory. The preflight must stop before Compose config
+// or up can run.
+func Test0428207CoreActivationFailsBeforeComposeWhenOwnerInventoryMissing(t *testing.T) {
+	stateDir := t.TempDir()
+	t.Setenv("BASEHARBOR_STATE_DIR", stateDir)
+	target := configureTestTarget(t)
+	t.Setenv("BASEHARBOR_TARGET", "")
+	t.Setenv("DOCKER_HOST", "unix:///tmp/baseharbor-0428-207.sock")
+	t.Setenv("DOCKER_CONTEXT", "")
+
+	dataRoot, err := targetDataRoot(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	files := bhruntime.Files{
+		Project:         targetRuntimeProjectName(target),
+		ResourceProject: bhruntime.SharedResourceProjectName(target.Name),
+	}
+	network := bhruntime.ControlPlaneNetworkName(files.ResourceProject)
+	callLog := filepath.Join(t.TempDir(), "docker-calls.log")
+	binDir := t.TempDir()
+	docker := filepath.Join(binDir, "docker")
+	script := fmt.Sprintf(`#!/bin/sh
+printf '%%s\\n' "$*" >> %q
+case "$*" in
+  *"compose version"*) echo 'Docker Compose version v2.30.0'; exit 0 ;;
+  *"info --format"*) echo '{"ID":"test-daemon","SecurityOptions":["name=rootless"]}'; exit 0 ;;
+  *"network ls --format"*) echo %q; exit 0 ;;
+  *"network inspect --format"*) echo %q; exit 0 ;;
+  *"compose config"*|*"compose up"*) exit 71 ;;
+  *) exit 0 ;;
+esac
+`, callLog, network, network+"|"+files.Project+"|")
+	if err := os.WriteFile(docker, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	// Keep the shared-backend owner absent, matching the reported new-install
+	// App Edit case. Runtime state has also never been materialized.
+	if _, err := os.Stat(filepath.Join(dataRoot, "providers", "shared-backends", "core")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("0428-207 fixture unexpectedly has shared backend owner: %v", err)
+	}
+
+	_, _, err = startControlPlaneRuntime(withTargetOverride(context.Background(), target.Name), io.Discard, bhruntime.Ports{Postgres: 15432, OpenBao: 18200}, false)
+	if err == nil || !strings.Contains(err.Error(), "runtime inventory is missing") || !strings.Contains(err.Error(), "shared backend owner") {
+		calls, _ := os.ReadFile(callLog)
+		t.Fatalf("0428-207 Core activation must fail with actionable missing-owner refusal, got %v; Docker calls: %s", err, calls)
+	}
+	calls, readErr := os.ReadFile(callLog)
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if strings.Contains(string(calls), "compose config") || strings.Contains(string(calls), "compose up") {
+		t.Fatalf("0428-207 activation reached Compose after owner verification failed:\n%s", calls)
+	}
 }
