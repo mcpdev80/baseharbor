@@ -196,6 +196,16 @@ func appListCommand() *cli.Command {
 				}
 				items, warnings, err = deployment.ListDeploymentsForDisplay(target.Name)
 			}
+			// The operator has already been authenticated above; a missing
+			// Target config is now a clean no-config for this read-only,
+			// installation-wide inventory rather than an operator-auth failure.
+			// Tolerate it AFTER the authorization decision, never before it:
+			// a deleted config must not turn the operator-auth gate into a
+			// bypass. This is the only place ErrConfigMissing is tolerated here.
+			if errors.Is(err, deployment.ErrConfigMissing) {
+				items, warnings = nil, nil
+				err = nil
+			}
 			if err != nil {
 				return err
 			}
