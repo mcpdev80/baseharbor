@@ -90,6 +90,7 @@ func persesStatusCommand(store application.Store) *cli.Command {
 				return writeJSON(out, result)
 			}
 			fmt.Fprintf(out, "Perses state: %s\n", result.State)
+			renderPersesBackendWitness(out, result.BackendWitness)
 			return nil
 		},
 	}
