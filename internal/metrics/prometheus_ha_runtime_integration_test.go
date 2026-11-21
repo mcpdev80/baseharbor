@@ -183,9 +183,12 @@ HTTPServer(("0.0.0.0", 8080), Handler).serve_forever()
 	if output, err := exec.CommandContext(ctx, string(runtime.Kind()), "exec", containerName, "touch", "/tmp/down").CombinedOutput(); err != nil {
 		t.Fatalf("mark test metrics target unavailable: %v\n%s", err, output)
 	}
-	waitPrometheusAlertFiring(t, ctx, client, endpoint)
-	restartStartedAt := time.Now()
 	members := []string{"prometheus-1", "prometheus-2"}
+	waitPrometheusAlertFiring(t, ctx, client, endpoint)
+	for _, member := range members {
+		waitPrometheusMemberAlertFiring(t, ctx, string(runtime.Kind()), network, files, oldMaterial, member)
+	}
+	restartStartedAt := time.Now()
 	if err := runtime.StopProjectFilesSelected(ctx, placement.Project, files.Dir, environment, members, files.Compose); err != nil {
 		t.Fatalf("stop Prometheus members with an active alert: %v", err)
 	}
@@ -193,7 +196,10 @@ HTTPServer(("0.0.0.0", 8080), Handler).serve_forever()
 		t.Fatalf("restart Prometheus members with existing TSDB data: %v", err)
 	}
 	waitPrometheusRuleAndAlert(t, ctx, client, endpoint)
-	assertPrometheusAlertHistorySurvivedRestart(t, ctx, client, endpoint, restartStartedAt)
+	for _, member := range members {
+		waitPrometheusMemberAlertFiring(t, ctx, string(runtime.Kind()), network, files, oldMaterial, member)
+		assertPrometheusAlertHistorySurvivedRestart(t, ctx, string(runtime.Kind()), network, files, oldMaterial, member, restartStartedAt)
+	}
 	if output, err := exec.CommandContext(ctx, string(runtime.Kind()), "exec", containerName, "rm", "-f", "/tmp/down").CombinedOutput(); err != nil {
 		t.Fatalf("restore test metrics target: %v\n%s", err, output)
 	}
@@ -285,7 +291,26 @@ func waitPrometheusRuleAndAlert(t *testing.T, ctx context.Context, client *http.
 	t.Fatal("Prometheus did not reload and evaluate the persisted alert rule after restart")
 }
 
-func assertPrometheusAlertHistorySurvivedRestart(t *testing.T, ctx context.Context, client *http.Client, endpoint string, restartStartedAt time.Time) {
+func waitPrometheusMemberAlertFiring(t *testing.T, ctx context.Context, runtimeBinary, network string, files ProviderFiles, material serviceaccess.TLSMaterial, member string) {
+	t.Helper()
+	query := `ALERTS{alertname="BaseHarborTargetUnavailable",alertstate="firing"} == 1`
+	path := "/api/v1/query?" + url.Values{"query": []string{query}}.Encode()
+	deadline := time.Now().Add(90 * time.Second)
+	for time.Now().Before(deadline) {
+		result := queryPrometheusMember(t, ctx, runtimeBinary, network, files, material, member, "firing", path, "0")
+		if result.Firing {
+			return
+		}
+		select {
+		case <-ctx.Done():
+			t.Fatalf("waiting for Prometheus member %s alert: %v", member, ctx.Err())
+		case <-time.After(time.Second):
+		}
+	}
+	t.Fatalf("Prometheus member %s did not independently evaluate the alert", member)
+}
+
+func assertPrometheusAlertHistorySurvivedRestart(t *testing.T, ctx context.Context, runtimeBinary, network string, files ProviderFiles, material serviceaccess.TLSMaterial, member string, restartStartedAt time.Time) {
 	t.Helper()
 	query := `ALERTS{alertname="BaseHarborTargetUnavailable",alertstate="firing"}`
 	values := url.Values{
@@ -294,52 +319,58 @@ func assertPrometheusAlertHistorySurvivedRestart(t *testing.T, ctx context.Conte
 		"end":   []string{fmt.Sprintf("%f", float64(time.Now().UnixNano())/1e9)},
 		"step":  []string{"5"},
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(endpoint, "/")+"/api/v1/query_range?"+values.Encode(), nil)
+	path := "/api/v1/query_range?" + values.Encode()
+	compareAt := fmt.Sprintf("%f", float64(restartStartedAt.UnixNano())/1e9)
+	result := queryPrometheusMember(t, ctx, runtimeBinary, network, files, material, member, "history", path, compareAt)
+	if !result.BeforeRestart || !result.AfterRestart {
+		t.Fatalf("Prometheus member %s alert history before restart=%v after restart=%v; want both from its persistent TSDB", member, result.BeforeRestart, result.AfterRestart)
+	}
+}
+
+type prometheusMemberQueryResult struct {
+	Firing        bool `json:"firing"`
+	BeforeRestart bool `json:"before_restart"`
+	AfterRestart  bool `json:"after_restart"`
+}
+
+func queryPrometheusMember(t *testing.T, ctx context.Context, runtimeBinary, network string, files ProviderFiles, material serviceaccess.TLSMaterial, member, mode, path, compareAt string) prometheusMemberQueryResult {
+	t.Helper()
+	const script = `import http.client, json, socket, ssl, sys
+member, mode, path, ca_file, cert_file, key_file = sys.argv[1:7]
+context = ssl.create_default_context(cafile=ca_file)
+context.load_cert_chain(cert_file, key_file)
+class MemberConnection(http.client.HTTPSConnection):
+    def connect(self):
+        raw = socket.create_connection((self.host, self.port), self.timeout)
+        self.sock = context.wrap_socket(raw, server_hostname="prometheus")
+connection = MemberConnection(member, 9090, context=context, timeout=10)
+connection.request("GET", path)
+response = connection.getresponse()
+payload = json.loads(response.read())
+if response.status < 200 or response.status >= 300 or payload.get("status") != "success":
+    raise SystemExit("Prometheus member query failed: HTTP " + str(response.status))
+result = payload.get("data", {}).get("result", [])
+answer = {"firing": bool(result), "before_restart": False, "after_restart": False}
+if mode == "history":
+    for series in result:
+        for sample in series.get("values", []):
+            if len(sample) == 2:
+                answer["before_restart"] |= float(sample[0]) < float(sys.argv[7])
+                answer["after_restart"] |= float(sample[0]) >= float(sys.argv[7])
+print(json.dumps(answer, separators=(",", ":")))
+`
+	pkiDir := filepath.Join(files.Dir, "service-access", "pki")
+	args := []string{"run", "--rm", "--network", network, "-v", pkiDir + ":/pki:ro", "docker.io/library/python:3.13-alpine", "python", "-c", script,
+		member, mode, path, "/pki/" + filepath.Base(material.CA), "/pki/" + filepath.Base(material.ClientCertificate), "/pki/" + filepath.Base(material.ClientKey), compareAt}
+	output, err := exec.CommandContext(ctx, runtimeBinary, args...).CombinedOutput()
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("query Prometheus member %s: %v\n%s", member, err, output)
 	}
-	resp, err := client.Do(req)
-	if err != nil {
-		t.Fatalf("query persisted Prometheus alert history: %v", err)
+	var result prometheusMemberQueryResult
+	if err := json.Unmarshal(output, &result); err != nil {
+		t.Fatalf("decode Prometheus member %s query: %v\n%s", member, err, output)
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		t.Fatalf("query persisted Prometheus alert history: HTTP %d", resp.StatusCode)
-	}
-	var payload struct {
-		Status string `json:"status"`
-		Data   struct {
-			Result []struct {
-				Values [][]any `json:"values"`
-			} `json:"result"`
-		} `json:"data"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
-		t.Fatalf("decode Prometheus alert history: %v", err)
-	}
-	if payload.Status != "success" {
-		t.Fatalf("Prometheus alert history status = %q, want success", payload.Status)
-	}
-	var beforeRestart, afterRestart bool
-	for _, series := range payload.Data.Result {
-		for _, sample := range series.Values {
-			if len(sample) != 2 {
-				continue
-			}
-			timestamp, ok := sample[0].(float64)
-			if !ok {
-				continue
-			}
-			if timestamp < float64(restartStartedAt.UnixNano())/1e9 {
-				beforeRestart = true
-			} else {
-				afterRestart = true
-			}
-		}
-	}
-	if !beforeRestart || !afterRestart {
-		t.Fatalf("Prometheus alert history before restart=%v after restart=%v; want both from the persistent TSDB", beforeRestart, afterRestart)
-	}
+	return result
 }
 
 func waitPrometheusHAReady(t *testing.T, ctx context.Context, driver *Driver, resource capability.Resource, binding capability.Binding) {
