@@ -123,8 +123,17 @@ func appListCommand() *cli.Command {
 					return unknownOptionUsage("baha app list", arg, "--all-targets")
 				}
 			}
-			if err := authorizeCurrentMCPContext(ctx, "app.list", "", "", ""); err != nil {
-				return err
+			var authorizationErr error
+			if allTargets {
+				// The installation-wide inventory intentionally survives removal of
+				// Target configuration. Authenticate the operator without requiring
+				// an effective Target that no longer exists.
+				authorizationErr = authorizeMCPOperation(ctx, "app.list", "", "dev", "", "")
+			} else {
+				authorizationErr = authorizeCurrentMCPContext(ctx, "app.list", "", "", "")
+			}
+			if authorizationErr != nil {
+				return authorizationErr
 			}
 			// An all-targets inventory is a read-only installation-wide view. It
 			// must remain available after `destroy --all` removes the Target

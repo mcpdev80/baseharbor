@@ -114,6 +114,9 @@ Operator-, Tenant- oder Node-Rechte.
 Diese Laufzeit verbraucht ein bereits vorbereitetes Zertifikat/Schlüsselpaar. Zertifikatsausgabe, ACME, interne PKI, BYOC Entdeckung, Kettenbau und Erneuerung gehören zum dedizierten Zertifikatsmanagement-Meilenstein und werden hier absichtlich nicht umgesetzt.
 
 Der Server benötigt TLS und verwendet TLS 1.2 oder neuer. Ein fehlendes oder ungültiges Zertifikat/Schlüsselpaar verhindert das Starten.
+Die Maschinen-API verweigert den Start zusätzlich, wenn dem Ausführungsjournal kein
+dauerhaftes Operationsverzeichnis gesetzt ist. Das geprüfte Startverhalten
+dokumentiert das [Core-Bediene-API-Runbook](../how-to/operator-api.md).
 
 ## Herunterfahren
 

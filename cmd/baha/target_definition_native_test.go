@@ -37,7 +37,7 @@ func nativeTargetDefinitionRecovery(t *testing.T, ctx context.Context, session *
 		t.Fatal("original live Core/sibling inventory unavailable", err)
 	}
 	var out bytes.Buffer
-	if err := runWithIO(withProviderChangeConsent(ctx, nil), []string{"target", "delete", name, "-o", "json"}, &out, io.Discard); err == nil || machine.Classify(err).Code != machine.ErrorApprovalRequired {
+	if err := runWithIOAsTestOperator(withProviderChangeConsent(ctx, nil), []string{"target", "delete", name, "-o", "json"}, &out, io.Discard); err == nil || machine.Classify(err).Code != machine.ErrorApprovalRequired {
 		t.Fatal("native unacknowledged Target detach accepted", err)
 	}
 	plan, err := buildTargetDefinitionChangePlan(ctx, name, "")
@@ -71,7 +71,7 @@ func nativeTargetDefinitionRecovery(t *testing.T, ctx context.Context, session *
 	}
 	out.Reset()
 	ack = &application.ProviderChangeConsent{PlanID: restore.Scope.PlanID, First: true, Second: true}
-	if err := runWithIO(withProviderChangeConsent(ctx, ack), []string{"target", "create", name, "--from-recovery", result.RecoveryFile, "-o", "json"}, &out, io.Discard); err != nil {
+	if err := runWithIOAsTestOperator(withProviderChangeConsent(ctx, ack), []string{"target", "create", name, "--from-recovery", result.RecoveryFile, "-o", "json"}, &out, io.Discard); err != nil {
 		t.Fatal("native CLI original-definition restoration", err)
 	}
 	if _, err := effectiveTarget(ctx); err == nil {

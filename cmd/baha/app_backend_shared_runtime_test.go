@@ -51,7 +51,7 @@ func qualifySharedBackendConsumers(t *testing.T, ctx context.Context, provider b
 	var siblingIdentity [32]byte
 	inSelectiveIdentityRepository(t, siblingRoot, func() {
 		var output bytes.Buffer
-		if err := runWithIO(ctx, []string{"app", "init", "--quick", "--json"}, &output, &output); err != nil {
+		if err := runWithIOAsTestOperator(ctx, []string{"app", "init", "--quick", "--json"}, &output, &output); err != nil {
 			t.Fatalf("initialize backend sibling: %v\n%s", err, output.String())
 		}
 		applySelectiveIdentityIntent(t, ctx)

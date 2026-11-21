@@ -39,7 +39,7 @@ func TestQuickAdoptionCarriesExposureAndRepeatedInitPreservesContract(t *testing
 				args = append(args, "--json")
 			}
 			var out, errOut bytes.Buffer
-			if err := runWithIO(context.Background(), args, &out, &errOut); err != nil {
+			if err := runWithIOAsTestOperator(context.Background(), args, &out, &errOut); err != nil {
 				t.Fatalf("initial adoption: %v %s", err, errOut.String())
 			}
 			original, err := os.ReadFile(application.RepositoryManifestName)
@@ -62,7 +62,7 @@ func TestQuickAdoptionCarriesExposureAndRepeatedInitPreservesContract(t *testing
 			}
 			out.Reset()
 			errOut.Reset()
-			if err := runWithIO(context.Background(), args, &out, &errOut); err != nil {
+			if err := runWithIOAsTestOperator(context.Background(), args, &out, &errOut); err != nil {
 				t.Fatalf("repeat: %v %s", err, errOut.String())
 			}
 			repeated, err := os.ReadFile(application.RepositoryManifestName)
@@ -88,7 +88,7 @@ func TestQuickAdoptionCarriesExposureAndRepeatedInitPreservesContract(t *testing
 func TestQuickAdoptionRejectsAmbiguousHTTPSPortsBeforeWriting(t *testing.T) {
 	configureTestTarget(t)
 	t.Chdir(httpsAdoptionFixture(t, true))
-	err := runWithIO(context.Background(), []string{"app", "init", "--quick", "--no-input"}, io.Discard, io.Discard)
+	err := runWithIOAsTestOperator(context.Background(), []string{"app", "init", "--quick", "--no-input"}, io.Discard, io.Discard)
 	if err == nil || !strings.Contains(err.Error(), "ambiguous") {
 		t.Fatalf("ambiguous port accepted: %v", err)
 	}
@@ -104,7 +104,7 @@ func TestStandalonePreflightCLIAndMCPRejectMissingWorkloadExposure(t *testing.T)
 	manifest := application.Manifest{Version: application.CurrentVersion, ApplicationID: application.MustNewApplicationID(), Name: "demo", Environment: "dev", Workload: application.WorkloadConfig{Components: []string{"demo-app"}}}
 	mustWriteInitializedAuthoredManifest(t, application.RepositoryManifestName, manifest)
 	var out, errOut bytes.Buffer
-	if err := runWithIO(context.Background(), []string{"app", "preflight", "--json"}, &out, &errOut); err == nil {
+	if err := runWithIOAsTestOperator(context.Background(), []string{"app", "preflight", "--json"}, &out, &errOut); err == nil {
 		t.Fatal("CLI accepted missing exposure")
 	}
 	var cliResult applicationPreflightResult
@@ -164,7 +164,7 @@ func TestApplicationHelpAndCommandRegistryHaveUniqueChildren(t *testing.T) {
 	}
 	walk(rootCommand())
 	var out bytes.Buffer
-	if err := runWithIO(context.Background(), []string{"app", "--help"}, &out, io.Discard); err != nil {
+	if err := runWithIOAsTestOperator(context.Background(), []string{"app", "--help"}, &out, io.Discard); err != nil {
 		t.Fatal(err)
 	}
 	if strings.Count(out.String(), "Create a new ecosystem-native application") != 1 {

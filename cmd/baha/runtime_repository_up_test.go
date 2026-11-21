@@ -22,7 +22,7 @@ func TestRepositoryUpRejectsAuthoredIdentityBeforeManagementInitialization(t *te
 		t.Fatal(err)
 	}
 	var output bytes.Buffer
-	err := runWithIO(machineNoninteractiveContext(context.Background()), []string{"up", "--yes", "--skip-memory-preflight"}, &output, &output)
+	err := runWithIOAsTestOperator(machineNoninteractiveContext(context.Background()), []string{"up", "--yes", "--skip-memory-preflight"}, &output, &output)
 	if err == nil || !strings.Contains(err.Error(), "app.id") {
 		t.Fatalf("authored identity did not fail before management bootstrap: %v", err)
 	}
