@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"sort"
 	"strings"
 )
 
@@ -54,6 +55,16 @@ func configRoot() (string, error) {
 		return "", errors.New("cannot determine BaseHarbor organization config directory")
 	}
 	return filepath.Join(base, "baseharbor", "organization"), nil
+}
+
+// StateRootSelected reports whether this invocation uses an isolated
+// installation root instead of the ambient user configuration.
+func StateRootSelected() bool {
+	return stateRootOverride() != ""
+}
+
+func stateRootOverride() string {
+	return strings.TrimSpace(os.Getenv("BASEHARBOR_STATE_DIR"))
 }
 
 func cacheRoot() (string, error) {
@@ -359,7 +370,14 @@ func LoadActiveOptional() (ActiveState, bool, error) {
 			return ActiveState{}, false, fmt.Errorf("read active organization configuration after migration: %w", err)
 		}
 	}
-	return decodeActive(data)
+	state, ok, err := decodeActive(data)
+	if err != nil || !ok {
+		return state, ok, err
+	}
+	if StateRootSelected() && !state.Resolution.selectsWithin(stateRootOverride()) {
+		return ActiveState{}, false, nil
+	}
+	return state, true, nil
 }
 
 // decodeActive validates a decoded active organization configuration. It is
@@ -377,6 +395,52 @@ func decodeActive(data []byte) (ActiveState, bool, error) {
 		return ActiveState{}, false, fmt.Errorf("validate active organization resolution: %w", err)
 	}
 	return state, true, nil
+}
+
+// StateRootOwnsOrganizationState reports whether an active organization
+// resolution belongs to this invocation's isolated state root.
+func StateRootOwnsOrganizationState(state ActiveState) bool {
+	return !StateRootSelected() || state.Resolution.selectsWithin(stateRootOverride())
+}
+
+// OrganizationTargetSelection returns the organization's default target, or
+// the first configured environment target in stable name order.
+func OrganizationTargetSelection(state ActiveState) string {
+	if target := strings.TrimSpace(state.Config.Defaults.Target); target != "" {
+		return target
+	}
+	names := make([]string, 0, len(state.Config.Environments))
+	for name := range state.Config.Environments {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		if target := strings.TrimSpace(state.Config.Environments[name].Target); target != "" {
+			return target
+		}
+	}
+	return ""
+}
+
+func (r Resolution) selectsWithin(root string) bool {
+	root = filepath.Clean(strings.TrimSpace(root))
+	if root == "" {
+		return true
+	}
+	source := filepath.Clean(strings.TrimSpace(r.Source.Location))
+	if source == "" && strings.TrimSpace(r.CachePath) == "" {
+		return true
+	}
+	for _, path := range []string{source, r.CachePath} {
+		path = filepath.Clean(strings.TrimSpace(path))
+		if path == "" {
+			continue
+		}
+		if path == root || strings.HasPrefix(path, root+string(os.PathSeparator)) {
+			return true
+		}
+	}
+	return source == filepath.Join(root, "config", "organization") || source == filepath.Join(root, "config")
 }
 
 func SaveActive(state ActiveState) error {
