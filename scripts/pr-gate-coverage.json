@@ -112,7 +112,8 @@
     "source.package.atomic.podman.identity",
     "source.package.atomic.podman.lifecycle",
     "source.package.integration.static.public.contracts",
-    "workstation.onboarding"
+    "workstation.onboarding",
+    "gate.prometheus-alert-rules"
   ],
   "packages": [
     {
@@ -1285,7 +1286,9 @@
         "source.gate.atomic.podman.lifecycle"
       ],
       "runtime_specific": true,
-      "required_test_names": ["TestSelectedStopAcceptsPinnedContainerName"]
+      "required_test_names": [
+        "TestSelectedStopAcceptsPinnedContainerName"
+      ]
     },
     {
       "id": "runtime.podman-service-stop-tests",
@@ -1294,7 +1297,9 @@
         "source.gate.atomic.podman.lifecycle"
       ],
       "runtime_specific": true,
-      "required_test_names": ["TestSelectedStopAcceptsPinnedContainerName"]
+      "required_test_names": [
+        "TestSelectedStopAcceptsPinnedContainerName"
+      ]
     },
     {
       "id": "source.cmd.baha.app.backend.selective.runtime.test.go",
@@ -1304,7 +1309,9 @@
         "source.gate.integration.docker.coreless.lifecycle",
         "source.gate.integration.podman.coreless.lifecycle"
       ],
-      "required_test_names": ["TestSelectiveBackendCleanupPreservesRuntimeBaseline"]
+      "required_test_names": [
+        "TestSelectiveBackendCleanupPreservesRuntimeBaseline"
+      ]
     },
     {
       "id": "source.cmd.baha.app.backend.shared.runtime.test.go",
@@ -1323,24 +1330,35 @@
         "source.gate.integration.docker.coreless.lifecycle",
         "source.gate.integration.podman.coreless.lifecycle"
       ],
-      "required_test_names": ["TestSelectiveApplicationBackendRuntimeAddRemoveReAdd"]
+      "required_test_names": [
+        "TestSelectiveApplicationBackendRuntimeAddRemoveReAdd"
+      ]
     },
     {
       "id": "source.scripts.pre.release.integration",
       "path": "scripts/pre-release-integration.py",
-      "surfaces": ["source.gate.integration.docker.coreless.lifecycle", "source.gate.integration.podman.coreless.lifecycle"],
+      "surfaces": [
+        "source.gate.integration.docker.coreless.lifecycle",
+        "source.gate.integration.podman.coreless.lifecycle"
+      ],
       "runtime_specific": true
     },
     {
       "id": "source.workflow.pre.release",
       "path": ".github/workflows/pre-release.yml",
-      "surfaces": ["source.gate.integration.docker.coreless.lifecycle", "source.gate.integration.podman.coreless.lifecycle"],
+      "surfaces": [
+        "source.gate.integration.docker.coreless.lifecycle",
+        "source.gate.integration.podman.coreless.lifecycle"
+      ],
       "runtime_specific": true
     },
     {
       "id": "source.workflow.targeted.integration",
       "path": ".github/workflows/targeted-integration.yml",
-      "surfaces": ["source.gate.integration.docker.coreless.lifecycle", "source.gate.integration.podman.coreless.lifecycle"],
+      "surfaces": [
+        "source.gate.integration.docker.coreless.lifecycle",
+        "source.gate.integration.podman.coreless.lifecycle"
+      ],
       "runtime_specific": true
     },
     {
@@ -1396,7 +1414,7 @@
         "source.gate.atomic.docker.guided",
         "source.gate.atomic.podman.guided"
       ]
-},
+    },
     {
       "id": "source.cmd.baha.app.capability.runtime.test.go",
       "path": "cmd/baha/app_capability_runtime_test.go",
@@ -1405,7 +1423,9 @@
         "source.gate.integration.docker.coreless.lifecycle",
         "source.gate.integration.podman.coreless.lifecycle"
       ],
-      "required_test_names": ["TestApplicationCapabilityLifecycleExistingCore"]
+      "required_test_names": [
+        "TestApplicationCapabilityLifecycleExistingCore"
+      ]
     },
     {
       "id": "source.cmd.baha.app.https.selective.runtime.test.go",
@@ -1415,7 +1435,9 @@
         "source.gate.integration.docker.coreless.lifecycle",
         "source.gate.integration.podman.coreless.lifecycle"
       ],
-      "required_test_names": ["TestSelectiveHTTPSRuntimeAddRemoveReAdd"]
+      "required_test_names": [
+        "TestSelectiveHTTPSRuntimeAddRemoveReAdd"
+      ]
     },
     {
       "id": "source.cmd.baha.application.otlp.handoff.runtime.test.go",
@@ -1425,7 +1447,99 @@
         "source.gate.integration.docker.coreless.lifecycle",
         "source.gate.integration.podman.coreless.lifecycle"
       ],
-      "required_test_names": ["TestManagedRegisteredOTLPNativeConsumerHandoff"]
+      "required_test_names": [
+        "TestManagedRegisteredOTLPNativeConsumerHandoff"
+      ]
+    },
+    {
+      "id": "source.internal.metrics.perses.prometheus.alerts.go",
+      "path": "internal/metrics/perses_prometheus_alerts.go",
+      "surfaces": [
+        "source.gate.atomic.docker.observability",
+        "source.gate.atomic.podman.observability",
+        "gate.prometheus-alert-rules"
+      ]
+    },
+    {
+      "id": "source.internal.metrics.perses.prometheus.alerts.test.go",
+      "path": "internal/metrics/perses_prometheus_alerts_test.go",
+      "surfaces": [
+        "source.gate.atomic.docker.observability",
+        "source.gate.atomic.podman.observability",
+        "gate.prometheus-alert-rules"
+      ],
+      "required_test_names": [
+        "TestSyncPrometheusAlertRules"
+      ]
+    },
+    {
+      "id": "source.internal.metrics.prometheus.go",
+      "path": "internal/metrics/prometheus.go",
+      "surfaces": [
+        "source.gate.atomic.docker.observability",
+        "source.gate.atomic.podman.observability",
+        "gate.prometheus-alert-rules"
+      ]
+    },
+    {
+      "id": "source.internal.metrics.prometheus.files.go",
+      "path": "internal/metrics/prometheus_files.go",
+      "surfaces": [
+        "source.gate.atomic.docker.observability",
+        "source.gate.atomic.podman.observability",
+        "gate.prometheus-alert-rules"
+      ]
+    },
+    {
+      "id": "source.internal.metrics.prometheus.ha.runtime.integration.test.go",
+      "path": "internal/metrics/prometheus_ha_runtime_integration_test.go",
+      "surfaces": [
+        "source.gate.atomic.docker.observability",
+        "source.gate.atomic.podman.observability",
+        "gate.prometheus-alert-rules"
+      ],
+      "required_test_names": [
+        "TestPrometheusHARuntimeFailoverAcceptanceInCI"
+      ]
+    },
+    {
+      "id": "source.internal.metrics.prometheus.render.go",
+      "path": "internal/metrics/prometheus_render.go",
+      "surfaces": [
+        "source.gate.atomic.docker.observability",
+        "source.gate.atomic.podman.observability",
+        "gate.prometheus-alert-rules"
+      ]
+    },
+    {
+      "id": "source.internal.metrics.prometheus.shared.go",
+      "path": "internal/metrics/prometheus_shared.go",
+      "surfaces": [
+        "source.gate.atomic.docker.observability",
+        "source.gate.atomic.podman.observability",
+        "gate.prometheus-alert-rules"
+      ]
+    },
+    {
+      "id": "source.internal.metrics.prometheus.alert.rules.go",
+      "path": "internal/metrics/prometheus_alert_rules.go",
+      "surfaces": [
+        "source.gate.atomic.docker.observability",
+        "source.gate.atomic.podman.observability",
+        "gate.prometheus-alert-rules"
+      ]
+    },
+    {
+      "id": "source.internal.metrics.prometheus.alert.rules.test.go",
+      "path": "internal/metrics/prometheus_alert_rules_test.go",
+      "surfaces": [
+        "source.gate.atomic.docker.observability",
+        "source.gate.atomic.podman.observability",
+        "gate.prometheus-alert-rules"
+      ],
+      "required_test_names": [
+        "TestSyncPrometheusAlertRules"
+      ]
     }
   ],
   "gates": [
@@ -2749,6 +2863,25 @@
       ],
       "source_components": [
         "podman.second-target-conflict-tests"
+      ],
+      "selection_scope": "focused"
+    },
+    {
+      "id": "native/docker/prometheus-alert-rules",
+      "runtime": "docker",
+      "covers": [
+        "gate.prometheus-alert-rules"
+      ],
+      "source_components": [
+        "source.internal.metrics.perses.prometheus.alerts.go",
+        "source.internal.metrics.perses.prometheus.alerts.test.go",
+        "source.internal.metrics.prometheus.go",
+        "source.internal.metrics.prometheus.files.go",
+        "source.internal.metrics.prometheus.ha.runtime.integration.test.go",
+        "source.internal.metrics.prometheus.render.go",
+        "source.internal.metrics.prometheus.shared.go",
+        "source.internal.metrics.prometheus.alert.rules.go",
+        "source.internal.metrics.prometheus.alert.rules.test.go"
       ],
       "selection_scope": "focused"
     }

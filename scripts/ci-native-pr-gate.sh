@@ -73,6 +73,10 @@ PY
     export BASEHARBOR_PERSES_RUNTIME_SMOKE=1
     run_exact_test TestPersesRuntimeSmokeDockerIsolated 5m ./internal/application
     ;;
+  native/docker/prometheus-alert-rules)
+    export BASEHARBOR_PROMETHEUS_HA_ACCEPTANCE=1
+    run_exact_test TestPrometheusHARuntimeFailoverAcceptanceInCI 12m ./internal/metrics
+    ;;
   *)
     echo "REJECT: unsupported native PR gate $gate_id" >&2
     exit 2

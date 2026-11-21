@@ -2,7 +2,10 @@ package metrics
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -71,6 +74,7 @@ func TestPrometheusHARuntimeFailoverAcceptanceInCI(t *testing.T) {
 
 	containerName := "baseharbor-prometheus-ha-target"
 	script := `from http.server import BaseHTTPRequestHandler, HTTPServer
+import os
 
 payload = b"""# TYPE baseharbor_ha_acceptance gauge
 baseharbor_ha_acceptance 1
@@ -81,6 +85,10 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path != "/metrics":
             self.send_response(404)
+            self.end_headers()
+            return
+        if os.path.exists("/tmp/down"):
+            self.send_response(503)
             self.end_headers()
             return
         self.send_response(200)
@@ -165,6 +173,32 @@ HTTPServer(("0.0.0.0", 8080), Handler).serve_forever()
 	if err != nil {
 		t.Fatal(err)
 	}
+	client, err := providerHTTPClient(app, files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := verifyPrometheusAlertRuleAPI(ctx, client, endpoint); err != nil {
+		t.Fatalf("Prometheus did not load and evaluate the managed alert rule: %v", err)
+	}
+	if output, err := exec.CommandContext(ctx, string(runtime.Kind()), "exec", containerName, "touch", "/tmp/down").CombinedOutput(); err != nil {
+		t.Fatalf("mark test metrics target unavailable: %v\n%s", err, output)
+	}
+	waitPrometheusAlertFiring(t, ctx, client, endpoint)
+	restartStartedAt := time.Now()
+	members := []string{"prometheus-1", "prometheus-2"}
+	if err := runtime.StopProjectFilesSelected(ctx, placement.Project, files.Dir, environment, members, files.Compose); err != nil {
+		t.Fatalf("stop Prometheus members with an active alert: %v", err)
+	}
+	if err := runtime.UpProjectFilesSelected(ctx, placement.Project, files.Dir, environment, members, files.Compose); err != nil {
+		t.Fatalf("restart Prometheus members with existing TSDB data: %v", err)
+	}
+	waitPrometheusRuleAndAlert(t, ctx, client, endpoint)
+	assertPrometheusAlertHistorySurvivedRestart(t, ctx, client, endpoint, restartStartedAt)
+	if output, err := exec.CommandContext(ctx, string(runtime.Kind()), "exec", containerName, "rm", "-f", "/tmp/down").CombinedOutput(); err != nil {
+		t.Fatalf("restore test metrics target: %v\n%s", err, output)
+	}
+	waitPrometheusHAReady(t, ctx, driver, resource, binding)
+
 	assertPrometheusRetiredMaterialRejected(t, ctx, accessPolicy, endpoint, newMaterial, oldCA, nil, nil, "retired CA")
 	assertPrometheusRetiredMaterialRejected(t, ctx, accessPolicy, endpoint, newMaterial, nil, oldClientCert, oldClientKey, "retired client certificate")
 }
@@ -212,6 +246,99 @@ func assertPrometheusRetiredMaterialRejected(t *testing.T, ctx context.Context, 
 	if err == nil {
 		_ = resp.Body.Close()
 		t.Fatalf("%s still authenticates/validates the rotated Prometheus endpoint", label)
+	}
+}
+
+func waitPrometheusAlertFiring(t *testing.T, ctx context.Context, client *http.Client, endpoint string) {
+	t.Helper()
+	query := `ALERTS{alertname="BaseHarborTargetUnavailable",alertstate="firing"} == 1`
+	deadline := time.Now().Add(90 * time.Second)
+	for time.Now().Before(deadline) {
+		firing, err := queryUp(ctx, client, endpoint, query)
+		if err == nil && firing {
+			return
+		}
+		select {
+		case <-ctx.Done():
+			t.Fatalf("waiting for Prometheus alert to fire: %v", ctx.Err())
+		case <-time.After(time.Second):
+		}
+	}
+	t.Fatal("Prometheus did not evaluate the unavailable-target alert")
+}
+
+func waitPrometheusRuleAndAlert(t *testing.T, ctx context.Context, client *http.Client, endpoint string) {
+	t.Helper()
+	deadline := time.Now().Add(90 * time.Second)
+	for time.Now().Before(deadline) {
+		ruleErr := verifyPrometheusAlertRuleAPI(ctx, client, endpoint)
+		firing, alertErr := queryUp(ctx, client, endpoint, `ALERTS{alertname="BaseHarborTargetUnavailable",alertstate="firing"} == 1`)
+		if ruleErr == nil && alertErr == nil && firing {
+			return
+		}
+		select {
+		case <-ctx.Done():
+			t.Fatalf("waiting for Prometheus rule and alert after restart: %v", ctx.Err())
+		case <-time.After(time.Second):
+		}
+	}
+	t.Fatal("Prometheus did not reload and evaluate the persisted alert rule after restart")
+}
+
+func assertPrometheusAlertHistorySurvivedRestart(t *testing.T, ctx context.Context, client *http.Client, endpoint string, restartStartedAt time.Time) {
+	t.Helper()
+	query := `ALERTS{alertname="BaseHarborTargetUnavailable",alertstate="firing"}`
+	values := url.Values{
+		"query": []string{query},
+		"start": []string{fmt.Sprintf("%f", float64(restartStartedAt.Add(-2*time.Minute).UnixNano())/1e9)},
+		"end":   []string{fmt.Sprintf("%f", float64(time.Now().UnixNano())/1e9)},
+		"step":  []string{"5"},
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(endpoint, "/")+"/api/v1/query_range?"+values.Encode(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("query persisted Prometheus alert history: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		t.Fatalf("query persisted Prometheus alert history: HTTP %d", resp.StatusCode)
+	}
+	var payload struct {
+		Status string `json:"status"`
+		Data   struct {
+			Result []struct {
+				Values [][]any `json:"values"`
+			} `json:"result"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode Prometheus alert history: %v", err)
+	}
+	if payload.Status != "success" {
+		t.Fatalf("Prometheus alert history status = %q, want success", payload.Status)
+	}
+	var beforeRestart, afterRestart bool
+	for _, series := range payload.Data.Result {
+		for _, sample := range series.Values {
+			if len(sample) != 2 {
+				continue
+			}
+			timestamp, ok := sample[0].(float64)
+			if !ok {
+				continue
+			}
+			if timestamp < float64(restartStartedAt.UnixNano())/1e9 {
+				beforeRestart = true
+			} else {
+				afterRestart = true
+			}
+		}
+	}
+	if !beforeRestart || !afterRestart {
+		t.Fatalf("Prometheus alert history before restart=%v after restart=%v; want both from the persistent TSDB", beforeRestart, afterRestart)
 	}
 }
 

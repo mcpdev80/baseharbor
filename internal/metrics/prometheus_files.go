@@ -377,6 +377,7 @@ func EnsureProviderFilesWithRuntimeCAAt(ctx context.Context, issuer serviceacces
 	files := ProviderFiles{
 		Dir: dir, Compose: filepath.Join(dir, "compose.yaml"), Env: filepath.Join(dir, "runtime.env"),
 		Config: filepath.Join(dir, "prometheus.yml"), WebConfig: filepath.Join(dir, "web-config.yml"), TargetsDir: targetsDir,
+		RulesDir:            filepath.Join(dir, "rules"),
 		ProviderSecurityDir: filepath.Join(dir, "provider-security"),
 		Registrations:       filepath.Join(dir, "registrations.json"),
 	}
@@ -435,6 +436,9 @@ func EnsureProviderFilesWithRuntimeCAAt(ctx context.Context, issuer serviceacces
 	}
 	if err := syncProviderSecurity(files.ProviderSecurityDir, providerSources); err != nil {
 		return ProviderFiles{}, err
+	}
+	if err := syncPrometheusAlertRules(files.RulesDir, providerSources); err != nil {
+		return ProviderFiles{}, fmt.Errorf("sync Prometheus alert rules: %w", err)
 	}
 	providerNetworks := providerMetricNetworks(providerSources)
 	files.CompositionState = ProviderCompositionState(providerSources)
@@ -655,6 +659,9 @@ func UnregisterSharedApplicationAt(ctx context.Context, runtime Runtime, issuer 
 	}
 	if err := syncProviderSecurity(files.ProviderSecurityDir, providerSources); err != nil {
 		return err
+	}
+	if err := syncPrometheusAlertRules(files.RulesDir, providerSources); err != nil {
+		return fmt.Errorf("sync Prometheus alert rules after unregister: %w", err)
 	}
 	providerNetworks := providerMetricNetworks(providerSources)
 	files.CompositionState = ProviderCompositionState(providerSources)
