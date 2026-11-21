@@ -50,7 +50,7 @@ func TestWorkspaceWizardCreatesPortableModelAndLocalMapping(t *testing.T) {
 		".",
 		"y",
 		"external",
-		"4",
+		"5",
 		"external-source",
 		"ghcr.io/example/external@sha256:deadbeef",
 		"n",
@@ -67,7 +67,7 @@ func TestWorkspaceWizardCreatesPortableModelAndLocalMapping(t *testing.T) {
 	}
 
 	var out bytes.Buffer
-	if err := runAppWorkspaceWizard(context.Background(), &out); err != nil {
+	if err := runAppWorkspaceWizard(testOperatorContext(context.Background()), &out); err != nil {
 		t.Fatalf("wizard failed: %v\n%s", err, out.String())
 	}
 
@@ -122,7 +122,7 @@ func TestWorkspaceWizardCancelDoesNotWriteState(t *testing.T) {
 	defer func() { appWorkspaceInput = oldInput }()
 	appWorkspaceInput = strings.NewReader(strings.Join([]string{
 		"app",
-		"2",
+		"3",
 		"app-image",
 		"ghcr.io/example/app:latest",
 		"n",
@@ -138,7 +138,7 @@ func TestWorkspaceWizardCancelDoesNotWriteState(t *testing.T) {
 	}
 
 	var out bytes.Buffer
-	if err := runAppWorkspaceWizard(context.Background(), &out); err != nil {
+	if err := runAppWorkspaceWizard(testOperatorContext(context.Background()), &out); err != nil {
 		t.Fatalf("wizard failed: %v\n%s", err, out.String())
 	}
 	if _, err := os.Stat(filepath.Join(root, development.SourceModelRelativePath)); !os.IsNotExist(err) {

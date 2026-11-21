@@ -15,12 +15,12 @@ func TestCorelessPlanCLIJSONMCPParityAndStableIdentity(t *testing.T) {
 	target := configureTestTarget(t)
 	selection := minimalRepositorySelection(t)
 	t.Chdir(selection.RepositoryRoot)
-	initialized, err := resolveRepositoryLifecycleIntent(context.Background(), target, selection, "init")
+	initialized, err := resolveRepositoryLifecycleIntent(testOperatorContext(context.Background()), target, selection, "init")
 	if err != nil {
 		t.Fatal(err)
 	}
 	var out, errOut bytes.Buffer
-	if err := runWithIO(context.Background(), []string{"app", "plan", "--json"}, &out, &errOut); err != nil {
+	if err := runWithIOAsTestOperator(context.Background(), []string{"app", "plan", "--json"}, &out, &errOut); err != nil {
 		t.Fatalf("CLI: %v %s", err, errOut.String())
 	}
 	var cliResult any

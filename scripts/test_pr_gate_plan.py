@@ -1649,6 +1649,43 @@ class SharedBackendResolutionMappingTests(unittest.TestCase):
         self.assertIn('cli-build', checks)
         self.assertIn('cli-vet', checks)
 
+    def test_application_observability_source_and_regression_select_both_gates(self):
+        expected = ['atomic/docker/observability', 'atomic/podman/observability']
+        for path in ('internal/application/runtime_observability.go',
+                     'internal/application/runtime_observability_trace_source_test.go'):
+            with self.subTest(path=path):
+                result = planner.plan(diff(paths(path)), REQ, MAP_26)
+                self.assertEqual('resolved', result['coverage_status'])
+                self.assertEqual(expected, result['selected_gates'])
+                self.assertFalse(result['unresolved_coverage'])
+                checks = {item['id'] for item in result['required_validation_checks']}
+                self.assertIn('source-contracts', checks)
+        unrelated = planner.plan(diff(paths('internal/application/footprint.go')), REQ, MAP_26)
+        self.assertEqual('unresolved', unrelated['coverage_status'])
+        self.assertTrue(unrelated['unresolved_coverage'])
+        self.assertNotEqual(expected, unrelated['selected_gates'])
+
+    def test_application_observability_mapping_does_not_hide_unreviewed_paths(self):
+        result = planner.plan(diff(paths('internal/application/runtime_observability.go',
+                                          'internal/application/provider_union.go')),
+                              REQ, MAP_26)
+        self.assertEqual('unresolved', result['coverage_status'])
+        self.assertTrue(result['unresolved_coverage'])
+        self.assertIn('internal/application/provider_union.go',
+                      ' '.join(result['unresolved_coverage']))
+
+    def test_perses_runtime_files_select_only_docker_observability(self):
+        for path in ('internal/application/perses_runtime.go',
+                     'internal/application/perses_runtime_test.go'):
+            with self.subTest(path=path):
+                result = planner.plan(diff(paths(path)), REQ, MAP_26)
+                self.assertEqual('resolved', result['coverage_status'])
+                self.assertEqual(['atomic/docker/observability'], result['selected_gates'])
+                self.assertFalse(result['unresolved_coverage'])
+        unrelated = planner.plan(diff(paths('internal/application/provider_union.go')), REQ, MAP_26)
+        self.assertEqual('unresolved', unrelated['coverage_status'])
+        self.assertNotEqual(['atomic/docker/observability'], unrelated['selected_gates'])
+
     def test_app_observability_acceptance_bundled_with_unreviewed_stays_unresolved(self):
         # fail-closed: resolved observability test + an unreviewed second file
         # keeps the whole PR unresolved.
@@ -2175,6 +2212,19 @@ class MainRunnerContextEntrypointTests(unittest.TestCase):
         code, out, msg = self._run_main({
             'GITHUB_REPOSITORY': 'mcpdev80/baseharbor',
             'GITHUB_BASE_REF': 'lane-old-base',
+        })
+        self.assertIsNone(code, msg or out)
+        result = json.loads(out)
+        self.assertEqual('resolved', result['coverage_status'])
+        self.assertTrue(result['fallback_used'])
+        self.assertTrue({'go-unit-tests', 'go-vet', 'go-build'} <=
+                        {row['id'] for row in result['required_validation_checks']})
+
+    def test_stacked_cli_runner_context_resolves(self):
+        self._actual = diff(paths('internal/new_plan_v2/feature.go'))
+        code, out, msg = self._run_main({
+            'GITHUB_REPOSITORY': 'mcpdev80/baseharbor',
+            'GITHUB_BASE_REF': 'cli2-env-policy-head',
         })
         self.assertIsNone(code, msg or out)
         result = json.loads(out)
@@ -2829,6 +2879,51 @@ class AuthorityPackageCompletenessTests(unittest.TestCase):
     def test_unknown_nested_authority_package_stays_unresolved(self):
         result = planner.plan(diff(paths('internal/serviceaccess/new_package/auth.go')), REQ, MAP_26)
         self.assertEqual('unresolved', result['coverage_status'])
+
+    def test_serviceaccess_policy_files_skip_unrelated_cli_runtime_tests(self):
+        for path in planner.SERVICEACCESS_POLICY_FILES:
+            for status in ('added', 'modified'):
+                with self.subTest(path=path, status=status):
+                    result = planner.plan(diff([{'path': path, 'status': status}]), REQ, MAP_26)
+                    self.assertEqual('resolved', result['coverage_status'], result)
+                    checks = {row['id'] for row in result['required_validation_checks']}
+                    self.assertTrue({'authority-package-tests', 'source-contracts'} <= checks)
+                    self.assertFalse({'go-unit-tests', 'cli-package-tests', 'cli-build',
+                                      'cli-guided-tests', 'cli-vet'} & checks)
+                    self.assertEqual([], result['selected_gates'])
+
+    def test_operatorauth_source_and_tests_select_real_package_runner(self):
+        for path in ('internal/operatorauth/config.go',
+                     'internal/operatorauth/config_explicit_policy_test.go',
+                     'internal/operatorauth/authorization_test.go',
+                     'internal/operatorauth/operatorauth_test.go',
+                     'internal/operatorauth/local_runtime.go',
+                     'internal/operatorauth/local_runtime_test.go'):
+            for status in ('added', 'modified'):
+                with self.subTest(path=path, status=status):
+                    result = planner.plan(diff([{'path': path, 'status': status}]), REQ, MAP_26)
+                    self.assertEqual('resolved', result['coverage_status'], result)
+                    selected_checks = {row['id'] for row in result['required_validation_checks']}
+                    self.assertTrue({'authority-package-tests', 'source-contracts'} <=
+                                    selected_checks)
+                    self.assertFalse({'go-unit-tests', 'cli-package-tests', 'cli-build',
+                                      'cli-guided-tests', 'cli-vet'} & selected_checks)
+                    self.assertEqual([], result['selected_gates'])
+
+    def test_workload_security_policy_files_run_application_package_tests(self):
+        for path in planner.WORKLOAD_SECURITY_POLICY_FILES:
+            for status in ('added', 'modified'):
+                with self.subTest(path=path, status=status):
+                    result = planner.plan(diff([{'path': path, 'status': status}]), REQ, MAP_26)
+                    self.assertEqual('resolved', result['coverage_status'], result)
+                    self.assertIn('source-contracts',
+                                  {row['id'] for row in result['required_validation_checks']})
+                    self.assertEqual([], result['selected_gates'])
+        removed = planner.plan(diff([{'path': 'internal/application/workload_security.go',
+                                      'status': 'deleted'}]), REQ, MAP_26)
+        self.assertEqual('unresolved', removed['coverage_status'])
+        unrelated = planner.plan(diff(paths('internal/application/unknown_policy.go')), REQ, MAP_26)
+        self.assertEqual('unresolved', unrelated['coverage_status'])
 
 
 class RuntimePackageCompletenessTests(unittest.TestCase):

@@ -41,7 +41,7 @@ func TestOperatorAuthObservationUsesActualLocalAuthorityBoundaries(t *testing.T)
 			case "unverified-engine":
 				native.engine.Verified = false
 			}
-			observe := func(ctx context.Context, target, environment string) (operatorauth.LocalRuntimeAuthority, bool, error) {
+			observe := func(ctx context.Context, target, environment string) (operatorauth.LocalOperationGrant, bool, error) {
 				return verifiedLocalWorkloadAuthorityWithRuntime(ctx, target, environment, func(context.Context, deployment.ResolvedTarget) (bhruntime.RuntimeProvider, error) {
 					return native, nil
 				})

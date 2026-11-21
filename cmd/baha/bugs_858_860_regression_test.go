@@ -91,13 +91,13 @@ func TestAgentsOnlyLeavesEntireStateAndApplicationListUnchanged(t *testing.T) {
 			}
 			var out bytes.Buffer
 			if mode == "initialized" {
-				if err := runWithIO(context.Background(), []string{"--no-input", "app", "init", "--yes"}, &out, &out); err != nil {
+				if err := runWithIOAsTestOperator(context.Background(), []string{"--no-input", "app", "init", "--yes"}, &out, &out); err != nil {
 					t.Fatalf("normal init: %v: %s", err, out.String())
 				}
 			}
 			roots := []string{repo, os.Getenv("XDG_CONFIG_HOME"), os.Getenv("XDG_DATA_HOME"), os.Getenv("BASEHARBOR_STATE_DIR")}
 			var beforeList bytes.Buffer
-			if err := runWithIO(context.Background(), []string{"app", "list", "--json"}, &beforeList, &beforeList); err != nil {
+			if err := runWithIOAsTestOperator(context.Background(), []string{"app", "list", "--json"}, &beforeList, &beforeList); err != nil {
 				t.Fatal(err)
 			}
 			before := snapshotBugState(t, roots...)
@@ -107,7 +107,7 @@ func TestAgentsOnlyLeavesEntireStateAndApplicationListUnchanged(t *testing.T) {
 			}
 			for i := 0; i < 2; i++ {
 				out.Reset()
-				if err := runWithIO(context.Background(), []string{"--no-input", "app", "init", "--agents", "--json"}, &out, &out); err != nil {
+				if err := runWithIOAsTestOperator(context.Background(), []string{"--no-input", "app", "init", "--agents", "--json"}, &out, &out); err != nil {
 					t.Fatalf("agents: %v: %s", err, out.String())
 				}
 				var result struct {
@@ -124,7 +124,7 @@ func TestAgentsOnlyLeavesEntireStateAndApplicationListUnchanged(t *testing.T) {
 					t.Fatalf("documentation changed persistent state: before=%v after=%v", before, after)
 				}
 				var afterList bytes.Buffer
-				if err := runWithIO(context.Background(), []string{"app", "list", "--json"}, &afterList, &afterList); err != nil {
+				if err := runWithIOAsTestOperator(context.Background(), []string{"app", "list", "--json"}, &afterList, &afterList); err != nil {
 					t.Fatal(err)
 				}
 				if beforeList.String() != afterList.String() {
@@ -147,7 +147,7 @@ func TestAgentsOnlyRejectsLifecycleArgumentsBeforeAnyWrites(t *testing.T) {
 	t.Chdir(t.TempDir())
 	for _, extra := range [][]string{{"--yes"}, {"--input", "hostname=test"}, {"--quick"}, {"demo"}} {
 		var out bytes.Buffer
-		err := runWithIO(context.Background(), append([]string{"app", "init", "--agents"}, extra...), &out, &out)
+		err := runWithIOAsTestOperator(context.Background(), append([]string{"app", "init", "--agents"}, extra...), &out, &out)
 		if cli.ExitCode(err) != 2 {
 			t.Fatalf("expected input rejection: %v", err)
 		}
@@ -291,7 +291,8 @@ func TestDoctorNotDeployedVersusIncomplete(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			checks := collectControlPlaneDoctorChecks(context.Background())
+			ctx := testOperatorContext(context.Background())
+			checks := collectControlPlaneDoctorChecks(ctx)
 			if controlPlaneNotDeployed(checks) != (artifact == "") {
 				t.Fatalf("wrong state %+v", checks)
 			}
@@ -300,7 +301,7 @@ func TestDoctorNotDeployedVersusIncomplete(t *testing.T) {
 					t.Fatalf("absence reported as HA failure: %+v", checks)
 				}
 			}
-			report, err := inspectControlPlaneDoctor(context.Background())
+			report, err := inspectControlPlaneDoctor(ctx)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -361,7 +362,7 @@ func TestContextualCLIErrorHintsAndContracts(t *testing.T) {
 	}
 	t.Chdir(repo)
 	out.Reset()
-	commandErr := runWithIO(context.Background(), []string{"--no-input", "app", "init"}, &out, &out)
+	commandErr := runWithIOAsTestOperator(context.Background(), []string{"--no-input", "app", "init"}, &out, &out)
 	formatCLIError(&out, commandErr)
 	if cli.ExitCode(commandErr) != 1 || !strings.Contains(out.String(), "app.id is system-owned") || strings.Contains(out.String(), "baha doctor") {
 		t.Fatalf("UUID CLI: %v: %s", commandErr, out.String())
@@ -373,7 +374,7 @@ func TestContextualCLIErrorHintsAndContracts(t *testing.T) {
 		want string
 	}{{[]string{"down", "--yes"}, "--yes"}, {[]string{"app", "down", "--bogus"}, "--bogus"}} {
 		out.Reset()
-		err := runWithIO(context.Background(), tc.args, &out, &out)
+		err := runWithIOAsTestOperator(context.Background(), tc.args, &out, &out)
 		formatCLIError(&out, err)
 		if cli.ExitCode(err) != 2 || !strings.Contains(out.String(), tc.want) || strings.Contains(out.String(), "Did you mean") || strings.Contains(out.String(), "baha doctor") {
 			t.Fatalf("%v: %v %s", tc.args, err, out.String())
@@ -382,7 +383,7 @@ func TestContextualCLIErrorHintsAndContracts(t *testing.T) {
 }
 func createDuplicateTargetForBugTest(t *testing.T) error {
 	t.Helper()
-	_, err := createTargetDefinition(context.Background(), machineTargetCreateInput{Name: "docker-dev", RuntimeProvider: "docker", Access: "local-docker", Reference: "local"})
+	_, err := createTargetDefinition(testOperatorContext(context.Background()), machineTargetCreateInput{Name: "docker-dev", RuntimeProvider: "docker", Access: "local-docker", Reference: "local"})
 	if err == nil {
 		t.Fatal("duplicate accepted")
 	}
@@ -404,7 +405,7 @@ func TestTargetDeleteNonTTYYesReachesArgParser(t *testing.T) {
 	// --no-input pins the non-interactive path so the assertion is deterministic
 	// regardless of the test harness stdin.
 	var noYes bytes.Buffer
-	err := runWithIO(context.Background(), []string{"--no-input", "target", "delete", target.Name}, &noYes, &noYes)
+	err := runWithIOAsTestOperator(context.Background(), []string{"--no-input", "target", "delete", target.Name}, &noYes, &noYes)
 	if err == nil || machine.Classify(err).CauseCode != "impact-confirmation-required" {
 		t.Fatalf("delete without --yes must fail closed: %v", err)
 	}
@@ -418,7 +419,7 @@ func TestTargetDeleteNonTTYYesReachesArgParser(t *testing.T) {
 
 	// With --yes: the documented non-TTY call must detach through the dispatcher.
 	var withYes bytes.Buffer
-	err = runWithIO(context.Background(), []string{"--no-input", "target", "delete", target.Name, "--yes"}, &withYes, &withYes)
+	err = runWithIOAsTestOperator(context.Background(), []string{"--no-input", "target", "delete", target.Name, "--yes"}, &withYes, &withYes)
 	if err != nil {
 		t.Fatalf("--yes detach must succeed on non-TTY via dispatcher: %v", err)
 	}
@@ -434,7 +435,7 @@ func TestTargetDeleteNonTTYYesReachesArgParser(t *testing.T) {
 	configureTestTarget(t)
 	t.Chdir(t.TempDir())
 	var aliasOut bytes.Buffer
-	err = runWithIO(context.Background(), []string{"--no-input", "target", "delete", target.Name, "-y"}, &aliasOut, &aliasOut)
+	err = runWithIOAsTestOperator(context.Background(), []string{"--no-input", "target", "delete", target.Name, "-y"}, &aliasOut, &aliasOut)
 	if err != nil {
 		t.Fatalf("-y alias must detach on non-TTY: %v", err)
 	}

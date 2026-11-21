@@ -17,8 +17,8 @@ func appWorkspaceCommand() *cli.Command {
 	return &cli.Command{
 		Name:    "workspace",
 		Summary: "Manage local multi-repository workspace mappings",
-		Usage:   "baha app workspace [<init|map|show|resolve|status|update> [options]]",
-		Long:    "With no subcommand, opens the guided multi-repository workspace setup. Portable source identity is kept in .baseharbor/sources.yaml while developer-local checkout paths stay in XDG configuration and never become Application Intent.",
+		Usage:   "baha app workspace [<init|map|show|resolve|status|update|path|source|component> [options]]",
+		Long:    "With no subcommand, opens the guided multi-repository workspace setup. Portable source identity is kept in .baseharbor/sources.yaml while developer-local checkout paths stay in XDG configuration and never become Application Intent. Sources are Git repositories, local directories or OCI images; components are optional unique identities and several components may share one source.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 			if len(args) != 0 {
 				return usageError("baha app workspace does not accept positional arguments", "Run 'baha app workspace' for guided setup or choose init, map, show, resolve, status or update.")
@@ -35,6 +35,9 @@ func appWorkspaceCommand() *cli.Command {
 			appWorkspaceResolveCommand(),
 			appWorkspaceStatusCommand(),
 			appWorkspaceUpdateCommand(),
+			appWorkspacePathCommand(),
+			appWorkspaceSourceCommand(),
+			appWorkspaceComponentCommand(),
 		},
 	}
 }
@@ -65,7 +68,7 @@ func appWorkspaceInitCommand() *cli.Command {
 	return &cli.Command{
 		Name:    "init",
 		Summary: "Create versioned source identity metadata for a multi-repository application",
-		Usage:   "baha app workspace init [--manifest PATH] --source ID=REPOSITORY [--source ...] [--oci ID=IMAGE] [--component COMPONENT=SOURCE[@SUBPATH]]... [-o json]",
+		Usage:   "baha app workspace init [--manifest PATH] --source ID=REPOSITORY [--source ...] [--local ID=PATH] [--local ...] [--oci ID=IMAGE] --component COMPONENT=SOURCE[@SUBPATH]... [-o json]",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 			filtered, format, err := parseReadOutputArgs(args, "workspace init")
 			if err != nil {
@@ -78,7 +81,7 @@ func appWorkspaceInitCommand() *cli.Command {
 			for i := 0; i < len(args); i++ {
 				arg := args[i]
 				switch arg {
-				case "--manifest", "--source", "--oci", "--component":
+				case "--manifest", "--source", "--local", "--oci", "--component":
 					if i+1 >= len(args) {
 						return usageError(arg+" requires a value", "Run 'baha app workspace init --help'.")
 					}
@@ -93,6 +96,16 @@ func appWorkspaceInitCommand() *cli.Command {
 							return usageError("--source requires ID=REPOSITORY", "Example: --source api=https://github.com/acme/api.git")
 						}
 						sources = append(sources, development.SourceDefinition{ID: strings.TrimSpace(id), Type: development.SourceRepository, Repository: strings.TrimSpace(identity)})
+					case "--local":
+						id, location, ok := strings.Cut(value, "=")
+						if !ok || strings.TrimSpace(id) == "" || strings.TrimSpace(location) == "" {
+							return usageError("--local requires ID=ABSOLUTE_DIRECTORY", "Example: --local legacy=/home/dev/legacy-app")
+						}
+						resolved, absErr := filepath.Abs(strings.TrimSpace(location))
+						if absErr != nil {
+							return absErr
+						}
+						sources = append(sources, development.SourceDefinition{ID: strings.TrimSpace(id), Type: development.SourceLocal, Path: resolved})
 					case "--oci":
 						id, image, ok := strings.Cut(value, "=")
 						if !ok || strings.TrimSpace(id) == "" || strings.TrimSpace(image) == "" {
@@ -112,8 +125,11 @@ func appWorkspaceInitCommand() *cli.Command {
 						components = append(components, entry)
 					}
 				default:
-					return unknownOptionUsage("baha app workspace init", arg, "--manifest", "--source", "--oci", "--component")
+					return unknownOptionUsage("baha app workspace init", arg, "--manifest", "--source", "--local", "--oci", "--component")
 				}
+			}
+			if len(components) == 0 {
+				return usageError("workspace init requires at least one --component mapping", "Map real application components explicitly: --component COMPONENT=SOURCE[@SUBPATH]. No component is created automatically.")
 			}
 			result, err := initializeApplicationWorkspace(ctx, machineWorkspaceInitInput{Manifest: manifestArg, Sources: sources, Components: components})
 			if err != nil {
@@ -218,12 +234,17 @@ func appWorkspaceShowCommand() *cli.Command {
 			fmt.Fprintf(out, "application: %s\nmanifest: %s\nsource model: %s\nworkspace: %s\n", result.Workspace.Application, manifestPath, sourcePath, mappingPath)
 			for _, source := range model.Sources {
 				local := mapping.Sources[source.ID]
-				if source.Type == development.SourceOCI {
+				switch source.Type {
+				case development.SourceOCI:
 					fmt.Fprintf(out, "  %s  oci  %s\n", source.ID, source.Image)
-				} else if local != "" {
-					fmt.Fprintf(out, "  %s  repository  %s  -> %s\n", source.ID, source.Repository, local)
-				} else {
-					fmt.Fprintf(out, "  %s  repository  %s  -> UNMAPPED\n", source.ID, source.Repository)
+				case development.SourceLocal:
+					fmt.Fprintf(out, "  %s  local  %s\n", source.ID, source.Path)
+				default:
+					if local != "" {
+						fmt.Fprintf(out, "  %s  repository  %s  -> %s\n", source.ID, source.Repository, local)
+					} else {
+						fmt.Fprintf(out, "  %s  repository  %s  -> UNMAPPED\n", source.ID, source.Repository)
+					}
 				}
 			}
 			return nil
@@ -282,9 +303,10 @@ func appWorkspaceResolveCommand() *cli.Command {
 			}
 			fmt.Fprintf(out, "Application: %s\nCanonical manifest: %s\n", resolved.Application, resolved.Manifest)
 			for _, component := range resolved.Components {
-				if component.Type == development.SourceOCI {
+				switch component.Type {
+				case development.SourceOCI:
 					fmt.Fprintf(out, "  %s -> OCI %s\n", component.Component, component.Image)
-				} else {
+				default:
 					fmt.Fprintf(out, "  %s -> %s (%s)\n", component.Component, component.Root, component.Identity)
 				}
 			}

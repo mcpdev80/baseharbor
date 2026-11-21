@@ -1,6 +1,7 @@
 package observability
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -168,98 +169,6 @@ type ProviderSignalRuntime struct {
 	Security Security
 }
 
-// ProviderSignalRegistration binds a provider integration descriptor to one
-// concrete runtime instance. Multiple signal kinds intentionally share ID so
-// Remove(ID) tears down all BaseHarbor-owned observability registrations for
-// that provider instance.
-type ProviderSignalRegistration struct {
-	ID               string
-	Descriptor       capability.IntegrationDescriptor
-	Class            SourceClass
-	Scope            capability.ProviderScope
-	SharingBoundary  string
-	OwnerApplication string
-	Enabled          map[SignalKind]bool
-	Signals          map[string]ProviderSignalRuntime
-}
-
-func RegisterProviderSignals(registration ProviderSignalRegistration) error {
-	if strings.TrimSpace(registration.ID) == "" {
-		return errors.New("provider observability registration requires id")
-	}
-	if err := registration.Descriptor.Validate(); err != nil {
-		return fmt.Errorf("provider observability descriptor: %w", err)
-	}
-	declared := make(map[string]capability.ProviderObservabilitySignal, len(registration.Descriptor.Observability.Signals))
-	for _, signal := range registration.Descriptor.Observability.Signals {
-		declared[signal.Name] = signal
-	}
-	for name := range registration.Signals {
-		signal, ok := declared[name]
-		if !ok {
-			return fmt.Errorf("provider %q runtime signal %q is not declared", registration.Descriptor.Provider.Kind, name)
-		}
-		if !signal.Collectable() {
-			return fmt.Errorf("provider %q runtime signal %q is not collectable (status %q)", registration.Descriptor.Provider.Kind, name, signal.Status)
-		}
-	}
-
-	desired := make([]SignalSource, 0, len(registration.Descriptor.Observability.Signals))
-	for _, signal := range registration.Descriptor.Observability.Signals {
-		if !signal.Collectable() {
-			continue
-		}
-		kind, err := signalKind(signal.Kind)
-		if err != nil {
-			return err
-		}
-		if registration.Enabled != nil && !registration.Enabled[kind] {
-			continue
-		}
-		runtimeSignal, ok := registration.Signals[signal.Name]
-		if !ok {
-			return fmt.Errorf("provider %q supported signal %q has no runtime realization", registration.Descriptor.Provider.Kind, signal.Name)
-		}
-		source := SignalSource{
-			ID:                 registration.ID,
-			Kind:               kind,
-			Provider:           registration.Descriptor.Provider.Kind,
-			Class:              registration.Class,
-			Scope:              registration.Scope,
-			SharingBoundary:    registration.SharingBoundary,
-			OwnerApplication:   registration.OwnerApplication,
-			Network:            runtimeSignal.Network,
-			Target:             runtimeSignal.Target,
-			Protocol:           signal.Protocol,
-			Path:               signal.Path,
-			Mode:               signal.Mode,
-			SemanticConvention: signal.SemanticConvention,
-			Verification:       signal.Verification,
-			Security:           runtimeSignal.Security,
-		}
-		if err := source.Validate(); err != nil {
-			return fmt.Errorf("register provider %q signal %q: %w", registration.Descriptor.Provider.Kind, signal.Name, err)
-		}
-		desired = append(desired, source)
-	}
-
-	path, err := registryPath()
-	if err != nil {
-		return err
-	}
-	return mutate(path, func(sources []SignalSource) ([]SignalSource, error) {
-		out := sources[:0]
-		for _, existing := range sources {
-			if existing.ID == registration.ID && existing.Provider == registration.Descriptor.Provider.Kind {
-				continue
-			}
-			out = append(out, existing)
-		}
-		out = append(out, desired...)
-		return out, nil
-	})
-}
-
 func RuntimeTarget(project, service string) string {
 	return "runtime://" + strings.Trim(strings.TrimSpace(project), "/") + "/" + strings.Trim(strings.TrimSpace(service), "/")
 }
@@ -380,6 +289,35 @@ func UpdateSignal(source SignalSource) error {
 	})
 }
 
+// PruneOwnedPlatformSources removes (or marks reusable by keepIDs) exactly the
+// platform-scoped observability registrations that share one SharingBoundary —
+// the shared resource that is being destroyed. Rows for a different
+// SharingBoundary (a foreign tenant/environment) are preserved; this is the
+// fail-closed guard against cross-tenant wipe when shared backends are torn
+// down and a fresh owner re-registers the same boundary.
+func PruneOwnedPlatformSources(provider capability.ProviderKind, class SourceClass, scope capability.ProviderScope, sharingBoundary string, keepIDs map[string]struct{}) error {
+	sharingBoundary = strings.TrimSpace(sharingBoundary)
+	if sharingBoundary == "" {
+		return errors.New("observability platform-source prune requires a sharing boundary")
+	}
+	path, err := registryPath()
+	if err != nil {
+		return err
+	}
+	return mutate(path, func(sources []SignalSource) ([]SignalSource, error) {
+		out := sources[:0]
+		for _, source := range sources {
+			if source.Provider == provider && source.Class == class && source.Scope == scope && strings.TrimSpace(source.SharingBoundary) == sharingBoundary {
+				if _, keep := keepIDs[source.ID]; !keep {
+					continue
+				}
+			}
+			out = append(out, source)
+		}
+		return out, nil
+	})
+}
+
 // ReconcileSignals replaces every signal of one source identity with the
 // desired set, in one atomic registry mutation.
 //
@@ -484,28 +422,10 @@ func ReconcileMatching(owned func(SignalSource) bool, desired []SignalSource) er
 	})
 }
 
-// RegistryHasSignal reports whether the registry still carries one exact
-// signal registration. Unlike the placement-filtered listings it sees every
-// provider and owner under an ID, so reconciliation and prune contracts - and
-// their tests - assert retention and reclamation through it.
-func RegistryHasSignal(id string, provider capability.ProviderKind, kind SignalKind) (bool, error) {
-	path, err := registryPath()
-	if err != nil {
-		return false, err
-	}
-	sources, err := read(path)
-	if errors.Is(err, os.ErrNotExist) {
-		return false, nil
-	}
-	if err != nil {
-		return false, err
-	}
-	for _, source := range sources {
-		if source.ID == id && source.Provider == provider && source.Kind == kind {
-			return true, nil
-		}
-	}
-	return false, nil
+// SignalKindForSignal maps a descriptor signal kind onto the registry's
+// SignalKind, the exported twin of the internal registration path.
+func SignalKindForSignal(kind capability.ObservabilitySignalKind) (SignalKind, error) {
+	return signalKind(kind)
 }
 
 func Remove(id string) error {
@@ -705,25 +625,47 @@ func ListMetrics(placement capability.ProviderPlacement, applications []string, 
 }
 
 func mutate(path string, fn func([]SignalSource) ([]SignalSource, error)) error {
+	_, err := mutateChanged(path, fn)
+	return err
+}
+
+// mutateChanged is the change-aware form of mutate: it takes the SAME state
+// lock (the shared "<registry>.lock" flock — no parallel migration lock
+// exists), reads the registry, applies the callback, and replaces the registry
+// file ONLY when the serialized result actually differs from the bytes on
+// disk. A callback that changes nothing — the file already carries exactly
+// what the callback produced, or nothing was found and nothing is produced —
+// returns changed=false WITHOUT creating, replacing or rewriting the registry
+// file. This is the persistence discipline the legacy signal migration relies
+// on (card 0428-168): an already-migrated registry stays byte-identical, in
+// the style of the precedent no-mutation migration that reports an empty
+// changed set so the caller performs no write. mutateChanged never creates a
+// file that does not exist.
+func mutateChanged(path string, fn func([]SignalSource) ([]SignalSource, error)) (changed bool, err error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return err
+		return false, err
 	}
 	lock, err := os.OpenFile(path+".lock", os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer lock.Close()
 	if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX); err != nil {
-		return err
+		return false, err
 	}
 	defer syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
-	sources, err := read(path)
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return err
+	storedBytes, readErr := os.ReadFile(path)
+	exists := readErr == nil
+	if readErr != nil && !errors.Is(readErr, os.ErrNotExist) {
+		return false, readErr
 	}
-	sources, err = fn(sources)
+	stored, err := read(path)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return false, err
+	}
+	sources, err := fn(stored)
 	if err != nil {
-		return err
+		return false, err
 	}
 	sort.Slice(sources, func(i, j int) bool {
 		if sources[i].Kind != sources[j].Kind {
@@ -733,18 +675,25 @@ func mutate(path string, fn func([]SignalSource) ([]SignalSource, error)) error 
 	})
 	data, err := json.MarshalIndent(sources, "", "  ")
 	if err != nil {
-		return err
+		return false, err
 	}
 	data = append(data, '\n')
+	if exists && bytes.Equal(bytes.TrimSpace(storedBytes), bytes.TrimSpace(data)) {
+		return false, nil
+	}
+	if !exists && string(data) == "[]\n" {
+		// Nothing was found and nothing was produced: never create the file.
+		return false, nil
+	}
 	tmp := path + ".tmp"
 	if err := os.WriteFile(tmp, data, 0o600); err != nil {
-		return err
+		return false, err
 	}
 	if err := os.Rename(tmp, path); err != nil {
 		_ = os.Remove(tmp)
-		return err
+		return false, err
 	}
-	return nil
+	return true, nil
 }
 
 func read(path string) ([]SignalSource, error) {

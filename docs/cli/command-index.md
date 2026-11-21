@@ -64,11 +64,20 @@ Find exact options with `baha COMMAND --help`. [Global options](global-options.m
 | `baha app update` | Safely inspect or update a Git-backed application | `baha app update [--check] [--backup-password-file FILE \| --no-backup]` | [↗](applications.md) |
 | `baha app version` | Show separated wanted/applied/observed release and component versions | `baha app version [NAME] [-o json\|--output json]` | [↗](applications.md) |
 | `baha app versions` | Show readable wanted/applied/observed versions for recorded deployments | `baha app versions [--all-targets] [-o json\|--output json]` | [↗](applications.md) |
-| `baha app workspace` | Manage local multi-repository workspace mappings | `baha app workspace [<init\|map\|show\|resolve\|status\|update> [options]]` | [↗](applications.md) |
-| `baha app workspace init` | Create versioned source identity metadata for a multi-repository application | `baha app workspace init [--manifest PATH] --source ID=REPOSITORY [--source ...] [--oci ID=IMAGE] [--component COMPONENT=SOURCE[@SUBPATH]]... [-o json]` | [↗](applications.md) |
+| `baha app workspace` | Manage local multi-repository workspace mappings | `baha app workspace [<init\|map\|show\|resolve\|status\|update\|path\|source\|component> [options]]` | [↗](applications.md) |
+| `baha app workspace component` | Inspect and maintain unique component-to-source mappings | `baha app workspace component <list\|add\|remove> [options]` | [↗](applications.md) |
+| `baha app workspace component add` | Add or retarget the unique mapping of one component without inventing it implicitly | `baha app workspace component add COMPONENT SOURCE[@SUBPATH] [--manifest PATH] [-o json]` | [↗](applications.md) |
+| `baha app workspace component list` | List unique components and the source identity each one maps to | `baha app workspace component list [COMPONENT] [--manifest PATH] [--source ID] [-o json]` | [↗](applications.md) |
+| `baha app workspace component remove` | Detach one component mapping without deleting sources or local files | `baha app workspace component remove COMPONENT [--manifest PATH] [-o json]` | [↗](applications.md) |
+| `baha app workspace init` | Create versioned source identity metadata for a multi-repository application | `baha app workspace init [--manifest PATH] --source ID=REPOSITORY [--source ...] [--local ID=PATH] [--local ...] [--oci ID=IMAGE] --component COMPONENT=SOURCE[@SUBPATH]... [-o json]` | [↗](applications.md) |
 | `baha app workspace map` | Map one repository source identity to an existing local checkout/worktree | `baha app workspace map SOURCE PATH [--manifest PATH] [-o json]` | [↗](applications.md) |
+| `baha app workspace path` | Set or show the local path of one source (checkout mapping or directory source) | `baha app workspace path SOURCE [PATH] [--manifest PATH] [--show-current] [-o json]` | [↗](applications.md) |
+| `baha app workspace paths` | Alias: baha app workspace path | `baha app workspace path SOURCE [PATH] [--manifest PATH] [--show-current] [-o json]` | [↗](applications.md) |
 | `baha app workspace resolve` | Resolve component source identity to local worktrees without using the current working directory | `baha app workspace resolve [--manifest PATH] [-o json\|--output json]` | [↗](applications.md) |
 | `baha app workspace show` | Show canonical source identities and local workspace mappings | `baha app workspace show [--manifest PATH] [-o json\|--output json]` | [↗](applications.md) |
+| `baha app workspace source` | Add or remove individual application sources | `baha app workspace source <add\|remove> [options]` | [↗](applications.md) |
+| `baha app workspace source add` | Add or update one source identity without recreating the source model | `baha app workspace source add [--manifest PATH] [--source ID=REPOSITORY] [--local ID=PATH] [--oci ID=IMAGE] [-o json]` | [↗](applications.md) |
+| `baha app workspace source remove` | Remove one source and detach its component mappings without deleting local files | `baha app workspace source remove SOURCE [--manifest PATH] [--keep-components] [-o json]` | [↗](applications.md) |
 | `baha app workspace status` | Inspect Git state for all mapped repository sources | `baha app workspace status [--manifest PATH] [--fetch] [-o json\|--output json]` | [↗](applications.md) |
 | `baha app workspace update` | Safely fast-forward mapped Git repositories | `baha app workspace update [--manifest PATH] [--check] [-o json\|--output json]` | [↗](applications.md) |
 | `baha backup` | Back up the current application through its managed lifecycle | `baha backup [options]` | [↗](applications.md) |
@@ -82,6 +91,10 @@ Find exact options with `baha COMMAND --help`. [Global options](global-options.m
 | `baha config prompt` | Configure the optional BaseHarbor shell prompt segment | `baha config prompt [--enable\|--disable] [--preset minimal\|compact\|accessible\|detailed\|none] [--position before-path\|after-path\|right] [--environment never\|critical-only\|always] [--show-application\|--hide-application] [--text-only\|--color-output] [--prod-indicator TEXT] [--label TARGET=LABEL] [--color KEY=VALUE]` | [↗](organization-policy.md) |
 | `baha connect` | Allow one explicit application service to reach another | `baha connect SOURCE TARGET` | [↗](security-trust.md) |
 | `baha connections` | List explicit cross-application connectivity policy | `baha connections` | [↗](security-trust.md) |
+| `baha context` | Select the per-terminal BaseHarbor context (Bash, Zsh or Fish) | `baha context use [--shell bash\|zsh\|fish] TARGET \| clear \| show` | [↗](applications.md) |
+| `baha context clear` | Clear the per-terminal selection in the current process | `baha context clear [--shell bash\|zsh\|fish]` | [↗](applications.md) |
+| `baha context show` | Report the effective per-terminal selection and winning precedence level | `baha context show` | [↗](applications.md) |
+| `baha context use` | Emit the per-terminal activation snippet for TARGET | `baha context use [--shell bash\|zsh\|fish] TARGET` | [↗](applications.md) |
 | `baha destroy` | Remove the complete BaseHarbor installation with explicit consequence consent | `baha destroy [--yes]` | [↗](core.md) |
 | `baha dev` | Manage local development conveniences | `baha dev <credentials\|domain\|hosts\|cleanup>` | [↗](development.md) |
 | `baha dev cleanup` | Remove this Target's owned workstation hosts and CA trust | `baha dev cleanup --yes` | [↗](development.md) |
@@ -157,11 +170,20 @@ Find exact options with `baha COMMAND --help`. [Global options](global-options.m
 | `baha user offboard` | Disable a person and revoke all their workstations | `baha user offboard LOGIN [--yes]` | [↗](applications.md) |
 | `baha version` | Print build version | `baha version [-o json\|--output json\|--json]` | [↗](core.md) |
 | `baha whoami` | Show the authenticated BaseHarbor operator identity | `baha whoami -e ENV\|--environment ENV` | [↗](security-trust.md) |
-| `baha workspace` | Configure local workspace sources and repository mappings | `baha workspace [<init\|map\|show\|resolve\|status\|update> [options]]` | [↗](development.md) |
-| `baha workspace init` | Create versioned source identity metadata for a multi-repository application | `baha workspace init [--manifest PATH] --source ID=REPOSITORY [--source ...] [--oci ID=IMAGE] [--component COMPONENT=SOURCE[@SUBPATH]]... [-o json]` | [↗](development.md) |
+| `baha workspace` | Configure local workspace sources and repository mappings | `baha workspace [<init\|map\|show\|resolve\|status\|update\|path\|source\|component> [options]]` | [↗](development.md) |
+| `baha workspace component` | Inspect and maintain unique component-to-source mappings | `baha workspace component <list\|add\|remove> [options]` | [↗](development.md) |
+| `baha workspace component add` | Add or retarget the unique mapping of one component without inventing it implicitly | `baha workspace component add COMPONENT SOURCE[@SUBPATH] [--manifest PATH] [-o json]` | [↗](development.md) |
+| `baha workspace component list` | List unique components and the source identity each one maps to | `baha workspace component list [COMPONENT] [--manifest PATH] [--source ID] [-o json]` | [↗](development.md) |
+| `baha workspace component remove` | Detach one component mapping without deleting sources or local files | `baha workspace component remove COMPONENT [--manifest PATH] [-o json]` | [↗](development.md) |
+| `baha workspace init` | Create versioned source identity metadata for a multi-repository application | `baha workspace init [--manifest PATH] --source ID=REPOSITORY [--source ...] [--local ID=PATH] [--local ...] [--oci ID=IMAGE] --component COMPONENT=SOURCE[@SUBPATH]... [-o json]` | [↗](development.md) |
 | `baha workspace map` | Map one repository source identity to an existing local checkout/worktree | `baha workspace map SOURCE PATH [--manifest PATH] [-o json]` | [↗](development.md) |
+| `baha workspace path` | Set or show the local path of one source (checkout mapping or directory source) | `baha workspace path SOURCE [PATH] [--manifest PATH] [--show-current] [-o json]` | [↗](development.md) |
+| `baha workspace paths` | Alias: baha workspace path | `baha workspace path SOURCE [PATH] [--manifest PATH] [--show-current] [-o json]` | [↗](development.md) |
 | `baha workspace resolve` | Resolve component source identity to local worktrees without using the current working directory | `baha workspace resolve [--manifest PATH] [-o json\|--output json]` | [↗](development.md) |
 | `baha workspace show` | Show canonical source identities and local workspace mappings | `baha workspace show [--manifest PATH] [-o json\|--output json]` | [↗](development.md) |
+| `baha workspace source` | Add or remove individual application sources | `baha workspace source <add\|remove> [options]` | [↗](development.md) |
+| `baha workspace source add` | Add or update one source identity without recreating the source model | `baha workspace source add [--manifest PATH] [--source ID=REPOSITORY] [--local ID=PATH] [--oci ID=IMAGE] [-o json]` | [↗](development.md) |
+| `baha workspace source remove` | Remove one source and detach its component mappings without deleting local files | `baha workspace source remove SOURCE [--manifest PATH] [--keep-components] [-o json]` | [↗](development.md) |
 | `baha workspace status` | Inspect Git state for all mapped repository sources | `baha workspace status [--manifest PATH] [--fetch] [-o json\|--output json]` | [↗](development.md) |
 | `baha workspace update` | Safely fast-forward mapped Git repositories | `baha workspace update [--manifest PATH] [--check] [-o json\|--output json]` | [↗](development.md) |
 | `baha workstation` | Invite, list and revoke developer workstations connected to this Core | `baha workstation new \| baha workstation list \| baha workstation revoke NAME [--yes]` | [↗](applications.md) |

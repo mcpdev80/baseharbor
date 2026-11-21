@@ -20,7 +20,7 @@ import (
 
 func TestCanonicalInitHelpUsesApplicationInitialization(t *testing.T) {
 	var out bytes.Buffer
-	if err := runWithIO(context.Background(), []string{"init", "--help"}, &out, &out); err != nil {
+	if err := runWithIOAsTestOperator(context.Background(), []string{"init", "--help"}, &out, &out); err != nil {
 		t.Fatalf("init help failed: %v", err)
 	}
 	if !strings.Contains(out.String(), "baha init") {
@@ -34,7 +34,7 @@ func TestCanonicalInitHelpUsesApplicationInitialization(t *testing.T) {
 func TestRootAndNestedHelp(t *testing.T) {
 	for _, args := range [][]string{{"--help"}, {"app", "--help"}, {"app", "create", "--help"}} {
 		var out bytes.Buffer
-		if err := runWithIO(context.Background(), args, &out, &out); err != nil {
+		if err := runWithIOAsTestOperator(context.Background(), args, &out, &out); err != nil {
 			t.Fatalf("help %v failed: %v", args, err)
 		}
 		if !strings.Contains(out.String(), "Usage:") {
@@ -56,7 +56,7 @@ func TestAppCreateListShowPlan(t *testing.T) {
 	}
 
 	var out bytes.Buffer
-	if err := runWithIO(context.Background(), []string{"app", "create", "demo", "--environment", "dev", "--sql", "--cache"}, &out, &out); err != nil {
+	if err := runWithIOAsTestOperator(context.Background(), []string{"app", "create", "demo", "--environment", "dev", "--sql", "--cache"}, &out, &out); err != nil {
 		t.Fatalf("create failed: %v\n%s", err, out.String())
 	}
 	records, err := deployment.ListDeployments(target.Name)
@@ -76,7 +76,7 @@ func TestAppCreateListShowPlan(t *testing.T) {
 	}
 
 	out.Reset()
-	if err := runWithIO(context.Background(), []string{"app", "list"}, &out, &out); err != nil {
+	if err := runWithIOAsTestOperator(context.Background(), []string{"app", "list"}, &out, &out); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(out.String(), "demo") || !strings.Contains(out.String(), "dev") {
@@ -84,7 +84,7 @@ func TestAppCreateListShowPlan(t *testing.T) {
 	}
 
 	out.Reset()
-	if err := runWithIO(context.Background(), []string{"app", "show", "demo"}, &out, &out); err != nil {
+	if err := runWithIOAsTestOperator(context.Background(), []string{"app", "show", "demo"}, &out, &out); err != nil {
 		t.Fatal(err)
 	}
 	show := out.String()
@@ -99,7 +99,7 @@ func TestAppCreateListShowPlan(t *testing.T) {
 		t.Fatal(err)
 	}
 	out.Reset()
-	if err := runWithIO(context.Background(), []string{"app", "plan"}, &out, &out); err != nil {
+	if err := runWithIOAsTestOperator(context.Background(), []string{"app", "plan"}, &out, &out); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(out.String(), "ensure database.sql:default") || !strings.Contains(out.String(), "No changes were made") {
@@ -120,7 +120,7 @@ func TestRootVersionFlag(t *testing.T) {
 		version, commit, date = oldVersion, oldCommit, oldDate
 	})
 	var out bytes.Buffer
-	if err := runWithIO(context.Background(), []string{"--version"}, &out, &out); err != nil {
+	if err := runWithIOAsTestOperator(context.Background(), []string{"--version"}, &out, &out); err != nil {
 		t.Fatal(err)
 	}
 	for _, wanted := range []string{"BaseHarbor 0.4.11-test", "commit abc123", "built 2026-09-20"} {
@@ -140,7 +140,7 @@ func TestBrokenPipeErrorIsSilent(t *testing.T) {
 
 func TestUnknownCommandSuggestsNearestMatch(t *testing.T) {
 	var out bytes.Buffer
-	err := runWithIO(context.Background(), []string{"statsu"}, &out, &out)
+	err := runWithIOAsTestOperator(context.Background(), []string{"statsu"}, &out, &out)
 	if err == nil {
 		t.Fatal("expected typo to fail")
 	}
@@ -181,7 +181,7 @@ func TestVersionCommandStructuredOutput(t *testing.T) {
 		{"version", "-ojson"},
 	} {
 		var out bytes.Buffer
-		if err := runWithIO(context.Background(), args, &out, &out); err != nil {
+		if err := runWithIOAsTestOperator(context.Background(), args, &out, &out); err != nil {
 			t.Fatalf("%v: %v", args, err)
 		}
 		var payload map[string]string

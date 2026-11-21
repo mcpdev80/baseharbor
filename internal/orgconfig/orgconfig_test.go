@@ -2,6 +2,7 @@ package orgconfig
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"os/exec"
@@ -65,6 +66,7 @@ func TestLocalActivationAndEffectiveProvenance(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(root, "config"))
 	t.Setenv("XDG_CACHE_HOME", filepath.Join(root, "cache"))
+	t.Setenv(worldWritableCheckOptOutEnv, "skip")
 	sourceDir := filepath.Join(root, "org")
 	if err := os.MkdirAll(sourceDir, 0o700); err != nil {
 		t.Fatal(err)
@@ -115,6 +117,7 @@ func TestGitResolutionPinsRevisionAndCheckDoesNotActivate(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(root, "config"))
 	t.Setenv("XDG_CACHE_HOME", filepath.Join(root, "cache"))
+	t.Setenv(worldWritableCheckOptOutEnv, "skip")
 	repo := filepath.Join(root, "repo")
 	if err := os.MkdirAll(repo, 0o700); err != nil {
 		t.Fatal(err)
@@ -270,4 +273,540 @@ func TestTypedOrganizationSourceErrors(t *testing.T) {
 	if !errors.Is(err, ErrSourceUnavailable) {
 		t.Fatalf("Resolve unavailable Git error = %v, want ErrSourceUnavailable", err)
 	}
+}
+
+func TestCanonicalLocationUsesUserConfigDir(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "cfg")
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("XDG_CONFIG_HOME", root)
+
+	path, err := ActivePath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := filepath.Join(root, "baseharbor", "organization", "active.json"); filepath.Clean(path) != want {
+		t.Fatalf("ActivePath = %q, want %q (canonical user-state location)", path, want)
+	}
+	// The canonical location is not world-writable, so the guard must pass.
+	if info, err := os.Stat(root); err != nil || info.Mode()&0o002 != 0 {
+		t.Fatalf("test config root is not private: %v %v", info, err)
+	}
+}
+
+func TestWorldWritableConfigRootIsRejected(t *testing.T) {
+	// Isolate the private fallback: HOME points at a test-private dir that does
+	// not yet contain a selection, so the migration fallback can never
+	// accidentally satisfy the write against the real home directory.
+	privateHome := t.TempDir()
+	t.Setenv("HOME", privateHome)
+
+	root := t.TempDir() // t.TempDir() is 0777 world-writable
+	cfgDir := filepath.Join(root, "config")
+	if err := os.MkdirAll(cfgDir, 0o777); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(cfgDir, 0o777); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("XDG_CONFIG_HOME", cfgDir)
+
+	// A fresh selection into a world-writable XDG_CONFIG_HOME must be rejected
+	// outright: there is no legacy file to adopt, so writing into a
+	// world-writable location is refused.
+	state := ActiveState{
+		Resolution: Resolution{ResolvedRevision: "deadbeef", Source: Source{Kind: SourceLocal, Location: "ignored"}},
+		Config:     parseConfigForTest(t),
+	}
+	err := SaveActive(state)
+	if err == nil {
+		t.Fatal("SaveActive into a world-writable XDG_CONFIG_HOME with no legacy file must be rejected")
+	}
+}
+
+func TestWorldWritableMigrationAdoptsOnceThenFreezes(t *testing.T) {
+	// Isolate the private fallback: HOME points at a test-private dir so the
+	// migration target (~/.config) never touches the real home directory.
+	privateHome := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(privateHome, ".config"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", privateHome)
+
+	// The resolved selection location is world-writable (broken XDG_CONFIG_HOME).
+	root := t.TempDir() // 0777 world-writable
+	if err := os.Chmod(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(root, "config"))
+
+	// Seed a stale /tmp selection at the (world-writable) resolved path.
+	seed := `{"resolution":{"resolved_revision":"mig-1","source":{"kind":"local","location":"x"}},"config":` + testConfigJSON(t) + `}`
+	seedPath, err := ActivePath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(seedPath), 0o777); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(filepath.Dir(filepath.Dir(seedPath)), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(filepath.Dir(filepath.Dir(filepath.Dir(seedPath))), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(filepath.Dir(seedPath), os.ModeSticky|0o777); err != nil {
+		t.Fatal(err)
+	}
+	if !isWorldWritableDir(filepath.Dir(seedPath)) {
+		t.Fatalf("test did not create a world-writable selection directory")
+	}
+	if err := os.WriteFile(seedPath, []byte(seed), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// LoadActive adopts the legacy /tmp selection into the private HOME fallback.
+	loaded, err := LoadActive()
+	if err != nil {
+		t.Fatalf("LoadActive after migration = %v", err)
+	}
+	if loaded.Resolution.ResolvedRevision != "mig-1" {
+		t.Fatalf("LoadActive did not return the adopted selection: %+v", loaded.Resolution)
+	}
+
+	// The value now lives in the private, non-world-writable canonical path.
+	canonical, err := privateCanonicalPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if isWorldWritableDir(filepath.Dir(canonical)) {
+		t.Fatalf("canonical path is still world-writable: %q", canonical)
+	}
+	info, err := os.Stat(canonical)
+	if err != nil {
+		t.Fatalf("canonical private selection missing after migration: %v %v", info, err)
+	}
+	if info.Mode().Perm() != 0o600 {
+		t.Fatalf("canonical selection file mode = %v, want exactly 0o600", info.Mode().Perm())
+	}
+	dirInfo, err := os.Stat(filepath.Dir(canonical))
+	if err != nil {
+		t.Fatalf("stat canonical organization directory: %v", err)
+	}
+	if dirInfo.Mode().Perm() != 0o700 {
+		t.Fatalf("canonical organization directory mode = %v, want exactly 0o700", dirInfo.Mode().Perm())
+	}
+
+	// The source /tmp file is frozen read-only (0400) with a tombstone; it must
+	// never be written again.
+	if info, err := os.Stat(seedPath); err == nil {
+		if info.Mode().Perm() != 0o400 {
+			t.Fatalf("legacy /tmp selection mode = %v, want exactly 0o400 after freeze", info.Mode().Perm())
+		}
+	}
+	if !isWorldFrozenTombstone(filepath.Dir(seedPath)) {
+		t.Fatal("expected tombstone marker next to the frozen legacy selection")
+	}
+
+	// A subsequent write goes to the private canonical path only; the /tmp
+	// source is never re-touched.
+	state := ActiveState{
+		Resolution: Resolution{ResolvedRevision: "mig-2", Source: Source{Kind: SourceLocal, Location: "y"}},
+		Config:     parseConfigForTest(t),
+	}
+	if err := SaveActive(state); err != nil {
+		t.Fatalf("SaveActive after migration = %v", err)
+	}
+	final, err := LoadActive()
+	if err != nil {
+		t.Fatalf("LoadActive after write = %v", err)
+	}
+	if final.Resolution.ResolvedRevision != "mig-2" {
+		t.Fatalf("write after migration did not land in canonical path: %+v", final.Resolution)
+	}
+	// The frozen /tmp source still holds the original migrated content.
+	data, err := os.ReadFile(seedPath)
+	if err != nil {
+		t.Fatalf("read legacy /tmp selection: %v", err)
+	}
+	if !strings.Contains(string(data), "mig-1") {
+		t.Fatalf("legacy /tmp source was re-touched by migration write: %q", string(data))
+	}
+}
+
+// TestWorldWritableMigrationRejectsForeignSymlink asserts fail-closed behavior
+// for a positive symlink case: the legacy selection at the world-writable
+// resolved path is a symlink to a foreign file. LoadActive must refuse (the
+// symlink is rejected before any read) and the foreign target must remain
+// byte-for-byte and mode unchanged. This is the positive symlink regression
+// the PR #1582 review R2 required.
+func TestWorldWritableMigrationRejectsForeignSymlink(t *testing.T) {
+	// Isolate the private fallback so nothing is written to the real home.
+	privateHome := t.TempDir()
+	t.Setenv("HOME", privateHome)
+
+	// World-writable resolved location (broken XDG_CONFIG_HOME).
+	root := t.TempDir() // 0777 world-writable
+	cfgDir := filepath.Join(root, "config")
+	if err := os.MkdirAll(cfgDir, 0o777); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(cfgDir, 0o777); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("XDG_CONFIG_HOME", cfgDir)
+
+	// A foreign target that must never be altered.
+	foreignDir := filepath.Join(t.TempDir(), "foreign")
+	if err := os.MkdirAll(foreignDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	foreignPath := filepath.Join(foreignDir, "target.json")
+	foreignBytes := []byte(`{"resolution":{"resolved_revision":"foreign","source":{"kind":"local","location":"foreign"}},"config":` + testConfigJSON(t) + `}`)
+	if err := os.WriteFile(foreignPath, foreignBytes, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	foreignInfo, err := os.Stat(foreignPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	origForeignMode := foreignInfo.Mode().Perm()
+
+	// Seed the legacy path as a symlink to the foreign file.
+	legacyPath, err := ActivePath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(legacyPath), 0o777); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(filepath.Dir(filepath.Dir(legacyPath)), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(filepath.Dir(filepath.Dir(filepath.Dir(legacyPath))), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(filepath.Dir(legacyPath), os.ModeSticky|0o777); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(foreignPath, legacyPath); err != nil {
+		t.Fatal(err)
+	}
+	// Verify the symlink is a symlink (Lstat must not follow it).
+	legacyInfo, err := os.Lstat(legacyPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if legacyInfo.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("test did not create a symlink at %q", legacyPath)
+	}
+
+	// LoadActive must fail closed: a symlink must not be adopted.
+	_, err = LoadActive()
+	if err == nil {
+		t.Fatal("LoadActive into a world-writable XDG with a symlink legacy selection must fail closed")
+	}
+
+	// The foreign target must be completely unchanged (bytes and mode): the
+	// adoption rejected before any read could touch it.
+	got, err := os.ReadFile(foreignPath)
+	if err != nil {
+		t.Fatalf("read foreign target: %v", err)
+	}
+	if string(got) != string(foreignBytes) {
+		t.Fatalf("foreign target was altered by symlink adoption: got %q", string(got))
+	}
+	afterInfo, err := os.Stat(foreignPath)
+	if err != nil {
+		t.Fatalf("stat foreign target: %v", err)
+	}
+	if afterInfo.Mode().Perm() != origForeignMode {
+		t.Fatalf("foreign target mode changed: before %v after %v", origForeignMode, afterInfo.Mode().Perm())
+	}
+}
+
+// TestWorldWritableMigrationFrozenWhenSourceAndTargetRemoved is the regression
+// the r2/r3 reviews required: after a successful migration, if both the private
+// canonical active.json and the legacy /tmp source are removed while the
+// durable once-only marker in the private canonical namespace remains, no
+// re-adoption may occur (the marker honors the freeze) and LoadActive must
+// return the normal not-configured result — not a decode error, not a panic.
+func TestWorldWritableMigrationFrozenWhenSourceAndTargetRemoved(t *testing.T) {
+	privateHome := t.TempDir()
+	t.Setenv("HOME", privateHome)
+
+	root := t.TempDir()
+	if err := os.Chmod(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	cfgDir := filepath.Join(root, "config")
+	if err := os.MkdirAll(cfgDir, 0o777); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(cfgDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("XDG_CONFIG_HOME", cfgDir)
+
+	seed := `{"resolution":{"resolved_revision":"mig-1","source":{"kind":"local","location":"x"}},"config":` + testConfigJSON(t) + `}`
+	legacyPath, err := ActivePath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(legacyPath), 0o777); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(filepath.Dir(filepath.Dir(legacyPath)), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(filepath.Dir(filepath.Dir(filepath.Dir(legacyPath))), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(filepath.Dir(legacyPath), os.ModeSticky|0o777); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(legacyPath, []byte(seed), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// Adopt the legacy selection into the private canonical path.
+	loaded, err := LoadActive()
+	if err != nil {
+		t.Fatalf("LoadActive after migration = %v", err)
+	}
+	if loaded.Resolution.ResolvedRevision != "mig-1" {
+		t.Fatalf("LoadActive did not return the adopted selection: %+v", loaded.Resolution)
+	}
+
+	canon, err := privateCanonicalPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The durable once-only marker must be present after a successful adopt.
+	marker := filepath.Join(filepath.Dir(canon), canonicalFrozenMarker)
+	if _, err := os.Lstat(marker); err != nil {
+		t.Fatalf("expected durable migration marker %q: %v", marker, err)
+	}
+	// The legacy source must still be frozen read-only (0400).
+	if info, err := os.Stat(legacyPath); err == nil {
+		if info.Mode().Perm() != 0o400 {
+			t.Fatalf("legacy frozen source mode = %v, want 0o400", info.Mode().Perm())
+		}
+	}
+
+	// Remove ONLY the canonical active.json, leaving the frozen legacy /tmp
+	// source in place. With the marker present, no re-adoption may occur.
+	//
+	// This deliberately keeps the legacy source: without the durable marker the
+	// loader would fall through to adoptLegacySelection, re-read the retained
+	// legacy selection and return it successfully. The assertion therefore
+	// proves the marker — not merely the absent source — is what makes the
+	// migration once-only.
+	if err := os.Remove(canon); err != nil {
+		t.Fatalf("remove canonical: %v", err)
+	}
+
+	// LoadActive must return ErrNotConfigured: the migration is frozen, so the
+	// absent canonical state yields the normal not-configured result and the
+	// legacy path is never re-read.
+	_, err = LoadActive()
+	if err == nil {
+		t.Fatal("LoadActive with marker present but canonical missing must return ErrNotConfigured")
+	}
+	if !errors.Is(err, ErrNotConfigured) {
+		t.Fatalf("LoadActive error = %v, want ErrNotConfigured", err)
+	}
+}
+
+type fileInfoWithSys struct {
+	os.FileInfo
+	sys any
+}
+
+func (i fileInfoWithSys) Sys() any { return i.sys }
+
+func TestWorldWritableMigrationRejectsForeignOwnedRegularFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "active.json")
+	if err := os.WriteFile(path, []byte(`{"resolution":{},"config":{}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Lstat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	owner, ok := fileOwnerUID(info)
+	if !ok {
+		t.Fatal("test requires file ownership metadata")
+	}
+	foreign := struct{ Uid uint32 }{Uid: owner + 1} // model a foreign owner without chown.
+	if err := validateLegacySelection(fileInfoWithSys{FileInfo: info, sys: foreign}, path, owner); err == nil {
+		t.Fatal("foreign-owned regular legacy selection must be rejected")
+	}
+	if err := validateLegacySelection(info, path, owner); err != nil {
+		t.Fatalf("current-user-owned 0600 regular file should pass the owner check: %v", err)
+	}
+}
+
+func TestWorldWritableMigrationRejectsUntrustedDirectoryAncestor(t *testing.T) {
+	root := t.TempDir()
+	if err := os.Chmod(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(root, "config", "baseharbor", "organization")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(filepath.Dir(dir), 0o777); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(dir, os.ModeSticky|0o777); err != nil {
+		t.Fatal(err)
+	}
+	legacy := filepath.Join(dir, legacyTempSelectionRel)
+	seed := []byte(`{"resolution":{"resolved_revision":"foreign-dir","source":{"kind":"local","location":"x"}},"config":` + testConfigJSON(t) + `}`)
+	if err := os.WriteFile(legacy, seed, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	canonical := filepath.Join(root, "private", "active.json")
+	if _, err := adoptLegacySelection(legacy, canonical); err == nil {
+		t.Fatal("migration through a non-sticky writable ancestor must fail closed")
+	}
+	got, err := os.ReadFile(legacy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != string(seed) {
+		t.Fatal("rejected migration changed the legacy source")
+	}
+	if _, err := os.Lstat(canonical); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("rejected migration created canonical selection: %v", err)
+	}
+}
+
+// TestWorldWritableMigrationFrozenWhenSourceAndTargetBothRemoved is the exact
+// regression the r3/r4 reviews required: after a successful migration, if BOTH
+// the private canonical active.json AND the legacy /tmp source are removed
+// while the durable once-only marker in the private canonical namespace
+// remains, the next LoadActive must return the normal not-configured result —
+// no decode/EOF error and no re-adoption of the deleted legacy source. This is
+// a distinct case from TestWorldWritableMigrationFrozenWhenSourceAndTargetRemoved
+// (which retains the legacy source to prove the marker blocks re-adoption even
+// when a live source is present); here the source is gone too, so the only
+// correct outcome is the absent result, and the deleted source must never be
+// resurrected by a second migration.
+func TestWorldWritableMigrationFrozenWhenSourceAndTargetBothRemoved(t *testing.T) {
+	privateHome := t.TempDir()
+	t.Setenv("HOME", privateHome)
+
+	root := t.TempDir()
+	if err := os.Chmod(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	cfgDir := filepath.Join(root, "config")
+	if err := os.MkdirAll(cfgDir, 0o777); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(cfgDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("XDG_CONFIG_HOME", cfgDir)
+
+	seed := `{"resolution":{"resolved_revision":"mig-1","source":{"kind":"local","location":"x"}},"config":` + testConfigJSON(t) + `}`
+	legacyPath, err := ActivePath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(legacyPath), 0o777); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(filepath.Dir(filepath.Dir(legacyPath)), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(filepath.Dir(filepath.Dir(filepath.Dir(legacyPath))), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(filepath.Dir(legacyPath), os.ModeSticky|0o777); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(legacyPath, []byte(seed), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// Adopt the legacy selection into the private canonical path.
+	loaded, err := LoadActive()
+	if err != nil {
+		t.Fatalf("LoadActive after migration = %v", err)
+	}
+	if loaded.Resolution.ResolvedRevision != "mig-1" {
+		t.Fatalf("LoadActive did not return the adopted selection: %+v", loaded.Resolution)
+	}
+
+	canon, err := privateCanonicalPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The durable once-only marker must be present after a successful adopt.
+	marker := filepath.Join(filepath.Dir(canon), canonicalFrozenMarker)
+	if _, err := os.Lstat(marker); err != nil {
+		t.Fatalf("expected durable migration marker %q: %v", marker, err)
+	}
+
+	// Remove BOTH the canonical active.json and the frozen legacy /tmp source,
+	// leaving only the durable private marker behind.
+	if err := os.Remove(canon); err != nil {
+		t.Fatalf("remove canonical: %v", err)
+	}
+	if err := os.Remove(legacyPath); err != nil {
+		t.Fatalf("remove legacy source: %v", err)
+	}
+
+	// LoadActive must return ErrNotConfigured: the migration is frozen, so the
+	// absent canonical state yields the normal not-configured result and the
+	// deleted legacy path is never re-read or re-adopted. A decode/EOF error
+	// (or a successful return) would prove the marker was not honored.
+	_, err = LoadActive()
+	if err == nil {
+		t.Fatal("LoadActive with both canonical and legacy removed must return ErrNotConfigured")
+	}
+	if !errors.Is(err, ErrNotConfigured) {
+		t.Fatalf("LoadActive error = %v, want ErrNotConfigured", err)
+	}
+}
+
+func parseConfigForTest(t *testing.T) Config {
+	t.Helper()
+	config, err := parseConfig([]byte(testOrgYAML))
+	if err != nil {
+		t.Fatalf("parseConfig: %v", err)
+	}
+	return config
+}
+
+func parseConfigForTestRaw() Config {
+	config, err := parseConfig([]byte(testOrgYAML))
+	if err != nil {
+		panic(err)
+	}
+	return config
+}
+
+func testConfigJSON(t *testing.T) string {
+	t.Helper()
+	config := parseConfigForTest(t)
+	data, err := json.Marshal(config)
+	if err != nil {
+		t.Fatalf("marshal config: %v", err)
+	}
+	return string(data)
+}
+
+// SaveActiveForTest writes a state with the default local source, exercising
+// the world-writable migration path under test control.
+func SaveActiveForTest() (ActiveState, error) {
+	state := ActiveState{
+		Resolution: Resolution{ResolvedRevision: "mig-1", Source: Source{Kind: SourceLocal, Location: "ignored"}},
+		Config:     parseConfigForTestRaw(),
+	}
+	return state, SaveActive(state)
 }

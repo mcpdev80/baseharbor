@@ -241,9 +241,18 @@ func analyzeSecurityConfig(policy WorkloadSecurityPolicy, config renderedSecurit
 }
 
 func ResolveWorkloadSecurityPolicy(m Manifest) (WorkloadSecurityPolicy, error) {
+	// This compatibility API has no trusted policy source. Unknown policy is
+	// managed regardless of environment name.
+	return ResolveWorkloadSecurityPolicyWithDevPolicy(m, false)
+}
+
+// ResolveWorkloadSecurityPolicyWithDevPolicy is the policy-aware form. The
+// development mode is now an explicit decision rather than an implicit name
+// match. Callers without a trusted policy source must pass false. The env
+// override still cannot downgrade managed policy into development.
+func ResolveWorkloadSecurityPolicyWithDevPolicy(m Manifest, devMode bool) (WorkloadSecurityPolicy, error) {
 	baseMode := "managed"
-	switch strings.ToLower(strings.TrimSpace(m.Environment)) {
-	case "dev", "development":
+	if devMode {
 		baseMode = "development"
 	}
 
@@ -291,6 +300,13 @@ func workloadSecurityMode(m Manifest) (string, error) {
 		return "", err
 	}
 	return policy.Mode, nil
+}
+
+// TrustedLocalForDevEnvironment is retained for source compatibility.
+// Environment names do not establish trusted-local development mode, so this
+// helper always fails closed.
+func TrustedLocalForDevEnvironment(environment string) bool {
+	return false
 }
 
 func dangerousLinuxCapability(value string) bool {

@@ -48,7 +48,7 @@ func TestComposeSecurityDevelopmentAllowsOnlyBoundedDeviceException(t *testing.T
 	t.Setenv(WorkloadSecurityAllowEnv, "host-device")
 	m := New("demo", "dev", false, false, false)
 	rendered := []byte(`{"services":{"api":{"devices":[{"source":"/dev/kvm","target":"/dev/kvm"}]}}}`)
-	report, err := AnalyzeRenderedComposeSecurity(m, rendered)
+	report, err := analyzeRenderedComposeSecurityWithPolicy(t, m, true, rendered)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -60,7 +60,7 @@ func TestComposeSecurityDevelopmentAllowsOnlyBoundedDeviceException(t *testing.T
 func TestComposeSecurityRejectsNonOverridableDevelopmentException(t *testing.T) {
 	t.Setenv(WorkloadSecurityAllowEnv, "privileged")
 	m := New("demo", "dev", false, false, false)
-	if _, err := AnalyzeRenderedComposeSecurity(m, []byte(`{"services":{"api":{"privileged":true}}}`)); err == nil {
+	if _, err := analyzeRenderedComposeSecurityWithPolicy(t, m, true, []byte(`{"services":{"api":{"privileged":true}}}`)); err == nil {
 		t.Fatal("privileged policy was incorrectly made overridable")
 	}
 }
@@ -75,7 +75,7 @@ func TestComposeSecurityCannotDowngradeManagedEnvironmentToDevelopment(t *testin
 
 func TestComposeSecurityDevelopmentWarnsUnacknowledgedDevice(t *testing.T) {
 	m := New("demo", "dev", false, false, false)
-	report, err := AnalyzeRenderedComposeSecurity(m, []byte(`{"services":{"api":{"devices":[{"source":"/dev/kvm","target":"/dev/kvm"}]}}}`))
+	report, err := analyzeRenderedComposeSecurityWithPolicy(t, m, true, []byte(`{"services":{"api":{"devices":[{"source":"/dev/kvm","target":"/dev/kvm"}]}}}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,7 +97,7 @@ func TestComposeSecurityRejectsDevelopmentAllowInManagedMode(t *testing.T) {
 
 func TestComposeSecurityReportIsMachineReadable(t *testing.T) {
 	m := New("demo", "dev", false, false, false)
-	report, err := AnalyzeRenderedComposeSecurity(m, []byte(`{"services":{"api":{"network_mode":"host"}}}`))
+	report, err := analyzeRenderedComposeSecurityWithPolicy(t, m, true, []byte(`{"services":{"api":{"network_mode":"host"}}}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -110,6 +110,19 @@ func TestComposeSecurityReportIsMachineReadable(t *testing.T) {
 			t.Fatalf("report missing %s: %s", want, data)
 		}
 	}
+}
+
+func analyzeRenderedComposeSecurityWithPolicy(t *testing.T, m Manifest, devMode bool, rendered []byte) (WorkloadSecurityReport, error) {
+	t.Helper()
+	policy, err := ResolveWorkloadSecurityPolicyWithDevPolicy(m, devMode)
+	if err != nil {
+		return WorkloadSecurityReport{}, err
+	}
+	var config renderedSecurityCompose
+	if err := json.Unmarshal(rendered, &config); err != nil {
+		return WorkloadSecurityReport{}, err
+	}
+	return analyzeSecurityConfig(policy, config), nil
 }
 
 func TestComposeSecurityAllowsOrdinaryWorkload(t *testing.T) {

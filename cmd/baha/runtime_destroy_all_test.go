@@ -30,7 +30,7 @@ func TestFullDestroyDryRunDoesNotMutateState(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ctx := cli.WithOutputOptions(context.Background(), cli.OutputOptions{NonInteractive: true})
+	ctx := cli.WithOutputOptions(testOperatorContext(context.Background()), cli.OutputOptions{NonInteractive: true})
 	var out bytes.Buffer
 	err = runtimeDestroyCommand(ctx, []string{"-o", "json"}, &out, &out)
 	if err != nil {
@@ -86,7 +86,7 @@ func TestFullDestroyRemotePhaseExcludesOnlyRemoteTargetsAndKeepsLocalTarget(t *t
 	if len(allTargets) != 2 {
 		t.Fatalf("unfiltered inventory = %#v, want configured remote and local state Target", allTargets)
 	}
-	localTargets, discovery := discoverFullDestroyTargets(withFullDestroyExcludeRemoteTargets(context.Background()))
+	localTargets, discovery := discoverFullDestroyTargets(withFullDestroyExcludeRemoteTargets(testOperatorContext(context.Background())))
 	if countFullDestroyBlockers(discovery) != 0 || len(localTargets) != 1 || localTargets[0].Name != "local" || localTargets[0].AccessProvider != "local" {
 		t.Fatalf("local-phase inventory = %#v discovery=%#v; want only native local Target", localTargets, discovery)
 	}
@@ -119,7 +119,7 @@ func TestFullDestroyRefusesMultipleRemoteCoresBeforeMutation(t *testing.T) {
 		t.Fatal(err)
 	}
 	var out bytes.Buffer
-	handled, err := destroyConnectedRemoteInstallation(context.Background(), true, &out, &out)
+	handled, err := destroyConnectedRemoteInstallation(testOperatorContext(context.Background()), true, &out, &out)
 	if !handled || err == nil || !strings.Contains(err.Error(), "multiple remote Core installations") {
 		t.Fatalf("multiple remote Cores result: handled=%t err=%v output=%s", handled, err, out.String())
 	}
@@ -292,7 +292,7 @@ func TestFailedRuntimeInventoryCannotRemoveOwnedHostTrust(t *testing.T) {
 	}
 	defer func() { removeHostTrustForFullDestroy = original }()
 	var out bytes.Buffer
-	err = runtimeDestroyAll(context.Background(), []string{"--all", "--yes"}, &out, &out)
+	err = runtimeDestroyAll(testOperatorContext(context.Background()), []string{"--all", "--yes"}, &out, &out)
 	if removed {
 		t.Fatalf("host CA removed despite failed installation inventory: %s", out.String())
 	}

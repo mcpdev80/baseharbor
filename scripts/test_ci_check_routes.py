@@ -64,6 +64,63 @@ class CheckRoutingTests(unittest.TestCase):
         self.assertIn('BASE_REF: ${{ github.base_ref }}', workflow)
         self.assertIn('target_tip="$BASE_SHA"', workflow)
 
+    def test_named_cli_and_worker_stack_bases_trigger_and_select_pr_checks(self):
+        workflow = (ROOT / '.github/workflows/ci.yml').read_text()
+        pull_request = workflow.split('  pull_request:\n', 1)[1].split('\n\nconcurrency:', 1)[0]
+        patterns = re.findall(r"^      - '?([^'\n]+)'?$", pull_request, re.M)
+        for base in ('cli2-env-policy-head', 'cli2-identity-secrets-head',
+                     'w083-perses-datasources', 'w091-0428-091'):
+            with self.subTest(base=base):
+                self.assertTrue(any(fnmatch.fnmatchcase(base, pattern) for pattern in patterns),
+                                f'pull_request.branches does not match {base}: {patterns}')
+        base_conditions = [line for line in workflow.splitlines()
+                           if 'github.base_ref' in line and 'startsWith(github.base_ref, \'lane-\')' in line]
+        self.assertGreater(len(base_conditions), 10)
+        for line in base_conditions:
+            with self.subTest(condition=line[:100]):
+                self.assertIn("startsWith(github.base_ref, 'cli2-')", line)
+                self.assertIn("startsWith(github.base_ref, 'w0')", line)
+
+    def test_verified_oras_precedes_runtime_bootstrap_tests(self):
+        docker_runtime = yaml.safe_load(
+            (ROOT / '.github/workflows/docker-runtime-acceptance.yml').read_text())
+        steps = docker_runtime['jobs']['docker-runtime']['steps']
+        oras = next(i for i, step in enumerate(steps)
+                    if step.get('run') == 'bash scripts/ci-install-oras.sh')
+        native = next(i for i, step in enumerate(steps)
+                      if step.get('id') == 'runtime_integration')
+        self.assertLess(oras, native)
+
+        observability = yaml.safe_load(
+            (ROOT / '.github/workflows/observability-acceptance.yml').read_text())
+        for job_name in ('docker', 'podman'):
+            job_steps = observability['jobs'][job_name]['steps']
+            with self.subTest(job=job_name):
+                oras = next(i for i, step in enumerate(job_steps)
+                            if step.get('run') == 'bash scripts/ci-install-oras.sh')
+                publish = next(i for i, step in enumerate(job_steps)
+                               if step.get('run') == 'bash scripts/ci-local-oci-registry.sh publish "$BASEHARBOR_RUNTIME_IMAGE" localhost:5000/baseharbor-runtime:observability-ci')
+                acceptance = next(i for i, step in enumerate(job_steps)
+                                  if 'TestObservabilityFullStackAcceptanceInCI' in step.get('run', ''))
+                cleanup = next(i for i, step in enumerate(job_steps)
+                               if step.get('run') == 'bash scripts/ci-local-oci-registry.sh cleanup')
+                self.assertLess(oras, acceptance)
+                self.assertLess(publish, acceptance)
+                self.assertLess(oras, publish)
+                self.assertEqual('always()', job_steps[cleanup].get('if'))
+
+        dispatch_inputs = (observability.get('on') or observability.get(True))['workflow_dispatch']['inputs']
+        self.assertEqual({'description': 'Run both Docker and rootless Podman acceptance jobs',
+                          'required': False, 'default': True, 'type': 'boolean'},
+                         dispatch_inputs['all_runtimes'])
+        self.assertIn('inputs.all_runtimes', observability['jobs']['docker']['if'])
+        self.assertIn('inputs.all_runtimes', observability['jobs']['podman']['if'])
+        self.assertIn('github.ref_name, \'/podman/\'', observability['jobs']['podman']['if'])
+
+        native_script = (ROOT / 'scripts/ci-native-pr-gate.sh').read_text()
+        self.assertRegex(native_script,
+                         r'native/docker/perses-runtime-smoke\)\s+export BASEHARBOR_PERSES_RUNTIME_SMOKE=1\s+run_exact_test TestPersesRuntimeSmokeDockerIsolated 5m ./internal/application')
+
     def test_docker_dispatch_uses_selected_ref_and_receipt_check_only_runs_after_tests(self):
         workflow = (ROOT / '.github/workflows/docker-runtime-acceptance.yml').read_text()
         dispatch = workflow.split('  workflow_dispatch:\n', 1)[1].split('\n  push:\n', 1)[0]
