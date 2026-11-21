@@ -38,7 +38,7 @@ func TestCollectEnvironmentDestroyScopeClassifiesScopedAndGlobal(t *testing.T) {
 	if len(scope.Scoped) != 2 {
 		t.Fatalf("scoped set wrong: %+v", scope.Scoped)
 	}
-	if len(scope.Preserved) != 1 || scope.Preserved[0].Application != "global-app" || scope.Preserved[0].Environment != "dev" || scope.Preserved[0].DeploymentID != globalDevID {
+	if len(scope.Preserved) != 1 || scope.Preserved[0].Application != "global-app" || scope.Preserved[0].Environment != "dev" || scope.Preserved[0].DeploymentID != globalDevID.DeploymentID {
 		t.Fatalf("preserved set wrong: %+v", scope.Preserved)
 	}
 	if scope.Preserved[0].Scope != environmentDestroyScopePreserved {
