@@ -9,9 +9,31 @@ import (
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/mcpdev80/baseharbor/internal/delivery"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 )
+
+func TestCandidateConsentDigestRequiresExactToken(t *testing.T) {
+	digest := strings.Repeat("a", 64)
+	for _, hint := range []string{
+		"Re-run with --confirm-candidate " + digest,
+		"Candidate: --confirm-candidate " + digest + " to continue",
+	} {
+		if got := candidateConsentDigestFromError(&cli.UsageError{Hint: hint}); got != digest {
+			t.Fatalf("candidate digest from %q = %q, want exact token", hint, got)
+		}
+	}
+	for _, hint := range []string{
+		"--confirm-candidate " + digest + "suffix",
+		"--confirm-candidate " + digest[:63],
+		"--confirm-candidate " + strings.ToUpper(digest),
+	} {
+		if got := candidateConsentDigestFromError(&cli.UsageError{Hint: hint}); got != "" {
+			t.Fatalf("accepted non-exact candidate digest from %q: %q", hint, got)
+		}
+	}
+}
 
 // repoCandidateFixture builds a repository-owned application on disk and
 // resolves it through the real apply lifecycle, returning the resolved

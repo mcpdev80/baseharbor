@@ -14,7 +14,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 )
 
-var candidateConsentDigestPattern = regexp.MustCompile(`--confirm-candidate ([0-9a-f]{64})`)
+var candidateConsentDigestPattern = regexp.MustCompile(`(^|[[:space:]])--confirm-candidate[[:space:]]+([0-9a-f]{64})([[:space:]]|$)`)
 
 // candidateConsentDigestFromError returns only the exact digest supplied by
 // the candidate-consent UsageError. Other errors never trigger an interactive
@@ -25,10 +25,10 @@ func candidateConsentDigestFromError(err error) string {
 		return ""
 	}
 	match := candidateConsentDigestPattern.FindStringSubmatch(usage.Hint)
-	if len(match) != 2 {
+	if len(match) != 4 {
 		return ""
 	}
-	return match[1]
+	return match[2]
 }
 
 // candidateConsentOverrideKey carries the operator-provided candidate digest

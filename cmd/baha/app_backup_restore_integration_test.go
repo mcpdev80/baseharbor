@@ -94,7 +94,11 @@ services:
 	var output bytes.Buffer
 	if err := runBackupFixtureWithConsent(ctx, "apply", func(callCtx context.Context) error {
 		output.Reset()
-		return runWithIOAsTestOperator(callCtx, []string{"app", "apply"}, &output, &output)
+		args := []string{"app", "apply"}
+		if digest := candidateConsentOverride(callCtx); digest != "" {
+			args = append(args, "--confirm-candidate", digest)
+		}
+		return runWithIOAsTestOperator(callCtx, args, &output, &output)
 	}); err != nil {
 		t.Fatalf("app apply: %v\n%s", err, output.String())
 	}
