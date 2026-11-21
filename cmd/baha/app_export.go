@@ -44,8 +44,8 @@ var ErrExportEmptySelection = errors.New("app export requires at least one selec
 // appExportInput and appExportReadPassword keep the guided flow testable; they
 // mirror the pattern used by the guided backup command.
 var (
-	appExportInput       io.Reader = os.Stdin
-	appExportReadPassword = readExportPasswordFromTerminal
+	appExportInput        io.Reader = os.Stdin
+	appExportReadPassword           = readExportPasswordFromTerminal
 )
 
 func appExportCommand(store application.Store) *cli.Command {
@@ -253,13 +253,13 @@ func discoverApplicationExportSources(ctx context.Context, resolved resolvedAppl
 
 	sources := []appExportSource{
 		{
-			StateClass:     "local.developer-credentials",
-			Description:    "local developer credentials for this target/environment",
+			StateClass:       "local.developer-credentials",
+			Description:      "local developer credentials for this target/environment",
 			NeedsHumanReveal: false,
 		},
 		{
-			StateClass:     "secrets/openbao",
-			Description:    "managed application secret values (requires human reveal)",
+			StateClass:       "secrets/openbao",
+			Description:      "managed application secret values (requires human reveal)",
 			NeedsHumanReveal: true,
 		},
 	}
