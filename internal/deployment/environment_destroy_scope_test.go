@@ -12,10 +12,10 @@ import (
 )
 
 // TestCollectEnvironmentDestroyScopeClassifiesScopedAndGlobal proves the
-// impact report separates a deployment that is scoped to the environment
-// (removed with it) from a global deployment whose application is also
-// deployed in another environment (preserved). Names are never consulted: the
-// (application_id) cross-environment footprint decides.
+// impact report includes every deployment owned by the selected environment,
+// while preserving only the sibling deployment record in another
+// environment. Application identity is used to locate sibling records, not to
+// make the selected environment's deployment global.
 func TestCollectEnvironmentDestroyScopeClassifiesScopedAndGlobal(t *testing.T) {
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
 	seedManagedTargetOwner(t, "default")
@@ -35,10 +35,10 @@ func TestCollectEnvironmentDestroyScopeClassifiesScopedAndGlobal(t *testing.T) {
 	if err != nil {
 		t.Fatalf("collect scope: %v", err)
 	}
-	if len(scope.Scoped) != 1 || scope.Scoped[0].Application != "scoped-app" {
+	if len(scope.Scoped) != 2 {
 		t.Fatalf("scoped set wrong: %+v", scope.Scoped)
 	}
-	if len(scope.Preserved) != 1 || scope.Preserved[0].Application != "global-app" {
+	if len(scope.Preserved) != 1 || scope.Preserved[0].Application != "global-app" || scope.Preserved[0].Environment != "dev" || scope.Preserved[0].DeploymentID != globalDevID {
 		t.Fatalf("preserved set wrong: %+v", scope.Preserved)
 	}
 	if scope.Preserved[0].Scope != environmentDestroyScopePreserved {

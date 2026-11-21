@@ -33,7 +33,7 @@ func envDestroyCommand() *cli.Command {
 				Name:    "destroy",
 				Summary: "Destroy an environment and its environment-scoped deployments",
 				Usage:   "baha env destroy [NAME] [--keep-data | --delete-data [--confirm-delete-data]] [--yes | --no-input] [-o json|--output json|--json]",
-				Long:    "Retires the selected environment's scoped deployments before removing its identity. KEEP stops scoped runtimes while retaining persistent data, recovery material and deployment owners; --delete-data permanently destroys scoped deployments and requires separate explicit consent. Global apps deployed in other environments, other environments, shared services and node hosts are preserved.",
+				Long:    "Retires the selected environment's deployments before removing its identity. KEEP stops each selected runtime while retaining persistent data, recovery material and deployment owners; --delete-data permanently destroys selected deployments and requires separate explicit consent. Deployments in other environments, shared services and node hosts are preserved.",
 				Run:     envDestroyCommandRun,
 			},
 		},

@@ -5,12 +5,143 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/delivery"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
+
+// TestEnvironmentDestroyNativeLifecycle proves KEEP retires the selected
+// environment's real workload while retaining its deployment owner and source.
+// CI runs it once on each isolated Docker and Podman Coreless lifecycle runner.
+func TestEnvironmentDestroyNativeLifecycle(t *testing.T) {
+	if os.Getenv("BASEHARBOR_ENV_DESTROY_ACCEPTANCE") != "1" {
+		t.Skip("requires isolated native environment-destroy acceptance")
+	}
+	ctx, cancel := context.WithTimeout(machineNoninteractiveContext(context.Background()), 8*time.Minute)
+	defer cancel()
+	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
+	target := configureTestTargetEmpty(t)
+	t.Setenv("BASEHARBOR_TARGET", target.Name)
+	t.Setenv("BASEHARBOR_ENVIRONMENT", "prod")
+	if os.Getenv("BASEHARBOR_TEST_RUNTIME") == "podman" {
+		cfg, err := deployment.LoadConfig()
+		if err != nil {
+			t.Fatal(err)
+		}
+		entry := cfg.Targets[target.Name]
+		entry.Runtime.Provider = "podman"
+		cfg.Targets[target.Name] = entry
+		if err := cfg.Save(); err != nil {
+			t.Fatal(err)
+		}
+		target, err = cfg.ResolveTarget("", "")
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	runtime, err := detectRuntimeForTarget(ctx, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	t.Chdir(root)
+	authored := "version: 1\napp:\n  name: env-destroy-native\n  environment: prod\n"
+	if err := os.WriteFile(filepath.Join(root, "baseharbor.yaml"), []byte(authored), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "compose.yaml"), []byte(corelessHTTPWorkload), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var output bytes.Buffer
+	if err := runWithIOAsTestOperator(ctx, []string{"app", "init", "--quick", "--json"}, &output, &output); err != nil {
+		t.Fatalf("initialize native environment workload: %v\n%s", err, output.String())
+	}
+	destroyed := false
+	t.Cleanup(func() {
+		if destroyed {
+			return
+		}
+		cleanupCtx, cleanupCancel := context.WithTimeout(machineNoninteractiveContext(context.Background()), 2*time.Minute)
+		defer cleanupCancel()
+		if err := destroySelectiveApplicationWithConsent(cleanupCtx); err != nil {
+			t.Errorf("native environment-destroy fixture cleanup: %v", err)
+		}
+	})
+	if _, err := deployment.GetEnvironment(target.Name, "prod"); err != nil {
+		t.Fatalf("create prod environment identity: %v", err)
+	}
+	if err := ensureRepositoryDeploymentInputsForUp(ctx, strings.NewReader(""), io.Discard, runtimeUpOptions{Yes: true}); err != nil {
+		t.Fatalf("prepare native workload deployment inputs: %v", err)
+	}
+	resolved := applySelectiveIdentityIntent(t, ctx)
+	status, _, err := collectResolvedApplicationStatus(ctx, resolved)
+	if err != nil || !status.Ready {
+		t.Fatalf("native prod workload did not become ready: %+v %v", status, err)
+	}
+	files, err := application.ExistingRuntimeFiles(resolved.Store, resolved.Manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	workload, found, err := application.MaterializeWorkload(root, resolved.Manifest, files)
+	if err != nil || !found {
+		t.Fatalf("materialize native workload inventory: found=%t err=%v", found, err)
+	}
+	containers, err := runtime.ListRuntimeContainers(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	workloadRunning := false
+	for _, container := range containers {
+		if container.Project == workload.Project {
+			workloadRunning = true
+		}
+	}
+	if !workloadRunning {
+		t.Fatal("native prod workload had no owned runtime container before destroy")
+	}
+	stopPlan, err := buildApplicationStopPlan(ctx, resolved)
+	if err != nil {
+		t.Fatalf("build exact application stop consent: %v", err)
+	}
+	consent, err := json.Marshal(application.ProviderChangeConsent{PlanID: stopPlan.Scope.PlanID, First: true, Second: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(providerChangeConsentEnv, string(consent))
+	output.Reset()
+	if err := runWithIOAsTestOperator(ctx, []string{"env", "destroy", "prod", "--keep-data", "--yes"}, &output, &output); err != nil {
+		t.Fatalf("native env destroy: %v\n%s", err, output.String())
+	}
+	destroyed = true
+	if exists, err := deployment.EnvironmentStateExists(target.Name, "prod"); err != nil || exists {
+		t.Fatalf("native environment identity remains after success: exists=%t err=%v", exists, err)
+	}
+	record, found, err := deployment.FindDeployment(target.Name, resolved.Manifest.ApplicationID, "prod")
+	if err != nil || !found || record.Observed.State != "stopped" || record.Observed.Ready {
+		t.Fatalf("KEEP must retain the stopped deployment owner: found=%t state=%q ready=%t err=%v", found, record.Observed.State, record.Observed.Ready, err)
+	}
+	containers, err = runtime.ListRuntimeContainers(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, container := range containers {
+		if container.Project == workload.Project {
+			t.Fatalf("native environment destroy left selected prod container %s running", container.ID)
+		}
+	}
+	if source, err := os.ReadFile(filepath.Join(root, "baseharbor.yaml")); err != nil || string(source) != authored {
+		t.Fatalf("KEEP changed authored source: err=%v", err)
+	}
+	t.Log("native env destroy retired the prod workload and removed its environment identity while retaining its deployment owner, recovery state and authored source")
+}
 
 // TestCLIEnvDestroyFailsClosedWhenAppliedIntentIsMissing seeds scoped and
 // shared deployments without the durable intent required by the application
@@ -208,8 +339,8 @@ func TestEnvironmentDestroyKeepStopsScopedOnlyAndRetainsOwnerAcrossRetry(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(scope.Scoped) != 2 || len(scope.Preserved) != 1 {
-		t.Fatalf("expected two scoped and one shared deployment: scoped=%v preserved=%v", scope.Scoped, scope.Preserved)
+	if len(scope.Scoped) != 3 || len(scope.Preserved) != 1 {
+		t.Fatalf("expected three scoped and one preserved sibling deployment: scoped=%v preserved=%v", scope.Scoped, scope.Preserved)
 	}
 	seen := map[string]int{}
 	apply := func(_ context.Context, dep deployment.EnvironmentDestroyDeployment, choice deployment.EnvironmentDestroyDataChoice) error {
@@ -217,7 +348,7 @@ func TestEnvironmentDestroyKeepStopsScopedOnlyAndRetainsOwnerAcrossRetry(t *test
 			t.Fatalf("keep path passed choice %q", choice)
 		}
 		seen[dep.DeploymentID]++
-		if len(seen) == 2 {
+		if len(seen) == 3 {
 			return fmt.Errorf("simulated second-runtime stop failure")
 		}
 		return nil
@@ -235,7 +366,7 @@ func TestEnvironmentDestroyKeepStopsScopedOnlyAndRetainsOwnerAcrossRetry(t *test
 	}
 
 	// A retry recomputes the scope; each scoped runtime may be stopped again
-	// while its durable owner remains, and the shared sibling is never selected.
+	// while its durable owner remains, and the other environment's sibling is never selected.
 	retryScope, err := deployment.CollectEnvironmentDestroyScope(target.Name, "prod", deployment.EnvironmentDestroyKeepData)
 	if err != nil {
 		t.Fatal(err)
@@ -247,8 +378,8 @@ func TestEnvironmentDestroyKeepStopsScopedOnlyAndRetainsOwnerAcrossRetry(t *test
 	}); err != nil {
 		t.Fatalf("retry failed: %v", err)
 	}
-	if len(retryIDs) != 2 {
-		t.Fatalf("retry must stop exactly the two scoped deployments, got %v", retryIDs)
+	if len(retryIDs) != 3 {
+		t.Fatalf("retry must stop exactly the three prod deployments, got %v", retryIDs)
 	}
 	if exists, err := deployment.EnvironmentStateExists(target.Name, "prod"); err != nil || exists {
 		t.Fatalf("environment identity should be removed after successful retry: exists=%v err=%v", exists, err)
@@ -272,6 +403,9 @@ func TestEnvironmentDestroyDeleteDataKeepsIdentityUntilAllScopedOwnersAreDeleted
 	scope, err := deployment.CollectEnvironmentDestroyScope(target.Name, "prod", deployment.EnvironmentDestroyDeleteData)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if len(scope.Scoped) != 3 || len(scope.Preserved) != 1 {
+		t.Fatalf("expected three scoped and one preserved sibling deployment: scoped=%v preserved=%v", scope.Scoped, scope.Preserved)
 	}
 	ids := map[string]deployment.DeploymentIdentity{}
 	for _, record := range mustListCLIEnvDeployments(t, target.Name) {
@@ -301,8 +435,8 @@ func TestEnvironmentDestroyDeleteDataKeepsIdentityUntilAllScopedOwnersAreDeleted
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(retryScope.Scoped) != 1 || len(retryScope.Preserved) != 1 {
-		t.Fatalf("retry should contain one remaining scoped and one shared owner: scoped=%v preserved=%v", retryScope.Scoped, retryScope.Preserved)
+	if len(retryScope.Scoped) != 2 || len(retryScope.Preserved) != 1 {
+		t.Fatalf("retry should contain two remaining scoped and one preserved sibling owner: scoped=%v preserved=%v", retryScope.Scoped, retryScope.Preserved)
 	}
 	if err := applyAndRemoveEnvironmentIdentity(context.Background(), target.Name, "prod", retryScope, func(_ context.Context, dep deployment.EnvironmentDestroyDeployment, _ deployment.EnvironmentDestroyDataChoice) error {
 		return deployment.DeleteDeploymentRecord(ids[dep.DeploymentID])

@@ -173,18 +173,9 @@ func CollectEnvironmentDestroyScope(target, environmentName string, dataChoice E
 	if allErr != nil {
 		return scope, allErr
 	}
-	applicationEnvironments := map[string]map[string]bool{}
-	for _, record := range allRecords {
-		if strings.TrimSpace(record.Identity.Environment) == "" {
-			continue
-		}
-		if applicationEnvironments[record.Identity.ApplicationID] == nil {
-			applicationEnvironments[record.Identity.ApplicationID] = map[string]bool{}
-		}
-		applicationEnvironments[record.Identity.ApplicationID][record.Identity.Environment] = true
-	}
-
+	selectedApplications := map[string]bool{}
 	for _, record := range records {
+		selectedApplications[record.Identity.ApplicationID] = true
 		dep := EnvironmentDestroyDeployment{
 			DeploymentID:  record.Identity.DeploymentID,
 			Application:   record.Identity.Application,
@@ -192,16 +183,25 @@ func CollectEnvironmentDestroyScope(target, environmentName string, dataChoice E
 			Environment:   record.Identity.Environment,
 			OwnerVerified: true,
 		}
-		if len(applicationEnvironments[record.Identity.ApplicationID]) > 1 {
-			// The application is deployed in more than one environment on this
-			// Target; its deployments in other environments survive, so the
-			// shared application identity is preserved, not destroyed.
-			dep.Scope = environmentDestroyScopePreserved
-			scope.Preserved = append(scope.Preserved, dep)
-			continue
-		}
+		// A deployment belongs to exactly one environment. Even when the same
+		// application is deployed elsewhere, this environment's deployment
+		// must be processed; only sibling deployment records are preserved.
 		dep.Scope = environmentDestroyScopeScoped
 		scope.Scoped = append(scope.Scoped, dep)
+	}
+	for _, record := range allRecords {
+		if record.Identity.Environment == environmentName || !selectedApplications[record.Identity.ApplicationID] {
+			continue
+		}
+		dep := EnvironmentDestroyDeployment{
+			DeploymentID:  record.Identity.DeploymentID,
+			Application:   record.Identity.Application,
+			ApplicationID: record.Identity.ApplicationID,
+			Environment:   record.Identity.Environment,
+			Scope:         environmentDestroyScopePreserved,
+			OwnerVerified: true,
+		}
+		scope.Preserved = append(scope.Preserved, dep)
 	}
 
 	return scope, nil
