@@ -127,6 +127,12 @@ type persesStatusResult struct {
 	State   string `json:"state"`
 	Enabled bool   `json:"enabled"`
 	Version string `json:"version"`
+	// BackendWitness names, per observability backend, the manifest-only
+	// three-state witness (configured / not-configured) with its source-id, so
+	// the operator sees which source is declared rather than a blanket
+	// "unavailable". Shared with app_status_result.go (persesBackendSignalWitness
+	// / persesBackendSignalWitnessFromManifest). Never asserts a verified backend.
+	BackendWitness []persesBackendSignalVerdict `json:"backend_witness,omitempty"`
 }
 
 // persesDirectCLIApplyDeferred reports whether the shared apply lifecycle after
