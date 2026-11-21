@@ -8,16 +8,21 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 )
 
-// TestDownRequiresConfirmedConsent (0428-060) is the down-convergence seam check:
-// 'down' must honour the same assume-yes consent the up/apply lifecycle uses so
-// an unconfirmed down makes no runtime change. Kept as a named helper so the
-// acceptance test asserts the seam directly, both directions.
+// TestDownRequiresConfirmedConsent (0428-060) pins the seam's confirmation
+// check itself: only the explicit --yes argument confirms. The production
+// behavior of the seam on the real command route is proven by
+// TestDownRouteWithoutConsentMakesNoChange and
+// TestDownRouteWithConsentRunsRetirement (0428-060 r2, in
+// app_lifecycle_down_route_0428_060_test.go), not by this helper check.
 func TestDownRequiresConfirmedConsent(t *testing.T) {
-	if !downRequiresConfirmedConsent(withAssumeYes(context.Background(), true)) {
-		t.Fatal("down execution did not honour the assume-yes consent the mission requires")
+	if !downRequiresConfirmedConsent(context.Background(), []string{"--yes"}) {
+		t.Fatal("down execution did not honour the explicit --yes confirmation the mission requires")
 	}
-	if downRequiresConfirmedConsent(context.Background()) {
+	if downRequiresConfirmedConsent(context.Background(), nil) {
 		t.Fatal("down execution reported consent that was never given")
+	}
+	if downRequiresConfirmedConsent(context.Background(), []string{"--yessure"}) {
+		t.Fatal("a lookalike option must not confirm the down mutation")
 	}
 }
 
@@ -26,6 +31,10 @@ func TestDownRequiresConfirmedConsent(t *testing.T) {
 // gates on --yes in both directions:
 //   - gate active   (--yes absent) -> execution.confirmed == false (refuses)
 //   - gate open     (--yes present) -> execution.confirmed == true (allowed)
+//
+// The r2 review found this helper-level construction is NOT sufficient on its
+// own: it never runs the registered command. It is retained as the
+// execution-level complement; the command-level proof lives in the r2 file.
 func TestDownConsentGoesBothWays(t *testing.T) {
 	r := retainedNativeBackendFixture(t)
 	r.Manifest.Services = application.Services{}
