@@ -161,6 +161,11 @@ func assertSentinelInEnvFile(t *testing.T, path, key, want string) {
 	t.Fatalf("sentinel %s=%s not inherited by child; captured env:\n%s", key, want, string(data))
 }
 
+// pinWant is a single controlled key and the value the pin must carry.
+type pinWant struct {
+	key, pin string
+}
+
 func splitLines(s string) []string {
 	var out []string
 	start := 0
@@ -254,4 +259,249 @@ func tlsForTest(t *testing.T) (caPEM, certPEM, keyPEM string) {
 		t.Fatal(err)
 	}
 	return caPath, certPath, keyPath
+}
+
+// TestPinnedEnvDropsInheritedKeys proves the security property of pinnedEnv:
+// for every controlled key, an inherited value that conflicts with the pin is
+// dropped so the pin wins. One case per key is required by card 0428-222 rc2.
+func TestPinnedEnvDropsInheritedKeys(t *testing.T) {
+	keys := []string{"PATH", "ETCDCTL_API", "ETCDCTL_ENDPOINTS", "ETCDCTL_CACERT", "ETCDCTL_CERT", "ETCDCTL_KEY"}
+	for _, key := range keys {
+		t.Run(key, func(t *testing.T) {
+			// Opposite inherited value for this key.
+			inheritVal := "inherited-" + key + "-opposite"
+			pinVal := "PIN-" + key
+
+			prev, had := os.LookupEnv(key)
+			t.Cleanup(func() {
+				if had {
+					_ = os.Setenv(key, prev)
+				} else {
+					_ = os.Unsetenv(key)
+				}
+			})
+			if err := os.Setenv(key, inheritVal); err != nil {
+				t.Fatal(err)
+			}
+
+			got := pinnedEnv("PATH=/usr/bin:/bin", "ETCDCTL_API=3",
+				"ETCDCTL_ENDPOINTS=https://etcd-1.internal:2379",
+				"ETCDCTL_CACERT=/pins/ca.pem", "ETCDCTL_CERT=/pins/cert.pem",
+				"ETCDCTL_KEY=/pins/key.pem")
+
+			// The key must appear exactly once and its value must be the pin's.
+			count := 0
+			var finalVal string
+			for _, kv := range got {
+				if i := indexByte(kv, '='); i >= 0 && kv[:i] == key {
+					count++
+					finalVal = kv[i+1:]
+				}
+			}
+			if count != 1 {
+				t.Fatalf("key %s appears %d times in pinned env; want exactly 1", key, count)
+			}
+			want := pinVal
+			if key == "PATH" {
+				want = "/usr/bin:/bin"
+			} else if key == "ETCDCTL_API" {
+				want = "3"
+			} else if key == "ETCDCTL_ENDPOINTS" {
+				want = "https://etcd-1.internal:2379"
+			} else if key == "ETCDCTL_CACERT" {
+				want = "/pins/ca.pem"
+			} else if key == "ETCDCTL_CERT" {
+				want = "/pins/cert.pem"
+			} else if key == "ETCDCTL_KEY" {
+				want = "/pins/key.pem"
+			}
+			if finalVal != want {
+				t.Fatalf("key %s final value = %q; want pin %q (inherited %q must be dropped)", key, finalVal, want, inheritVal)
+			}
+		})
+	}
+}
+
+// TestChildProcessEnvShowsPinNotInherited proves the end-to-end effect: the child
+// process receives the pin value for every controlled key, even when the parent
+// process exports an opposite value. It runs each of the four call sites with a
+// stub that writes the received env to a file and asserts the pin value wins.
+func TestChildProcessEnvShowsPinNotInherited(t *testing.T) {
+	// keys pinned by sites 1 and 3 (snapshot save / endpoint status).
+	pinnedKeys := []pinWant{{"PATH", "/usr/bin:/bin"}, {"ETCDCTL_API", "3"},
+		{"ETCDCTL_ENDPOINTS", "https://etcd-1.internal:2379"},
+		{"ETCDCTL_CACERT", "/pins/ca.pem"}, {"ETCDCTL_CERT", "/pins/cert.pem"},
+		{"ETCDCTL_KEY", "/pins/key.pem"}}
+
+	root := t.TempDir()
+	out := filepath.Join(root, "child_env.txt")
+
+	statusLit := `{"revision":42,"totalKey":10,"totalSize":4096,"hash":1}`
+	attestLit := `[{"Endpoint":"https://etcd-1.internal:2379","Status":{"header":{"cluster_id":12345,"revision":42},"version":"3.6.0"}}]`
+
+	// writeEnv writes the received env for each action to a distinct file
+	// (child_env_<action>.txt) so the test can assert the exact env every call
+	// site saw, independent of the order Snapshot() runs them in.
+	writeEnv := "#!/bin/sh\n" +
+		"act=\"$2\"\n" +
+		"archive=\"$3\"\n" +
+		"shift\n" +
+		"shift\n" +
+		"env > " + quoteShell(out) + ".${act}\n" +
+		"if [ \"$act\" = \"save\" ]; then printf 'archived' > \"$archive\"; fi\n" +
+		"if [ \"$act\" = \"status\" ]; then printf '%s' '" + statusLit + "'; fi\n" +
+		"if [ \"$act\" = \"endpoint\" ]; then printf '%s' '" + attestLit + "'; fi\n" +
+		"exit 0\n"
+
+	ctl := filepath.Join(root, "etcdctl")
+	utl := filepath.Join(root, "etcdutl")
+	for _, p := range []string{ctl, utl} {
+		if err := os.WriteFile(p, []byte(writeEnv), 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	ca, cert, key := tlsForTest(t)
+
+	// Set an opposite inherited value for every controlled key.
+	prev := map[string]string{}
+	had := map[string]bool{}
+	for _, w := range pinnedKeys {
+		p, h := os.LookupEnv(w.key)
+		prev[w.key], had[w.key] = p, h
+		if err := os.Setenv(w.key, "INHERITED-"+w.key); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Cleanup(func() {
+		for _, w := range pinnedKeys {
+			if had[w.key] {
+				_ = os.Setenv(w.key, prev[w.key])
+			} else {
+				_ = os.Unsetenv(w.key)
+			}
+		}
+	})
+
+	// --- sites 1 & 2: Snapshot save (site 1, all pins) + etcdutl status (site 2, PATH only) ---
+	t.Run("snapshot-save-pins", func(t *testing.T) {
+		if err := os.Remove(out + ".save"); err != nil && !os.IsNotExist(err) {
+			t.Fatal(err)
+		}
+		scratch := filepath.Join(t.TempDir(), "scratch")
+		if err := os.Mkdir(scratch, 0700); err != nil {
+			t.Fatal(err)
+		}
+		source := EtcdctlSource{
+			Etcdctl: ctl, Etcdutl: utl,
+			Endpoints:  []string{"https://etcd-1.internal:2379"},
+			Identity:   Identity{Core: "core-1", Target: "target-1", Cluster: "cluster-1"},
+			TLS:        TLSFiles{CA: ca, Cert: cert, Key: key},
+			ScratchDir: scratch,
+			Attest: func(context.Context) (SnapshotInfo, error) {
+				return SnapshotInfo{ClusterID: "cluster-1", Version: "3.6.0", Revision: 1}, nil
+			},
+		}
+		dest := filepath.Join(scratch, "snap.db")
+		f, err := os.Create(dest)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := source.Snapshot(context.Background(), f); err != nil {
+			t.Fatalf("snapshot failed: %v", err)
+		}
+		// Site 1 (snapshot save) pins PATH, ETCDCTL_API, ETCDCTL_ENDPOINTS,
+		// ETCDCTL_CACERT, ETCDCTL_CERT, ETCDCTL_KEY; the pin values come from the
+		// source's own TLS/endpoints fields, so assert those exact values win
+		// over the inherited opposite values.
+		assertPinsInChildEnv(t, out+".save", []pinWant{
+			{"PATH", "/usr/bin:/bin"},
+			{"ETCDCTL_API", "3"},
+			{"ETCDCTL_ENDPOINTS", "https://etcd-1.internal:2379"},
+			{"ETCDCTL_CACERT", ca},
+			{"ETCDCTL_CERT", cert},
+			{"ETCDCTL_KEY", key},
+		})
+	})
+
+	// --- site 3: attestEndpointStatus (all pins) ---
+	t.Run("endpoint-status-pins", func(t *testing.T) {
+		if err := os.Remove(out + ".endpoint"); err != nil && !os.IsNotExist(err) {
+			t.Fatal(err)
+		}
+		source := EtcdctlSource{
+			Etcdctl:   ctl,
+			Endpoints: []string{"https://etcd-1.internal:2379"},
+			Identity:  Identity{Core: "core-1", Target: "target-1", Cluster: "12345"},
+			TLS:       TLSFiles{CA: ca, Cert: cert, Key: key},
+		}
+		if _, err := source.attestEndpointStatus(context.Background()); err != nil {
+			t.Fatalf("attestation failed: %v", err)
+		}
+		assertPinsInChildEnv(t, out+".endpoint", []pinWant{
+			{"PATH", "/usr/bin:/bin"},
+			{"ETCDCTL_API", "3"},
+			{"ETCDCTL_CACERT", ca},
+			{"ETCDCTL_CERT", cert},
+			{"ETCDCTL_KEY", key},
+		})
+	})
+
+	// --- site 4: IsolatedEtcdutl.RestoreIsolated (PATH pin only) ---
+	t.Run("isolated-restore-pins", func(t *testing.T) {
+		if err := os.Remove(out + ".restore"); err != nil && !os.IsNotExist(err) {
+			t.Fatal(err)
+		}
+		// RestoreIsolated makes the parent of the destination owner-only, so put
+		// the destination under a freshly created 0700 dir.
+		base := t.TempDir()
+		if err := os.Chmod(base, 0700); err != nil {
+			t.Fatal(err)
+		}
+		archive := filepath.Join(base, "snapshot")
+		if err := os.WriteFile(archive, []byte("archive"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		dest := filepath.Join(base, "restored")
+		e := IsolatedEtcdutl{
+			Binary:                   utl,
+			MemberName:               "node1",
+			ExpectedMemberNames:      []string{"node1"},
+			InitialCluster:           "node1=https://n1:2380",
+			InitialAdvertisePeerURLs: "https://n1:2380",
+		}
+		id := Identity{Core: "core1", Target: "target1", Cluster: "cluster-1"}
+		info := SnapshotInfo{ClusterID: "cluster-1", Version: "3.6.0", Revision: 1}
+		if err := e.RestoreIsolated(context.Background(), archive, dest, id, info); err != nil {
+			t.Fatalf("isolated restore failed: %v", err)
+		}
+		assertPinsInChildEnv(t, out+".restore", []pinWant{{"PATH", "/usr/bin:/bin"}})
+	})
+}
+
+// assertPinsInChildEnv reads the file the child wrote and asserts every pinned
+// key appears exactly once with the pin value (not the inherited opposite).
+func assertPinsInChildEnv(t *testing.T, path string, pins []pinWant) {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("did not capture child env: %v", err)
+	}
+	captured := map[string]string{}
+	counts := map[string]int{}
+	for _, line := range splitLines(string(data)) {
+		if i := indexByte(line, '='); i >= 0 {
+			k, v := line[:i], line[i+1:]
+			counts[k]++
+			captured[k] = v
+		}
+	}
+	for _, p := range pins {
+		if counts[p.key] != 1 {
+			t.Fatalf("child saw key %s %d times; want exactly 1 (captured:\n%s)", p.key, counts[p.key], string(data))
+		}
+		if captured[p.key] != p.pin {
+			t.Fatalf("child saw key %s = %q; want pin %q (parent exported INHERITED-%s)", p.key, captured[p.key], p.pin, p.key)
+		}
+	}
 }

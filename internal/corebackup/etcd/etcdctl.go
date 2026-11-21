@@ -26,6 +26,42 @@ type EtcdctlSource struct {
 	Attest     func(context.Context) (SnapshotInfo, error)
 }
 
+// pinnedEnv builds the child environment so that the controlled etcd keys are
+// never overridable by the parent environment. It copies os.Environ(), removes
+// every key listed in pins, and appends the pin values last. Dropping the key
+// from the inherited copy is mandatory: with Go's env-dedup (last value wins)
+// an inherited ETCDCTL_ENDPOINTS/ETCDCTL_CACERT/... placed before the pin would
+// silently win, making the pinned endpoint and TLS trust swappable by a parent
+// process. The result is therefore independent of Go's dedup rule.
+func pinnedEnv(pins ...string) []string {
+	dropped := make(map[string]struct{}, len(pins))
+	for _, p := range pins {
+		if i := indexByte(p, '='); i >= 0 {
+			dropped[p[:i]] = struct{}{}
+		}
+	}
+	out := make([]string, 0, len(os.Environ())+len(pins))
+	for _, kv := range os.Environ() {
+		if i := indexByte(kv, '='); i >= 0 {
+			if _, bad := dropped[kv[:i]]; bad {
+				continue
+			}
+		}
+		out = append(out, kv)
+	}
+	return append(out, pins...)
+}
+
+// indexByte returns the offset of the first c in s, or -1 when absent.
+func indexByte(s string, c byte) int {
+	for i := 0; i < len(s); i++ {
+		if s[i] == c {
+			return i
+		}
+	}
+	return -1
+}
+
 func trustedBinary(path string) error {
 	if path == "" || !filepath.IsAbs(path) {
 		return errors.New("trusted helper must have an absolute path")
@@ -95,15 +131,18 @@ func (s EtcdctlSource) Snapshot(ctx context.Context, dest io.Writer) (SnapshotIn
 	// (os.Environ) so exported variables reach the child; the child is a direct
 	// descendant of the baha CLI and must inherit it.
 	cmd := exec.CommandContext(ctx, s.Etcdctl, "snapshot", "save", archive)
-	cmd.Env = append([]string{
+	// The child is a direct descendant of the baha CLI and must inherit it, but
+	// the controlled etcd keys are pinned via pinnedEnv, which drops any inherited
+	// copy of those keys first so the pin is never overridden by the parent env.
+	cmd.Env = pinnedEnv(
 		"PATH=/usr/bin:/bin", "ETCDCTL_API=3",
 		// Maintenance.Snapshot streams from one member, after all configured
 		// endpoints have attested the owning cluster.
-		"ETCDCTL_ENDPOINTS=" + s.Endpoints[0],
-		"ETCDCTL_CACERT=" + s.TLS.CA,
-		"ETCDCTL_CERT=" + s.TLS.Cert,
-		"ETCDCTL_KEY=" + s.TLS.Key,
-	}, os.Environ()...)
+		"ETCDCTL_ENDPOINTS="+s.Endpoints[0],
+		"ETCDCTL_CACERT="+s.TLS.CA,
+		"ETCDCTL_CERT="+s.TLS.Cert,
+		"ETCDCTL_KEY="+s.TLS.Key,
+	)
 	if err := cmd.Run(); err != nil {
 		return SnapshotInfo{}, errors.New("etcd maintenance snapshot failed")
 	}
@@ -113,10 +152,10 @@ func (s EtcdctlSource) Snapshot(ctx context.Context, dest io.Writer) (SnapshotIn
 	if err := safeRegular(archive); err != nil {
 		return SnapshotInfo{}, err
 	}
-	// etcdutl snapshot status integrity check. Inherit the parent environment
-	// (os.Environ) after the pinned PATH.
+	// Isolation means never executing inside the running etcd container; the
+	// child still inherits the parent env minus the pinned keys.
 	verify := exec.CommandContext(ctx, s.Etcdutl, "snapshot", "status", archive, "--write-out=json")
-	verify.Env = append([]string{"PATH=/usr/bin:/bin"}, os.Environ()...)
+	verify.Env = pinnedEnv("PATH=/usr/bin:/bin")
 	statusJSON, err := verify.Output()
 	if err != nil {
 		return SnapshotInfo{}, errors.New("etcdutl snapshot status integrity check failed")
@@ -158,13 +197,14 @@ func (s EtcdctlSource) attestEndpointStatus(ctx context.Context) (SnapshotInfo, 
 	var result SnapshotInfo
 	for _, endpoint := range s.Endpoints {
 		cmd := exec.CommandContext(ctx, s.Etcdctl, "--endpoints="+endpoint, "endpoint", "status", "--write-out=json")
-		// Pin PATH, API and TLS trust, then inherit the parent environment.
-		cmd.Env = append([]string{
+		// Pin PATH, API and TLS trust via pinnedEnv so a parent ETCDCTL_* key
+		// can never override them.
+		cmd.Env = pinnedEnv(
 			"PATH=/usr/bin:/bin", "ETCDCTL_API=3",
-			"ETCDCTL_CACERT=" + s.TLS.CA,
-			"ETCDCTL_CERT=" + s.TLS.Cert,
-			"ETCDCTL_KEY=" + s.TLS.Key,
-		}, os.Environ()...)
+			"ETCDCTL_CACERT="+s.TLS.CA,
+			"ETCDCTL_CERT="+s.TLS.Cert,
+			"ETCDCTL_KEY="+s.TLS.Key,
+		)
 		output, err := cmd.Output()
 		if err != nil || len(output) > 32768 {
 			return SnapshotInfo{}, errors.New("etcd endpoint status authentication failed")
