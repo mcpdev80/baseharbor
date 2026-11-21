@@ -36,6 +36,13 @@ func TestControlPlaneSingleDefaultNativeRuntimeInCI(t *testing.T) {
 	if !strings.HasPrefix(bootstrapTarget, "w169-ci-bootstrap-") {
 		t.Fatalf("native default acceptance has no owned bootstrap Target: %q", bootstrapTarget)
 	}
+	resolvedBootstrapTarget, err := effectiveTarget(ctx)
+	if err != nil {
+		t.Fatalf("native bootstrap Target must be registered before selection: %v", err)
+	}
+	if resolvedBootstrapTarget.Name != bootstrapTarget || resolvedBootstrapTarget.RuntimeProvider != kind {
+		t.Fatalf("native bootstrap selection = %#v, want %s Target %q", resolvedBootstrapTarget, kind, bootstrapTarget)
+	}
 	t.Setenv("BASEHARBOR_TARGET", bootstrapTarget)
 	provider, err := testruntime.Resolve(ctx)
 	if err != nil {
