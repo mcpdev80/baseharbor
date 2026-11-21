@@ -273,8 +273,32 @@ func PersesServiceMounts() []string {
 		"./providers/management-ui/perses:" + PersesConfigMountDir + ":ro",
 		PersesEncryptionKeyComposeBindDir + ":" + PersesEncryptionKeyMountDir + ":ro",
 		PersesPersistenceVolumeName + ":/persistence",
+		// The Tempo datasource access boundary (0428-091 P1/P2): the Perses
+		// server reaches the managed tempo-access gateway over the backend
+		// network at the access alias. The gateway's container-readable
+		// runtime material — the trust bundle the datasource proxy verifies
+		// with and the enrolled client identity it presents — rides into the
+		// Perses container as one read-only directory bind, exactly like
+		// every other managed gateway mount. No private key is ever
+		// interpolated into a rendered configuration; the configuration
+		// references the bundle by file.
+		TempoAccessRuntimeComposeBind + ":" + PersesTempoAccessMountDir + ":ro",
 	}
 }
+
+// TempoAccessRuntimeComposeBind is the compose-relative host directory that
+// carries the tempo-access gateway's runtime projection. The application
+// composition lays the gateway out exactly here (the bind source is contract,
+// not derivation), mirroring the deterministic projection layout every other
+// managed surface uses.
+const TempoAccessRuntimeComposeBind = "./providers/tempo/gateway/service-access/runtime"
+
+// PersesTempoAccessMountDir is the container path where the Perses server
+// receives the tempo-access gateway's runtime material: the trust bundle the
+// datasource proxy verifies with, and the enrolled client identity it
+// presents (0428-091 P1/P2: Perses queries Tempo THROUGH the BaseHarbor
+// service-access boundary, from its own network namespace).
+const PersesTempoAccessMountDir = "/run/baseharbor/tempo-access"
 
 // PersesEncryptionKeyComposeBindDir is the compose-relative host directory
 // holding ONLY the container-readable encryption-key projection. The

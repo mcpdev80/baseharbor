@@ -155,14 +155,6 @@ func TestPersesManagementNotRegisteredAsCapabilityProvider(t *testing.T) {
 // r4: the new Perses representation must not weaken the provider catalog's
 // validation. Every shipped reference descriptor still validates at its
 // intended boundary.
-func TestPersesCatalogValidationBehaviorPreserved(t *testing.T) {
-	for _, descriptor := range ReferenceIntegrations() {
-		if err := descriptor.Validate(); err != nil {
-			t.Fatalf("reference integration %q must still pass Validate at its intended boundary, got: %v", descriptor.ID, err)
-		}
-	}
-}
-
 // TestResolveHostDashboardSignalStatusFailClosed pins the fail-closed resolver
 // the Perses host dashboards consume: the host dashboard is realized as
 // "supported" ONLY when the observability backend AND the Perses surface are
@@ -214,4 +206,34 @@ func TestResolveHostDashboardSignalStatusRequiresNativeSignalWitness(t *testing.
 	// (it requires Status=Supported, Mode=Native, Verification=VerifyBackend).
 	// The public resolver gates on that witness, so manifest selection alone is
 	// insufficient — the positive result needs the actual verified metric signal.
+}
+
+func TestPersesCatalogValidationBehaviorPreserved(t *testing.T) {
+	for _, descriptor := range ReferenceIntegrations() {
+		if err := descriptor.Validate(); err != nil {
+			t.Fatalf("reference integration %q must still pass Validate at its intended boundary, got: %v", descriptor.ID, err)
+		}
+	}
+}
+
+// TestResolveHostDashboardSignalStatusWitnessIsAuthoritative proves the
+// non-forgeability the Luna r4 acceptance demands, at the resolver seam
+// (resolveHostDashboardSignalStatusWith): a caller that asserts BOTH manifest
+// booleans but cannot produce the verified native host/provider-metrics
+// witness must NOT mark the host dashboard available — the witness, not the
+// manifest, is authoritative on that axis. Flipping the witness probe to a
+// constant true (mutating the resolver so it ignores the catalog) turns this
+// cell red; so does removing the witness gate from the public path.
+func TestResolveHostDashboardSignalStatusWitnessIsAuthoritative(t *testing.T) {
+	if got := resolveHostDashboardSignalStatusWith(true, true, func() bool { return false }); got != "" {
+		t.Fatalf("manifest-only selection with an absent native signal witness must stay unavailable-preserving, got %q", got)
+	}
+	if got := resolveHostDashboardSignalStatusWith(true, true, hostProviderMetricsNativeVerified); got != ObservabilitySupported {
+		t.Fatalf("the shipped catalog's verified collector-metrics signal must resolve to available, got %q", got)
+	}
+	// The public resolver and the seam must agree: the shipped-catalog probe
+	// is the only witness the production path may use.
+	if got, want := ResolveHostDashboardSignalStatus(true, true), resolveHostDashboardSignalStatusWith(true, true, hostProviderMetricsNativeVerified); got != want {
+		t.Fatalf("public resolver %q diverges from the seam-backed verdict %q", got, want)
+	}
 }
