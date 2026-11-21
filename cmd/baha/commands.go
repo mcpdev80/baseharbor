@@ -232,6 +232,7 @@ func configuredApplicationCommand(store application.Store) *cli.Command {
 		appRedisCommand(store),
 		appCredsCommand(store),
 		secureProfileExportCommand(store),
+		appExportCommand(store),
 		appLogsCommand(store),
 		appShellCommand(store),
 		appExecCommand(store),
