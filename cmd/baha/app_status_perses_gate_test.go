@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,6 +17,7 @@ import (
 	metricsprovider "github.com/mcpdev80/baseharbor/internal/metrics"
 	"github.com/mcpdev80/baseharbor/internal/observability"
 	"github.com/mcpdev80/baseharbor/internal/operatorauth"
+	"github.com/mcpdev80/baseharbor/internal/targetsession"
 )
 
 // newIdentityGateManifest builds a manifest with the identity provider selected
@@ -38,8 +40,11 @@ func newIdentityGateManifest(t *testing.T) application.Manifest {
 // identity_dashboard_eligible boolean that the gate (app_status_result.go:166-172)
 // derives from it.
 type identityStatusJSON struct {
-	Perses                    *string `json:"perses"`
-	IdentityDashboardEligible bool    `json:"identity_dashboard_eligible"`
+	Perses                    *string                   `json:"perses"`
+	IdentityDashboardEligible bool                      `json:"identity_dashboard_eligible"`
+	State                     string                    `json:"state"`
+	Ready                     bool                      `json:"ready"`
+	Checks                    []application.StatusCheck `json:"checks"`
 }
 
 // seedIdentityMetricsWitness registers the real Keycloak native metrics signal
@@ -312,39 +317,6 @@ func remotePersesStatusFixture(t *testing.T, seededWitness, perses bool) (contex
 	return ctx, store, reloaded.Name
 }
 
-// remoteIdentityStatusJSON resolves the Connector-backed remote Target and runs
-// the production collectApplicationStatusResult collector for it — the exact
-// collector the CLI `baha status` command and the MCP status tool call — and
-// serialises the production applicationStatusResult through the public
-// writeJSON encoder used by `baha status --json`, then decodes the two
-// gated fields. This drives the REAL remote production path (app_status_result.go
-// remote early return via hasRemoteApplicationTarget), not a path helper, and
-// needs no live mTLS/Core session: the gate fields are computed from the
-// resolved manifest before the remote target exits the path
-// (app_status_result.go:176-190).
-func remoteIdentityStatusJSON(t *testing.T, ctx context.Context, store application.Store, name string, perses bool) identityStatusJSON {
-	t.Helper()
-	resolved, err := resolveApplication(ctx, store, []string{name}, "status")
-	if err != nil {
-		t.Fatalf("resolve remote gate application: %v", err)
-	}
-	if !hasRemoteApplicationTarget(resolved) {
-		t.Fatalf("the remote gate fixture must resolve to a remote target, got access provider %q", resolved.Target.AccessProvider)
-	}
-	var encoded bytes.Buffer
-	var errOut bytes.Buffer
-	// Run the real app-status command handler, including its remote early return
-	// and writeJSON encoder, against the Connector-backed target fixture.
-	if err := appStatusCommand(store).Run(ctx, []string{name, "--json"}, &encoded, &errOut); err != nil {
-		t.Fatalf("remote baha app status --json failed: %v\nstdout: %s\nstderr: %s", err, encoded.String(), errOut.String())
-	}
-	var decoded identityStatusJSON
-	if err := json.Unmarshal(encoded.Bytes(), &decoded); err != nil {
-		t.Fatalf("the remote status result is not the public JSON report: %v", err)
-	}
-	return decoded
-}
-
 // persesStatusToString normalises the *capability.PersesStatus carried on the
 // status result to a *string for the machine-readable JSON field assertions,
 // mirroring the serialised identity_dashboard_eligible boolean.
@@ -356,35 +328,47 @@ func persesStatusToString(status *capability.PersesStatus) *string {
 	return &s
 }
 
-// TestIdentityDashboardEligibleRequiresConfiguredVerifiedPersesRemoteTarget is
-// the remote-target gate regression. It drives the genuine remote-target status
-// command (non-local access provider) for BOTH manifest faces and asserts the
-// serialised identity_dashboard_eligible field on the remote early return is
-// true ONLY when the gate holds: Perses selected AND a real Keycloak witness.
-// The local-path regression is covered by TestIdentityDashboardEligibleRequiresConfiguredVerifiedPerses.
-func TestIdentityDashboardEligibleRequiresConfiguredVerifiedPersesRemoteTarget(t *testing.T) {
-	t.Run("perses-selected-configured-unverified-fails-closed", func(t *testing.T) {
-		ctx, store, name := remotePersesStatusFixture(t, true, true)
-		decoded := remoteIdentityStatusJSON(t, ctx, store, name, true)
-		if decoded.Perses == nil {
-			t.Fatal("the remote status JSON must expose a machine-readable perses field")
-		}
-		if *decoded.Perses != string(capability.PersesStatusConfiguredUnverified) {
-			t.Fatalf("selected+no-health Perses must report configured_unverified, got %q", *decoded.Perses)
-		}
-		if decoded.IdentityDashboardEligible {
-			t.Fatalf("remote identity_dashboard_eligible=true with Perses configured_unverified + real Keycloak witness: the gate must require verified, emit false on the remote early return\n%+v", decoded)
-		}
-	})
+// A remote Target without an authenticated live Connector cannot return a
+// fabricated status body. The identity metadata must not bypass the existing
+// remote status collector's fail-closed result.
+func TestIdentityDashboardRemoteStatusRequiresLiveConnector(t *testing.T) {
+	ctx, store, name := remotePersesStatusFixture(t, false, false)
+	_, err := collectApplicationStatusResult(ctx, store, []string{name})
+	if !errors.Is(err, targetsession.ErrUnavailable) {
+		t.Fatalf("remote status must preserve the authenticated Connector requirement, got %v", err)
+	}
+}
 
-	t.Run("perses-unselected-fails-closed", func(t *testing.T) {
-		ctx, store, name := remotePersesStatusFixture(t, false, false)
-		decoded := remoteIdentityStatusJSON(t, ctx, store, name, false)
-		if *decoded.Perses != string(capability.PersesStatusNotConfigured) {
-			t.Fatalf("unselected Perses must report not_configured, got %q", *decoded.Perses)
-		}
-		if decoded.IdentityDashboardEligible {
-			t.Fatalf("remote identity_dashboard_eligible=true with Perses not_configured: the gate must fail closed on the remote early return\n%+v", decoded)
-		}
-	})
+func TestIdentityDashboardMetadataPreservesRemoteRuntimeStatus(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		state string
+		ready bool
+		check application.StatusCheck
+	}{
+		{name: "ready", state: "running", ready: true, check: application.StatusCheck{Name: "remote Application readiness", OK: true}},
+		{name: "degraded", state: "degraded", ready: false, check: application.StatusCheck{Name: "remote Application readiness", OK: false, State: "failed"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			verified := capability.PersesStatusVerified
+			result := withIdentityDashboardStatus(applicationStatusResult{StatusResult: application.StatusResult{
+				ContractVersion: "v1", Target: "remote", Application: "app", Environment: "dev",
+				State: tc.state, Ready: tc.ready, Checks: []application.StatusCheck{tc.check},
+			}}, &verified, false)
+			var encoded bytes.Buffer
+			if err := writeJSON(&encoded, result); err != nil {
+				t.Fatal(err)
+			}
+			var decoded identityStatusJSON
+			if err := json.Unmarshal(encoded.Bytes(), &decoded); err != nil {
+				t.Fatal(err)
+			}
+			if decoded.State != tc.state || decoded.Ready != tc.ready || len(decoded.Checks) != 1 || decoded.Checks[0] != tc.check {
+				t.Fatalf("adding Perses identity metadata changed remote runtime status: %+v", decoded)
+			}
+			if decoded.Perses == nil || *decoded.Perses != string(verified) || decoded.IdentityDashboardEligible {
+				t.Fatalf("Perses metadata was not independently attached to runtime status: %+v", decoded)
+			}
+		})
+	}
 }

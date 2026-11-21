@@ -168,28 +168,18 @@ func collectApplicationStatusResult(ctx context.Context, store application.Store
 		resolved.TargetStateRoot,
 		resolved.Target.Name,
 	)
-	// The remote-target face returns before the local runtime collection: the
-	// production status command (app_observe.go) and the MCP status tool route
-	// through this collector, and for a remote target collectApplicationStatus
-	// (which dials the live Connector session) would fail before the gate fields
-	// are ever computed. Build the remote status body here from the resolved
-	// manifest (no session dial) and add the same three-state Perses contract and
-	// identity-dashboard eligibility the local face emits, so remote-status
-	// --json carries them regardless of the applied/stopped/not_applied runtime
-	// face. The runtime State stays unverified: a live Core session is required to
-	// verify the remote application, but the manifest-declaration gate is not.
+	// Preserve the established remote status contract: its collector restores
+	// the retained remote publication and verifies the selected runtime through
+	// the authenticated Connector session. The Perses identity fields are
+	// manifest/target-bound metadata, so attach them to that actual result rather
+	// than replacing runtime readiness with a synthetic status.
 	if hasRemoteApplicationTarget(resolved) {
-		remoteResult := application.StatusResult{
-			ContractVersion: "v1",
-			Target:          resolved.Target.Name,
-			Application:     resolved.Manifest.Name,
-			Environment:     resolved.Manifest.Environment,
-			Manifest:        resolved.ManifestPath,
-			State:           "unverified",
-			Checks:          []application.StatusCheck{},
+		statusCtx, cancel := context.WithTimeout(ctx, applicationStatusTimeout)
+		defer cancel()
+		remoteResult, err := collectRemoteApplicationStatus(statusCtx, resolved)
+		if err != nil {
+			return applicationStatusResult{}, err
 		}
-		remoteResult.AddObservation("remote-provider-project", "unverified", "no owned provider containers observed without a live Core session; complete application absence is unverified")
-		remoteResult.AddObservation("application-lifecycle", "unverified", "complete remote application readiness requires workload, protocol, secret and exposure verification")
 		return withIdentityDashboardStatus(applicationStatusResult{StatusResult: remoteResult,
 			ApplicationID: resolved.Manifest.ApplicationID,
 			DeploymentID:  resolved.DeploymentIdentity.DeploymentID,
