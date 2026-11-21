@@ -261,12 +261,19 @@ func persesValkeyPanelValkeyUp() PersesValkeyPanel {
 					Kind: PersesValkeyQueryPluginGraph,
 					// The verified panel carries a real Perses query: a Prometheus
 					// expression selecting the BaseHarbor Prometheus scrape of the
-					// valkey provider container (job="baseharbor-providers",
-					// backend="valkey") and a datasource reference to the dashboard's
-					// valkey-prometheus datasource. A graph panel without this data
-					// basis would be a fabricated panel (0428-183 P2: every exported
-					// panel must carry a runnable query).
-					Spec:       mustJSONPersesValkey(map[string]string{"query": `up{job="baseharbor-providers", backend="valkey"}`}),
+					// valkey provider container. It scopes on baseharbor_provider —
+					// the real emitted label (see
+					// internal/metrics/prometheus_files.go targetGroupPayload: job,
+					// baseharbor_provider, baseharbor_source, baseharbor_source_class,
+					// baseharbor_metrics_path; there is NO `backend` label emitted
+					// anywhere). A query keying on `backend="valkey"` can never
+					// resolve against the emitted series (0428-183 round 3 Finding 1);
+					// the source-scoped baseharbor_provider label is the one that
+					// matches, mirroring the host/container working pattern
+					// (perses_dashboards_hosts.go:234/:249-251). A graph panel without
+					// this data basis would be a fabricated panel (0428-183 P2: every
+					// exported panel must carry a runnable query).
+					Spec:       mustJSONPersesValkey(map[string]string{"query": `up{baseharbor_provider="valkey"}`}),
 					Datasource: &PersesValkeyDatasourceRef{Kind: PersesValkeyDatasourcePrometheus, Name: "valkey"},
 				},
 			}},

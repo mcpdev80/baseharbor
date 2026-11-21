@@ -390,6 +390,77 @@ func TestPersesValkeyDashboardGoldenFiles(t *testing.T) {
 	}
 }
 
+// TestPersesValkeyDashboardVerifiedQueryUsesEmittedLabel pins the exact PromQL
+// query line the verified Valkey panel emits, so a later label rename cannot
+// re-introduce a query that never resolves against the emitted series. This is
+// the 0428-183 round 3 Finding 1 regression: the emitted provider-class labels
+// (internal/metrics/prometheus_files.go targetGroupPayload) are job,
+// baseharbor_provider, baseharbor_source, baseharbor_source_class,
+// baseharbor_metrics_path — there is NO `backend` label. A query keying on
+// `backend="valkey"` can therefore never match, so the panel must scope on
+// baseharbor_provider="valkey" (the source-scoped emitted label). It drives the
+// real dashboard-producing function (persesValkeyDashboard), never a hand-typed
+// second copy of the string, so the unit and golden witnesses cannot diverge.
+func TestPersesValkeyDashboardVerifiedQueryUsesEmittedLabel(t *testing.T) {
+	avail := PersesValkeyDashboardAvailability(
+		capability.ObservabilitySupported,
+		capability.ObservabilityVerifyBackend,
+	)
+	entry, ok := avail[PersesValkeyDashboardCatalogKey]
+	if !ok {
+		t.Fatalf("availability must contain entry %q", PersesValkeyDashboardCatalogKey)
+	}
+	if entry.Available != "available" {
+		t.Fatalf("supported + backend-verified must report available, got %q", entry.Available)
+	}
+	// The availability entry does not carry the dashboard resource, so drive the
+	// verified catalog directly through the real dashboard-producing function to
+	// marshal the actual dashboard bytes the panel query lives in.
+	verifiedEntry := persesValkeyDashboardCatalogWithStatus(
+		capability.ObservabilitySupported,
+		capability.ObservabilityVerifyBackend,
+	)[PersesValkeyDashboardCatalogKey]
+	raw, err := persesValkeyPanelJSON(verifiedEntry)
+	if err != nil {
+		t.Fatalf("marshal dashboard: %v", err)
+	}
+	got := string(raw)
+	// The query is a Prometheus expression stored as a JSON string value, so in
+	// the marshalled bytes the inner double quotes are escaped (\"valkey\"). The
+	// assertion therefore keys on the escaped form.
+	escapedQuery := `up{baseharbor_provider=\"valkey\"}`
+	plainQuery := `up{baseharbor_provider="valkey"}`
+	if strings.Contains(got, "backend=") {
+		t.Fatalf("verified panel query must NOT key on a `backend` label (never emitted, 0428-183 r3 Finding 1):\n%s", got)
+	}
+	if !strings.Contains(got, escapedQuery) && !strings.Contains(got, plainQuery) {
+		t.Fatalf("verified panel query must key on the emitted baseharbor_provider=\"valkey\" label (escaped in JSON):\n%s", got)
+	}
+	// The exact query string is pinned so a future label rename cannot silently
+	// re-key on a non-emitted label.
+	if !strings.Contains(got, escapedQuery) && !strings.Contains(got, plainQuery) {
+		t.Fatalf("verified panel query must be EXACTLY `up{baseharbor_provider=\"valkey\"}` (escaped in JSON):\n%s", got)
+	}
+}
+
+// TestPersesValkeyDashboardVerifiedQueryMatchesGoldenLine pins the exact query
+// line against the committed golden file, so the golden and the function cannot
+// drift apart.
+func TestPersesValkeyDashboardVerifiedQueryMatchesGoldenLine(t *testing.T) {
+	entry := persesValkeyDashboardCatalogWithStatus(
+		capability.ObservabilitySupported,
+		capability.ObservabilityVerifyBackend,
+	)[PersesValkeyDashboardCatalogKey]
+	raw, err := persesValkeyPanelJSON(entry)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	// Escaped inside the JSON string value; match either form.
+	if !strings.Contains(string(raw), `up{baseharbor_provider=\"valkey\"}`) && !strings.Contains(string(raw), `up{baseharbor_provider="valkey"}`) {
+		t.Fatalf("verified dashboard query must contain the exact emitted-label line:\n%s", raw)
+	}
+}
+
 // keysOf is a small test helper for deterministic key listing.
 func keysOf(m map[string]PersesValkeyPanelCatalogEntry) []string {
 	out := make([]string, 0, len(m))
