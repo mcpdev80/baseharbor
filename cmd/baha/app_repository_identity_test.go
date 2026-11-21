@@ -34,7 +34,7 @@ func TestMinimalRepositoryIdentityInitializationAndReadSurfaces(t *testing.T) {
 	selection := minimalRepositorySelection(t)
 	authored, _ := os.ReadFile(selection.ManifestPath)
 	for _, command := range []string{"plan", "status", "doctor", "stop", "destroy"} {
-		_, err := resolveRepositoryLifecycleIntent(context.Background(), target, selection, command)
+		_, err := resolveRepositoryLifecycleIntent(testOperatorContext(context.Background()), target, selection, command)
 		var failure *machine.Error
 		if !errors.As(err, &failure) || failure.CauseCode != "application_initialization_required" {
 			t.Fatalf("%s: %v", command, err)
@@ -43,7 +43,7 @@ func TestMinimalRepositoryIdentityInitializationAndReadSurfaces(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(selection.RepositoryRoot, ".baseharbor")); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("read-only surface initialized identity: %v", err)
 	}
-	initialized, err := resolveRepositoryLifecycleIntent(context.Background(), target, selection, "init")
+	initialized, err := resolveRepositoryLifecycleIntent(testOperatorContext(context.Background()), target, selection, "init")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -51,7 +51,7 @@ func TestMinimalRepositoryIdentityInitializationAndReadSurfaces(t *testing.T) {
 		t.Fatalf("incorrect minimal realization: %+v", initialized.Manifest)
 	}
 	for _, command := range []string{"init", "apply", "up", "plan", "status", "doctor", "stop", "destroy"} {
-		next, err := resolveRepositoryLifecycleIntent(context.Background(), target, selection, command)
+		next, err := resolveRepositoryLifecycleIntent(testOperatorContext(context.Background()), target, selection, command)
 		if err != nil || next.Manifest.ApplicationID != initialized.Manifest.ApplicationID {
 			t.Fatalf("%s identity drift: %v", command, err)
 		}
@@ -68,7 +68,7 @@ func TestMinimalRepositoryMissingSourceDoesNotInitialize(t *testing.T) {
 	if err := os.Remove(filepath.Join(selection.RepositoryRoot, "compose.yaml")); err != nil {
 		t.Fatal(err)
 	}
-	_, err := resolveRepositoryLifecycleIntent(context.Background(), target, selection, "apply")
+	_, err := resolveRepositoryLifecycleIntent(testOperatorContext(context.Background()), target, selection, "apply")
 	var failure *machine.Error
 	if !errors.As(err, &failure) || failure.CauseCode != "workload_missing" {
 		t.Fatalf("missing actionable workload error: %v", err)
@@ -91,7 +91,7 @@ func TestMinimalInitializationRejectsCorruptTargetBeforeAllocating(t *testing.T)
 	if err := os.WriteFile(filepath.Join(stateRoot, "provider-registry.json"), []byte("{corrupt"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := resolveRepositoryLifecycleIntent(context.Background(), target, selection, "apply"); err == nil {
+	if _, err := resolveRepositoryLifecycleIntent(testOperatorContext(context.Background()), target, selection, "apply"); err == nil {
 		t.Fatal("corrupt Target accepted for identity mutation")
 	}
 	if _, err := os.Stat(filepath.Join(selection.RepositoryRoot, ".baseharbor")); !errors.Is(err, os.ErrNotExist) {
@@ -120,7 +120,7 @@ func TestProviderPreflightRevalidatesUploadedSourceWithCoreOwnedIdentity(t *test
 	if err != nil || bound.Manifest.ApplicationID != owned.ApplicationID {
 		t.Fatalf("Core-owned source identity was not preserved: %+v, %v", bound.Manifest, err)
 	}
-	validated, err := resolveRepositoryLifecycleIntent(context.Background(), target, bound, "plan")
+	validated, err := resolveRepositoryLifecycleIntent(testOperatorContext(context.Background()), target, bound, "plan")
 	if err != nil || validated.Manifest.ApplicationID != owned.ApplicationID {
 		t.Fatalf("read-only Core source preflight lost the identity: %+v, %v", validated.Manifest, err)
 	}
@@ -162,14 +162,14 @@ func TestVerifiedHTTPSourceProviderPreflightUsesSameCoreIdentityProjection(t *te
 		Application:   m.Name,
 		Environment:   m.Environment,
 	}
-	prepared, err := prepareVerifiedHTTPSource(context.Background(), resolved, selection)
+	prepared, err := prepareVerifiedHTTPSource(testOperatorContext(context.Background()), resolved, selection)
 	if err != nil {
 		t.Fatalf("Core rejected its own verified uploaded source: %v", err)
 	}
 	if prepared.Manifest.ApplicationID != m.ApplicationID || !prepared.FromRepository || !prepared.SourceAvailable {
 		t.Fatalf("prepared source lost the authorized Core identity: %+v", prepared)
 	}
-	if err := revalidateApplicationProviderIntent(context.Background(), prepared); err != nil {
+	if err := revalidateApplicationProviderIntent(testOperatorContext(context.Background()), prepared); err != nil {
 		t.Fatalf("identical uploaded source was rejected as stale provider consent: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(selection.RepositoryRoot, ".baseharbor")); !errors.Is(err, os.ErrNotExist) {
@@ -177,7 +177,7 @@ func TestVerifiedHTTPSourceProviderPreflightUsesSameCoreIdentityProjection(t *te
 	}
 	foreign := selection
 	foreign.Manifest.Name = "foreign"
-	if _, err := prepareVerifiedHTTPSource(context.Background(), resolved, foreign); err == nil {
+	if _, err := prepareVerifiedHTTPSource(testOperatorContext(context.Background()), resolved, foreign); err == nil {
 		t.Fatal("foreign source was accepted as the registered Core application")
 	}
 }

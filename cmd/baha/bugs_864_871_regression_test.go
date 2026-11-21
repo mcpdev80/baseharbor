@@ -279,7 +279,7 @@ func TestBug865ForeignOrganizationAndSessionAreIsolated(t *testing.T) {
 		t.Fatal("foreign organization read", err)
 	}
 	var out bytes.Buffer
-	if err := runWithIO(context.Background(), []string{"target", "--json"}, &out, &out); err != nil {
+	if err := runWithIOAsTestOperator(context.Background(), []string{"target", "--json"}, &out, &out); err != nil {
 		t.Fatal(err)
 	}
 	var cliResult any

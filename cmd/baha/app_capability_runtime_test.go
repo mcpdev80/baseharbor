@@ -27,6 +27,7 @@ func TestApplicationCapabilityLifecycleExistingCore(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(machineNoninteractiveContext(context.Background()), 25*time.Minute)
 	defer cancel()
+	ctx = testOperatorContext(ctx)
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
 	target := configureTestTargetEmpty(t)
 	if os.Getenv("BASEHARBOR_TEST_RUNTIME") == "podman" {
@@ -59,10 +60,19 @@ func TestApplicationCapabilityLifecycleExistingCore(t *testing.T) {
 		t.Fatalf("explicit management install: %v\n%s", err, out.String())
 	}
 	t.Logf("explicit Core installation_id=%s target=%s", first.ID, target.Name)
+	// The managed Core path requires an explicit operator-auth policy even in
+	// this isolated acceptance runtime. Bind the fixture principal to that same
+	// Target/environment so app doctor exercises the configured authenticated
+	// path instead of failing on a missing policy.
+	if err := deployment.SetOperatorAuthForTargetEnvironment(target.Name, "dev", deployment.OperatorAuthEnvironmentConfig{
+		Provider: "external-oidc", Issuer: "https://issuer.test", ClientID: "cli-test",
+	}); err != nil {
+		t.Fatalf("configure isolated operator-auth boundary: %v", err)
+	}
 	t.Cleanup(func() {
 		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 3*time.Minute)
 		defer cleanupCancel()
-		if err := approvedNativeFixtureCleanup(t, machineNoninteractiveContext(cleanupCtx), &bytes.Buffer{}); err != nil {
+		if err := approvedNativeFixtureCleanup(t, testOperatorContext(machineNoninteractiveContext(cleanupCtx)), &bytes.Buffer{}); err != nil {
 			t.Errorf("isolated Core cleanup: %v", err)
 		}
 	})
@@ -98,7 +108,7 @@ func TestApplicationCapabilityLifecycleExistingCore(t *testing.T) {
 					return
 				}
 				defer os.Chdir(previous)
-				resetCoreBootstrapFixtureApplication(parent, machineNoninteractiveContext(cleanupCtx))
+				resetCoreBootstrapFixtureApplication(parent, testOperatorContext(machineNoninteractiveContext(cleanupCtx)))
 			})
 			if kind == "https" {
 				out.Reset()

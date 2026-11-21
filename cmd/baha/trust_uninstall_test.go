@@ -58,7 +58,7 @@ func TestTrustUninstallNoOwnershipIsSafeJSON(t *testing.T) {
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
 	configureTestTarget(t)
 	var out, errOut bytes.Buffer
-	err := trustUninstallCommand().Run(context.Background(), []string{"--json"}, &out, &errOut)
+	err := trustUninstallCommand().Run(testOperatorContext(context.Background()), []string{"--json"}, &out, &errOut)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,7 +76,7 @@ func TestTrustUninstallRefusesUnapprovedJSONWithOwnedRecord(t *testing.T) {
 		t.Fatal(err)
 	}
 	var out, errOut bytes.Buffer
-	err := trustUninstallCommand().Run(context.Background(), []string{"--json"}, &out, &errOut)
+	err := trustUninstallCommand().Run(testOperatorContext(context.Background()), []string{"--json"}, &out, &errOut)
 	if err == nil {
 		t.Fatal("machine uninstall accepted without approval")
 	}
@@ -100,7 +100,7 @@ func TestTrustUninstallWizardDeclinePreservesOwnedState(t *testing.T) {
 	guidedTrustInput = strings.NewReader("no\n")
 	defer func() { guidedTrustInput = saved }()
 	var out, errOut bytes.Buffer
-	if err := trustUninstallCommand().Run(context.Background(), nil, &out, &errOut); err != nil {
+	if err := trustUninstallCommand().Run(testOperatorContext(context.Background()), nil, &out, &errOut); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(out.String(), "unchanged") {
@@ -128,7 +128,7 @@ func TestTrustUninstallPromptUnterminatedAffirmativeEOFRejects(t *testing.T) {
 	guidedTrustInput = strings.NewReader("y") // no newline -> EOF with partial "y"
 	defer func() { guidedTrustInput = saved }()
 	var out, errOut bytes.Buffer
-	if err := trustUninstallCommand().Run(context.Background(), nil, &out, &errOut); err != nil {
+	if err := trustUninstallCommand().Run(testOperatorContext(context.Background()), nil, &out, &errOut); err != nil {
 		t.Fatalf("EOF surfaced raw read error instead of clean abort: %v", err)
 	}
 	if !strings.Contains(out.String(), "Host trust unchanged.") {
@@ -153,7 +153,7 @@ func TestTrustUninstallPromptEOFRejects(t *testing.T) {
 	guidedTrustInput = strings.NewReader("") // immediate EOF
 	defer func() { guidedTrustInput = saved }()
 	var out, errOut bytes.Buffer
-	if err := trustUninstallCommand().Run(context.Background(), nil, &out, &errOut); err != nil {
+	if err := trustUninstallCommand().Run(testOperatorContext(context.Background()), nil, &out, &errOut); err != nil {
 		t.Fatalf("EOF surfaced raw read error instead of clean abort: %v", err)
 	}
 	if !strings.Contains(out.String(), "Host trust unchanged.") {
@@ -185,7 +185,7 @@ func TestTrustUninstallPromptCompleteAffirmativeApproves(t *testing.T) {
 	guidedTrustInput = strings.NewReader("y\n") // complete line -> approved
 	defer func() { guidedTrustInput = saved }()
 	var out, errOut bytes.Buffer
-	if err := trustUninstallCommand().Run(context.Background(), nil, &out, &errOut); err != nil {
+	if err := trustUninstallCommand().Run(testOperatorContext(context.Background()), nil, &out, &errOut); err != nil {
 		t.Fatalf("complete affirmative should approve: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(root, "host-trust.json")); !os.IsNotExist(err) {
@@ -211,7 +211,7 @@ func TestTrustUninstallPromptEOFAbortsCleanly(t *testing.T) {
 	guidedTrustInput = strings.NewReader("") // immediate EOF / Strg-D
 	defer func() { guidedTrustInput = saved }()
 	var out, errOut bytes.Buffer
-	if err := trustUninstallCommand().Run(context.Background(), nil, &out, &errOut); err != nil {
+	if err := trustUninstallCommand().Run(testOperatorContext(context.Background()), nil, &out, &errOut); err != nil {
 		t.Fatalf("EOF surfaced raw read error instead of clean abort: %v", err)
 	}
 	if !strings.Contains(out.String(), "Host trust unchanged.") {
