@@ -72,7 +72,10 @@
     "internal/openbao/bootstrap_auth.go": ["atomic/docker/control-plane-recovery", "atomic/podman/control-plane-recovery"],
     "internal/openbao/bootstrap_auth_test.go": ["atomic/docker/control-plane-recovery", "atomic/podman/control-plane-recovery"],
     "internal/openbao/service_issuer.go": ["atomic/docker/control-plane-recovery", "atomic/podman/control-plane-recovery"],
-    "internal/openbao/service_pki_test.go": ["atomic/docker/control-plane-recovery", "atomic/podman/control-plane-recovery"]
+    "internal/openbao/service_pki_test.go": ["atomic/docker/control-plane-recovery", "atomic/podman/control-plane-recovery"],
+    "scripts/ci-fast-check.sh": ["atomic/static/ci-fast-check"],
+    "scripts/test_pre_release_check_plan.py": ["atomic/static/ci-fast-check"],
+    "scripts/test_ci_v0427_gate_catalog.py": ["atomic/static/ci-fast-check"]
   },
   "demo": {
     "tests/data-capabilities/new_edit_helpers_test.py": ["atomic/docker/data-capabilities", "atomic/podman/data-capabilities"],
