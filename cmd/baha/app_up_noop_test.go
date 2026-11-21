@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/development"
 )
 
 func TestDecideRepositoryUp(t *testing.T) {
@@ -230,4 +231,168 @@ func TestRecordRepositoryAppliedFingerprintRoundTrip(t *testing.T) {
 	if !match {
 		t.Fatal("recorded desired-state fingerprint did not match")
 	}
+}
+
+func TestRepositoryDesiredStateFingerprintTracksLocalSourceFiles(t *testing.T) {
+	root := t.TempDir()
+	repo := filepath.Join(root, "repo")
+	if err := os.MkdirAll(repo, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	manifestPath := filepath.Join(repo, "baseharbor.yaml")
+	if err := os.WriteFile(manifestPath, []byte("version: 1\napp:\n  name: demo\n  environment: dev\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	sourceRoot := filepath.Join(root, "local-source")
+	if err := os.MkdirAll(sourceRoot, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	filePath := filepath.Join(sourceRoot, "content.txt")
+	if err := os.WriteFile(filePath, []byte("initial\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	model := development.SourceModel{
+		SchemaVersion: development.SourceModelVersion,
+		Application:   "demo",
+		Sources:       []development.SourceDefinition{{ID: "local", Type: development.SourceLocal, Path: sourceRoot}},
+		Components:    []development.ComponentSource{{Component: "web", Source: "local"}},
+	}
+	if _, err := development.WriteSourceModel(manifestPath, model); err != nil {
+		t.Fatalf("write source model: %v", err)
+	}
+	if _, err := development.SaveWorkspaceMapping(manifestPath, development.WorkspaceMapping{
+		SchemaVersion: development.WorkspaceMappingVersion,
+		Application:   "demo",
+	}); err != nil {
+		t.Fatalf("write workspace mapping: %v", err)
+	}
+	resolved := resolvedApplication{
+		Manifest:       application.New("demo", "dev", false, false, false),
+		ManifestPath:   manifestPath,
+		FromRepository: true,
+	}
+	fingerprint := func() string {
+		t.Helper()
+		got, err := repositoryDesiredStateFingerprint(context.Background(), resolved)
+		if err != nil {
+			t.Fatalf("fingerprint: %v", err)
+		}
+		return got
+	}
+	assertChanged := func(previous, operation string) string {
+		t.Helper()
+		current := fingerprint()
+		if current == previous {
+			t.Fatalf("local source %s did not change desired-state fingerprint", operation)
+		}
+		if stable := fingerprint(); stable != current {
+			t.Fatalf("unchanged local source produced unstable fingerprint after %s: %s != %s", operation, stable, current)
+		}
+		return current
+	}
+
+	first := fingerprint()
+	if stable := fingerprint(); stable != first {
+		t.Fatalf("unchanged local source produced unstable fingerprint: %s != %s", stable, first)
+	}
+	if err := os.WriteFile(filePath, []byte("edited\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	current := assertChanged(first, "file edit")
+	newPath := filepath.Join(sourceRoot, "new.txt")
+	if err := os.WriteFile(newPath, []byte("new\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	current = assertChanged(current, "file addition")
+	if err := os.Remove(filePath); err != nil {
+		t.Fatal(err)
+	}
+	assertChanged(current, "file deletion")
+}
+
+func TestRepositoryTreeFingerprintDoesNotFollowSymlinks(t *testing.T) {
+	root := t.TempDir()
+	outside := t.TempDir()
+	secret := filepath.Join(outside, "secret.txt")
+	if err := os.WriteFile(secret, []byte("must-not-be-read"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(root, "external-file")
+	if err := os.Symlink(secret, link); err != nil {
+		t.Skipf("symlink not supported: %v", err)
+	}
+	if err := os.Symlink(filepath.Join(outside, "missing-target"), filepath.Join(root, "dangling")); err != nil {
+		t.Skipf("symlink not supported: %v", err)
+	}
+	if err := os.Symlink(outside, filepath.Join(root, "external-directory")); err != nil {
+		t.Skipf("symlink not supported: %v", err)
+	}
+
+	fingerprintParts := func() map[string]string {
+		t.Helper()
+		parts := map[string]string{}
+		err := writeRepositoryTreeFingerprint(context.Background(), func(name string, data []byte) {
+			parts[name] = string(data)
+		}, "source", root)
+		if err != nil {
+			t.Fatalf("fingerprint symlink tree: %v", err)
+		}
+		return parts
+	}
+	first := fingerprintParts()
+	if got := first["source/external-file"]; got != "symlink:"+secret {
+		t.Fatalf("external file link fingerprint = %q, want link metadata only", got)
+	}
+	if got := first["source/dangling"]; !strings.HasPrefix(got, "symlink:") {
+		t.Fatalf("dangling symlink was not fingerprinted: %q", got)
+	}
+	if strings.Contains(strings.Join(values(first), "\n"), "must-not-be-read") {
+		t.Fatal("fingerprint included bytes from a symlink target outside the source root")
+	}
+	if err := os.WriteFile(secret, []byte("changed outside content"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if second := fingerprintParts(); !equalFingerprintParts(first, second) {
+		t.Fatalf("changing external symlink target content changed fingerprint inputs: %#v != %#v", first, second)
+	}
+	if err := os.Remove(link); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(outside, "other-secret"), link); err != nil {
+		t.Fatal(err)
+	}
+	third := fingerprintParts()
+	if equalFingerprintParts(first, third) {
+		t.Fatal("retargeting symlink did not change fingerprint inputs")
+	}
+	if err := os.Remove(link); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(link, []byte("symlink:"+filepath.Join(outside, "other-secret")), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	fourth := fingerprintParts()
+	if equalFingerprintParts(third, fourth) {
+		t.Fatal("changing a symlink into a regular file with the same target text did not change fingerprint inputs")
+	}
+}
+
+func values(parts map[string]string) []string {
+	result := make([]string, 0, len(parts))
+	for _, value := range parts {
+		result = append(result, value)
+	}
+	return result
+}
+
+func equalFingerprintParts(left, right map[string]string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for name, value := range left {
+		if right[name] != value {
+			return false
+		}
+	}
+	return true
 }

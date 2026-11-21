@@ -23,7 +23,7 @@ These commands expose Target-local developer access information without changing
 
 ## Workspaces
 
-Application workspace commands manage local source mappings for multi-repository applications.
+Application workspace commands manage local source mappings for multi-repository applications. Sources are Git repositories, local directories or OCI images; components are optional unique identities, and several components may share one source.
 
 Workspace paths are developer-local state and never become portable application identity.
 
@@ -40,6 +40,21 @@ baha app workspace update
 BaseHarbor never automatically stashes, resets, rebases, merges divergent history, resolves conflicts or switches branches. Dirty, detached, ahead-only and diverged repositories are left untouched with an actionable native-Git next step.
 
 The existing `init`, `map`, `show` and `resolve` commands remain available for deterministic workspace mapping and resolution.
+
+Application sources are Git repositories, local directories or OCI images. Components are optional unique identities; several components may share one source, and an initialized model may hold zero components until one is added. Maintain them incrementally:
+
+```bash
+baha app workspace init --local legacy=/srv/legacy-app --component api=legacy@services/api
+baha app workspace source add --source extra=https://git.example/extra.git
+baha app workspace component add worker extra@services/worker
+baha app workspace component list
+baha app workspace path legacy --show-current
+baha app workspace path api-source ~/dev/api
+baha app workspace component remove worker
+baha app workspace source remove extra
+```
+
+`baha app workspace source add` and `baha app workspace component add` replace an existing entry of the same identity, never duplicate it. `baha app workspace source remove` detaches the source, its component mappings and its developer-local mapping entry; the last source of an application cannot be removed. No command in this surface creates or deletes local directories, and `baha app workspace path` accepts only existing ones. A local directory source keeps its absolute path in `.baseharbor/sources.yaml`; if that directory is itself a Git checkout, `status` and `update` inspect and fast-forward it under the same safety rules as mapped repositories.
 
 ## Example: map a local API checkout
 

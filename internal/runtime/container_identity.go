@@ -125,5 +125,15 @@ func containerNameInPlannedSet(kind ProviderKind, container RuntimeContainer, pr
 			return true
 		}
 	}
+	// First-party Podman Quadlet keeps the same ownership labels but names a
+	// single default service as <project>-<service> (without Compose's -1
+	// ordinal). Accept that provider-specific alias only when the rendered
+	// plan contains exactly the one canonical default container. Never use the
+	// alias for scaled or pinned-name plans.
+	if kind == ProviderPodman && len(planned) == 1 &&
+		planned[0] == project+"-"+container.Service+"-1" &&
+		container.Name == project+"-"+container.Service {
+		return true
+	}
 	return false
 }

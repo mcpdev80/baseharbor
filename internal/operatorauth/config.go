@@ -84,26 +84,18 @@ func ConfigFromEnv() (Config, error) {
 // and therefore requires an authenticated operator session instead of a trusted
 // local one.
 //
-// Historical, name-based behavior is preserved through TrustedLocalForEnvironment:
-// dev/development are trusted-local (unmanaged), every other environment (test,
-// staging, prod, custom) is managed. Callers that resolve by name without an
-// organization policy layer pass the name directly. The decision is kept as a
-// single, visible point.
+// This compatibility API has no trusted policy source, so it fails closed and
+// treats every environment name as managed.
 func ManagedEnvironment(environment string) bool {
-	return ManagedEnvironmentWithPolicy(environment, TrustedLocalForEnvironment(environment))
+	return ManagedEnvironmentWithPolicy(environment, false)
 }
 
-// TrustedLocalForEnvironment is the single keeper of the historical name-to-
-// trusted-local mapping (dev/development → trusted-local). It exists only so the
-// single-argument ManagedEnvironment keeps its legacy behavior; the policy-aware
-// path never consults the name.
+// TrustedLocalForEnvironment is retained for source compatibility. Environment
+// names do not establish trust, so this compatibility helper always fails
+// closed. Callers may enable trusted-local behavior only from an explicit,
+// trusted policy source.
 func TrustedLocalForEnvironment(environment string) bool {
-	switch strings.ToLower(strings.TrimSpace(environment)) {
-	case "dev", "development":
-		return true
-	default:
-		return false
-	}
+	return false
 }
 
 // ManagedEnvironmentWithPolicy is the policy-aware form of ManagedEnvironment.

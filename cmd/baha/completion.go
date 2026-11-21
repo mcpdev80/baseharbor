@@ -126,7 +126,7 @@ func completeCommandLine(root *cli.Command, words []string, stores ...applicatio
 
 func completionAcceptsApplicationName(command *cli.Command) bool {
 	switch command.Name {
-	case "show", "plan", "status", "doctor", "apply", "up", "down", "destroy", "backup", "env", "psql", "redis", "logs", "shell", "exec", "update", "tls":
+	case "show", "plan", "status", "doctor", "apply", "up", "down", "destroy", "backup", "env", "psql", "redis", "logs", "shell", "exec", "update", "tls", "perses":
 		return true
 	default:
 		return false
@@ -217,7 +217,7 @@ func bashCompletionScript() string {
     done < <(command baha __complete "${words[@]}")
 }
 complete -o default -F _baha_completion baha
-`
+` + contextInteractiveInstall("bash")
 }
 
 func zshCompletionScript() string {
@@ -235,7 +235,7 @@ _baha_completion() {
     compadd -d descriptions -- "${values[@]}"
 }
 compdef _baha_completion baha
-`
+` + contextInteractiveInstall("zsh")
 }
 
 func fishCompletionScript() string {
@@ -246,5 +246,5 @@ func fishCompletionScript() string {
     command baha __complete $tokens
 end
 complete -c baha -f -a '(__baha_complete)'
-`
+` + contextInteractiveInstall("fish")
 }

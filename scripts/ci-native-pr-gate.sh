@@ -7,9 +7,8 @@ report="$(mktemp "${RUNNER_TEMP:-/tmp}/baseharbor-native-pr-gate.XXXXXX.jsonl")"
 trap 'rm -f "$report"' EXIT
 
 run_exact_test() {
-  local test_name="$1" timeout="$2"
-  shift 2
-  go test -p 1 ./cmd/baha -run "^${test_name}$" -count=1 -timeout "$timeout" -json | tee "$report"
+  local test_name="$1" timeout="$2" package="${3:-./cmd/baha}"
+  go test -p 1 "$package" -run "^${test_name}$" -count=1 -timeout "$timeout" -json | tee "$report"
   python3 - "$report" "$test_name" <<'PY'
 import json
 import pathlib
@@ -69,6 +68,10 @@ print('PASS: greenfield baseline and remote workstation onboarding')
 PY
     python3 scripts/ci-onboarding-native-proof.py --input "$report" \
       --test TestWorkstationOnboardingRemoteNativeInCI
+    ;;
+  native/docker/perses-runtime-smoke)
+    export BASEHARBOR_PERSES_RUNTIME_SMOKE=1
+    run_exact_test TestPersesRuntimeSmokeDockerIsolated 5m ./internal/application
     ;;
   *)
     echo "REJECT: unsupported native PR gate $gate_id" >&2

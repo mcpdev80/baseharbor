@@ -1,0 +1,29 @@
+name: BaseHarbor manual consumption example
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_version:
+        description: Published BaseHarbor version to consume (for example 0.4.28)
+        required: true
+        type: string
+
+jobs:
+  consume:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      BASEHARBOR_VERSION: ${{ inputs.release_version }}
+      APP_ENVIRONMENT: dev
+      APP_API_KEY: ${{ secrets.APP_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install the selected released baha
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$BASEHARBOR_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9.-]+)?$ ]]
+          curl -fsSL "https://raw.githubusercontent.com/mcpdev80/baseharbor/v${BASEHARBOR_VERSION}/scripts/install.sh" | bash -s -- "$BASEHARBOR_VERSION"
+      - name: Consume the checked-out application with the local runner Core
+        shell: bash
+        run: bash scripts/consumption-example.sh

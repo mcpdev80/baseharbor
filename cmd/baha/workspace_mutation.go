@@ -89,8 +89,11 @@ func mapApplicationWorkspace(ctx context.Context, manifestArg, source, checkout 
 	found := false
 	for _, source := range model.Sources {
 		if source.ID == sourceID {
-			if source.Type != development.SourceRepository {
-				return workspaceMutationResult{}, usageError("OCI sources do not have local workspace mappings", "Map only repository sources.")
+			// Local directory sources are portable-path-first; map records a
+			// developer-local override the same way repository checkouts do
+			// (card 0428-059). OCI sources have no local mapping.
+			if source.Type == development.SourceOCI {
+				return workspaceMutationResult{}, usageError("OCI sources do not have local workspace mappings", "Map repository sources and local Git directories.")
 			}
 			found = true
 			break
@@ -129,4 +132,15 @@ func mapApplicationWorkspace(ctx context.Context, manifestArg, source, checkout 
 		return workspaceMutationResult{}, err
 	}
 	return workspaceMutationResult{SchemaVersion: machine.ContractVersion, MappingPath: path, SourceModelPath: sourceModelPath}, nil
+}
+
+// localSourceWithoutOverride reports whether a local directory source still
+// has no developer-local mapping override (portable path owns it alone).
+func localSourceWithoutOverride(model development.SourceModel, mapping development.WorkspaceMapping, sourceID string) bool {
+	for _, source := range model.Sources {
+		if source.ID == sourceID && source.Type == development.SourceLocal {
+			return strings.TrimSpace(mapping.Sources[sourceID]) == ""
+		}
+	}
+	return false
 }

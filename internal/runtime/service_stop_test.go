@@ -18,9 +18,15 @@ type selectedStopRuntime struct {
 	inspectCalls, listCalls, mutations int
 	inspectErr, stopErr                error
 	rendered                           string
+	kind                               ProviderKind
 }
 
-func (r *selectedStopRuntime) Kind() ProviderKind { return ProviderDocker }
+func (r *selectedStopRuntime) Kind() ProviderKind {
+	if r.kind != "" {
+		return r.kind
+	}
+	return ProviderDocker
+}
 func (r *selectedStopRuntime) InspectProjectResources(context.Context, string, []ProjectResource) ([]ProjectResource, error) {
 	r.inspectCalls++
 	if r.inspectCalls == 1 {
@@ -133,6 +139,23 @@ func TestSelectedStopAcceptsPinnedContainerName(t *testing.T) {
 	result, err := StopOwnedProjectServices(t.Context(), r, "linkding", "/protected", nil, r.before, []string{"web"}, "/protected/compose.yaml")
 	if err != nil || !result.Verified || len(result.Stopped) != 1 {
 		t.Fatalf("pinned selected stop: %+v %v", result, err)
+	}
+}
+
+func TestSelectedStopAcceptsPinnedContainerNamePodman(t *testing.T) {
+	pinnedContainer := RuntimeContainer{ID: "pinned-id", Name: "linkding-pinned-web", Project: "linkding", Service: "web", Running: true, State: "running"}
+	stopped := RuntimeContainer{ID: "pinned-id", Name: "linkding-pinned-web", Project: "linkding", Service: "web", Running: false, State: "exited"}
+	r := &selectedStopRuntime{
+		before:     []ProjectResource{{Kind: "container", Name: "linkding-web-1"}, {Kind: "volume", Name: "linkding-data"}},
+		after:      []ProjectResource{{Kind: "volume", Name: "linkding-data"}},
+		containers: []RuntimeContainer{pinnedContainer},
+		stopped:    []RuntimeContainer{stopped},
+		rendered:   `{"services":{"web":{"container_name":"linkding-pinned-web"}}}`,
+		kind:       ProviderPodman,
+	}
+	result, err := StopOwnedProjectServices(t.Context(), r, "linkding", "/protected", nil, r.before, []string{"web"}, "/protected/compose.yaml")
+	if err != nil || !result.Verified || len(result.Stopped) != 1 {
+		t.Fatalf("Podman pinned selected stop: %+v %v", result, err)
 	}
 }
 

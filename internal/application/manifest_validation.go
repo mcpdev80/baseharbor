@@ -505,11 +505,28 @@ func validateManagementUIPreferences(services Services) error {
 }
 
 func validateObservabilityUIPreference(m Manifest) error {
+	if m.Services.Perses && !m.Services.ObservabilityManagementUI {
+		// Fail closed: the Perses surface is only an optional realization of the
+		// observability management-ui surface. Selecting perses without enabling
+		// observability.management_ui is a dangling selection — there is no surface
+		// to realise, so the manifest is rejected rather than accepted with a
+		// silent nil (which would also drop the selection on serialization).
+		return errors.New("services.observability.perses requires services.observability.management_ui: perses is only an optional realization of the management-ui surface")
+	}
 	if !m.Services.ObservabilityManagementUI {
 		return nil
 	}
 	if !HasMetricsSources(m) {
 		return errors.New("services.observability.management_ui requires managed metrics because Prometheus is the current browser-capable observability surface")
+	}
+	if m.Services.Perses {
+		// Perses is an optional realization of this surface, not a new
+		// capability. Fail closed: a selected Perses surface must be provisioned
+		// with a pinned release, otherwise the surface is unsupported, never
+		// configured (never a false metrics/logs/traces declaration).
+		if err := capability.ValidatePersesRelease(capability.PersesDefaultRelease); err != nil {
+			return fmt.Errorf("services.perses requires a pinned Perses release (product version + image): %w", err)
+		}
 	}
 	return nil
 }

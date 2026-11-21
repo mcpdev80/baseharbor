@@ -1,0 +1,30 @@
+workflow:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "web"'
+      when: always
+    - when: never
+
+variables:
+  BASEHARBOR_VERSION: "0.4.28"
+  APP_ENVIRONMENT: "dev"
+
+stages:
+  - consume
+
+consume:
+  stage: consume
+  image: ubuntu:24.04
+  tags:
+    - baseharbor-ephemeral-docker
+  timeout: 30 minutes
+  when: manual
+  allow_failure: false
+  script:
+    - |
+      set -euo pipefail
+      [[ "$BASEHARBOR_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9.-]+)?$ ]]
+      apt-get update
+      apt-get install -y --no-install-recommends ca-certificates curl docker.io
+      docker version
+      curl -fsSL "https://raw.githubusercontent.com/mcpdev80/baseharbor/v${BASEHARBOR_VERSION}/scripts/install.sh" | bash -s -- "$BASEHARBOR_VERSION"
+      bash scripts/consumption-example.sh
