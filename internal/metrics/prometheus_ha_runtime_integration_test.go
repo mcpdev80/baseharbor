@@ -206,7 +206,7 @@ HTTPServer(("0.0.0.0", 8080), Handler).serve_forever()
 		t.Fatalf("restore test metrics target: %v\n%s", err, output)
 	}
 	for _, member := range members {
-		waitPrometheusMemberMetric(t, ctx, string(runtime.Kind()), network, files, oldMaterial, member)
+		waitPrometheusMemberMetricAfter(t, ctx, string(runtime.Kind()), network, files, oldMaterial, member, restartStartedAt)
 		assertPrometheusMetricHistorySurvivedRestart(t, ctx, string(runtime.Kind()), network, files, oldMaterial, member, restartStartedAt)
 	}
 	waitPrometheusHAReady(t, ctx, driver, resource, binding)
@@ -318,7 +318,7 @@ func waitPrometheusMemberAlertFiring(t *testing.T, ctx context.Context, runtimeB
 
 func waitPrometheusMemberMetric(t *testing.T, ctx context.Context, runtimeBinary, network string, files ProviderFiles, material serviceaccess.TLSMaterial, member string) {
 	t.Helper()
-	path := "/api/v1/query?" + url.Values{"query": []string{"baseharbor_ha_acceptance == 1"}}.Encode()
+	path := "/api/v1/query?" + url.Values{"query": []string{`timestamp(baseharbor_ha_acceptance)`}}.Encode()
 	deadline := time.Now().Add(90 * time.Second)
 	for time.Now().Before(deadline) {
 		result := queryPrometheusMember(t, ctx, runtimeBinary, network, files, material, member, "instant", path, "0")
@@ -334,9 +334,28 @@ func waitPrometheusMemberMetric(t *testing.T, ctx context.Context, runtimeBinary
 	t.Fatalf("Prometheus member %s did not resume scraping the fixture metric", member)
 }
 
+func waitPrometheusMemberMetricAfter(t *testing.T, ctx context.Context, runtimeBinary, network string, files ProviderFiles, material serviceaccess.TLSMaterial, member string, restartStartedAt time.Time) {
+	t.Helper()
+	path := "/api/v1/query?" + url.Values{"query": []string{`timestamp(baseharbor_ha_acceptance)`}}.Encode()
+	compareAt := fmt.Sprintf("%f", float64(restartStartedAt.UnixNano())/1e9)
+	deadline := time.Now().Add(90 * time.Second)
+	for time.Now().Before(deadline) {
+		result := queryPrometheusMember(t, ctx, runtimeBinary, network, files, material, member, "instant", path, compareAt)
+		if result.SampleTimestamp >= float64(restartStartedAt.UnixNano())/1e9 {
+			return
+		}
+		select {
+		case <-ctx.Done():
+			t.Fatalf("waiting for Prometheus member %s to scrape a post-restart fixture sample: %v", member, ctx.Err())
+		case <-time.After(time.Second):
+		}
+	}
+	t.Fatalf("Prometheus member %s did not scrape a post-restart fixture sample", member)
+}
+
 func assertPrometheusMetricHistorySurvivedRestart(t *testing.T, ctx context.Context, runtimeBinary, network string, files ProviderFiles, material serviceaccess.TLSMaterial, member string, restartStartedAt time.Time) {
 	t.Helper()
-	query := `baseharbor_ha_acceptance`
+	query := `timestamp(baseharbor_ha_acceptance)`
 	values := url.Values{
 		"query": []string{query},
 		"start": []string{fmt.Sprintf("%f", float64(restartStartedAt.Add(-2*time.Minute).UnixNano())/1e9)},
@@ -352,9 +371,10 @@ func assertPrometheusMetricHistorySurvivedRestart(t *testing.T, ctx context.Cont
 }
 
 type prometheusMemberQueryResult struct {
-	Present       bool `json:"present"`
-	BeforeRestart bool `json:"before_restart"`
-	AfterRestart  bool `json:"after_restart"`
+	Present         bool    `json:"present"`
+	SampleTimestamp float64 `json:"sample_timestamp"`
+	BeforeRestart   bool    `json:"before_restart"`
+	AfterRestart    bool    `json:"after_restart"`
 }
 
 func queryPrometheusMember(t *testing.T, ctx context.Context, runtimeBinary, network string, files ProviderFiles, material serviceaccess.TLSMaterial, member, mode, path, compareAt string) prometheusMemberQueryResult {
@@ -374,13 +394,17 @@ payload = json.loads(response.read())
 if response.status < 200 or response.status >= 300 or payload.get("status") != "success":
     raise SystemExit("Prometheus member query failed: HTTP " + str(response.status))
 result = payload.get("data", {}).get("result", [])
-answer = {"present": bool(result), "before_restart": False, "after_restart": False}
+answer = {"present": bool(result), "sample_timestamp": 0, "before_restart": False, "after_restart": False}
 if mode == "history":
     for series in result:
         for sample in series.get("values", []):
             if len(sample) == 2:
-                answer["before_restart"] |= float(sample[0]) < float(sys.argv[7])
-                answer["after_restart"] |= float(sample[0]) >= float(sys.argv[7])
+                answer["before_restart"] |= float(sample[1]) < float(sys.argv[7])
+                answer["after_restart"] |= float(sample[1]) >= float(sys.argv[7])
+if mode == "instant" and result:
+    value = result[0].get("value", [])
+    if len(value) == 2:
+        answer["sample_timestamp"] = float(value[1])
 print(json.dumps(answer, separators=(",", ":")))
 `
 	pkiDir := filepath.Join(files.Dir, "service-access", "pki")
