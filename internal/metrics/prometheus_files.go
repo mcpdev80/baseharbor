@@ -329,11 +329,9 @@ func EffectiveProviderTargetCount(sources []observability.MetricsSource) int {
 // longer surfaces as silent silence. Callers that treat the composition as a
 // mutation must still fail closed; this message only makes the count visible.
 func ProviderCompositionState(sources []observability.MetricsSource) string {
-	// Guard the empty source list first. A zero effective count with NO provider
-	// sources is not "all Verification=none"; it is "no provider metrics sources
-	// at all" (e.g. an app-only / provider-less metrics app). Reporting the
-	// Verification=none null-target message here would be a false
-	// null-provider-target status, so the two cases are distinct states.
+	// Guard the empty source list first: zero effective targets with no provider
+	// sources means no provider metrics (for example, an app-only metrics app), not
+	// that all sources have Verification=none. Those are distinct composition states.
 	if len(sources) == 0 {
 		return "metrics provider composition: no provider metrics sources registered (no provider targets, nothing to scrape)"
 	}
