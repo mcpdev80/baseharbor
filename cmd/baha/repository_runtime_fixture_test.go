@@ -261,6 +261,10 @@ func verifyRepositoryFixtureRetirement(t *testing.T, ctx context.Context, resolv
 	if err != nil {
 		t.Fatal(err)
 	}
+	expectedOwner, err := json.Marshal(resolved.Manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
 	files, _, owned, err := nativeBackendInventory(resolved)
 	if err != nil {
 		t.Fatal("native backend owner inventory", err)
@@ -315,11 +319,11 @@ func verifyRepositoryFixtureRetirement(t *testing.T, ctx context.Context, resolv
 	record, err := deployment.LoadDeploymentRecord(resolved.DeploymentIdentity)
 	if err != nil || record.Identity != before.Identity || record.Observed.State != "runtime-retired" ||
 		record.Observed.Ready || record.Observed.VerifiedAt.IsZero() ||
-		!applicationIntentsEqual([]byte(record.Applied.GeneratedState["retired_intent"]), before.Applied.Intent) ||
+		!applicationIntentsEqual([]byte(record.Applied.GeneratedState["retired_intent"]), expectedOwner) ||
 		record.Applied.GeneratedState["previous_intent"] != "" {
-		t.Fatalf("ordinary destroy lost the verified retained canonical owner: err=%v identity_match=%t state=%q ready=%t verified=%t retired_intent_match=%t previous_intent_present=%t",
+		t.Fatalf("ordinary destroy lost the verified retained canonical source owner: err=%v identity_match=%t state=%q ready=%t verified=%t retired_intent_matches_source=%t previous_intent_present=%t",
 			err, record.Identity == before.Identity, record.Observed.State, record.Observed.Ready,
-			!record.Observed.VerifiedAt.IsZero(), applicationIntentsEqual([]byte(record.Applied.GeneratedState["retired_intent"]), before.Applied.Intent),
+			!record.Observed.VerifiedAt.IsZero(), applicationIntentsEqual([]byte(record.Applied.GeneratedState["retired_intent"]), expectedOwner),
 			record.Applied.GeneratedState["previous_intent"] != "")
 	}
 	result, err := applicationDestroyResult(resolved, false)

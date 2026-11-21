@@ -254,12 +254,9 @@ func runBackupFixtureWithConsent(ctx context.Context, operation string, run func
 			if consentErr == nil && ack != nil {
 				ctx = withProviderChangeConsent(ctx, ack)
 				providerGranted = true
-				if !candidateGranted {
-					if digest := backupFixtureCandidateConsentDigest(err); digest != "" {
-						ctx = withCandidateConsentDigest(ctx, digest)
-						candidateGranted = true
-					}
-				}
+				// Do not bind a candidate digest from the same provider challenge.
+				// Approving the provider plan can change the resolved candidate
+				// identity; the next invocation must surface its current exact hash.
 				continue
 			}
 		}
@@ -663,7 +660,7 @@ func TestGuidedBackupFixtureProviderRetryKeepsCandidateConsent(t *testing.T) {
 	}
 }
 
-func TestGuidedBackupFixtureBundledProviderChallengeKeepsCandidateConsent(t *testing.T) {
+func TestGuidedBackupFixtureBundledProviderChallengeRefreshesCandidateConsent(t *testing.T) {
 	plan := application.ProviderImpactPlan{
 		Version: application.ProviderImpactVersion, Target: "dev", PlanID: "backup-bundled-plan",
 		Complete: true, ConfirmationsRequired: 1,
@@ -682,18 +679,21 @@ func TestGuidedBackupFixtureBundledProviderChallengeKeepsCandidateConsent(t *tes
 		if calls == 1 {
 			return impactRefusal
 		}
-		if calls != 2 {
-			t.Fatal("bundled provider/candidate challenge was retried more than once")
-		}
 		if consent := providerChangeConsentFromContext(ctx); consent == nil || consent.PlanID != plan.PlanID {
-			t.Fatal("bundled challenge lost its exact provider-impact consent")
+			t.Fatal("provider challenge lost its exact provider-impact consent")
 		}
-		if got := candidateConsentOverride(ctx); got != digest {
-			t.Fatalf("bundled challenge candidate digest=%q, want exact challenged digest", got)
+		if calls == 2 {
+			if got := candidateConsentOverride(ctx); got != "" {
+				t.Fatalf("stale bundled candidate digest was bound before provider approval: %q", got)
+			}
+			return &cli.UsageError{Message: "candidate consent required", Hint: "Re-run with --confirm-candidate " + digest}
+		}
+		if calls != 3 || candidateConsentOverride(ctx) != digest {
+			t.Fatalf("refreshed candidate challenge calls=%d digest=%q", calls, candidateConsentOverride(ctx))
 		}
 		return nil
 	})
-	if err != nil || calls != 2 {
+	if err != nil || calls != 3 {
 		t.Fatalf("bundled provider/candidate challenge calls=%d err=%v", calls, err)
 	}
 }
