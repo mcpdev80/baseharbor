@@ -55,12 +55,34 @@ type PolicyDefault struct {
 	Mandatory bool   `yaml:"mandatory,omitempty" json:"mandatory,omitempty"`
 }
 
+// EnvironmentIdentity is the organization-config-side declaration of a shared
+// environment's durable identity. It is the definition/authorship layer (card
+// 0428-056): it carries the identity the managed organization configuration
+// authoring path declares for an environment, but it is NOT the runtime source
+// of truth. The authoritative per-(Target, environment) UUID lives in the
+// deployment registry (card 0428-054, environment.json). ResolveEffective
+// reconciles this declared reference against the registry-returned identity and
+// fails closed on a mismatch, so the org config can never silently drift the
+// identity the Core registry has already stamped. Identity and the
+// provider/defaults vs mandatory-policy distinction stay in their own layers.
+type EnvironmentIdentity struct {
+	// Reference is a non-secret reference to the shared environment identity.
+	// It is validated like every other organization reference (no inline
+	// secret material) and is never read back as an authorization credential.
+	Reference string `yaml:"reference" json:"reference"`
+	// Authoritative pins the identity to the deployment-registry record once
+	// ResolveEffective has reconciled it; a mismatch during reconciliation
+	// returns an error and leaves this empty.
+	Authoritative bool `yaml:"authoritative,omitempty" json:"authoritative,omitempty"`
+}
+
 type EnvironmentDefaults struct {
 	Target    string                     `yaml:"target,omitempty" json:"target,omitempty"`
 	Stack     string                     `yaml:"stack,omitempty" json:"stack,omitempty"`
 	Providers map[string]ProviderDefault `yaml:"providers,omitempty" json:"providers,omitempty"`
 	Trust     map[string]Reference       `yaml:"trust,omitempty" json:"trust,omitempty"`
 	Policies  []PolicyDefault            `yaml:"policies,omitempty" json:"policies,omitempty"`
+	Identity  *EnvironmentIdentity       `yaml:"identity,omitempty" json:"identity,omitempty"`
 }
 
 type Config struct {
@@ -147,6 +169,9 @@ func (c Config) Validate() error {
 		return err
 	}
 	for name, env := range c.Environments {
+		if containsSecretMaterial(name) {
+			return fmt.Errorf("environment name contains secret-like material; use a non-secret identifier")
+		}
 		if !namePattern.MatchString(strings.TrimSpace(name)) {
 			return fmt.Errorf("environment name %q is invalid", name)
 		}
@@ -210,6 +235,9 @@ func validateDefaults(scope string, d EnvironmentDefaults) error {
 			return fmt.Errorf("%s trust %q: %w", scope, name, err)
 		}
 	}
+	if err := validateEnvironmentIdentity(scope, d.Identity); err != nil {
+		return err
+	}
 	for i, policy := range d.Policies {
 		if !namePattern.MatchString(strings.TrimSpace(policy.Policy)) {
 			return fmt.Errorf("%s policy %d has invalid policy reference %q", scope, i, policy.Policy)
@@ -242,6 +270,26 @@ func validateReference(ref Reference) error {
 	}
 	if containsSecretMaterial(value) {
 		return fmt.Errorf("reference contains secret-like material; organization configuration stores references only")
+	}
+	return nil
+}
+
+// validateEnvironmentIdentity enforces that the organization-config-side
+// environment identity declaration is a well-formed, non-secret reference. It
+// is intentionally a definition-layer gate: a present but empty reference is a
+// misconfiguration (fail closed), and any inline secret material is rejected
+// exactly like every other organization reference. The identity is never an
+// authorization credential.
+func validateEnvironmentIdentity(scope string, identity *EnvironmentIdentity) error {
+	if identity == nil {
+		return nil
+	}
+	value := strings.TrimSpace(identity.Reference)
+	if value == "" {
+		return fmt.Errorf("%s environment identity requires a reference", scope)
+	}
+	if containsSecretMaterial(value) {
+		return fmt.Errorf("%s environment identity contains secret-like material; organization configuration stores references only", scope)
 	}
 	return nil
 }
