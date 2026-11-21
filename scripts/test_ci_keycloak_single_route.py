@@ -61,10 +61,10 @@ class KeycloakSingleNativeRouteTests(unittest.TestCase):
         self.assertIsNone(re.search(selector, "docs/reference/unrelated.md"))
         native = (ROOT / "scripts/ci-owner-node-native.sh").read_text()
         self.assertIn("export BASEHARBOR_CORE_FOREIGN_NETWORK_ACCEPTANCE=1", native)
-        self.assertIn(
-            "require_pass ./cmd/baha TestCoreDefaultNetworkBindingRejectsUnownedNativeNetwork 3m",
-            native,
-        )
+        foreign = "require_pass ./cmd/baha TestCoreDefaultNetworkBindingRejectsUnownedNativeNetwork 3m"
+        control_plane = "require_pass ./cmd/baha TestControlPlaneSingleDefaultNativeRuntimeInCI 20m"
+        self.assertIn(foreign, native)
+        self.assertLess(native.index(foreign), native.index(control_plane))
 
     def test_existing_runtime_workflows_reuse_narrow_develop_selector(self):
         for workflow in (
