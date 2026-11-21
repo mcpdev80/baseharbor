@@ -31,7 +31,7 @@ func qualifySharedIdentityConsumers(t *testing.T, ctx context.Context, provider 
 	var sibling resolvedApplication
 	inSelectiveIdentityRepository(t, siblingRoot, func() {
 		var output bytes.Buffer
-		if err := runWithIO(ctx, []string{"app", "init", "--quick", "--json"}, &output, &output); err != nil {
+		if err := runWithIOAsTestOperator(ctx, []string{"app", "init", "--quick", "--json"}, &output, &output); err != nil {
 			t.Fatalf("initialize sibling: %v\n%s", err, output.String())
 		}
 		sibling = applySelectiveIdentityIntent(t, ctx)
@@ -116,7 +116,7 @@ func applySelectiveIdentityIntent(t *testing.T, ctx context.Context) resolvedApp
 		applyCtx = withProviderChangeConsent(applyCtx, &application.ProviderChangeConsent{PlanID: impact.PlanID, First: true, Second: true})
 	}
 	var output bytes.Buffer
-	if err := runWithIO(applyCtx, []string{"app", "apply", "--skip-memory-preflight"}, &output, &output); err != nil {
+	if err := runWithIOAsTestOperator(applyCtx, []string{"app", "apply", "--skip-memory-preflight"}, &output, &output); err != nil {
 		t.Logf("shared Identity failed common union: complete=%t changes=%+v", plan.ProviderPlan.Complete, plan.ProviderPlan.Changes)
 		t.Fatalf("shared Identity apply: %v\n%s", err, output.String())
 	}

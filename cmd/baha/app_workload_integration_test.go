@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/deployment"
 	testruntime "github.com/mcpdev80/baseharbor/internal/testsupport/runtimeprovider"
 )
 
@@ -65,6 +66,7 @@ func TestRepositoryComposeWorkloadUsesBaseHarborBackendsInCI(t *testing.T) {
 		t.Fatalf("detect compose: %v", err)
 	}
 	isolateRuntimeForTest(t, "compose-workload-backends")
+	configureRuntimeIntegrationTestOperatorAuth(t)
 
 	root := t.TempDir()
 	old, err := os.Getwd()
@@ -143,7 +145,7 @@ workload:
 
 	for _, command := range [][]string{{"app", "status"}, {"app", "doctor"}} {
 		out.Reset()
-		if err := runWithIO(ctx, command, &out, &out); err != nil {
+		if err := runWithIOAsTestOperator(ctx, command, &out, &out); err != nil {
 			t.Fatalf("%v failed: %v\n%s", command, err, out.String())
 		}
 		if !strings.Contains(out.String(), "workload") {
@@ -196,6 +198,7 @@ func TestRepositoryComposeWorkloadOnlyLifecycleInCI(t *testing.T) {
 		t.Fatalf("detect compose: %v", err)
 	}
 	isolateRuntimeForTest(t, "compose-workload-only")
+	configureRuntimeIntegrationTestOperatorAuth(t)
 
 	root := t.TempDir()
 	old, err := os.Getwd()
@@ -279,7 +282,7 @@ networks:
 
 	for _, command := range [][]string{{"app", "status"}, {"app", "doctor"}} {
 		out.Reset()
-		if err := runWithIO(ctx, command, &out, &out); err != nil {
+		if err := runWithIOAsTestOperator(ctx, command, &out, &out); err != nil {
 			t.Fatalf("%v failed for workload-only app: %v\n%s", command, err, out.String())
 		}
 		if !strings.Contains(out.String(), "workload") {
@@ -352,6 +355,7 @@ func TestRepositoryComposePinnedWorkloadLifecycleInCI(t *testing.T) {
 		t.Fatalf("detect compose: %v", err)
 	}
 	isolateRuntimeForTest(t, "compose-pinned-workload")
+	configureRuntimeIntegrationTestOperatorAuth(t)
 
 	root := t.TempDir()
 	old, err := os.Getwd()
@@ -466,7 +470,7 @@ networks:
 	}
 	backupFile := filepath.Join(backupDir, "pinned.bhbackup")
 	backupCmd := []string{"app", "backup", "--password-file", passwordFile, "--output", backupFile}
-	if err := runWithIO(ctx, backupCmd, &out, &out); err != nil {
+	if err := runWithIOAsTestOperator(ctx, backupCmd, &out, &out); err != nil {
 		t.Fatalf("backup pinned-workload application: %v\n%s", err, out.String())
 	}
 	if _, statErr := os.Stat(backupFile); statErr != nil {
@@ -489,6 +493,37 @@ networks:
 	if _, err := os.Stat(filepath.Join(root, "baseharbor.yaml")); err != nil {
 		t.Fatalf("repository manifest not preserved: %v", err)
 	}
+}
+
+// configureRuntimeIntegrationTestOperatorAuth binds the synthetic test
+// principal to the exact owner-verified native target and restores the shared
+// CI Core's prior policy when this test finishes.
+func configureRuntimeIntegrationTestOperatorAuth(t *testing.T) {
+	t.Helper()
+	target, err := effectiveTarget(context.Background())
+	if err != nil {
+		t.Fatalf("resolve native integration target for operator auth: %v", err)
+	}
+	previous, hadPrevious, err := deployment.OperatorAuthForTargetEnvironment(target.Name, "dev")
+	if err != nil {
+		t.Fatalf("read existing operator-auth boundary: %v", err)
+	}
+	if err := deployment.SetOperatorAuthForTargetEnvironment(target.Name, "dev", deployment.OperatorAuthEnvironmentConfig{
+		Provider: "external-oidc", Issuer: "https://issuer.test", ClientID: "cli-test",
+	}); err != nil {
+		t.Fatalf("configure isolated operator-auth boundary: %v", err)
+	}
+	t.Cleanup(func() {
+		var err error
+		if hadPrevious {
+			err = deployment.SetOperatorAuthForTargetEnvironment(target.Name, "dev", previous)
+		} else {
+			err = deployment.DeleteOperatorAuthForTargetEnvironment(target.Name, "dev")
+		}
+		if err != nil {
+			t.Errorf("restore operator-auth boundary after runtime integration: %v", err)
+		}
+	})
 }
 
 func TestRepositoryBuildWorkloadRebuildsSourceChangesInCI(t *testing.T) {
@@ -562,7 +597,7 @@ workload:
 	}
 
 	var out bytes.Buffer
-	if err := runRepositoryFixtureApply(ctx, []string{"app", "apply"}, &out); err != nil {
+	if err := runRepositoryFixtureApply(ctx, []string{"--verbose", "app", "apply"}, &out); err != nil {
 		t.Fatalf("initial build apply: %v\n%s", err, out.String())
 	}
 	if !strings.Contains(out.String(), "rebuilt app") {
@@ -630,7 +665,7 @@ workload:
 		t.Fatal(err)
 	}
 	out.Reset()
-	if err := runRepositoryFixtureApply(ctx, []string{"app", "up"}, &out); err != nil {
+	if err := runRepositoryFixtureApply(ctx, []string{"--verbose", "app", "up"}, &out); err != nil {
 		t.Fatalf("changed-source app up: %v\n%s", err, out.String())
 	}
 	if !strings.Contains(out.String(), "rebuilt app") {

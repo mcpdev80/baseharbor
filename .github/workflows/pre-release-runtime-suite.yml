@@ -183,6 +183,9 @@ jobs:
       run: |
         set -euo pipefail
         chmod 0755 "$RUNNER_TEMP/pre-release-candidate/baha"
+        if [ -f "$RUNNER_TEMP/pre-release-candidate/baha-ci-operator-testonly" ]; then
+          chmod 0755 "$RUNNER_TEMP/pre-release-candidate/baha-ci-operator-testonly"
+        fi
         archive="$RUNNER_TEMP/pre-release-candidate/baseharbor-runtime-pre-release.tar"
         test -s "$archive"
         if [ "${{ inputs.runtime }}" = "podman" ]; then
@@ -282,6 +285,7 @@ jobs:
         PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         GATE: ${{ inputs.gate }}
         RUNTIME: ${{ inputs.runtime }}
+        GOFLAGS: -tags=baseharbor_ci_operator_testonly
       run: |
         set -euo pipefail
         exec > >(tee "$RUNNER_TEMP/gate-output.log") 2>&1
@@ -292,10 +296,14 @@ jobs:
         export BASEHARBOR_TARGET="atomic-${{ inputs.runtime }}-${{ inputs.gate }}"
         prebuilt=()
         if [ -n "${{ inputs.candidate_artifact }}" ]; then
-          prebuilt=(BASEHARBOR_PREBUILT_BINARY="$RUNNER_TEMP/pre-release-candidate/baha")
+          testonly="$RUNNER_TEMP/pre-release-candidate/baha-ci-operator-testonly"
+          test -s "$testonly"
+          chmod 0755 "$testonly"
+          "$testonly" version | grep -F "$CANDIDATE_SHA"
+          prebuilt=(BASEHARBOR_PREBUILT_BINARY="$testonly")
         fi
         cd "$workdir"
-        env             "${prebuilt[@]}"             BASEHARBOR_SOURCE_REF="$CANDIDATE_SHA"             BASEHARBOR_RUNTIME_IMAGE="$BASEHARBOR_RUNTIME_IMAGE"             BASEHARBOR_TEST_RUNTIME="${{ inputs.runtime }}"             DEMO_ATOMIC_GATE=1             ARTIFACT_DIR="$ARTIFACT_DIR"             bash scripts/acceptance.sh "$GATE"
+        env             "${prebuilt[@]}"             BASEHARBOR_SOURCE_REF="$CANDIDATE_SHA"             BASEHARBOR_RUNTIME_IMAGE="$BASEHARBOR_RUNTIME_IMAGE"             BASEHARBOR_TEST_RUNTIME="${{ inputs.runtime }}"             BASEHARBOR_DEMO_OPERATOR_GATE="$GATE"             BASEHARBOR_DEMO_OPERATOR_TRACE=1             GATE="$GATE"             DEMO_ATOMIC_GATE=1             ARTIFACT_DIR="$ARTIFACT_DIR"             bash scripts/acceptance.sh "$GATE"
         if [ "$GATE" = backup-restore ] && [ "$GITHUB_EVENT_NAME" = pull_request ]; then
           cd "$GITHUB_WORKSPACE"
           test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
@@ -314,6 +322,7 @@ jobs:
           fi
           if [ "$backup_changed" = true ]; then
             bash scripts/ci-runtime-reset.sh "$RUNTIME"
+            bash scripts/ci-local-oci-registry.sh publish localhost/baseharbor-runtime:pre-release localhost:5000/baseharbor-runtime:pre-release
             unset BASEHARBOR_TARGET
             export XDG_CONFIG_HOME="$RUNNER_TEMP/baseharbor-backup-cli-xdg/config"
             export XDG_DATA_HOME="$RUNNER_TEMP/baseharbor-backup-cli-xdg/data"
@@ -344,6 +353,7 @@ jobs:
             internal/runtime/service_stop_test.go > "$changed"
           if [ -s "$changed" ]; then
             bash scripts/ci-runtime-reset.sh "$RUNTIME"
+            bash scripts/ci-local-oci-registry.sh publish localhost/baseharbor-runtime:pre-release localhost:5000/baseharbor-runtime:pre-release
             unset BASEHARBOR_TARGET
             export XDG_CONFIG_HOME="$RUNNER_TEMP/baseharbor-native-xdg/config"
             export XDG_DATA_HOME="$RUNNER_TEMP/baseharbor-native-xdg/data"
@@ -465,6 +475,11 @@ jobs:
           [ -f "$file" ] || continue
           echo "===== $file ====="
           tail -n 160 "$file" || true
+        done
+        for file in "$out"/failure-runtime/*/scope-result.json; do
+          [ -f "$file" ] || continue
+          echo "===== $file ====="
+          cat "$file"
         done
         echo "::endgroup::"
     - name: Run provider integration gate

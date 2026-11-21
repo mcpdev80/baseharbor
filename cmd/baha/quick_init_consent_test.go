@@ -24,7 +24,7 @@ func TestQuickInitNonTTYDoesNotRequireCore(t *testing.T) {
 	appInitInput = input
 	t.Cleanup(func() { appInitInput = old })
 	var out bytes.Buffer
-	err = runWithIO(context.Background(), []string{"app", "init", "--quick"}, &out, io.Discard)
+	err = runWithIOAsTestOperator(context.Background(), []string{"app", "init", "--quick"}, &out, io.Discard)
 	if err != nil || strings.Contains(out.String(), "Set them up now?") {
 		t.Fatalf("unexpected Core prerequisite: %v %s", err, out.String())
 	}
@@ -47,7 +47,7 @@ func TestQuickInitYesDoesNotAuthorizeUnrequestedCore(t *testing.T) {
 				called = opts.Yes
 				return coreinstallation.State{}, failure
 			}
-			err := runWithIO(context.Background(), []string{"app", "init", "--quick", flag}, io.Discard, io.Discard)
+			err := runWithIOAsTestOperator(context.Background(), []string{"app", "init", "--quick", flag}, io.Discard, io.Discard)
 			if called || err != nil {
 				t.Fatalf("unrequested Core bootstrap: %v %v", called, err)
 			}

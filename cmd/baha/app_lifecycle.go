@@ -310,7 +310,7 @@ func executeApplicationDestroyLifecycle(ctx context.Context, store application.S
 			if plan.Providers.Impact == nil {
 				return runtimeMutationOwnerError()
 			}
-			if _, err := recordPendingApplicationRuntimeRetirement(execution.resolved, *plan.Providers.Impact); err != nil {
+			if _, err := recordPendingApplicationRuntimeRetirementWithIntent(execution.resolved, *plan.Providers.Impact, intent); err != nil {
 				return err
 			}
 		}
