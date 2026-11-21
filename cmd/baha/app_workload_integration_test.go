@@ -103,7 +103,7 @@ workload:
 	}
 
 	var out bytes.Buffer
-	if err := runRepositoryFixtureApply(ctx, []string{"app", "apply"}, &out); err != nil {
+	if err := runRepositoryFixtureApply(ctx, []string{"--verbose", "app", "apply"}, &out); err != nil {
 		t.Fatalf("apply repository workload: %v\n%s", err, out.String())
 	}
 	if !strings.Contains(out.String(), "workload") {
