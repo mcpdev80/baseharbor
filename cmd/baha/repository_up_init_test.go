@@ -29,7 +29,7 @@ func TestInitializeRepositoryManifestForUpQuickCreatesDetectedContract(t *testin
 	}
 
 	var out bytes.Buffer
-	initialized, err := initializeRepositoryManifestForUp(context.Background(), strings.NewReader(""), &out, &out, runtimeUpOptions{Yes: true})
+	initialized, err := initializeRepositoryManifestForUp(testOperatorContext(context.Background()), strings.NewReader(""), &out, &out, runtimeUpOptions{Yes: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,7 +61,7 @@ func TestInitializeRepositoryManifestForUpIgnoresDirectoryWithoutProjectSignals(
 	root := t.TempDir()
 	withWorkingDirectory(t, root)
 
-	initialized, err := initializeRepositoryManifestForUp(context.Background(), strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{}, runtimeUpOptions{Yes: true})
+	initialized, err := initializeRepositoryManifestForUp(testOperatorContext(context.Background()), strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{}, runtimeUpOptions{Yes: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,7 +82,7 @@ func TestInitializeRepositoryManifestForUpQuickFailsClosedOnAmbiguousCompose(t *
 		}
 	}
 
-	initialized, err := initializeRepositoryManifestForUp(context.Background(), strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{}, runtimeUpOptions{Yes: true})
+	initialized, err := initializeRepositoryManifestForUp(testOperatorContext(context.Background()), strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{}, runtimeUpOptions{Yes: true})
 	if !initialized {
 		t.Fatal("expected ambiguous application project to be detected")
 	}

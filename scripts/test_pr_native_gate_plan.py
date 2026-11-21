@@ -49,6 +49,30 @@ class NativeGatePlanTests(unittest.TestCase):
             {'id': 'native/podman/second-target-conflict', 'runtime': 'podman'},
         ]})
 
+    def test_onboarding_contract_and_document_changes_select_both_native_runtimes(self):
+        expected = {'include': [
+            {'id': 'native/docker/onboarding', 'runtime': 'docker'},
+            {'id': 'native/podman/workstation-onboarding', 'runtime': 'podman'},
+        ]}
+        for path in (
+                'cmd/baha/workstation_onboarding_remote_native_test.go',
+                'docs/how-to/operator-api.md',
+                'docs/how-to/remote-workstation.md',
+                'docs/spec/zero-friction-workstation-onboarding-v0427.md'):
+            with self.subTest(path=path):
+                self.assertEqual(expected, planner.resolve_matrix([path], coverage))
+
+    def test_runtime_validation_branch_runs_only_the_two_onboarding_native_gates(self):
+        workflow = (ROOT.parent / '.github/workflows/ci.yml').read_text()
+        push = workflow.split('  push:\n', 1)[1].split('  pull_request:', 1)[0]
+        self.assertIn("      - 'runtime-validation/onboarding/**'", push)
+        job = workflow.split('  targeted_workstation_onboarding:', 1)[1].split('\n  validate:', 1)[0]
+        self.assertIn("startsWith(github.ref_name, 'runtime-validation/onboarding/')", job)
+        self.assertIn("matrix.runtime == 'docker' && 'native/docker/onboarding'", job)
+        self.assertIn("'native/podman/workstation-onboarding'", job)
+        self.assertIn('scripts/ci-native-pr-gate.sh "$NATIVE_GATE_ID"', job)
+        self.assertIn('if: always()', job)
+
     def test_unknown_path_does_not_select_every_native_runtime_gate(self):
         matrix = planner.resolve_matrix(
             ['cmd/baha/future_unclassified.go'], coverage)

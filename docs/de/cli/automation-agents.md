@@ -57,6 +57,6 @@ Der stdio-Server `baha mcp serve` stellt semantische Operationen bereit, keine g
 }
 ```
 
-Der Client initialisiert MCP und ruft `tools/list` auf. CLI-Namen sind nicht automatisch MCP-Tool-Namen. `baha serve` ist eine separate lokale Service-Oberfläche; geschützte Netzwerkfreigabe benötigt ihre explizite TLS-/OIDC-Konfiguration.
+Der Client initialisiert MCP und ruft `tools/list` auf. CLI-Namen sind nicht automatisch MCP-Tool-Namen. `baha serve` ist eine separate lokale Service-Oberfläche; geschützte Netzwerkfreigabe benötigt ihre explizite TLS-/OIDC-Konfiguration. Der Start als Core-Bediene-API mit den Pflicht-Variablen (`BASEHARBOR_API_*`) und den bedienten Routen steht im [Core-Bediene-API-Runbook](../how-to/operator-api.md).
 
 Weiter: [Maschinenoperationen](../how-to/machine-operations.md), [MCP-Referenz (EN)](https://mcpdev80.github.io/baseharbor/reference/mcp/), [Machine Interface v1 (EN)](https://mcpdev80.github.io/baseharbor/spec/machine-interface-v1/).

@@ -55,7 +55,7 @@ func TestDeterministicInitRejectsAmbiguousSourcesWithoutSelectionNegative(t *tes
 	if err := os.WriteFile(filepath.Join(root, "deployment.yaml"), []byte("apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: api\nspec:\n  template:\n    spec:\n      containers:\n        - name: api\n          image: example/api:1\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	err := appInitCommand().Run(context.Background(), []string{"demo", "--workload-component", "api"}, &bytes.Buffer{}, &bytes.Buffer{})
+	err := runWithIOAsTestOperator(context.Background(), []string{"app", "init", "demo", "--workload-component", "api"}, &bytes.Buffer{}, &bytes.Buffer{})
 	if err == nil || !strings.Contains(err.Error(), "multiple workload sources") {
 		t.Fatalf("expected ambiguous workload source error, got %v", err)
 	}
@@ -67,7 +67,7 @@ func TestDeterministicInitDoesNotPersistUnneededSourceSelection(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "compose.yaml"), []byte("services:\n  api:\n    image: example/api:1\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	err := appInitCommand().Run(context.Background(), []string{"demo", "--workload-source", "compose:compose.yaml", "--workload-component", "api"}, &bytes.Buffer{}, &bytes.Buffer{})
+	err := runWithIOAsTestOperator(context.Background(), []string{"app", "init", "demo", "--workload-source", "compose:compose.yaml", "--workload-component", "api"}, &bytes.Buffer{}, &bytes.Buffer{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,7 +85,7 @@ func TestDeterministicInitPersistsAmbiguousSourceSelectionPositive(t *testing.T)
 	if err := os.WriteFile(filepath.Join(root, "deployment.yaml"), []byte("apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: api\nspec:\n  template:\n    spec:\n      containers:\n        - name: api\n          image: example/api:1\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	err := appInitCommand().Run(context.Background(), []string{"demo", "--workload-source", "compose:compose.yaml", "--workload-component", "api"}, &bytes.Buffer{}, &bytes.Buffer{})
+	err := runWithIOAsTestOperator(context.Background(), []string{"app", "init", "demo", "--workload-source", "compose:compose.yaml", "--workload-component", "api"}, &bytes.Buffer{}, &bytes.Buffer{})
 	if err != nil {
 		t.Fatal(err)
 	}

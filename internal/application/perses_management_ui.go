@@ -93,7 +93,7 @@ func EvaluatePersesOperatorAccess(ctx context.Context, request PersesAccessReque
 	tenant, scoped := tenancy.FromContext(ctx)
 	if !authenticated || principal == nil || !principal.IssuerVerified {
 		decision.ReasonCode = "operator_authentication_required"
-		decision.Reason = "The optional Perses management surface requires a verified operator identity; an anonymous request is never admitted."
+		decision.Reason = "The optional Perses management surface requires a verified operator identity; an anonymous request is never admitted. Log in with 'baha login' for the selected Target/environment, then retry the same request."
 		return decision, ErrPersesOwnershipUnknown
 	}
 	if !scoped || tenant == nil || strings.TrimSpace(tenant.TenantID) == "" || strings.TrimSpace(tenant.ExternalIdentityID) == "" {

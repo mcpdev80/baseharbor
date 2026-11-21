@@ -238,6 +238,9 @@ func verifyProviderSourcesAt(ctx context.Context, m application.Manifest, dataDi
 	}
 	applicationSourcePrefix := observability.ApplicationMetricsSourceID(m.Name, m.Environment, "")
 	for _, source := range applicationSources {
+		if source.Verification == capability.ObservabilityVerifyNone {
+			continue
+		}
 		if !strings.HasPrefix(source.ID, applicationSourcePrefix) {
 			continue
 		}
