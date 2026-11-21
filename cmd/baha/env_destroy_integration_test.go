@@ -107,7 +107,9 @@ func TestEnvironmentDestroyNativeLifecycle(t *testing.T) {
 	if !workloadRunning {
 		t.Fatal("native prod workload had no owned runtime container before destroy")
 	}
-	stopPlan, err := buildApplicationStopPlan(ctx, resolved)
+	stopCtx := withApplicationInput(withTargetOverride(ctx, target.Name), runtimeInput)
+	stopCtx = context.WithValue(stopCtx, applicationStopModeKey{}, true)
+	stopPlan, err := buildApplicationStopPlan(stopCtx, resolved)
 	if err != nil {
 		t.Fatalf("build exact application stop consent: %v", err)
 	}
