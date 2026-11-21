@@ -11,6 +11,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/orgconfig"
 )
 
@@ -47,6 +48,24 @@ func TestOrganizationCLIJSONAndMCPShareEffectiveResolution(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(root, "config"))
 	t.Setenv("XDG_CACHE_HOME", filepath.Join(root, "cache"))
+	t.Setenv("XDG_DATA_HOME", filepath.Join(root, "data"))
+	deploymentConfig := deployment.Config{
+		Version: deployment.ConfigVersion,
+		Access: map[string]deployment.AccessDefinition{
+			"local": {Provider: "local", Reference: "local"},
+		},
+		Targets: map[string]deployment.TargetDefinition{
+			"company-dev": {
+				TargetUID: mustNewTargetUIDFixture(t),
+				Runtime:   deployment.RuntimeDefinition{Provider: "docker"},
+				Access:    deployment.TargetAccess{Reference: "local"},
+				Scope:     "local",
+			},
+		},
+	}
+	if err := deploymentConfig.Save(); err != nil {
+		t.Fatal(err)
+	}
 	source := filepath.Join(root, "org")
 	if err := os.MkdirAll(source, 0o700); err != nil {
 		t.Fatal(err)
@@ -74,20 +93,21 @@ func TestOrganizationCLIJSONAndMCPShareEffectiveResolution(t *testing.T) {
 
 	server := newMCPServer(application.DefaultStore())
 	serverTransport, clientTransport := mcp.NewInMemoryTransports()
-	serverSession, err := server.Connect(context.Background(), serverTransport, nil)
+	ctx := operatorAuthTestContext(t, context.Background())
+	serverSession, err := server.Connect(ctx, serverTransport, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = serverSession.Close() })
 
 	client := mcp.NewClient(&mcp.Implementation{Name: "org-parity-test", Version: "v1"}, nil)
-	clientSession, err := client.Connect(context.Background(), clientTransport, &mcp.ClientSessionOptions{ProtocolVersion: "2026-07-28"})
+	clientSession, err := client.Connect(ctx, clientTransport, &mcp.ClientSessionOptions{ProtocolVersion: "2026-07-28"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = clientSession.Close() })
 
-	result, err := clientSession.CallTool(context.Background(), &mcp.CallToolParams{
+	result, err := clientSession.CallTool(ctx, &mcp.CallToolParams{
 		Name:      "baseharbor.organization.inspect",
 		Arguments: map[string]any{"environment": "dev"},
 	})
@@ -95,7 +115,7 @@ func TestOrganizationCLIJSONAndMCPShareEffectiveResolution(t *testing.T) {
 		t.Fatal(err)
 	}
 	if result.IsError {
-		t.Fatalf("organization inspect returned error: %#v", result.Content)
+		t.Fatalf("organization inspect returned error: %#v", result.StructuredContent)
 	}
 	encoded, err := json.Marshal(result.StructuredContent)
 	if err != nil {

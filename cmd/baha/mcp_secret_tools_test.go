@@ -14,7 +14,8 @@ func TestSecretToolsDenyManagedOperationsBeforeProtectedInput(t *testing.T) {
 	configureTestTarget(t)
 	manifest := workspaceMutationFixture(t, "prod")
 	t.Chdir(filepath.Dir(manifest))
-	session := workspaceMutationClient(t)
+	unauthenticated := withoutOperatorAuthTestContext(context.Background())
+	session := workspaceMutationClientWithContext(t, unauthenticated)
 	for _, id := range []string{"secret.list", "secret.set", "secret.delete", "secret.tls-set"} {
 		input := map[string]any{}
 		switch id {
@@ -28,7 +29,7 @@ func TestSecretToolsDenyManagedOperationsBeforeProtectedInput(t *testing.T) {
 			input["certificate_file"] = "missing-cert"
 			input["private_key_file"] = "missing-key"
 		}
-		result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "baseharbor." + id, Arguments: input})
+		result, err := session.CallTool(unauthenticated, &mcp.CallToolParams{Name: "baseharbor." + id, Arguments: input})
 		if err != nil || !result.IsError {
 			t.Fatalf("%s accepted: %#v %v", id, result, err)
 		}

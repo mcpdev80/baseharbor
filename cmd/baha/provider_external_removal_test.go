@@ -115,7 +115,8 @@ func TestExternalProviderRemovalChecksEveryManagedConsumerBeforeMutation(t *test
 		t.Fatal(err)
 	}
 	consent := application.ProviderChangeConsent{PlanID: plan.Scope.PlanID, First: true, Second: true}
-	_, err = removeExternalProviderWithImpact(withProviderChangeConsent(context.Background(), &consent), "team-db", nil, nil)
+	ctx := withoutOperatorAuthTestContext(withProviderChangeConsent(context.Background(), &consent))
+	_, err = removeExternalProviderWithImpact(ctx, "team-db", nil, nil)
 	var failure *machine.Error
 	if !errors.As(err, &failure) || failure.Code != machine.ErrorAuthenticationFailed {
 		t.Fatalf("other managed consumer was not authorized: %v", err)

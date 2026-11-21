@@ -142,7 +142,7 @@ func TestDestroyAuthorizesUnboundProviderWithoutMaterializedCore(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, all := range []bool{false, true} {
-		_, err := buildRuntimeDestroyImpact(t.Context(), []targetDestroyInventory{{Target: target}}, nil, all)
+		_, err := buildRuntimeDestroyImpact(withoutOperatorAuthTestContext(t.Context()), []targetDestroyInventory{{Target: target}}, nil, all)
 		if machine.Classify(err).Code != machine.ErrorAuthenticationFailed {
 			t.Fatalf("unbound protected owner bypassed: %v", err)
 		}

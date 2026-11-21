@@ -16,7 +16,8 @@ func TestNewPlatformToolsDenyManagedOperationsBeforeRuntimeOrInput(t *testing.T)
 	configureTestTarget(t)
 	manifest := workspaceMutationFixture(t, "prod")
 	t.Chdir(filepath.Dir(manifest))
-	session := workspaceMutationClient(t)
+	unauthenticated := withoutOperatorAuthTestContext(context.Background())
+	session := workspaceMutationClientWithContext(t, unauthenticated)
 	for _, id := range []string{"control-plane.status", "control-plane.doctor", "control-plane.up", "control-plane.stop", "control-plane.repair", "control-plane.destroy", "installation.destroy", "openbao.status", "openbao.bootstrap", "openbao.unseal", "openbao.rotate", "dev.domain", "dev.credentials", "trust.status", "trust.export", "trust.install", "release.check"} {
 		arguments := map[string]any{}
 		switch id {
@@ -29,7 +30,7 @@ func TestNewPlatformToolsDenyManagedOperationsBeforeRuntimeOrInput(t *testing.T)
 		case "trust.export":
 			arguments["path"] = filepath.Join(t.TempDir(), "public-ca")
 		}
-		result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "baseharbor." + id, Arguments: arguments})
+		result, err := session.CallTool(unauthenticated, &mcp.CallToolParams{Name: "baseharbor." + id, Arguments: arguments})
 		if err != nil || !result.IsError {
 			t.Fatalf("%s not denied: %#v %v", id, result, err)
 		}

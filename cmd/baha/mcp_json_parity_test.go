@@ -25,7 +25,8 @@ func TestCLIJSONAndMCPShareApplicationOverviewAndDevelopmentDomain(t *testing.T)
 	if err := application.ValidateApplicationID(created.ApplicationID); err != nil {
 		t.Fatal(err)
 	}
-	session := workspaceMutationClient(t)
+	authenticated := operatorAuthTestContext(t, context.Background())
+	session := workspaceMutationClientWithContext(t, authenticated)
 	for _, test := range []struct {
 		args  []string
 		tool  string
@@ -44,7 +45,7 @@ func TestCLIJSONAndMCPShareApplicationOverviewAndDevelopmentDomain(t *testing.T)
 		if err := json.Unmarshal(out.Bytes(), &cliResult); err != nil {
 			t.Fatalf("%s CLI mixed human/JSON: %s", test.tool, out.String())
 		}
-		result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "baseharbor." + test.tool, Arguments: test.input})
+		result, err := session.CallTool(authenticated, &mcp.CallToolParams{Name: "baseharbor." + test.tool, Arguments: test.input})
 		if err != nil || result.IsError {
 			t.Fatalf("%s MCP: %#v %v", test.tool, result, err)
 		}
