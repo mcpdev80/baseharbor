@@ -207,6 +207,18 @@ func BuildPersesGateway(requirements PersesGatewayRequirements) (PersesGatewayPl
 	// from one plan) is what lets the compose rendering prove the mounted
 	// file byte-for-byte against persisted state alone.
 
+	// The gateway reaches Perses through the network its gateway joins. In the
+	// shared-namespace form Perses binds the loopback of that namespace and has
+	// no network of its own (network_mode joins the gateway namespace), so the
+	// deployment-scoped service alias resolves to the gateway itself and can
+	// never reach Perses: the gateway must dial the loopback the namespace
+	// shares. In the namespace-local form the peer lives on a reachable backend
+	// network, so the routable alias is the correct dial target.
+	dialUpstream := upstream
+	if sharedNetwork {
+		dialUpstream = fmt.Sprintf("http://127.0.0.1:%d", PersesUpstreamPort)
+	}
+
 	plan := PersesGatewayPlan{
 		ServiceAddress:        strings.TrimSpace(requirements.ServiceAddress),
 		Policy:                requirements.Policy,
@@ -225,7 +237,7 @@ func BuildPersesGateway(requirements PersesGatewayRequirements) (PersesGatewayPl
 	}
 	spec := HTTPGatewaySpec{
 		ServiceName: PersesGatewayServiceName,
-		Upstream:    upstream,
+		Upstream:    dialUpstream,
 		// fix-7 B1 (variant A): the Perses service definition carries
 		// network_mode (Docker Compose forbids network_mode AND networks on
 		// one service), so it registers no backend alias of its own. The
@@ -370,6 +382,18 @@ func validPersesBindAddress(raw string) bool {
 	}
 	_, err := netip.ParsePrefix(raw)
 	return err != nil && persesAllowedBindPattern.MatchString(raw)
+}
+
+// isLoopbackLiteral reports whether the bind names a numeric loopback address
+// (127.0.0.1 / ::1) rather than a service name. The shared-namespace gateway
+// topology routes to this literal loopback; the namespace-local form routes to
+// the routable backend alias, so the two never collide on the same host.
+func isLoopbackLiteral(raw string) bool {
+	addr, err := netip.ParseAddr(strings.TrimSpace(raw))
+	if err != nil {
+		return false
+	}
+	return addr.IsLoopback()
 }
 
 var persesAllowedBindPattern = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$`)

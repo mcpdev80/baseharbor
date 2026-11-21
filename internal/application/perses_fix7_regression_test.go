@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -147,15 +148,19 @@ func TestPersesComposeAliasLivesOnGatewayNotPerses(t *testing.T) {
 	if !bound {
 		t.Fatalf("regression (B1): the Perses command must keep the namespace loopback pin, got %v", perses.Command)
 	}
-	// The alias must be a certificate identity of the gateway (the name the
-	// gateway routes to) — the fail-closed server-names contract.
+	// In the shared-namespace topology the gateway dials the namespace
+	// loopback (Perses binds loopback inside the joined namespace and the
+	// deployment alias resolves to the gateway itself), so the Caddyfile
+	// upstream is the loopback, never the alias. The alias still rides the
+	// gateway service network (verified above) and is a certificate identity
+	// of the gateway; it is simply not the dial target in this topology.
 	caddy := filepath.Join(PersesGatewayStateDir(files), "service-access", "config", "Caddyfile")
 	contents, err := os.ReadFile(caddy)
 	if err != nil {
 		t.Fatalf("read the gateway Caddyfile: %v", err)
 	}
-	if !strings.Contains(string(contents), "reverse_proxy http://"+alias+":") {
-		t.Fatalf("regression (B1): the gateway must route to the backend alias %q over the network it joins:\n%s", alias, contents)
+	if !strings.Contains(string(contents), "reverse_proxy http://127.0.0.1:"+strconv.Itoa(serviceaccess.PersesUpstreamPort)+" {") {
+		t.Fatalf("regression (B1): the shared-namespace gateway must dial the namespace loopback, got:\n%s", contents)
 	}
 }
 
