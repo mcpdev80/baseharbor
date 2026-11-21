@@ -1,0 +1,66 @@
+{
+  "kind": "Dashboard",
+  "metadata": {
+    "name": "tempo-traces",
+    "version": 0
+  },
+  "spec": {
+    "display": {
+      "name": "BaseHarbor Tempo traces",
+      "description": "Application traces from BaseHarbor Tempo."
+    },
+    "datasources": {
+      "tempo": {
+        "kind": "TempoDatasource",
+        "name": "tempo",
+        "default": true
+      }
+    },
+    "panels": {
+      "app-traces": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "BaseHarbor application traces"
+          },
+          "plugin": {
+            "kind": "TracingGanttChart"
+          },
+          "queries": [
+            {
+              "kind": "TraceQuery",
+              "spec": {
+                "kind": "TempoTraceQuery",
+                "spec": {
+                  "query": "{service.name=\"baseharbor-applications\"}"
+                },
+                "datasource": {
+                  "kind": "TempoDatasource",
+                  "name": "tempo"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "layouts": [
+      {
+        "kind": "Grid",
+        "spec": {
+          "items": [
+            {
+              "x": 0,
+              "y": 0,
+              "width": 24,
+              "height": 12,
+              "content": {
+                "$ref": "#/spec/panels/app-traces"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

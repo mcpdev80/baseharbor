@@ -34,14 +34,24 @@ type persesManagementSurface struct {
 	AuthenticationClass string `json:"authentication_class"`
 }
 
-// persesStatusReport mirrors the public `baha status --json` face of the seam:
+// persesDashboardAvail mirrors one entry of the public database_dashboards face
+// of `baha status --json`: the availability verdict per dashboard key.
+type persesDashboardAvail struct {
+	Key        string `json:"key"`
+	Backend    string `json:"backend"`
+	Available  string `json:"available"`
+	Datasource string `json:"datasource,omitempty"`
+	Reason     string `json:"reason,omitempty"`
+}
+
 // the management_ui surface list and the readiness checks the CLI renders.
 type persesStatusReport struct {
-	State        string                    `json:"state"`
-	Ready        bool                      `json:"ready"`
-	Perses       *string                   `json:"perses"`
-	ManagementUI []persesManagementSurface `json:"management_ui"`
-	Checks       []struct {
+	State              string                          `json:"state"`
+	Ready              bool                            `json:"ready"`
+	Perses             *string                         `json:"perses"`
+	ManagementUI       []persesManagementSurface       `json:"management_ui"`
+	DatabaseDashboards map[string]persesDashboardAvail `json:"database_dashboards"`
+	Checks             []struct {
 		Name   string `json:"name"`
 		OK     bool   `json:"ok"`
 		State  string `json:"state"`
@@ -477,5 +487,41 @@ func TestPersesReleaseFailClosedOnUnknownAuthClass(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("unknown perses auth class must fail closed")
+	}
+}
+
+// TestBahaStatusDatabaseDashboardsExposesUnavailableDatabases drives the genuine
+// `baha status --json` for a manifest that selects Perses and asserts the
+// database_dashboards face is deterministic and explicit: PostgreSQL and
+// MongoDB are exposed as "unavailable" with a reason naming the missing signal,
+// and are never silently omitted.
+func TestBahaStatusDatabaseDashboardsExposesUnavailableDatabases(t *testing.T) {
+	ctx := t.Context()
+	report := persesProbeAppReport(t, ctx, true)
+
+	if report.DatabaseDashboards == nil {
+		t.Fatal("status JSON must expose the database_dashboards face")
+	}
+	for _, key := range []string{"postgresql-targets", "mongodb-targets"} {
+		avail, ok := report.DatabaseDashboards[key]
+		if !ok {
+			t.Fatalf("database_dashboards must expose %q explicitly", key)
+		}
+		if avail.Available != "unavailable" {
+			t.Fatalf("database %q must report unavailable, got %q", key, avail.Available)
+		}
+		if avail.Reason == "" {
+			t.Fatalf("database %q must carry a concrete reason", key)
+		}
+	}
+	// Positive witness: the three real backends are exposed as available.
+	for _, key := range []string{"prometheus-targets", "loki-logs", "tempo-traces"} {
+		avail, ok := report.DatabaseDashboards[key]
+		if !ok {
+			t.Fatalf("database_dashboards must expose %q", key)
+		}
+		if avail.Available != "available" {
+			t.Fatalf("database %q must report available, got %q", key, avail.Available)
+		}
 	}
 }
