@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 5892)
-Total output lines: 699
-
 package main
 
 import (
@@ -338,7 +335,58 @@ networks:
 // TestRepositoryComposePinnedWorkloadLifecycleInCI proves 0427-128 on the native
 // runtime: a repository workload that pins container_name survives the full
 // apply→down→up→destroy lifecycle and the quiesce stop/retirement no longer
-// …392 tokens truncated…ices:
+// rejects the pinned native name as an "unplanned service replica". The default
+// <project>-<service>-1 lifecycle stays covered by the sibling CI test.
+func TestRepositoryComposePinnedWorkloadLifecycleInCI(t *testing.T) {
+	if os.Getenv("BASEHARBOR_CI_RUNTIME_INTEGRATION") != "1" {
+		t.Skip("real repository pinned-workload lifecycle requires BASEHARBOR_CI_RUNTIME_INTEGRATION=1")
+	}
+	bootstrapCtx, bootstrapCancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer bootstrapCancel()
+	if _, err := testruntime.Resolve(bootstrapCtx); err != nil {
+		t.Fatalf("detect compose: %v", err)
+	}
+	ensureRuntimeIntegrationTrustPlane(t, bootstrapCtx)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+	compose, err := testruntime.Resolve(ctx)
+	if err != nil {
+		t.Fatalf("detect compose: %v", err)
+	}
+	isolateRuntimeForTest(t, "compose-pinned-workload")
+	configureRuntimeIntegrationTestOperatorAuth(t)
+
+	root := t.TempDir()
+	old, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(old)
+	if err := os.Chdir(root); err != nil {
+		t.Fatal(err)
+	}
+
+	manifest := `version: 1
+app:
+  name: pinned-workload-ci
+  environment: dev
+services:
+  sql:
+    enabled: false
+  cache:
+    enabled: false
+  secrets:
+    enabled: false
+workload:
+  components:
+    - app
+`
+	if err := os.WriteFile("baseharbor.yaml", []byte(manifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Pin the workload native container_name outside <project>-<service>-1, the
+	// linkding/JoySafety/Tier0 pattern 0427-128 fixes.
+	composeYAML := `services:
   app:
     image: alpine:3.22
     container_name: linkding-pinned-web
