@@ -114,7 +114,7 @@ func TestSecureProfileExportCommandPathAssemblesProductionWiring(t *testing.T) {
 	// Without NAME, the real resolver discovers the application from the
 	// repository manifest in the current directory.
 	ctx := localWorkloadScope(
-		withLocalInvocation(operatorauth.WithEnforcement(context.Background()), "cli"),
+		operatorAuthTestContext(t, withLocalInvocation(operatorauth.WithEnforcement(context.Background()), "cli")),
 		applicationBoundaryOperation("secure-profile"))
 	var out, errOut bytes.Buffer
 	if err := root.Execute(ctx, []string{
