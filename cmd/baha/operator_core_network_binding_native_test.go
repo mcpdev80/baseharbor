@@ -34,6 +34,17 @@ func TestCoreDefaultNetworkBindingRejectsUnownedNativeNetwork(t *testing.T) {
 	target := configureIsolatedEmptyRuntimeTarget(t, targetName, kind)
 	files := bhruntime.Files{Project: targetRuntimeProjectName(target), ResourceProject: bhruntime.SharedResourceProjectName(target.Name)}
 	network := bhruntime.ControlPlaneNetworkName(files.ResourceProject)
+	native := func(commandCtx context.Context, args ...string) ([]byte, error) {
+		command := exec.CommandContext(commandCtx, kind, args...)
+		if kind == "podman" {
+			for _, entry := range os.Environ() {
+				if !strings.HasPrefix(entry, "XDG_CONFIG_HOME=") && !strings.HasPrefix(entry, "XDG_DATA_HOME=") {
+					command.Env = append(command.Env, entry)
+				}
+			}
+		}
+		return command.CombinedOutput()
+	}
 	// BaseHarbor's own Podman/Quadlet renderer writes both compatibility
 	// project labels. Both remain forgeable and neither is protected owner
 	// inventory, so matching both must still be refused.
@@ -43,11 +54,11 @@ func TestCoreDefaultNetworkBindingRejectsUnownedNativeNetwork(t *testing.T) {
 	}
 	args := append([]string{"network", "create"}, labels...)
 	args = append(args, network)
-	if output, err := exec.CommandContext(ctx, kind, args...).CombinedOutput(); err != nil {
+	if output, err := native(ctx, args...); err != nil {
 		t.Fatalf("create same-name native network: %v\n%s", err, output)
 	}
 	inspectTemplate := `{{.Name}}|{{ index .Labels "com.docker.compose.project" }}|{{ index .Labels "io.podman.compose.project" }}`
-	inspected, err := exec.CommandContext(ctx, kind, "network", "inspect", "--format", inspectTemplate, network).CombinedOutput()
+	inspected, err := native(ctx, "network", "inspect", "--format", inspectTemplate, network)
 	if err != nil {
 		t.Fatalf("inspect same-name native network labels: %v\n%s", err, inspected)
 	}
@@ -59,7 +70,7 @@ func TestCoreDefaultNetworkBindingRejectsUnownedNativeNetwork(t *testing.T) {
 	t.Cleanup(func() {
 		cleanup, stop := context.WithTimeout(context.Background(), 30*time.Second)
 		defer stop()
-		if output, err := exec.CommandContext(cleanup, kind, "network", "rm", network).CombinedOutput(); err != nil {
+		if output, err := native(cleanup, "network", "rm", network); err != nil {
 			t.Errorf("remove isolated foreign network: %v\n%s", err, output)
 		}
 	})
@@ -68,7 +79,7 @@ func TestCoreDefaultNetworkBindingRejectsUnownedNativeNetwork(t *testing.T) {
 		provider, providerErr := detectRuntimeForTarget(ctx, target)
 		var owned []bhruntime.ProjectResource
 		var inspectErr error
-		networks, networkListErr := exec.CommandContext(ctx, kind, "network", "ls", "--format", "{{.Name}}").CombinedOutput()
+		networks, networkListErr := native(ctx, "network", "ls", "--format", "{{.Name}}")
 		if providerErr == nil {
 			owned, inspectErr = provider.InspectProjectResources(ctx, files.Project, []bhruntime.ProjectResource{{Kind: "network", Name: network}})
 		}
