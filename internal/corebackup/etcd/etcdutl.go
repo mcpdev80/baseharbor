@@ -94,8 +94,9 @@ func (e IsolatedEtcdutl) RestoreIsolated(ctx context.Context, archive, destinati
 	cmd := exec.CommandContext(ctx, e.Binary, args...)
 	// Isolation means never executing inside the running distroless etcd
 	// container and writing to a fresh target data-dir; it does not mean
-	// excluding the parent environment. Inherit os.Environ() after PATH.
-	cmd.Env = append([]string{"PATH=/usr/bin:/bin"}, os.Environ()...)
+	// excluding the parent environment. pinnedEnv inherits the parent env minus
+	// the pinned PATH so the pin is never overridden by the parent env.
+	cmd.Env = pinnedEnv("PATH=/usr/bin:/bin")
 	cmd.Stdout = nil
 	cmd.Stderr = nil
 	if err := cmd.Run(); err != nil {
