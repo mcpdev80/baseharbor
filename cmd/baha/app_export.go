@@ -15,6 +15,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/applicationbackup"
+	"github.com/mcpdev80/baseharbor/internal/applicationsecret"
 	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/mcpdev80/baseharbor/internal/devaccess"
 )
@@ -105,8 +106,32 @@ func executeApplicationExport(ctx context.Context, store application.Store, args
 	if err != nil {
 		return err
 	}
+	return executeResolvedApplicationExport(ctx, resolved, includeStates, outputPath, passwordPath, out, newAppExportSecretReader)
+}
 
-	sources, err := discoverApplicationExportSources(ctx, resolved)
+type appExportSecretReader interface {
+	List(context.Context, string) ([]applicationsecret.Metadata, error)
+	GetMany(context.Context, string, []string) (map[string][]byte, error)
+}
+
+type appExportSecretReaderFactory func(context.Context, resolvedApplication) (appExportSecretReader, error)
+
+func newAppExportSecretReader(ctx context.Context, resolved resolvedApplication) (appExportSecretReader, error) {
+	return resolvedApplicationSecretService(ctx, resolved)
+}
+
+func executeResolvedApplicationExport(ctx context.Context, resolved resolvedApplication, includeStates []string, outputPath, passwordPath string, out io.Writer, secretReader appExportSecretReaderFactory) error {
+	if len(includeStates) == 0 && noInput(ctx) {
+		return usageError("export requires at least one --include STATE", "Select a local source such as local.developer-credentials; an export must not be empty.")
+	}
+	// An explicit selector is already user consent. Authenticate it before any
+	// managed-secret availability probe; interactive selection is authorized
+	// only after the user chooses the source below.
+	if err := authorizeExport(ctx, resolved, includeStates); err != nil {
+		return err
+	}
+
+	sources, err := discoverApplicationExportSources(ctx, resolved, includeStates, secretReader)
 	if err != nil {
 		return err
 	}
@@ -128,9 +153,6 @@ func executeApplicationExport(ctx context.Context, store application.Store, args
 	// Fail closed: an empty selection (no --include, no interactive choice) is a
 	// usage error, never a silent fallback.
 	if len(includeStates) == 0 {
-		if noInput(ctx) {
-			return usageError("export requires at least one --include STATE", "Select a local source such as local.developer-credentials; an export must not be empty.")
-		}
 		if !appExportIsTerminal() {
 			return usageError("interactive export requires a terminal when --include STATE is omitted", "For CI/scripts pass at least one --include STATE; never read a password through argv.")
 		}
@@ -142,6 +164,9 @@ func executeApplicationExport(ctx context.Context, store application.Store, args
 			return ErrExportEmptySelection
 		}
 		includeStates = selected
+		if err := authorizeExport(ctx, resolved, includeStates); err != nil {
+			return err
+		}
 	} else {
 		// Every --include STATE must reference a known, available source; an
 		// unknown or unavailable class fails closed.
@@ -162,10 +187,11 @@ func executeApplicationExport(ctx context.Context, store application.Store, args
 		}
 	}
 
-	entries, err := collectExportEntries(ctx, resolved, includeStates)
+	entries, err := collectExportEntries(ctx, resolved, includeStates, secretReader)
 	if err != nil {
 		return err
 	}
+	defer zeroExportEntries(entries)
 	if len(entries) == 0 {
 		return ErrExportEmptySelection
 	}
@@ -220,7 +246,7 @@ func authorizeExport(ctx context.Context, resolved resolvedApplication, includeS
 // the resolved application. Every source is unavailable by default; only a
 // source with material actually present on this target/environment reports
 // Available=true. Sources are sorted by StateClass for deterministic output.
-func discoverApplicationExportSources(ctx context.Context, resolved resolvedApplication) ([]appExportSource, error) {
+func discoverApplicationExportSources(ctx context.Context, resolved resolvedApplication, includeStates []string, secretReader appExportSecretReaderFactory) ([]appExportSource, error) {
 	m := resolved.Manifest
 	target := resolved.Target.Name
 	env := m.Environment
@@ -246,8 +272,9 @@ func discoverApplicationExportSources(ctx context.Context, resolved resolvedAppl
 
 	// Managed secret values: present when the application owns an OpenBao scope
 	// with at least one configured secret key.
-	if m.Services.Secrets {
-		if present, err := managedSecretScopePresent(ctx, resolved); err != nil {
+	probeManagedSecrets := len(includeStates) == 0 || includesManagedSecrets(includeStates)
+	if m.Services.Secrets && probeManagedSecrets {
+		if present, err := managedSecretScopePresent(ctx, resolved, secretReader); err != nil {
 			return nil, err
 		} else if present {
 			sources[1].Available = true
@@ -259,27 +286,30 @@ func discoverApplicationExportSources(ctx context.Context, resolved resolvedAppl
 }
 
 // managedSecretScopePresent reports whether the application owns an OpenBao
-// scope with at least one configured secret key. The production probe lists
-// secret keys through the same executor the secret.list path uses and reports
-// non-empty. It never reads or returns any secret value.
-//
-// Scope note (0428-065): this probe requires a live managed-runtime executor
-// (Docker/Podman) plus the fail-closed human-authorization reveal seam
-// (operatorauth.RequireHumanOperator). It is intentionally not exercised by the
-// unit test here, whose default export surface is the locally auditable
-// developer-credentials source; the managed-secret surface is gated behind the
-// runtime + human-reveal seam and reported as unavailable when the caller
-// cannot satisfy it.
-func managedSecretScopePresent(ctx context.Context, resolved resolvedApplication) (bool, error) {
-	return false, nil
+// scope with at least one configured secret key. It authorizes secret.list and
+// reads only metadata through the application's managed runtime. Values are
+// fetched only after the caller selects this source and passes human reveal.
+func managedSecretScopePresent(ctx context.Context, resolved resolvedApplication, secretReader appExportSecretReaderFactory) (bool, error) {
+	metadata, err := listExportManagedSecretMetadata(ctx, resolved, secretReader)
+	if err != nil {
+		return false, err
+	}
+	return len(metadata) > 0, nil
 }
 
 // collectExportEntries gathers the selected entries. It never returns a raw
 // secret value in transport or audit metadata.
-func collectExportEntries(ctx context.Context, resolved resolvedApplication, includeStates []string) ([]applicationbackup.SecretEntry, error) {
+func collectExportEntries(ctx context.Context, resolved resolvedApplication, includeStates []string, secretReader appExportSecretReaderFactory) (entries []applicationbackup.SecretEntry, err error) {
 	target := resolved.Target.Name
 	env := resolved.Manifest.Environment
-	var entries []applicationbackup.SecretEntry
+	defer func() {
+		// If a later source fails, clear any credential bytes collected earlier.
+		// On success the caller clears them after encryption.
+		if err != nil {
+			zeroExportEntries(entries)
+			entries = nil
+		}
+	}()
 
 	for _, state := range includeStates {
 		switch state {
@@ -292,9 +322,85 @@ func collectExportEntries(ctx context.Context, resolved resolvedApplication, inc
 				applicationbackup.SecretEntry{Name: "developer-access/username", Data: []byte(local.Username)},
 				applicationbackup.SecretEntry{Name: "developer-access/password", Data: []byte(local.Password)},
 			)
+		case "secrets/openbao":
+			if err := authorizeHumanReveal(ctx, resolved.Target.Name, env, resolved.Manifest.Name); err != nil {
+				return nil, err
+			}
+			metadata, err := listExportManagedSecretMetadata(ctx, resolved, secretReader)
+			if err != nil {
+				return nil, err
+			}
+			keys := make([]string, 0, len(metadata))
+			for _, item := range metadata {
+				if item.Present {
+					keys = append(keys, item.Name)
+				}
+			}
+			if len(keys) == 0 {
+				return nil, errors.New("managed application secret source is no longer available for export")
+			}
+			reader, err := secretReader(ctx, resolved)
+			if err != nil {
+				return nil, errors.New("unable to read managed application secrets for export")
+			}
+			values, err := reader.GetMany(ctx, resolved.Manifest.Name, keys)
+			if err != nil {
+				zeroExportSecretValues(values)
+				return nil, errors.New("unable to read managed application secrets for export")
+			}
+			defer zeroExportSecretValues(values)
+			for _, key := range keys {
+				value, ok := values[key]
+				if !ok {
+					return nil, errors.New("managed application secret source changed during export; retry after checking the selection")
+				}
+				entries = append(entries, applicationbackup.SecretEntry{Name: "secrets/openbao/" + key, Data: append([]byte(nil), value...)})
+			}
 		}
 	}
 	return entries, nil
+}
+
+func listExportManagedSecretMetadata(ctx context.Context, resolved resolvedApplication, secretReader appExportSecretReaderFactory) ([]applicationsecret.Metadata, error) {
+	if err := authorizeApplicationOperation(ctx, "secret.list", resolved); err != nil {
+		return nil, err
+	}
+	reader, err := secretReader(ctx, resolved)
+	if err != nil {
+		return nil, errors.New("unable to inspect managed application secret availability for export")
+	}
+	items, err := reader.List(ctx, resolved.Manifest.Name)
+	if err != nil {
+		return nil, errors.New("unable to inspect managed application secret availability for export")
+	}
+	configured := make([]applicationsecret.Metadata, 0, len(items))
+	for _, item := range items {
+		if item.Present {
+			configured = append(configured, item)
+		}
+	}
+	return configured, nil
+}
+
+func includesManagedSecrets(states []string) bool {
+	for _, state := range states {
+		if state == "secrets/openbao" {
+			return true
+		}
+	}
+	return false
+}
+
+func zeroExportEntries(entries []applicationbackup.SecretEntry) {
+	for i := range entries {
+		zeroBytes(entries[i].Data)
+	}
+}
+
+func zeroExportSecretValues(values map[string][]byte) {
+	for _, value := range values {
+		zeroBytes(value)
+	}
 }
 
 // reportExportSelection prints a safe, non-secret summary of the selected
