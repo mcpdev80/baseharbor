@@ -53,7 +53,7 @@ func ExistingRuntimeInventoryAt(dataDir, namespace string, m application.Manifes
 	if !retained && err == nil {
 		// Legacy owners still require an exact match with the live renderer;
 		// absence never authorizes adoption of an arbitrary old definition.
-		sources, err = observability.ListMetrics(placement, apps, policy.Collect[application.MetricsSourceApplicationProvider], policy.Collect[application.MetricsSourcePlatformProvider])
+		sources, err = observability.ListMetrics(placement, apps, policy.Collect[application.MetricsSourceApplicationProvider], policy.Collect[application.MetricsSourcePlatformProvider], m.Environment)
 	}
 	if err != nil {
 		return files, p, nil, err

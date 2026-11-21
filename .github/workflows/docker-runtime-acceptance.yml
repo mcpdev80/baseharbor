@@ -12,9 +12,8 @@ on:
   workflow_dispatch:
     inputs:
       ref:
-        description: Git ref to test
+        description: Git ref to test (defaults to the branch selected for this dispatch)
         required: false
-        default: release/v0.4.21
         type: string
 
   push:
@@ -218,6 +217,9 @@ jobs:
         timeout-minutes: 10
         run: bash scripts/ci-core-rootless-runtime.sh
 
+      - name: Install verified ORAS for native Core bootstrap
+        run: bash scripts/ci-install-oras.sh
+
       - name: Build BaseHarbor
         id: build
         run: |
@@ -375,7 +377,13 @@ jobs:
 
       - name: Verify all eight executed runtime tests
         id: executed_tests
-        if: always()
+        if: >-
+          always() &&
+          steps.runtime_preflight.outcome == 'success' &&
+          steps.runtime_integration.outcome == 'success' &&
+          steps.recovery.outcome == 'success' &&
+          steps.log_ingestion.outcome == 'success' &&
+          steps.trace_ingestion.outcome == 'success'
         shell: bash
         run: |
           set -euo pipefail

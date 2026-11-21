@@ -154,6 +154,14 @@ baha use vm-core
 
 Vor `baha use` sind `BASEHARBOR_CONNECTION_PROFILE` und eine gültige Operator-Sitzung erforderlich. Das Target legt nur eine Client-Route an. Quellprüfung, Zustimmung und Anwendungsablauf bleiben beim Core.
 
+## Geführte Rootless-Docker-Einrichtung beim ersten Start
+
+Für ein neues, noch nicht konfiguriertes lokales Docker-Target prüft `baha up` den ausgewählten Rootless-Daemon vor dem Download des Core-Images. Ist der Socket nicht erreichbar, erklärt BaseHarbor das Problem und den konkreten Reparaturplan. Dazu können die Installation des Ubuntu-/Debian-Pakets `uidmap` mit `sudo`, die Konfiguration per `dockerd-rootless-setuptool.sh install --force` und das Aktivieren des systemd-Benutzerdienstes gehören. **Vor Systemänderungen ist eine gesonderte ausdrückliche Zustimmung erforderlich** (Vorgabe: Nein); `--yes` erlaubt keine stille Rechteerweiterung.
+
+System-Docker bleibt unverändert und wird nicht automatisch als Ersatz verwendet. Nach der Einrichtung stellt BaseHarbor den ursprünglichen Docker-Kontext wieder her und prüft den tatsächlich ausgewählten Rootless-Endpunkt. Bereits vorhandene Benutzerdienste werden gestartet statt neu installiert. Explizite Docker-Endpoints/-Kontexte, Remote-Targets und Podman bleiben von dieser lokalen Reparatur unberührt.
+
+Die geführte Reparatur unterstützt derzeit Ubuntu/Debian unter Linux mit einer aktiven systemd-Benutzersitzung, installiertem Rootless-Setup-Tool und bereits zugewiesenen, nicht überlappenden Sub-UID-/Sub-GID-Bereichen von mindestens 65536 IDs in `/etc/subuid` und `/etc/subgid`. Fehlende Zuordnungen oder Setup-Werkzeuge meldet BaseHarbor mit Hinweisen, ohne den Host zu verändern. Nichtinteraktive Aufrufe führen weder `sudo` noch eine Installation aus. Bei Fehlern gibt es keinen Wechsel zu Rootful-Docker.
+
 ## Lokale Docker-Engine auswählen
 
 Rootless-Docker ist der Standard. Vor jeder Lifecycle-Aktion löst der Provider genau einen Unix-Socket auf und verifiziert ihn. Compose, Inspektion, Exec, Volume-Recovery und Cleanup verwenden danach `docker --host SOCKET`. Eine nicht erreichbare oder unerwartet Rootful laufende Engine führt zum Abbruch; es gibt keinen Wechsel zu System-Docker.

@@ -11,53 +11,48 @@ import "testing"
 // TestResolveWorkloadSecurityPolicyExplicitDevMode pins that an explicit
 // development policy overrides the name and yields development mode.
 func TestResolveWorkloadSecurityPolicyExplicitDevMode(t *testing.T) {
-	policy, err := ResolveWorkloadSecurityPolicyWithDevPolicy(New("demo", "prod", false, false, true), true)
-	if err != nil {
-		t.Fatalf("ResolveWorkloadSecurityPolicyWithDevMode: %v", err)
-	}
-	if policy.Mode != "development" {
-		t.Fatalf("explicit development policy must yield development mode, got %q", policy.Mode)
-	}
+	for _, name := range []string{"dev", "development", "prod", "custom-env"} {
+		policy, err := ResolveWorkloadSecurityPolicyWithDevPolicy(New("demo", name, false, false, true), true)
+		if err != nil {
+			t.Fatalf("ResolveWorkloadSecurityPolicyWithDevMode(%q): %v", name, err)
+		}
+		if policy.Mode != "development" {
+			t.Fatalf("explicit development policy for %q must yield development mode, got %q", name, policy.Mode)
+		}
 
-	managed, err := ResolveWorkloadSecurityPolicyWithDevPolicy(New("demo", "prod", false, false, true), false)
-	if err != nil {
-		t.Fatalf("ResolveWorkloadSecurityPolicyWithDevMode(managed): %v", err)
-	}
-	if managed.Mode != "managed" {
-		t.Fatalf("explicit managed policy must yield managed mode, got %q", managed.Mode)
+		managed, err := ResolveWorkloadSecurityPolicyWithDevPolicy(New("demo", name, false, false, true), false)
+		if err != nil {
+			t.Fatalf("ResolveWorkloadSecurityPolicyWithDevMode(%q, managed): %v", name, err)
+		}
+		if managed.Mode != "managed" {
+			t.Fatalf("explicit managed policy for %q must yield managed mode, got %q", name, managed.Mode)
+		}
 	}
 }
 
 // TestResolveWorkloadSecurityPolicyPreservesNameMapping preserves the historical
-// behavior of ResolveWorkloadSecurityPolicy(name).
-func TestResolveWorkloadSecurityPolicyPreservesNameMapping(t *testing.T) {
-	dev, err := ResolveWorkloadSecurityPolicy(New("demo", "dev", false, false, true))
-	if err != nil {
-		t.Fatalf("ResolveWorkloadSecurityPolicy(dev): %v", err)
-	}
-	if dev.Mode != "development" {
-		t.Fatalf("dev must stay development mode via the preserved name mapping: %+v", dev)
-	}
-
-	prod, err := ResolveWorkloadSecurityPolicy(New("demo", "prod", false, false, true))
-	if err != nil {
-		t.Fatalf("ResolveWorkloadSecurityPolicy(prod): %v", err)
-	}
-	if prod.Mode != "managed" {
-		t.Fatalf("prod must stay managed mode via the preserved name mapping: %+v", prod)
+// TestResolveWorkloadSecurityPolicyCompatibilityWrapperFailsClosed proves
+// environment names do not grant development-mode security relaxations.
+func TestResolveWorkloadSecurityPolicyCompatibilityWrapperFailsClosed(t *testing.T) {
+	for _, name := range []string{"dev", "development", "test", "staging", "prod", "custom-env"} {
+		policy, err := ResolveWorkloadSecurityPolicy(New("demo", name, false, false, true))
+		if err != nil {
+			t.Fatalf("ResolveWorkloadSecurityPolicy(%q): %v", name, err)
+		}
+		if policy.Mode != "managed" {
+			t.Fatalf("name %q must fail closed as managed: %+v", name, policy)
+		}
+		if TrustedLocalForDevEnvironment(name) {
+			t.Fatalf("name %q must not establish development mode", name)
+		}
 	}
 }
 
-// TestTrustedLocalForDevEnvironment pins the single visible name→dev mapping.
-func TestTrustedLocalForDevEnvironment(t *testing.T) {
-	for _, name := range []string{"dev", "development"} {
-		if !TrustedLocalForDevEnvironment(name) {
-			t.Fatalf("name %q must map to development mode", name)
-		}
-	}
-	for _, name := range []string{"", "test", "staging", "prod", "production", "custom-env"} {
-		if TrustedLocalForDevEnvironment(name) {
-			t.Fatalf("name %q must map to managed", name)
+func TestUntrustedEnvironmentNameCannotEnableDevelopmentMode(t *testing.T) {
+	t.Setenv(WorkloadSecurityModeEnv, "development")
+	for _, name := range []string{"dev", "development", "prod", "custom-env"} {
+		if _, err := ResolveWorkloadSecurityPolicy(New("demo", name, false, false, true)); err == nil {
+			t.Fatalf("name-only policy accepted development mode for %q", name)
 		}
 	}
 }

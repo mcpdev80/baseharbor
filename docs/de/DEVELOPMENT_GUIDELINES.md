@@ -106,9 +106,35 @@ Zweige sind temporäre Arbeitsflächen, nicht langlebige Geschichte.
 - Langlebige Branchen beschränken sich auf explizit bezeichnete Integration oder gepflegte Arbeitsspuren wie z.B.`main `, ` develop`und absichtlich beibehaltene aktive Merkmals-/Prüfzweige.
 - Vergewissern Sie sich vor dem Löschen eines abweichenden Zweigs, dass alle erforderlichen Änderungen bereits im Zielzweig vorhanden sind oder absichtlich obsolet sind.
 
+## Lokaler Schnellcheck
+
+Vor Änderungen an CI, Planner oder Workflows ausführen:
+
+```bash
+scripts/ci-fast-check.sh
+```
+
+Der Check prüft geänderte Go-Formatierung, Lesbarkeit, Workflow-Policy und Syntax
+sowie fokussierte CI-Routing- und Fallback-Tests. Native Docker-/Podman- und
+Release-Prüfungen startet er nicht. `CI_BASE_REF` setzen, wenn der Vergleich
+nicht gegen `origin/develop` laufen soll.
+
 ## CI-Prüfungen und Commit-Receipts
 
 CI, Pre-Release und Release führen normale Tests aus und verwenden deren Jobergebnisse direkt. Gate-Manifeste, erneute Actions-Lauf-/Job-Prüfungen, Evidence-Wiederverwendung und zusätzliche Receipt-Freigaben entfallen. Nach einem autorisierten Merge enthält der einzige CI-Vermerk Merge-SHA und PR-Nummer. Siehe [minimale CI-Receipts](development/minimal-ci-receipts.md). Während dieser Korrektur bleiben die Rulesets deaktiviert; eine aktive technische Durchsetzung darf nicht behauptet werden.
+
+Für PRs gegen `develop` und `lane-*` lädt `PR · Trusted Plan` Planner und
+finalen Prüfer aus der verifizierten Zielbasis (oder für ältere Basen aus dem
+festgelegten Kompatibilitäts-Controller). Unbekannte gültige Pfade/Check-IDs
+wählen die breiten relevanten Prüfungen; ungültige Diffs oder nicht verifizierbare
+Eingaben schlagen fehl.
+
+Änderungen an Workflows und `scripts/` führen zusätzliche Kandidaten-Validierungen
+auf einem schreibgeschützten Hosted Runner aus. Fehler bleiben Hinweise und
+gehören nicht zu `PR Selected Checks`. Native Kandidatenprüfungen dürfen separat
+laufen; erst nach Merge ihrer Policy in die Basis zu `pr_selected_final.needs`
+hinzufügen. Bei deaktivierten Rulesets ist der Kandidaten-Workflow kein externer
+Merge-Schutz.
 
 ## Entwicklungsablauf
 

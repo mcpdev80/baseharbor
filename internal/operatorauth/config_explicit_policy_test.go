@@ -5,7 +5,7 @@ import "testing"
 // These tests pin the name→managed seam replaced by card t-20261114-r28-cli2-env-policy (0428-053):
 // the environment NAME no longer alone decides managed vs trusted-local. The
 // decision now follows an explicit trustedLocal flag; the historical mapping is
-// preserved by ManagedEnvironment so no existing guarded environment weakens.
+// compatibility wrapper fails closed for all names.
 
 // TestManagedEnvironmentWithPolicyExplicitTrustedLocal pins that an explicit
 // trusted-local policy overrides the name and makes the environment unmanaged.
@@ -51,16 +51,15 @@ func TestManagedEnvironmentWithPolicyTable(t *testing.T) {
 	}
 }
 
-// TestManagedEnvironmentPreservesNameMapping preserves the historical
-// behavior of the single-argument ManagedEnvironment(name).
-func TestManagedEnvironmentPreservesNameMapping(t *testing.T) {
-	if ManagedEnvironment("dev") || ManagedEnvironment("development") {
-		t.Fatal("dev/development must stay trusted-local (unmanaged)")
-	}
-	if !ManagedEnvironment("test") || !ManagedEnvironment("prod") {
-		t.Fatal("test/prod must require managed operator authentication")
-	}
-	if !ManagedEnvironment("custom-env") {
-		t.Fatal("custom environment must be managed")
+// TestManagedEnvironmentCompatibilityWrapperFailsClosedForEveryName proves
+// names alone cannot bypass operator authentication.
+func TestManagedEnvironmentCompatibilityWrapperFailsClosedForEveryName(t *testing.T) {
+	for _, name := range []string{"dev", "development", "test", "staging", "prod", "custom-env"} {
+		if !ManagedEnvironment(name) {
+			t.Fatalf("name %q must fail closed as managed", name)
+		}
+		if TrustedLocalForEnvironment(name) {
+			t.Fatalf("name %q must not establish trusted-local policy", name)
+		}
 	}
 }

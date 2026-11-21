@@ -90,7 +90,7 @@ func TestManagedIdentityNativePlacementHandoff(t *testing.T) {
 		}
 		applyContext := ctx
 		impact := plan.ProviderPlan.Impact
-		if phase > 0 && (impact == nil || impact.Attention != "Achtung" || impact.ConfirmationsRequired != 2) {
+		if phase > 0 && (impact == nil || impact.Attention != "Warning" || impact.ConfirmationsRequired != 2) {
 			t.Fatal("native replacement lacks current unknown-consequence acknowledgements")
 		}
 		// Initialization may retain pending owners before first realization.

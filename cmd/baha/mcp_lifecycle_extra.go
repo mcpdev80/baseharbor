@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/applicationlifecycle"
 	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"io"
@@ -53,4 +54,44 @@ func registerMCPAdditionalLifecycleTools(server *mcp.Server, store application.S
 		}
 		return nil, result, nil
 	})
+	// The optional Perses management surface (0428-084): typed operations share
+	// the exact CLI mutation/read seams, so CLI -o json and the MCP structured
+	// result stay equal. Machine transports run the shared apply lifecycle
+	// immediately; the deferred-apply notice is the human CLI presentation only.
+	mcp.AddTool(server, machineMCPTool("app.perses.status", "Report the optional Perses management surface three-state contract without mutation or a health probe.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineApplicationInput) (*mcp.CallToolResult, any, error) {
+		ctx = machineNoninteractiveContext(withTargetOverride(ctx, input.Target))
+		result, err := reportPersesSurfaceStatus(ctx, store, machineApplicationArgs(input.Name, input.Environment))
+		if err != nil {
+			return machineMCPFailure(err)
+		}
+		return nil, result, nil
+	})
+	mcp.AddTool(server, machineMCPTool("app.perses.enable", "Select the optional Perses management surface in the repository manifest and converge runtime through the shared apply lifecycle. Explicit confirmation is mandatory and ownership verification remains fail-closed.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machinePersesLifecycleInput) (*mcp.CallToolResult, any, error) {
+		return callPersesLifecycleTool(ctx, store, input, application.PersesLifecycleEnable, true)
+	})
+	mcp.AddTool(server, machineMCPTool("app.perses.disable", "Deselect the optional Perses management surface in the repository manifest, preserving the backend observability owner, and converge runtime through the shared apply lifecycle. Explicit confirmation is mandatory.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machinePersesLifecycleInput) (*mcp.CallToolResult, any, error) {
+		return callPersesLifecycleTool(ctx, store, input, application.PersesLifecycleDisable, false)
+	})
+	mcp.AddTool(server, machineMCPTool("app.perses.remove", "Retire only BaseHarbor-owned Perses runtime resources and disable the surface; Prometheus, Loki, Tempo and foreign data are never removed. Explicit confirmation is mandatory and ownership verification remains fail-closed.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machinePersesLifecycleInput) (*mcp.CallToolResult, any, error) {
+		return callPersesLifecycleTool(ctx, store, input, application.PersesLifecycleRemove, false)
+	})
+}
+
+type machinePersesLifecycleInput struct {
+	Target      string `json:"target,omitempty" jsonschema:"optional BaseHarbor deployment target; otherwise uses BASEHARBOR_TARGET or configured default-target"`
+	Name        string `json:"name,omitempty" jsonschema:"optional stored application name; omit inside an application repository"`
+	Environment string `json:"environment,omitempty" jsonschema:"optional deployment environment selected from repository intent"`
+	Approval    bool   `json:"approval,omitempty" jsonschema:"explicit confirmation for this Perses lifecycle mutation; ordinary approval does not imply backend changes"`
+}
+
+func callPersesLifecycleTool(ctx context.Context, store application.Store, input machinePersesLifecycleInput, action application.PersesLifecycleAction, setPerses bool) (*mcp.CallToolResult, any, error) {
+	ctx = machineNoninteractiveContext(withTargetOverride(ctx, input.Target))
+	if err := applicationlifecycle.RequireApproval("perses."+string(action), input.Approval); err != nil {
+		return machineMCPFailure(err)
+	}
+	result, err := executePersesLifecycle(ctx, store, machineApplicationArgs(input.Name, input.Environment), action, setPerses, io.Discard, io.Discard)
+	if err != nil {
+		return machineMCPFailure(err)
+	}
+	return nil, result, nil
 }

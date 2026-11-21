@@ -59,7 +59,7 @@ func TestRabbitMQHARendersThreeMembersStableGatewayAndQuorumConfig(t *testing.T)
 		}
 	}
 
-	compose, err := RuntimeComposeYAMLForProject(m, "bh-events")
+	compose, err := RuntimeComposeYAMLForProject(m, RuntimeFiles{ResourceProject: "bh-events"})
 	if err != nil {
 		t.Fatal(err)
 	}
