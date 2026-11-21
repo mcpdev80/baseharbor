@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
 // 0428-207 regression: coreDefaultNetworkBindingMissingOwnerMessage (the guard's
