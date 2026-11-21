@@ -198,10 +198,13 @@ HTTPServer(("0.0.0.0", 8080), Handler).serve_forever()
 	waitPrometheusRuleAndAlert(t, ctx, client, endpoint)
 	for _, member := range members {
 		waitPrometheusMemberAlertFiring(t, ctx, string(runtime.Kind()), network, files, oldMaterial, member)
-		assertPrometheusAlertHistorySurvivedRestart(t, ctx, string(runtime.Kind()), network, files, oldMaterial, member, restartStartedAt)
 	}
 	if output, err := exec.CommandContext(ctx, string(runtime.Kind()), "exec", containerName, "rm", "-f", "/tmp/down").CombinedOutput(); err != nil {
 		t.Fatalf("restore test metrics target: %v\n%s", err, output)
+	}
+	for _, member := range members {
+		waitPrometheusMemberMetric(t, ctx, string(runtime.Kind()), network, files, oldMaterial, member)
+		assertPrometheusMetricHistorySurvivedRestart(t, ctx, string(runtime.Kind()), network, files, oldMaterial, member, restartStartedAt)
 	}
 	waitPrometheusHAReady(t, ctx, driver, resource, binding)
 
@@ -298,7 +301,7 @@ func waitPrometheusMemberAlertFiring(t *testing.T, ctx context.Context, runtimeB
 	deadline := time.Now().Add(90 * time.Second)
 	for time.Now().Before(deadline) {
 		result := queryPrometheusMember(t, ctx, runtimeBinary, network, files, material, member, "firing", path, "0")
-		if result.Firing {
+		if result.Present {
 			return
 		}
 		select {
@@ -310,9 +313,27 @@ func waitPrometheusMemberAlertFiring(t *testing.T, ctx context.Context, runtimeB
 	t.Fatalf("Prometheus member %s did not independently evaluate the alert", member)
 }
 
-func assertPrometheusAlertHistorySurvivedRestart(t *testing.T, ctx context.Context, runtimeBinary, network string, files ProviderFiles, material serviceaccess.TLSMaterial, member string, restartStartedAt time.Time) {
+func waitPrometheusMemberMetric(t *testing.T, ctx context.Context, runtimeBinary, network string, files ProviderFiles, material serviceaccess.TLSMaterial, member string) {
 	t.Helper()
-	query := `ALERTS{alertname="BaseHarborTargetUnavailable",alertstate="firing"}`
+	path := "/api/v1/query?" + url.Values{"query": []string{"baseharbor_ha_acceptance == 1"}}.Encode()
+	deadline := time.Now().Add(90 * time.Second)
+	for time.Now().Before(deadline) {
+		result := queryPrometheusMember(t, ctx, runtimeBinary, network, files, material, member, "instant", path, "0")
+		if result.Present {
+			return
+		}
+		select {
+		case <-ctx.Done():
+			t.Fatalf("waiting for Prometheus member %s fixture metric: %v", member, ctx.Err())
+		case <-time.After(time.Second):
+		}
+	}
+	t.Fatalf("Prometheus member %s did not resume scraping the fixture metric", member)
+}
+
+func assertPrometheusMetricHistorySurvivedRestart(t *testing.T, ctx context.Context, runtimeBinary, network string, files ProviderFiles, material serviceaccess.TLSMaterial, member string, restartStartedAt time.Time) {
+	t.Helper()
+	query := `baseharbor_ha_acceptance`
 	values := url.Values{
 		"query": []string{query},
 		"start": []string{fmt.Sprintf("%f", float64(restartStartedAt.Add(-2*time.Minute).UnixNano())/1e9)},
@@ -323,12 +344,12 @@ func assertPrometheusAlertHistorySurvivedRestart(t *testing.T, ctx context.Conte
 	compareAt := fmt.Sprintf("%f", float64(restartStartedAt.UnixNano())/1e9)
 	result := queryPrometheusMember(t, ctx, runtimeBinary, network, files, material, member, "history", path, compareAt)
 	if !result.BeforeRestart || !result.AfterRestart {
-		t.Fatalf("Prometheus member %s alert history before restart=%v after restart=%v; want both from its persistent TSDB", member, result.BeforeRestart, result.AfterRestart)
+		t.Fatalf("Prometheus member %s metric history before restart=%v after restart=%v; want both from its persistent TSDB", member, result.BeforeRestart, result.AfterRestart)
 	}
 }
 
 type prometheusMemberQueryResult struct {
-	Firing        bool `json:"firing"`
+	Present       bool `json:"present"`
 	BeforeRestart bool `json:"before_restart"`
 	AfterRestart  bool `json:"after_restart"`
 }
@@ -350,7 +371,7 @@ payload = json.loads(response.read())
 if response.status < 200 or response.status >= 300 or payload.get("status") != "success":
     raise SystemExit("Prometheus member query failed: HTTP " + str(response.status))
 result = payload.get("data", {}).get("result", [])
-answer = {"firing": bool(result), "before_restart": False, "after_restart": False}
+answer = {"present": bool(result), "before_restart": False, "after_restart": False}
 if mode == "history":
     for series in result:
         for sample in series.get("values", []):
