@@ -56,7 +56,7 @@ type persesStatusReport struct {
 func runPersesStatusCommand(t *testing.T, ctx context.Context) persesStatusReport {
 	t.Helper()
 	var out, errOut bytes.Buffer
-	err := runWithIO(ctx, []string{"status", "--json"}, &out, &errOut)
+	err := runWithIOAsTestOperator(ctx, []string{"status", "--json"}, &out, &errOut)
 	if err != nil && !strings.Contains(err.Error(), "container runtime orchestration not found") {
 		t.Fatalf("baha status --json failed: %v\nstdout: %s\nstderr: %s", err, out.String(), errOut.String())
 	}
@@ -293,7 +293,7 @@ func TestBahaStatusPersesCLIEntrypointResolvesWithoutContainer(t *testing.T) {
 	// The explicit app command runs the same production dispatch and must
 	// declare the identical surface entry.
 	var appOut, appErr bytes.Buffer
-	if err := runWithIO(ctx, []string{"app", "status", "--json"}, &appOut, &appErr); err != nil {
+	if err := runWithIOAsTestOperator(ctx, []string{"app", "status", "--json"}, &appOut, &appErr); err != nil {
 		t.Fatalf("baha app status --json failed: %v\nstdout: %s\nstderr: %s", err, appOut.String(), appErr.String())
 	}
 	var appReport persesStatusReport
@@ -344,7 +344,7 @@ func TestBahaStatusPersesUnknownOwnerFailsClosedThroughCLI(t *testing.T) {
 	// damaged-state conflict naming an UNKNOWN owner (identity application
 	// "unknown", blank id/environment): it never reports an attributed owner.
 	var out, errOut bytes.Buffer
-	statusErr := runWithIO(ctx, []string{"app", "status", "--json"}, &out, &errOut)
+	statusErr := runWithIOAsTestOperator(ctx, []string{"app", "status", "--json"}, &out, &errOut)
 	if statusErr == nil {
 		t.Fatalf("a status command over an unknown-owner deployment must fail closed, got report: %s", out.String())
 	}
@@ -358,7 +358,7 @@ func TestBahaStatusPersesUnknownOwnerFailsClosedThroughCLI(t *testing.T) {
 
 	// (2) The uuid-addressed form addresses the orphaned directory directly and
 	// must report the damaged-state conflict, never a resolved deployment.
-	uuidErr := runWithIO(ctx, []string{"app", "status", "--uuid", resolved.DeploymentIdentity.DeploymentID, "--json"}, &out, &errOut)
+	uuidErr := runWithIOAsTestOperator(ctx, []string{"app", "status", "--uuid", resolved.DeploymentIdentity.DeploymentID, "--json"}, &out, &errOut)
 	if uuidErr == nil {
 		t.Fatalf("the uuid-addressed status command must fail closed on an unknown owner, got: %s", out.String())
 	}
@@ -374,7 +374,7 @@ func TestBahaStatusPersesUnknownOwnerFailsClosedThroughCLI(t *testing.T) {
 	// as an authorized deployment.
 	t.Chdir(t.TempDir())
 	var showOut, showErr bytes.Buffer
-	nameErr := runWithIO(ctx, []string{"app", "show", resolved.Manifest.Name}, &showOut, &showErr)
+	nameErr := runWithIOAsTestOperator(ctx, []string{"app", "show", resolved.Manifest.Name}, &showOut, &showErr)
 	if nameErr == nil {
 		t.Fatalf("an unknown-owner orphan became an authorized listing: %s", showOut.String())
 	}

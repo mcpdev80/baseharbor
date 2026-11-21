@@ -196,7 +196,7 @@ func runCoreProviderVersionsRuntimeAcceptance(t *testing.T, ha bool) {
 			logCoreBootstrapFailure(t, rt, target.Name, engine)
 			logProviderBaselineDiagnostics(t, rt, target.Name, engine)
 		}
-		_ = runWithIO(cleanup, []string{"app", "destroy", "--yes"}, io.Discard, io.Discard)
+		_ = runWithIOAsTestOperator(cleanup, []string{"app", "destroy", "--yes"}, io.Discard, io.Discard)
 		if err := approvedNativeFixtureCleanup(t, cleanup, io.Discard); err != nil {
 			t.Errorf("owned fixture cleanup: %v", err)
 		}
@@ -288,7 +288,7 @@ func runCoreProviderVersionsRuntimeAcceptance(t *testing.T, ha bool) {
 	}
 	applyCtx := withCandidateConsentDigest(ctx, candidateDigest)
 	if err := runBackupFixtureWithConsent(applyCtx, "apply", func(applyCtx context.Context) error {
-		return runWithIO(applyCtx, []string{"app", "apply"}, &output, &output)
+		return runWithIOAsTestOperator(applyCtx, []string{"app", "apply"}, &output, &output)
 	}); err != nil {
 		t.Fatalf("baseline application: %v", err)
 	}

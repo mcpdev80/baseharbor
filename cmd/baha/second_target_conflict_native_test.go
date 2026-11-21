@@ -64,7 +64,7 @@ func TestSecondSameHostCoreNativeConflictInCI(t *testing.T) {
 	// engine, rather than isolateRuntimeForTest (which selects the owner).
 	second := "w169-second-core-" + bootstrapTargetSuffix()
 	var registration bytes.Buffer
-	if err := runWithIO(ctx, []string{
+	if err := runWithIOAsTestOperator(ctx, []string{
 		"target", "create", second,
 		"--runtime-provider", kind,
 		"--access", "local",
@@ -90,7 +90,7 @@ func TestSecondSameHostCoreNativeConflictInCI(t *testing.T) {
 	}
 
 	var output bytes.Buffer
-	err = runWithIO(ctx, []string{"up", "--control-plane-only", "--yes"}, &output, &output)
+	err = runWithIOAsTestOperator(ctx, []string{"up", "--control-plane-only", "--yes"}, &output, &output)
 	var typed *bhruntime.SharedCoreOwnerConflict
 	if !errors.As(err, &typed) {
 		t.Fatalf("second same-engine Core start did not fail closed with typed conflict: err=%v output=%s", err, output.String())

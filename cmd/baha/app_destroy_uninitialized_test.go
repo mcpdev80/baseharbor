@@ -27,7 +27,7 @@ func TestAppDestroyAlreadyAbsentUninitializedRepository(t *testing.T) {
 	}
 
 	var out bytes.Buffer
-	if err := runWithIO(context.Background(), []string{"app", "destroy", "--yes"}, &out, &out); err != nil {
+	if err := runWithIOAsTestOperator(context.Background(), []string{"app", "destroy", "--yes"}, &out, &out); err != nil {
 		t.Fatalf("destroy of an uninitialized, unregistered repository should be idempotent: %v\n%s", err, out.String())
 	}
 	if !strings.Contains(out.String(), "Application already absent") || !strings.Contains(out.String(), "source files were kept") {
@@ -53,7 +53,7 @@ func TestAppDestroyAlreadyAbsentRetainsRepositoryIdentityWithoutNeverDeliveredPr
 	t.Chdir(selection.RepositoryRoot)
 
 	var out bytes.Buffer
-	if err := runWithIO(context.Background(), []string{"app", "destroy", "--yes"}, &out, &out); err != nil {
+	if err := runWithIOAsTestOperator(context.Background(), []string{"app", "destroy", "--yes"}, &out, &out); err != nil {
 		t.Fatalf("destroy of a previously initialized but Target-absent repository should be idempotent without never-delivered proof: %v\n%s", err, out.String())
 	}
 	if !strings.Contains(out.String(), "Application already absent") || !strings.Contains(out.String(), "source files were kept") {
@@ -73,7 +73,7 @@ func TestTopLevelDestroyKeepsInstallationScopeInsideRepository(t *testing.T) {
 	t.Chdir(selection.RepositoryRoot)
 
 	var out bytes.Buffer
-	err := runWithIO(context.Background(), []string{"destroy", "--invalid-test-option"}, &out, &out)
+	err := runWithIOAsTestOperator(context.Background(), []string{"destroy", "--invalid-test-option"}, &out, &out)
 	if err == nil || !strings.Contains(err.Error(), "unknown argument --invalid-test-option") {
 		t.Fatalf("top-level destroy was routed to an application command: err=%v output=%s", err, out.String())
 	}

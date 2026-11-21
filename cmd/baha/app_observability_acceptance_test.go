@@ -156,7 +156,7 @@ func TestObservabilityFullStackAcceptanceInCI(t *testing.T) {
 	var out bytes.Buffer
 	defer func() {
 		out.Reset()
-		_ = runWithIO(context.Background(), []string{"app", "destroy", "--yes"}, &out, &out)
+		_ = runWithIOAsTestOperator(context.Background(), []string{"app", "destroy", "--yes"}, &out, &out)
 	}()
 
 	// The provider-change consent guard requires a plan→apply flow.
@@ -193,7 +193,7 @@ func TestObservabilityFullStackAcceptanceInCI(t *testing.T) {
 
 	applyCtx := withProviderChangeConsent(ctx, consent)
 	applyArgs := []string{"--verbose", "app", "apply"}
-	if err := runWithIO(applyCtx, applyArgs, &out, &out); err != nil {
+	if err := runWithIOAsTestOperator(applyCtx, applyArgs, &out, &out); err != nil {
 		// Repository-owned candidates require a separate exact-source approval.
 		// The first attempt fails closed before recording deployment state and
 		// returns the digest this test automation must acknowledge explicitly.
@@ -204,7 +204,7 @@ func TestObservabilityFullStackAcceptanceInCI(t *testing.T) {
 		out.Reset()
 		applyCtx = withCandidateConsentDigest(applyCtx, digest)
 		applyArgs = append(applyArgs, "--confirm-candidate", digest)
-		if retryErr := runWithIO(applyCtx, applyArgs, &out, &out); retryErr != nil {
+		if retryErr := runWithIOAsTestOperator(applyCtx, applyArgs, &out, &out); retryErr != nil {
 			t.Fatalf("full-stack observability apply failed after exact candidate consent: %v\n%s", retryErr, out.String())
 		}
 	}

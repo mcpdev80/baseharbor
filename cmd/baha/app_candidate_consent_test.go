@@ -9,9 +9,31 @@ import (
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/mcpdev80/baseharbor/internal/delivery"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 )
+
+func TestCandidateConsentDigestRequiresExactToken(t *testing.T) {
+	digest := strings.Repeat("a", 64)
+	for _, hint := range []string{
+		"Re-run with --confirm-candidate " + digest,
+		"Candidate: --confirm-candidate " + digest + " to continue",
+	} {
+		if got := candidateConsentDigestFromError(&cli.UsageError{Hint: hint}); got != digest {
+			t.Fatalf("candidate digest from %q = %q, want exact token", hint, got)
+		}
+	}
+	for _, hint := range []string{
+		"--confirm-candidate " + digest + "suffix",
+		"--confirm-candidate " + digest[:63],
+		"--confirm-candidate " + strings.ToUpper(digest),
+	} {
+		if got := candidateConsentDigestFromError(&cli.UsageError{Hint: hint}); got != "" {
+			t.Fatalf("accepted non-exact candidate digest from %q: %q", hint, got)
+		}
+	}
+}
 
 // repoCandidateFixture builds a repository-owned application on disk and
 // resolves it through the real apply lifecycle, returning the resolved
@@ -77,6 +99,13 @@ func TestConsentRejectsWrongDigestWriteNothing(t *testing.T) {
 	ctxWrong := withCandidateConsentDigest(context.Background(), wrong)
 	if _, err := recordDeploymentBeforeMutation(ctxWrong, r, "applying", wrong); err == nil {
 		t.Fatal("wrong confirm digest accepted; candidate must fail closed")
+	} else {
+		if !errors.Is(err, errCandidateConsentDigestMismatch) {
+			t.Fatalf("wrong digest error lost mismatch classification: %v", err)
+		}
+		if got := candidateConsentDigestFromError(err); got != want {
+			t.Fatalf("stale digest refresh=%q, want current exact candidate %q", got, want)
+		}
 	}
 	// The applying mutation must have persisted NO consent: the candidate is
 	// only bound on a matching digest, and a wrong digest writes nothing new.

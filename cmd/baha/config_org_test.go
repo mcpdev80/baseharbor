@@ -11,6 +11,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/orgconfig"
 )
 
@@ -47,6 +48,20 @@ func TestOrganizationCLIJSONAndMCPShareEffectiveResolution(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(root, "config"))
 	t.Setenv("XDG_CACHE_HOME", filepath.Join(root, "cache"))
+	target := configureTestTarget(t)
+	cfg, err := deployment.LoadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	companyTarget := cfg.Targets[target.Name]
+	companyTarget.TargetUID = mustNewTargetUIDFixture(t)
+	cfg.Targets["company-dev"] = companyTarget
+	if err := cfg.Save(); err != nil {
+		t.Fatal(err)
+	}
+	if err := registerInstallationForTarget(t, "company-dev"); err != nil {
+		t.Fatal(err)
+	}
 	source := filepath.Join(root, "org")
 	if err := os.MkdirAll(source, 0o700); err != nil {
 		t.Fatal(err)
@@ -57,7 +72,7 @@ func TestOrganizationCLIJSONAndMCPShareEffectiveResolution(t *testing.T) {
 	writeOrganizationParityArtifacts(t, source)
 
 	var out bytes.Buffer
-	if err := runWithIO(context.Background(), []string{
+	if err := runWithIOAsTestOperator(context.Background(), []string{
 		"config", "organization", "set",
 		"--source", "local",
 		"--location", source,
@@ -74,7 +89,7 @@ func TestOrganizationCLIJSONAndMCPShareEffectiveResolution(t *testing.T) {
 
 	server := newMCPServer(application.DefaultStore())
 	serverTransport, clientTransport := mcp.NewInMemoryTransports()
-	serverSession, err := server.Connect(context.Background(), serverTransport, nil)
+	serverSession, err := server.Connect(testOperatorContext(context.Background()), serverTransport, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,7 +102,7 @@ func TestOrganizationCLIJSONAndMCPShareEffectiveResolution(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = clientSession.Close() })
 
-	result, err := clientSession.CallTool(context.Background(), &mcp.CallToolParams{
+	result, err := clientSession.CallTool(testOperatorContext(context.Background()), &mcp.CallToolParams{
 		Name:      "baseharbor.organization.inspect",
 		Arguments: map[string]any{"environment": "dev"},
 	})
@@ -95,7 +110,7 @@ func TestOrganizationCLIJSONAndMCPShareEffectiveResolution(t *testing.T) {
 		t.Fatal(err)
 	}
 	if result.IsError {
-		t.Fatalf("organization inspect returned error: %#v", result.Content)
+		t.Fatalf("organization inspect returned error: %#v", result.StructuredContent)
 	}
 	encoded, err := json.Marshal(result.StructuredContent)
 	if err != nil {
@@ -139,6 +154,9 @@ func assertOrganizationParityEffective(t *testing.T, effective orgconfig.Effecti
 
 func TestOrganizationCheckDoesNotReplaceAndUpdateRequiresApproval(t *testing.T) {
 	root := t.TempDir()
+	if err := os.Chmod(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(root, "config"))
 	t.Setenv("XDG_CACHE_HOME", filepath.Join(root, "cache"))
 	source := filepath.Join(root, "organization.yaml")
@@ -153,7 +171,7 @@ func TestOrganizationCheckDoesNotReplaceAndUpdateRequiresApproval(t *testing.T) 
 	write("parity")
 
 	var out bytes.Buffer
-	if err := runWithIO(context.Background(), []string{
+	if err := runWithIOAsTestOperator(context.Background(), []string{
 		"config", "organization", "set", "--source", "local", "--location", source, "-o", "json",
 	}, &out, &bytes.Buffer{}); err != nil {
 		t.Fatal(err)
@@ -161,7 +179,7 @@ func TestOrganizationCheckDoesNotReplaceAndUpdateRequiresApproval(t *testing.T) 
 	write("parity-next")
 
 	out.Reset()
-	if err := runWithIO(context.Background(), []string{"config", "organization", "check", "-o", "json"}, &out, &bytes.Buffer{}); err != nil {
+	if err := runWithIOAsTestOperator(context.Background(), []string{"config", "organization", "check", "-o", "json"}, &out, &bytes.Buffer{}); err != nil {
 		t.Fatal(err)
 	}
 	var check organizationCheckView
@@ -180,11 +198,11 @@ func TestOrganizationCheckDoesNotReplaceAndUpdateRequiresApproval(t *testing.T) 
 		t.Fatalf("check silently replaced active config: %+v", active.Config)
 	}
 
-	if err := runWithIO(context.Background(), []string{"config", "organization", "update"}, &bytes.Buffer{}, &bytes.Buffer{}); err == nil {
+	if err := runWithIOAsTestOperator(context.Background(), []string{"config", "organization", "update"}, &bytes.Buffer{}, &bytes.Buffer{}); err == nil {
 		t.Fatal("organization update must require explicit --yes")
 	}
 	out.Reset()
-	if err := runWithIO(context.Background(), []string{"config", "organization", "update", "--yes", "-o", "json"}, &out, &bytes.Buffer{}); err != nil {
+	if err := runWithIOAsTestOperator(context.Background(), []string{"config", "organization", "update", "--yes", "-o", "json"}, &out, &bytes.Buffer{}); err != nil {
 		t.Fatal(err)
 	}
 	active, err = orgconfig.LoadActive()

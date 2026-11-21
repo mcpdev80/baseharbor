@@ -117,6 +117,7 @@ nav:
 
   - Operations:
       - Troubleshooting: troubleshooting/index.md
+      - Core operator API runbook: how-to/operator-api.md
       - Errors: reference/errors.md
 
   - Automation / Agents:

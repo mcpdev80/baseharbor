@@ -22,7 +22,7 @@ func TestRemoteCoreTargetCreateBindsTenantAndNeverFallsBackToLocalDocker(t *test
 		"--reference", "vm-core", "--tenant-id", tenant,
 	}
 	var out bytes.Buffer
-	if err := createTarget(context.Background(), args, &out, &out); err != nil {
+	if err := createTarget(testOperatorContext(context.Background()), args, &out, &out); err != nil {
 		t.Fatalf("remote Core Target could not be configured: %v", err)
 	}
 	cfg, err := deployment.LoadConfig()
@@ -37,10 +37,10 @@ func TestRemoteCoreTargetCreateBindsTenantAndNeverFallsBackToLocalDocker(t *test
 		target.AccessProvider != "baseharbor-core" {
 		t.Fatalf("remote Core Target lost its scoped management authority: %+v", target)
 	}
-	if _, err := detectRuntimeForTarget(context.Background(), target); err == nil {
+	if _, err := detectRuntimeForTarget(testOperatorContext(context.Background()), target); err == nil {
 		t.Fatal("remote Core Target incorrectly entered local workstation Docker runtime")
 	}
-	err = bindExplicitSelectionToConnection(context.Background(), target.Name)
+	err = bindExplicitSelectionToConnection(testOperatorContext(context.Background()), target.Name)
 	var typed *machine.Error
 	if !errors.As(err, &typed) || typed.Code != machine.ErrorAuthenticationFailed ||
 		!strings.Contains(err.Error(), "BASEHARBOR_CONNECTION_PROFILE") {

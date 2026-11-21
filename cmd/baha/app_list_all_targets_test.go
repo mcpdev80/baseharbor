@@ -21,7 +21,7 @@ func TestAppListAllTargetsWorksAfterInstallationDestroy(t *testing.T) {
 	}
 
 	var out, errOut bytes.Buffer
-	err = appListCommand().Run(context.Background(), []string{"--all-targets"}, &out, &errOut)
+	err = appListCommand().Run(testOperatorContext(context.Background()), []string{"--all-targets"}, &out, &errOut)
 	if err != nil {
 		t.Fatalf("all-targets inventory depended on deleted Target config %q: %v", target.Name, err)
 	}

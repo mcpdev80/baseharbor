@@ -295,6 +295,9 @@ class WorkflowWiring(unittest.TestCase):
             source_validator = write_source_validator_fixture(root)
             (root / 'scripts').mkdir()
             (root / 'scripts/ci-runtime-reset.sh').write_text('exit 0\n')
+            (root / 'scripts/ci-local-oci-registry.sh').write_text(
+                'if [ "$#" -ne 3 ] || [ "$1" != publish ] || [ "$2" != localhost/baseharbor-runtime:pre-release ] || [ "$3" != localhost:5000/baseharbor-runtime:pre-release ]; then exit 9; fi\n'
+                'printf "%s\\n" "$*" >> "$RUNNER_TEMP/registry-publish"\n')
             bindir = root / 'bin'
             bindir.mkdir()
             git = bindir / 'git'
@@ -322,9 +325,12 @@ class WorkflowWiring(unittest.TestCase):
                 with self.subTest(path=path):
                     calls = root / 'calls'
                     calls.unlink(missing_ok=True)
+                    (root / 'registry-publish').unlink(missing_ok=True)
                     run = subprocess.run(['bash', '-c', block], env={**env, 'CHANGED_PATH': path}, capture_output=True, text=True)
                     self.assertEqual(0, run.returncode, run.stderr)
                     self.assertEqual(expected, calls.read_text().splitlines())
+                    self.assertEqual('publish localhost/baseharbor-runtime:pre-release localhost:5000/baseharbor-runtime:pre-release',
+                                     (root / 'registry-publish').read_text().strip())
             bad = {**env, 'CHANGED_PATH': next(iter(mapping)), 'FAKE_OUTCOME': 'skip'}
             self.assertNotEqual(0, subprocess.run(['bash', '-c', block], env=bad, capture_output=True).returncode)
             bad = {**env, 'CHANGED_PATH': next(iter(mapping)), 'DIFF_ERROR': '1'}
@@ -372,6 +378,9 @@ class WorkflowWiring(unittest.TestCase):
             root = pathlib.Path(tmp)
             (root / 'scripts').mkdir()
             (root / 'scripts/ci-runtime-reset.sh').write_text('printf "%s\\n" "$1" > "$RUNNER_TEMP/reset"\n')
+            (root / 'scripts/ci-local-oci-registry.sh').write_text(
+                'if [ "$#" -ne 3 ] || [ "$1" != publish ] || [ "$2" != localhost/baseharbor-runtime:pre-release ] || [ "$3" != localhost:5000/baseharbor-runtime:pre-release ]; then exit 9; fi\n'
+                'printf "%s\\n" "$*" >> "$RUNNER_TEMP/registry-publish"\n')
             source_validator = write_source_validator_fixture(root)
             git = root / 'git'
             git.write_text('#!/bin/sh\ncase "$1" in\n'
@@ -401,9 +410,12 @@ class WorkflowWiring(unittest.TestCase):
                        FAKE_SOURCE_VALIDATOR=str(source_validator))
             for mode in ['pass', 'failure', 'skip', 'zero']:
                 with self.subTest(mode=mode):
+                    (root / 'registry-publish').unlink(missing_ok=True)
                     result = subprocess.run(['bash', '-euo', 'pipefail', '-c', block],
                                             env={**env, 'FAKE_MODE': mode}, capture_output=True, text=True)
                     self.assertEqual(mode == 'pass', result.returncode == 0, result.stdout+result.stderr)
+                    self.assertEqual('publish localhost/baseharbor-runtime:pre-release localhost:5000/baseharbor-runtime:pre-release',
+                                     (root / 'registry-publish').read_text().strip())
             (root / 'called').unlink()
             for status, expected in [('0', 0), ('2', 2)]:
                 result = subprocess.run(['bash', '-euo', 'pipefail', '-c', block],
