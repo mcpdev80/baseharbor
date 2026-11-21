@@ -15,7 +15,7 @@ func TestNamedMinimalSourceUsesSameWorkloadAndIdentityWithoutWrites(t *testing.T
 	target := configureTestTarget(t)
 	selection := minimalRepositorySelection(t)
 	t.Chdir(selection.RepositoryRoot)
-	initialized, err := resolveRepositoryLifecycleIntent(t.Context(), target, selection, "init")
+	initialized, err := resolveRepositoryLifecycleIntent(testOperatorContext(t.Context()), target, selection, "init")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,11 +48,11 @@ func TestNamedMinimalSourceUsesSameWorkloadAndIdentityWithoutWrites(t *testing.T
 		}
 	}
 	for _, command := range []string{"plan", "apply", "status", "doctor", "stop", "destroy"} {
-		repository, err := resolveApplication(t.Context(), application.Store{}, nil, command)
+		repository, err := resolveApplication(testOperatorContext(t.Context()), application.Store{}, nil, command)
 		if err != nil {
 			t.Fatal(err)
 		}
-		named, err := resolveApplication(t.Context(), application.Store{}, []string{initialized.Manifest.Name}, command)
+		named, err := resolveApplication(testOperatorContext(t.Context()), application.Store{}, []string{initialized.Manifest.Name}, command)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -76,7 +76,7 @@ func TestNamedMinimalSourceUsesSameWorkloadAndIdentityWithoutWrites(t *testing.T
 	if err := deployment.SaveDeploymentRecord(record); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := resolveApplication(t.Context(), application.Store{}, []string{initialized.Manifest.Name}, "plan"); err == nil {
+	if _, err := resolveApplication(testOperatorContext(t.Context()), application.Store{}, []string{initialized.Manifest.Name}, "plan"); err == nil {
 		t.Fatal("named source resolution ignored conflicting protected source ownership")
 	}
 }

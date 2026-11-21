@@ -2,6 +2,14 @@
 
 Application-Befehle arbeiten mit dem portablen Contract und seinem Deployment-Zustand.
 
+Der Standardpfad von `baha app new` erstellt nur das Projekt: Er schreibt die
+Repository-Dateien und zeigt die nächsten Schritte an, registriert aber noch
+kein Deployment auf dem ausgewählten Target. `baha app list` zeigt registrierte
+Deployments; das erzeugte Projekt erscheint dort erst nach Initialisierung und
+Anwendung. Führe im erzeugten Repository `baha app init --quick` und danach
+`baha up` aus. Falls das ausgewählte Target eine Operator-Sitzung verlangt,
+melde dich vor der Initialisierung an.
+
 Bei `baha app new` erstellt die Auswahl `run` zunächst das Projekt und zeigt
 dann die genaue Identität samt Bestätigungshash des Repository-Kandidaten an.
 Erst nach ausdrücklicher Bestätigung läuft das Deployment weiter. Bei Ablehnung

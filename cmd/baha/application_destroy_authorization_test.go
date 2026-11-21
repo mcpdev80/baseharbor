@@ -28,7 +28,7 @@ func TestApplicationDestroyCanProceedWithDamagedUnrelatedConsumerInventory(t *te
 		Applied:  deployment.AppliedDeployment{RuntimeProvider: "docker", Intent: json.RawMessage(`{"version":1,"name":"broken-peer","environment":"dev"}`)},
 	})
 
-	plan, err := buildApplicationDestructionPlan(t.Context(), r, true)
+	plan, err := buildApplicationDestructionPlan(testOperatorContext(t.Context()), r, true)
 	if err != nil {
 		t.Fatalf("destroy must produce a partial plan for the selected app: %v", err)
 	}
@@ -40,13 +40,13 @@ func TestApplicationDestroyCanProceedWithDamagedUnrelatedConsumerInventory(t *te
 	}
 	var review bytes.Buffer
 	ack := &application.ProviderChangeConsent{PlanID: plan.Scope.PlanID, First: true, Second: true, DeleteData: true}
-	if _, err := authorizeApplicationDestruction(withProviderChangeConsent(t.Context(), ack), r, true, &review); err != nil {
+	if _, err := authorizeApplicationDestruction(withProviderChangeConsent(testOperatorContext(t.Context()), ack), r, true, &review); err != nil {
 		t.Fatalf("explicitly confirmed partial destroy was blocked: %v\n%s", err, review.String())
 	}
 	if !strings.Contains(review.String(), "Target provider inventory is damaged") {
 		t.Fatalf("partial cleanup warning omitted: %s", review.String())
 	}
-	if _, err := buildApplicationDestructionPlan(t.Context(), r, false); err == nil {
+	if _, err := buildApplicationDestructionPlan(testOperatorContext(t.Context()), r, false); err == nil {
 		t.Fatal("data-preserving stop must not use the partial destroy fallback")
 	}
 }
@@ -98,7 +98,7 @@ func TestApplicationDestructionRequiresCurrentOuterScopeAndSeparateDataConsent(t
 		t.Fatal(err)
 	}
 	for _, reset := range []bool{false, true} {
-		p, err := buildApplicationDestructionPlan(t.Context(), r, reset)
+		p, err := buildApplicationDestructionPlan(testOperatorContext(t.Context()), r, reset)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -114,14 +114,14 @@ func TestApplicationDestructionRequiresCurrentOuterScopeAndSeparateDataConsent(t
 			invalid = append(invalid, &application.ProviderChangeConsent{PlanID: p.Scope.PlanID, First: true, Second: true})
 		}
 		for _, consent := range invalid {
-			_, err := authorizeApplicationDestruction(withProviderChangeConsent(t.Context(), consent), r, reset, io.Discard)
+			_, err := authorizeApplicationDestruction(withProviderChangeConsent(testOperatorContext(t.Context()), consent), r, reset, io.Discard)
 			var failure *machine.Error
 			if !errors.As(err, &failure) || failure.Details == nil {
 				t.Fatal("destruction bypassed current outer scope", err)
 			}
 		}
 		ack := &application.ProviderChangeConsent{PlanID: p.Scope.PlanID, First: true, Second: true, DeleteData: reset}
-		if _, err := authorizeApplicationDestruction(withProviderChangeConsent(t.Context(), ack), r, reset, io.Discard); err != nil {
+		if _, err := authorizeApplicationDestruction(withProviderChangeConsent(testOperatorContext(t.Context()), ack), r, reset, io.Discard); err != nil {
 			t.Fatal("deliberately accepted unknown consequences became a policy veto", err)
 		}
 		after, err := os.ReadFile(registry)
@@ -134,7 +134,7 @@ func TestApplicationDestructionRequiresCurrentOuterScopeAndSeparateDataConsent(t
 func TestApplicationDestroyUsesShortPlanAndSingleInteractiveApproval(t *testing.T) {
 	r := retainedNativeBackendFixture(t)
 	var out bytes.Buffer
-	ctx := withApplicationInput(t.Context(), strings.NewReader("y\n"))
+	ctx := withApplicationInput(testOperatorContext(t.Context()), strings.NewReader("y\n"))
 	if _, err := authorizeApplicationDestruction(ctx, r, true, &out); err != nil {
 		t.Fatalf("interactive approval did not authorize the current plan: %v\n%s", err, out.String())
 	}
@@ -157,7 +157,7 @@ func TestApplicationDestroyUsesShortPlanAndSingleInteractiveApproval(t *testing.
 func TestApplicationDestroyWithoutInteractiveConsentGivesUsefulNextStep(t *testing.T) {
 	r := retainedNativeBackendFixture(t)
 	var out bytes.Buffer
-	_, err := authorizeApplicationDestruction(t.Context(), r, true, &out)
+	_, err := authorizeApplicationDestruction(testOperatorContext(t.Context()), r, true, &out)
 	var failure *machine.Error
 	if !errors.As(err, &failure) || failure.CauseCode != "impact-confirmation-required" {
 		t.Fatalf("expected a typed consent requirement, got %v", err)
@@ -169,7 +169,7 @@ func TestApplicationDestroyWithoutInteractiveConsentGivesUsefulNextStep(t *testi
 
 func TestApplicationDestructionConsentInvalidatedByRetainedPublicationChange(t *testing.T) {
 	r := retainedNativeBackendFixture(t)
-	p, err := buildApplicationDestructionPlan(t.Context(), r, true)
+	p, err := buildApplicationDestructionPlan(testOperatorContext(t.Context()), r, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -182,7 +182,7 @@ func TestApplicationDestructionConsentInvalidatedByRetainedPublicationChange(t *
 	if err := deployment.SaveDeploymentRecord(record); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := authorizeApplicationDestruction(withProviderChangeConsent(t.Context(), ack), r, true, io.Discard); err == nil {
+	if _, err := authorizeApplicationDestruction(withProviderChangeConsent(testOperatorContext(t.Context()), ack), r, true, io.Discard); err == nil {
 		t.Fatal("changed protected owner retained old consent")
 	}
 }

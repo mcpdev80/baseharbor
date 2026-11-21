@@ -23,10 +23,9 @@ func TestWorkspaceMapBootstrapsFirstRepositorySource(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(root, "config"))
 
 	var out bytes.Buffer
-	cmd := appWorkspaceMapCommand()
-	if err := cmd.Run(
+	if err := runWithIOAsTestOperator(
 		context.Background(),
-		[]string{"repo", appRoot, "--manifest", filepath.Join(appRoot, "baseharbor.yaml")},
+		[]string{"app", "workspace", "map", "repo", appRoot, "--manifest", filepath.Join(appRoot, "baseharbor.yaml")},
 		&out,
 		&out,
 	); err != nil {
@@ -77,9 +76,9 @@ func TestWorkspaceMapBootstrapRequiresStableGitOrigin(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(root, "config"))
 
 	var out bytes.Buffer
-	err := appWorkspaceMapCommand().Run(
+	err := runWithIOAsTestOperator(
 		context.Background(),
-		[]string{"repo", appRoot, "--manifest", filepath.Join(appRoot, "baseharbor.yaml")},
+		[]string{"app", "workspace", "map", "repo", appRoot, "--manifest", filepath.Join(appRoot, "baseharbor.yaml")},
 		&out,
 		&out,
 	)
@@ -102,9 +101,9 @@ func TestWorkspaceMapBootstrapDoesNotGuessMultiComponentMapping(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(root, "config"))
 
 	var out bytes.Buffer
-	err := appWorkspaceMapCommand().Run(
+	err := runWithIOAsTestOperator(
 		context.Background(),
-		[]string{"repo", appRoot, "--manifest", filepath.Join(appRoot, "baseharbor.yaml")},
+		[]string{"app", "workspace", "map", "repo", appRoot, "--manifest", filepath.Join(appRoot, "baseharbor.yaml")},
 		&out,
 		&out,
 	)
