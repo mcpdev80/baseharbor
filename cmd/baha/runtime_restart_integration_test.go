@@ -58,6 +58,10 @@ func runControlPlaneRestartAcceptance(t *testing.T, ha bool) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 17*time.Minute)
 	defer cancel()
+	// The helpers below call the runtime lifecycle directly instead of going
+	// through runWithIOAsTestOperator for every step. Carry the same explicit
+	// test operator context through start, stop, recovery, and cleanup.
+	ctx = testOperatorContext(ctx)
 
 	runtimeCommand := strings.TrimSpace(os.Getenv("BASEHARBOR_TEST_RUNTIME"))
 	if runtimeCommand == "" {
@@ -82,7 +86,7 @@ func runControlPlaneRestartAcceptance(t *testing.T, ha bool) {
 		targetArgs = []string{"target", "create", targetName, "--provider", runtimeCommand, "--access", targetName, "--reference", "local", "--default"}
 	}
 	var targetOut bytes.Buffer
-	if err := runWithIO(ctx, targetArgs, &targetOut, &targetOut); err != nil {
+	if err := runWithIOAsTestOperator(ctx, targetArgs, &targetOut, &targetOut); err != nil {
 		t.Fatalf("create restart target: %v\n%s", err, targetOut.String())
 	}
 	if output, err := exec.CommandContext(
@@ -170,8 +174,14 @@ func runControlPlaneRestartAcceptance(t *testing.T, ha bool) {
 		t.Fatalf("bootstrap OpenBao: %v", err)
 	}
 
+	cleanupComplete := false
 	defer func() {
-		_ = approvedNativeFixtureCleanup(t, context.Background(), &bytes.Buffer{})
+		if !cleanupComplete {
+			var cleanupOutput bytes.Buffer
+			if err := approvedNativeFixtureCleanup(t, context.Background(), &cleanupOutput); err != nil {
+				t.Errorf("native restart fixture cleanup after test: %v\n%s", err, cleanupOutput.String())
+			}
+		}
 		_ = os.Remove(recovery)
 	}()
 
@@ -288,6 +298,7 @@ func runControlPlaneRestartAcceptance(t *testing.T, ha bool) {
 		if err := approvedNativeFixtureCleanup(t, ctx, &destroyOut); err != nil {
 			t.Fatalf("single control-plane cleanup: %v\n%s", err, destroyOut.String())
 		}
+		cleanupComplete = true
 		resources, err := compose.ListOwnedProjectResources(ctx, files.ResourceProject)
 		if err != nil || len(resources) != 0 {
 			t.Fatalf("single control-plane retained owned resources: %v %v", resources, err)
@@ -331,6 +342,11 @@ func runControlPlaneRestartAcceptance(t *testing.T, ha bool) {
 	}
 	waitForPostgresHAAfterFailure(t, ctx, compose, files)
 	waitForOpenBaoHAAfterFailure(t, ctx, compose, files, "PostgreSQL member recovery")
+	var destroyOut bytes.Buffer
+	if err := approvedNativeFixtureCleanup(t, ctx, &destroyOut); err != nil {
+		t.Fatalf("HA control-plane cleanup: %v\n%s", err, destroyOut.String())
+	}
+	cleanupComplete = true
 }
 
 func mustRuntimeEnvForHATest(t *testing.T, path string) map[string]string {

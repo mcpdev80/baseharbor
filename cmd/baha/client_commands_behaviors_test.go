@@ -177,7 +177,7 @@ func TestClientCommandsTwoHomesSameDeploymentPrecedence(t *testing.T) {
 	for _, home := range []string{homeA, homeB} {
 		chdirHome(t, home)
 		var out, errOut bytes.Buffer
-		if err := runWithIO(context.Background(), []string{"app", "init", "--quick", "--no-input", "--json"}, &out, &errOut); err != nil {
+		if err := runWithIOAsTestOperator(context.Background(), []string{"app", "init", "--quick", "--no-input", "--json"}, &out, &errOut); err != nil {
 			t.Fatalf("%s: app init: %v\n%s", home, err, errOut.String())
 		}
 		var result struct {

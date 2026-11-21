@@ -184,6 +184,23 @@ class ContractCheckTests(unittest.TestCase):
         self.assertNotIn('baseharbor.pre-release.registry', runtime_tests)
         self.assertIn('runtimeContainersNotInBaseline', runtime_tests)
 
+    def test_native_followups_republish_candidate_registry_after_runtime_reset(self):
+        root = pathlib.Path(__file__).resolve().parents[1]
+        workflow = (root / '.github/workflows/pre-release-runtime-suite.yml').read_text()
+        publish = ('bash scripts/ci-local-oci-registry.sh publish '
+                   'localhost/baseharbor-runtime:pre-release '
+                   'localhost:5000/baseharbor-runtime:pre-release')
+        backup = workflow.split('if [ "$GATE" = backup-restore ]', 1)[1].split(
+            'if [ "$GATE" = lifecycle ]', 1)[0]
+        lifecycle = workflow.split('if [ "$GATE" = lifecycle ]', 1)[1].split(
+            'if [ "$GATE" = lifecycle ] && [ "$RUNTIME" = podman ]', 1)[0]
+        for section in (backup, lifecycle):
+            reset = section.index('bash scripts/ci-runtime-reset.sh "$RUNTIME"')
+            republish = section.index(publish)
+            test = section.index('go test')
+            self.assertLess(reset, republish)
+            self.assertLess(republish, test)
+
     def test_coreless_shard_catalog_rejects_unknown_or_misapplied_shards(self):
         with self.assertRaises(ValueError):
             integration.coreless_shard_checks(

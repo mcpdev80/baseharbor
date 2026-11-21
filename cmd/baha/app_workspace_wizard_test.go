@@ -67,7 +67,7 @@ func TestWorkspaceWizardCreatesPortableModelAndLocalMapping(t *testing.T) {
 	}
 
 	var out bytes.Buffer
-	if err := runAppWorkspaceWizard(context.Background(), &out); err != nil {
+	if err := runAppWorkspaceWizard(testOperatorContext(context.Background()), &out); err != nil {
 		t.Fatalf("wizard failed: %v\n%s", err, out.String())
 	}
 
@@ -138,7 +138,7 @@ func TestWorkspaceWizardCancelDoesNotWriteState(t *testing.T) {
 	}
 
 	var out bytes.Buffer
-	if err := runAppWorkspaceWizard(context.Background(), &out); err != nil {
+	if err := runAppWorkspaceWizard(testOperatorContext(context.Background()), &out); err != nil {
 		t.Fatalf("wizard failed: %v\n%s", err, out.String())
 	}
 	if _, err := os.Stat(filepath.Join(root, development.SourceModelRelativePath)); !os.IsNotExist(err) {
