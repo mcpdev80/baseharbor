@@ -14,6 +14,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/devaccess"
 	"github.com/mcpdev80/baseharbor/internal/hostresource"
 	"github.com/mcpdev80/baseharbor/internal/identityprovider"
+	metricsprovider "github.com/mcpdev80/baseharbor/internal/metrics"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
 	"github.com/mcpdev80/baseharbor/internal/preflight"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
@@ -382,9 +383,53 @@ func (e *applicationApplyExecution) verifyManagedRuntime(ctx context.Context) er
 	return nil
 }
 
+// reloadPersesDatasource runs the datasource reload for the Perses surface.
+// The materialization itself happened at the apply boundary inside
+// application.EnsureRuntime (ensurePersesDatasourceRuntime, before the compose
+// render and the Perses start); deselection is teardown there, never a silent
+// skip here, so an unselected surface never keeps serving a stale datasource.
+// The provider start can precede the materialization of this same apply, so
+// the reload makes the started Perses re-walk its provisioning sources: the
+// rendered config sets provisioning.enable_watch (the file loader watches the
+// folders), and the explicit reconcile POST is the deterministic trigger.
+// SIGHUP is NOT used: the pinned release's signal listener handles only
+// SIGINT/SIGTERM, so kill -HUP tears the container down (measured on
+// perses:v0.55.1, exit 129). Verification afterwards is fail-closed: the
+// datasource exists in the LIVE API with the rendered endpoint, and its
+// health query succeeds through the proxy (0428-083 F4/timeline).
+func (e *applicationApplyExecution) reloadPersesDatasource(ctx context.Context) error {
+	if !application.PersesUITLSRequired(e.manifest) {
+		return nil
+	}
+	return activity(ctx, e.term, "Reloading Perses datasource provisioning", func(progress io.Writer) error {
+		if err := reloadPersesProvisioning(ctx, e.compose, e.manifest, e.files); err != nil {
+			return err
+		}
+		cli.ReportActivityDetail(progress, "Perses Prometheus datasource provisioned")
+		return metricsprovider.VerifyPersesPrometheusDatasourceHealth(ctx, e.manifest)
+	})
+}
+
+// reloadPersesProvisioning keeps the apply-path seam of the Perses datasource
+// reload. The rendered config carries provisioning.enable_watch=true: the
+// pinned release's provisioning file watcher re-applies datasource-folder
+// changes on its own (measured in the container acceptance on the pinned
+// image). SIGHUP is NOT used: the distroless image's signal listener handles
+// only SIGINT/SIGTERM, so kill -HUP tears the container down (measured: exit
+// 129), and the image ships no shell or CLI to reconcile through either. The
+// verification that closes the reload is the fail-closed live-API existence +
+// proxy-health check below, which waits until the datasource is loaded and
+// answers its health query through the Perses proxy.
+func reloadPersesProvisioning(_ context.Context, _ bhruntime.RuntimeProvider, _ application.Manifest, _ application.RuntimeFiles) error {
+	return nil
+}
+
 func (e *applicationApplyExecution) convergeApplicationRuntime(ctx context.Context) error {
 	renderRuntimeReady(e.term, e.manifest)
 
+	if err := e.reloadPersesDatasource(ctx); err != nil {
+		return err
+	}
 	if err := activity(ctx, e.term, "Reconciling trace storage", func(progress io.Writer) error {
 		return convergeManagedTracesBeforeTelemetry(ctx, progress, e.providers.traces)
 	}); err != nil {

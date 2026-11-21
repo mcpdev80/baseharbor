@@ -149,9 +149,17 @@ func writePersesGatewayComposeServices(b *strings.Builder, m Manifest, files Run
 	}
 	// The configuration's advertised address is part of the persisted plan
 	// identity check: the record must name exactly this deployment's Perses
-	// service alias, so a copied-in record cannot masquerade.
+	// service alias, so a copied-in record cannot masquerade. In the
+	// shared-namespace topology the gateway dials the namespace loopback (the
+	// Perses service binds loopback inside the joined namespace and has no
+	// network of its own), so the dial upstream is 127.0.0.1; the advertised
+	// ServiceAddress still carries the deployment alias for the certificate
+	// and configuration identities.
 	wantService := mPersesServiceAlias(m)
-	if plan.ServiceAddress != wantService || plan.Spec.Upstream != "http://"+wantService+":"+strconv.Itoa(serviceaccess.PersesUpstreamPort) {
+	wantUpstream := "http://" + wantService + ":" + strconv.Itoa(serviceaccess.PersesUpstreamPort)
+	loopbackUpstream := "http://127.0.0.1:" + strconv.Itoa(serviceaccess.PersesUpstreamPort)
+	if plan.ServiceAddress != wantService ||
+		(plan.Spec.Upstream != wantUpstream && plan.Spec.Upstream != loopbackUpstream) {
 		return errors.New("the persisted Perses gateway plan does not name this deployment's Perses service address: reconcile the deployment")
 	}
 	if !plan.SharedGatewayNetwork {
@@ -174,7 +182,78 @@ func writePersesGatewayComposeServices(b *strings.Builder, m Manifest, files Run
 	if err != nil {
 		return err
 	}
+	// The Prometheus datasource provisioning seam (0428-083): when the apply
+	// boundary materialized a datasource BEFORE this render, its config file,
+	// provisioning folder and public trust bundle are mounted into the Perses
+	// service of the gateway rendering (0428-089) — the datasource root is
+	// the providers/management-ui/perses sibling of the compose context dir
+	// (the one derivation, F1) — and the gateway service name the datasource
+	// endpoint names (F2) resolves through a host-gateway mapping. Without
+	// provisioned artifacts the rendering stays exactly the pinned gateway
+	// topology; fail-closed: a datasource mount may never name a file that
+	// does not exist, and a Perses service block the splice cannot find is
+	// an error, never a silently unmounted datasource.
+	if err := splicePersesDatasourceMounts(&rendered, files.Dir, files.ResourceProject); err != nil {
+		return err
+	}
 	b.WriteString(rendered)
+	return nil
+}
+
+// splicePersesDatasourceMounts adds the datasource mount entries (and the
+// gateway host mapping) to the perses service block of the rendered compose
+// YAML. Pure string surgery on the gateway rendering: the mount sources are
+// compose-context-relative (F1), so the file's other content and the gateway
+// service definition stay untouched.
+func splicePersesDatasourceMounts(rendered *string, contextDir, resourceProject string) error {
+	configMount, provisioningMount, trustBundleMount, present := persesDatasourceMounts(contextDir, resourceProject)
+	if !present || configMount == "" || provisioningMount == "" {
+		return nil
+	}
+	lines := strings.Split(strings.TrimSuffix(*rendered, "\n"), "\n")
+	persesAt, blockEnd := -1, len(lines)
+	for i, line := range lines {
+		if line == "  perses:" {
+			persesAt = i
+			continue
+		}
+		if persesAt >= 0 && i > persesAt && strings.HasPrefix(line, "  ") && !strings.HasPrefix(line, "    ") {
+			blockEnd = i
+			break
+		}
+	}
+	if persesAt < 0 {
+		return errors.New("the Perses datasource mounts require a perses service block in the gateway rendering")
+	}
+	mounts := []string{configMount, provisioningMount}
+	if trustBundleMount != "" {
+		mounts = append(mounts, trustBundleMount)
+	}
+	var out []string
+	volumesDone := false
+	for i := 0; i < len(lines); i++ {
+		line := lines[i]
+		out = append(out, line)
+		if i < persesAt || i >= blockEnd {
+			continue
+		}
+		if !volumesDone && strings.TrimSpace(line) == "volumes:" {
+			for _, mount := range mounts {
+				out = append(out, "      - "+mount)
+			}
+			volumesDone = true
+		}
+	}
+	if !volumesDone {
+		return errors.New("the rendered Perses service carries no volumes list to mount the datasource into")
+	}
+	// The extra_hosts entry maps the gateway service name (the datasource
+	// endpoint host, F2) for the Perses container; it goes at the end of the
+	// Perses service block (before the next two-space service key).
+	insertAt := blockEnd
+	block := []string{"    extra_hosts:", "      - \"" + ProviderGatewayHostMapping() + "\""}
+	out = append(out[:insertAt], append(block, out[insertAt:]...)...)
+	*rendered = strings.Join(out, "\n") + "\n"
 	return nil
 }
 
