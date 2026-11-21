@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.4.28]
+
+Candidate release section; promoted date recorded when v0.4.28 is published rather than a mid-development commit date.
+
 ### Added
 
 - Optional Perses visualization surface for the v0.4.28 release. Perses is a provider-owned, dashboard-as-code surface, not an application capability and is not part of the required Core bundle. The Perses provider pin v0.55.1 (image `persesdev/perses:v0.55.1`) is separate from BaseHarbor’s own release version. When Perses is not selected or configured, that is the normal state and is not an error; when Perses is selected but not provisioned, BaseHarbor reports the Perses visualization surface as `unsupported` rather than "configured".
