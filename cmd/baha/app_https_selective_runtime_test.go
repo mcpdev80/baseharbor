@@ -67,7 +67,7 @@ func TestSelectiveHTTPSRuntimeAddRemoveReAdd(t *testing.T) {
 	}
 	writeIntent(true)
 	var output bytes.Buffer
-	if err := runWithIO(ctx, []string{"app", "init", "--input", "tls_mode=local", "--yes"}, &output, &output); err != nil {
+	if err := runWithIOAsTestOperator(ctx, []string{"app", "init", "--input", "tls_mode=local", "--yes"}, &output, &output); err != nil {
 		t.Fatalf("initialize HTTPS-only workload: %v\n%s", err, output.String())
 	}
 	initialized, err := resolveApplication(ctx, application.Store{}, nil, "plan")

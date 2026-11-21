@@ -82,7 +82,7 @@ func TestTUICoreNoTargetLoadsEveryView(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("XDG_DATA_HOME", t.TempDir())
 	t.Setenv("BASEHARBOR_TARGET", "")
-	m := tuiModel{ctx: context.Background(), coreMode: true}
+	m := tuiModel{ctx: testOperatorContext(context.Background()), coreMode: true}
 	msg := m.loadStatus()().(tuiStatusMsg)
 	if msg.err != nil {
 		t.Fatal(msg.err)
@@ -95,7 +95,7 @@ func TestTUICoreNoTargetLoadsEveryView(t *testing.T) {
 func TestTUICoreOverviewInvokesSelectedTargetRuntimeInventory(t *testing.T) {
 	target := configureTestTarget(t)
 	t.Setenv("PATH", t.TempDir()) // No engine: require truthful unavailable telemetry.
-	m := tuiModel{ctx: context.Background(), coreMode: true}
+	m := tuiModel{ctx: testOperatorContext(context.Background()), coreMode: true}
 	msg := m.loadStatus()().(tuiStatusMsg)
 	if msg.err != nil {
 		t.Fatal(msg.err)

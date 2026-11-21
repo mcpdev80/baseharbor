@@ -92,7 +92,7 @@ func TestTargetDeleteRefusesWhileCollectableOrphansAttached(t *testing.T) {
 		t.Fatal("remove runtime owner for ownerless orphan", err)
 	}
 	id := seedOrphanDeploymentRecord(t, target.Name)
-	ctx := context.Background()
+	ctx := testOperatorContext(context.Background())
 
 	plan, err := buildTargetDefinitionChangePlan(ctx, target.Name, "")
 	if err == nil {
@@ -134,7 +134,7 @@ func TestTargetDeleteProceedsWithoutOrphans(t *testing.T) {
 	if len(orphans) != 0 {
 		t.Fatalf("clean Target must have no collectable orphans, got %d", len(orphans))
 	}
-	ctx := context.Background()
+	ctx := testOperatorContext(context.Background())
 	plan, err := buildTargetDefinitionChangePlan(ctx, target.Name, "")
 	if err != nil {
 		t.Fatalf("clean Target refused detach: %v", err)
@@ -154,7 +154,7 @@ func TestTargetDeleteRefusalIsJSONFriendly(t *testing.T) {
 	}
 	_ = os.RemoveAll(filepath.Join(stateRoot, "runtime"))
 	seedOrphanDeploymentRecord(t, target.Name)
-	ctx := context.Background()
+	ctx := testOperatorContext(context.Background())
 	_, err = buildTargetDefinitionChangePlan(ctx, target.Name, "")
 	if err == nil {
 		t.Fatal("expected collectable-orphan refusal")
@@ -245,7 +245,7 @@ func TestTargetDeleteRefusalIgnoresUuidFolderMismatch(t *testing.T) {
 	// not via the collectable-orphan cause — the mismatched record is no longer
 	// advertised as collectable, so the plan falls through to the inventory
 	// check, which still fails closed on the ownerless Target.
-	ctx := context.Background()
+	ctx := testOperatorContext(context.Background())
 	_, err = buildTargetDefinitionChangePlan(ctx, target.Name, "")
 	if err == nil {
 		t.Fatal("detach accepted an ownerless Target with a mismatched record without refusal")
@@ -316,7 +316,7 @@ func TestTargetDeleteRefusalIgnoresBlankIdentity(t *testing.T) {
 
 	// Fail-closed: the detached ownerless Target still refuses, and no record is
 	// advertised as collectable under the collectable-orphan cause.
-	ctx := context.Background()
+	ctx := testOperatorContext(context.Background())
 	_, err = buildTargetDefinitionChangePlan(ctx, target.Name, "")
 	if err == nil {
 		t.Fatal("detach accepted an ownerless Target with a blank-identity record without refusal")
@@ -419,7 +419,7 @@ func TestTargetDeleteHealPathReachesRecordWithOwnerRestored(t *testing.T) {
 		},
 		fullReset: true,
 		confirmed: true,
-		term:      cli.NewTerminal(context.Background(), io.Discard, io.Discard),
+		term:      cli.NewTerminal(testOperatorContext(context.Background()), io.Discard, io.Discard),
 	}
 	if err := e.removeApplicationState(); err != nil {
 		t.Fatalf("app-destroy lifecycle did not remove the record: %v", err)
@@ -463,7 +463,7 @@ func TestTargetDeleteHealPathReachesRecordWithOwnerRestored(t *testing.T) {
 	if err := os.RemoveAll(filepath.Join(mustStateRoot(t, target.Name), "runtime")); err != nil {
 		t.Fatal("remove runtime owner for ownerless orphan", err)
 	}
-	_, err = buildTargetDefinitionChangePlan(context.Background(), target.Name, "")
+	_, err = buildTargetDefinitionChangePlan(testOperatorContext(context.Background()), target.Name, "")
 	if err == nil {
 		t.Fatal("refusal did not fire for an attached collectable orphan")
 	}
@@ -537,7 +537,7 @@ func TestTargetDefinitionDetachBlocksOnSharedTargetWideLock(t *testing.T) {
 	// lock while the local app lifecycle is held. It must NOT complete, and the
 	// specific orphan-refusal outcome is explicitly NOT the assertion here — that
 	// would let the test pass at the orphan guard instead of the lock.
-	ctx := withAssumeYes(context.Background(), true)
+	ctx := withAssumeYes(testOperatorContext(context.Background()), true)
 	var out bytes.Buffer
 	err = deleteTarget(ctx, []string{target.Name}, &out, &out)
 	if err == nil {
@@ -600,7 +600,7 @@ func TestTargetDefinitionDetachRefusesOwnerlessRecord(t *testing.T) {
 
 	// The production detach path must refuse the collectable orphan, naming the
 	// attached record, and must NOT complete or mutate config/the orphan record.
-	ctx := withAssumeYes(context.Background(), true)
+	ctx := withAssumeYes(testOperatorContext(context.Background()), true)
 	var out bytes.Buffer
 	err = deleteTarget(ctx, []string{target.Name}, &out, &out)
 	if err == nil {

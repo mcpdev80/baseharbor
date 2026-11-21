@@ -162,6 +162,30 @@ func TestContextShowReportsWinningStage(t *testing.T) {
 	}
 }
 
+// TestContextShowPersistedWinsOverConfiguredDefault is card 0428-178. The
+// configured default (A) and the persisted selection (B) differ; the real
+// `baha context show` command path must report B under the "persisted" origin,
+// never A. It also exercises the command path (not effectiveContextOrigin
+// directly), so the gate and the assertion move together. The mutation proofs
+// below (both directions) prove the persisted-vs-default order is what this
+// test pins: removing the persisted resolution turns it red, and removing the
+// default resolution turns TestContextShowReportsWinningStage red.
+func TestContextShowPersistedWinsOverConfiguredDefault(t *testing.T) {
+	configureTestTarget(t)          // sets DefaultTarget = "docker-dev" (A)
+	configureSecondContextTarget(t) // registers "prod" so the persisted selection exists
+	if err := writePersistedTarget("prod"); err != nil {
+		t.Fatalf("writePersistedTarget(prod): %v", err)
+	}
+	os.Unsetenv(contextShellVar) // no shell-env override
+	got := runContextShowCommand(t)
+	if !strings.Contains(got, "Effective context: prod (persisted)") {
+		t.Fatalf("context show must report persisted 'prod' over configured-default, got:\n%s", got)
+	}
+	if strings.Contains(got, "configured-default") {
+		t.Fatalf("context show must not fall back to configured-default when a selection is persisted, got:\n%s", got)
+	}
+}
+
 // --- clear -------------------------------------------------------------------
 
 func TestContextClearUnsetsInProcess(t *testing.T) {
@@ -321,10 +345,10 @@ func TestInteractiveGuardPresent(t *testing.T) {
 //
 // These drive the actual `baha` binary through a real interactive shell that
 // sources the generated wrapper, proving the parent shell applies
-// 'context use'/'context clear' in its own process (no marker file). Where a
-// shell is installed in CI (bash on ubuntu-latest), the shell is exercised;
-// where it is absent, the test is skipped and the gap is reported to the owner
-// as an owner-scope (workflow) point, not this lane's decision.
+// 'context use'/'context clear' in its own process (no marker file). Both shells
+// are mandatory here: the test fails loud when a shell is missing so the CI
+// shard cannot pass while skipping the zsh or fish path. The owning CI cell
+// installs zsh and fish so both paths actually execute.
 
 // MUTANT PROOFS (blocker 4), one per stage, applied individually and recorded
 // verbatim here. Each proof asserts that removing a single piece of the wrapper
@@ -435,8 +459,12 @@ func TestEndToEndInstalledZshAndFishWrappers(t *testing.T) {
 	for _, shell := range []string{"zsh", "fish"} {
 		shellPath, err := exec.LookPath(shell)
 		if err != nil {
-			t.Logf("%s is not installed; generated wrapper remains covered structurally", shell)
-			continue
+			// Fail loud: the wrapper for this shell must actually execute on the
+			// runner. A silent skip here (the pre-existing behaviour) lets the CI
+			// shard pass while NEITHER the zsh NOR the fish path runs, which is not
+			// durable evidence for the fish recursion guard. The owning CI cell
+			// installs zsh and fish so both paths run.
+			t.Fatalf("%s is required to run this wrapper path; install %s in the owning CI cell: %v", shell, shell, err)
 		}
 		bin, cleanup := buildBahaBin(t)
 		cfg := configureTestTarget(t)

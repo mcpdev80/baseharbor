@@ -63,7 +63,7 @@ func TestSelectiveSecretsPlanHasStableConsentWithoutAuthorityChanges(t *testing.
 		t.Fatal(err)
 	}
 	ctx := machineNoninteractiveContext(context.Background())
-	if err := runWithIO(ctx, []string{"app", "init", "--quick", "--json"}, io.Discard, io.Discard); err != nil {
+	if err := runWithIOAsTestOperator(ctx, []string{"app", "init", "--quick", "--json"}, io.Discard, io.Discard); err != nil {
 		t.Fatal(err)
 	}
 	r, err := resolveApplication(ctx, application.Store{}, nil, "apply")
@@ -193,7 +193,7 @@ func TestRequestPathRejectsOwnerApplicationRegistryChange(t *testing.T) {
 	if err := (capability.RegistryStore{Path: filepath.Join(stateRoot, "provider-registry.json")}).Update(func(reg *capability.Registry) error { *reg = seed; return nil }); err != nil {
 		t.Fatal(err)
 	}
-	if err := runWithIO(ctx, []string{"app", "init", "--quick", "--json"}, io.Discard, io.Discard); err != nil {
+	if err := runWithIOAsTestOperator(ctx, []string{"app", "init", "--quick", "--json"}, io.Discard, io.Discard); err != nil {
 		t.Fatal(err)
 	}
 	r, err := resolveApplication(ctx, application.Store{}, nil, "apply")
@@ -274,7 +274,7 @@ func registryAuthorityChangeRequest(t *testing.T, mutate string, apply func(reg 
 	if err := (capability.RegistryStore{Path: filepath.Join(stateRoot, "provider-registry.json")}).Update(func(reg *capability.Registry) error { *reg = seed; return nil }); err != nil {
 		t.Fatal(err)
 	}
-	if err := runWithIO(ctx, []string{"app", "init", "--quick", "--json"}, io.Discard, io.Discard); err != nil {
+	if err := runWithIOAsTestOperator(ctx, []string{"app", "init", "--quick", "--json"}, io.Discard, io.Discard); err != nil {
 		t.Fatal(err)
 	}
 	r, err := resolveApplication(ctx, application.Store{}, nil, "apply")

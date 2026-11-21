@@ -40,7 +40,10 @@ The MCP server uses stdio and exposes BaseHarbor semantic operations. It does no
 
 ## Standalone serve
 
-The root command tree also contains `baha serve` for the supported local service surface.
+The root command tree also contains `baha serve` for the supported local service
+surface. Starting it as the Core operator API, including the required
+environment variables (`BASEHARBOR_API_*`) and the served routes, is documented
+in the [Core operator API runbook](../how-to/operator-api.md).
 
 See [MCP / agent interface](../reference/mcp.md) and [Machine Interface v1](../spec/machine-interface-v1.md).
 

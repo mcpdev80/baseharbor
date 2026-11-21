@@ -29,7 +29,7 @@ import (
 func runRepositoryFixtureApply(ctx context.Context, args []string, out *bytes.Buffer) error {
 	err := runRepositoryFixtureApplyCall(ctx, args, func(callCtx context.Context) error {
 		out.Reset()
-		return runWithIO(callCtx, args, out, out)
+		return runWithIOAsTestOperator(callCtx, args, out, out)
 	})
 	if err != nil {
 		// The plain fixture apply/app up binds a repository-owned candidate. The
@@ -41,7 +41,7 @@ func runRepositoryFixtureApply(ctx context.Context, args []string, out *bytes.Bu
 		if digest := extractCandidateConfirmDigest(out.String()); digest != "" {
 			return runRepositoryFixtureApplyCall(ctx, args, func(callCtx context.Context) error {
 				out.Reset()
-				return runWithIO(withCandidateConsentDigest(callCtx, digest), args, out, out)
+				return runWithIOAsTestOperator(withCandidateConsentDigest(callCtx, digest), args, out, out)
 			})
 		}
 	}
@@ -71,7 +71,7 @@ func extractCandidateConfirmDigest(out string) string {
 
 func runRepositoryFixtureApplyCall(ctx context.Context, args []string, run func(context.Context) error) error {
 	switch strings.Join(args, " ") {
-	case "app apply", "--verbose app apply", "app up":
+	case "app apply", "--verbose app apply", "app up", "--verbose app up":
 	default:
 		return errors.New("unsupported repository apply fixture operation")
 	}
@@ -261,6 +261,10 @@ func verifyRepositoryFixtureRetirement(t *testing.T, ctx context.Context, resolv
 	if err != nil {
 		t.Fatal(err)
 	}
+	expectedOwner, err := json.Marshal(resolved.Manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
 	files, _, owned, err := nativeBackendInventory(resolved)
 	if err != nil {
 		t.Fatal("native backend owner inventory", err)
@@ -315,9 +319,12 @@ func verifyRepositoryFixtureRetirement(t *testing.T, ctx context.Context, resolv
 	record, err := deployment.LoadDeploymentRecord(resolved.DeploymentIdentity)
 	if err != nil || record.Identity != before.Identity || record.Observed.State != "runtime-retired" ||
 		record.Observed.Ready || record.Observed.VerifiedAt.IsZero() ||
-		record.Applied.GeneratedState["retired_intent"] != string(before.Applied.Intent) ||
+		!applicationIntentsEqual([]byte(record.Applied.GeneratedState["retired_intent"]), expectedOwner) ||
 		record.Applied.GeneratedState["previous_intent"] != "" {
-		t.Fatalf("ordinary destroy lost the verified retained canonical owner: %v", err)
+		t.Fatalf("ordinary destroy lost the verified retained canonical source owner: err=%v identity_match=%t state=%q ready=%t verified=%t retired_intent_matches_source=%t previous_intent_present=%t",
+			err, record.Identity == before.Identity, record.Observed.State, record.Observed.Ready,
+			!record.Observed.VerifiedAt.IsZero(), applicationIntentsEqual([]byte(record.Applied.GeneratedState["retired_intent"]), expectedOwner),
+			record.Applied.GeneratedState["previous_intent"] != "")
 	}
 	result, err := applicationDestroyResult(resolved, false)
 	if err != nil || !result.OwnerPreserved || result.DataDeleted == nil || *result.DataDeleted {
@@ -467,7 +474,7 @@ func TestRepositoryFixtureStateAllowsOnlyIdentityMetadata(t *testing.T) {
 	ctx := t.Context()
 	// Exercise the actual authoring command, including InitializeIdentity and
 	// Store.Sync/ensureStateGitIgnore, instead of a reduced resolver-only setup.
-	if err := runWithIO(ctx, []string{"app", "init", "plain", "--sql", "--cache"}, io.Discard, io.Discard); err != nil {
+	if err := runWithIOAsTestOperator(ctx, []string{"app", "init", "plain", "--sql", "--cache"}, io.Discard, io.Discard); err != nil {
 		t.Fatal(err)
 	}
 	selection, err := application.ResolveRepositoryEnvironment(root, "")
@@ -614,7 +621,7 @@ func TestRepositoryFixtureApplyReResolvesUnallocatedSQLCacheProposal(t *testing.
 		t.Fatal(err)
 	}
 	var identities []string
-	err := runRepositoryFixtureApplyCall(t.Context(), []string{"app", "apply"}, func(ctx context.Context) error {
+	err := runRepositoryFixtureApplyCall(testOperatorContext(t.Context()), []string{"app", "apply"}, func(ctx context.Context) error {
 		resolved, err := resolveApplication(ctx, application.Store{}, nil, "apply")
 		if err != nil {
 			return err

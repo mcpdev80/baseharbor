@@ -11,7 +11,7 @@ import (
 
 func TestInstallationDestructionDelegatesOnlyDisplayedCurrentChildScope(t *testing.T) {
 	r := retainedNativeBackendFixture(t)
-	p, err := buildRuntimeDestroyImpact(t.Context(), []targetDestroyInventory{{Target: r.Target}}, nil, true)
+	p, err := buildRuntimeDestroyImpact(testOperatorContext(t.Context()), []targetDestroyInventory{{Target: r.Target}}, nil, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -20,11 +20,11 @@ func TestInstallationDestructionDelegatesOnlyDisplayedCurrentChildScope(t *testi
 	}
 	ack := &application.ProviderChangeConsent{PlanID: p.Scope.PlanID, First: true, Second: true, DeleteData: true}
 	for _, invalid := range []*application.ProviderChangeConsent{nil, {PlanID: p.Scope.PlanID, First: true, Second: true}, {PlanID: "stale", First: true, Second: true, DeleteData: true}} {
-		if _, err := withInstallationApplicationScopes(withProviderChangeConsent(t.Context(), invalid), p); err == nil {
+		if _, err := withInstallationApplicationScopes(withProviderChangeConsent(testOperatorContext(t.Context()), invalid), p); err == nil {
 			t.Fatal("missing/stale/data consent delegated destructive authority")
 		}
 	}
-	ctx, err := withInstallationApplicationScopes(withProviderChangeConsent(t.Context(), ack), p)
+	ctx, err := withInstallationApplicationScopes(withProviderChangeConsent(testOperatorContext(t.Context()), ack), p)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,12 +45,12 @@ func TestInstallationDestructionDelegatesOnlyDisplayedCurrentChildScope(t *testi
 
 func TestInteractiveInstallationAcknowledgementsRemainBoundForDelegation(t *testing.T) {
 	r := retainedNativeBackendFixture(t)
-	p, err := buildRuntimeDestroyImpact(t.Context(), []targetDestroyInventory{{Target: r.Target}}, nil, true)
+	p, err := buildRuntimeDestroyImpact(testOperatorContext(t.Context()), []targetDestroyInventory{{Target: r.Target}}, nil, true)
 	if err != nil {
 		t.Fatal(err)
 	}
 	recorded := &application.ProviderChangeConsent{}
-	ctx := context.WithValue(t.Context(), runtimeDestroyAcknowledgementKey{}, recorded)
+	ctx := context.WithValue(testOperatorContext(t.Context()), runtimeDestroyAcknowledgementKey{}, recorded)
 	ack := &application.ProviderChangeConsent{PlanID: p.Scope.PlanID, First: true, Second: true, DeleteData: true}
 	if _, err := authorizeRuntimeDestroyImpact(withProviderChangeConsent(ctx, ack), p, true, io.Discard); err != nil {
 		t.Fatal(err)

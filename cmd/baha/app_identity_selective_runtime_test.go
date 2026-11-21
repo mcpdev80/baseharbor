@@ -69,7 +69,7 @@ func TestSelectiveIdentityRuntimeAddRemoveReAdd(t *testing.T) {
 	}
 	writeIntent(true)
 	var out bytes.Buffer
-	if err := runWithIO(ctx, []string{"app", "init", "--input", "tls_mode=local", "--yes", "--json"}, &out, &out); err != nil {
+	if err := runWithIOAsTestOperator(ctx, []string{"app", "init", "--input", "tls_mode=local", "--yes", "--json"}, &out, &out); err != nil {
 		t.Fatalf("initialize authored ID-free workload: %v\n%s", err, out.String())
 	}
 	initialized, err := resolveApplication(ctx, application.Store{}, nil, "plan")
@@ -124,7 +124,7 @@ func TestSelectiveIdentityRuntimeAddRemoveReAdd(t *testing.T) {
 			applyCtx = withProviderChangeConsent(applyCtx, &application.ProviderChangeConsent{PlanID: impact.PlanID, First: true, Second: true})
 		}
 		out.Reset()
-		if err := runWithIO(applyCtx, []string{"app", "apply", "--skip-memory-preflight"}, &out, &out); err != nil {
+		if err := runWithIOAsTestOperator(applyCtx, []string{"app", "apply", "--skip-memory-preflight"}, &out, &out); err != nil {
 			// Keep the exact failing readiness checks in the bounded receipt.
 			if current, statusErr := resolveApplication(ctx, application.Store{}, nil, "status"); statusErr == nil {
 				status, _, inspectErr := collectResolvedApplicationStatus(ctx, current)
