@@ -31,7 +31,7 @@ func TestRemoteTargetPolicyEditRefusesLocalSubstitution(t *testing.T) {
 	var out bytes.Buffer
 	// Editing a remote-access Target's policy from a workstation must be refused
 	// with no local policy substitution, per the core operator mutation rule.
-	err := setTargetDeploymentPolicy(context.Background(), []string{
+	err := setTargetDeploymentPolicy(testOperatorContext(context.Background()), []string{
 		"remote-prod", "--deployment-preset", "test",
 	}, &out, &out)
 	if err == nil || !strings.Contains(err.Error(), "owning Core operator") {
@@ -67,7 +67,7 @@ func TestLocalTargetPolicyEditPreservesCoreBinding(t *testing.T) {
 	}
 	original := cfg.Targets["docker-dev"]
 	var out bytes.Buffer
-	if err := setTargetDeploymentPolicy(context.Background(), []string{
+	if err := setTargetDeploymentPolicy(testOperatorContext(context.Background()), []string{
 		"docker-dev", "--deployment-preset", "production",
 	}, &out, &out); err != nil {
 		t.Fatalf("set production policy: %v", err)
