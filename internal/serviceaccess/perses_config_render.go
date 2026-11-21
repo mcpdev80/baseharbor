@@ -39,6 +39,11 @@ const (
 	// container; the rendered service definition places it on a tmpfs, so a
 	// restarted surface re-provisions from BaseHarbor-owned state.
 	PersesDatabaseContainerPath = "/etc/perses/database"
+	// PersesPluginsContainerPath is where the pinned Perses release extracts
+	// the shipped plugin archives at startup; the rendered service
+	// definition places it on a deployment-scoped named volume so the
+	// extraction target is writable on the read-only, distroless rootfs.
+	PersesPluginsContainerPath = "/etc/perses/plugins"
 )
 
 // RenderPersesConfig renders the Perses configuration file for one validated
@@ -78,11 +83,14 @@ func RenderPersesConfig(policy capability.PersesSecurityPolicy, serviceAddress s
 	fmt.Fprintf(&b, "  readonly: %t\n", policy.ReadOnlyMode)
 	b.WriteString("  encryption_key_file: " + strconv.Quote(PersesEncryptionKeyContainerPath) + "\n")
 	if service != "" {
-		// How this surface is reached, stated for the server's own view: the
-		// gateway routes to the backend-network alias. The effective bind
-		// stays the command-line loopback pin, so the process can never
-		// answer on another interface; this key never carries a bind address.
-		b.WriteString("  advertised_address: " + strconv.Quote(service) + "\n")
+		// Intentionally omitted: the pinned Perses release (v0.55.1, pinned in
+		// internal/capability/perses.go:148 and accepted in
+		// internal/capability/perses_selection.go:189) does not accept a
+		// security.advertised_address key — a direct render of this release
+		// fails with "field advertised_address not found in type
+		// config.Security". The gateway topology already pins the effective
+		// bind to loopback on the command line, so no advertised address is
+		// needed and none may be stated without breaking the pinned release.
 	}
 	// fix-7 B2: enable_auth without any provider is refused by server
 	// verification (no login path exists). The native provider is stated

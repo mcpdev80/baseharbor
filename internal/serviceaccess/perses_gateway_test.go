@@ -65,8 +65,11 @@ func TestBuildPersesGatewayDeniesDatasourceProxy(t *testing.T) {
 	if !plan.RequireClientIdentity || !plan.Spec.RequireClient {
 		t.Fatal("an mTLS Perses gateway must require a client certificate")
 	}
-	if plan.Spec.Upstream != "http://perses:8080" {
-		t.Fatalf("the validated upstream must survive into the spec, got %q", plan.Spec.Upstream)
+	if plan.Spec.Upstream != "http://127.0.0.1:8080" {
+		t.Fatalf("the shared-namespace gateway must dial the namespace loopback (Perses binds loopback inside the joined namespace; the service alias resolves to the gateway itself), got %q", plan.Spec.Upstream)
+	}
+	if plan.ServiceAddress != "perses" {
+		t.Fatalf("the advertised ServiceAddress must still name the deployment alias, got %q", plan.ServiceAddress)
 	}
 	if plan.UpstreamBindAddress != "127.0.0.1" {
 		t.Fatalf("Perses must be bound to loopback so only the gateway reaches it, got %q", plan.UpstreamBindAddress)
