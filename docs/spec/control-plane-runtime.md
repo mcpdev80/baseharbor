@@ -113,6 +113,8 @@ not automatically publish `baha serve` or authorize tenant/connector access.
 This runtime consumes an already prepared certificate/key pair. Certificate issuance, ACME, internal PKI, BYOC discovery, chain construction and renewal belong to the dedicated certificate-management milestone and are intentionally not implemented here.
 
 The server requires TLS and uses TLS 1.2 or newer. A missing or invalid certificate/key pair prevents startup.
+The machine API additionally refuses startup when the execution journal has no durable operations directory.
+See the [operator API runbook](../how-to/operator-api.md) for the exact messages and the verified startup behavior.
 
 ## Shutdown
 

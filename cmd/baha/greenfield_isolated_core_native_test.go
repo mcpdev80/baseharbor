@@ -60,11 +60,11 @@ func TestGreenfieldIsolatedCoreNativeInCI(t *testing.T) {
 
 	t.Setenv("BASEHARBOR_TARGET", "")
 	var output bytes.Buffer
-	if err := runWithIO(ctx, []string{"use", name}, &output, &output); err != nil {
+	if err := runWithIOAsTestOperator(ctx, []string{"use", name}, &output, &output); err != nil {
 		t.Fatalf("use verified fresh Core %q: %v output=%s", name, err, output.String())
 	}
 	output.Reset()
-	if err := runWithIO(ctx, []string{"target", "activate", name}, &output, &output); err != nil {
+	if err := runWithIOAsTestOperator(ctx, []string{"target", "activate", name}, &output, &output); err != nil {
 		t.Fatalf("activate verified Core %q: %v output=%s", name, err, output.String())
 	}
 	selected, err := effectiveTarget(ctx)
@@ -75,7 +75,7 @@ func TestGreenfieldIsolatedCoreNativeInCI(t *testing.T) {
 	// environment path before the read-only live status verification.
 	t.Setenv("BASEHARBOR_TARGET", name)
 	output.Reset()
-	if err := runWithIO(ctx, []string{"status"}, &output, &output); err != nil {
+	if err := runWithIOAsTestOperator(ctx, []string{"status"}, &output, &output); err != nil {
 		t.Fatalf("fresh Core status failed on %s: %v output=%s", kind, err, output.String())
 	}
 	if strings.TrimSpace(output.String()) == "" {

@@ -117,7 +117,7 @@ func TestRepositoryAdoptionReusesRetainedCanonicalIdentity(t *testing.T) {
 	}
 	intent := prior
 	intent.ApplicationID = ""
-	result, err := persistRepositoryApplication(context.Background(), root, intent, nil)
+	result, err := persistRepositoryApplication(testOperatorContext(context.Background()), root, intent, nil)
 	if err != nil || result.ApplicationID != prior.ApplicationID {
 		t.Fatalf("retained retry owner changed: %+v %v", result, err)
 	}
@@ -154,7 +154,7 @@ func TestMCPAuthoringAuthorizationDenialPrecedesIdentityPersistence(t *testing.T
 	target := configureTestTarget(t)
 	t.Setenv(operatorauth.EnvIssuer, "")
 	t.Setenv(operatorauth.EnvClientID, "")
-	session := workspaceMutationClient(t)
+	session := workspaceMutationClientUnauthenticated(t)
 	for _, operation := range []string{"create", "adopt"} {
 		root := t.TempDir()
 		args := map[string]any{"intent": map[string]any{"Version": 1, "Name": "denied-authoring", "Environment": "prod", "Workload": map[string]any{"Components": []string{"api"}}}}

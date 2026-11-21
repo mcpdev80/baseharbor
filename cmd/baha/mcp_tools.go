@@ -489,7 +489,7 @@ func registerMCPApplicationMutationTools(server *mcp.Server, store application.S
 		if err != nil {
 			return machineMCPFailure(err)
 		}
-		if err := authorizeMCPOperation(ctx, "apply", resolved.Target.Name, resolved.Manifest.Environment, resolved.Manifest.Name, ""); err != nil {
+		if err := authorizeMCPOperation(ctx, "apply", resolved.Target.Name, resolved.Manifest.Environment, resolved.Manifest.ApplicationID, ""); err != nil {
 			return machineMCPFailure(err)
 		}
 		ctx, cancelLifecycle := machineLifecycleContext(ctx)
@@ -525,7 +525,7 @@ func registerMCPApplicationMutationTools(server *mcp.Server, store application.S
 		if err != nil {
 			return machineMCPFailure(err)
 		}
-		if err := authorizeMCPOperation(ctx, "update", resolved.Target.Name, resolved.Manifest.Environment, resolved.Manifest.Name, ""); err != nil {
+		if err := authorizeMCPOperation(ctx, "update", resolved.Target.Name, resolved.Manifest.Environment, resolved.Manifest.ApplicationID, ""); err != nil {
 			return machineMCPFailure(err)
 		}
 		ctx, cancelLifecycle := machineLifecycleContext(ctx)
@@ -571,7 +571,7 @@ func registerMCPApplicationMutationTools(server *mcp.Server, store application.S
 		if err != nil {
 			return machineMCPFailure(err)
 		}
-		if err := authorizeMCPOperation(ctx, "repair", resolved.Target.Name, resolved.Manifest.Environment, resolved.Manifest.Name, ""); err != nil {
+		if err := authorizeMCPOperation(ctx, "repair", resolved.Target.Name, resolved.Manifest.Environment, resolved.Manifest.ApplicationID, ""); err != nil {
 			return machineMCPFailure(err)
 		}
 		ctx, cancelLifecycle := machineLifecycleContext(ctx)
@@ -607,7 +607,7 @@ func registerMCPRecoveryTools(server *mcp.Server, store application.Store) {
 		if err != nil {
 			return machineMCPFailure(err)
 		}
-		if err := authorizeMCPOperation(ctx, "backup", resolved.Target.Name, resolved.Manifest.Environment, resolved.Manifest.Name, ""); err != nil {
+		if err := authorizeMCPOperation(ctx, "backup", resolved.Target.Name, resolved.Manifest.Environment, resolved.Manifest.ApplicationID, ""); err != nil {
 			return machineMCPFailure(err)
 		}
 		ctx, cancelLifecycle := machineLifecycleContext(ctx)
@@ -686,7 +686,7 @@ func registerMCPRecoveryTools(server *mcp.Server, store application.Store) {
 		if err != nil {
 			return machineMCPFailure(err)
 		}
-		if err := authorizeMCPOperation(ctx, "destroy", resolved.Target.Name, resolved.Manifest.Environment, resolved.Manifest.Name, ""); err != nil {
+		if err := authorizeMCPOperation(ctx, "destroy", resolved.Target.Name, resolved.Manifest.Environment, resolved.Manifest.ApplicationID, ""); err != nil {
 			return machineMCPFailure(err)
 		}
 		ctx, cancelLifecycle := machineLifecycleContext(ctx)

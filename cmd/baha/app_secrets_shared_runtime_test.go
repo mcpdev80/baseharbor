@@ -40,7 +40,7 @@ func TestSharedSecretsRuntimeFixtureUsesActualSourceOnlyInitialization(t *testin
 			t.Fatalf("invalid shared Secrets fixture: enabled=%t error=%v", enabled, err)
 		}
 		var output bytes.Buffer
-		if err := runWithIO(machineNoninteractiveContext(t.Context()), []string{"app", "init", "--quick", "--json"}, &output, &output); err != nil {
+		if err := runWithIOAsTestOperator(machineNoninteractiveContext(t.Context()), []string{"app", "init", "--quick", "--json"}, &output, &output); err != nil {
 			t.Fatalf("actual source-only shared Secrets initialization: %v", err)
 		}
 		resolved, err := resolveApplication(t.Context(), application.Store{}, nil, "plan")
@@ -74,7 +74,7 @@ func createSharedSecretsRuntimeApplication(t *testing.T, ctx context.Context, pr
 	writeSharedSecretsRuntimeIntent(t, sibling.root, true)
 	inSelectiveIdentityRepository(t, sibling.root, func() {
 		var output bytes.Buffer
-		if err := runWithIO(ctx, []string{"app", "init", "--quick", "--json"}, &output, &output); err != nil {
+		if err := runWithIOAsTestOperator(ctx, []string{"app", "init", "--quick", "--json"}, &output, &output); err != nil {
 			t.Fatalf("initialize shared Secrets sibling: %v", err)
 		}
 		applySelectiveIdentityIntent(t, ctx)

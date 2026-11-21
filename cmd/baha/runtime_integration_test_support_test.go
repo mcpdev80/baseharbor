@@ -818,6 +818,34 @@ func ensureRuntimeIntegrationTrustPlane(t *testing.T, ctx context.Context) {
 			runtimeIntegrationTrustPlaneErr = err
 			return
 		}
+		// The shared rootless daemon is the integration endpoint. An active
+		// CLI context (the prepare step's setuptool registers "rootless")
+		// takes precedence over DOCKER_HOST inside the engine resolver, so
+		// make the endpoint authoritative and neutralize the context.
+		_ = os.Unsetenv("DOCKER_CONTEXT")
+
+		var out bytes.Buffer
+		if os.Getenv("BASEHARBOR_TEST_RUNTIME") == "podman" {
+			if err := runWithIOAsTestOperator(ctx, []string{"target", "create", bootstrapTarget, "--runtime-provider", "podman", "--access", "local", "--access-provider", "local", "--reference", "local", "--default"}, &out, &out); err != nil {
+				runtimeIntegrationTrustPlaneErr = err
+				return
+			}
+			out.Reset()
+		} else {
+			// Docker (the default test runtime) needs its own bootstrap target
+			// configured before the single shared `up` below; this target has
+			// its own `<name>-default` native network and management Core, so
+			// the gate never sees the ambient `local` Core.
+			if err := runWithIOAsTestOperator(ctx, []string{"target", "create", bootstrapTarget, "--runtime-provider", "docker", "--access", "local", "--access-provider", "local", "--reference", "local", "--default"}, &out, &out); err != nil {
+				runtimeIntegrationTrustPlaneErr = err
+				return
+			}
+			out.Reset()
+		}
+		// Select the target only after creating it. Selecting the fresh name
+		// first makes target.create resolve an unconfigured target during its
+		// own authorization preflight, preventing the bootstrap config from
+		// being written and leaving teardown with an unconfigured name.
 		if err := os.Setenv("BASEHARBOR_TARGET", bootstrapTarget); err != nil {
 			runtimeIntegrationTrustPlaneErr = err
 			return
@@ -833,31 +861,7 @@ func ensureRuntimeIntegrationTrustPlane(t *testing.T, ctx context.Context) {
 				runtimeIntegrationTrustPlaneErr = mutatePersistedTarget("", true)
 			}
 		}()
-		// The shared rootless daemon is the integration endpoint. An active
-		// CLI context (the prepare step's setuptool registers "rootless")
-		// takes precedence over DOCKER_HOST inside the engine resolver, so
-		// make the endpoint authoritative and neutralize the context.
-		_ = os.Unsetenv("DOCKER_CONTEXT")
-
-		var out bytes.Buffer
-		if os.Getenv("BASEHARBOR_TEST_RUNTIME") == "podman" {
-			if err := runWithIO(ctx, []string{"target", "create", bootstrapTarget, "--runtime-provider", "podman", "--access", "local", "--access-provider", "local", "--reference", "local", "--default"}, &out, &out); err != nil {
-				runtimeIntegrationTrustPlaneErr = err
-				return
-			}
-			out.Reset()
-		} else {
-			// Docker (the default test runtime) needs its own bootstrap target
-			// configured before the single shared `up` below; this target has
-			// its own `<name>-default` native network and management Core, so
-			// the gate never sees the ambient `local` Core.
-			if err := runWithIO(ctx, []string{"target", "create", bootstrapTarget, "--runtime-provider", "docker", "--access", "local", "--access-provider", "local", "--reference", "local", "--default"}, &out, &out); err != nil {
-				runtimeIntegrationTrustPlaneErr = err
-				return
-			}
-			out.Reset()
-		}
-		if err := runWithIO(ctx, []string{"up", "--control-plane-only", "--yes"}, &out, &out); err != nil {
+		if err := runWithIOAsTestOperator(ctx, []string{"up", "--control-plane-only", "--yes"}, &out, &out); err != nil {
 			runtimeIntegrationTrustPlaneErr = err
 			return
 		}
@@ -908,7 +912,7 @@ func ensureRuntimeIntegrationTrustPlane(t *testing.T, ctx context.Context) {
 		}
 		recoveryPath := filepath.Join(dir, "recovery.json")
 		out.Reset()
-		runtimeIntegrationTrustPlaneErr = runWithIO(ctx, []string{"openbao", "bootstrap", "--recovery-file", recoveryPath}, &out, &out)
+		runtimeIntegrationTrustPlaneErr = runWithIOAsTestOperator(ctx, []string{"openbao", "bootstrap", "--recovery-file", recoveryPath}, &out, &out)
 	})
 	if runtimeIntegrationTrustPlaneErr != nil {
 		t.Fatalf("prepare BaseHarbor integration trust plane: %v", runtimeIntegrationTrustPlaneErr)
