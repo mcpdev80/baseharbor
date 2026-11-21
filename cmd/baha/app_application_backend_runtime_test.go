@@ -249,6 +249,7 @@ func applySelectiveBackendIntentWithLocalGrant(t *testing.T, ctx context.Context
 func waitForCompleteApplicationBackendPlan(t *testing.T, ctx context.Context) (resolvedApplication, applicationLifecyclePlan) {
 	t.Helper()
 	deadline := time.Now().Add(45 * time.Second)
+	previousPlanID, previousComplete := "", false
 	for {
 		resolved, err := resolveApplication(ctx, application.Store{}, nil, "apply")
 		if err != nil {
@@ -259,7 +260,16 @@ func waitForCompleteApplicationBackendPlan(t *testing.T, ctx context.Context) (r
 			t.Fatal(err)
 		}
 		if plan.ProviderPlan.Complete {
-			return resolved, plan
+			planID := ""
+			if plan.ProviderPlan.Impact != nil {
+				planID = plan.ProviderPlan.Impact.PlanID
+			}
+			if previousComplete && previousPlanID == planID {
+				return resolved, plan
+			}
+			previousPlanID, previousComplete = planID, true
+		} else {
+			previousPlanID, previousComplete = "", false
 		}
 		if !time.Now().Before(deadline) {
 			t.Fatalf("application backend provider plan did not reach a complete owner observation within 45s: changes=%+v", plan.ProviderPlan.Changes)
