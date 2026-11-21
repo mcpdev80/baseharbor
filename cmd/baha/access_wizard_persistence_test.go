@@ -17,6 +17,9 @@ import (
 func writeTestActiveConfig(t *testing.T, targets []string, operation string, profiles []orgconfig.Profile) {
 	t.Helper()
 	root := t.TempDir()
+	if err := os.Chmod(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
 	t.Setenv("BASEHARBOR_STATE_DIR", root)
 	t.Chdir(root)
 
@@ -74,7 +77,7 @@ func runWizardWithInput(t *testing.T, args []string, input string) (string, erro
 	t.Cleanup(func() { os.Stdin = old; appNewInput = oldApp })
 
 	var stdout, stderr bytes.Buffer
-	outErr := runWithIO(machineNoninteractiveContext(context.Background()), args, &stdout, &stderr)
+	outErr := runWithIOAsTestOperator(machineNoninteractiveContext(context.Background()), args, &stdout, &stderr)
 	return stdout.String() + stderr.String(), outErr
 }
 

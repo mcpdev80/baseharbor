@@ -125,7 +125,7 @@ func TestRegistryConflictRepairViaRealCLIEntryDeletesSelectedTwinOnlyAndKeepsSib
 	if err := os.WriteFile("baseharbor.yaml", []byte("version: 1\napp:\n  name: repair\n  environment: dev\nservices:\n  sql: true\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := runWithIO(ctx, []string{"app", "init", "--quick", "--json"}, io.Discard, io.Discard); err != nil {
+	if err := runWithIOAsTestOperator(ctx, []string{"app", "init", "--quick", "--json"}, io.Discard, io.Discard); err != nil {
 		t.Fatalf("app init: %v", err)
 	}
 	applySelectiveIdentityIntent(t, ctx)
@@ -244,7 +244,7 @@ func TestRegistryConflictCLIEntryDriftRefusedBeforeAnyMutation(t *testing.T) {
 	if err := os.WriteFile("baseharbor.yaml", []byte("version: 1\napp:\n  name: drift\n  environment: dev\nservices:\n  sql: true\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := runWithIO(ctx, []string{"app", "init", "--quick", "--json"}, io.Discard, io.Discard); err != nil {
+	if err := runWithIOAsTestOperator(ctx, []string{"app", "init", "--quick", "--json"}, io.Discard, io.Discard); err != nil {
 		t.Fatalf("app init: %v", err)
 	}
 	applySelectiveIdentityIntent(t, ctx)

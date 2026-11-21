@@ -41,7 +41,7 @@ func TestCLIProductionPathAssignsServerIdentityProves(t *testing.T) {
 	}
 
 	var out, errOut bytes.Buffer
-	if err := runWithIO(context.Background(), []string{"app", "init", "--quick", "--no-input", "--json"}, &out, &errOut); err != nil {
+	if err := runWithIOAsTestOperator(context.Background(), []string{"app", "init", "--quick", "--no-input", "--json"}, &out, &errOut); err != nil {
 		t.Fatalf("app init: %v\n%s", err, errOut.String())
 	}
 	var result struct {
@@ -107,7 +107,7 @@ func TestCLITwoFreshHomesConcurrentRegistrationProves(t *testing.T) {
 			t.Fatal(err)
 		}
 		var out, errOut bytes.Buffer
-		if err := runWithIO(context.Background(), []string{"app", "init", "--quick", "--no-input"}, &out, &errOut); err != nil {
+		if err := runWithIOAsTestOperator(context.Background(), []string{"app", "init", "--quick", "--no-input"}, &out, &errOut); err != nil {
 			t.Fatalf("home init: %v\n%s", err, errOut.String())
 		}
 		owner := application.Store{Root: filepath.Join(home, ".baseharbor", "apps")}
