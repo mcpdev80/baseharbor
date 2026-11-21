@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
@@ -106,6 +107,32 @@ func TestCLIEnvDestroyPreviewWithoutYesStopsWithoutMutation(t *testing.T) {
 	// The identity still exists.
 	if _, afterErr := deployment.GetEnvironment(target.Name, "prod"); afterErr != nil {
 		t.Fatalf("environment identity should still exist after a preview-only run: %v", afterErr)
+	}
+}
+
+func TestCLIEnvDestroyConfirmedJSONEmitsOneResult(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	target := configureTestTarget(t)
+	t.Setenv("BASEHARBOR_TARGET", target.Name)
+	t.Setenv("BASEHARBOR_ENVIRONMENT", "prod")
+	if _, err := deployment.GetEnvironment(target.Name, "prod"); err != nil {
+		t.Fatalf("seed environment: %v", err)
+	}
+
+	var out, errOut bytes.Buffer
+	if err := envDestroyCommandRun(context.Background(), []string{"prod", "--yes", "--json"}, &out, &errOut); err != nil {
+		t.Fatalf("confirmed env destroy: %v; stderr: %s", err, errOut.String())
+	}
+	var result envDestroyResult
+	if err := json.Unmarshal(out.Bytes(), &result); err != nil {
+		t.Fatalf("confirmed JSON output must be exactly one result object, got %q: %v", out.String(), err)
+	}
+	if !result.Success || result.Target != target.Name || result.Environment != "prod" {
+		t.Fatalf("unexpected destroy result: %+v", result)
+	}
+	if exists, err := deployment.EnvironmentStateExists(target.Name, "prod"); err != nil || exists {
+		t.Fatalf("confirmed empty-scope destroy should remove the identity: exists=%v err=%v", exists, err)
 	}
 }
 

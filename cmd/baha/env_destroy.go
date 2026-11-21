@@ -68,7 +68,7 @@ func envDestroyShow(ctx context.Context, args []string, out, errOut io.Writer) e
 	if len(filtered) != 0 {
 		return usageError("baha env show does not accept positional arguments", "Run 'baha env show'.")
 	}
-	target, envName, _ := resolveEnvSelection()
+	target, envName, err := resolveEnvSelection()
 	if err != nil {
 		return err
 	}
@@ -115,8 +115,10 @@ func envDestroyCommandRun(ctx context.Context, args []string, out, errOut io.Wri
 		return failErr
 	}
 
-	// Render the impact plan.
-	if format == outputJSON {
+	// A confirmed JSON invocation emits one result object. The plan is returned
+	// on its own only for a preview, so machine consumers never receive two
+	// concatenated JSON documents for one command.
+	if format == outputJSON && !confirmed {
 		if wErr := writeJSON(out, envDestroyPlanResult{
 			ContractVersion: machine.ContractVersion,
 			Target:          target.Name,
@@ -129,7 +131,9 @@ func envDestroyCommandRun(ctx context.Context, args []string, out, errOut io.Wri
 		}); wErr != nil {
 			return wErr
 		}
-	} else {
+		return nil
+	}
+	if format != outputJSON {
 		renderEnvDestroyPlan(out, scope)
 	}
 
@@ -141,7 +145,17 @@ func envDestroyCommandRun(ctx context.Context, args []string, out, errOut io.Wri
 
 	// Explicit separate consent for destructive data deletion.
 	if dataChoice == deployment.EnvironmentDestroyDeleteData {
-		if !confirmedDataDeletion(ctx, out, deleteDataConfirmed) {
+		consentOutput := out
+		if format == outputJSON {
+			consentOutput = errOut
+		}
+		if !confirmedDataDeletion(ctx, consentOutput, deleteDataConfirmed) {
+			if format == outputJSON {
+				return writeJSON(out, envDestroyResult{
+					ContractVersion: machine.ContractVersion, Target: target.Name, Environment: envName,
+					DataChoice: string(dataChoice), Detail: "data deletion consent not given",
+				})
+			}
 			fmt.Fprintln(errOut, "Data deletion consent not given; no changes were made.")
 			return nil
 		}
@@ -173,6 +187,7 @@ func envDestroyCommandRun(ctx context.Context, args []string, out, errOut io.Wri
 		return writeJSON(out, envDestroyResult{
 			ContractVersion: machine.ContractVersion, Target: target.Name, Environment: envName,
 			DataChoice: string(dataChoice), Success: true, Detail: detail,
+			Scoped: scope.Scoped, Preserved: scope.Preserved, Members: scope.Members,
 		})
 	}
 	fmt.Fprintf(out, "Environment %q destroyed on target %q (data choice: %s).\n", envName, target.Name, dataChoice)
@@ -414,11 +429,14 @@ type envDestroyPlanResult struct {
 
 // envDestroyResult is the JSON result of a confirming `baha env destroy`.
 type envDestroyResult struct {
-	ContractVersion string   `json:"contract_version"`
-	Target          string   `json:"target"`
-	Environment     string   `json:"environment"`
-	DataChoice      string   `json:"data_choice"`
-	Success         bool     `json:"success"`
-	Detail          string   `json:"detail,omitempty"`
-	FailClosed      []string `json:"fail_closed,omitempty"`
+	ContractVersion string                                    `json:"contract_version"`
+	Target          string                                    `json:"target"`
+	Environment     string                                    `json:"environment"`
+	DataChoice      string                                    `json:"data_choice"`
+	Success         bool                                      `json:"success"`
+	Detail          string                                    `json:"detail,omitempty"`
+	FailClosed      []string                                  `json:"fail_closed,omitempty"`
+	Scoped          []deployment.EnvironmentDestroyDeployment `json:"scoped,omitempty"`
+	Preserved       []deployment.EnvironmentDestroyDeployment `json:"preserved,omitempty"`
+	Members         []deployment.EnvironmentDestroyMember     `json:"members,omitempty"`
 }
