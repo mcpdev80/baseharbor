@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/identity"
 	"github.com/mcpdev80/baseharbor/internal/operatorauth"
@@ -69,4 +70,15 @@ func operatorAuthFixtureContext(ctx context.Context) context.Context {
 		memberships: []tenancy.Membership{{TenantID: "tenant-a", Role: "editor"}},
 	})
 	return ctx
+}
+
+// operatorAuthTestContext supplies the fixture's public OIDC configuration as
+// test-local environment and binds its verified principal to the operation
+// context. Tests that intentionally exercise unauthenticated denial keep using
+// the unstamped context.
+func operatorAuthTestContext(t *testing.T, ctx context.Context) context.Context {
+	t.Helper()
+	t.Setenv(operatorauth.EnvIssuer, "https://issuer.example")
+	t.Setenv(operatorauth.EnvClientID, "baseharbor-test")
+	return operatorAuthFixtureContext(ctx)
 }

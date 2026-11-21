@@ -80,7 +80,8 @@ func (p *selectedCoreDestroyFake) remove(selected []bhruntime.ProjectResource) {
 func coreDestroyFakeFixture(t *testing.T, deleteData bool) (selectedCoreDestroyPlan, *selectedCoreDestroyFake) {
 	t.Helper()
 	coreStopFixture(t)
-	p, err := buildSelectedCoreDestroyPlan(withSelectedCoreDataDeletion(t.Context(), deleteData))
+	ctx := operatorAuthTestContext(t, t.Context())
+	p, err := buildSelectedCoreDestroyPlan(withSelectedCoreDataDeletion(ctx, deleteData))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -93,12 +94,13 @@ func coreDestroyFakeFixture(t *testing.T, deleteData bool) (selectedCoreDestroyP
 }
 
 func TestSelectedCoreDestroyPreservesDataSiblingAndOwnersAndAllowsRetry(t *testing.T) {
+	ctx := operatorAuthTestContext(t, t.Context())
 	p, fake := coreDestroyFakeFixture(t, false)
 	if p.Impact.Scope.Destructive || p.Impact.Scope.ConfirmationsRequired != 2 {
 		t.Fatal("runtime and data destruction are conflated")
 	}
 	for attempt := 0; attempt < 2; attempt++ {
-		if _, err := executeSelectedCoreDestroy(t.Context(), p, fake); err != nil {
+		if _, err := executeSelectedCoreDestroy(ctx, p, fake); err != nil {
 			t.Fatal(err)
 		}
 		if fake.deleteCalls != 0 || len(fake.containers) != 1 || fake.containers[0].ID != "sibling-id" || !fake.containers[0].Running {
@@ -117,28 +119,30 @@ func TestSelectedCoreDestroyPreservesDataSiblingAndOwnersAndAllowsRetry(t *testi
 }
 
 func TestSelectedCoreDeleteDataRequiresFreshIndependentConsent(t *testing.T) {
+	ctx := operatorAuthTestContext(t, t.Context())
 	p, _ := coreDestroyFakeFixture(t, false)
-	deleted, err := buildSelectedCoreDestroyPlan(withSelectedCoreDataDeletion(t.Context(), true))
+	deleted, err := buildSelectedCoreDestroyPlan(withSelectedCoreDataDeletion(ctx, true))
 	if err != nil || p.Impact.Scope.PlanID == deleted.Impact.Scope.PlanID || !deleted.Impact.Scope.Destructive {
 		t.Fatal("data selection does not invalidate consent", err)
 	}
 	ack := &application.ProviderChangeConsent{PlanID: deleted.Impact.Scope.PlanID, First: true, Second: true}
-	if _, err := authorizeRuntimeDestroyImpact(withProviderChangeConsent(t.Context(), ack), deleted.Impact, true, io.Discard); err == nil {
+	if _, err := authorizeRuntimeDestroyImpact(withProviderChangeConsent(ctx, ack), deleted.Impact, true, io.Discard); err == nil {
 		t.Fatal("missing data consent accepted")
 	}
 }
 
 func TestSelectedCoreDeleteFailureRetainsOwnersAndRetriesOnlyRemainingResources(t *testing.T) {
+	ctx := operatorAuthTestContext(t, t.Context())
 	p, fake := coreDestroyFakeFixture(t, true)
 	fake.deleteErr = errors.New("volume is in use")
-	if _, err := executeSelectedCoreDestroy(t.Context(), p, fake); err == nil || fake.deleteCalls != 1 {
+	if _, err := executeSelectedCoreDestroy(ctx, p, fake); err == nil || fake.deleteCalls != 1 {
 		t.Fatal("volume failure reported success", err)
 	}
 	if _, err := os.Stat(p.Owner.inventory.Files.Compose); err != nil {
 		t.Fatal("lost retry owner", err)
 	}
 	fake.deleteErr = nil
-	if _, err := executeSelectedCoreDestroy(t.Context(), p, fake); err != nil {
+	if _, err := executeSelectedCoreDestroy(ctx, p, fake); err != nil {
 		t.Fatal("retry failed", err)
 	}
 	for _, actual := range fake.resources {
@@ -152,16 +156,18 @@ func TestSelectedCoreDeleteFailureRetainsOwnersAndRetriesOnlyRemainingResources(
 }
 
 func TestSelectedCoreStopFailureNeverAttemptsVolumeDeletion(t *testing.T) {
+	ctx := operatorAuthTestContext(t, t.Context())
 	p, fake := coreDestroyFakeFixture(t, true)
 	fake.stopErr = errors.New("stop interrupted")
-	if _, err := executeSelectedCoreDestroy(t.Context(), p, fake); err == nil || fake.deleteCalls != 0 {
+	if _, err := executeSelectedCoreDestroy(ctx, p, fake); err == nil || fake.deleteCalls != 0 {
 		t.Fatal("stop failure permitted data deletion", err)
 	}
 }
 
 func TestActiveCoreConsumerIsConsequenceInsteadOfPermanentDestroyVeto(t *testing.T) {
+	ctx := operatorAuthTestContext(t, t.Context())
 	coreStopFixture(t)
-	target, err := effectiveTarget(t.Context())
+	target, err := effectiveTarget(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -177,7 +183,7 @@ func TestActiveCoreConsumerIsConsequenceInsteadOfPermanentDestroyVeto(t *testing
 	if err := application.CheckControlPlaneDestroySafeAt(root); err == nil {
 		t.Fatal("fixture has no active consumer")
 	}
-	p, err := buildSelectedCoreDestroyPlan(t.Context())
+	p, err := buildSelectedCoreDestroyPlan(ctx)
 	if err != nil {
 		t.Fatal("active consumer blocked deliberate Core removal", err)
 	}
@@ -185,7 +191,7 @@ func TestActiveCoreConsumerIsConsequenceInsteadOfPermanentDestroyVeto(t *testing
 		t.Fatal("active consequences missing", p.Impact)
 	}
 	ack := &application.ProviderChangeConsent{PlanID: p.Impact.Scope.PlanID, First: true, Second: true}
-	if proceed, err := authorizeRuntimeDestroyImpact(withProviderChangeConsent(t.Context(), ack), p.Impact, true, io.Discard); err != nil || !proceed {
+	if proceed, err := authorizeRuntimeDestroyImpact(withProviderChangeConsent(ctx, ack), p.Impact, true, io.Discard); err != nil || !proceed {
 		t.Fatal("fully acknowledged active consumer remains vetoed", err)
 	}
 }

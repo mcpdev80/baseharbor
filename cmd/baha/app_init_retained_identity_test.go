@@ -18,6 +18,7 @@ func TestRepositoryReinitializationReusesActualIdentityOwners(t *testing.T) {
 	for _, mode := range []string{"deterministic", "guided", "quick", "quick-json", "conflicting-owners"} {
 		t.Run(mode, func(t *testing.T) {
 			t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
+			ctx := operatorAuthTestContext(t, context.Background())
 			target := configureTestTarget(t)
 			root := filepath.Join(t.TempDir(), "demo")
 			if err := os.Mkdir(root, 0700); err != nil {
@@ -55,16 +56,16 @@ func TestRepositoryReinitializationReusesActualIdentityOwners(t *testing.T) {
 				t.Fatal("fixture deployment unavailable", err)
 			}
 			if mode == "deterministic" || mode == "conflicting-owners" {
-				err = appInitCommand().Run(context.Background(), []string{"demo", "--sql", "--workload-component", "api", "--workload-source", "compose:compose.yaml"}, &bytes.Buffer{}, &bytes.Buffer{})
+				err = appInitCommand().Run(ctx, []string{"demo", "--sql", "--workload-component", "api", "--workload-source", "compose:compose.yaml"}, &bytes.Buffer{}, &bytes.Buffer{})
 			} else if strings.HasPrefix(mode, "quick") {
 				args := []string{"app", "init", "--quick", "--no-input"}
 				if mode == "quick-json" {
 					args = append(args, "--json")
 				}
-				err = runWithIO(context.Background(), args, &bytes.Buffer{}, &bytes.Buffer{})
+				err = runWithIO(ctx, args, &bytes.Buffer{}, &bytes.Buffer{})
 			} else {
 				proposal := application.WithWorkloadComponents(detectedApplicationManifest("demo", "dev", true, false, false, false, true), "api")
-				err = writeRepositoryManifest(context.Background(), proposal, &bytes.Buffer{})
+				err = writeRepositoryManifest(ctx, proposal, &bytes.Buffer{})
 			}
 			if mode == "conflicting-owners" {
 				if err == nil || !strings.Contains(err.Error(), "conflicting application IDs") {
