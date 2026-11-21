@@ -214,18 +214,11 @@ func mcpCommand(store application.Store) *cli.Command {
 
 func runMCPServer(ctx context.Context, store application.Store) error {
 	ctx = withLocalInvocation(ctx, "stdio")
-	return newMCPServer(store).Run(ctx, &drainingMCPTransport{reader: os.Stdin, writer: mcpStdoutWriter{os.Stdout}, timeout: time.Minute})
+	return newMCPServerForContext(ctx, store).Run(ctx, &drainingMCPTransport{reader: os.Stdin, writer: mcpStdoutWriter{os.Stdout}, timeout: time.Minute})
 }
 
 func newMCPServer(store application.Store) *mcp.Server {
-	server := mcp.NewServer(&mcp.Implementation{
-		Name:    "baseharbor",
-		Version: version,
-	}, &mcp.ServerOptions{
-		SupportedProtocolVersions: []string{"2026-07-28", "2025-11-25"},
-		Capabilities:              &mcp.ServerCapabilities{},
-	})
-
+	server := newMCPServerBase()
 	registerMCPReadTools(server, store)
 	registerMCPRuntimeExplorerMutationTools(server)
 	registerMCPLifecycleTools(server, store)
@@ -244,6 +237,29 @@ func newMCPServer(store application.Store) *mcp.Server {
 	registerMCPPlatformTools(server)
 	registerMCPControlPlaneTools(server)
 	registerMCPReleaseTools(server)
+	return server
+}
+
+type ciMCPToolsetContextKey struct{}
+
+func newMCPServerForContext(ctx context.Context, store application.Store) *mcp.Server {
+	if onlyFootprint, _ := ctx.Value(ciMCPToolsetContextKey{}).(bool); onlyFootprint {
+		server := newMCPServerBase()
+		registerMCPFootprintShowTool(server, store)
+		return server
+	}
+	return newMCPServer(store)
+}
+
+func newMCPServerBase() *mcp.Server {
+	server := mcp.NewServer(&mcp.Implementation{
+		Name:    "baseharbor",
+		Version: version,
+	}, &mcp.ServerOptions{
+		SupportedProtocolVersions: []string{"2026-07-28", "2025-11-25"},
+		Capabilities:              &mcp.ServerCapabilities{},
+	})
+
 	return server
 }
 
@@ -291,7 +307,7 @@ func authorizeMCPOperation(ctx context.Context, operationID, target, environment
 				localGrant = grant
 			}
 		}
-		if err := ensureOperatorAuthForBoundary(ctx, target, environment); err != nil {
+		if err := ensureManagedEnvironmentOperatorBoundary(ctx, target, environment, localGrant); err != nil {
 			if machine.Classify(err).Code == machine.ErrorRuntimeUnavailable {
 				return err
 			}
@@ -330,6 +346,18 @@ func authorizeMCPOperation(ctx context.Context, operationID, target, environment
 	return err
 }
 
+func ensureManagedEnvironmentOperatorBoundary(ctx context.Context, target, environment string, localGrant operatorauth.LocalOperationGrant) error {
+	// A verified local runtime grant is the authority for this one local
+	// workload operation. Requiring an OIDC operator as well would reject the
+	// grant after its runtime proof has already succeeded. Remote, managed-Core,
+	// and all other operations have no local grant and remain fail-closed on
+	// their configured operator-auth boundary.
+	if localGrant != nil {
+		return nil
+	}
+	return ensureOperatorAuthForBoundary(ctx, target, environment)
+}
+
 func authorizeResolvedMCPOperation(ctx context.Context, operationID string, resolved resolvedApplication, workspace string) error {
 	return authorizeMCPOperation(
 		ctx,
@@ -363,6 +391,28 @@ func authorizeCurrentMCPContext(ctx context.Context, operationID, targetName, en
 		return err
 	}
 	return authorizeMCPOperation(ctx, operationID, target.Name, environment, "", workspace)
+}
+
+// authorizeTargetCreation uses the current configured target for policy when
+// one exists, preserving its operator session. For first-target bootstrap, it
+// falls back to the name being created rather than requiring that name to
+// resolve before the create. Managed environments still pass through the same
+// operator authentication and operation policy checks.
+func authorizeTargetCreation(ctx context.Context, targetName string) error {
+	environment := "dev"
+	if cwd, err := os.Getwd(); err == nil {
+		if selection, selectionErr := application.ResolveRepositoryEnvironment(cwd, ""); selectionErr == nil {
+			environment = selection.Manifest.Environment
+		}
+	}
+	policyTarget := strings.TrimSpace(targetName)
+	if current, err := effectiveTarget(ctx); err == nil {
+		// Existing selections retain their existing operator session and policy.
+		// When the selected name is the target being bootstrapped, resolution
+		// fails and authorization is instead bound to the requested new name.
+		policyTarget = current.Name
+	}
+	return authorizeMCPOperation(ctx, "target.create", policyTarget, environment, "", "")
 }
 
 // machineApplicationArgs builds the CLI argument shape of one application

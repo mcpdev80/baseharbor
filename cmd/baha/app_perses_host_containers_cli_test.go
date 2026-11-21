@@ -36,7 +36,7 @@ type hostContainersDashboardAvail struct {
 func runPersesHostContainersStatusCommand(t *testing.T, ctx context.Context) persesHostContainersReport {
 	t.Helper()
 	var out, errOut bytes.Buffer
-	err := runWithIO(ctx, []string{"status", "--json"}, &out, &errOut)
+	err := runWithIOAsTestOperator(ctx, []string{"status", "--json"}, &out, &errOut)
 	if err != nil && !strings.Contains(err.Error(), "container runtime orchestration not found") {
 		t.Fatalf("baha status --json failed: %v\nstdout: %s\nstderr: %s", err, out.String(), errOut.String())
 	}
