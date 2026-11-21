@@ -105,7 +105,7 @@ func TestResolveUsesPlainHTTPOnlyForLocalhostRegistry(t *testing.T) {
 	}).Resolve(context.Background()); err != nil {
 		t.Fatalf("resolve local HTTP registry: %v", err)
 	}
-	if got, want := local.calls[0], "oras resolve --full-reference --plain-http localhost:5000/baseharbor-runtime:pre-release"; got != want {
+	if got, want := local.calls[0], "oras resolve --full-reference --plain-http --resolve localhost:5000:127.0.0.1 localhost:5000/baseharbor-runtime:pre-release"; got != want {
 		t.Fatalf("local registry resolve args = %q, want %q", got, want)
 	}
 
@@ -120,6 +120,22 @@ func TestResolveUsesPlainHTTPOnlyForLocalhostRegistry(t *testing.T) {
 	}
 	if got, want := remote.calls[0], "oras resolve --full-reference registry.example.invalid/org/app:stable"; got != want {
 		t.Fatalf("remote registry resolve args = %q, want %q", got, want)
+	}
+}
+
+func TestLocalRuntimeImageResolveOverridePinsLoopbackRegistry(t *testing.T) {
+	cases := map[string]string{
+		"localhost/team/app:dev":                   "localhost:80:127.0.0.1",
+		"localhost:5000/team/app:pre-release":      "localhost:5000:127.0.0.1",
+		"registry.example.invalid/team/app:stable": "",
+		"127.0.0.1:5000/team/app:dev":              "",
+	}
+	for reference, want := range cases {
+		t.Run(reference, func(t *testing.T) {
+			if got := localRuntimeImageResolveOverride(reference); got != want {
+				t.Fatalf("localRuntimeImageResolveOverride(%q)=%q want %q", reference, got, want)
+			}
+		})
 	}
 }
 
