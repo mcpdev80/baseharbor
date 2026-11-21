@@ -12,17 +12,38 @@ import (
 // The existing deployment retains BOTH active applied and previous intents
 // during interruption. Only verified physical absence releases its consumer.
 func recordPendingApplicationRuntimeRetirement(resolved resolvedApplication, plan application.ProviderImpactPlan) (deployment.DeploymentRecord, error) {
+	return recordPendingApplicationRuntimeRetirementWithIntent(resolved, plan, resolved.Manifest)
+}
+
+func recordPendingApplicationRuntimeRetirementWithIntent(resolved resolvedApplication, plan application.ProviderImpactPlan, intent application.Manifest) (deployment.DeploymentRecord, error) {
 	record, err := deployment.LoadDeploymentRecord(resolved.DeploymentIdentity)
 	if err != nil {
 		return record, err
 	}
-	previous := record.Applied.Intent
-	if pending := record.Applied.GeneratedState["previous_intent"]; pending != "" {
-		previous = json.RawMessage(pending)
+	// A verified retirement stores a capability-free projection in Applied.Intent.
+	// A later app up can reactivate the repository manifest without immediately
+	// replacing that deployment projection, so the current resolved manifest is
+	// the authoritative owner when beginning another retirement.
+	currentIntent, err := json.Marshal(intent)
+	if err != nil {
+		return record, invalidProviderConsumerInventory(fmt.Errorf("retirement intent differs from deployment owner"))
+	}
+	// An interrupted retirement already froze the physical owner before any
+	// mutation. Preserve that owner across retries even if the repository source
+	// changed afterward; only a completed retirement followed by `app up` has no
+	// pending owner and should rebind from the currently resolved manifest.
+	frozenPendingOwner := false
+	if record.Observed.State == "retiring" {
+		if pending := record.Applied.GeneratedState["previous_intent"]; pending != "" {
+			currentIntent = json.RawMessage(pending)
+			frozenPendingOwner = true
+		} else {
+			return record, invalidProviderConsumerInventory(fmt.Errorf("pending retirement has no frozen deployment owner"))
+		}
 	}
 	var prior application.Manifest
 	id := record.Identity
-	if len(previous) == 0 || json.Unmarshal(previous, &prior) != nil || prior.ApplicationID != id.ApplicationID || prior.Environment != id.Environment {
+	if json.Unmarshal(currentIntent, &prior) != nil || prior.ApplicationID != id.ApplicationID || prior.Environment != id.Environment || prior.Name != id.Application {
 		return record, invalidProviderConsumerInventory(fmt.Errorf("retirement intent differs from deployment owner"))
 	}
 	if err := prior.ValidateIntent(); err != nil {
@@ -39,20 +60,20 @@ func recordPendingApplicationRuntimeRetirement(resolved resolvedApplication, pla
 	if record.Applied.GeneratedState == nil {
 		record.Applied.GeneratedState = map[string]string{}
 	}
-	record.Applied.GeneratedState["previous_intent"] = string(previous)
-	// A reactivated application can still carry the last verified
-	// runtime-retired observation until its next readiness check. Preserve an
-	// archived owner only while Applied.Intent itself is the retirement
-	// projection; if it is active again, archive the former owner and bind this
-	// newly retired intent instead.
-	stillRetirementProjection := isApplicationRuntimeRetirementIntent(record.Applied.Intent)
-	if record.Applied.GeneratedState["retired_intent"] == "" || (prior.Validate() == nil && (record.Observed.State != "runtime-retired" || !stillRetirementProjection)) {
-		if record.Applied.GeneratedState["retired_intent"] != string(record.Applied.Intent) || record.Applied.GeneratedState["retired_backend_placements"] != record.Applied.GeneratedState["backend_placements"] {
+	record.Applied.GeneratedState["previous_intent"] = string(currentIntent)
+	// Rebind from the current manifest when it differs from the prior retired
+	// owner. This also handles app up after retirement, where Applied.Intent and
+	// Observed.State can still describe the old runtime projection.
+	retiredIntent := record.Applied.GeneratedState["retired_intent"]
+	retiredIntentMatches := retiredIntent != "" && applicationIntentsEqual([]byte(retiredIntent), currentIntent)
+	placementsMatch := record.Applied.GeneratedState["retired_backend_placements"] == record.Applied.GeneratedState["backend_placements"]
+	if !frozenPendingOwner && (retiredIntent == "" || !retiredIntentMatches || !placementsMatch) {
+		if retiredIntent != "" && (!retiredIntentMatches || !placementsMatch) {
 			if err := archiveReplacedRetiredRuntime(&record); err != nil {
 				return record, err
 			}
 		}
-		record.Applied.GeneratedState["retired_intent"] = string(record.Applied.Intent)
+		record.Applied.GeneratedState["retired_intent"] = string(currentIntent)
 		record.Applied.GeneratedState["retired_backend_placements"] = record.Applied.GeneratedState["backend_placements"]
 	}
 	record.Applied.GeneratedState["provider_change_result"] = string(encoded)
