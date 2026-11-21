@@ -227,14 +227,7 @@ func qualifyApplicationBackendLifecycle(t *testing.T, service string) {
 
 func applySelectiveBackendIntentWithLocalGrant(t *testing.T, ctx context.Context) {
 	t.Helper()
-	resolved, err := resolveApplication(ctx, application.Store{}, nil, "apply")
-	if err != nil {
-		t.Fatal(err)
-	}
-	plan, err := buildResolvedApplicationPlan(ctx, resolved)
-	if err != nil {
-		t.Fatal(err)
-	}
+	resolved, plan := waitForCompleteApplicationBackendPlan(t, ctx)
 	applyCtx, candidateDigest := withConfirmCandidateDigestForResolved(ctx, resolved)
 	if resolved.FromRepository && candidateDigest == "" {
 		t.Fatal("repository candidate has no verifiable confirmation digest")
@@ -246,5 +239,35 @@ func applySelectiveBackendIntentWithLocalGrant(t *testing.T, ctx context.Context
 	if err := runWithIO(applyCtx, []string{"app", "apply", "--skip-memory-preflight"}, &output, &output); err != nil {
 		t.Logf("Coreless local grant failed application backend plan: complete=%t changes=%+v", plan.ProviderPlan.Complete, plan.ProviderPlan.Changes)
 		t.Fatalf("apply application backend with local runtime grant: %v\n%s", err, output.String())
+	}
+}
+
+// A just-resumed native backend can briefly report a transitional health
+// state even after its authenticated data probe succeeds. Do not mint typed
+// provider consent from that transient, incomplete snapshot; wait for the
+// canonical owner observation to settle, then bind consent to that plan.
+func waitForCompleteApplicationBackendPlan(t *testing.T, ctx context.Context) (resolvedApplication, applicationLifecyclePlan) {
+	t.Helper()
+	deadline := time.Now().Add(45 * time.Second)
+	for {
+		resolved, err := resolveApplication(ctx, application.Store{}, nil, "apply")
+		if err != nil {
+			t.Fatal(err)
+		}
+		plan, err := buildResolvedApplicationPlan(ctx, resolved)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if plan.ProviderPlan.Complete {
+			return resolved, plan
+		}
+		if !time.Now().Before(deadline) {
+			t.Fatalf("application backend provider plan did not reach a complete owner observation within 45s: changes=%+v", plan.ProviderPlan.Changes)
+		}
+		select {
+		case <-ctx.Done():
+			t.Fatal(ctx.Err())
+		case <-time.After(time.Second):
+		}
 	}
 }
