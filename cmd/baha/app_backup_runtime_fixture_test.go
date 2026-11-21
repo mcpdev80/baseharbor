@@ -243,13 +243,14 @@ func runBackupFixtureWithConsent(ctx context.Context, operation string, run func
 	ctx = withProviderChangeConsent(machineNoninteractiveContext(ctx), nil)
 	providerGranted := false
 	candidateGrants := 0
-	for attempts := 0; attempts < 5; attempts++ {
+	for attempts := 0; attempts < 4; attempts++ {
 		err := run(ctx)
 		if err == nil {
 			return nil
 		}
-		// Either authority may be checked first. Accept each exact typed
-		// challenge at most once, preserving the other consent in context.
+		// Either authority may be checked first. Provider consent is accepted
+		// once; candidate consent is refreshed only for a newly surfaced exact
+		// digest. The total number of command attempts remains strictly bounded.
 		if !providerGranted {
 			ack, consentErr := backupFixtureConsent(operation, err)
 			if consentErr == nil && ack != nil {
@@ -266,7 +267,7 @@ func runBackupFixtureWithConsent(ctx context.Context, operation string, run func
 			}
 		}
 		if digest := backupFixtureCandidateConsentDigest(err); digest != "" &&
-			candidateGrants < 3 && digest != candidateConsentOverride(ctx) {
+			candidateGrants < 2 && digest != candidateConsentOverride(ctx) {
 			ctx = withCandidateConsentDigest(ctx, digest)
 			candidateGrants++
 			continue

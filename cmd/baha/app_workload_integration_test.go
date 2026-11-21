@@ -103,7 +103,7 @@ workload:
 	}
 
 	var out bytes.Buffer
-	if err := runRepositoryFixtureApply(ctx, []string{"--verbose", "app", "apply"}, &out); err != nil {
+	if err := runRepositoryFixtureApply(ctx, []string{"app", "apply"}, &out); err != nil {
 		t.Fatalf("apply repository workload: %v\n%s", err, out.String())
 	}
 	if !strings.Contains(out.String(), "workload") {
@@ -597,7 +597,7 @@ workload:
 	}
 
 	var out bytes.Buffer
-	if err := runRepositoryFixtureApply(ctx, []string{"app", "apply"}, &out); err != nil {
+	if err := runRepositoryFixtureApply(ctx, []string{"--verbose", "app", "apply"}, &out); err != nil {
 		t.Fatalf("initial build apply: %v\n%s", err, out.String())
 	}
 	if !strings.Contains(out.String(), "rebuilt app") {
@@ -665,7 +665,7 @@ workload:
 		t.Fatal(err)
 	}
 	out.Reset()
-	if err := runRepositoryFixtureApply(ctx, []string{"app", "up"}, &out); err != nil {
+	if err := runRepositoryFixtureApply(ctx, []string{"--verbose", "app", "up"}, &out); err != nil {
 		t.Fatalf("changed-source app up: %v\n%s", err, out.String())
 	}
 	if !strings.Contains(out.String(), "rebuilt app") {

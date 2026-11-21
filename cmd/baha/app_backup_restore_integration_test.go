@@ -28,6 +28,7 @@ func TestAppBackupRestoreCLIRealDisasterRecovery(t *testing.T) {
 	ctx = testOperatorContext(ctx)
 
 	root := t.TempDir()
+	runtimeRoot := t.TempDir()
 	old, err := os.Getwd()
 	if err != nil {
 		t.Fatal(err)
@@ -37,9 +38,9 @@ func TestAppBackupRestoreCLIRealDisasterRecovery(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	t.Setenv("BASEHARBOR_STATE_DIR", filepath.Join(root, "platform-state"))
+	t.Setenv("BASEHARBOR_STATE_DIR", filepath.Join(runtimeRoot, "platform-state"))
 	t.Setenv("BASEHARBOR_PROVIDER_CHANGE_CONSENT", "")
-	configureAppBackupRuntimeTarget(t, filepath.Join(root, "config"), filepath.Join(root, "data"))
+	configureAppBackupRuntimeTarget(t, filepath.Join(runtimeRoot, "config"), filepath.Join(runtimeRoot, "data"))
 	target, err := effectiveTarget(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -134,11 +135,11 @@ services:
 		t.Fatal(err)
 	}
 
-	passwordPath := filepath.Join(root, "backup-password")
+	passwordPath := filepath.Join(runtimeRoot, "backup-password")
 	if err := os.WriteFile(passwordPath, []byte("correct horse battery staple\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	backupPath := filepath.Join(root, "backup-cli.bhbackup")
+	backupPath := filepath.Join(runtimeRoot, "backup-cli.bhbackup")
 	output.Reset()
 	if err := runWithIOAsTestOperator(ctx, []string{"app", "backup", "--password-file", passwordPath, "--output", backupPath}, &output, &output); err != nil {
 		t.Fatalf("app backup: %v\n%s", err, output.String())

@@ -71,7 +71,7 @@ func extractCandidateConfirmDigest(out string) string {
 
 func runRepositoryFixtureApplyCall(ctx context.Context, args []string, run func(context.Context) error) error {
 	switch strings.Join(args, " ") {
-	case "app apply", "--verbose app apply", "app up":
+	case "app apply", "--verbose app apply", "app up", "--verbose app up":
 	default:
 		return errors.New("unsupported repository apply fixture operation")
 	}
