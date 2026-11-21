@@ -3126,3 +3126,35 @@ class IdentityProviderPackageRoutingTests(unittest.TestCase):
         checks = {row['id'] for row in result['required_validation_checks']}
         self.assertTrue({'go-unit-tests', 'go-build', 'go-vet'} <= checks)
         self.assertNotIn('identity-provider-package-tests', checks)
+
+
+class EnvironmentDestroyNativeGateRoutingTests(unittest.TestCase):
+    def test_complete_env_destroy_candidate_selects_both_coreless_gates(self):
+        gate_ids = ['integration/docker/coreless-lifecycle',
+                    'integration/podman/coreless-lifecycle']
+        requirements = copy.deepcopy(REQ)
+        requirements['gates'].extend({'id': gate, 'required_for': ['v0.4.26']}
+                                     for gate in gate_ids)
+        changes = [
+            {'status': 'modified', 'path': 'cmd/baha/commands.go'},
+            {'status': 'added', 'path': 'cmd/baha/env_destroy.go'},
+            {'status': 'added', 'path': 'cmd/baha/env_destroy_integration_test.go'},
+            {'status': 'modified', 'path': 'cmd/baha/machine_coverage.go'},
+            {'status': 'modified', 'path': 'docs/cli/command-index.md'},
+            {'status': 'modified', 'path': 'docs/de/cli/command-index.md'},
+            {'status': 'modified', 'path': 'docs/reference/cli-machine-coverage.md'},
+            {'status': 'added', 'path': 'internal/deployment/environment_destroy_scope.go'},
+            {'status': 'added', 'path': 'internal/deployment/environment_destroy_scope_test.go'},
+        ]
+        result = planner.plan(diff(changes), requirements, MAP_26)
+        self.assertEqual('resolved', result['coverage_status'])
+        self.assertEqual([], result['unresolved_coverage'])
+        self.assertEqual(gate_ids, result['selected_gates'])
+        checks = {row['id'] for row in result['required_validation_checks']}
+        self.assertTrue({'cli-package-tests', 'deployment-package-tests'} <= checks)
+
+    def test_registration_paths_alone_remain_unresolved(self):
+        result = planner.plan(diff(paths('cmd/baha/commands.go',
+                                         'cmd/baha/machine_coverage.go')), REQ, MAP_26)
+        self.assertEqual('unresolved', result['coverage_status'])
+        self.assertTrue(result['unresolved_coverage'])
