@@ -69,7 +69,7 @@ func TestProductionIdentityRuntimeRealizedCallbackAndReapply(t *testing.T) {
 	}
 	certDir := productionIdentityCertificate(t, "oauth.example.test")
 	var out bytes.Buffer
-	if err := runWithIO(ctx, []string{"app", "init", "--hostname", "oauth.example.test", "--tls", "existing", "--cert-dir", certDir, "--yes"}, &out, &out); err != nil {
+	if err := runWithIOAsTestOperator(ctx, []string{"app", "init", "--hostname", "oauth.example.test", "--tls", "existing", "--cert-dir", certDir, "--yes"}, &out, &out); err != nil {
 		t.Fatalf("production BYOC initialization failed: %v", err)
 	}
 	initial, err := resolveApplication(ctx, application.Store{}, nil, "plan")
@@ -113,7 +113,7 @@ func TestProductionIdentityRuntimeRealizedCallbackAndReapply(t *testing.T) {
 			applyCtx = withProviderChangeConsent(ctx, &application.ProviderChangeConsent{PlanID: plan.ProviderPlan.Impact.PlanID, First: true, Second: true})
 		}
 		out.Reset()
-		if err := runWithIO(applyCtx, []string{"app", operation, "--skip-memory-preflight"}, &out, &out); err != nil {
+		if err := runWithIOAsTestOperator(applyCtx, []string{"app", operation, "--skip-memory-preflight"}, &out, &out); err != nil {
 			t.Fatalf("production %s failed: %v", operation, err)
 		}
 		current, err = resolveApplication(ctx, application.Store{}, nil, "status")

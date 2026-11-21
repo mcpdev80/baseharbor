@@ -21,17 +21,17 @@ func TestInstallationChildScopeAfterEarlierSiblingRemoval(t *testing.T) {
 		t.Fatal(err)
 	}
 	mustWriteInitializedAuthoredManifest(t, application.RepositoryManifestName, secondManifest)
-	second, err := resolveApplication(t.Context(), application.Store{}, nil, "apply")
+	second, err := resolveApplication(testOperatorContext(t.Context()), application.Store{}, nil, "apply")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := recordAppliedDeployment(t.Context(), second, application.RuntimeFiles{}); err != nil {
+	if err := recordAppliedDeployment(testOperatorContext(t.Context()), second, application.RuntimeFiles{}); err != nil {
 		t.Fatal(err)
 	}
 	if err := application.ReconcileReferenceProviderRegistryAt(second.TargetStateRoot, second.Manifest); err != nil {
 		t.Fatal(err)
 	}
-	p, err := buildRuntimeDestroyImpact(t.Context(), []targetDestroyInventory{{Target: first.Target}}, nil, true)
+	p, err := buildRuntimeDestroyImpact(testOperatorContext(t.Context()), []targetDestroyInventory{{Target: first.Target}}, nil, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -39,7 +39,7 @@ func TestInstallationChildScopeAfterEarlierSiblingRemoval(t *testing.T) {
 		t.Fatal("missing actual sibling reset scopes")
 	}
 	ack := &application.ProviderChangeConsent{PlanID: p.Scope.PlanID, First: true, Second: true, DeleteData: true}
-	ctx, err := withInstallationApplicationScopes(withProviderChangeConsent(t.Context(), ack), p)
+	ctx, err := withInstallationApplicationScopes(withProviderChangeConsent(testOperatorContext(t.Context()), ack), p)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,7 +57,7 @@ func TestInstallationChildScopeAfterEarlierSiblingRemoval(t *testing.T) {
 	if _, err := authorizeApplicationDestruction(ctx, second, true, io.Discard); err == nil {
 		t.Fatal("changed global union silently reused old parent acknowledgement")
 	}
-	next, err := buildRuntimeDestroyImpact(t.Context(), []targetDestroyInventory{{Target: first.Target}}, nil, true)
+	next, err := buildRuntimeDestroyImpact(testOperatorContext(t.Context()), []targetDestroyInventory{{Target: first.Target}}, nil, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -74,12 +74,12 @@ func TestInstallationChildScopeAfterEarlierSiblingRemoval(t *testing.T) {
 		t.Fatal("missing explicit progress boundary")
 	}
 	for _, incomplete := range []*application.ProviderChangeConsent{{PlanID: next.Scope.PlanID, First: true}, {PlanID: next.Scope.PlanID, First: true, Second: true}} {
-		if _, err := withInstallationApplicationScopes(withProviderChangeConsent(t.Context(), incomplete), next); err == nil {
+		if _, err := withInstallationApplicationScopes(withProviderChangeConsent(testOperatorContext(t.Context()), incomplete), next); err == nil {
 			t.Fatal("remaining plan bypassed stages or data consent")
 		}
 	}
 	ack = &application.ProviderChangeConsent{PlanID: next.Scope.PlanID, First: true, Second: true, DeleteData: true}
-	current, err := withInstallationApplicationScopes(withProviderChangeConsent(t.Context(), ack), next)
+	current, err := withInstallationApplicationScopes(withProviderChangeConsent(testOperatorContext(t.Context()), ack), next)
 	if err != nil {
 		t.Fatal(err)
 	}

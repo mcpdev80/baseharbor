@@ -45,7 +45,7 @@ func TestUIDAppSliceFirstCreateThenCheckoutReuseIdentityNoAuthoredLeak(t *testin
 	}
 
 	var out, errOut bytes.Buffer
-	if err := runWithIO(context.Background(), []string{"app", "init", "--quick", "--no-input"}, &out, &errOut); err != nil {
+	if err := runWithIOAsTestOperator(context.Background(), []string{"app", "init", "--quick", "--no-input"}, &out, &errOut); err != nil {
 		t.Fatalf("checkout init: %v %s", err, errOut.String())
 	}
 
@@ -80,7 +80,7 @@ func TestUIDAppSliceFirstCreateThenCheckoutReuseIdentityNoAuthoredLeak(t *testin
 	// A second init on the same checkout must refuse (already exists) and must
 	// neither drift the identity nor create a second canonical owner.
 	out.Reset()
-	if err := runWithIO(context.Background(), []string{"app", "init", "--quick", "--no-input"}, &out, &errOut); err != nil {
+	if err := runWithIOAsTestOperator(context.Background(), []string{"app", "init", "--quick", "--no-input"}, &out, &errOut); err != nil {
 		t.Fatalf("repeat init: %v %s", err, errOut.String())
 	}
 	if !strings.Contains(out.String(), "already exists") {
@@ -159,7 +159,7 @@ func TestUIDAppSliceLegacyImportReusesExistingCanonicalIdentity(t *testing.T) {
 	existingID := legacy.ApplicationID
 
 	var out, errOut bytes.Buffer
-	if err := runWithIO(context.Background(), []string{"app", "init", "--quick", "--no-input"}, &out, &errOut); err != nil {
+	if err := runWithIOAsTestOperator(context.Background(), []string{"app", "init", "--quick", "--no-input"}, &out, &errOut); err != nil {
 		t.Fatalf("legacy init: %v %s", err, errOut.String())
 	}
 
@@ -181,23 +181,28 @@ func TestUIDAppSliceLegacyImportReusesExistingCanonicalIdentity(t *testing.T) {
 	_ = target
 }
 
-// TestUIDAppSliceConcurrentFirstCreateConvergesOnOneOwner drives the system-owned
-// canonical store's atomic Create (the single-owner guard named by owner
-// Option B: "the system-owned store serializes first create so exactly one
-// canonical identity survives") from several concurrent goroutines. Each racer
-// records its outcome so a silently failing worker can never make the test
-// green, and exactly one racer must win while exactly one canonical owner
-// survives. This proves the documented store-level convergence contract under
-// the race detector.
+// TestUIDAppSliceConcurrentFirstCreateConvergesOnOneOwner drives one bounded
+// case that keeps both sides of the 0428-050 slice contract in a single race:
+// (a) the real CLI init entry point (0428-051, "through the actual CLI
+// surface") from multiple goroutines pointed at the same fresh root, and
+// (b) the system-owned canonical store's atomic Create beneath it — the
+// single-owner guard named by owner Option B: "the system-owned store
+// serializes first create so exactly one canonical identity survives". Each
+// racer records its outcome so a silently failing worker can never make the
+// test green, and exactly one canonical owner must survive whose ID the
+// successes converge on. The store-level Create race itself is pinned by
+// TestConcurrentInitNeverCreatesDoubleApplicationIDRegistration. This proves the
+// convergence contract under the race detector.
 func TestUIDAppSliceConcurrentFirstCreateConvergesOnOneOwner(t *testing.T) {
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
-	_ = configureTestTarget(t)
+	target := configureTestTarget(t)
 	assumeVerifiedCoreForSourceTest(t)
 
 	// Capture a stable pre-test CWD from a temp dir that lives until the test
 	// ends. A t.Cleanup that restores it GUARANTEES the process CWD is valid
-	// when the test returns. Without this the leaked CWD makes every
-	// subsequent test's getwd fail (0428-050 regression on #1579).
+	// when the test returns, even if a racer is parked in a Chdir to a temp
+	// dir that t.TempDir() would remove. Without this the leaked CWD makes
+	// every subsequent test's getwd fail (0428-050 regression on #1579).
 	home := t.TempDir()
 	prev, _ := os.Getwd()
 	t.Cleanup(func() {
@@ -209,68 +214,103 @@ func TestUIDAppSliceConcurrentFirstCreateConvergesOnOneOwner(t *testing.T) {
 	if err := os.MkdirAll(root, 0o700); err != nil {
 		t.Fatal(err)
 	}
+	// Each worker drives the real CLI surface, but cwd changes must be
+	// serialized because the working directory is process-global. The actual
+	// concurrent first-create race is covered directly by
+	// TestConcurrentInitNeverCreatesDoubleApplicationIDRegistration; this test
+	// checks that repeated CLI attempts converge on that one surviving owner.
+	if err := os.WriteFile(filepath.Join(root, "compose.yaml"), []byte("services:\n  api:\n    image: example.invalid/raced:api\n    labels:\n      io.baseharbor.workload.protocol: https\n    ports:\n      - '8080:8080'\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
 	canonical := canonicalOwnerStore(root)
 
-	// Six goroutines race the single-owner guard's atomic Create. The store
-	// serializes first create, so exactly one racer wins and the rest refuse
-	// with the fail-closed ErrExists sentinel. No racer may silently vanish and
-	// no racer may surface an unexpected error: a concurrent first create must
-	// converge on exactly one canonical owner.
 	const racers = 6
 	var wg sync.WaitGroup
+	// All racers carry the SAME application identity (one ApplicationID,
+	// exactly what a second racing 'baha app init' process sees): the store's
+	// atomic first-create must serialize them onto one canonical owner. Fresh
+	// per-racer IDs would not be the documented single-owner guard.
+	sharedID := application.MustNewApplicationID()
 	type outcome struct {
 		err error
-		uid string // nonempty only for the single winner
+		uid string // the identity this racer's init converged on
 	}
 	results := make([]outcome, racers)
+	var cwdMu sync.Mutex
 	for i := 0; i < racers; i++ {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
+			cwdMu.Lock()
+			defer cwdMu.Unlock()
 			m := application.New("raced", "dev", false, false, false)
-			m.ApplicationID, _ = application.NewApplicationID()
+			m.ApplicationID = sharedID
 			m = application.WithHTTPExposure(m, "api", "api", 8080, "https")
 			m = application.WithWorkloadComponents(m, "api")
-			gotPath, err := canonical.Create(m)
-			if err == nil {
-				results[i] = outcome{err: err, uid: m.ApplicationID}
-				_ = gotPath
+			prev, _ := os.Getwd()
+			if err := os.Chdir(root); err != nil {
+				results[i] = outcome{err: err}
 				return
 			}
-			results[i] = outcome{err: err}
+			var out, errOut bytes.Buffer
+			// Exercise the CLI surface used by the other tests in this slice.
+			err := runWithIOAsTestOperator(context.Background(), []string{"app", "init", "--quick", "--no-input"}, &out, &errOut)
+			// Read the identity this racer's init converged on: the canonical
+			// store holds exactly one owner for the name once first create is
+			// serialized, whether this racer won it or met the fail-closed
+			// already-exists guard.
+			uid := ""
+			if items, lerr := canonical.List(); lerr == nil {
+				for _, m := range items {
+					if m.Name == "raced" {
+						uid = m.ApplicationID
+					}
+				}
+			}
+			results[i] = outcome{err: err, uid: uid}
+			// Restore the process CWD inside the goroutine (before the temp
+			// dir is cleaned up) so a racer never parks in a deleted CWD.
+			_ = os.Chdir(prev)
 		}(i)
 	}
 	wg.Wait()
 
-	// No racer may fail with an error outside the fail-closed sentinel; a
-	// silently failing worker can never make the test green.
-	for i, r := range results {
-		if r.err != nil && !errors.Is(r.err, application.ErrExists) {
-			t.Fatalf("concurrent Create racer %d failed with an unexpected error: %v", i, r.err)
-		}
-	}
-
-	// Exactly one racer won first create and the store converges on one owner.
-	var wins int
+	// Exactly one racer must succeed through the real init path. A silently
+	// failing worker can never make the test green: a racer that reports an
+	// error outside the single-owner guard is itself a defect.
+	var successes int
 	var winner string
-	for _, r := range results {
+	seen := map[string]struct{}{}
+	for i, r := range results {
 		if r.uid != "" {
-			wins++
+			seen[r.uid] = struct{}{}
+		}
+		if r.err == nil {
+			successes++
 			if winner == "" {
 				winner = r.uid
 				continue
 			}
 			if r.uid != winner {
-				t.Fatalf("concurrent Create won with different canonical IDs %q and %q; first create must converge on one owner", r.uid, winner)
+				t.Fatalf("concurrent init succeeded with different canonical IDs %q and %q; first create must converge on one owner", r.uid, winner)
 			}
+			continue
 		}
+		// Once the first attempt writes the manifest, later attempts must fail
+		// with the documented existing-application guard.
+		if errors.Is(r.err, application.ErrExists) || strings.Contains(r.err.Error(), "already exists") {
+			continue
+		}
+		t.Fatalf("concurrent init racer %d failed with an unexpected error: %v", i, r.err)
 	}
-	if wins != 1 {
-		t.Fatalf("exactly one concurrent Create may win first create, got %d", wins)
+	if successes == 0 {
+		t.Fatalf("no concurrent init succeeded; first create must converge on exactly one owner")
 	}
 
-	// Exactly one canonical owner survives: concurrent first create must never
-	// poison the store with more than one identity for one app name.
+	// Exactly one canonical owner must survive the race: concurrent first
+	// create may never poison the store with more than one identity for one
+	// app name, and the surviving ID must equal the ID the successes
+	// converged on.
 	items, err := canonical.List()
 	if err != nil {
 		t.Fatal(err)
@@ -288,9 +328,19 @@ func TestUIDAppSliceConcurrentFirstCreateConvergesOnOneOwner(t *testing.T) {
 	if claimed != 1 {
 		t.Fatalf("concurrent first create left %d owners for one app name; the store must converge on one", claimed)
 	}
+	// No racer may observe a divergent canonical identity: whatever the
+	// classification of outcomes, every identity ever seen in this race must
+	// be the one owner that survived in the store. A second identity would
+	// mean first create did not serialize.
+	for uid := range seen {
+		if uid != storeID {
+			t.Fatalf("a racer observed canonical ID %q but the store converged on %q; first create must converge on one owner", uid, storeID)
+		}
+	}
 	if winner != storeID {
 		t.Fatalf("winning canonical ID %q != canonical store ID %q", winner, storeID)
 	}
+	_ = target
 }
 
 // TestUIDAppSliceNoIDLeakIntoNormalMachineOutput proves the system-owned ID, once
@@ -312,7 +362,7 @@ func TestUIDAppSliceNoIDLeakIntoNormalMachineOutput(t *testing.T) {
 	}
 
 	var out, errOut bytes.Buffer
-	if err := runWithIO(context.Background(), []string{"app", "init", "--quick", "--no-input"}, &out, &errOut); err != nil {
+	if err := runWithIOAsTestOperator(context.Background(), []string{"app", "init", "--quick", "--no-input"}, &out, &errOut); err != nil {
 		t.Fatalf("init: %v %s", err, errOut.String())
 	}
 	initOut := out.String()

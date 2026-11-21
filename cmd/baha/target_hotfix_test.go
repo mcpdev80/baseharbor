@@ -35,7 +35,7 @@ func TestCreateTargetDoesNotBecomeDefaultWithoutFlag(t *testing.T) {
 
 	var out bytes.Buffer
 	if err := createTarget(
-		context.Background(),
+		testOperatorContext(context.Background()),
 		[]string{"kudo", "--runtime-provider", "docker", "--access", "local-docker", "--access-provider", "local", "--reference", "local", "--scope", "default"},
 		&out,
 		&out,
@@ -152,7 +152,7 @@ func TestCreateTargetSupportsRemoteNodeConnectorAccess(t *testing.T) {
 
 	var out bytes.Buffer
 	if err := createTarget(
-		context.Background(),
+		testOperatorContext(context.Background()),
 		[]string{
 			"edge-a",
 			"--runtime-provider", "docker",
@@ -183,11 +183,11 @@ func TestCreateTargetSupportsRemoteNodeConnectorAccess(t *testing.T) {
 func TestTargetInspectionProjectsBuiltInAccessCapabilities(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("XDG_DATA_HOME", t.TempDir())
-	t.Setenv("BASEHARBOR_TARGET", "edge-a")
 
 	var out bytes.Buffer
+	ctx := testOperatorContext(context.Background())
 	if err := createTarget(
-		context.Background(),
+		ctx,
 		[]string{
 			"edge-a",
 			"--runtime-provider", "docker",
@@ -200,8 +200,7 @@ func TestTargetInspectionProjectsBuiltInAccessCapabilities(t *testing.T) {
 	); err != nil {
 		t.Fatal(err)
 	}
-
-	result, err := collectTargetInspection(context.Background())
+	result, err := collectTargetInspection(withTargetOverride(ctx, "edge-a"))
 	if err != nil {
 		t.Fatal(err)
 	}

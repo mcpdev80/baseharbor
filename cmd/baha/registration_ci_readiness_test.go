@@ -36,7 +36,7 @@ func TestAppRegistrationCICommandHelpAndJSONDiscovery(t *testing.T) {
 			t.Fatalf("required existing app command %q is not registered", required)
 		}
 		var out, errors bytes.Buffer
-		if err := runWithIO(context.Background(), []string{"app", required, "--help"}, &out, &errors); err != nil {
+		if err := runWithIOAsTestOperator(context.Background(), []string{"app", required, "--help"}, &out, &errors); err != nil {
 			t.Fatalf("%s --help: %v (%s)", required, err, errors.String())
 		}
 		if !strings.Contains(out.String(), required) {
@@ -96,7 +96,7 @@ func TestMachineCoverageCIRealTreeAndJSONClassification(t *testing.T) {
 func TestMCPRegistrationCIInProcessDiscoverAndInvoke(t *testing.T) {
 	configureTestTarget(t)
 	session := workspaceMutationClient(t)
-	ctx := context.Background()
+	ctx := testOperatorContext(context.Background())
 	result, err := session.ListTools(ctx, nil)
 	if err != nil || result == nil || len(result.Tools) == 0 {
 		t.Fatalf("in-process tools/list failed: %+v %v", result, err)
