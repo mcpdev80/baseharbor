@@ -110,6 +110,33 @@ func TestSecretMaterialIsRejected(t *testing.T) {
 	_ = config
 }
 
+func TestSecretLikeEnvironmentMapKeyIsRedactedFromValidationError(t *testing.T) {
+	const secret = "token=environment-map-key-sentinel-7f3a"
+	cfg := Config{
+		APIVersion:   ContractVersion,
+		Organization: "acme",
+		Environments: map[string]EnvironmentDefaults{
+			secret: {},
+		},
+	}
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected secret-like environment map key to be rejected")
+	}
+	if strings.Contains(err.Error(), secret) || strings.Contains(err.Error(), "environment-map-key-sentinel-7f3a") {
+		t.Fatalf("validation error leaked secret-like environment map key: %v", err)
+	}
+	if !strings.Contains(err.Error(), "environment name") || !strings.Contains(err.Error(), "secret-like") {
+		t.Fatalf("expected a useful redacted environment-name error, got %v", err)
+	}
+
+	cfg.Environments = map[string]EnvironmentDefaults{"bad name": {}}
+	err = cfg.Validate()
+	if err == nil || !strings.Contains(err.Error(), `environment name "bad name" is invalid`) {
+		t.Fatalf("non-secret invalid environment name behavior changed: %v", err)
+	}
+}
+
 func TestGitResolutionPinsRevisionAndCheckDoesNotActivate(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not installed")
