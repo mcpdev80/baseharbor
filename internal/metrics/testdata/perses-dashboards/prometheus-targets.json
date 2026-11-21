@@ -11,9 +11,11 @@
     },
     "datasources": {
       "prometheus": {
-        "kind": "PrometheusDatasource",
-        "name": "prometheus",
-        "default": true
+        "default": true,
+        "plugin": {
+          "kind": "PrometheusDatasource",
+          "spec": {}
+        }
       }
     },
     "panels": {
@@ -24,15 +26,18 @@
             "name": "BaseHarbor application up"
           },
           "plugin": {
-            "kind": "StatChart"
+            "kind": "StatChart",
+            "spec": {}
           },
           "queries": [
             {
               "kind": "TimeSeriesQuery",
               "spec": {
-                "kind": "PrometheusTimeSeriesQuery",
-                "spec": {
-                  "query": "up{job=\"baseharbor-applications\",baseharbor_application=\"$application\",baseharbor_environment=\"$env\"}"
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "up{job=\"baseharbor-applications\",baseharbor_application=\"$application\",baseharbor_environment=\"$env\"}"
+                  }
                 },
                 "datasource": {
                   "kind": "PrometheusDatasource",

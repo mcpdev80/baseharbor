@@ -204,15 +204,15 @@ func TestPersesDashboardQueriesAreValidPromQL(t *testing.T) {
 		}
 		for _, panel := range dashboard.Spec.Panels {
 			for _, q := range panel.Spec.Queries {
-				var spec map[string]any
-				if err := json.Unmarshal(q.Spec.Spec, &spec); err != nil {
-					t.Fatalf("%s: query spec %q is not valid JSON: %v", key, q.Spec.Kind, err)
+				var pluginSpec map[string]any
+				if err := json.Unmarshal(q.Spec.Plugin.Spec, &pluginSpec); err != nil {
+					t.Fatalf("%s: query plugin spec %q is not valid JSON: %v", key, q.Spec.Plugin.Kind, err)
 				}
-				qs, _ := spec["query"].(string)
+				qs, _ := pluginSpec["query"].(string)
 				if strings.TrimSpace(qs) == "" {
-					t.Fatalf("%s: query of kind %q must carry a non-empty query string", key, q.Spec.Kind)
+					t.Fatalf("%s: query of kind %q must carry a non-empty query string", key, q.Spec.Plugin.Kind)
 				}
-				if q.Spec.Kind == PersesQueryPrometheus {
+				if q.Spec.Plugin.Kind == PersesQueryPrometheus {
 					assertValidPromQL(t, key, qs)
 				}
 			}

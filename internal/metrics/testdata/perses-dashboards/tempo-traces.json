@@ -11,9 +11,11 @@
     },
     "datasources": {
       "tempo": {
-        "kind": "TempoDatasource",
-        "name": "tempo",
-        "default": true
+        "default": true,
+        "plugin": {
+          "kind": "TempoDatasource",
+          "spec": {}
+        }
       }
     },
     "panels": {
@@ -24,15 +26,18 @@
             "name": "BaseHarbor application traces"
           },
           "plugin": {
-            "kind": "TracingGanttChart"
+            "kind": "TracingGanttChart",
+            "spec": {}
           },
           "queries": [
             {
               "kind": "TraceQuery",
               "spec": {
-                "kind": "TempoTraceQuery",
-                "spec": {
-                  "query": "{service.name=\"baseharbor-applications\"}"
+                "plugin": {
+                  "kind": "TempoTraceQuery",
+                  "spec": {
+                    "query": "{service.name=\"baseharbor-applications\"}"
+                  }
                 },
                 "datasource": {
                   "kind": "TempoDatasource",

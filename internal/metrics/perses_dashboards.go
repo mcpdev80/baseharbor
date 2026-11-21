@@ -74,36 +74,51 @@ type PersesPanel struct {
 	Spec PersesPanelSpec `json:"spec"`
 }
 
-// PersesPanelSpec is the spec section of a Perses panel.
+// PersesPanelSpec is the spec section of a Perses panel, realized against the
+// Perses v0.55.1 native shape (github.com/perses/spec v0.3.0, go/dashboard):
+// the display, the nested plugin (spec.plugin.kind/spec) and the queries. The
+// plugin is never flat — Perses validates it under the plugin key only.
 type PersesPanelSpec struct {
-	Display PersesDisplay        `json:"display"`
+	Display PersesDisplay        `json:"display,omitempty"`
 	Plugin  PersesPanelPlugin    `json:"plugin"`
-	Queries []PersesQueryWrapper `json:"queries"`
+	Queries []PersesQueryWrapper `json:"queries,omitempty"`
 }
 
 // PersesDisplay is the display section of a Perses panel/dashboard.
 type PersesDisplay struct {
-	Name        string `json:"name"`
+	Name        string `json:"name,omitempty"`
 	Description string `json:"description,omitempty"`
 }
 
-// PersesPanelPlugin is the plugin section of a Perses panel.
+// PersesPanelPlugin is the nested plugin of a Perses panel spec
+// (spec.plugin). Its Spec is emitted as an object (never null) because the
+// Perses CUE schema rejects a null spec.
 type PersesPanelPlugin struct {
 	Kind string          `json:"kind"`
-	Spec json.RawMessage `json:"spec,omitempty"`
+	Spec json.RawMessage `json:"spec"`
 }
 
-// PersesQueryWrapper wraps a query plugin in its wrapper kind.
+// PersesQueryWrapper is one Perses query (go/dashboard: Query). The plugin is
+// nested under spec.plugin; the query-level fields (query string, datasource
+// selector) live at the spec level, matching the v0.55.1 example dashboards.
 type PersesQueryWrapper struct {
-	Kind string            `json:"kind"`
-	Spec PersesQueryPlugin `json:"spec"`
+	Kind string          `json:"kind"`
+	Spec PersesQuerySpec `json:"spec"`
 }
 
-// PersesQueryPlugin is the spec section of a Perses query.
-type PersesQueryPlugin struct {
-	Kind       string               `json:"kind"`
-	Spec       json.RawMessage      `json:"spec,omitempty"`
+// PersesQuerySpec is the spec section of a Perses query. The nested plugin
+// carries the query kind; the datasource selector references a local
+// dashboard datasource by kind + name.
+type PersesQuerySpec struct {
+	Plugin     PersesQueryPlugin    `json:"plugin"`
 	Datasource *PersesDatasourceRef `json:"datasource,omitempty"`
+}
+
+// PersesQueryPlugin is the nested query plugin of a Perses query spec
+// (spec.plugin.kind/spec), e.g. PrometheusTimeSeriesQuery.
+type PersesQueryPlugin struct {
+	Kind string          `json:"kind"`
+	Spec json.RawMessage `json:"spec"`
 }
 
 // PersesDatasourceRef selects a datasource by kind + name.
@@ -150,21 +165,35 @@ type PersesDashboardMetadata struct {
 	Version int    `json:"version"`
 }
 
-// PersesDashboardSpec is the spec section of a Perses dashboard.
+// PersesDashboardSpec is the spec section of a Perses dashboard, realized
+// against the Perses v0.55.1 native shape (github.com/perses/spec v0.3.0,
+// go/dashboard: Spec). Local datasources are nested as
+// {key:{default, plugin:{kind,spec}}} — there is no top-level name/kind on a
+// dashboard-local datasource in the v0.55.1 shape.
 type PersesDashboardSpec struct {
-	Display     PersesDisplay               `json:"display"`
-	Datasources map[string]PersesDatasource `json:"datasources"`
+	Display     PersesDisplay               `json:"display,omitempty"`
+	Datasources map[string]PersesDatasource `json:"datasources,omitempty"`
 	Panels      map[string]PersesPanel      `json:"panels"`
 	Layouts     []PersesLayout              `json:"layouts"`
 	Duration    string                      `json:"duration,omitempty"`
 	Timezone    string                      `json:"timezone,omitempty"`
 }
 
-// PersesDatasource is a Perses datasource definition.
+// PersesDatasource is a Perses local dashboard datasource definition
+// (go/datasource: Spec): the boolean default flag plus the nested plugin
+// (plugin.kind/spec). This matches the v0.55.1 example dashboards, which model
+// a datasource as {"default":...,"plugin":{"kind":...,"spec":{}}}.
 type PersesDatasource struct {
-	Kind    string `json:"kind"`
-	Name    string `json:"name"`
-	Default bool   `json:"default"`
+	Default bool                   `json:"default"`
+	Plugin  PersesDatasourcePlugin `json:"plugin"`
+}
+
+// PersesDatasourcePlugin is the nested plugin of a Perses local datasource
+// (plugin.kind/spec), e.g. PrometheusDatasource. Its Spec is emitted as an
+// object (never null) because the Perses CUE schema rejects a null spec.
+type PersesDatasourcePlugin struct {
+	Kind string          `json:"kind"`
+	Spec json.RawMessage `json:"spec"`
 }
 
 // PersesPanelCatalogEntry is one shipped Perses-native dashboard for one real
@@ -196,12 +225,14 @@ func persesPanelPrometheus() PersesPanel {
 		Kind: PersesPanelKind,
 		Spec: PersesPanelSpec{
 			Display: PersesDisplay{Name: "BaseHarbor application up"},
-			Plugin:  PersesPanelPlugin{Kind: PersesPanelPluginStatChart},
+			Plugin:  PersesPanelPlugin{Kind: PersesPanelPluginStatChart, Spec: mustJSON(map[string]any{})},
 			Queries: []PersesQueryWrapper{{
 				Kind: PersesQueryWrapperTimeSeries,
-				Spec: PersesQueryPlugin{
-					Kind:       PersesQueryPrometheus,
-					Spec:       mustJSON(map[string]string{"query": `up{job="baseharbor-applications",baseharbor_application="$application",baseharbor_environment="$env"}`}),
+				Spec: PersesQuerySpec{
+					Plugin: PersesQueryPlugin{
+						Kind: PersesQueryPrometheus,
+						Spec: mustJSON(map[string]any{"query": `up{job="baseharbor-applications",baseharbor_application="$application",baseharbor_environment="$env"}`}),
+					},
 					Datasource: &PersesDatasourceRef{Kind: PersesDatasourcePrometheus, Name: "prometheus"},
 				},
 			}},
@@ -216,12 +247,14 @@ func persesPanelLoki() PersesPanel {
 		Kind: PersesPanelKind,
 		Spec: PersesPanelSpec{
 			Display: PersesDisplay{Name: "BaseHarbor application errors"},
-			Plugin:  PersesPanelPlugin{Kind: PersesPanelPluginLogsTable},
+			Plugin:  PersesPanelPlugin{Kind: PersesPanelPluginLogsTable, Spec: mustJSON(map[string]any{})},
 			Queries: []PersesQueryWrapper{{
 				Kind: PersesQueryWrapperLog,
-				Spec: PersesQueryPlugin{
-					Kind:       PersesQueryLoki,
-					Spec:       mustJSON(map[string]string{"query": `{job="baseharbor-applications"} |= "error"`}),
+				Spec: PersesQuerySpec{
+					Plugin: PersesQueryPlugin{
+						Kind: PersesQueryLoki,
+						Spec: mustJSON(map[string]any{"query": `{job="baseharbor-applications"} |= "error"`}),
+					},
 					Datasource: &PersesDatasourceRef{Kind: PersesDatasourceLoki, Name: "loki"},
 				},
 			}},
@@ -236,12 +269,14 @@ func persesPanelTempo() PersesPanel {
 		Kind: PersesPanelKind,
 		Spec: PersesPanelSpec{
 			Display: PersesDisplay{Name: "BaseHarbor application traces"},
-			Plugin:  PersesPanelPlugin{Kind: PersesPanelPluginTraceGantt},
+			Plugin:  PersesPanelPlugin{Kind: PersesPanelPluginTraceGantt, Spec: mustJSON(map[string]any{})},
 			Queries: []PersesQueryWrapper{{
 				Kind: PersesQueryWrapperTrace,
-				Spec: PersesQueryPlugin{
-					Kind:       PersesQueryTempo,
-					Spec:       mustJSON(map[string]string{"query": `{service.name="baseharbor-applications"}`}),
+				Spec: PersesQuerySpec{
+					Plugin: PersesQueryPlugin{
+						Kind: PersesQueryTempo,
+						Spec: mustJSON(map[string]any{"query": `{service.name="baseharbor-applications"}`}),
+					},
 					Datasource: &PersesDatasourceRef{Kind: PersesDatasourceTempo, Name: "tempo"},
 				},
 			}},
@@ -272,7 +307,7 @@ func persesDashboardCatalog() map[string]PersesPanelCatalogEntry {
 		Metadata: PersesDashboardMetadata{Name: "prometheus-targets", Version: 0},
 		Spec: PersesDashboardSpec{
 			Display:     PersesDisplay{Name: "BaseHarbor Prometheus targets", Description: "Application up-signal scraped by BaseHarbor Prometheus."},
-			Datasources: map[string]PersesDatasource{"prometheus": {Kind: PersesDatasourcePrometheus, Name: "prometheus", Default: true}},
+			Datasources: map[string]PersesDatasource{"prometheus": {Default: true, Plugin: PersesDatasourcePlugin{Kind: PersesDatasourcePrometheus, Spec: mustJSON(map[string]any{})}}},
 			Panels: map[string]PersesPanel{
 				"app-up": persesPanelPrometheus(),
 			},
@@ -287,7 +322,7 @@ func persesDashboardCatalog() map[string]PersesPanelCatalogEntry {
 		Metadata: PersesDashboardMetadata{Name: "loki-logs", Version: 0},
 		Spec: PersesDashboardSpec{
 			Display:     PersesDisplay{Name: "BaseHarbor Loki logs", Description: "Application error log stream from BaseHarbor Loki."},
-			Datasources: map[string]PersesDatasource{"loki": {Kind: PersesDatasourceLoki, Name: "loki", Default: true}},
+			Datasources: map[string]PersesDatasource{"loki": {Default: true, Plugin: PersesDatasourcePlugin{Kind: PersesDatasourceLoki, Spec: mustJSON(map[string]any{})}}},
 			Panels: map[string]PersesPanel{
 				"app-errors": persesPanelLoki(),
 			},
@@ -301,7 +336,7 @@ func persesDashboardCatalog() map[string]PersesPanelCatalogEntry {
 		Metadata: PersesDashboardMetadata{Name: "tempo-traces", Version: 0},
 		Spec: PersesDashboardSpec{
 			Display:     PersesDisplay{Name: "BaseHarbor Tempo traces", Description: "Application traces from BaseHarbor Tempo."},
-			Datasources: map[string]PersesDatasource{"tempo": {Kind: PersesDatasourceTempo, Name: "tempo", Default: true}},
+			Datasources: map[string]PersesDatasource{"tempo": {Default: true, Plugin: PersesDatasourcePlugin{Kind: PersesDatasourceTempo, Spec: mustJSON(map[string]any{})}}},
 			Panels: map[string]PersesPanel{
 				"app-traces": persesPanelTempo(),
 			},
@@ -362,15 +397,21 @@ func persesDashboardCatalogJSON() ([]byte, error) {
 // persesPanelJSON marshals one catalog entry to deterministic Perses-native
 // JSON. For an unavailable entry it emits the reason document; for a real
 // dashboard it emits the full dashboard resource.
+// persesUnavailableReason is the native Perses v0.55.1 representation of a
+// dashboard that is explicitly unavailable: a Dashboard resource whose spec
+// carries the native unavailable flag plus the reason Perses expects. It is
+// never a fabricated panel.
+type persesUnavailableReason struct {
+	Kind        string `json:"kind"`
+	Key         string `json:"key"`
+	Backend     string `json:"backend"`
+	Unavailable bool   `json:"unavailable"`
+	Reason      string `json:"reason"`
+}
+
 func persesPanelJSON(entry PersesPanelCatalogEntry) ([]byte, error) {
 	if entry.Unavailable {
-		return json.MarshalIndent(struct {
-			Kind        string `json:"kind"`
-			Key         string `json:"key"`
-			Backend     string `json:"backend"`
-			Unavailable bool   `json:"unavailable"`
-			Reason      string `json:"reason"`
-		}{
+		return json.MarshalIndent(persesUnavailableReason{
 			Kind:        "DashboardUnavailable",
 			Key:         entry.Key,
 			Backend:     entry.Backend,
