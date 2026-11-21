@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -28,15 +27,11 @@ func TestCoreDefaultNetworkBindingRejectsUnownedNativeNetwork(t *testing.T) {
 	if kind != "docker" && kind != "podman" {
 		t.Fatal("explicit native Docker or Podman runtime required")
 	}
-	var out bytes.Buffer
 	targetName := fmt.Sprintf("foreign-network-%d", time.Now().UnixNano())
-	if err := runWithIO(ctx, []string{"target", "create", targetName, "--provider", kind, "--access", targetName, "--reference", "local", "--default"}, &out, &out); err != nil {
-		t.Fatalf("create isolated target: %v\n%s", err, out.String())
-	}
-	target, err := effectiveTarget(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
+	// Configure an isolated Target directly. The assertion is about native
+	// resource ownership and must not depend on a separate authenticated
+	// target.create command.
+	target := configureIsolatedEmptyRuntimeTarget(t, targetName, kind)
 	files := bhruntime.Files{Project: targetRuntimeProjectName(target), ResourceProject: bhruntime.SharedResourceProjectName(target.Name)}
 	network := bhruntime.ControlPlaneNetworkName(files.ResourceProject)
 	labels := []string{"--label", "com.docker.compose.project=" + files.Project}
