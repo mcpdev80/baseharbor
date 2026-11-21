@@ -11,6 +11,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/cli"
+	metricsprovider "github.com/mcpdev80/baseharbor/internal/metrics"
 )
 
 // persesLifecycleCommand wires the accepted CLI/domain operation for the optional
@@ -89,6 +90,7 @@ func persesStatusCommand(store application.Store) *cli.Command {
 				return writeJSON(out, result)
 			}
 			fmt.Fprintf(out, "Perses state: %s\n", result.State)
+			renderPersesBackendWitness(out, result.BackendWitness)
 			return nil
 		},
 	}
@@ -126,6 +128,12 @@ type persesStatusResult struct {
 	State   string `json:"state"`
 	Enabled bool   `json:"enabled"`
 	Version string `json:"version"`
+	// BackendWitness names, per observability backend, the manifest-only
+	// three-state witness (configured / not-configured) with its source-id, so
+	// the operator sees which source is declared rather than a blanket
+	// "unavailable". Shared with app_status_result.go (persesBackendSignalWitness
+	// / persesBackendSignalWitnessFromManifest). Never asserts a verified backend.
+	BackendWitness []persesBackendSignalVerdict `json:"backend_witness,omitempty"`
 }
 
 // persesDirectCLIApplyDeferred reports whether the shared apply lifecycle after
@@ -218,10 +226,13 @@ func reportPersesSurfaceStatus(ctx context.Context, store application.Store, arg
 	if err := authorizeApplicationOperation(ctx, persesLifecycleOperationID(persesLifecycleStatusAction), resolved); err != nil {
 		return persesStatusResult{}, err
 	}
+	resolvedHostSignalStatus := capability.ResolveHostDashboardSignalStatus(
+		resolved.Manifest.Services.ObservabilityManagementUI, resolved.Manifest.Services.Perses)
 	return persesStatusResult{
-		State:   application.PersesLifecycleStatus(resolved.Manifest),
-		Enabled: application.PersesLifecycleEnabled(resolved.Manifest),
-		Version: capability.PersesDefaultRelease.Version,
+		State:          application.PersesLifecycleStatus(resolved.Manifest),
+		Enabled:        application.PersesLifecycleEnabled(resolved.Manifest),
+		Version:        capability.PersesDefaultRelease.Version,
+		BackendWitness: persesBackendSignalWitnessFromManifest(resolved.Manifest, resolvedHostSignalStatus, metricsprovider.PersesBackendSignalWitness{}),
 	}, nil
 }
 
@@ -292,4 +303,17 @@ func persistRepositoryPersesLifecycle(ctx context.Context, resolved resolvedAppl
 func cliInvocationTransport(ctx context.Context) string {
 	transport, _ := ctx.Value(localInvocationKey{}).(string)
 	return transport
+}
+
+// renderPersesBackendWitness prints the per-observability-signal three-state
+// backend-witness the card mandates for `perses status` (configured /
+// unreachable / not-configured), each line carrying its source-id. It never
+// asserts a "healthy"/"verified" backend from a manifest flag; a real probe is
+// card 0428-143. The machine `app status` host-containers JSON renders the
+// identical witness through the shared persesBackendSignalWitnessFromManifest
+// helper, so the two faces never drift.
+func renderPersesBackendWitness(out io.Writer, witness []persesBackendSignalVerdict) {
+	for _, verdict := range witness {
+		fmt.Fprintf(out, "  %s [%s]: %s\n", verdict.Backend, verdict.SourceID, verdict.State)
+	}
 }
