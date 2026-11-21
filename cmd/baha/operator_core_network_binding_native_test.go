@@ -68,10 +68,11 @@ func TestCoreDefaultNetworkBindingRejectsUnownedNativeNetwork(t *testing.T) {
 		provider, providerErr := detectRuntimeForTarget(ctx, target)
 		var owned []bhruntime.ProjectResource
 		var inspectErr error
+		networks, networkListErr := exec.CommandContext(ctx, kind, "network", "ls", "--format", "{{.Name}}").CombinedOutput()
 		if providerErr == nil {
 			owned, inspectErr = provider.InspectProjectResources(ctx, files.Project, []bhruntime.ProjectResource{{Kind: "network", Name: network}})
 		}
-		t.Fatalf("unowned native network must be refused with protected-owner diagnostic; got files=%+v err=%v native-labels=%q inventory=%+v inventory-error=%v runtime-error=%v", bound, err, strings.TrimSpace(string(inspected)), owned, inspectErr, providerErr)
+		t.Fatalf("unowned native network must be refused with protected-owner diagnostic; got files=%+v err=%v native-labels=%q network-list=%q network-list-error=%v inventory=%+v inventory-error=%v runtime-error=%v", bound, err, strings.TrimSpace(string(inspected)), strings.TrimSpace(string(networks)), networkListErr, owned, inspectErr, providerErr)
 	}
 	if bound.DefaultNetworkExternal {
 		t.Fatal("unowned native network must not be adopted as external")
