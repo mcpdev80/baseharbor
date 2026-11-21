@@ -43,6 +43,16 @@ type applicationStatusResult struct {
 	// "unavailable". It is manifest declaration truth: it never asserts a
 	// "healthy"/"verified" backend from a manifest flag. See befund-1.md.
 	PersesBackendWitness []persesBackendSignalVerdict `json:"perses_backend_witness,omitempty"`
+	// InfrastructureDashboards is the panel-inventory map that the r9 witness
+	// commit (67658ef86) dropped from the struct and both setters. Card 0428-142
+	// requires BOTH the manifest-only backend witness above and this panel
+	// inventory in the same result: the witness names which source is declared
+	// (configured / not-configured / unreachable), the inventory names each
+	// infra panel (cpu/memory/disk/network) with its verdict. Restoring the
+	// field and its json-tag here keeps the contract that
+	// TestBahaStatusInfrastructureDashboardsExposesEveryPanel asserts; the
+	// producer is set below in both status paths.
+	InfrastructureDashboards map[string]metricsprovider.PersesInfraDashboardAvailabilityEntry `json:"infrastructure_dashboards,omitempty"`
 
 	tlsStatus     *applicationTLSStatus
 	tlsErr        error
@@ -292,6 +302,7 @@ func collectApplicationStatusResult(ctx context.Context, store application.Store
 	persesStatus := capability.PersesStatusNow(resolved.Manifest.Services.ObservabilityManagementUI && resolved.Manifest.Services.Perses)
 	resolvedHostSignalStatus := capability.ResolveHostDashboardSignalStatus(
 		resolved.Manifest.Services.ObservabilityManagementUI, resolved.Manifest.Services.Perses)
+	infrastructureDashboardStatus := metricsprovider.PersesInfraDashboardAvailability(ctx, resolved.Manifest)
 	if hasRemoteApplicationTarget(resolved) {
 		return applicationStatusResult{StatusResult: result, ApplicationID: resolved.Manifest.ApplicationID,
 			DeploymentID: resolved.DeploymentIdentity.DeploymentID,
@@ -299,7 +310,8 @@ func collectApplicationStatusResult(ctx context.Context, store application.Store
 			Perses:       persesStatus,
 			HostContainersDashboards: metricsprovider.PersesHostDashboardAvailability(
 				resolvedHostSignalStatus),
-			PersesBackendWitness: persesBackendSignalWitnessFromManifest(resolved.Manifest, resolvedHostSignalStatus, metricsprovider.PersesBackendSignalWitness{})}, nil
+			PersesBackendWitness:     persesBackendSignalWitnessFromManifest(resolved.Manifest, resolvedHostSignalStatus, metricsprovider.PersesBackendSignalWitness{}),
+			InfrastructureDashboards: infrastructureDashboardStatus}, nil
 	}
 	tlsStatus, tlsObservation, tlsErr := collectApplicationTLSObservation(resolved)
 	if tlsErr != nil || (tlsObservation != nil && !tlsObservation.Healthy) {
@@ -403,6 +415,7 @@ func collectApplicationStatusResult(ctx context.Context, store application.Store
 		Perses:                   persesStatus,
 		HostContainersDashboards: metricsprovider.PersesHostDashboardAvailability(resolvedHostSignalStatus),
 		PersesBackendWitness:     persesBackendSignalWitnessFromManifest(resolved.Manifest, resolvedHostSignalStatus, metricsprovider.PersesBackendSignalWitness{}),
+		InfrastructureDashboards: infrastructureDashboardStatus,
 		tlsStatus:                tlsStatus,
 		tlsErr:                   tlsErr,
 		serviceTLSErr:            serviceTLSErr,

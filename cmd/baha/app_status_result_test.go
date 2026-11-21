@@ -425,3 +425,57 @@ func TestPersesStatusWitnessHumanAndMachineFaceShowSameBackends(t *testing.T) {
 		}
 	}
 }
+
+// infraReport decodes the full `baha status --json` machine face, carrying BOTH
+// the manifest-only backend witness and the panel-inventory map so the co-fill
+// regression can assert they are present in the SAME result at once.
+type infraReport struct {
+	State                    string                                                           `json:"state"`
+	Perses                   *string                                                          `json:"perses"`
+	InfrastructureDashboards map[string]metricsprovider.PersesInfraDashboardAvailabilityEntry `json:"infrastructure_dashboards"`
+	PersesBackendWitness     []persesBackendSignalVerdict                                     `json:"perses_backend_witness"`
+}
+
+// TestBahaStatusBothWitnessAndInfraDashboardsFilledSimultaneously is the card
+// 0428-142 r9 regression that pins the compatible direction: the `app status
+// --json` face carries BOTH the manifest-only backend witness AND the
+// panel-inventory infrastructure_dashboards map in the same result. The r9
+// witness commit (67658ef86) dropped InfrastructureDashboards, so a change that
+// removes either face now fails this test. It asserts the witness (which the
+// card mandates) and the four-panel inventory (which TestBahaStatusInfrastructureDashboardsExposesEveryPanel
+// asserts) at once, so no later change can silently drop one of them.
+func TestBahaStatusBothWitnessAndInfraDashboardsFilledSimultaneously(t *testing.T) {
+	ctx := context.Background()
+	report := persesInfraCoFillReport(t, ctx)
+
+	if len(report.InfrastructureDashboards) != 4 {
+		t.Fatalf("infrastructure_dashboards must expose all four infra panels (cpu/memory/disk/network) alongside the witness, got %d: %+v", len(report.InfrastructureDashboards), report.InfrastructureDashboards)
+	}
+	for _, key := range []string{"cpu", "memory", "disk", "network"} {
+		if _, ok := report.InfrastructureDashboards[key]; !ok {
+			t.Fatalf("infrastructure_dashboards must expose %q explicitly alongside the backend witness", key)
+		}
+	}
+
+	if len(report.PersesBackendWitness) == 0 {
+		t.Fatalf("perses_backend_witness must be filled alongside the infra-panel inventory, got none: %+v", report.PersesBackendWitness)
+	}
+}
+
+// persesInfraCoFillReport authors an initialized repository whose observability
+// management UI realizes Perses, keeps the not-applied face, and returns its
+// parsed `app status --json` report carrying both the witness and the panel
+// inventory through the production CLI entry.
+func persesInfraCoFillReport(t *testing.T, ctx context.Context) infraReport {
+	t.Helper()
+	persesWitnessProbeApp(t, ctx, "perses-both-faces", nil)
+	var out, errOut bytes.Buffer
+	if err := runWithIOAsTestOperator(ctx, []string{"app", "status", "--json"}, &out, &errOut); err != nil && !strings.Contains(err.Error(), "container runtime orchestration not found") {
+		t.Fatalf("baha app status --json failed: %v\nstdout: %s\nstderr: %s", err, out.String(), errOut.String())
+	}
+	var report infraReport
+	if err := json.Unmarshal(out.Bytes(), &report); err != nil {
+		t.Fatalf("baha status --json output is not the public report: %v\n%s", err, out.String())
+	}
+	return report
+}
