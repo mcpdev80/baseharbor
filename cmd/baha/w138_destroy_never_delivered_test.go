@@ -47,7 +47,7 @@ func TestW138DestroyAfterRefusedApplyReturnsZero(t *testing.T) {
 	var out bytes.Buffer
 
 	// (1) app init: initialize the application identity.
-	if err := runWithIO(ctx, []string{"app", "init", "demo-db", "--sql", "--workload-component", "demo-app"}, &out, &out); err != nil {
+	if err := runWithIOAsTestOperator(ctx, []string{"app", "init", "demo-db", "--sql", "--workload-component", "demo-app"}, &out, &out); err != nil {
 		t.Fatalf("app init: %v", err)
 	}
 
@@ -55,7 +55,7 @@ func TestW138DestroyAfterRefusedApplyReturnsZero(t *testing.T) {
 	// writes no deployment record. This is the fail-closed invariant that must
 	// stay unchanged.
 	out.Reset()
-	err := runWithIO(ctx, []string{"app", "apply", "--no-input"}, &out, &out)
+	err := runWithIOAsTestOperator(ctx, []string{"app", "apply", "--no-input"}, &out, &out)
 	if err == nil {
 		t.Fatal("app apply without --confirm-candidate must fail closed")
 	}
@@ -63,7 +63,7 @@ func TestW138DestroyAfterRefusedApplyReturnsZero(t *testing.T) {
 	// (3) app destroy --yes: nothing was ever delivered, so destroy must retire
 	// the never-realized workload with rc=0 (the reported bug returned rc=1).
 	out.Reset()
-	derr := runWithIO(ctx, []string{"app", "destroy", "--yes"}, &out, &out)
+	derr := runWithIOAsTestOperator(ctx, []string{"app", "destroy", "--yes"}, &out, &out)
 	if derr != nil {
 		t.Fatalf("destroy of never-delivered application must return rc=0, got: %v\noutput:\n%s", derr, out.String())
 	}
@@ -89,10 +89,10 @@ func TestW138DestroyNeverDeliveredNoComposeReturnsZero(t *testing.T) {
 
 	var out bytes.Buffer
 	// app init creates the identity without any runtime (no compose to adopt).
-	if err := runWithIO(context.Background(), []string{"app", "init", "solo", "--sql", "--no-input"}, &out, &out); err != nil {
+	if err := runWithIOAsTestOperator(context.Background(), []string{"app", "init", "solo", "--sql", "--no-input"}, &out, &out); err != nil {
 		t.Fatalf("app init: %v", err)
 	}
-	if err := runWithIO(context.Background(), []string{"app", "destroy", "--yes"}, &out, &out); err != nil {
+	if err := runWithIOAsTestOperator(context.Background(), []string{"app", "destroy", "--yes"}, &out, &out); err != nil {
 		t.Fatalf("destroy of never-delivered application must return rc=0, got: %v", err)
 	}
 }
@@ -177,7 +177,7 @@ func TestW138MissingRecordAfterPersistenceMustNotClaimNeverDelivered(t *testing.
 	gitInitRepo(t, root)
 	ctx := context.Background()
 	var out bytes.Buffer
-	if err := runWithIO(ctx, []string{"app", "init", "demo-db", "--sql", "--workload-component", "demo-app"}, &out, &out); err != nil {
+	if err := runWithIOAsTestOperator(ctx, []string{"app", "init", "demo-db", "--sql", "--workload-component", "demo-app"}, &out, &out); err != nil {
 		t.Fatal(err)
 	}
 	// This case deliberately persists a deployment before deleting its record.
@@ -203,7 +203,7 @@ func TestW138MissingRecordAfterPersistenceMustNotClaimNeverDelivered(t *testing.
 		t.Fatal(err)
 	}
 	out.Reset()
-	if err := runWithIO(ctx, []string{"app", "destroy", "--yes"}, &out, &out); err == nil {
+	if err := runWithIOAsTestOperator(ctx, []string{"app", "destroy", "--yes"}, &out, &out); err == nil {
 		t.Fatal("lost deployment record must fail closed even if the app identity remains")
 	}
 }
@@ -225,7 +225,7 @@ func TestW138DestroyWithoutYesPreservesNeverDeliveredProof(t *testing.T) {
 	gitInitRepo(t, root)
 	ctx := context.Background()
 	var out bytes.Buffer
-	if err := runWithIO(ctx, []string{"app", "init", "demo-db", "--sql", "--workload-component", "demo-app"}, &out, &out); err != nil {
+	if err := runWithIOAsTestOperator(ctx, []string{"app", "init", "demo-db", "--sql", "--workload-component", "demo-app"}, &out, &out); err != nil {
 		t.Fatal(err)
 	}
 	resolved, err := resolveApplication(ctx, application.DefaultStore(), nil, "destroy")
@@ -233,7 +233,7 @@ func TestW138DestroyWithoutYesPreservesNeverDeliveredProof(t *testing.T) {
 		t.Fatal(err)
 	}
 	out.Reset()
-	_ = runWithIO(ctx, []string{"app", "destroy"}, &out, &out)
+	_ = runWithIOAsTestOperator(ctx, []string{"app", "destroy"}, &out, &out)
 	if err := deployment.VerifyNeverDeliveredProof(resolved.DeploymentIdentity); err != nil {
 		t.Fatalf("destroy without --yes must not consume initialization proof: %v", err)
 	}

@@ -33,7 +33,7 @@ func TestCoreBootstrapRetainsApplicationSharedNetworkAndSQL(t *testing.T) {
 		t.Fatal("explicit native runtime required")
 	}
 	var out bytes.Buffer
-	if err := runWithIO(ctx, []string{"target", "create", "shared-network-native", "--provider", kind, "--access", "shared-network-native", "--reference", "local", "--default"}, &out, &out); err != nil {
+	if err := runWithIOAsTestOperator(ctx, []string{"target", "create", "shared-network-native", "--provider", kind, "--access", "shared-network-native", "--reference", "local", "--default"}, &out, &out); err != nil {
 		t.Fatal(err)
 	}
 	t.Chdir(t.TempDir())
@@ -45,7 +45,7 @@ func TestCoreBootstrapRetainsApplicationSharedNetworkAndSQL(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := runWithIO(ctx, []string{"app", "init", "--quick", "--json"}, &out, &out); err != nil {
+	if err := runWithIOAsTestOperator(ctx, []string{"app", "init", "--quick", "--json"}, &out, &out); err != nil {
 		t.Fatal(err)
 	}
 	applySelectiveIdentityIntent(t, ctx)

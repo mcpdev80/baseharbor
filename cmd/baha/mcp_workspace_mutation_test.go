@@ -25,10 +25,18 @@ func workspaceMutationFixture(t *testing.T, environment string) string {
 }
 
 func workspaceMutationClient(t *testing.T) *mcp.ClientSession {
+	return workspaceMutationClientWithContext(t, testOperatorContext(context.Background()))
+}
+
+func workspaceMutationClientUnauthenticated(t *testing.T) *mcp.ClientSession {
+	return workspaceMutationClientWithContext(t, context.Background())
+}
+
+func workspaceMutationClientWithContext(t *testing.T, serverContext context.Context) *mcp.ClientSession {
 	t.Helper()
 	server := newMCPServer(application.DefaultStore())
 	serverTransport, clientTransport := mcp.NewInMemoryTransports()
-	serverSession, err := server.Connect(context.Background(), serverTransport, nil)
+	serverSession, err := server.Connect(serverContext, serverTransport, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,7 +64,7 @@ func TestMCPWorkspaceInitAndMapShareCLIJSONOperations(t *testing.T) {
 		t.Fatalf("model = %#v %v", model, err)
 	}
 	var cliOutput bytes.Buffer
-	err = appWorkspaceInitCommand().Run(context.Background(), []string{"--manifest", manifest, "--source", "backend=https://github.com/acme/api.git", "--component", "api=backend", "-o", "json"}, &cliOutput, &bytes.Buffer{})
+	err = appWorkspaceInitCommand().Run(testOperatorContext(context.Background()), []string{"--manifest", manifest, "--source", "backend=https://github.com/acme/api.git", "--component", "api=backend", "-o", "json"}, &cliOutput, &bytes.Buffer{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -83,7 +91,7 @@ func TestMCPWorkspaceManagedDenialPrecedesMutation(t *testing.T) {
 	t.Setenv(operatorauth.EnvIssuer, "")
 	t.Setenv(operatorauth.EnvClientID, "")
 	manifest := workspaceMutationFixture(t, "prod")
-	session := workspaceMutationClient(t)
+	session := workspaceMutationClientUnauthenticated(t)
 	for _, tool := range []string{"baseharbor.workspace.init", "baseharbor.workspace.map"} {
 		arguments := map[string]any{"manifest": manifest}
 		if tool == "baseharbor.workspace.init" {

@@ -18,6 +18,13 @@ func inspectApplicationEnvironment(ctx context.Context, resolved resolvedApplica
 	if err := authorizeApplicationOperation(ctx, "app.environment", resolved); err != nil {
 		return applicationEnvironmentResult{}, err
 	}
+	if reveal {
+		// Revealing credential-bearing values is a human-only operation: it
+		// requires an authenticated operator on the separate secret.reveal seam.
+		if err := authorizeHumanReveal(ctx, resolved.Target.Name, resolved.Manifest.Environment, resolved.Manifest.ApplicationID); err != nil {
+			return applicationEnvironmentResult{}, err
+		}
+	}
 	files, err := application.ExistingRuntimeFiles(resolved.Store, resolved.Manifest)
 	if err != nil {
 		return applicationEnvironmentResult{}, err

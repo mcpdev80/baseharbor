@@ -14,7 +14,6 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/mcpdev80/baseharbor/internal/machine"
-	"github.com/mcpdev80/baseharbor/internal/operatorauth"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -51,7 +50,7 @@ func persesMatrixDecodeResult(t *testing.T, out []byte) persesLifecycleResult {
 // enforcement boundary and tags direct CLI runs "cli" (the MCP stdio server
 // tags "stdio"; HTTP/remote machine paths leave the tag empty).
 func persesMatrixContext(ctx context.Context, transport string) context.Context {
-	return machineNoninteractiveContext(withLocalInvocation(operatorauth.WithEnforcement(ctx), transport))
+	return machineNoninteractiveContext(withLocalInvocation(testOperatorContext(ctx), transport))
 }
 
 func TestPersesLifecycleTransportActionMatrix(t *testing.T) {
@@ -210,7 +209,7 @@ func TestPersesLifecycleMCPSharedSeamRunsApplyLifecycle(t *testing.T) {
 	var enableMCPResult persesLifecycleResult
 	server := newMCPServer(application.DefaultStore())
 	serverTransport, clientTransport := mcp.NewInMemoryTransports()
-	serverSession, err := server.Connect(t.Context(), serverTransport, nil)
+	serverSession, err := server.Connect(testOperatorContext(t.Context()), serverTransport, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -235,7 +234,7 @@ func TestPersesLifecycleMCPSharedSeamRunsApplyLifecycle(t *testing.T) {
 		t.Run(tc.action, func(t *testing.T) {
 			persesMatrixSetSelected(t, fixture, tc.from)
 			before := *applyCalls
-			result, callErr := session.CallTool(t.Context(), &mcp.CallToolParams{
+			result, callErr := session.CallTool(testOperatorContext(t.Context()), &mcp.CallToolParams{
 				Name:      tc.tool,
 				Arguments: map[string]any{"approval": true},
 			})
