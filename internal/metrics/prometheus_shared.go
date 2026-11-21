@@ -155,6 +155,7 @@ func providerFilesAt(dir string) (ProviderFiles, error) {
 		Config:              filepath.Join(dir, "prometheus.yml"),
 		WebConfig:           filepath.Join(dir, "web-config.yml"),
 		TargetsDir:          filepath.Join(dir, "targets"),
+		RulesDir:            filepath.Join(dir, "rules"),
 		ProviderSecurityDir: filepath.Join(dir, "provider-security"),
 		Registrations:       filepath.Join(dir, "registrations.json"),
 		RuntimeCA:           filepath.Join(dir, "baseharbor-runtime-ca.pem"),

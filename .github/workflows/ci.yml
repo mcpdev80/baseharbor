@@ -9,6 +9,7 @@ on:
       - 'runtime-validation/ci/**'
       - 'runtime-validation/source-preflight/**'
       - 'runtime-validation/ha/**'
+      - 'runtime-validation/onboarding/**'
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
     branches:
@@ -258,8 +259,46 @@ jobs:
         timeout-minutes: 3
         run: bash scripts/ci-runtime-reset.sh podman
 
+  targeted_workstation_onboarding:
+    name: Targeted · Workstation onboarding · ${{ matrix.runtime }}
+    if: github.event_name == 'push' && startsWith(github.ref_name, 'runtime-validation/onboarding/')
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        runtime: [docker, podman]
+    runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
+    timeout-minutes: 45
+    env:
+      BASEHARBOR_TEST_RUNTIME: ${{ matrix.runtime }}
+      NATIVE_GATE_ID: ${{ matrix.runtime == 'docker' && 'native/docker/onboarding' || 'native/podman/workstation-onboarding' }}
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Prepare isolated rootless runtime
+        run: bash scripts/ci-core-rootless-runtime.sh
+      - name: Install verified ORAS for native Core bootstrap
+        run: bash scripts/ci-install-oras.sh
+      - name: Run exact workstation onboarding gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          bash scripts/ci-native-pr-gate.sh "$NATIVE_GATE_ID"
+      - name: Cleanup native runtime
+        if: always()
+        run: bash scripts/ci-runtime-reset.sh "${{ matrix.runtime }}"
+
   validate:
-    if: github.event_name != 'pull_request' && !startsWith(github.ref_name, 'runtime-validation/source-preflight/') && !startsWith(github.ref_name, 'runtime-validation/ha/')
+    if: github.event_name != 'pull_request' && !startsWith(github.ref_name, 'runtime-validation/source-preflight/') && !startsWith(github.ref_name, 'runtime-validation/ha/') && !startsWith(github.ref_name, 'runtime-validation/onboarding/')
     runs-on: ubuntu-latest
     timeout-minutes: 20
     services:

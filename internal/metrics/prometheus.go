@@ -134,6 +134,7 @@ type ProviderFiles struct {
 	Config              string
 	WebConfig           string
 	TargetsDir          string
+	RulesDir            string
 	ProviderSecurityDir string
 	Registrations       string
 	RuntimeCA           string

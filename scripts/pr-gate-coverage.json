@@ -445,6 +445,27 @@
       ]
     },
     {
+      "id": "workstation.operator-api-runbook",
+      "path": "docs/how-to/operator-api.md",
+      "surfaces": [
+        "workstation.onboarding"
+      ]
+    },
+    {
+      "id": "workstation.remote-workstation-runbook",
+      "path": "docs/how-to/remote-workstation.md",
+      "surfaces": [
+        "workstation.onboarding"
+      ]
+    },
+    {
+      "id": "workstation.onboarding-contract",
+      "path": "docs/spec/zero-friction-workstation-onboarding-v0427.md",
+      "surfaces": [
+        "workstation.onboarding"
+      ]
+    },
+    {
       "id": "source.internal.application.manifest.go",
       "path": "internal/application/manifest.go",
       "surfaces": [
@@ -2725,7 +2746,24 @@
         "workstation.onboarding"
       ],
       "source_components": [
-        "workstation.onboarding-tests"
+        "workstation.onboarding-tests",
+        "workstation.operator-api-runbook",
+        "workstation.remote-workstation-runbook",
+        "workstation.onboarding-contract"
+      ],
+      "selection_scope": "focused"
+    },
+    {
+      "id": "native/podman/workstation-onboarding",
+      "runtime": "podman",
+      "covers": [
+        "workstation.onboarding"
+      ],
+      "source_components": [
+        "workstation.onboarding-tests",
+        "workstation.operator-api-runbook",
+        "workstation.remote-workstation-runbook",
+        "workstation.onboarding-contract"
       ],
       "selection_scope": "focused"
     },

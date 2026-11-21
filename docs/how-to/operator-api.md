@@ -180,13 +180,14 @@ The `baha up` and `baha onboard` invitation path remains the documented
 workstation attachment; the OIDC/PostgreSQL configuration here is its server
 side, not an extra step.
 
-Not re-exercised in this documentation pass, and therefore stated only from
-source and the linked specifications: the managed-Core defaulting on a physical
-Docker/Podman host (LAN listener `:18443`, managed CA trust, OpenBao-issued
-leaves), Node Connector outbound sessions, and the Console browser flow. A
-remote host with a full Core installation and a workstation enrollment must be
-run once against this page before these paths are called verified; the smoke
-cards that attempted it (0427-168, 0427-023) remain the trackers.
+The native CI acceptance runs on both Docker and Podman. It starts an isolated
+Core, issues a private invitation, imports it into fresh workstation state,
+verifies authenticated remote CLI operations over the enrolled device
+connection, and removes the test workload.
+The runbook, workstation enrollment, and Core-side invocation are therefore
+checked together on the exact CI source revision; this flow does not require a
+separate physical-VM smoke test. Node Connector outbound sessions and the
+Console browser flow are separate surfaces and remain outside this acceptance.
 
 ## See also
 
