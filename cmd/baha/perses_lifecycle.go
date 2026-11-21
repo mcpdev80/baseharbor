@@ -11,6 +11,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/cli"
+	metricsprovider "github.com/mcpdev80/baseharbor/internal/metrics"
 )
 
 // persesLifecycleCommand wires the accepted CLI/domain operation for the optional
@@ -218,10 +219,13 @@ func reportPersesSurfaceStatus(ctx context.Context, store application.Store, arg
 	if err := authorizeApplicationOperation(ctx, persesLifecycleOperationID(persesLifecycleStatusAction), resolved); err != nil {
 		return persesStatusResult{}, err
 	}
+	resolvedHostSignalStatus := capability.ResolveHostDashboardSignalStatus(
+		resolved.Manifest.Services.ObservabilityManagementUI, resolved.Manifest.Services.Perses)
 	return persesStatusResult{
-		State:   application.PersesLifecycleStatus(resolved.Manifest),
-		Enabled: application.PersesLifecycleEnabled(resolved.Manifest),
-		Version: capability.PersesDefaultRelease.Version,
+		State:          application.PersesLifecycleStatus(resolved.Manifest),
+		Enabled:        application.PersesLifecycleEnabled(resolved.Manifest),
+		Version:        capability.PersesDefaultRelease.Version,
+		BackendWitness: persesBackendSignalWitnessFromManifest(resolved.Manifest, resolvedHostSignalStatus, metricsprovider.PersesBackendSignalWitness{}),
 	}, nil
 }
 
@@ -292,4 +296,17 @@ func persistRepositoryPersesLifecycle(ctx context.Context, resolved resolvedAppl
 func cliInvocationTransport(ctx context.Context) string {
 	transport, _ := ctx.Value(localInvocationKey{}).(string)
 	return transport
+}
+
+// renderPersesBackendWitness prints the per-observability-signal three-state
+// backend-witness the card mandates for `perses status` (configured /
+// unreachable / not-configured), each line carrying its source-id. It never
+// asserts a "healthy"/"verified" backend from a manifest flag; a real probe is
+// card 0428-143. The machine `app status` host-containers JSON renders the
+// identical witness through the shared persesBackendSignalWitnessFromManifest
+// helper, so the two faces never drift.
+func renderPersesBackendWitness(out io.Writer, witness []persesBackendSignalVerdict) {
+	for _, verdict := range witness {
+		fmt.Fprintf(out, "  %s [%s]: %s\n", verdict.Backend, verdict.SourceID, verdict.State)
+	}
 }

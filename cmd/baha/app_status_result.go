@@ -37,10 +37,152 @@ type applicationStatusResult struct {
 	Availability             []availability.NegotiationResult                                `json:"availability,omitempty"`
 	Perses                   *capability.PersesStatus                                        `json:"perses,omitempty"`
 	HostContainersDashboards map[string]metricsprovider.PersesHostDashboardAvailabilityEntry `json:"host_containers_dashboards,omitempty"`
+	// PersesBackendWitness carries, per observability backend, the manifest-only
+	// three-state backend-witness (configured / not-configured / unreachable) so
+	// the operator sees which source is green or red instead of a blanket
+	// "unavailable". It is manifest declaration truth: it never asserts a
+	// "healthy"/"verified" backend from a manifest flag. See befund-1.md.
+	PersesBackendWitness []persesBackendSignalVerdict `json:"perses_backend_witness,omitempty"`
 
 	tlsStatus     *applicationTLSStatus
 	tlsErr        error
 	serviceTLSErr error
+}
+
+// persesBackendSignal is the three-state vocabulary the card forbids
+// over-claiming with: it names only what manifest truth can decide, never a
+// proven backend. A real backend probe (Loki/Tempo Verification=none,
+// reference.go:133-134, :147-148) is card 0428-143, not this one.
+type persesBackendSignal string
+
+const (
+	// persesBackendNotConfigured: the observability signal is absent from the manifest.
+	persesBackendNotConfigured persesBackendSignal = "not-configured"
+	// persesBackendConfigured: the observability signal is declared in the manifest
+	// (collected / exported), but the backend's own answer has not been observed.
+	persesBackendConfigured persesBackendSignal = "configured"
+	// persesBackendUnreachable: declared but the backend's own answer is absent.
+	persesBackendUnreachable persesBackendSignal = "unreachable"
+)
+
+// persesBackendSignalVerdict is one backend's manifest-only witness.
+type persesBackendSignalVerdict struct {
+	Backend  string              `json:"backend"`
+	SourceID string              `json:"source_id"`
+	State    persesBackendSignal `json:"state"`
+	Reason   string              `json:"reason,omitempty"`
+}
+
+// persesBackendSignalWitnessFromManifest derives the per-backend three-state
+// witness from a real resolved backend signal, never from a manifest flag alone.
+// Every backend answers from its OWN signal and its OWN reachability:
+//   - Prometheus from the resolved host/provider-metrics observability signal
+//     (ResolveHostDashboardSignalStatus): "supported" means declared AND the
+//     backend's own signal resolved; otherwise the declared backend is
+//     "unreachable" (declared but the backend's own answer is absent).
+//   - Loki from its own logs-collection reachability, Tempo from its own
+//     OTLP-traces reachability (metricsprovider.PersesBackendSignalWitness).
+//
+// The three states are fail-closed and never over-claim:
+//   - "not-configured": the signal is absent from the manifest.
+//   - "configured": the signal is declared AND resolved reachable (reached AND
+//     matched); the backend's own answer was observed.
+//   - "unreachable": the signal is declared but NOT resolved reachable — the
+//     backend's own answer is absent. This is the real emission path the card
+//     mandates; it is derived from the resolved signal, never from a manifest
+//     selection flag.
+//
+// It never returns "verified"/"healthy". A real backend health probe
+// (Loki/Tempo Verification=none, reference.go:133-134, :147-148) is card
+// 0428-143, not this one. This is the single witness shared by the human
+// `perses status` face and the machine `app status` host-containers JSON so the
+// two faces never drift (card 0428-142).
+func persesBackendSignalWitnessFromManifest(m application.Manifest, resolvedHostSignalStatus capability.ObservabilitySupportStatus, witness metricsprovider.PersesBackendSignalWitness) []persesBackendSignalVerdict {
+	observabilitySelected := m.Services.ObservabilityManagementUI && m.Services.Perses
+	if !observabilitySelected {
+		return nil
+	}
+	var witnessVerdicts []persesBackendSignalVerdict
+	// Prometheus (metrics): declared in the manifest, reachable only when the
+	// resolved host/provider-metrics observability signal is supported.
+	if application.HasMetricsSources(m) {
+		if resolvedHostSignalStatus == capability.ObservabilitySupported {
+			witnessVerdicts = append(witnessVerdicts, persesBackendSignalVerdict{
+				Backend:  "prometheus",
+				SourceID: "metrics.sources",
+				State:    persesBackendConfigured,
+				Reason:   "Prometheus metrics signal declared (metrics.sources) and the resolved host/provider-metrics observability signal is reachable; a real health probe is card 0428-143, not a manifest flag",
+			})
+		} else {
+			witnessVerdicts = append(witnessVerdicts, persesBackendSignalVerdict{
+				Backend:  "prometheus",
+				SourceID: "metrics.sources",
+				State:    persesBackendUnreachable,
+				Reason:   "Prometheus metrics signal declared (metrics.sources) but the resolved host/provider-metrics observability signal is not reachable; the prometheus/dashboard is explicitly unreachable",
+			})
+		}
+	} else {
+		witnessVerdicts = append(witnessVerdicts, persesBackendSignalVerdict{
+			Backend:  "prometheus",
+			SourceID: "metrics.sources",
+			State:    persesBackendNotConfigured,
+			Reason:   "no metrics source declared in the manifest; the prometheus/dashboard is explicitly unavailable",
+		})
+	}
+	// Loki (logs): declared in the manifest, reachable only when the manifest's
+	// own logs collection resolves and its backend answer is present.
+	if application.HasLogsCollection(m) {
+		if witness.LokiProven {
+			witnessVerdicts = append(witnessVerdicts, persesBackendSignalVerdict{
+				Backend:  "loki",
+				SourceID: "logs.collect",
+				State:    persesBackendConfigured,
+				Reason:   "Loki logs signal declared (logs.collect) and the Loki provider-log stream is reachable; a real health probe is card 0428-143, not a manifest flag",
+			})
+		} else {
+			witnessVerdicts = append(witnessVerdicts, persesBackendSignalVerdict{
+				Backend:  "loki",
+				SourceID: "logs.collect",
+				State:    persesBackendUnreachable,
+				Reason:   "Loki logs signal declared (logs.collect) but no verified Loki provider-log stream signal is present; the loki/dashboard is explicitly unreachable",
+			})
+		}
+	} else {
+		witnessVerdicts = append(witnessVerdicts, persesBackendSignalVerdict{
+			Backend:  "loki",
+			SourceID: "logs.collect",
+			State:    persesBackendNotConfigured,
+			Reason:   "no logs collection declared in the manifest; the loki/dashboard is explicitly unavailable",
+		})
+	}
+	// Tempo (traces): declared in the manifest, reachable only when the
+	// manifest's own OTLP traces export resolves and its backend answer is
+	// present.
+	if application.HasOTLPTelemetry(m) {
+		if witness.TempoProven {
+			witnessVerdicts = append(witnessVerdicts, persesBackendSignalVerdict{
+				Backend:  "tempo",
+				SourceID: "telemetry.otlp",
+				State:    persesBackendConfigured,
+				Reason:   "Tempo traces signal declared (telemetry.otlp) and the Tempo provider-trace signal is reachable; a real health probe is card 0428-143, not a manifest flag",
+			})
+		} else {
+			witnessVerdicts = append(witnessVerdicts, persesBackendSignalVerdict{
+				Backend:  "tempo",
+				SourceID: "telemetry.otlp",
+				State:    persesBackendUnreachable,
+				Reason:   "Tempo traces signal declared (telemetry.otlp) but no verified Tempo provider-trace signal is present; the tempo/dashboard is explicitly unreachable",
+			})
+		}
+	} else {
+		witnessVerdicts = append(witnessVerdicts, persesBackendSignalVerdict{
+			Backend:  "tempo",
+			SourceID: "telemetry.otlp",
+			State:    persesBackendNotConfigured,
+			Reason:   "no OTLP traces export declared in the manifest; the tempo/dashboard is explicitly unavailable",
+		})
+	}
+	return witnessVerdicts
 }
 
 func canonicalDevelopmentManagementSurfaces(resolved resolvedApplication, surfaces []application.ManagementUISurface) []application.ManagementUISurface {
@@ -150,7 +292,8 @@ func collectApplicationStatusResult(ctx context.Context, store application.Store
 			OperatorAuth: collectOperatorAuthObservation(ctx, resolved.Target.Name, resolved.Manifest.Environment),
 			Perses:       persesStatus,
 			HostContainersDashboards: metricsprovider.PersesHostDashboardAvailability(
-				resolvedHostSignalStatus)}, nil
+				resolvedHostSignalStatus),
+			PersesBackendWitness: persesBackendSignalWitnessFromManifest(resolved.Manifest, resolvedHostSignalStatus, metricsprovider.PersesBackendSignalWitness{})}, nil
 	}
 	tlsStatus, tlsObservation, tlsErr := collectApplicationTLSObservation(resolved)
 	if tlsErr != nil || (tlsObservation != nil && !tlsObservation.Healthy) {
@@ -253,6 +396,7 @@ func collectApplicationStatusResult(ctx context.Context, store application.Store
 		ManagementUI:             managementUI,
 		Perses:                   persesStatus,
 		HostContainersDashboards: metricsprovider.PersesHostDashboardAvailability(resolvedHostSignalStatus),
+		PersesBackendWitness:     persesBackendSignalWitnessFromManifest(resolved.Manifest, resolvedHostSignalStatus, metricsprovider.PersesBackendSignalWitness{}),
 		tlsStatus:                tlsStatus,
 		tlsErr:                   tlsErr,
 		serviceTLSErr:            serviceTLSErr,
