@@ -29,20 +29,6 @@ func trustTestOperatorContext(t *testing.T) context.Context {
 	return operatorAuthFixtureContext(context.Background())
 }
 
-// withoutOperatorAuthTestContext returns the un-stamped context the production
-// path must refuse: a bare context.Background() with no operator-auth
-// enforcement state and no verified principal. trustTestOperatorContext stamps a
-// verified operator principal (operatorAuthFixtureContext), which is what lets
-// the production boundary in cmd/baha/mcp.go pass so the uninstall prompt path
-// (cmd/baha/trust.go) is actually reached. The two helpers are a matched pair:
-// the same command on the stamped context proves the abort path is reached, and
-// on this anonymous context proves the exact operator-auth gate denial before
-// the prompt is ever read. A case that stays green on both states is not
-// evidence the gate works (5.6).
-func withoutOperatorAuthTestContext(ctx context.Context) context.Context {
-	return ctx
-}
-
 func TestTrustUninstallCommandRegisteredAndExplicitConsent(t *testing.T) {
 	cmd := trustCommand()
 	var uninstall bool
@@ -172,7 +158,7 @@ func TestTrustUninstallGateReachableInBothDirections(t *testing.T) {
 	if anonErr == nil {
 		t.Fatal("anonymous managed trust.uninstall must be refused at the operator-auth gate")
 	}
-	if !strings.Contains(anonErr.Error(), "Managed-environment machine operations require an authenticated BaseHarbor operator") {
+	if !strings.EqualFold(anonErr.Error(), "Managed-environment machine operations require an authenticated BaseHarbor operator.") {
 		t.Fatalf("anonymous denial is not the exact production gate text: %v", anonErr)
 	}
 	// The anonymous context really did reach the seam and was refused there for a
