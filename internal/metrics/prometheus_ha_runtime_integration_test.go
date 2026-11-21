@@ -180,10 +180,13 @@ HTTPServer(("0.0.0.0", 8080), Handler).serve_forever()
 	if err := verifyPrometheusAlertRuleAPI(ctx, client, endpoint); err != nil {
 		t.Fatalf("Prometheus did not load and evaluate the managed alert rule: %v", err)
 	}
+	members := []string{"prometheus-1", "prometheus-2"}
+	for _, member := range members {
+		waitPrometheusMemberMetric(t, ctx, string(runtime.Kind()), network, files, oldMaterial, member)
+	}
 	if output, err := exec.CommandContext(ctx, string(runtime.Kind()), "exec", containerName, "touch", "/tmp/down").CombinedOutput(); err != nil {
 		t.Fatalf("mark test metrics target unavailable: %v\n%s", err, output)
 	}
-	members := []string{"prometheus-1", "prometheus-2"}
 	waitPrometheusAlertFiring(t, ctx, client, endpoint)
 	for _, member := range members {
 		waitPrometheusMemberAlertFiring(t, ctx, string(runtime.Kind()), network, files, oldMaterial, member)
