@@ -58,7 +58,7 @@ func TestApplicationFullResetRequiresNativeCurrentScopeAndDeletesSelectedData(t 
 	if err := os.WriteFile("baseharbor.yaml", source, 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := runWithIO(ctx, []string{"app", "init", "--quick", "--json"}, io.Discard, io.Discard); err != nil {
+	if err := runWithIOAsTestOperator(ctx, []string{"app", "init", "--quick", "--json"}, io.Discard, io.Discard); err != nil {
 		t.Fatal(err)
 	}
 	applySelectiveIdentityIntent(t, ctx)
@@ -89,7 +89,7 @@ func TestApplicationFullResetRequiresNativeCurrentScopeAndDeletesSelectedData(t 
 		t.Fatal(err)
 	}
 	for _, ack := range []*application.ProviderChangeConsent{nil, {PlanID: p.Scope.PlanID, First: true}, {PlanID: p.Scope.PlanID, First: true, Second: true}} {
-		err := runWithIO(withProviderChangeConsent(ctx, ack), []string{"app", "destroy", "--yes", "--full-reset", "--json"}, io.Discard, io.Discard)
+		err := runWithIOAsTestOperator(withProviderChangeConsent(ctx, ack), []string{"app", "destroy", "--yes", "--full-reset", "--json"}, io.Discard, io.Discard)
 		var failure *machine.Error
 		if !errors.As(err, &failure) || failure.Details == nil {
 			t.Fatal("native reset bypassed required scope or separate data consent", err)
@@ -121,7 +121,7 @@ func TestApplicationFullResetRequiresNativeCurrentScopeAndDeletesSelectedData(t 
 	}
 	ack := &application.ProviderChangeConsent{PlanID: fresh.Scope.PlanID, First: true, Second: true, DeleteData: true}
 	var output bytes.Buffer
-	if err := runWithIO(withProviderChangeConsent(ctx, ack), []string{"app", "destroy", "--yes", "--full-reset", "--json"}, &output, io.Discard); err != nil {
+	if err := runWithIOAsTestOperator(withProviderChangeConsent(ctx, ack), []string{"app", "destroy", "--yes", "--full-reset", "--json"}, &output, io.Discard); err != nil {
 		t.Fatal("explicit native reset failed", err)
 	}
 	actual, err := provider.InspectProjectResources(ctx, files.Project, expected)

@@ -28,7 +28,7 @@ func stopSelectiveApplicationWithConsent(ctx context.Context, out io.Writer) err
 	}
 	consent := application.ProviderChangeConsent{PlanID: plan.Scope.PlanID, First: true, Second: true}
 	ctx = withProviderChangeConsent(ctx, &consent)
-	return runWithIO(ctx, []string{"app", "down", "--yes"}, out, out)
+	return runWithIOAsTestOperator(ctx, []string{"app", "down", "--yes"}, out, out)
 }
 
 // Native fixtures explicitly acknowledge the current retirement plan. Stop
@@ -48,7 +48,7 @@ func destroySelectiveApplicationWithConsent(ctx context.Context) error {
 	}
 	consent := application.ProviderChangeConsent{PlanID: plan.Scope.PlanID, First: true, Second: true}
 	ctx = withProviderChangeConsent(ctx, &consent)
-	return runWithIO(ctx, []string{"app", "stop", "--yes"}, &bytes.Buffer{}, &bytes.Buffer{})
+	return runWithIOAsTestOperator(ctx, []string{"app", "stop", "--yes"}, &bytes.Buffer{}, &bytes.Buffer{})
 }
 
 func qualifySecretsDefaultRuntimeRetirement(t *testing.T, ctx context.Context, provider bhruntime.RuntimeProvider, root string, before resolvedApplication, originalSecret, originalEnv [32]byte, volumes []bhruntime.ProjectResource) {

@@ -55,7 +55,16 @@ const (
 	ObservabilityVerifyEndpoint ObservabilityVerificationMode = "endpoint"
 	ObservabilityVerifyBackend  ObservabilityVerificationMode = "backend-query"
 	ObservabilityVerifySpan     ObservabilityVerificationMode = "span-query"
-	ObservabilityVerifyNone     ObservabilityVerificationMode = "none"
+	// ObservabilityVerifyNone means no verifier assertion. The semantics are
+	// uniform across every source class: a Verification=none source is never
+	// awaited as a required "up" sample by the verifier (both the application-
+	// and provider-class source loops skip it, see
+	// internal/metrics/prometheus_verify.go), and for metrics the exporter also
+	// emits no scrape target. When a source with a fixed ID switches from a
+	// verifying mode to Verification=none, any scrape target previously emitted
+	// for that ID under the old mode is retired from the exported surface on the
+	// next export (internal/metrics/prometheus_files.go); it must not remain.
+	ObservabilityVerifyNone ObservabilityVerificationMode = "none"
 )
 
 type ProviderObservabilitySignal struct {

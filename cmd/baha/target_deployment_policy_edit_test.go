@@ -11,7 +11,7 @@ import (
 
 func TestExistingTargetPolicyPreservesOverridesAndCoreBinding(t *testing.T) {
 	target := configureTestTarget(t)
-	ctx := context.Background()
+	ctx := testOperatorContext(context.Background())
 	original, err := deployment.LoadConfig()
 	if err != nil {
 		t.Fatal(err)
@@ -61,7 +61,7 @@ func TestExistingTargetPolicyPreservesOverridesAndCoreBinding(t *testing.T) {
 
 func TestExistingTargetPolicyInvalidEditCannotMutate(t *testing.T) {
 	target := configureTestTarget(t)
-	ctx := context.Background()
+	ctx := testOperatorContext(context.Background())
 	var out bytes.Buffer
 	if err := setTargetDeploymentPolicy(ctx, []string{
 		target.Name, "--deployment-preset", "test",

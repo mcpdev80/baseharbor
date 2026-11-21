@@ -55,7 +55,7 @@ func runFinalBugRuntimeRegression(t *testing.T, ctx context.Context, target depl
 			}
 			t.Cleanup(func() {
 				var b bytes.Buffer
-				if err := runWithIO(context.Background(), []string{"app", "destroy", "--yes"}, &b, &b); err != nil {
+				if err := runWithIOAsTestOperator(context.Background(), []string{"app", "destroy", "--yes"}, &b, &b); err != nil {
 					t.Errorf("application cleanup: %v", err)
 				}
 			})
@@ -63,7 +63,7 @@ func runFinalBugRuntimeRegression(t *testing.T, ctx context.Context, target depl
 			command := func(args ...string) {
 				t.Helper()
 				output.Reset()
-				if err := runWithIO(ctx, args, &output, &output); err != nil {
+				if err := runWithIOAsTestOperator(ctx, args, &output, &output); err != nil {
 					t.Fatalf("CLI %v failed: %s", args, finalBugDiagnostic(target, err, output.String()))
 				}
 			}
@@ -73,7 +73,7 @@ func runFinalBugRuntimeRegression(t *testing.T, ctx context.Context, target depl
 					t.Fatal(err)
 				}
 				output.Reset()
-				if err := runWithIO(ctx, []string{"--plain", "up", "--yes"}, &output, &output); err == nil {
+				if err := runWithIOAsTestOperator(ctx, []string{"--plain", "up", "--yes"}, &output, &output); err == nil {
 					t.Fatal("failed workload accepted")
 				}
 				rec, found, err := deployment.FindDeployment(target.Name, m.ApplicationID, m.Environment)

@@ -42,7 +42,7 @@ func TestCoreStopRetainsOriginalSQLCredentialsAndRunningSibling(t *testing.T) {
 		kind = "docker"
 	}
 	var out bytes.Buffer
-	if err := runWithIO(ctx, []string{"target", "create", "core-stop-native", "--provider", kind, "--access", "core-stop-native", "--reference", "local", "--default"}, &out, &out); err != nil {
+	if err := runWithIOAsTestOperator(ctx, []string{"target", "create", "core-stop-native", "--provider", kind, "--access", "core-stop-native", "--reference", "local", "--default"}, &out, &out); err != nil {
 		t.Fatal(err)
 	}
 	pg, err := selectControlPlanePort(&out, "PostgreSQL", "--postgres-port", 0, bhruntime.DefaultPostgresPort, 15432)
@@ -133,7 +133,7 @@ func TestCoreStopRetainsOriginalSQLCredentialsAndRunningSibling(t *testing.T) {
 		t.Fatal("sibling not verified running")
 	}
 	out.Reset()
-	err = runWithIO(withProviderChangeConsent(ctx, nil), []string{"down", "--json"}, &out, io.Discard)
+	err = runWithIOAsTestOperator(withProviderChangeConsent(ctx, nil), []string{"down", "--json"}, &out, io.Discard)
 	var failure *machine.Error
 	if !errors.As(err, &failure) || failure.Code != machine.ErrorApprovalRequired || out.Len() != 0 {
 		t.Fatal("native CLI omitted stop acknowledgement bypass", err)

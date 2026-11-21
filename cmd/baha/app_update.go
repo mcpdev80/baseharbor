@@ -453,6 +453,7 @@ func gitOutput(ctx context.Context, dir string, args ...string) (string, error) 
 	}
 	cmd := exec.CommandContext(ctx, path, args...)
 	cmd.Dir = dir
+	cmd.Stdin = strings.NewReader("")
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -511,5 +512,6 @@ func gitIsAncestor(ctx context.Context, dir, ancestor, descendant string) bool {
 	}
 	cmd := exec.CommandContext(ctx, path, "merge-base", "--is-ancestor", ancestor, descendant)
 	cmd.Dir = dir
+	cmd.Stdin = strings.NewReader("")
 	return cmd.Run() == nil
 }

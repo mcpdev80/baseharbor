@@ -256,7 +256,7 @@ func TestAppVersionCommandCallable(t *testing.T) {
 	}
 
 	var out, errOut bytes.Buffer
-	if err := runWithIO(context.Background(), []string{"app", "version", "demo", "-o", "json"}, &out, &errOut); err != nil {
+	if err := runWithIOAsTestOperator(context.Background(), []string{"app", "version", "demo", "-o", "json"}, &out, &errOut); err != nil {
 		t.Fatalf("app version must be callable: %v\n%s", err, errOut.String())
 	}
 	var payload map[string]any
@@ -401,7 +401,7 @@ func TestAppVersionsCommandCallable(t *testing.T) {
 	}
 
 	var out, errOut bytes.Buffer
-	if err := runWithIO(context.Background(), []string{"app", "versions", "-o", "json"}, &out, &errOut); err != nil {
+	if err := runWithIOAsTestOperator(context.Background(), []string{"app", "versions", "-o", "json"}, &out, &errOut); err != nil {
 		t.Fatalf("app versions must be callable: %v\n%s", err, errOut.String())
 	}
 	var payload struct {

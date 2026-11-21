@@ -22,7 +22,7 @@ import (
 func restoreRegisteredReceiverFixture(t *testing.T, retained bool) (resolvedApplication, map[string]string) {
 	t.Helper()
 	r := externalReceiverPlanFixture(t)
-	identity, err := serviceissuer.New(t).Issue(t.Context(), serviceaccess.CertificateRequest{CommonName: "restore-otlp-client"})
+	identity, err := serviceissuer.New(t).Issue(testOperatorContext(t.Context()), serviceaccess.CertificateRequest{CommonName: "restore-otlp-client"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,7 +56,7 @@ func restoreRegisteredReceiverFixture(t *testing.T, retained bool) (resolvedAppl
 			t.Fatal(err)
 		}
 		driver := telemetry.NewDriverAt(nil, r.Manifest, f, nil, r.TargetStateRoot, r.Target.Name)
-		if err := driver.Bind(t.Context(), capability.Resource{Provider: capability.ProviderExternalOTLP}, capability.Binding{}); err != nil {
+		if err := driver.Bind(testOperatorContext(t.Context()), capability.Resource{Provider: capability.ProviderExternalOTLP}, capability.Binding{}); err != nil {
 			t.Fatal(err)
 		}
 	} else {
@@ -91,7 +91,7 @@ func TestRestoreBindsRegisteredReceiverMaterialWithoutSurvivingDelivery(t *testi
 			}
 			t.Run(name+change, func(t *testing.T) {
 				r, paths := restoreRegisteredReceiverFixture(t, retained)
-				ctx := machineNoninteractiveContext(t.Context())
+				ctx := machineNoninteractiveContext(testOperatorContext(t.Context()))
 				data := applicationRestoreData{manifest: r.Manifest, archiveRevision: strings.Repeat("a", 64)}
 				planned, err := buildApplicationRestorePlan(ctx, r, data)
 				if err != nil {

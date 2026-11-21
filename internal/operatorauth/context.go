@@ -17,6 +17,16 @@ func WithEnforcement(ctx context.Context) context.Context {
 	return context.WithValue(ctx, enforcementKey{}, &enforcementState{})
 }
 
+// WithEnforcementIfAbsent preserves enforcement context supplied by an
+// authenticated caller. Replacing it would discard its verified principal
+// and any authorization decision already bound to the request.
+func WithEnforcementIfAbsent(ctx context.Context) context.Context {
+	if EnforcementEnabled(ctx) {
+		return ctx
+	}
+	return WithEnforcement(ctx)
+}
+
 func EnforcementEnabled(ctx context.Context) bool {
 	_, ok := ctx.Value(enforcementKey{}).(*enforcementState)
 	return ok

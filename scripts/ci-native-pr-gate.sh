@@ -40,7 +40,7 @@ case "$gate_id" in
     export BASEHARBOR_GREENFIELD_NATIVE_ACCEPTANCE=1
     run_exact_test TestGreenfieldIsolatedCoreNativeInCI 20m
     ;;
-  native/docker/onboarding|native/podman/onboarding)
+  native/docker/onboarding|native/podman/onboarding|native/podman/workstation-onboarding)
     export BASEHARBOR_CI_RUNTIME_INTEGRATION=1
     export BASEHARBOR_GREENFIELD_NATIVE_ACCEPTANCE=1
     export BASEHARBOR_ONBOARDING_NATIVE_ACCEPTANCE=1

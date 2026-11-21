@@ -708,6 +708,13 @@ func writeOwnerOnlyFile(path string, content []byte) error {
 	return writePrivateRuntimeOwnerFile(path, content)
 }
 
+// LoadRuntimeEnvFile exposes the runtime env of a materialized deployment to
+// the consumer packages (the datasource health verifier reads the published
+// Perses host port through it). Same parser, same fail-closed contract.
+func LoadRuntimeEnvFile(path string) (map[string]string, error) {
+	return readRuntimeEnv(path)
+}
+
 func readRuntimeEnv(path string) (map[string]string, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {

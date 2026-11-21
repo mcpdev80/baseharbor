@@ -123,8 +123,17 @@ func appListCommand() *cli.Command {
 					return unknownOptionUsage("baha app list", arg, "--all-targets")
 				}
 			}
-			if err := authorizeCurrentMCPContext(ctx, "app.list", "", "", ""); err != nil {
-				return err
+			var authorizationErr error
+			if allTargets {
+				// The installation-wide inventory intentionally survives removal of
+				// Target configuration. Authenticate the operator without requiring
+				// an effective Target that no longer exists.
+				authorizationErr = authorizeMCPOperation(ctx, "app.list", "", "dev", "", "")
+			} else {
+				authorizationErr = authorizeCurrentMCPContext(ctx, "app.list", "", "", "")
+			}
+			if authorizationErr != nil {
+				return authorizationErr
 			}
 			// An all-targets inventory is a read-only installation-wide view. It
 			// must remain available after `destroy --all` removes the Target
@@ -191,6 +200,16 @@ func appListCommand() *cli.Command {
 					return resolveErr
 				}
 				items, warnings, err = deployment.ListDeploymentsForDisplay(target.Name)
+			}
+			// The operator has already been authenticated above; a missing
+			// Target config is now a clean no-config for this read-only,
+			// installation-wide inventory rather than an operator-auth failure.
+			// Tolerate it AFTER the authorization decision, never before it:
+			// a deleted config must not turn the operator-auth gate into a
+			// bypass. This is the only place ErrConfigMissing is tolerated here.
+			if errors.Is(err, deployment.ErrConfigMissing) {
+				items, warnings = nil, nil
+				err = nil
 			}
 			if err != nil {
 				return err

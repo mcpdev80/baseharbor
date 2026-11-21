@@ -22,6 +22,19 @@ func PublishNetworkName(project string) string {
 	return project + "-prometheus-publish"
 }
 
+// ProviderEndpoint returns the Prometheus management endpoint of the
+// materialized provider files.
+//
+// The host form (with a port) is what a process on the TARGET HOST (the baha
+// CLI verify path, which carries the service-access mTLS identity) reaches the
+// gateway publish at: loopback is correct there because the publish binding is
+// "127.0.0.1:${BASEHARBOR_PROMETHEUS_PORT}" on the host.
+//
+// The bare service form (no port) is the in-network DNS name every consumer
+// INSIDE the managed networks uses — a container cannot route the host's
+// loopback, and the port is fixed at 9090 inside the network regardless of the
+// host publish. Consumers that resolve this form (the Perses datasource proxy,
+// 0428-083) pair it with their own TLS trust anchor.
 func ProviderEndpoint(files ProviderFiles) (string, error) {
 	data, err := os.ReadFile(files.Env)
 	if err != nil {
@@ -39,6 +52,23 @@ func ProviderEndpoint(files ProviderFiles) (string, error) {
 	}
 	return "", errors.New("Prometheus port is not materialized")
 }
+
+// ProviderNetworkEndpoint returns the in-network HTTPS endpoint of the
+// materialized Prometheus management gateway (card 0428-083): the service DNS
+// name of the gateway alias the provider render registers
+// (prometheusHAAccessSpec NetworkAliases -> serviceaccess
+// HTTPGatewayComposeService, prometheus_files.go:551). It carries NO port: the
+// gateway listens on its container port 9090 inside every managed network it
+// joins, so no host port allocation is read and endpoint rotation never
+// touches in-network consumers. Consumers reach the SAME access boundary here
+// that the host-form ProviderEndpoint names on the host.
+func ProviderNetworkEndpoint() string {
+	return "https://" + ProviderNetworkEndpointHost
+}
+
+// ProviderNetworkEndpointHost is the DNS name ProviderNetworkEndpoint names
+// (the Prometheus gateway service alias inside the managed networks).
+const ProviderNetworkEndpointHost = "prometheus"
 
 type targetGroup struct {
 	Targets []string          `json:"targets"`
@@ -107,6 +137,7 @@ func providerComposeYAMLWithProviderNetworksAndAccess(placement Placement, regis
 		b.WriteString("      - --web.config.file=/etc/prometheus/web-config.yml\n")
 		b.WriteString("    volumes:\n")
 		b.WriteString("      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro\n")
+		b.WriteString("      - ./rules:/etc/prometheus/rules:ro\n")
 		b.WriteString("      - ./targets:/etc/prometheus/targets:ro\n")
 		b.WriteString("      - ./web-config.yml:/etc/prometheus/web-config.yml:ro\n")
 		b.WriteString("      - ./members/service-access/runtime:/run/baseharbor/tls:ro\n")
@@ -191,11 +222,15 @@ func prometheusConfig(registrations []sourceRegistration, hasRuntimeCA bool, pro
   scrape_interval: 5s
   scrape_timeout: 4s
 
+  evaluation_interval: 5s
+
+rule_files:
+  - /etc/prometheus/rules/*.yml
+
 scrape_configs:
   - job_name: baseharbor-applications
     file_sd_configs:
       - files:
-          - /etc/prometheus/targets/application--*--*--*.json
           - /etc/prometheus/targets/*--*--*.json
 `)
 	for i, registration := range registrations {
