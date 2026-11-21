@@ -16,6 +16,19 @@ import (
 	metricsprovider "github.com/mcpdev80/baseharbor/internal/metrics"
 )
 
+// The perses CLI-witness tests call the package-local helpers persesRunWithIO
+// and persesTestCorelessTarget. PR #1704 (develop dea88c8f2) removed those
+// helpers from the perses transport seam and folded them into the new
+// persesMatrixRepository / runWithIO / testOperatorContext API. They are
+// restored verbatim-backed-on-new-develop-symbols in
+// app_status_result_seam_restored_0428_142_test.go: the seam lives in the base
+// (develop); the shim only re-exposes the names the tests were written
+// against, so the card fix layers cleanly above the #1704 refactor without
+// re-writing the tests onto the new fixture API. persesRunWithIO runs over the
+// operator-authenticated, machine-noninteractive path so `baha app perses
+// status` passes the managed-environment boundary and actually reaches
+// renderPersesBackendWitness.
+
 // persesBackendWitnessReport decodes the per-signal backend-witness the
 // `baha status --json` face exposes. It mirrors the production field so the
 // test asserts the machine contract, not an implementation detail.
@@ -61,9 +74,16 @@ func persesWitnessAppName(t *testing.T) string {
 // it for this test only, and resolves it through the production entry.
 func persesWitnessProbeApp(t *testing.T, ctx context.Context, name string, configure func(m application.Manifest) application.Manifest) resolvedApplication {
 	t.Helper()
-	t.Setenv("BASEHARBOR_TARGET", "")
-	t.Setenv("BASEHARBOR_STATE_DIR", "")
-	persesTestCorelessTarget(t)
+	// PR #1704 (develop dea88c8f2) changed the empty-target operator-auth gate:
+	// `baha app perses status` now resolves the managed-environment operator-auth
+	// boundary before its renderer, which requires a resolved Target rather than
+	// BASEHARBOR_TARGET="". This mirrors the NEW develop's own perses witness
+	// seam (cmd/baha/app_perses_cli_test.go, persesProbeApp): it registers an
+	// isolated docker-dev Target and resolves through the production entry. The
+	// seam lives in the base (develop); the shim only re-exposes the name the
+	// tests were written against so the card fix layers cleanly above the #1704
+	// refactor.
+	configureTestTarget(t)
 	root := t.TempDir()
 	m := application.New(name, "dev", false, false, false)
 	m = application.WithWorkloadComponents(m, "api")
@@ -95,7 +115,7 @@ func persesWitnessProbeAppReport(t *testing.T, ctx context.Context, name string,
 	t.Helper()
 	persesWitnessProbeApp(t, ctx, name, configure)
 	var out, errOut bytes.Buffer
-	if err := persesRunWithIO(ctx, []string{"app", "status", "--json"}, &out, &errOut); err != nil && !strings.Contains(err.Error(), "container runtime orchestration not found") {
+	if err := runWithIOAsTestOperator(ctx, []string{"app", "status", "--json"}, &out, &errOut); err != nil && !strings.Contains(err.Error(), "container runtime orchestration not found") {
 		t.Fatalf("baha app status --json failed: %v\nstdout: %s\nstderr: %s", err, out.String(), errOut.String())
 	}
 	var report persesBackendWitnessReport
@@ -301,8 +321,8 @@ func TestPersesStatusWitnessNeverClaimsHealthyFromManifestFlag(t *testing.T) {
 // against the human face directly, through the production CLI surface:
 // `baha app perses status` must name every declared backend in its output,
 // because the machine face already does. The command runs over the
-// operator-auth fixture context (persesMatrixCommandContext), so the call
-// passes the managed-environment boundary and ACTUALLY reaches
+// operator-authenticated machine-noninteractive path (persesRunWithIO), so the
+// call passes the managed-environment boundary and ACTUALLY reaches
 // renderPersesBackendWitness (CODEX-REVIEW r5): it fails without the render
 // call in persesStatusCommand and passes with it, and a miscolored witness
 // value turns it red.
@@ -313,7 +333,7 @@ func TestPersesStatusWitnessHumanFaceRendersBackendWitness(t *testing.T) {
 		return application.WithOTLPTelemetry(m, "traces")
 	})
 	var out, errOut bytes.Buffer
-	if err := persesRunWithIO(ctx, []string{"app", "perses", "status"}, &out, &errOut); err != nil {
+	if err := runWithIOAsTestOperator(ctx, []string{"app", "perses", "status"}, &out, &errOut); err != nil {
 		t.Fatalf("baha app perses status failed: %v\nstdout: %s\nstderr: %s", err, out.String(), errOut.String())
 	}
 	human := out.String()
@@ -378,7 +398,7 @@ func TestPersesStatusWitnessHumanAndMachineFaceShowSameBackends(t *testing.T) {
 		return m
 	})
 	var machineOut, machineErr bytes.Buffer
-	if err := persesRunWithIO(ctx, []string{"status", "--json"}, &machineOut, &machineErr); err != nil {
+	if err := runWithIOAsTestOperator(ctx, []string{"status", "--json"}, &machineOut, &machineErr); err != nil {
 		t.Fatalf("baha status --json failed: %v\nstdout: %s\nstderr: %s", err, machineOut.String(), machineErr.String())
 	}
 	var report persesBackendWitnessReport
@@ -395,7 +415,7 @@ func TestPersesStatusWitnessHumanAndMachineFaceShowSameBackends(t *testing.T) {
 
 	// Human face: run `baha app perses status` in the same working directory.
 	var out, errOut bytes.Buffer
-	if err := persesRunWithIO(ctx, []string{"app", "perses", "status"}, &out, &errOut); err != nil {
+	if err := runWithIOAsTestOperator(ctx, []string{"app", "perses", "status"}, &out, &errOut); err != nil {
 		t.Fatalf("baha app perses status failed: %v\nstderr: %s", err, errOut.String())
 	}
 	human := out.String()
