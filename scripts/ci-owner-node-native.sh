@@ -39,3 +39,5 @@ require_pass ./cmd/baha TestNodeListStateTableDrivesProductionRedemptionPath 3m
 require_pass ./cmd/baha TestNodeEnrollmentHTTPSOneUseAndForeignScope 3m
 require_pass ./cmd/baha TestRemoteUpRealCLIPathTakesConnectorRouteNeverLocalCore 3m
 require_pass ./cmd/baha TestRemoteUpRealCLIPathBrokerRequiredFailsClosedBeforeMutation 3m
+export BASEHARBOR_CORE_FOREIGN_NETWORK_ACCEPTANCE=1
+require_pass ./cmd/baha TestCoreDefaultNetworkBindingRejectsUnownedNativeNetwork 3m

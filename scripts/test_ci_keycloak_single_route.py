@@ -1,4 +1,5 @@
 """Focused selector regressions for native Keycloak and PostgreSQL dependency."""
+import re
 import subprocess
 import unittest
 from pathlib import Path
@@ -48,6 +49,22 @@ class KeycloakSingleNativeRouteTests(unittest.TestCase):
         self.assertIn("required native Keycloak HA test failed or skipped", workflow)
         self.assertIn("required native Keycloak HA test did not run and pass", workflow)
         self.assertIn("keycloak-ha-test.jsonl", workflow)
+
+    def test_foreign_core_network_test_selects_both_existing_pr_native_runtimes(self):
+        workflow = (ROOT / ".github/workflows/ci.yml").read_text()
+        match = re.search(
+            r"grep -Eq '([^']+)' \"\$RUNNER_TEMP/owner-node-paths\"", workflow,
+        )
+        self.assertIsNotNone(match, "owner/node PR selector must remain explicit")
+        selector = match.group(1)
+        self.assertIsNotNone(re.search(selector, "cmd/baha/operator_core_network_binding_native_test.go"))
+        self.assertIsNone(re.search(selector, "docs/reference/unrelated.md"))
+        native = (ROOT / "scripts/ci-owner-node-native.sh").read_text()
+        self.assertIn("export BASEHARBOR_CORE_FOREIGN_NETWORK_ACCEPTANCE=1", native)
+        self.assertIn(
+            "require_pass ./cmd/baha TestCoreDefaultNetworkBindingRejectsUnownedNativeNetwork 3m",
+            native,
+        )
 
     def test_existing_runtime_workflows_reuse_narrow_develop_selector(self):
         for workflow in (
