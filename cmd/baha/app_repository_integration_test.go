@@ -62,7 +62,9 @@ func TestRepositoryWorkflowRealLifecycle(t *testing.T) {
 	}
 	out.Reset()
 	if err := runRepositoryFixtureApply(ctx, []string{"app", "apply"}, &out); err != nil {
-		t.Fatalf("repository apply failed: %v\n%s", err, out.String())
+		var doctor bytes.Buffer
+		_ = runWithIOAsTestOperator(ctx, []string{"app", "doctor"}, &doctor, &doctor)
+		t.Fatalf("repository apply failed: %v\n%s\napp doctor diagnostics:\n%s", err, out.String(), doctor.String())
 	}
 	if !strings.Contains(out.String(), "application and requested infrastructure verified") {
 		t.Fatalf("unexpected apply output: %s", out.String())
