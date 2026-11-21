@@ -567,12 +567,15 @@ class OpenBaoPackageExecutionTests(unittest.TestCase):
 
     def test_authority_includes_new_installauthority_leaf(self):
         from unittest.mock import patch
-        with tempfile.TemporaryDirectory() as tmp:
-            (Path(tmp) / 'internal/installauthority').mkdir(parents=True)
-            with patch.object(runner, 'go_package_tests', return_value=['./internal/installauthority']) as execute:
-                self.assertEqual(['./internal/installauthority'],
-                                 runner.execute_validation('authority-package-tests', tmp))
-                self.assertEqual(['./internal/installauthority'], execute.call_args.args[1])
+        for package in ('internal/installauthority', 'internal/operatorauth'):
+            with tempfile.TemporaryDirectory() as tmp:
+                (Path(tmp) / package).mkdir(parents=True)
+                expected = ['./' + package]
+                with self.subTest(package=package), patch.object(
+                        runner, 'go_package_tests', return_value=expected) as execute:
+                    self.assertEqual(expected,
+                                     runner.execute_validation('authority-package-tests', tmp))
+                    self.assertEqual(expected, execute.call_args.args[1])
 
 if __name__ == '__main__':
     unittest.main()

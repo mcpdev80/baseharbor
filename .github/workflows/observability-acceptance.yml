@@ -21,6 +21,11 @@ on:
         required: false
         default: develop
         type: string
+      all_runtimes:
+        description: Run both Docker and rootless Podman acceptance jobs
+        required: false
+        default: true
+        type: boolean
   push:
     branches:
       - 'runtime-validation/observability/**'
@@ -62,6 +67,9 @@ jobs:
           go-version-file: go.mod
           cache: false
 
+      - name: Install verified ORAS for native Core bootstrap
+        run: bash scripts/ci-install-oras.sh
+
       - name: Reset persistent runner state
         shell: bash
         timeout-minutes: 3
@@ -70,6 +78,10 @@ jobs:
       - name: Build runtime image from tested checkout
         shell: bash
         run: docker build --pull -t "$BASEHARBOR_RUNTIME_IMAGE" -f deploy/control-plane/Dockerfile .
+
+      - name: Publish verified runtime image to isolated OCI registry
+        shell: bash
+        run: bash scripts/ci-local-oci-registry.sh publish "$BASEHARBOR_RUNTIME_IMAGE" localhost:5000/baseharbor-runtime:observability-ci
 
       - name: Run focused full-stack observability acceptance
         shell: bash
@@ -99,6 +111,11 @@ jobs:
                 ;;
             esac
           done
+
+      - name: Clean up isolated OCI registry
+        if: always()
+        shell: bash
+        run: bash scripts/ci-local-oci-registry.sh cleanup
 
       - name: Cleanup persistent runner state
         if: always()
@@ -132,6 +149,9 @@ jobs:
           go-version-file: go.mod
           cache: false
 
+      - name: Install verified ORAS for native Core bootstrap
+        run: bash scripts/ci-install-oras.sh
+
       - name: Reset persistent runner state
         shell: bash
         timeout-minutes: 3
@@ -140,6 +160,10 @@ jobs:
       - name: Build runtime image from tested checkout
         shell: bash
         run: podman build --pull -t "$BASEHARBOR_RUNTIME_IMAGE" -f deploy/control-plane/Dockerfile .
+
+      - name: Publish verified runtime image to isolated OCI registry
+        shell: bash
+        run: bash scripts/ci-local-oci-registry.sh publish "$BASEHARBOR_RUNTIME_IMAGE" localhost:5000/baseharbor-runtime:observability-ci
 
       - name: Verify Quadlet-only runtime
         shell: bash
@@ -200,6 +224,11 @@ jobs:
             journalctl --user -u "$unit" -n 80 --no-pager || true
           done
           podman ps -a || true
+
+      - name: Clean up isolated OCI registry
+        if: always()
+        shell: bash
+        run: bash scripts/ci-local-oci-registry.sh cleanup
 
       - name: Cleanup persistent runner state
         if: always()

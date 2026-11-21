@@ -1,0 +1,11 @@
+{
+  "kind": "LokiDatasource",
+  "name": "loki",
+  "default": true,
+  "config": {
+    "url": "https://127.0.0.1:39902",
+    "access": "proxy",
+    "authentication": "unsupported",
+    "pluginVersion": "v0.6.0"
+  }
+}

@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-func TestResolveDefaultsToManagedLocalTLS(t *testing.T) {
+func TestResolveDefaultsToManagedLocalTLSAndAuthentication(t *testing.T) {
 	t.Setenv(EnvPKISource, "")
 	p, err := Resolve("dev", "prometheus", AuthenticationMTLS)
 	if err != nil {
@@ -18,8 +18,8 @@ func TestResolveDefaultsToManagedLocalTLS(t *testing.T) {
 	if !p.TLSRequired || p.PKISource != PKIManagedLocal {
 		t.Fatalf("unexpected policy: %+v", p)
 	}
-	if p.AuthenticationRequired {
-		t.Fatalf("dev should keep authentication optional while TLS remains mandatory: %+v", p)
+	if !p.AuthenticationRequired {
+		t.Fatalf("name-only policy must fail closed as managed while TLS remains mandatory: %+v", p)
 	}
 }
 
@@ -76,7 +76,7 @@ func TestProviderSpecificOverrideWins(t *testing.T) {
 	t.Setenv("BASEHARBOR_PROMETHEUS_TLS_CERT_FILE", filepath.Join(dir, "server.pem"))
 	t.Setenv("BASEHARBOR_PROMETHEUS_TLS_KEY_FILE", filepath.Join(dir, "server-key.pem"))
 	t.Setenv("BASEHARBOR_PROMETHEUS_TLS_TRUST_FILE", filepath.Join(dir, "ca.pem"))
-	p, err := Resolve("dev", "prometheus", AuthenticationNone)
+	p, err := ResolveWithPolicy("dev", "prometheus", AuthenticationNone, EnvironmentPolicy{TrustedLocal: true})
 	if err != nil {
 		t.Fatal(err)
 	}

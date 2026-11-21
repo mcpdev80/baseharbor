@@ -56,6 +56,9 @@ func VerifyManagementUIAt(ctx context.Context, dataDir, namespace string, m appl
 	if !m.Services.ObservabilityManagementUI {
 		return nil
 	}
+	if m.Services.Perses {
+		return VerifyPersesManagementUIAt(ctx)
+	}
 	files, err := ExistingProviderFilesAt(dataDir, namespace, m)
 	if err != nil {
 		return err
@@ -80,5 +83,19 @@ func VerifyManagementUIAt(ctx context.Context, dataDir, namespace string, m appl
 	if resp.StatusCode < 200 || resp.StatusCode >= 400 {
 		return fmt.Errorf("Prometheus management UI returned HTTP %d", resp.StatusCode)
 	}
+	return nil
+}
+
+// VerifyPersesManagementUIAt enforces the fail-closed Perses seam contract: a
+// selected Perses surface must be provisioned with a pinned release, otherwise
+// it is not configured (fail-closed). Reachability is always unverified — this
+// Core defines the optional seam only and ships no Perses runtime health probe,
+// so the surface can never assert "verified"/"healthy". No SUPPORTED HA claim.
+func VerifyPersesManagementUIAt(ctx context.Context) error {
+	if err := capability.ValidatePersesRelease(capability.PersesDefaultRelease); err != nil {
+		return err
+	}
+	// Declared and validated; reachability stays unverified (no Perses health
+	// probe exists here). Do NOT report a "configured"/"healthy" surface.
 	return nil
 }

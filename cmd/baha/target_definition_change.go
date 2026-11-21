@@ -30,14 +30,15 @@ func changeTargetDefinition(ctx context.Context, name, recovery string, out io.W
 		return result, err
 	}
 	if out != nil {
-		fmt.Fprintln(out, "Achtung: review this Target access change, retained data and actual recovery location.")
+		labels := application.ProviderImpactConsentCatalog()
+		fmt.Fprintln(out, labels.TargetDefinitionChangeImpact)
 		if err := writeJSON(out, plan); err != nil {
 			return result, err
 		}
 	}
 	in := applicationInput(ctx, nil)
 	if consent == nil && out != nil && !noInput(ctx) && in != nil && readerIsTerminal(in) {
-		value, err := readProviderImpactAcknowledgements(bufio.NewReader(in), out, application.ProviderImpactPlan{PlanID: plan.Scope.PlanID, ConfirmationsRequired: plan.Scope.ConfirmationsRequired})
+		value, err := readProviderImpactAcknowledgements(bufio.NewReader(in), out, application.ProviderImpactPlan{PlanID: plan.Scope.PlanID, Attention: plan.Scope.Attention, ConfirmationsRequired: plan.Scope.ConfirmationsRequired})
 		if err != nil {
 			return result, err
 		}

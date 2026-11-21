@@ -115,3 +115,16 @@ func TestNewNameTrimming(t *testing.T) {
 		t.Fatal("name still contains whitespace")
 	}
 }
+
+func TestValidateNameAcceptsSlugsAndRejectsPathNames(t *testing.T) {
+	for _, name := range []string{"prod", "qa-2", "prod.v1"} {
+		if err := ValidateName(name); err != nil {
+			t.Errorf("ValidateName(%q): %v", name, err)
+		}
+	}
+	for _, name := range []string{"", "..", "../outside", "../../outside", "/tmp/outside", `..\\outside`, "UPPER", "-prod", "prod/"} {
+		if err := ValidateName(name); err == nil {
+			t.Errorf("ValidateName(%q) unexpectedly succeeded", name)
+		}
+	}
+}

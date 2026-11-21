@@ -2,6 +2,17 @@ package capability
 
 import "fmt"
 
+// Metrics-signal contract (0428-182). PostgreSQL and Valkey declare no native
+// metrics signal that BaseHarbor can collect: there is no exporter, no compose
+// service, and the runtime reconcile (internal/application/runtime_observability.go)
+// writes only logs and traces, never a provider metrics source. Declaring a
+// signal as ObservabilityRequiresAdapter would promise an adapter-field realization
+// that does not exist (integration_contract.go:249 forces adapter realization for
+// that status), so the metrics signal is declared ObservabilityUnsupported: the
+// signal is honestly non-collectable (Collectable()==false) instead of a promise
+// with no producer. Wiring an exporter is the responsibility of the adapter lanes
+// (#1684, #1645) and is intentionally out of scope here.
+
 // Reference providers describe the capability products already used by the
 // current Compose implementation. They are descriptors only: existing
 // provisioning remains authoritative while the shared capability and provider
@@ -32,7 +43,7 @@ var (
 		SupportedScopes: []ProviderScope{ScopeShared, ScopeApplication, ScopeExternal},
 		Interfaces:      []ProviderInterface{{Name: "sql", Class: InterfaceApplication, Protocol: "postgresql", Intrinsic: true}, {Name: "management-ui", Class: InterfaceAdministration, Protocol: "https", Optional: true}},
 		Observability: ProviderObservability{Signals: []ProviderObservabilitySignal{
-			{Name: "metrics", Kind: ObservabilityMetrics, Status: ObservabilityRequiresAdapter, Mode: ObservabilityAdapter, Protocol: "openmetrics", Verification: ObservabilityVerifyNone},
+			{Name: "metrics", Kind: ObservabilityMetrics, Status: ObservabilityUnsupported, Verification: ObservabilityVerifyNone},
 			{Name: "logs", Kind: ObservabilityLogs, Status: ObservabilitySupported, Mode: ObservabilityRuntime, Protocol: "stdout-stderr", SemanticConvention: "baseharbor.runtime.logs", Verification: ObservabilityVerifyBackend},
 			{Name: "traces", Kind: ObservabilityTraces, Status: ObservabilitySupported, Mode: ObservabilityInteraction, Protocol: "interaction", SemanticConvention: "database", Verification: ObservabilityVerifySpan},
 		}},
@@ -45,7 +56,7 @@ var (
 		SupportedScopes: []ProviderScope{ScopeShared, ScopeApplication, ScopeExternal},
 		Interfaces:      []ProviderInterface{{Name: "cache", Class: InterfaceApplication, Protocol: "resp", Intrinsic: true}, {Name: "management-ui", Class: InterfaceAdministration, Protocol: "https", Optional: true}},
 		Observability: ProviderObservability{Signals: []ProviderObservabilitySignal{
-			{Name: "metrics", Kind: ObservabilityMetrics, Status: ObservabilityRequiresAdapter, Mode: ObservabilityAdapter, Protocol: "openmetrics", Verification: ObservabilityVerifyNone},
+			{Name: "metrics", Kind: ObservabilityMetrics, Status: ObservabilityUnsupported, Verification: ObservabilityVerifyNone},
 			{Name: "logs", Kind: ObservabilityLogs, Status: ObservabilitySupported, Mode: ObservabilityRuntime, Protocol: "stdout-stderr", SemanticConvention: "baseharbor.runtime.logs", Verification: ObservabilityVerifyBackend},
 			{Name: "traces", Kind: ObservabilityTraces, Status: ObservabilitySupported, Mode: ObservabilityInteraction, Protocol: "interaction", SemanticConvention: "database", Verification: ObservabilityVerifySpan},
 		}},

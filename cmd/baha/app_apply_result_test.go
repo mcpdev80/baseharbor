@@ -431,6 +431,71 @@ func TestAppEditRuntimeExecuteAuthorityPlanDriftWritesNothing(t *testing.T) {
 	}
 }
 
+func TestAppEditRuntimeExecuteAuthorityAllowsCountdownResampleButRejectsExpiryDrift(t *testing.T) {
+	firstCountdown, freshCountdown := int64(3600), int64(3590)
+	approved := appEditResultTestPlan(application.ProviderImpact{
+		InstanceID: "postgres", Operation: "add",
+		After: &application.ProviderRealization{InstanceID: "postgres", Target: "prod", Kind: "postgres", State: application.ProviderRunning},
+		Materials: []application.MaterialConsequence{{
+			Before:  application.ProviderMaterial{ID: "postgres/cert", ExpiresAt: "2036-11-13T06:13:11Z"},
+			Meaning: "within observed time window", RemainingValiditySeconds: &firstCountdown,
+		}},
+	})
+	fresh := approved
+	fresh.Impacts = append([]application.ProviderImpact(nil), approved.Impacts...)
+	fresh.Impacts[0].Materials = append([]application.MaterialConsequence(nil), approved.Impacts[0].Materials...)
+	fresh.Impacts[0].Materials[0].RemainingValiditySeconds = &freshCountdown
+	desired := appEditDesired{Target: "prod", ApplicationID: "app-1", Manifest: application.New("edit-safe", "dev", false, false, false)}
+
+	t.Run("countdown resample", func(t *testing.T) {
+		sourceWrites := 0
+		executor := appEditRuntimeExecuteAuthority(
+			application.Store{}, nil, appEditResultResolved("prod"), nil,
+			appEditTestAuthorities("prod", "app-1", nil, nil, []application.ProviderImpactPlan{fresh}, new(int)),
+			nil, nil,
+			func(context.Context, resolvedApplication, application.Manifest) error { sourceWrites++; return nil },
+			func(ctx context.Context, _ application.Store, _ []string, _ application.ProviderImpactPlan, mutate func(context.Context, resolvedApplication) error, _, _ io.Writer) ([]application.ProviderExecutionOutcome, error) {
+				if err := mutate(ctx, appEditResultResolved("prod")); err != nil {
+					return nil, err
+				}
+				return nil, nil
+			},
+		)
+		if _, err := executor(context.Background(), desired, approved, application.ProviderChangeConsent{PlanID: approved.PlanID, First: true}); err != nil {
+			t.Fatalf("countdown-only refresh should preserve the approved plan: %v", err)
+		}
+		if sourceWrites != 1 {
+			t.Fatalf("source writes=%d, want 1 after equivalent revalidation", sourceWrites)
+		}
+	})
+
+	t.Run("expiry drift", func(t *testing.T) {
+		drifted := fresh
+		drifted.Impacts = append([]application.ProviderImpact(nil), fresh.Impacts...)
+		drifted.Impacts[0].Materials = append([]application.MaterialConsequence(nil), fresh.Impacts[0].Materials...)
+		drifted.Impacts[0].Materials[0].Before.ExpiresAt = "2036-11-12T06:13:11Z"
+		sourceWrites := 0
+		executor := appEditRuntimeExecuteAuthority(
+			application.Store{}, nil, appEditResultResolved("prod"), nil,
+			appEditTestAuthorities("prod", "app-1", nil, nil, []application.ProviderImpactPlan{drifted}, new(int)),
+			nil, nil,
+			func(context.Context, resolvedApplication, application.Manifest) error { sourceWrites++; return nil },
+			func(ctx context.Context, _ application.Store, _ []string, _ application.ProviderImpactPlan, mutate func(context.Context, resolvedApplication) error, _, _ io.Writer) ([]application.ProviderExecutionOutcome, error) {
+				if err := mutate(ctx, appEditResultResolved("prod")); err != nil {
+					return nil, err
+				}
+				return nil, nil
+			},
+		)
+		if _, err := executor(context.Background(), desired, approved, application.ProviderChangeConsent{PlanID: approved.PlanID, First: true}); !errors.Is(err, errAppEditPlanDrifted) {
+			t.Fatalf("absolute expiry change must invalidate approval, got %v", err)
+		}
+		if sourceWrites != 0 {
+			t.Fatalf("source writes=%d after changed expiry", sourceWrites)
+		}
+	})
+}
+
 func TestAppEditRuntimeExecuteAuthorityIncompleteAuthoritiesWriteNothing(t *testing.T) {
 	calls := 0
 	desired := appEditDesired{Target: "prod"}
@@ -821,18 +886,46 @@ func TestAppEditApplyConfirmedConsentSurfaceIgnoresOnlyEvidenceAndIdentity(t *te
 			Effects:    []application.OperationalConsequence{},
 		}},
 	}
+	firstCountdown, refreshedCountdown := int64(315359533), int64(315359478)
+	base.Impacts[0].Functions[0].RemainingValiditySeconds = &firstCountdown
+	base.Impacts[0].Materials = []application.MaterialConsequence{{
+		Before:  application.ProviderMaterial{ID: "sql-a/cert", ExpiresAt: "2036-11-13T06:13:11Z"},
+		Meaning: "within observed time window", RemainingValiditySeconds: &firstCountdown,
+	}}
 	current := base
 	current.Revision, current.PlanID = "after", "after-id"
 	current.Impacts = append([]application.ProviderImpact(nil), base.Impacts...)
 	current.Impacts[0].Before.Evidence = "authoritative runtime"
 	current.Impacts[0].Functions = append([]application.FunctionConsequence(nil), base.Impacts[0].Functions...)
 	current.Impacts[0].Functions[0].Evidence = "authoritative binding"
+	current.Impacts[0].Functions[0].RemainingValiditySeconds = &refreshedCountdown
+	current.Impacts[0].Materials = append([]application.MaterialConsequence(nil), base.Impacts[0].Materials...)
+	current.Impacts[0].Materials[0].RemainingValiditySeconds = &refreshedCountdown
 	if !sameAppEditAuthorizationSurface(base, current) {
-		t.Fatal("evidence-only post-mutation change invalidated confirmed authorization")
+		t.Fatal("evidence/countdown-only post-mutation change invalidated confirmed authorization")
 	}
+	if path := firstAppEditAuthorizationSurfaceDifference(base, current); path != "" {
+		t.Fatalf("diagnostic reported a difference for an equivalent authorization surface: %s", path)
+	}
+	current.Impacts[0].Materials[0].Before.ExpiresAt = "2036-11-12T06:13:11Z"
+	if sameAppEditAuthorizationSurface(base, current) {
+		t.Fatal("changed absolute expiry reused stale consent")
+	}
+	current = base
+	current.Impacts = append([]application.ProviderImpact(nil), base.Impacts...)
+	current.Impacts[0].Functions = append([]application.FunctionConsequence(nil), base.Impacts[0].Functions...)
+	current.Impacts[0].Functions[0].ValidUntil = "2036-11-12T06:13:11Z"
+	if sameAppEditAuthorizationSurface(base, current) {
+		t.Fatal("changed function validity reused stale consent")
+	}
+	current = base
+	current.Impacts = append([]application.ProviderImpact(nil), base.Impacts...)
 	current.Impacts[0].Operation = "update"
 	if sameAppEditAuthorizationSurface(base, current) {
 		t.Fatal("changed provider operation reused stale consent")
+	}
+	if path := firstAppEditAuthorizationSurfaceDifference(base, current); path != "$.impacts[0].operation" {
+		t.Fatalf("diagnostic path = %q, want $.impacts[0].operation", path)
 	}
 	current = base
 	current.PlanID, current.Revision, current.ConfirmationsRequired = "after-id", "after", 2

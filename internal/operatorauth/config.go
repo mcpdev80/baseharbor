@@ -80,13 +80,33 @@ func ConfigFromEnv() (Config, error) {
 	return cfg, nil
 }
 
+// ManagedEnvironment reports whether one (Target, environment) pair is managed
+// and therefore requires an authenticated operator session instead of a trusted
+// local one.
+//
+// This compatibility API has no trusted policy source, so it fails closed and
+// treats every environment name as managed.
 func ManagedEnvironment(environment string) bool {
-	switch strings.ToLower(strings.TrimSpace(environment)) {
-	case "dev", "development":
-		return false
-	default:
-		return true
-	}
+	return ManagedEnvironmentWithPolicy(environment, false)
+}
+
+// TrustedLocalForEnvironment is retained for source compatibility. Environment
+// names do not establish trust, so this compatibility helper always fails
+// closed. Callers may enable trusted-local behavior only from an explicit,
+// trusted policy source.
+func TrustedLocalForEnvironment(environment string) bool {
+	return false
+}
+
+// ManagedEnvironmentWithPolicy is the policy-aware form of ManagedEnvironment.
+// trustedLocal is the explicit, non-name-derived decision: managed state is
+// derived directly from it, so managed = !trustedLocal. When trustedLocal is
+// true the environment is operator-trusted and therefore not managed; when
+// false it is managed for every environment name (dev/development/prod/arbitrary)
+// — the explicit policy fails closed and the environment name is kept out of the
+// authorization decision.
+func ManagedEnvironmentWithPolicy(environment string, trustedLocal bool) bool {
+	return !trustedLocal
 }
 
 func SessionPath(target, environment string) (string, error) {

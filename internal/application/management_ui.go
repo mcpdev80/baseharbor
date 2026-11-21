@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -135,7 +136,7 @@ func developmentPostgresUIEmail(username string) string {
 }
 
 func EnsureApplicationManagementUIs(ctx context.Context, issuer serviceaccess.Issuer, files RuntimeFiles, m Manifest) error {
-	if !m.Services.SQLManagementUI && !m.Services.CacheManagementUI && !m.Services.KeyValueManagementUI && !m.Services.MessagingManagementUI && !m.Services.DocumentDatabaseManagementUI {
+	if !m.Services.SQLManagementUI && !m.Services.CacheManagementUI && !m.Services.KeyValueManagementUI && !m.Services.MessagingManagementUI && !m.Services.DocumentDatabaseManagementUI && !m.Services.Perses {
 		return nil
 	}
 	if issuer == nil {
@@ -162,6 +163,11 @@ func EnsureApplicationManagementUIs(ctx context.Context, issuer serviceaccess.Is
 	}
 	if m.Services.DocumentDatabaseManagementUI {
 		if err := ensureMongoDBManagementUI(ctx, issuer, files, m, values); err != nil {
+			return err
+		}
+	}
+	if m.Services.Perses {
+		if err := EnsurePersesManagementUI(ctx, issuer, files, m); err != nil {
 			return err
 		}
 	}
@@ -264,6 +270,26 @@ func VerifyApplicationManagementUIChecks(ctx context.Context, m Manifest, files 
 		}
 	}
 
+	if m.Services.Perses {
+		checks = append(checks, struct {
+			enabled     bool
+			name        string
+			portKey     string
+			dir         string
+			path        string
+			usernameKey string
+			passwordKey string
+		}{
+			enabled: true,
+			name:    "perses",
+			portKey: PersesUIHostPortEnv,
+			// Perses is a loopback visualization surface; BaseHarbor ships no
+			// Perses health probe, so reachability stays unverified. The check
+			// must never report "ready"/"verified" for this surface.
+			dir: PersesManagementUIPath(files),
+		})
+	}
+
 	results := make([]ManagementUICheckResult, 0, len(checks))
 	for _, check := range checks {
 		if !check.enabled {
@@ -279,6 +305,13 @@ func VerifyApplicationManagementUIChecks(ctx context.Context, m Manifest, files 
 			port, err := strconv.Atoi(portValue)
 			if err != nil {
 				return fmt.Errorf("%s management UI has invalid host port: %w", check.name, err)
+			}
+			// Perses has no health probe in this Core; a selected surface is
+			// "configured_unverified", never "ready"/"verified". Surface the
+			// unverified state as a degraded (non-ready) check without asserting
+			// reachability that this Core cannot observe.
+			if check.name == "perses" {
+				return fmt.Errorf("%s management UI is configured_unverified: no Perses health probe exists, reachability cannot be asserted", check.name)
 			}
 			policy, err := serviceaccess.Resolve(m.Environment, check.name, serviceaccess.AuthenticationNative)
 			if err != nil {
@@ -331,16 +364,22 @@ func VerifyApplicationManagementUIs(ctx context.Context, m Manifest, files Runti
 	return errors.Join(errs...)
 }
 
-func ApplicationManagementUISurfaces(m Manifest, files RuntimeFiles) ([]ManagementUISurface, error) {
+// ApplicationManagementUISurfaces returns the public management-UI surfaces and
+// the machine-readable Perses status of the optional observability surface. The
+// Perses status is EXACTLY one of the three contract states
+// (not_configured | configured_unverified | verified); it is derived from the
+// manifest here, never from a guessed runtime probe, and can never be
+// "verified" because this Core ships no Perses health path.
+func ApplicationManagementUISurfaces(m Manifest, files RuntimeFiles) ([]ManagementUISurface, *capability.PersesStatus, error) {
 	values, err := readRuntimeEnv(files.Env)
 	if err != nil {
-		return nil, err
+		return nil, capability.PersesStatusNotConfiguredPtr, err
 	}
 	var result []ManagementUISurface
 	if m.Services.SQLManagementUI {
 		port, err := requireRuntimeValue(values, PostgresUIHostPortEnv)
 		if err != nil {
-			return nil, err
+			return nil, capability.PersesStatusNotConfiguredPtr, err
 		}
 		result = append(result, ManagementUISurface{
 			Service: "sql", Purpose: ProviderInterfaceManagement,
@@ -353,7 +392,7 @@ func ApplicationManagementUISurfaces(m Manifest, files RuntimeFiles) ([]Manageme
 	if m.Services.CacheManagementUI || m.Services.KeyValueManagementUI {
 		port, err := requireRuntimeValue(values, CacheUIHostPortEnv)
 		if err != nil {
-			return nil, err
+			return nil, capability.PersesStatusNotConfiguredPtr, err
 		}
 		service := "cache"
 		if m.Services.KeyValueManagementUI && !m.Services.CacheManagementUI {
@@ -371,7 +410,7 @@ func ApplicationManagementUISurfaces(m Manifest, files RuntimeFiles) ([]Manageme
 		for _, instance := range RabbitMQInstanceNames(m) {
 			port, err := requireRuntimeValue(values, rabbitmqUIHostPortKey(instance))
 			if err != nil {
-				return nil, err
+				return nil, capability.PersesStatusNotConfiguredPtr, err
 			}
 			result = append(result, ManagementUISurface{
 				Service: rabbitmqUIRouteName(instance), Purpose: ProviderInterfaceManagement,
@@ -386,7 +425,7 @@ func ApplicationManagementUISurfaces(m Manifest, files RuntimeFiles) ([]Manageme
 		for _, instance := range DocumentDatabaseInstanceNames(m) {
 			port, err := requireRuntimeValue(values, mongodbUIHostPortKey(instance))
 			if err != nil {
-				return nil, err
+				return nil, capability.PersesStatusNotConfiguredPtr, err
 			}
 			result = append(result, ManagementUISurface{
 				Service: mongodbUIRouteName(instance), Purpose: ProviderInterfaceManagement,
@@ -397,7 +436,21 @@ func ApplicationManagementUISurfaces(m Manifest, files RuntimeFiles) ([]Manageme
 			})
 		}
 	}
-	return result, nil
+	if m.Services.ObservabilityManagementUI && m.Services.Perses {
+		perses := capability.PersesManagementSurfaceNow(true)
+		result = append(result, ManagementUISurface{
+			Service:             "observability",
+			Purpose:             ProviderInterfaceObservability,
+			URL:                 "",
+			Authentication:      "",
+			AuthenticationClass: ManagementAuthenticationClass(perses.AuthClass()),
+			RoleMappings:        nil,
+		})
+		_ = perses.Release
+		_ = perses.Image
+	}
+	persesStatus := capability.PersesStatusNow(m.Services.ObservabilityManagementUI && m.Services.Perses)
+	return result, persesStatus, nil
 }
 
 func ensurePostgresManagementUI(ctx context.Context, issuer serviceaccess.Issuer, files RuntimeFiles, m Manifest, values map[string]string) error {

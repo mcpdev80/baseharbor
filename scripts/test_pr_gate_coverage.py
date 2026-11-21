@@ -115,15 +115,165 @@ class CoverageCatalogTests(unittest.TestCase):
         self.assertEqual(["atomic/podman/data-capabilities"], selected)
         self.assertEqual([], unresolved)
 
-    def test_selective_identity_runtime_test_has_executable_docker_lifecycle_gate(self):
+    def test_podman_pinned_service_stop_selects_only_podman_lifecycle(self):
+        current = json.loads((ROOT / "pr-gate-coverage.json").read_text())
+        selected, unresolved = coverage_module.resolve_covered_gates(
+            ["internal/runtime/service_stop.go",
+             "internal/runtime/service_stop_test.go"], current)
+        self.assertEqual(["atomic/podman/lifecycle"], selected)
+        self.assertEqual([], unresolved)
+
+    def test_selective_identity_runtime_test_has_both_executable_lifecycle_gates(self):
         current = json.loads((ROOT / "pr-gate-coverage.json").read_text())
         selected, unresolved = coverage_module.resolve_covered_gates(
             ["cmd/baha/app_identity_selective_runtime_test.go"], current)
-        self.assertEqual(["atomic/docker/lifecycle"], selected)
+        self.assertEqual(["atomic/docker/lifecycle", "atomic/podman/lifecycle"], selected)
         self.assertEqual([], unresolved)
         component = next(row for row in current["components"]
                          if row["path"] == "cmd/baha/app_identity_selective_runtime_test.go")
-        self.assertEqual(["source.gate.atomic.docker.lifecycle"], component["surfaces"])
+        self.assertEqual(["source.gate.atomic.docker.lifecycle",
+                          "source.gate.atomic.podman.lifecycle"], component["surfaces"])
+
+    def test_perses_runtime_smoke_selects_only_its_docker_native_check(self):
+        current = json.loads((ROOT / "pr-gate-coverage.json").read_text())
+        paths = ("internal/application/perses_runtime.go",
+                 "internal/application/perses_runtime_test.go")
+        for path in paths:
+            with self.subTest(path=path):
+                selected = coverage_module.resolve_native_checks([path], current)
+                self.assertEqual(["native/docker/perses-runtime-smoke"], selected)
+                component = next(row for row in current["components"] if row["path"] == path)
+                self.assertEqual(["TestPersesRuntimeSmokeDockerIsolated"],
+                                 component["required_test_names"])
+        self.assertEqual([], coverage_module.resolve_native_checks(
+            ["internal/application/manifest.go"], current))
+
+    def test_application_observability_source_and_test_select_both_gates(self):
+        current = json.loads((ROOT / "pr-gate-coverage.json").read_text())
+        expected = ["atomic/docker/observability", "atomic/podman/observability"]
+        for path in ("internal/application/runtime_observability.go",
+                     "internal/application/runtime_observability_trace_source_test.go"):
+            with self.subTest(path=path):
+                selected, unresolved = coverage_module.resolve_covered_gates([path], current)
+                self.assertEqual(expected, selected)
+                self.assertEqual([], unresolved)
+        selected, unresolved = coverage_module.resolve_covered_gates(
+            ["internal/application/provider_union.go"], current)
+        self.assertEqual([], selected)
+        self.assertEqual(["internal/application/provider_union.go"], unresolved)
+
+    def test_coreless_backend_baseline_has_both_integration_gate_owners_and_test_anchor(self):
+        current = json.loads((ROOT / "pr-gate-coverage.json").read_text())
+        path = "cmd/baha/app_backend_selective_runtime_test.go"
+        selected, unresolved = coverage_module.resolve_covered_gates([path], current)
+        self.assertEqual(["integration/docker/coreless-lifecycle",
+                          "integration/podman/coreless-lifecycle"], selected)
+        self.assertEqual([], unresolved)
+        component = next(row for row in current["components"] if row["path"] == path)
+        self.assertEqual(["TestSelectiveBackendCleanupPreservesRuntimeBaseline"],
+                         component["required_test_names"])
+        executor = importlib.util.spec_from_file_location(
+            "pre_release_integration", ROOT / "pre-release-integration.py")
+        integration = importlib.util.module_from_spec(executor)
+        executor.loader.exec_module(integration)
+        with tempfile.TemporaryDirectory() as temporary:
+            source = Path(temporary) / path
+            source.parent.mkdir(parents=True)
+            source.write_text("func TestSelectiveBackendCleanupPreservesRuntimeBaseline(t *testing.T) {}\n")
+            application_path = Path(temporary) / "cmd/baha/app_application_backend_runtime_test.go"
+            application_path.write_text(
+                "func TestSelectiveApplicationBackendRuntimeAddRemoveReAdd(t *testing.T) {}\n")
+            for gate in selected:
+                self.assertEqual(
+                    [["./cmd/baha", "-run", "^TestSelectiveBackendCleanupPreservesRuntimeBaseline$",
+                      "-timeout", "20m"]],
+                    integration.coreless_anchor_checks(gate, temporary))
+
+    def test_shared_backend_helper_maps_to_both_coreless_integration_gates(self):
+        current = json.loads((ROOT / "pr-gate-coverage.json").read_text())
+        path = "cmd/baha/app_backend_shared_runtime_test.go"
+        selected, unresolved = coverage_module.resolve_covered_gates([path], current)
+        self.assertEqual(["integration/docker/coreless-lifecycle",
+                          "integration/podman/coreless-lifecycle"], selected)
+        self.assertEqual([], unresolved)
+
+    def test_application_backend_coreless_acceptance_is_anchored_to_both_integration_gates(self):
+        current = json.loads((ROOT / "pr-gate-coverage.json").read_text())
+        path = "cmd/baha/app_application_backend_runtime_test.go"
+        selected, unresolved = coverage_module.resolve_covered_gates([path], current)
+        self.assertEqual(["integration/docker/coreless-lifecycle",
+                          "integration/podman/coreless-lifecycle"], selected)
+        self.assertEqual([], unresolved)
+        component = next(row for row in current["components"] if row["path"] == path)
+        self.assertEqual(["TestSelectiveApplicationBackendRuntimeAddRemoveReAdd"],
+                         component["required_test_names"])
+
+    def test_coreless_executor_and_workflows_select_both_runtime_gates(self):
+        current = json.loads((ROOT / "pr-gate-coverage.json").read_text())
+        expected = ["integration/docker/coreless-lifecycle",
+                    "integration/podman/coreless-lifecycle"]
+        paths = ["scripts/pre-release-integration.py",
+                 ".github/workflows/pre-release.yml",
+                 ".github/workflows/targeted-integration.yml"]
+        for path in paths:
+            with self.subTest(path=path):
+                selected, unresolved = coverage_module.resolve_covered_gates([path], current)
+                self.assertEqual(expected, selected)
+                self.assertEqual([], unresolved)
+
+    def test_coreless_fixture_acceptance_files_are_anchored_to_both_integration_gates(self):
+        current = json.loads((ROOT / "pr-gate-coverage.json").read_text())
+        expected = ["integration/docker/coreless-lifecycle",
+                    "integration/podman/coreless-lifecycle"]
+        for path, test_name in (
+            ("cmd/baha/app_capability_runtime_test.go", "TestApplicationCapabilityLifecycleExistingCore"),
+            ("cmd/baha/app_https_selective_runtime_test.go", "TestSelectiveHTTPSRuntimeAddRemoveReAdd"),
+            ("cmd/baha/application_otlp_handoff_runtime_test.go", "TestManagedRegisteredOTLPNativeConsumerHandoff"),
+        ):
+            with self.subTest(path=path):
+                selected, unresolved = coverage_module.resolve_covered_gates([path], current)
+                self.assertEqual(expected, selected)
+                self.assertEqual([], unresolved)
+                component = next(row for row in current["components"] if row["path"] == path)
+                self.assertEqual([test_name], component["required_test_names"])
+
+    def test_service_stop_maps_to_podman_lifecycle_and_executor_runs_test_anchor(self):
+        current = json.loads((ROOT / "pr-gate-coverage.json").read_text())
+        for path in ("internal/runtime/service_stop.go", "internal/runtime/service_stop_test.go"):
+            with self.subTest(path=path):
+                selected, unresolved = coverage_module.resolve_covered_gates([path], current)
+                self.assertEqual([LIFECYCLE], selected)
+                self.assertEqual([], unresolved)
+                component = next(row for row in current["components"] if row["path"] == path)
+                self.assertEqual(["TestSelectedStopAcceptsPinnedContainerName"],
+                                 component["required_test_names"])
+        workflow = (ROOT.parent / ".github/workflows/pre-release-runtime-suite.yml").read_text()
+        self.assertIn("run_native_test ./internal/runtime TestSelectedStopAcceptsPinnedContainerName",
+                      workflow)
+
+    def test_trusted_pr_plan_simulates_both_coreless_and_podman_lifecycle_routes(self):
+        requirements = json.loads((ROOT / "release-requirements.json").read_text())
+        mapping = json.loads((ROOT / "pr-gate-map-v1.json").read_text())
+        for path, expected in (
+            ("cmd/baha/app_backend_selective_runtime_test.go",
+             ["integration/docker/coreless-lifecycle", "integration/podman/coreless-lifecycle"]),
+            ("internal/runtime/service_stop.go", ["atomic/podman/lifecycle"]),
+            ("internal/runtime/service_stop_test.go", ["atomic/podman/lifecycle"]),
+        ):
+            with self.subTest(path=path):
+                diff = {
+                    "target_base_sha": "a" * 40,
+                    "head_sha": "b" * 40,
+                    "merge_base_sha": "c" * 40,
+                    "integration_sha": "d" * 40,
+                    "broad_required": False,
+                    "reasons": [],
+                    "changes": [{"status": "modified", "path": path}],
+                }
+                result = planner.plan(diff, requirements, mapping)
+                self.assertEqual("resolved", result["coverage_status"])
+                self.assertEqual([], result["unresolved_coverage"])
+                self.assertEqual(expected, result["selected_gates"])
 
     def test_unknown_package_is_returned_for_conservative_fallback(self):
         selected, unresolved = coverage_module.resolve_covered_gates(
@@ -189,11 +339,24 @@ class CoverageCatalogTests(unittest.TestCase):
             with self.subTest(path=path):
                 selected, _ = coverage_module.resolve_covered_gates([path], current)
                 expected = set(expected)
+                # The full-release impact map names the two coreless integration
+                # jobs, while PR CI executes this changed acceptance test through
+                # the corresponding native lifecycle gates.
+                if path == "cmd/baha/app_identity_selective_runtime_test.go":
+                    expected = {gate.replace("integration/", "atomic/").replace(
+                        "/coreless-lifecycle", "/lifecycle") for gate in expected}
                 expected = {gate for gate in expected
                             if not (gate.startswith(("atomic/podman/", "integration/podman/")) and
                                     gate.replace("/podman/", "/docker/") in expected)}
                 self.assertTrue(expected <= set(selected),
                                 f"legacy gates {expected} missing from {selected}")
+
+    def test_shared_openbao_login_change_uses_docker_pr_representative(self):
+        selected, unresolved = coverage_module.resolve_covered_gates(
+            ["internal/openbao/bootstrap_auth.go"],
+            json.loads((ROOT / "pr-gate-coverage.json").read_text()))
+        self.assertEqual(["atomic/docker/control-plane-recovery"], selected)
+        self.assertEqual([], unresolved)
 
     def test_package_surface_without_gate_owner_is_rejected(self):
         data = catalog()
@@ -280,7 +443,8 @@ class CoverageCatalogTests(unittest.TestCase):
                                     "GITHUB_REPOSITORY": "mcpdev80/baseharbor",
                                     "GITHUB_BASE_REF": "develop"}, text=True)
             plan_result = json.loads(result)
-            self.assertEqual(["atomic/docker/lifecycle"], plan_result["selected_gates"])
+            self.assertEqual(["atomic/docker/lifecycle", "atomic/podman/lifecycle"],
+                             plan_result["selected_gates"])
 
     def test_legacy_app_core_requirement_keeps_only_declared_narrow_gates(self):
         requirements = json.loads((ROOT / "release-requirements.json").read_text())

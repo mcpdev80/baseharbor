@@ -1,6 +1,7 @@
 package deployment
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"os"
@@ -237,6 +238,173 @@ func TestRegisterEnvironmentAssociationPersistsAcrossStateRootRead(t *testing.T)
 	}
 }
 
+// TestEnvironmentRecordAssociationsRejectsInvalidPersistedEntry proves the
+// authoritative read fails closed when a persisted association carries an
+// unknown or empty kind or an empty/path-bearing id: the malformed entry must
+// never be exposed as an authoritative member, even though the file comments
+// promise fail-closed handling of corrupt bindings.
+func TestEnvironmentRecordAssociationsRejectsInvalidPersistedEntry(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("BASEHARBOR_STATE_DIR", root)
+
+	// Prime a valid record, then splice a malformed entry onto it.
+	if _, err := RegisterEnvironmentAssociation("target-a", "prod", AssociationKindApp, "app-1"); err != nil {
+		t.Fatal(err)
+	}
+	raw := mustReadEnvironmentRecord(t, "target-a", "prod")
+
+	cases := []struct {
+		name    string
+		mutate  func(record *EnvironmentRecord)
+		wantErr bool
+	}{
+		{
+			name:    "unknown kind",
+			mutate:  func(r *EnvironmentRecord) { r.Associations[0].SubjectKind = "frobnicate" },
+			wantErr: true,
+		},
+		{
+			name:    "empty kind",
+			mutate:  func(r *EnvironmentRecord) { r.Associations[0].SubjectKind = "" },
+			wantErr: true,
+		},
+		{
+			name:    "empty id",
+			mutate:  func(r *EnvironmentRecord) { r.Associations[0].SubjectID = "" },
+			wantErr: true,
+		},
+		{
+			name:    "path-bearing id",
+			mutate:  func(r *EnvironmentRecord) { r.Associations[0].SubjectID = "../escape" },
+			wantErr: true,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Restore the pristine record first, then splice in the malformed entry.
+			restoreRecord(t, raw)
+			var record EnvironmentRecord
+			if err := json.Unmarshal(raw, &record); err != nil {
+				t.Fatal(err)
+			}
+			tc.mutate(&record)
+			poisoned, err := json.MarshalIndent(record, "", "  ")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(mustPath(t, "target-a", "prod"), poisoned, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			_, err = EnvironmentRecordAssociations("target-a", "prod")
+			if tc.wantErr && err == nil {
+				t.Fatalf("read should have failed closed on %q, got nil err", tc.name)
+			}
+			if !tc.wantErr && err != nil {
+				t.Fatalf("read should have succeeded on %q, got err: %v", tc.name, err)
+			}
+		})
+	}
+}
+
+// TestRegisterEnvironmentAssociationRejectsInvalidPersistedEntry proves the
+// register mutation fails closed before it adopts or forwards a persisted
+// member list that carries a malformed binding: the bad entry is validated at
+// mutation entry, not only on the incoming caller argument.
+func TestRegisterEnvironmentAssociationRejectsInvalidPersistedEntry(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("BASEHARBOR_STATE_DIR", root)
+
+	if _, err := RegisterEnvironmentAssociation("target-a", "prod", AssociationKindApp, "app-1"); err != nil {
+		t.Fatal(err)
+	}
+
+	// Unknown kind on the persisted list must refuse a subsequent registration.
+	spliceAssociation(t, "target-a", "prod", func(record *EnvironmentRecord) {
+		record.Associations[0].SubjectKind = "frobnicate"
+	})
+	if _, err := RegisterEnvironmentAssociation("target-a", "prod", AssociationKindApp, "app-2"); err == nil {
+		t.Fatal("register should have failed closed on unknown persisted kind")
+	}
+
+	// Path-bearing id on the persisted list must refuse a subsequent registration.
+	spliceAssociation(t, "target-a", "prod", func(record *EnvironmentRecord) {
+		record.Associations[0].SubjectID = "../escape"
+	})
+	if _, err := RegisterEnvironmentAssociation("target-a", "prod", AssociationKindApp, "app-3"); err == nil {
+		t.Fatal("register should have failed closed on path-bearing persisted id")
+	}
+}
+
+// TestDeregistrationEnvironmentAssociationRejectsInvalidPersistedEntry proves
+// the deregistration mutation fails closed on a malformed persisted member
+// list before it removes anything.
+func TestDeregistrationEnvironmentAssociationRejectsInvalidPersistedEntry(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("BASEHARBOR_STATE_DIR", root)
+
+	if _, err := RegisterEnvironmentAssociation("target-a", "prod", AssociationKindApp, "app-1"); err != nil {
+		t.Fatal(err)
+	}
+	raw := mustReadEnvironmentRecord(t, "target-a", "prod")
+
+	var record EnvironmentRecord
+	if err := json.Unmarshal(raw, &record); err != nil {
+		t.Fatal(err)
+	}
+	record.Associations[0].SubjectID = "../escape"
+	blob, err := json.MarshalIndent(record, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(mustPath(t, "target-a", "prod"), blob, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := DeregistrationEnvironmentAssociation("target-a", "prod", AssociationKindApp, "app-1"); err == nil {
+		t.Fatal("deregister should have failed closed on path-bearing persisted id")
+	}
+}
+
+// TestInvalidPersistedAssociationNoWrite proves that a failed mutation does not
+// rewrite the record: the poisoned on-disk bytes are left byte-for-byte
+// untouched so the corruption is neither masked nor half-applied.
+func TestInvalidPersistedAssociationNoWrite(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("BASEHARBOR_STATE_DIR", root)
+
+	if _, err := RegisterEnvironmentAssociation("target-a", "prod", AssociationKindApp, "app-1"); err != nil {
+		t.Fatal(err)
+	}
+
+	// Poison the persisted list with an unknown kind.
+	var record EnvironmentRecord
+	before := mustReadEnvironmentRecord(t, "target-a", "prod")
+	if err := json.Unmarshal(before, &record); err != nil {
+		t.Fatal(err)
+	}
+	record.Associations[0].SubjectKind = "frobnicate"
+	blob, err := json.MarshalIndent(record, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(mustPath(t, "target-a", "prod"), blob, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// A subsequent registration must fail closed, and the poisoned bytes must
+	// remain exactly as written — no rewrite, no normalization.
+	if _, err := RegisterEnvironmentAssociation("target-a", "prod", AssociationKindApp, "app-2"); err == nil {
+		t.Fatal("register should have failed closed on unknown persisted kind")
+	}
+	after := mustReadEnvironmentRecord(t, "target-a", "prod")
+	if !bytes.Equal(blob, after) {
+		t.Fatalf("failed mutation rewrote the record: wrote=%q after=%q", blob, after)
+	}
+	if bytes.Equal(before, after) {
+		t.Fatalf("failed mutation should not have normalized the poison back to the pristine record")
+	}
+}
+
 // TestRegisterEnvironmentAssociationNoSecretLeak proves the subject id is a
 // non-secret durable identity, never a secret value: the on-disk record must
 // not carry any plaintext secret. Membership carries only the subject id and
@@ -281,6 +449,30 @@ func TestRegisterEnvironmentAssociationRejectsInvalidInput(t *testing.T) {
 	}
 	if _, err := RegisterEnvironmentAssociation("target-a", "prod", AssociationKindApp, ""); err == nil {
 		t.Fatal("empty subject id accepted")
+	}
+}
+
+// TestDeregisterEnvironmentAssociationRejectsEnvironmentPathTraversal proves
+// a malformed environment selector cannot escape its canonical environment
+// path and remove a sibling environment's membership.
+func TestDeregisterEnvironmentAssociationRejectsEnvironmentPathTraversal(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("BASEHARBOR_STATE_DIR", root)
+	const target = "target-a"
+	const appID = "app-1"
+	if _, err := RegisterEnvironmentAssociation(target, "prod", AssociationKindApp, appID); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := DeregistrationEnvironmentAssociation(target, "other/../prod", AssociationKindApp, appID); err == nil {
+		t.Fatal("path-bearing environment selector unexpectedly deregistered a binding")
+	}
+	got, err := ListEnvironmentAssociations(target, "prod")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].SubjectID != appID {
+		t.Fatalf("sibling environment membership changed: %+v", got)
 	}
 }
 
@@ -363,4 +555,50 @@ func mustReadEnvironmentRecord(t *testing.T, target, env string) []byte {
 		t.Fatalf("read environment record: %v", err)
 	}
 	return data
+}
+
+// mustPath resolves the on-disk environment.json path for a recorded
+// (target, environment).
+func mustPath(t *testing.T, target, env string) string {
+	t.Helper()
+	_, path, err := environmentStateRoot(target, env)
+	if err != nil {
+		t.Fatalf("resolve environment state root: %v", err)
+	}
+	return path
+}
+
+// restoreRecord writes a pristine record back to its home path.
+func restoreRecord(t *testing.T, raw []byte) {
+	t.Helper()
+	home, _, err := environmentStateRoot("target-a", "prod")
+	if err != nil {
+		t.Fatalf("resolve environment state root: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(home, "environment.json"), raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// spliceAssociation decodes the on-disk record, applies mutate to it, and
+// writes it back, so a test can poison exactly one persisted binding.
+func spliceAssociation(t *testing.T, target, env string, mutate func(record *EnvironmentRecord)) {
+	t.Helper()
+	path := mustPath(t, target, env)
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var record EnvironmentRecord
+	if err := json.Unmarshal(raw, &record); err != nil {
+		t.Fatal(err)
+	}
+	mutate(&record)
+	blob, err := json.MarshalIndent(record, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, blob, 0o600); err != nil {
+		t.Fatal(err)
+	}
 }

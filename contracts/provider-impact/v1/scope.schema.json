@@ -27,7 +27,7 @@
       "type": "boolean"
     },
     "attention": {
-      "const": "Achtung"
+      "const": "Warning"
     },
     "confirmations_required": {
       "enum": [

@@ -90,7 +90,7 @@ func TestRestoreBindsOriginalExternalIdentityAndProtectedDestination(t *testing.
 				for _, effect := range planned.Effects {
 					found = found || effect.Aspect == "external-identity-recovery"
 				}
-				if !found || planned.Scope.Attention != "Achtung" || planned.Scope.ConfirmationsRequired != 2 {
+				if !found || planned.Scope.Attention != "Warning" || planned.Scope.ConfirmationsRequired != 2 {
 					t.Fatal("original recovery Identity was withdrawn from concrete restore consequences")
 				}
 				files := application.RuntimeFilesFor(r.Store, r.Manifest)

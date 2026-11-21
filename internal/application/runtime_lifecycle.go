@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
 
 var ErrRuntimeDefinitionChanged = errors.New("application runtime definition differs from the BaseHarbor-managed definition")
@@ -94,6 +95,14 @@ func ExpectedRuntimeResourcesForIdentity(m Manifest, composeProject, resourcePro
 			bhruntime.ProjectResource{Kind: "container", Name: composeProject + "-cache-ui-access-1"},
 		)
 	}
+	if m.Services.Perses {
+		service := runtimeServiceName("perses", defaultServiceInstance)
+		resources = append(resources,
+			bhruntime.ProjectResource{Kind: "container", Name: composeProject + "-" + service + "-1"},
+			bhruntime.ProjectResource{Kind: "container", Name: composeProject + "-" + serviceaccess.PersesGatewayServiceName + "-1"},
+			bhruntime.ProjectResource{Kind: "volume", Name: PersesRuntimeVolumeName(resourceProject, service)},
+		)
+	}
 	return resources
 }
 
@@ -129,7 +138,7 @@ func CheckManagedRuntimeDefinition(files RuntimeFiles, m Manifest) error {
 	if resourceProject == "" {
 		resourceProject = RuntimeProjectName(m)
 	}
-	expected, err := RuntimeComposeYAMLForProject(m, resourceProject)
+	expected, err := RuntimeComposeYAMLForProject(m, files)
 	if err != nil {
 		return err
 	}
