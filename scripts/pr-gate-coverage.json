@@ -1426,6 +1426,80 @@
         "source.gate.integration.podman.coreless.lifecycle"
       ],
       "required_test_names": ["TestManagedRegisteredOTLPNativeConsumerHandoff"]
+    },
+    {
+      "id": "source.cmd.baha.commands.env.destroy",
+      "path": "cmd/baha/commands.go",
+      "surfaces": [
+        "source.gate.integration.docker.coreless.lifecycle",
+        "source.gate.integration.podman.coreless.lifecycle"
+      ]
+    },
+    {
+      "id": "source.cmd.baha.env.destroy",
+      "path": "cmd/baha/env_destroy.go",
+      "surfaces": [
+        "source.gate.integration.docker.coreless.lifecycle",
+        "source.gate.integration.podman.coreless.lifecycle"
+      ]
+    },
+    {
+      "id": "source.cmd.baha.env.destroy.integration.test",
+      "path": "cmd/baha/env_destroy_integration_test.go",
+      "runtime_specific": true,
+      "surfaces": [
+        "source.gate.integration.docker.coreless.lifecycle",
+        "source.gate.integration.podman.coreless.lifecycle"
+      ],
+      "required_test_names": ["TestEnvironmentDestroyNativeLifecycle"]
+    },
+    {
+      "id": "source.cmd.baha.machine.coverage.env.destroy",
+      "path": "cmd/baha/machine_coverage.go",
+      "surfaces": [
+        "source.gate.integration.docker.coreless.lifecycle",
+        "source.gate.integration.podman.coreless.lifecycle"
+      ]
+    },
+    {
+      "id": "source.docs.cli.command.index.env.destroy",
+      "path": "docs/cli/command-index.md",
+      "surfaces": [
+        "source.gate.integration.docker.coreless.lifecycle",
+        "source.gate.integration.podman.coreless.lifecycle"
+      ]
+    },
+    {
+      "id": "source.docs.de.cli.command.index.env.destroy",
+      "path": "docs/de/cli/command-index.md",
+      "surfaces": [
+        "source.gate.integration.docker.coreless.lifecycle",
+        "source.gate.integration.podman.coreless.lifecycle"
+      ]
+    },
+    {
+      "id": "source.docs.reference.cli.machine.coverage.env.destroy",
+      "path": "docs/reference/cli-machine-coverage.md",
+      "surfaces": [
+        "source.gate.integration.docker.coreless.lifecycle",
+        "source.gate.integration.podman.coreless.lifecycle"
+      ]
+    },
+    {
+      "id": "source.internal.deployment.environment.destroy.scope",
+      "path": "internal/deployment/environment_destroy_scope.go",
+      "surfaces": [
+        "source.gate.integration.docker.coreless.lifecycle",
+        "source.gate.integration.podman.coreless.lifecycle"
+      ]
+    },
+    {
+      "id": "source.internal.deployment.environment.destroy.scope.test",
+      "path": "internal/deployment/environment_destroy_scope_test.go",
+      "surfaces": [
+        "source.gate.integration.docker.coreless.lifecycle",
+        "source.gate.integration.podman.coreless.lifecycle"
+      ]
     }
   ],
   "gates": [
