@@ -1,6 +1,7 @@
 package metrics
 
 import (
+	"context"
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
@@ -8,6 +9,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/identityprovider"
 	"github.com/mcpdev80/baseharbor/internal/observability"
+	"github.com/mcpdev80/baseharbor/internal/testsupport/serviceissuer"
 )
 
 // newIdentityManifest builds a manifest with the identity provider selected and
@@ -90,6 +92,41 @@ func TestIdentityWitnessEligibleWhenRealSignalAndTargetAuthorized(t *testing.T) 
 	}
 	if !witness.SelectionConfirmed || !witness.MetricPresent || !witness.MetricCurrent || !witness.TargetAuthorized {
 		t.Fatalf("all four evidence flags must be true: %+v", witness)
+	}
+}
+
+// TestIdentityWitnessFromKeycloakProducer connects the production signal
+// registration path to the production witness. Unlike the unit fixture above,
+// it never seeds an observability.SignalSource itself.
+func TestIdentityWitnessFromKeycloakProducer(t *testing.T) {
+	const namespace = "target-producer-witness"
+	root := identityTargetRoot(t, namespace)
+	t.Setenv(application.MetricsEnabledEnv, "true")
+	app := newIdentityManifest(t)
+	app.Metrics.Sources = []application.MetricsSourceRequirement{{
+		Name: "app", Service: "api", Port: 8080, Path: "/metrics",
+	}}
+
+	files, err := identityprovider.EnsureKeycloakFilesAt(
+		context.Background(), app, serviceissuer.New(t), root, namespace,
+	)
+	if err != nil {
+		t.Fatalf("EnsureKeycloakFilesAt: %v", err)
+	}
+	if err := identityprovider.RegisterKeycloakMetricsSignalsAt(app, files, root, namespace); err != nil {
+		t.Fatalf("RegisterKeycloakMetricsSignalsAt: %v", err)
+	}
+
+	placement, err := application.ResolveProviderPlacement(app, capability.ProviderKeycloak)
+	if err != nil {
+		t.Fatalf("resolve Keycloak placement: %v", err)
+	}
+	witness := IdentitySelectionWitnessAt(app, placement, root, namespace)
+	if !witness.NonForgeableAvailable() {
+		t.Fatalf("producer registration did not produce an eligible witness: %+v", witness)
+	}
+	if !witness.SelectionConfirmed || !witness.MetricPresent || !witness.MetricCurrent || !witness.TargetAuthorized {
+		t.Fatalf("all producer-to-witness evidence flags must be true: %+v", witness)
 	}
 }
 

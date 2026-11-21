@@ -112,7 +112,7 @@ func (r *localKeycloakRealization) Apply(ctx context.Context) (KeycloakInstance,
 			}
 		}
 	}
-	if err := r.registerKeycloakSignals(); err != nil {
+	if err := RegisterKeycloakMetricsSignalsAt(r.app, files, r.dataDir, r.namespace); err != nil {
 		return KeycloakInstance{}, err
 	}
 	return r.instance(ctx, files, publicBase)
@@ -203,6 +203,17 @@ func (r *localKeycloakRealization) registerKeycloakSignals() error {
 		OwnerProjects:     ownerMaps,
 	}
 	return observability.RegisterProviderSignals(registration)
+}
+
+// RegisterKeycloakMetricsSignalsAt registers the native Keycloak metrics
+// signal for a realized Target. The local realization calls this same
+// production path after Apply; keeping it package-visible also lets integration
+// tests verify that the metrics consumer observes the producer's real registry
+// record rather than a hand-built SignalSource.
+func RegisterKeycloakMetricsSignalsAt(app application.Manifest, files KeycloakFiles, dataDir, namespace string) error {
+	return (&localKeycloakRealization{
+		app: app, files: files, dataDir: dataDir, namespace: namespace,
+	}).registerKeycloakSignals()
 }
 
 // ownerProjectMaps lists the owner->project maps the migration consults. The
