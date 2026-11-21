@@ -5,8 +5,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"reflect"
 	"slices"
+	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
@@ -266,6 +268,82 @@ type appMachineDesiredRequest struct {
 type appMachineChoiceReader func(context.Context, string, []capability.Requirement) ([]appProviderChoice, error)
 type appMachineDesiredPlanner func(context.Context, string, []capability.Requirement, []application.ProviderPreference) (application.ProviderImpactPlan, error)
 
+// appMachineProposalAuthorityError preserves the stable machine classification
+// while identifying which read-only authority failed. The stage is safe to
+// expose at the interactive preview boundary; the underlying authority error
+// remains classified and is never printed.
+type appMachineProposalAuthorityError struct {
+	Stage              string
+	Cause              error
+	AuthorityCode      string
+	AuthorityCauseCode string
+	Resolution         *applicationResolutionDiagnostic
+}
+
+func (e *appMachineProposalAuthorityError) Error() string {
+	message := "application proposal " + e.Stage + ": " + e.Cause.Error()
+	if e.AuthorityCode != "" {
+		message += " (authority classification: " + e.AuthorityCode
+		if e.AuthorityCauseCode != "" {
+			message += "/" + e.AuthorityCauseCode
+		}
+		message += ")"
+	}
+	if e.Resolution != nil {
+		message += fmt.Sprintf(" (resolution=%s consumer=%q instance=%q requirement=%q)",
+			e.Resolution.Code, e.Resolution.Consumer, e.Resolution.InstanceID, e.Resolution.Requirement)
+	}
+	return message
+}
+
+func (e *appMachineProposalAuthorityError) Unwrap() error { return e.Cause }
+
+// appMachineProposalStageError carries only a static planner stage across the
+// proposal boundary. Its Cause remains private and is still reduced to the
+// stable machine denial before it reaches an operator or caller.
+type appMachineProposalStageError struct {
+	Stage string
+	Cause error
+}
+
+func (e *appMachineProposalStageError) Error() string { return e.Cause.Error() }
+func (e *appMachineProposalStageError) Unwrap() error { return e.Cause }
+
+func appMachineProposalStage(stage string, err error) error {
+	if err == nil {
+		return nil
+	}
+	return &appMachineProposalStageError{Stage: stage, Cause: err}
+}
+
+func appMachineProposalAuthorityFailure(stage string, err error) error {
+	classified := &appMachineProposalAuthorityError{Stage: stage}
+	var plannerStages []string
+	for current := err; current != nil; current = errors.Unwrap(current) {
+		if plannerStage, ok := current.(*appMachineProposalStageError); ok && plannerStage != nil {
+			plannerStages = append(plannerStages, plannerStage.Stage)
+		}
+	}
+	if len(plannerStages) > 0 {
+		classified.Stage += "/" + strings.Join(plannerStages, "/")
+	}
+	classified.Cause = appMachineReadError(err)
+	// appMachineReadError deliberately collapses private failures to a stable
+	// policy-denied code. Preserve only the already-safe public machine
+	// classification alongside that code so a failed read-only proposal can be
+	// diagnosed without exposing the underlying authority error or its details.
+	var authority *machine.Error
+	if errors.As(err, &authority) && authority != nil {
+		classified.AuthorityCode = string(authority.Code)
+		classified.AuthorityCauseCode = authority.CauseCode
+		if diagnostic, ok := authority.Details.(applicationResolutionDiagnostic); ok {
+			copy := diagnostic
+			classified.Resolution = &copy
+		}
+	}
+	return classified
+}
+
 // appMachineDesiredResult is the typed propose response carried back across the
 // MCP boundary. Its public JSON contract is snake_case so the SDK infers
 // consistent field names; no field leaks internal reconciliation state.
@@ -292,7 +370,7 @@ func appMachinePropose(ctx context.Context, req appMachineDesiredRequest, read a
 	}
 	view, err := read(ctx, req.Target)
 	if err != nil {
-		return appMachineDesiredResult{}, appMachineReadError(err)
+		return appMachineDesiredResult{}, appMachineProposalAuthorityFailure("read", err)
 	}
 	if err := ctx.Err(); err != nil {
 		return appMachineDesiredResult{}, appMachineReadError(err)
@@ -310,7 +388,7 @@ func appMachinePropose(ctx context.Context, req appMachineDesiredRequest, read a
 	}
 	candidates, err := choices(ctx, req.Target, req.Requirements)
 	if err != nil {
-		return appMachineDesiredResult{}, appMachineReadError(err)
+		return appMachineDesiredResult{}, appMachineProposalAuthorityFailure("choices", err)
 	}
 	if err := ctx.Err(); err != nil {
 		return appMachineDesiredResult{}, appMachineReadError(err)
@@ -344,7 +422,7 @@ func appMachinePropose(ctx context.Context, req appMachineDesiredRequest, read a
 	}
 	proposed, err := plan(ctx, req.Target, req.Requirements, preferences)
 	if err != nil {
-		return appMachineDesiredResult{}, appMachineReadError(err)
+		return appMachineDesiredResult{}, appMachineProposalAuthorityFailure("plan", err)
 	}
 	if err := ctx.Err(); err != nil {
 		return appMachineDesiredResult{}, appMachineReadError(err)
@@ -408,11 +486,11 @@ func appMachineChangeDesired(ctx context.Context, req appMachineDesiredChangeReq
 		fresh.PlanRevision != req.Proposal.PlanRevision {
 		return application.ProviderChangeResult{}, &appMachineError{Code: "conflict"}
 	}
-	// Compare the public plan values after the proposal's JSON round-trip;
-	// omitted optional empty collections must not create artificial drift.
-	freshPlan, freshErr := json.Marshal(fresh.Plan)
-	proposedPlan, proposedErr := json.Marshal(req.Proposal.Plan)
-	if freshErr != nil || proposedErr != nil || string(freshPlan) != string(proposedPlan) {
+	// Revalidation can resample remaining-validity countdowns between consent
+	// and apply. Compare the plans with the same stable projection used by their
+	// consent digest; absolute bounds and expired/not-yet-valid outcomes remain
+	// bound, while a display countdown alone cannot invalidate approval.
+	if !application.ProviderImpactPlansEquivalent(fresh.Plan, req.Proposal.Plan) {
 		return application.ProviderChangeResult{}, &appMachineError{Code: "conflict"}
 	}
 	if !slices.Equal(fresh.Requirements, req.Proposal.Requirements) ||

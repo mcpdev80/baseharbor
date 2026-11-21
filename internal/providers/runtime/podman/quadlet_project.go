@@ -29,30 +29,33 @@ type quadletComposeProject struct {
 }
 
 type quadletComposeService struct {
-	Image       string                    `yaml:"image"`
-	Build       composeBuild              `yaml:"build"`
-	Ports       []string                  `yaml:"ports"`
-	Environment composeEnv                `yaml:"environment"`
-	Restart     string                    `yaml:"restart"`
-	Command     quadletStringList         `yaml:"command"`
-	Entrypoint  quadletStringList         `yaml:"entrypoint"`
-	Volumes     []string                  `yaml:"volumes"`
-	Networks    quadletNetworkAttachments `yaml:"networks"`
-	DependsOn   quadletDependencies       `yaml:"depends_on"`
-	Profiles    []string                  `yaml:"profiles"`
-	User        string                    `yaml:"user"`
-	Hostname    string                    `yaml:"hostname"`
-	UserNSMode  string                    `yaml:"userns_mode"`
-	ReadOnly    bool                      `yaml:"read_only"`
-	CapDrop     []string                  `yaml:"cap_drop"`
-	CapAdd      []string                  `yaml:"cap_add"`
-	DNSOptions  []string                  `yaml:"dns_opt"`
-	DNSSearch   quadletStringList         `yaml:"dns_search"`
-	SecurityOpt []string                  `yaml:"security_opt"`
-	Tmpfs       []string                  `yaml:"tmpfs"`
-	Healthcheck quadletComposeHealthcheck `yaml:"healthcheck"`
-	Logging     quadletComposeLogging     `yaml:"logging"`
-	Secrets     quadletSecretRefs         `yaml:"secrets"`
+	Image         string                    `yaml:"image"`
+	ContainerName string                    `yaml:"container_name"`
+	Build         composeBuild              `yaml:"build"`
+	Ports         []string                  `yaml:"ports"`
+	Environment   composeEnv                `yaml:"environment"`
+	Restart       string                    `yaml:"restart"`
+	Command       quadletStringList         `yaml:"command"`
+	Entrypoint    quadletStringList         `yaml:"entrypoint"`
+	Volumes       []string                  `yaml:"volumes"`
+	Networks      quadletNetworkAttachments `yaml:"networks"`
+	DependsOn     quadletDependencies       `yaml:"depends_on"`
+	Profiles      []string                  `yaml:"profiles"`
+	User          string                    `yaml:"user"`
+	Hostname      string                    `yaml:"hostname"`
+	UserNSMode    string                    `yaml:"userns_mode"`
+	GroupAdd      []string                  `yaml:"group_add"`
+	PodmanGIDMap  string                    `yaml:"x-baseharbor-podman-gid-map"`
+	ReadOnly      bool                      `yaml:"read_only"`
+	CapDrop       []string                  `yaml:"cap_drop"`
+	CapAdd        []string                  `yaml:"cap_add"`
+	DNSOptions    []string                  `yaml:"dns_opt"`
+	DNSSearch     quadletStringList         `yaml:"dns_search"`
+	SecurityOpt   []string                  `yaml:"security_opt"`
+	Tmpfs         []string                  `yaml:"tmpfs"`
+	Healthcheck   quadletComposeHealthcheck `yaml:"healthcheck"`
+	Logging       quadletComposeLogging     `yaml:"logging"`
+	Secrets       quadletSecretRefs         `yaml:"secrets"`
 }
 
 type quadletComposeResource struct {

@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/machine"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
@@ -25,6 +26,12 @@ type TargetDefinitionRecovery struct {
 	DataRoot   string           `json:"data_root"`
 	Definition TargetDefinition `json:"definition"`
 	Access     AccessDefinition `json:"access"`
+}
+
+// TargetUID returns the stable Target UID recorded with this recovery, if any.
+// An empty value means the recovered Target predates stable identity.
+func (r TargetDefinitionRecovery) TargetUID() string {
+	return strings.TrimSpace(r.Definition.TargetUID)
 }
 
 func TargetRecoveryFromConfig(expected []byte, name string) (TargetDefinitionRecovery, error) {

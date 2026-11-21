@@ -198,6 +198,19 @@ func registerMCPAppEditToolWithAuthorities(server *mcp.Server, store application
 					}
 					return machineMCPFailure(err)
 				}
+				// Mirror the CLI Edit contract: a partial provider-change (an
+				// unattested pending impact, no failed impact) must surface as a
+				// loud failure here too. The CLI path (appEditApplyConfirmed:372)
+				// already rejects result.Status != "complete"; this handler
+				// previously returned the partial result as success (nil error,
+				// IsError:false). Classify the private "partial" appMachineError
+				// exactly like the CLI so the public boundary surfaces
+				// verification_failed with the result as details.
+				if result.Status != "complete" {
+					partial := *machine.Classify(classifyMachineCLIError(&appMachineError{Code: "partial"}))
+					partial.Details = result
+					return machineMCPFailure(&partial)
+				}
 				return nil, result, nil
 			default:
 				return machineMCPFailure(machine.NewError(machine.ErrorValidationFailed,

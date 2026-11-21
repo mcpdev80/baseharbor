@@ -14,7 +14,7 @@ import (
 	"strings"
 )
 
-func providerLogSources(p Placement, registrations []Registration) ([]observability.SignalSource, error) {
+func providerLogSources(p Placement, registrations []Registration, requestedEnvironment string) ([]observability.SignalSource, error) {
 	applications := make([]string, 0, len(registrations))
 	seen := map[string]struct{}{}
 	for _, registration := range registrations {
@@ -33,6 +33,7 @@ func providerLogSources(p Placement, registrations []Registration) ([]observabil
 		applications,
 		true,
 		true,
+		requestedEnvironment,
 	)
 }
 

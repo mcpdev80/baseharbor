@@ -5,15 +5,18 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/coreinstallation"
+	"github.com/mcpdev80/baseharbor/internal/delivery"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/machine"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
@@ -28,8 +31,11 @@ func TestCorelessFreshWorkloadRuntimeLifecycle(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 	ctx = machineNoninteractiveContext(ctx)
+	// This direct helper call stands in for the local CLI boundary. In
+	// production the CLI adds this marker before authorizing local prod work.
+	ctx = withLocalInvocation(ctx, "cli")
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
-	target := configureTestTarget(t)
+	target := configureTestTargetEmpty(t)
 	engine := "docker"
 	format := "{{json .SecurityOptions}}"
 	if os.Getenv("BASEHARBOR_TEST_RUNTIME") == "podman" {
@@ -95,20 +101,71 @@ func TestCorelessFreshWorkloadRuntimeLifecycle(t *testing.T) {
 	if m.ApplicationID == "" || m.Services.SQL {
 		t.Fatal("minimal initialization allocated implicit SQL or no stable identity")
 	}
+	submission, _ := candidateSubmissionForResolvedApp(ctx, initialized)
+	confirmDigest := delivery.CandidateConsentDigest(submission)
+	if confirmDigest == "" {
+		t.Fatal("minimal repository candidate did not produce a confirmation digest")
+	}
 	after, err := os.ReadFile("baseharbor.yaml")
 	if err != nil || string(after) != authored {
 		t.Fatal("initialization rewrote authored minimal intent")
 	}
 	t.Logf("runtime=%s application_id=%s target=%s fresh Core absent", engine, m.ApplicationID, target.Name)
 	assertCorelessHost(t, ctx, runtime, target)
+	destroyed := false
+	cleanupRequired := false
 	t.Cleanup(func() {
+		if destroyed || !cleanupRequired {
+			return
+		}
 		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), time.Minute)
 		defer cleanupCancel()
 		if err := destroySelectiveApplicationWithConsent(machineNoninteractiveContext(cleanupCtx)); err != nil {
 			t.Errorf("isolated app cleanup: %v", err)
 		}
 	})
-	for _, command := range [][]string{{"app", "plan", "--json"}, {"up", "--yes", "--skip-memory-preflight"}, {"app", "status", "--json"}, {"app", "doctor", "--json"}, {"app", "down"}, {"up", "--yes", "--skip-memory-preflight"}} {
+	// `up` may persist a configured deployment record while initializing
+	// runtime intent before it reaches the deployment-consent boundary. That
+	// changes the candidate, so the digest computed immediately after `app init`
+	// is deliberately stale for this first attempt. Verify the stale digest is
+	// refused without advancing that configuration record to an applying or
+	// consented state, then bind only the exact digest printed by the refusal.
+	if _, found, err := deployment.FindDeployment(target.Name, m.ApplicationID, m.Environment); err != nil {
+		t.Fatal(err)
+	} else if found {
+		t.Fatal("fresh coreless app unexpectedly has deployment state before up")
+	}
+	if err := ensureRepositoryDeploymentInputsForUp(ctx, strings.NewReader(""), io.Discard, runtimeUpOptions{Yes: true}); err != nil {
+		t.Fatalf("prepare deployment inputs before candidate refusal: %v", err)
+	}
+	beforeRefusal, found, err := deployment.FindDeployment(target.Name, m.ApplicationID, m.Environment)
+	if err != nil || !found || beforeRefusal.Observed.State != "configured" || beforeRefusal.Consent != nil {
+		t.Fatalf("runtime input preparation did not leave an unconsented configured record: found=%t state=%q consent=%+v err=%v", found, beforeRefusal.Observed.State, beforeRefusal.Consent, err)
+	}
+	cleanupRequired = true
+	staleUp := []string{"up", "--yes", "--skip-memory-preflight", "--confirm-candidate", confirmDigest}
+	var staleOut bytes.Buffer
+	staleErr := runWithIO(ctx, staleUp, &staleOut, &staleOut)
+	if staleErr == nil || !strings.Contains(staleErr.Error(), "candidate confirm digest does not match") {
+		t.Fatalf("stale pre-up digest was not refused at candidate consent: %v\n%s", staleErr, staleOut.String())
+	}
+	currentDigest := extractCandidateConfirmDigest(staleOut.String())
+	if currentDigest == "" || currentDigest == confirmDigest || !strings.Contains(staleOut.String(), "Re-run with --confirm-candidate "+currentDigest) {
+		t.Fatalf("up did not publish a new exact candidate confirmation digest: %s", staleOut.String())
+	}
+	configured, found, err := deployment.FindDeployment(target.Name, m.ApplicationID, m.Environment)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !found || !reflect.DeepEqual(configured, beforeRefusal) {
+		t.Fatalf("refused stale candidate consent advanced deployment state: found=%t state=%q consent=%+v", found, configured.Observed.State, configured.Consent)
+	}
+	t.Log("stale pre-up candidate digest refused; configured runtime intent remains unconsented")
+
+	confirmedUp := []string{"up", "--yes", "--skip-memory-preflight", "--confirm-candidate", currentDigest}
+	// --yes authorizes attempting the stop; the provider consequence plan still
+	// requires its own current acknowledgement, which this first stop omits.
+	for _, command := range [][]string{{"app", "plan", "--json"}, confirmedUp, {"app", "status", "--json"}, {"app", "doctor", "--json"}, {"app", "down", "--yes"}, confirmedUp} {
 		out.Reset()
 		var operationErr error
 		if command[1] == "down" {
@@ -145,8 +202,12 @@ func TestCorelessFreshWorkloadRuntimeLifecycle(t *testing.T) {
 				t.Fatal(err)
 			}
 			status, _, err := collectResolvedApplicationStatus(ctx, stopped)
-			if err != nil || status.State != "runtime-retired" || status.Ready {
-				t.Fatalf("stopped mistaken for absent/live: %+v %v", status, err)
+			if err != nil || status.State != "stopped" || status.Ready {
+				t.Fatalf("approved application down did not report the stopped workload: %+v %v", status, err)
+			}
+			record, found, recordErr := deployment.FindDeployment(target.Name, m.ApplicationID, m.Environment)
+			if recordErr != nil || !found || record.Observed.State != "runtime-retired" || record.Observed.Ready {
+				t.Fatalf("application down did not preserve its stopped deployment owner: found=%t state=%q ready=%t err=%v", found, record.Observed.State, record.Observed.Ready, recordErr)
 			}
 			files, err := application.ExistingRuntimeFiles(stopped.Store, stopped.Manifest)
 			if err != nil {
@@ -196,18 +257,61 @@ func TestCorelessFreshWorkloadRuntimeLifecycle(t *testing.T) {
 	if environment == "prod" {
 		qualifyActualLocalStdioWorkloadAuthority(t, ctx, target, m)
 	}
-	for i := 0; i < 2; i++ {
-		out.Reset()
-		if err := runWithIO(ctx, []string{"app", "destroy", "--yes"}, &out, &out); err != nil {
-			t.Fatalf("destroy %d: %v\n%s", i+1, err, out.String())
-		}
-		assertCorelessHost(t, ctx, runtime, target)
+	resolved, err = resolveApplication(ctx, application.Store{}, nil, "destroy")
+	if err != nil {
+		t.Fatalf("resolve application for destroy: %v", err)
 	}
-	if record, found, err := deployment.FindDeployment(target.Name, m.ApplicationID, m.Environment); err != nil || !found || record.Observed.State != "runtime-retired" || record.Observed.Ready || record.Identity != resolved.DeploymentIdentity {
-		t.Fatalf("default destroy lost canonical recovery owner: %v", err)
+	plan, err := buildApplicationDestructionPlan(ctx, resolved, true)
+	if err != nil {
+		t.Fatalf("build destruction plan: %v", err)
+	}
+	ack := corelessAcceptanceDestroyConsent(plan)
+	if err := runWithIO(withProviderChangeConsent(ctx, ack), []string{"app", "destroy", "--yes"}, &out, &out); err != nil {
+		t.Fatalf("destroy: %v\n%s", err, out.String())
+	}
+	destroyed = true
+	assertCorelessHost(t, ctx, runtime, target)
+	if _, found, err := deployment.FindDeployment(target.Name, m.ApplicationID, m.Environment); err != nil || found {
+		t.Fatalf("full destroy retained deployment owner: found=%t err=%v", found, err)
+	}
+	out.Reset()
+	if err := runWithIO(ctx, []string{"app", "destroy", "--yes"}, &out, &out); err != nil {
+		t.Fatalf("repeated destroy of already absent application should be idempotent: %v\n%s", err, out.String())
+	}
+	if !strings.Contains(out.String(), "Application already absent") || !strings.Contains(out.String(), "source files were kept") {
+		t.Fatalf("repeated destroy did not report an idempotent no-op: %s", out.String())
 	}
 	if _, err := os.Stat(filepath.Join(root, "baseharbor.yaml")); err != nil {
 		t.Fatalf("destroy removed authored intent: %v", err)
+	}
+}
+
+func corelessAcceptanceDestroyConsent(plan applicationDestructionPlan) *application.ProviderChangeConsent {
+	return &application.ProviderChangeConsent{
+		PlanID:     plan.Scope.PlanID,
+		First:      true,
+		Second:     true,
+		DeleteData: true,
+	}
+}
+
+func TestCorelessAcceptanceDestroyConsentBindsCurrentDestructivePlan(t *testing.T) {
+	resolved := retainedNativeBackendFixture(t)
+	plan, err := buildApplicationDestructionPlan(t.Context(), resolved, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ack := corelessAcceptanceDestroyConsent(plan)
+	if !plan.Scope.Destructive || !ack.DeleteData || ack.PlanID != plan.Scope.PlanID {
+		t.Fatalf("acceptance destroy did not bind the destructive plan and data consent: plan=%+v ack=%+v", plan.Scope, ack)
+	}
+	if err := application.ValidateProviderImpactScopeConsent(plan.Scope, *ack); err != nil {
+		t.Fatalf("current acceptance destroy consent rejected: %v", err)
+	}
+	stale := *ack
+	stale.PlanID = "stale-plan"
+	if err := application.ValidateProviderImpactScopeConsent(plan.Scope, stale); err == nil {
+		t.Fatal("stale acceptance destroy consent was accepted")
 	}
 }
 

@@ -2,7 +2,7 @@
 
 `baha app stop` (also `baha app down`) and `baseharbor.app.stop` share the current consequence plan.
 Review affected functions, consumers and retained owner locations before
-confirming. Unknown or alternative-less consequences require **Achtung** and
+confirming. Unknown or alternative-less consequences require **Warning** and
 two explicit acknowledgements. MCP supplies `provider_change_consent` with the
 displayed `plan_id`, `first` and `second`; noninteractive CLI uses the same
 bounded JSON object through `BASEHARBOR_PROVIDER_CHANGE_CONSENT`. `--yes` grants

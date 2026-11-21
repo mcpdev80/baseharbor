@@ -31,7 +31,15 @@ baha dev credentials
 baha dev domain
 ```
 
-Source-Identität gehört in `.baseharbor/sources.yaml`; der Checkout-Pfad bleibt lokal. Weitere Komponenten müssen tatsächlich im Application Contract vorhanden sein.
+Source-Identität gehört in `.baseharbor/sources.yaml`; der Checkout-Pfad bleibt lokal. Weitere Komponenten müssen tatsächlich im Application Contract vorhanden sein. Quellen sind Git-Repositorys, lokale Verzeichnisse oder OCI-Images; Komponenten sind optionale eindeutige Identitäten und können sich eine Quelle teilen.
+
+Inkrementelle Pflege mit `baha app workspace source add`, `baha app workspace source remove`, `baha app workspace component add`, `baha app workspace component remove` und `baha app workspace path` (nur bestehende Verzeichnisse; letzte Quelle einer Anwendung bleibt erhalten; lokale Dateien werden nicht gelöscht). `baha app workspace source add` und `baha app workspace component add` ersetzen einen vorhandenen Eintrag derselben Identität, ohne Duplikate. `baha app workspace source remove` löst die Quelle, ihre Komponenten-Mappings und ihren lokalen Mapping-Eintrag; die letzte Quelle einer Anwendung bleibt erhalten. Keine dieser Befehle legt lokale Verzeichnisse an oder löscht sie. Eine lokale Verzeichnisquelle behält ihren absoluten Pfad in `.baseharbor/sources.yaml`; ist das Verzeichnis selbst ein Git-Checkout, prüfen `status` und `update` ihn nach denselben Sicherheitsregeln wie gemappte Repositorys:
+
+```text
+baha app workspace status
+baha app workspace update --check
+baha app workspace update
+```
 
 [Exakte Befehle (EN)](https://mcpdev80.github.io/baseharbor/cli/development/).
 
@@ -40,12 +48,16 @@ Source-Identität gehört in `.baseharbor/sources.yaml`; der Checkout-Pfad bleib
 
 Die folgenden unveränderten Beispiele und Bezeichner entsprechen der englischen Referenz.
 
-```text
-baha app workspace status
-baha app workspace update --check
-baha app workspace update
+```bash
+baha app workspace init --local legacy=/srv/legacy-app --component api=legacy@services/api
+baha app workspace source add --source extra=https://git.example/extra.git
+baha app workspace component add worker extra@services/worker
+baha app workspace component list
+baha app workspace path legacy --show-current
+baha app workspace path api-source ~/dev/api
+baha app workspace component remove worker
+baha app workspace source remove extra
 ```
-
 ```bash
 repository_url="$(git remote get-url origin)"
 baha app workspace init --source backend="$repository_url" --component app=backend
