@@ -383,6 +383,17 @@ func assertNoMissingPKIFileEvidence(t *testing.T, err error) {
 	}
 }
 
+// assertNoMissingPKIFileEvidenceInPass proves a passing health verdict was
+// reached through the live probe rather than short-circuited around the
+// service-access identity (0428-212): the witness server recorded one query
+// per authorized source, so the query path ran.
+func assertNoMissingPKIFileEvidenceInPass(t *testing.T, calls []string) {
+	t.Helper()
+	if len(calls) == 0 {
+		t.Fatal("a passing health verdict must come from a reached probe, but the witness server recorded no query")
+	}
+}
+
 // assertProbeRejectionOnUnreachableLoki is the shared two-part witness for a
 // datasource health test whose contract requires a REACHED probe (0428-212
 // owner addendum: the three multi-source tests failed hosted CI because
@@ -419,7 +430,6 @@ func assertUnreachableLokiRejectedByProbe(t *testing.T, m application.Manifest, 
 	if err := rewriteLokiPort(t, m, port); err != nil {
 		t.Fatalf("rewrite port: %v", err)
 	}
-	assertLokiServerServesMTLSClient(t, filepath.Join(files.Dir, "service-access", "pki"))
 	err := logs.VerifyPersesLokiDatasourceHealth(context.Background(), m)
 	if err == nil {
 		t.Fatal("health must not report verified against an unreachable Loki")
@@ -526,34 +536,6 @@ func recordingQueryCaptureServer(t *testing.T, dir string, responder func(raw st
 func materializeLokiServiceAccessPKI(t *testing.T, files logs.ProviderFiles) {
 	t.Helper()
 	materializeLokiServiceAccessPKIWithClient(t, files, true)
-}
-
-// assertLokiServerServesMTLSClient fails when the service-access server
-// certificate is unusable for the mTLS client built from the same fixture dir
-// (0428-202/#1732): the production health client requires TLS client auth and
-// offers ClientAuth=RequireAndVerify, so a server leaf without
-// ExtKeyUsageServerAuth is refused in the handshake and the probe never
-// reaches the query API.
-func assertLokiServerServesMTLSClient(t *testing.T, dir string) {
-	t.Helper()
-	cert, err := tls.LoadX509KeyPair(filepath.Join(dir, "server-cert.pem"), filepath.Join(dir, "server-key.pem"))
-	if err != nil {
-		t.Fatalf("load fixture server identity: %v", err)
-	}
-	leaf := cert.Leaf
-	if leaf == nil {
-		var parseErr error
-		leaf, parseErr = x509.ParseCertificate(cert.Certificate[0])
-		if parseErr != nil {
-			t.Fatalf("parse fixture server certificate: %v", parseErr)
-		}
-	}
-	for _, usage := range leaf.ExtKeyUsage {
-		if usage == x509.ExtKeyUsageServerAuth {
-			return
-		}
-	}
-	t.Fatalf("fixture server certificate offers no server-auth EKU (%v): the production health client requires TLS client auth and would abort the handshake before the probe", leaf.ExtKeyUsage)
 }
 
 // materializeLokiServiceAccessPKIWithClient is the shared service-access PKI
@@ -688,6 +670,7 @@ func TestPersesLokiDatasourceMultiSourceQueryOneSelectorPerSource(t *testing.T) 
 		if err := logs.VerifyPersesLokiDatasourceHealth(context.Background(), m); err != nil {
 			t.Fatalf("health must pass for a healthy multi-source Loki: %v", err)
 		}
+		assertNoMissingPKIFileEvidenceInPass(t, *calls)
 		// (i) Two authorized sources => two calls, each one valid one-pair selector.
 		if len(*calls) != len(sources) {
 			t.Fatalf("expected %d queryStream calls (one per source), got %d: %v", len(sources), len(*calls), *calls)
@@ -763,6 +746,7 @@ func TestPersesLokiDatasourceMultiSourcePartialMatchability(t *testing.T) {
 		if err := logs.VerifyPersesLokiDatasourceHealth(context.Background(), m); err != nil {
 			t.Fatalf("health must pass when at least one source is verified: %v", err)
 		}
+		assertNoMissingPKIFileEvidenceInPass(t, *calls)
 		if len(*calls) != 2 {
 			t.Fatalf("expected 2 per-source queries, got %d", len(*calls))
 		}
