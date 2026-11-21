@@ -322,6 +322,7 @@ jobs:
           fi
           if [ "$backup_changed" = true ]; then
             bash scripts/ci-runtime-reset.sh "$RUNTIME"
+            bash scripts/ci-local-oci-registry.sh publish localhost/baseharbor-runtime:pre-release localhost:5000/baseharbor-runtime:pre-release
             unset BASEHARBOR_TARGET
             export XDG_CONFIG_HOME="$RUNNER_TEMP/baseharbor-backup-cli-xdg/config"
             export XDG_DATA_HOME="$RUNNER_TEMP/baseharbor-backup-cli-xdg/data"
@@ -352,6 +353,7 @@ jobs:
             internal/runtime/service_stop_test.go > "$changed"
           if [ -s "$changed" ]; then
             bash scripts/ci-runtime-reset.sh "$RUNTIME"
+            bash scripts/ci-local-oci-registry.sh publish localhost/baseharbor-runtime:pre-release localhost:5000/baseharbor-runtime:pre-release
             unset BASEHARBOR_TARGET
             export XDG_CONFIG_HOME="$RUNNER_TEMP/baseharbor-native-xdg/config"
             export XDG_DATA_HOME="$RUNNER_TEMP/baseharbor-native-xdg/data"
