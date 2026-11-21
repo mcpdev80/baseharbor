@@ -183,7 +183,7 @@ func TestCreateTargetSupportsRemoteNodeConnectorAccess(t *testing.T) {
 func TestTargetInspectionProjectsBuiltInAccessCapabilities(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("XDG_DATA_HOME", t.TempDir())
-	t.Setenv("BASEHARBOR_TARGET", "edge-a")
+	t.Setenv("BASEHARBOR_TARGET", "")
 
 	var out bytes.Buffer
 	if err := createTarget(
@@ -200,6 +200,7 @@ func TestTargetInspectionProjectsBuiltInAccessCapabilities(t *testing.T) {
 	); err != nil {
 		t.Fatal(err)
 	}
+	t.Setenv("BASEHARBOR_TARGET", "edge-a")
 
 	result, err := collectTargetInspection(context.Background())
 	if err != nil {
