@@ -600,7 +600,7 @@ workload:
 	if err := runRepositoryFixtureApply(ctx, []string{"--verbose", "app", "apply"}, &out); err != nil {
 		t.Fatalf("initial build apply: %v\n%s", err, out.String())
 	}
-	if !strings.Contains(out.String(), "rebuilt demo-app") {
+	if !strings.Contains(out.String(), "rebuilt app") {
 		t.Fatalf("initial build did not report build realization:\n%s", out.String())
 	}
 
@@ -668,7 +668,7 @@ workload:
 	if err := runRepositoryFixtureApply(ctx, []string{"--verbose", "app", "up"}, &out); err != nil {
 		t.Fatalf("changed-source app up: %v\n%s", err, out.String())
 	}
-	if !strings.Contains(out.String(), "rebuilt demo-app") {
+	if !strings.Contains(out.String(), "rebuilt app") {
 		t.Fatalf("source change did not report selective rebuild:\n%s", out.String())
 	}
 	assertMessage("two")
