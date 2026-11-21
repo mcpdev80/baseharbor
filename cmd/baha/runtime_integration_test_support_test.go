@@ -818,10 +818,6 @@ func ensureRuntimeIntegrationTrustPlane(t *testing.T, ctx context.Context) {
 			runtimeIntegrationTrustPlaneErr = err
 			return
 		}
-		if err := os.Setenv("BASEHARBOR_TARGET", bootstrapTarget); err != nil {
-			runtimeIntegrationTrustPlaneErr = err
-			return
-		}
 		// Always restore the selection, including when OpenBao was already
 		// initialized or when bootstrap fails. Otherwise a later lifecycle
 		// test silently inherits this bootstrap target.
@@ -840,23 +836,11 @@ func ensureRuntimeIntegrationTrustPlane(t *testing.T, ctx context.Context) {
 		_ = os.Unsetenv("DOCKER_CONTEXT")
 
 		var out bytes.Buffer
-		if os.Getenv("BASEHARBOR_TEST_RUNTIME") == "podman" {
-			if err := runWithIO(ctx, []string{"target", "create", bootstrapTarget, "--runtime-provider", "podman", "--access", "local", "--access-provider", "local", "--reference", "local", "--default"}, &out, &out); err != nil {
-				runtimeIntegrationTrustPlaneErr = err
-				return
-			}
-			out.Reset()
-		} else {
-			// Docker (the default test runtime) needs its own bootstrap target
-			// configured before the single shared `up` below; this target has
-			// its own `<name>-default` native network and management Core, so
-			// the gate never sees the ambient `local` Core.
-			if err := runWithIO(ctx, []string{"target", "create", bootstrapTarget, "--runtime-provider", "docker", "--access", "local", "--access-provider", "local", "--reference", "local", "--default"}, &out, &out); err != nil {
-				runtimeIntegrationTrustPlaneErr = err
-				return
-			}
-			out.Reset()
+		if err := createRuntimeIntegrationBootstrapTarget(ctx, bootstrapTarget, os.Getenv("BASEHARBOR_TEST_RUNTIME"), &out); err != nil {
+			runtimeIntegrationTrustPlaneErr = err
+			return
 		}
+		out.Reset()
 		if err := runWithIO(ctx, []string{"up", "--control-plane-only", "--yes"}, &out, &out); err != nil {
 			runtimeIntegrationTrustPlaneErr = err
 			return
@@ -932,6 +916,43 @@ func ensureRuntimeIntegrationTrustPlane(t *testing.T, ctx context.Context) {
 	// owned by TestMain and runs exactly once after the whole package, not at
 	// the end of the first helper caller. Setup failures (t.Fatalf above) are
 	// covered because the provisioning marker already guarantees teardown.
+}
+
+// createRuntimeIntegrationBootstrapTarget registers the Target against the
+// current configured selection, then selects it for the following runtime
+// operation. Selecting the new name first makes target.create authorization
+// resolve a Target that does not exist yet.
+func createRuntimeIntegrationBootstrapTarget(ctx context.Context, name, runtime string, out *bytes.Buffer) error {
+	runtime = strings.ToLower(strings.TrimSpace(runtime))
+	if runtime != "docker" && runtime != "podman" {
+		return fmt.Errorf("bootstrap Target requires docker or podman runtime, got %q", runtime)
+	}
+	if err := os.Unsetenv("BASEHARBOR_TARGET"); err != nil {
+		return err
+	}
+	args := []string{"target", "create", name, "--runtime-provider", runtime, "--access", "local", "--access-provider", "local", "--reference", "local", "--default"}
+	if err := runWithIO(ctx, args, out, out); err != nil {
+		return err
+	}
+	return os.Setenv("BASEHARBOR_TARGET", name)
+}
+
+func TestRuntimeIntegrationBootstrapTargetSelectsAfterCreate(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	target := "w169-ci-bootstrap-ordering"
+	t.Setenv("BASEHARBOR_TARGET", target)
+	var out bytes.Buffer
+	if err := createRuntimeIntegrationBootstrapTarget(context.Background(), target, "docker", &out); err != nil {
+		t.Fatalf("create bootstrap Target before selecting it: %v\n%s", err, out.String())
+	}
+	resolved, err := effectiveTarget(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolved.Name != target || resolved.RuntimeProvider != "docker" {
+		t.Fatalf("bootstrap selection = %#v, want docker Target %q", resolved, target)
+	}
 }
 
 // ensureBootstrapLeftoverMarker makes teardown guarantee explicit: the marker
