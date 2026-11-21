@@ -177,9 +177,7 @@ HTTPServer(("0.0.0.0", 8080), Handler).serve_forever()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := verifyPrometheusAlertRuleAPI(ctx, client, endpoint); err != nil {
-		t.Fatalf("Prometheus did not load and evaluate the managed alert rule: %v", err)
-	}
+	waitPrometheusAlertRule(t, ctx, client, endpoint)
 	members := []string{"prometheus-1", "prometheus-2"}
 	preRestartSamples := make(map[string]float64, len(members))
 	for _, member := range members {
@@ -296,6 +294,24 @@ func waitPrometheusRuleAndAlert(t *testing.T, ctx context.Context, client *http.
 		}
 	}
 	t.Fatal("Prometheus did not reload and evaluate the persisted alert rule after restart")
+}
+
+func waitPrometheusAlertRule(t *testing.T, ctx context.Context, client *http.Client, endpoint string) {
+	t.Helper()
+	deadline := time.Now().Add(90 * time.Second)
+	var lastErr error
+	for time.Now().Before(deadline) {
+		lastErr = verifyPrometheusAlertRuleAPI(ctx, client, endpoint)
+		if lastErr == nil {
+			return
+		}
+		select {
+		case <-ctx.Done():
+			t.Fatalf("waiting for Prometheus alert rule after provider readiness: %v", ctx.Err())
+		case <-time.After(time.Second):
+		}
+	}
+	t.Fatalf("Prometheus did not load and evaluate the managed alert rule: %v", lastErr)
 }
 
 func waitPrometheusMemberAlertFiring(t *testing.T, ctx context.Context, runtimeBinary, network string, files ProviderFiles, material serviceaccess.TLSMaterial, member string) {
