@@ -96,20 +96,7 @@ services:
 		output.Reset()
 		return runWithIOAsTestOperator(callCtx, []string{"app", "apply"}, &output, &output)
 	}); err != nil {
-		// This fixture creates a repository-owned candidate, so after the
-		// provider-impact consent retry it must separately confirm the exact
-		// candidate digest emitted by the failed invocation.
-		digest := extractCandidateConfirmDigest(output.String())
-		if digest == "" {
-			t.Fatalf("app apply: %v\n%s", err, output.String())
-		}
-		output.Reset()
-		if retryErr := runBackupFixtureWithConsent(withCandidateConsentDigest(ctx, digest), "apply", func(callCtx context.Context) error {
-			output.Reset()
-			return runWithIOAsTestOperator(callCtx, []string{"app", "apply", "--confirm-candidate", digest}, &output, &output)
-		}); retryErr != nil {
-			t.Fatalf("app apply after exact candidate confirmation: %v\n%s", retryErr, output.String())
-		}
+		t.Fatalf("app apply: %v\n%s", err, output.String())
 	}
 
 	store := application.DefaultStore()

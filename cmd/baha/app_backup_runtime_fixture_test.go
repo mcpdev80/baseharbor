@@ -14,6 +14,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/machine"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
@@ -240,15 +241,32 @@ func runBackupFixtureWithConsent(ctx context.Context, operation string, run func
 		return errors.New("unsupported backup fixture operation")
 	}
 	ctx = withProviderChangeConsent(machineNoninteractiveContext(ctx), nil)
-	err := run(ctx)
-	if err == nil {
-		return nil
+	providerGranted, candidateGranted := false, false
+	for attempts := 0; attempts < 3; attempts++ {
+		err := run(ctx)
+		if err == nil {
+			return nil
+		}
+		// Either authority may be checked first. Accept each exact typed
+		// challenge at most once, preserving the other consent in context.
+		if !candidateGranted {
+			if digest := candidateConsentDigestFromError(err); digest != "" {
+				ctx = withCandidateConsentDigest(ctx, digest)
+				candidateGranted = true
+				continue
+			}
+		}
+		if !providerGranted {
+			ack, consentErr := backupFixtureConsent(operation, err)
+			if consentErr == nil && ack != nil {
+				ctx = withProviderChangeConsent(ctx, ack)
+				providerGranted = true
+				continue
+			}
+		}
+		return err
 	}
-	ack, consentErr := backupFixtureConsent(operation, err)
-	if consentErr != nil {
-		return consentErr
-	}
-	return run(withProviderChangeConsent(ctx, ack))
+	return errors.New("backup fixture consent retries exceeded the bounded provider/candidate challenges")
 }
 
 func backupFixtureConsent(operation string, cause error) (*application.ProviderChangeConsent, error) {
@@ -547,6 +565,80 @@ func TestGuidedBackupFixtureConsentPreservesUnrelatedFailures(t *testing.T) {
 	cause := &machine.Error{Code: machine.ErrorApprovalRequired, CauseCode: "impact-confirmation-required", Details: map[string]string{"plan_id": "untyped"}}
 	if ack, err := backupFixtureConsent("apply", cause); err == nil || ack != nil {
 		t.Fatal("untyped details accepted")
+	}
+}
+
+func TestGuidedBackupFixtureCandidateRetryKeepsProviderConsent(t *testing.T) {
+	plan := application.ProviderImpactPlan{
+		Version: application.ProviderImpactVersion, Target: "dev", PlanID: "backup-candidate-plan",
+		Complete: true, ConfirmationsRequired: 1,
+		Impacts: []application.ProviderImpact{{InstanceID: "sql", Operation: "add"}},
+	}
+	impactRefusal := providerImpactConsentError(plan, &application.ProviderChangeError{Code: "impact-confirmation-required"})
+	digest := strings.Repeat("a", 64)
+	calls := 0
+	err := runBackupFixtureWithConsent(t.Context(), "apply", func(ctx context.Context) error {
+		calls++
+		switch calls {
+		case 1:
+			return impactRefusal
+		case 2:
+			if consent := providerChangeConsentFromContext(ctx); consent == nil || consent.PlanID != plan.PlanID {
+				t.Fatal("candidate challenge was not reached with the exact provider-impact consent")
+			}
+			return &cli.UsageError{Message: "candidate consent required", Hint: "Re-run with --confirm-candidate " + digest}
+		case 3:
+			if consent := providerChangeConsentFromContext(ctx); consent == nil || consent.PlanID != plan.PlanID {
+				t.Fatal("provider-impact consent was dropped on the candidate retry")
+			}
+			if got := candidateConsentOverride(ctx); got != digest {
+				t.Fatalf("candidate retry digest=%q, want exact challenged digest", got)
+			}
+			return nil
+		default:
+			t.Fatal("backup fixture retried more than once per consent phase")
+			return nil
+		}
+	})
+	if err != nil || calls != 3 {
+		t.Fatalf("backup fixture candidate retry calls=%d err=%v", calls, err)
+	}
+}
+
+func TestGuidedBackupFixtureProviderRetryKeepsCandidateConsent(t *testing.T) {
+	plan := application.ProviderImpactPlan{
+		Version: application.ProviderImpactVersion, Target: "dev", PlanID: "backup-provider-plan",
+		Complete: true, ConfirmationsRequired: 1,
+		Impacts: []application.ProviderImpact{{InstanceID: "sql", Operation: "add"}},
+	}
+	digest := strings.Repeat("b", 64)
+	impactRefusal := providerImpactConsentError(plan, &application.ProviderChangeError{Code: "impact-confirmation-required"})
+	calls := 0
+	err := runBackupFixtureWithConsent(t.Context(), "apply", func(ctx context.Context) error {
+		calls++
+		switch calls {
+		case 1:
+			return &cli.UsageError{Message: "candidate consent required", Hint: "Re-run with --confirm-candidate " + digest}
+		case 2:
+			if got := candidateConsentOverride(ctx); got != digest {
+				t.Fatalf("provider challenge candidate digest=%q, want exact challenged digest", got)
+			}
+			return impactRefusal
+		case 3:
+			if got := candidateConsentOverride(ctx); got != digest {
+				t.Fatalf("provider retry dropped candidate digest: %q", got)
+			}
+			if consent := providerChangeConsentFromContext(ctx); consent == nil || consent.PlanID != plan.PlanID {
+				t.Fatal("provider retry did not bind exact provider-impact consent")
+			}
+			return nil
+		default:
+			t.Fatal("backup fixture retried more than once per consent phase")
+			return nil
+		}
+	})
+	if err != nil || calls != 3 {
+		t.Fatalf("backup fixture provider retry calls=%d err=%v", calls, err)
 	}
 }
 

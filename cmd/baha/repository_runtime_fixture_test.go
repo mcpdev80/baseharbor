@@ -315,11 +315,11 @@ func verifyRepositoryFixtureRetirement(t *testing.T, ctx context.Context, resolv
 	record, err := deployment.LoadDeploymentRecord(resolved.DeploymentIdentity)
 	if err != nil || record.Identity != before.Identity || record.Observed.State != "runtime-retired" ||
 		record.Observed.Ready || record.Observed.VerifiedAt.IsZero() ||
-		record.Applied.GeneratedState["retired_intent"] != string(before.Applied.Intent) ||
+		!applicationIntentsEqual([]byte(record.Applied.GeneratedState["retired_intent"]), before.Applied.Intent) ||
 		record.Applied.GeneratedState["previous_intent"] != "" {
 		t.Fatalf("ordinary destroy lost the verified retained canonical owner: err=%v identity_match=%t state=%q ready=%t verified=%t retired_intent_match=%t previous_intent_present=%t",
 			err, record.Identity == before.Identity, record.Observed.State, record.Observed.Ready,
-			!record.Observed.VerifiedAt.IsZero(), record.Applied.GeneratedState["retired_intent"] == string(before.Applied.Intent),
+			!record.Observed.VerifiedAt.IsZero(), applicationIntentsEqual([]byte(record.Applied.GeneratedState["retired_intent"]), before.Applied.Intent),
 			record.Applied.GeneratedState["previous_intent"] != "")
 	}
 	result, err := applicationDestroyResult(resolved, false)

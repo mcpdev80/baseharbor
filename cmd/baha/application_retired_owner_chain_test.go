@@ -80,3 +80,46 @@ func TestRetiredPendingRetryNeverReplacesArchivedLiveOwnerWithEmptyIntent(t *tes
 		t.Fatal("verified repeat retirement changed canonical recovery identity", err)
 	}
 }
+
+func TestReactivatedIntentReplacesRetiredOwnerAndArchivesPreviousIntent(t *testing.T) {
+	target := configureTestTarget(t)
+	previousOwner := application.New("retired-reactivated", "dev", true, false, false)
+	retired := applicationRuntimeRetirementIntent(previousOwner)
+	record := registerTestDeployment(t, target, retired, t.TempDir(), "baseharbor.yaml")
+	previousIntent, err := json.Marshal(previousOwner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	activeIntent := previousOwner
+	activeIntent.Services.Cache = true
+	activeIntentBytes, err := json.Marshal(activeIntent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	record.Applied.Intent = activeIntentBytes
+	if record.Applied.GeneratedState == nil {
+		record.Applied.GeneratedState = map[string]string{}
+	}
+	record.Applied.GeneratedState["retired_intent"] = string(previousIntent)
+	record.Observed.State = "runtime-retired"
+	if err := deployment.SaveDeploymentRecord(record); err != nil {
+		t.Fatal(err)
+	}
+
+	resolved := resolvedApplication{Target: target, Manifest: activeIntent, DeploymentIdentity: record.Identity}
+	plan := application.ProviderImpactPlan{Version: application.ProviderImpactVersion, Target: target.Name, PlanID: "reactivated-retirement", Complete: false, Impacts: []application.ProviderImpact{}}
+	pending, err := recordPendingApplicationRuntimeRetirement(resolved, plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !applicationIntentsEqual([]byte(pending.Applied.GeneratedState["retired_intent"]), activeIntentBytes) ||
+		!applicationIntentsEqual([]byte(pending.Applied.GeneratedState["previous_intent"]), activeIntentBytes) {
+		t.Fatalf("reactivated active intent was not bound as the new pending retirement owner: retired_matches=%t previous_matches=%t",
+			applicationIntentsEqual([]byte(pending.Applied.GeneratedState["retired_intent"]), activeIntentBytes),
+			applicationIntentsEqual([]byte(pending.Applied.GeneratedState["previous_intent"]), activeIntentBytes))
+	}
+	history, err := retiredRuntimeHistory(pending)
+	if err != nil || len(history) != 1 || !applicationIntentsEqual(history[0].Intent, previousIntent) {
+		t.Fatalf("prior retained owner was not archived before replacing it: history=%d err=%v", len(history), err)
+	}
+}

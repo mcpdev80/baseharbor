@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
+	"reflect"
 	"time"
 )
 
@@ -39,7 +40,13 @@ func recordPendingApplicationRuntimeRetirement(resolved resolvedApplication, pla
 		record.Applied.GeneratedState = map[string]string{}
 	}
 	record.Applied.GeneratedState["previous_intent"] = string(previous)
-	if record.Applied.GeneratedState["retired_intent"] == "" || (prior.Validate() == nil && record.Observed.State != "runtime-retired") {
+	// A reactivated application can still carry the last verified
+	// runtime-retired observation until its next readiness check. Preserve an
+	// archived owner only while Applied.Intent itself is the retirement
+	// projection; if it is active again, archive the former owner and bind this
+	// newly retired intent instead.
+	stillRetirementProjection := isApplicationRuntimeRetirementIntent(record.Applied.Intent)
+	if record.Applied.GeneratedState["retired_intent"] == "" || (prior.Validate() == nil && (record.Observed.State != "runtime-retired" || !stillRetirementProjection)) {
 		if record.Applied.GeneratedState["retired_intent"] != string(record.Applied.Intent) || record.Applied.GeneratedState["retired_backend_placements"] != record.Applied.GeneratedState["backend_placements"] {
 			if err := archiveReplacedRetiredRuntime(&record); err != nil {
 				return record, err
@@ -51,6 +58,22 @@ func recordPendingApplicationRuntimeRetirement(resolved resolvedApplication, pla
 	record.Applied.GeneratedState["provider_change_result"] = string(encoded)
 	record.Observed = deployment.ObservedDeployment{State: "retiring"}
 	return record, deployment.SaveDeploymentRecord(record)
+}
+
+func isApplicationRuntimeRetirementIntent(raw json.RawMessage) bool {
+	var intent application.Manifest
+	if len(raw) == 0 || json.Unmarshal(raw, &intent) != nil {
+		return false
+	}
+	return reflect.DeepEqual(intent, applicationRuntimeRetirementIntent(intent))
+}
+
+func applicationIntentsEqual(leftRaw, rightRaw []byte) bool {
+	var left, right application.Manifest
+	if json.Unmarshal(leftRaw, &left) != nil || json.Unmarshal(rightRaw, &right) != nil {
+		return false
+	}
+	return reflect.DeepEqual(left, right)
 }
 
 // Call only after actual native retirement and selected reference release.
