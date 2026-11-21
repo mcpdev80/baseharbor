@@ -38,6 +38,16 @@ func withCIIntegrationOperator(ctx context.Context, args []string) context.Conte
 		ciIntegrationOperatorTrace("target-create-bootstrap", args, deployment.ResolvedTarget{}, nil)
 		return ciIntegrationOperatorContext(ctx)
 	}
+	// The acceptance harness deliberately clears BASEHARBOR_TARGET before its
+	// first target create. If a config with another default target already
+	// exists, resolve that fresh gate target directly so the exact bootstrap
+	// still gets the test-only operator without authorizing existing targets.
+	if ciIntegrationTargetCreate(args) {
+		if _, targetErr := cfg.ResolveTarget(strings.TrimSpace(args[2]), ""); targetErr != nil {
+			ciIntegrationOperatorTrace("target-create-bootstrap", args, deployment.ResolvedTarget{}, nil)
+			return ciIntegrationOperatorContext(ctx)
+		}
+	}
 	target, err := cfg.ResolveTarget(strings.TrimSpace(os.Getenv("BASEHARBOR_TARGET")), "")
 	if err == nil && target.AccessProvider == "baseharbor-core" {
 		ciIntegrationOperatorTrace("remote-core-target", args, target, nil)
@@ -341,6 +351,17 @@ func ciIntegrationLocalCoreBootstrap(args []string, target deployment.ResolvedTa
 
 func ciIntegrationTargetCreate(args []string) bool {
 	selectedTarget := strings.TrimSpace(os.Getenv("BASEHARBOR_TARGET"))
+	// The disposable demo acceptance harness unsets BASEHARBOR_TARGET while it
+	// creates the fresh target. Recover that exact name only from the validated
+	// gate/runtime pair, keeping bootstrap authorization scoped to this binary.
+	if selectedTarget == "" && os.Getenv("DEMO_ATOMIC_GATE") == "1" {
+		runtime := strings.TrimSpace(os.Getenv("BASEHARBOR_TEST_RUNTIME"))
+		gate := strings.TrimSpace(os.Getenv("BASEHARBOR_DEMO_OPERATOR_GATE"))
+		if gate != "" && gate == strings.TrimSpace(os.Getenv("GATE")) &&
+			(runtime == "docker" || runtime == "podman") {
+			selectedTarget = "atomic-" + runtime + "-" + gate
+		}
+	}
 	return len(args) >= 3 && args[0] == "target" && args[1] == "create" &&
 		selectedTarget != "" && strings.TrimSpace(args[2]) == selectedTarget
 }

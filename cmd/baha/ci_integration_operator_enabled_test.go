@@ -60,6 +60,8 @@ func TestCIIntegrationOperatorTraceKeepsMachineErrorStreamClean(t *testing.T) {
 func TestCIIntegrationOperatorIsLimitedToRemoteCoreAndTargetBootstrap(t *testing.T) {
 	t.Setenv("DEMO_ATOMIC_GATE", "1")
 	t.Setenv("BASEHARBOR_TEST_RUNTIME", "docker")
+	t.Setenv("GATE", "lifecycle")
+	t.Setenv("BASEHARBOR_DEMO_OPERATOR_GATE", "lifecycle")
 	local := configureTestTargetEmpty(t)
 	t.Setenv("BASEHARBOR_TARGET", local.Name)
 
@@ -97,11 +99,41 @@ func TestCIIntegrationOperatorIsLimitedToRemoteCoreAndTargetBootstrap(t *testing
 	if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), []string{"target", "create", "atomic-test-bootstrap"})); !ok {
 		t.Fatal("isolated Target bootstrap did not receive its CI operator")
 	}
+	t.Setenv("BASEHARBOR_TARGET", "")
+	cfg, err := deployment.LoadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	existingGateTarget := "atomic-docker-lifecycle"
+	localDefinition := cfg.Targets[local.Name]
+	localDefinition.TargetUID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+	cfg.Targets[existingGateTarget] = localDefinition
+	if err := cfg.Save(); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), []string{"target", "create", existingGateTarget})); ok {
+		t.Fatal("existing atomic gate Target unexpectedly received its CI operator")
+	}
+	delete(cfg.Targets, existingGateTarget)
+	if err := cfg.Save(); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), []string{"target", "create", "atomic-docker-lifecycle"})); !ok {
+		t.Fatal("isolated atomic gate Target bootstrap without an active target did not receive its CI operator")
+	}
+	if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), []string{"target", "create", "atomic-docker-guided"})); ok {
+		t.Fatal("Target bootstrap for a different atomic gate unexpectedly received its CI operator")
+	}
+	t.Setenv("BASEHARBOR_DEMO_OPERATOR_GATE", "guided")
+	if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), []string{"target", "create", "atomic-docker-lifecycle"})); ok {
+		t.Fatal("Target bootstrap unexpectedly received CI operator when workflow and gate disagree")
+	}
+	t.Setenv("BASEHARBOR_DEMO_OPERATOR_GATE", "lifecycle")
 	if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), []string{"target", "create", "another-target"})); ok {
 		t.Fatal("unselected Target bootstrap unexpectedly received the CI operator")
 	}
 
-	cfg, err := deployment.LoadConfig()
+	cfg, err = deployment.LoadConfig()
 	if err != nil {
 		t.Fatal(err)
 	}
