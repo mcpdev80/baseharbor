@@ -19,13 +19,19 @@ import (
 )
 
 func appDownCommand(store application.Store) *cli.Command {
-	command := appStopCommand(store)
+	stopCommand := appStopCommand(store)
+	command := stopCommand
 	command.Name = "down"
 	command.Usage = "baha app down [NAME] [--yes]"
-	run := command.Run
+	stopRun := stopCommand.Run
 	command.Run = func(ctx context.Context, args []string, out, errOut io.Writer) error {
+		// 0428-060 r2: 'down' and 'stop' share ONE route and ONE seam. The
+		// down mode is marked BEFORE the stop seam runs, so the seam sees it,
+		// and the shared stop closure keeps its own stop-mode marker. stopRun
+		// is the exact closure appStopCommand installed (captured before the
+		// reassignment above) so this wrapper cannot recurse.
 		ctx = context.WithValue(ctx, applicationDownModeKey{}, true)
-		return run(ctx, args, out, errOut)
+		return stopRun(ctx, args, out, errOut)
 	}
 	return command
 }
@@ -43,12 +49,14 @@ func isApplicationDownMode(ctx context.Context) bool {
 	return down
 }
 
-// downRequiresConfirmedConsent (0428-060) is the single consent seam the down
-// lifecycle gates on. It mirrors the assume-yes check the up/apply lifecycle
-// uses so 'down' never mutates runtime state on an unconfirmed invocation. Kept
-// as a named helper so the acceptance test asserts the seam directly.
-func downRequiresConfirmedConsent(ctx context.Context) bool {
-	return assumeYes(ctx)
+// downRequiresConfirmedConsent (0428-060) is the single consent seam the
+// down/stop lifecycle gates on, called from the shared stop/down command
+// route. An invocation without the explicit --yes confirmation makes no
+// runtime change; the mutation beneath this seam keeps its own consequence
+// plan acknowledgement. The route-level regression (0428-060 r2) runs the
+// registered command through this seam in both directions.
+func downRequiresConfirmedConsent(_ context.Context, args []string) bool {
+	return containsExactArgument(args, "--yes")
 }
 
 func appStopCommand(store application.Store) *cli.Command {
@@ -60,6 +68,16 @@ func appStopCommand(store application.Store) *cli.Command {
 	command.Long = "Stops the owned workload and provider runtime, releases its active provider references, and retains persistent data, credentials, recovery material and the deployment owner so 'baha app apply' can reactivate it. Pass --yes to execute; the current provider consequence plan still requires its own acknowledgement. Use 'baha app destroy' to permanently delete app-owned data."
 	command.Run = func(ctx context.Context, args []string, out, errOut io.Writer) error {
 		ctx = context.WithValue(ctx, applicationStopModeKey{}, true)
+		// 0428-060 down-convergence: 'app down' and 'app stop' share exactly
+		// this one route. The down/stop retirement mutates runtime state only
+		// under the explicit --yes confirmation, gated by the single
+		// downRequiresConfirmedConsent seam before any mutation reaches
+		// destroy, routes or providers. The consequence plan beneath it still
+		// requires its own acknowledgement.
+		if !downRequiresConfirmedConsent(ctx, args) {
+			fmt.Fprintln(out, "No changes were made. Re-run with --yes to stop the owned application runtime while retaining its data.")
+			return nil
+		}
 		return run(ctx, args, out, errOut)
 	}
 	return command
@@ -119,14 +137,6 @@ func executeApplicationStop(ctx context.Context, resolved resolvedApplication, o
 	renderPreflightUX(term, results)
 	if !ok {
 		return errors.New("application down preflight failed")
-	}
-	// 0428-060 down-convergence: 'down' was the only lifecycle entry that made a
-	// runtime mutation without an explicit --yes acknowledgement. Require the
-	// same assume-yes consent the up/apply lifecycle uses so an unconfirmed down
-	// makes no change; the already-run preflight consequence plan gates here.
-	if !downRequiresConfirmedConsent(ctx) {
-		fmt.Fprintln(out, "No changes were made. Re-run with --yes to stop the owned application runtime while retaining its data.")
-		return nil
 	}
 	if err := suspendConnectivityForManifest(ctx, compose, resolved); err != nil {
 		return fmt.Errorf("suspend cross-application connectivity: %w", err)
