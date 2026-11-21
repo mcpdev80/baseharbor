@@ -297,6 +297,8 @@ func TestAppExportManagedSecretWithoutOperatorFailsClosed(t *testing.T) {
 	// absent principal fails closed there. This is the fail-closed-by-construction
 	// invariant for the managed-secret export surface: without a verified BaseHarbor
 	// operator the command never reaches the reveal or the secret backend.
+	outputPath := filepath.Join(repo, "openbao.bhexport")
+
 	ctx := localWorkloadScope(
 		withLocalInvocation(operatorauth.WithEnforcement(context.Background()), "cli"),
 		applicationBoundaryOperation("export"))
@@ -305,12 +307,37 @@ func TestAppExportManagedSecretWithoutOperatorFailsClosed(t *testing.T) {
 		"app", "export",
 		"--include", "secrets/openbao",
 		"--password-file", passwordPath,
+		"--output", outputPath,
 	}, &out, &errOut)
 	if err == nil {
-		t.Fatalf("managed-secret export without a verified operator should fail closed; got stderr: %s", errOut.String())
+		t.Fatalf("managed-secret export without a verified operator should fail closed; got stdout+stderr: %s%s", out.String(), errOut.String())
 	}
-	if strings.Contains(err.Error(), "Selected export sources") {
-		t.Fatalf("managed-secret export without a verified operator should fail closed before selecting sources; got: %v", err)
+
+	// (1) Fail-closed operator-auth denial is the reason. The production path
+	// fails at the managed-environment operator-auth boundary (resolved during
+	// application resolution, before any secret value is read or written) with
+	// a usage error whose message text is fixed in the product; assert that
+	// exact text so the test cannot pass for an unrelated error.
+	if !strings.Contains(err.Error(), "operator authentication needs interactive setup but input is not a terminal") {
+		t.Fatalf("expected the fixed operator-authentication denial as the failure reason; got: %v", err)
+	}
+
+	// (2) Command output stays secret-safe: neither the managed-secret value nor
+	// any of its substrings may reach stdout or stderr. A regression that emits
+	// a secret and then returns a different error must fail here.
+	for _, sub := range []string{"correct horse battery staple", "correct", "horse", "battery", "staple"} {
+		if strings.Contains(out.String(), sub) {
+			t.Fatalf("managed-secret value leaked into stdout: %q", out.String())
+		}
+		if strings.Contains(errOut.String(), sub) {
+			t.Fatalf("managed-secret value leaked into stderr: %q", errOut.String())
+		}
+	}
+
+	// (3) No export artifact is created when authorization fails: the caller
+	// returns before writeAppExport, so the explicit --output path must be absent.
+	if _, statErr := os.Stat(outputPath); !os.IsNotExist(statErr) {
+		t.Fatalf("export artifact must not be created on the no-operator denial; stat err: %v", statErr)
 	}
 }
 
