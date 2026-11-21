@@ -26,6 +26,7 @@ func TestEnvironmentDestroyNativeLifecycle(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(machineNoninteractiveContext(context.Background()), 8*time.Minute)
 	defer cancel()
+	ctx = testOperatorContext(ctx)
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
 	target := configureTestTargetEmpty(t)
 	t.Setenv("BASEHARBOR_TARGET", target.Name)
@@ -70,7 +71,7 @@ func TestEnvironmentDestroyNativeLifecycle(t *testing.T) {
 		}
 		cleanupCtx, cleanupCancel := context.WithTimeout(machineNoninteractiveContext(context.Background()), 2*time.Minute)
 		defer cleanupCancel()
-		if err := destroySelectiveApplicationWithConsent(cleanupCtx); err != nil {
+		if err := destroySelectiveApplicationWithConsent(testOperatorContext(cleanupCtx)); err != nil {
 			t.Errorf("native environment-destroy fixture cleanup: %v", err)
 		}
 	})
