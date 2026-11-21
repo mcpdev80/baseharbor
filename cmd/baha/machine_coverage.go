@@ -150,6 +150,7 @@ var cliPresentationCommands = map[string]string{
 	"baha workspace source remove":        "Alias for source remove; detaches model references without deleting local files.",
 	"baha workspace path":                 "Alias for setting or reading a local checkout path; writes require workspace.map and never create or delete files.",
 	"baha app secure-profile export":      "Operator-local, password-locked file export of opt-in local credentials; no runtime mutation or machine tool. Ciphertext opens only with the export password.",
+	"baha app export":                     "Operator-local, password-locked file export of explicitly selected local credentials; no runtime mutation or machine tool, and fails closed on an empty selection. Ciphertext opens only with the export password; managed-secret sources require the human-authorization reveal seam.",
 	"baha workspace":                      "Canonical interactive presentation of the same workspace.init/map operations.",
 	"baha target activate":                "Persists local user selection; machine clients supply explicit target arguments on each semantic operation.",
 	"baha target policy set":              "Owner-local protected Target configuration edit with CAS; no remote operator policy mutation is exposed yet. Remote targets refuse this action; machine clients must not bypass the owning Core authority.",
