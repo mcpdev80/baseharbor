@@ -420,6 +420,14 @@ func RuntimeComposeYAMLForProject(m Manifest, files RuntimeFiles) (string, error
 	if m.Services.Perses {
 		service := runtimeServiceName("perses", defaultServiceInstance)
 		fmt.Fprintf(&b, "  %s-data:\n    name: %s\n", service, PersesRuntimeVolumeName(resourceProject, service))
+		// The Perses database folder /etc/perses/database is writable via a
+		// tmpfs of its own (emitted in writePersesGatewayComposeServices), so
+		// it needs no named volume here. The shipped plugin archives extract
+		// into /etc/perses/plugins at startup, which the pinned distroless
+		// image has no such directory and whose rootfs is read-only, so a
+		// deployment-scoped named volume provides the writable, host-isolated
+		// extraction target the runner must support.
+		fmt.Fprintf(&b, "  %s-plugins:\n    name: %s_database\n", service, resourceProject)
 	}
 	b.WriteString("\nnetworks:\n  default:\n")
 	fmt.Fprintf(&b, "    name: %s\n", ApplicationBackendNetworkNameForProject(resourceProject))
