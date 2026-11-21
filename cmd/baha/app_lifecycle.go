@@ -43,6 +43,14 @@ func isApplicationDownMode(ctx context.Context) bool {
 	return down
 }
 
+// downRequiresConfirmedConsent (0428-060) is the single consent seam the down
+// lifecycle gates on. It mirrors the assume-yes check the up/apply lifecycle
+// uses so 'down' never mutates runtime state on an unconfirmed invocation. Kept
+// as a named helper so the acceptance test asserts the seam directly.
+func downRequiresConfirmedConsent(ctx context.Context) bool {
+	return assumeYes(ctx)
+}
+
 func appStopCommand(store application.Store) *cli.Command {
 	command := appDestroyCommand(store)
 	run := command.Run
@@ -112,7 +120,14 @@ func executeApplicationStop(ctx context.Context, resolved resolvedApplication, o
 	if !ok {
 		return errors.New("application down preflight failed")
 	}
-
+	// 0428-060 down-convergence: 'down' was the only lifecycle entry that made a
+	// runtime mutation without an explicit --yes acknowledgement. Require the
+	// same assume-yes consent the up/apply lifecycle uses so an unconfirmed down
+	// makes no change; the already-run preflight consequence plan gates here.
+	if !downRequiresConfirmedConsent(ctx) {
+		fmt.Fprintln(out, "No changes were made. Re-run with --yes to stop the owned application runtime while retaining its data.")
+		return nil
+	}
 	if err := suspendConnectivityForManifest(ctx, compose, resolved); err != nil {
 		return fmt.Errorf("suspend cross-application connectivity: %w", err)
 	}
