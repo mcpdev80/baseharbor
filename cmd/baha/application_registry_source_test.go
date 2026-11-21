@@ -94,6 +94,51 @@ func TestResolvePinsImmutableDigestFromNativeTool(t *testing.T) {
 	}
 }
 
+func TestResolveUsesPlainHTTPOnlyForLocalhostRegistry(t *testing.T) {
+	digest := "sha256:" + strings.Repeat("3", 64)
+	local := &fakeExec{output: []string{"Resolved localhost:5000/baseharbor-runtime@" + digest}}
+	if _, err := (RegistrySource{
+		Kind:      SourceOCIAddressed,
+		Location:  "localhost:5000/baseharbor-runtime",
+		Requested: "pre-release",
+		Exec:      local.fn,
+	}).Resolve(context.Background()); err != nil {
+		t.Fatalf("resolve local HTTP registry: %v", err)
+	}
+	if got, want := local.calls[0], "oras resolve --full-reference --plain-http --resolve localhost:5000:127.0.0.1 localhost:5000/baseharbor-runtime:pre-release"; got != want {
+		t.Fatalf("local registry resolve args = %q, want %q", got, want)
+	}
+
+	remote := &fakeExec{output: []string{"Resolved registry.example.invalid/org/app@" + digest}}
+	if _, err := (RegistrySource{
+		Kind:      SourceOCIAddressed,
+		Location:  "registry.example.invalid/org/app",
+		Requested: "stable",
+		Exec:      remote.fn,
+	}).Resolve(context.Background()); err != nil {
+		t.Fatalf("resolve HTTPS registry: %v", err)
+	}
+	if got, want := remote.calls[0], "oras resolve --full-reference registry.example.invalid/org/app:stable"; got != want {
+		t.Fatalf("remote registry resolve args = %q, want %q", got, want)
+	}
+}
+
+func TestLocalRuntimeImageResolveOverridePinsLoopbackRegistry(t *testing.T) {
+	cases := map[string]string{
+		"localhost/team/app:dev":                   "localhost:80:127.0.0.1",
+		"localhost:5000/team/app:pre-release":      "localhost:5000:127.0.0.1",
+		"registry.example.invalid/team/app:stable": "",
+		"127.0.0.1:5000/team/app:dev":              "",
+	}
+	for reference, want := range cases {
+		t.Run(reference, func(t *testing.T) {
+			if got := localRuntimeImageResolveOverride(reference); got != want {
+				t.Fatalf("localRuntimeImageResolveOverride(%q)=%q want %q", reference, got, want)
+			}
+		})
+	}
+}
+
 func TestResolveDefaultsRequestToLatestWhenUnset(t *testing.T) {
 	digest := "sha256:" + strings.Repeat("0", 64)
 	fake := &fakeExec{output: []string{"Resolved registry.example.invalid/org/app@" + digest}}

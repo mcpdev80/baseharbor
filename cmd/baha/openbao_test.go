@@ -36,7 +36,7 @@ func TestOpenBaoRecoveryArgumentRequired(t *testing.T) {
 func TestOpenBaoHelpIsDiscoverable(t *testing.T) {
 	for _, args := range [][]string{{"openbao", "--help"}, {"openbao", "bootstrap", "--help"}, {"openbao", "unseal", "--help"}} {
 		var out bytes.Buffer
-		if err := runWithIO(context.Background(), args, &out, &out); err != nil {
+		if err := runWithIOAsTestOperator(context.Background(), args, &out, &out); err != nil {
 			t.Fatalf("help %v failed: %v", args, err)
 		}
 		if !strings.Contains(out.String(), "Usage:") {

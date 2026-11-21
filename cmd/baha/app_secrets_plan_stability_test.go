@@ -23,7 +23,7 @@ func TestFreshSecretsPlanAcknowledgementsRemainBoundBeforeMutation(t *testing.T)
 	}
 	ctx := machineNoninteractiveContext(t.Context())
 	var output bytes.Buffer
-	if err := runWithIO(ctx, []string{"app", "init", "--quick", "--json"}, &output, &output); err != nil {
+	if err := runWithIOAsTestOperator(ctx, []string{"app", "init", "--quick", "--json"}, &output, &output); err != nil {
 		t.Fatal(err)
 	}
 	resolved, err := resolveApplication(ctx, application.Store{}, nil, "apply")

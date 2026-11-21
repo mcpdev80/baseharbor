@@ -68,13 +68,13 @@ func TestMCPReadEntryExpectedPreconditions(t *testing.T) {
 
 	server := newMCPServer(application.DefaultStore())
 	serverTransport, clientTransport := mcp.NewInMemoryTransports()
-	serverSession, err := server.Connect(context.Background(), serverTransport, nil)
+	serverSession, err := server.Connect(testOperatorContext(context.Background()), serverTransport, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = serverSession.Close() })
 	client := mcp.NewClient(&mcp.Implementation{Name: "preconditions-test", Version: "v1"}, nil)
-	clientSession, err := client.Connect(context.Background(), clientTransport, &mcp.ClientSessionOptions{ProtocolVersion: "2026-07-28"})
+	clientSession, err := client.Connect(testOperatorContext(context.Background()), clientTransport, &mcp.ClientSessionOptions{ProtocolVersion: "2026-07-28"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,7 +92,7 @@ func TestMCPReadEntryExpectedPreconditions(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.tool, func(t *testing.T) {
-			result, err := clientSession.CallTool(context.Background(), &mcp.CallToolParams{
+			result, err := clientSession.CallTool(testOperatorContext(context.Background()), &mcp.CallToolParams{
 				Name: "baseharbor." + tc.tool, Arguments: tc.args,
 			})
 			if err != nil {

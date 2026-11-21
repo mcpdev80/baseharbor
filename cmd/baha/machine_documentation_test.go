@@ -18,6 +18,9 @@ func TestMachineDocumentationTracksRegistryAndCommandTree(t *testing.T) {
 	fmt.Fprintln(&tools, "| Tool | Safety | Policy required | Approval required |")
 	fmt.Fprintln(&tools, "| --- | --- | --- | --- |")
 	for _, operation := range machine.Operations() {
+		if operation.MCPTool == "" {
+			continue
+		}
 		fmt.Fprintf(&tools, "| `%s` | `%s` | %t | %t |\n", operation.MCPTool, operation.Safety, operation.PolicyRequired, operation.ConfirmationRequired)
 	}
 	docPath := filepath.Join("..", "..", "docs", "reference", "mcp.md")

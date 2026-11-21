@@ -543,10 +543,11 @@ func recordingQueryCaptureServer(t *testing.T, dir string, responder func(raw st
 	return server, &calls
 }
 
-// materializeLokiServiceAccessPKI writes a managed mTLS key pair (CA + server
-// leaf) under the provider's service-access pki dir so the Loki health path can
-// build its service-access client and reach the fake query server. It uses a
-// throwaway self-signed CA valid for the test only; no issuer state is required.
+// materializeLokiServiceAccessPKI writes a managed mTLS fixture (CA + server
+// and client leaves) under the provider's service-access pki dir so the Loki
+// health path can build its service-access client and reach the fake query
+// server. The throwaway CA and both leaves are valid only for this test; no
+// issuer state is required.
 func materializeLokiServiceAccessPKI(t *testing.T, files logs.ProviderFiles) {
 	t.Helper()
 	materializeLokiServiceAccessPKIWithClient(t, files, true)
@@ -627,10 +628,10 @@ func materializeLokiServiceAccessPKIWithClient(t *testing.T, files logs.Provider
 	}
 	client := &x509.Certificate{
 		SerialNumber: big.NewInt(3),
-		Subject:      pkix.Name{CommonName: "baseharbor-service-client"},
+		Subject:      pkix.Name{CommonName: "baseharbor-test-loki-client"},
 		NotBefore:    time.Now().Add(-time.Hour),
 		NotAfter:     time.Now().Add(24 * time.Hour),
-		KeyUsage:     x509.KeyUsageDigitalSignature,
+		KeyUsage:     x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
 		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
 	}
 	clientDER, err := x509.CreateCertificate(rand.Reader, client, ca, &clientKey.PublicKey, caKey)
@@ -638,14 +639,14 @@ func materializeLokiServiceAccessPKIWithClient(t *testing.T, files logs.Provider
 		t.Fatal(err)
 	}
 	clientCertPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: clientDER})
+	if err := os.WriteFile(filepath.Join(dir, "client-cert.pem"), clientCertPEM, 0o600); err != nil {
+		t.Fatal(err)
+	}
 	clientKeyDER, err := x509.MarshalPKCS8PrivateKey(clientKey)
 	if err != nil {
 		t.Fatal(err)
 	}
 	clientKeyPEM := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: clientKeyDER})
-	if err := os.WriteFile(filepath.Join(dir, "client-cert.pem"), clientCertPEM, 0o600); err != nil {
-		t.Fatal(err)
-	}
 	if err := os.WriteFile(filepath.Join(dir, "client-key.pem"), clientKeyPEM, 0o600); err != nil {
 		t.Fatal(err)
 	}
