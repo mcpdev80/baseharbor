@@ -189,6 +189,18 @@ class CoverageCatalogTests(unittest.TestCase):
                       "-timeout", "20m"]],
                     integration.coreless_anchor_checks(gate, temporary))
 
+    def test_environment_destroy_native_test_selects_both_coreless_gates(self):
+        current = json.loads((ROOT / "pr-gate-coverage.json").read_text())
+        path = "cmd/baha/env_destroy_integration_test.go"
+        selected, unresolved = coverage_module.resolve_covered_gates([path], current)
+        self.assertEqual(["integration/docker/coreless-lifecycle",
+                          "integration/podman/coreless-lifecycle"], selected)
+        self.assertEqual([], unresolved)
+        component = next(row for row in current["components"] if row["path"] == path)
+        self.assertTrue(component["runtime_specific"])
+        self.assertEqual(["TestEnvironmentDestroyNativeLifecycle"],
+                         component["required_test_names"])
+
     def test_shared_backend_helper_maps_to_both_coreless_integration_gates(self):
         current = json.loads((ROOT / "pr-gate-coverage.json").read_text())
         path = "cmd/baha/app_backend_shared_runtime_test.go"

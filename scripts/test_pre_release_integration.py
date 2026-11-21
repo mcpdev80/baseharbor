@@ -118,6 +118,12 @@ class ContractCheckTests(unittest.TestCase):
                 self.assertEqual(os.environ['BASEHARBOR_SECRETS_LIFECYCLE_ACCEPTANCE'], '1')
                 self.assertEqual(os.environ['BASEHARBOR_RENOVATE_RECOVERY_ACCEPTANCE'], '1')
                 self.assertEqual(os.environ['BASEHARBOR_APP_STOP_ACCEPTANCE'], '1')
+                root = pathlib.Path(__file__).resolve().parents[1]
+                if integration.optional_coreless_test_command(
+                        'TestEnvironmentDestroyNativeLifecycle', root) is not None:
+                    self.assertEqual(os.environ['BASEHARBOR_ENV_DESTROY_ACCEPTANCE'], '1')
+                else:
+                    self.assertNotIn('BASEHARBOR_ENV_DESTROY_ACCEPTANCE', os.environ)
             with patch.dict(os.environ, {}, clear=True):
                 with self.assertRaises(ValueError):
                     integration.configure_runtime_environment(gate)
@@ -158,6 +164,10 @@ class ContractCheckTests(unittest.TestCase):
         }
         backend_source = pathlib.Path(__file__).resolve().parents[1] / 'cmd/baha/app_backend_selective_runtime_test.go'
         expected.add('TestSelectiveBackendCleanupPreservesRuntimeBaseline')
+        root = pathlib.Path(__file__).resolve().parents[1]
+        if integration.optional_coreless_test_command(
+                'TestEnvironmentDestroyNativeLifecycle', root) is not None:
+            expected.add('TestEnvironmentDestroyNativeLifecycle')
         for runtime in ['docker', 'podman']:
             gate = f'integration/{runtime}/coreless-lifecycle'
             integration.validate_coreless_shard_partition(gate)
@@ -173,6 +183,34 @@ class ContractCheckTests(unittest.TestCase):
                     assigned.append(command[command.index('-run') + 1][1:-1])
             self.assertEqual(len(assigned), len(set(assigned)))
             self.assertEqual(set(assigned), expected)
+
+    def test_environment_destroy_is_added_to_native_gates_when_product_source_arrives(self):
+        test_name = 'TestEnvironmentDestroyNativeLifecycle'
+        expected = ['./cmd/baha', '-run', '^' + test_name + '$', '-timeout', '12m']
+        with tempfile.TemporaryDirectory() as temporary:
+            root = pathlib.Path(temporary)
+            anchor = root / 'cmd/baha/app_backend_selective_runtime_test.go'
+            anchor.parent.mkdir(parents=True)
+            anchor.write_text(
+                'func TestSelectiveBackendCleanupPreservesRuntimeBaseline(t *testing.T) {}\n')
+            source = root / 'cmd/baha/env_destroy_integration_test.go'
+            source.write_text('func ' + test_name + '(t *testing.T) {}\n')
+            for runtime in ['docker', 'podman']:
+                gate = f'integration/{runtime}/coreless-lifecycle'
+                with patch.dict(os.environ, {'BASEHARBOR_TEST_RUNTIME': runtime}, clear=True):
+                    self.assertTrue(integration.configure_runtime_environment(gate, root))
+                    self.assertEqual(os.environ['BASEHARBOR_ENV_DESTROY_ACCEPTANCE'], '1')
+                assigned = []
+                for shard in integration.CORELESS_SHARD_NAMES:
+                    commands = integration.coreless_shard_checks(gate, shard, root)
+                    matching = [command for command in commands if command[2] == '^' + test_name + '$']
+                    if shard == 'application':
+                        self.assertEqual(matching, [expected])
+                    else:
+                        self.assertEqual(matching, [])
+                    assigned.extend(matching)
+                self.assertEqual(assigned, [expected])
+                integration.validate_coreless_shard_partition(gate, root)
 
     def test_registry_is_an_explicit_owned_resource_and_not_an_inventory_filter(self):
         root = pathlib.Path(__file__).resolve().parents[1]
