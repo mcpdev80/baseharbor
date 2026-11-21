@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -31,6 +32,7 @@ func TestSelectiveIdentityRuntimeAddRemoveReAdd(t *testing.T) {
 	defer cancel()
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
 	target := configureTestTargetEmpty(t)
+	t.Setenv("BASEHARBOR_TARGET", target.Name)
 	if os.Getenv("BASEHARBOR_TEST_RUNTIME") == "podman" {
 		cfg, err := deployment.LoadConfig()
 		if err != nil {
@@ -80,14 +82,17 @@ func TestSelectiveIdentityRuntimeAddRemoveReAdd(t *testing.T) {
 	if applicationID == "" {
 		t.Fatal("initialization has no stable application identity")
 	}
+	environmentDestroyed := false
 	t.Cleanup(func() {
 		cleanupCtx, cleanupCancel := context.WithTimeout(machineNoninteractiveContext(context.Background()), 2*time.Minute)
 		defer cleanupCancel()
 		if _, err := exposure.RetireRuntime(cleanupCtx, provider, initialized.Manifest, application.RuntimeFilesFor(initialized.Store, initialized.Manifest)); err != nil && !os.IsNotExist(err) {
 			t.Errorf("isolated callback exposure cleanup: %v", err)
 		}
-		if err := destroySelectiveApplicationWithConsent(cleanupCtx); err != nil {
-			t.Errorf("isolated workload cleanup: %v", err)
+		if !environmentDestroyed {
+			if err := destroySelectiveApplicationWithConsent(cleanupCtx); err != nil {
+				t.Errorf("isolated workload cleanup: %v", err)
+			}
 		}
 		placement := capability.ProviderPlacement{Scope: capability.ScopeShared, Ownership: capability.OwnershipBaseHarbor}
 		if _, err := identityprovider.RetireKeycloakRuntime(cleanupCtx, provider, initialized.Manifest, placement, initialized.TargetStateRoot, target.Name); err != nil && !os.IsNotExist(err) {
@@ -252,6 +257,31 @@ func TestSelectiveIdentityRuntimeAddRemoveReAdd(t *testing.T) {
 		t.Logf("runtime=%s phase=%d Identity=%t selected Identity containers=%d actual total=%d retained data volumes=%d selected callback exposures=%d", provider.Kind(), phase, enabled, identityCount, len(containers), len(retained), callbackCount)
 	}
 	qualifySharedIdentityConsumers(t, ctx, provider, initialized, originalEnv, retained)
+
+	// Exercise environment-scoped destruction against the real selected runtime
+	// after the workload and Identity lifecycle have completed. DELETE is
+	// explicitly consented here so the existing app lifecycle removes the
+	// deployment owner before the environment identity is removed.
+	var destroyOutput, destroyError bytes.Buffer
+	if err := runWithIO(ctx, []string{"env", "destroy", "dev", "--delete-data", "--confirm-delete-data", "--yes", "--json"}, &destroyOutput, &destroyError); err != nil {
+		t.Fatalf("native environment destroy: %v\nstdout: %s\nstderr: %s", err, destroyOutput.String(), destroyError.String())
+	}
+	var destroyResult envDestroyResult
+	if err := json.Unmarshal(destroyOutput.Bytes(), &destroyResult); err != nil {
+		t.Fatalf("native environment destroy returned invalid JSON: %v\n%s", err, destroyOutput.String())
+	}
+	if !destroyResult.Success || destroyResult.Environment != "dev" || len(destroyResult.Scoped) != 1 {
+		t.Fatalf("native environment destroy did not remove its scoped deployment: %+v", destroyResult)
+	}
+	if exists, err := deployment.EnvironmentStateExists(target.Name, "dev"); err != nil || exists {
+		t.Fatalf("native environment identity remains after destroy: exists=%v err=%v", exists, err)
+	}
+	for _, record := range mustListCLIEnvDeployments(t, target.Name) {
+		if record.Identity.ApplicationID == applicationID && record.Identity.Environment == "dev" {
+			t.Fatalf("native environment destroy left scoped deployment owner: %+v", record.Identity)
+		}
+	}
+	environmentDestroyed = true
 }
 
 func selectiveIdentityOAuthRuntimeIntent(enabled bool) string {
