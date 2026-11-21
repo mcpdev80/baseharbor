@@ -43,6 +43,53 @@ func requestedWorkloadPorts(ctx context.Context) map[string]string {
 	return ports
 }
 
+// extractLocalWorkloadPorts parses the documented --workload-port NAME=PORT
+// selector from the raw args for the local apply/up path. It accepts both the
+// "--workload-port NAME=PORT" and "--workload-port=NAME=PORT" forms, validates
+// against the same contract the remote management path enforces
+// (extractRemoteWorkloadPorts), and returns the remaining args plus the parsed
+// name->port map. A missing or malformed port fails closed here so the
+// documented option is never silently dropped.
+func extractLocalWorkloadPorts(args []string) ([]string, map[string]string, error) {
+	filtered := make([]string, 0, len(args))
+	ports := map[string]string{}
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		value := ""
+		if arg == "--workload-port" {
+			i++
+			if i >= len(args) {
+				return nil, nil, usageError("missing workload port", "Pass --workload-port NAME=PORT.")
+			}
+			value = args[i]
+		} else if strings.HasPrefix(arg, "--workload-port=") {
+			value = strings.TrimPrefix(arg, "--workload-port=")
+		} else {
+			filtered = append(filtered, arg)
+			continue
+		}
+		name, port, ok := strings.Cut(value, "=")
+		if !ok || !validWorkloadEnvironmentName(name) || strings.TrimSpace(port) != port {
+			return nil, nil, usageError("invalid workload port", "Pass --workload-port NAME=PORT with a valid environment name and port.")
+		}
+		if _, duplicate := ports[name]; duplicate {
+			return nil, nil, usageError("duplicate workload port", "Pass each --workload-port NAME=PORT once.")
+		}
+		if _, err := parsePort(port); err != nil {
+			return nil, nil, usageError("invalid workload port", "Choose a TCP port from 1 through 65535.")
+		}
+		ports[name] = port
+	}
+	return filtered, ports, nil
+}
+
+// stripLocalWorkloadPorts is the thin wrapper the CLI Run hooks call: it
+// extracts the flag from args and returns the remaining args plus the parsed
+// ports so the caller can route the flag through withRequestedWorkloadPorts.
+func stripLocalWorkloadPorts(args []string) ([]string, map[string]string, error) {
+	return extractLocalWorkloadPorts(args)
+}
+
 var (
 	composePublishedPortVariableRE = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*):-([0-9]{1,5})\}\s*:`)
 	conflictingHostPortRE          = regexp.MustCompile(`(?i)(?:127\.0\.0\.1:|0\.0\.0\.0:|\[::\]:|\[::1\]:|::1:|host port\s+)([0-9]{1,5})`)
