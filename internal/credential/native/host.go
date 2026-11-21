@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync/atomic"
 )
 
 // CommandRunner executes an external native command with a bounded stdin. It
@@ -24,14 +25,20 @@ type ExecRunner struct{}
 // the error carries only a redacted class and exit status; the raw stderr is
 // never surfaced so helper payloads and secrets cannot leak through it.
 //
-// The child is forced fully non-interactive: git/ssh prompt variables are set to
-// a non-interactive sentinel so a missing credential helper, an empty reply, or
-// a helper that would otherwise wait on the controlling terminal fails closed
+// The child is forced fully non-interactive: every inherited git/ssh prompt
+// channel is stripped from the child environment and the non-interactive
+// sentinels are pinned, so a missing credential helper, an empty reply, or a
+// helper that would otherwise wait on the controlling terminal fails closed
 // instantly instead of hanging on a password prompt. This keeps the native
 // probe fail-closed on a host with no native credential source.
 func (ExecRunner) Invoke(ctx context.Context, name string, stdin string, args ...string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Stdin = strings.NewReader(stdin)
+	if fn := ttyCommandHook.Load(); fn != nil {
+		// Test-only attachment of a controlling terminal; production never
+		// sets the hook and the vector below is unchanged either way.
+		(*fn)(cmd)
+	}
 	cmd.Env = appendNonInteractiveEnv(cmd.Env)
 	out, err := cmd.Output()
 	if err != nil {
@@ -40,25 +47,115 @@ func (ExecRunner) Invoke(ctx context.Context, name string, stdin string, args ..
 	return out, nil
 }
 
-// appendNonInteractiveEnv pins the git/ssh prompt variables to non-interactive
-// sentinels so a missing credential helper or a helper that would otherwise
-// wait on the controlling terminal fails closed instead of hanging. The base
-// env is the inherited process environment (or the caller's explicit env),
-// extended with these overrides; it never collapses the environment to only
-// the sentinels, which would drop HOME/PATH the helper needs.
+// appendNonInteractiveEnv establishes the non-interactive child environment.
+//
+// Appending the sentinels alone is NOT enough. The child vector starts from
+// the inherited process environment (os.Environ when the caller set none),
+// and a duplicated key in an execve vector resolves by a platform rule no
+// caller may depend on: glibc getenv returns the FIRST copy while the shells
+// and Go's exec de-duplicate toward the LAST, and git itself consults both
+// channels in different stages of its credential lookup. Round 1 appended
+// GIT_TERMINAL_PROMPT=0 / GIT_ASKPASS=/bin/false / SSH_ASKPASS=/bin/false
+// over the inherited vector and left the helper-override channel open at
+// all; on the card's bootstrap host a waiting prompt script (or a helper
+// that reaches one) stayed reachable and `git credential fill` hung the
+// first authenticated git operation. Every inherited instance of every
+// prompt channel is therefore removed first and the authoritative
+// non-interactive values are appended exactly once, so the vector is
+// unambiguous on every platform. The rest of the environment stays intact
+// (HOME/PATH the helper needs), and the process environment itself is never
+// mutated, so concurrent callers are unaffected.
 func appendNonInteractiveEnv(base []string) []string {
 	env := base
 	if env == nil {
 		env = os.Environ()
 	}
-	for _, pair := range []string{
+	env = removeEnvKeys(env, promptEnvKeys()...)
+	env = append(env,
+		"GIT_TERMINAL_PROMPT=0",
+		"SSH_ASKPASS=/bin/false",
+		"GCM_INTERACTIVE=never",
+		"GIT_CREDENTIAL_HELPER=/bin/false",
+		"GIT_ASKPASS=/bin/false",
+	)
+	return env
+}
+
+// EnvFor exposes the production establishment for the witnesses that build a
+// command vector around the real ExecRunner path (e.g. after attaching a
+// controlling terminal). Production code never calls it.
+func EnvFor(base []string) []string {
+	return appendNonInteractiveEnv(base)
+}
+
+// CredentialFillEnvSickForTest is the round-1 establishment kept for the
+// mutation-M1 witness: the sentinels APPENDED over the inherited vector,
+// never stripping inherited copies, in round-1 order. It also leaves the
+// helper-override channel GIT_CREDENTIAL_HELPER completely unhandled — the
+// gap this round closes. Production code never calls it.
+func CredentialFillEnvSickForTest(base []string) []string {
+	env := base
+	if env == nil {
+		env = os.Environ()
+	}
+	return append(env,
 		"GIT_TERMINAL_PROMPT=0",
 		"GIT_ASKPASS=/bin/false",
 		"SSH_ASKPASS=/bin/false",
-	} {
-		env = append(env, pair)
+	)
+}
+
+// promptEnvKeys returns the inherited environment keys that can open a
+// git/ssh credential prompt channel. GIT_CREDENTIAL_HELPER is part of the
+// set: git consults it as the helper-override channel BEFORE the configured
+// helper stage, so an inherited value pointing at an asking helper keeps the
+// prompt path reachable even when every prompt variable is pinned.
+func promptEnvKeys() []string {
+	return []string{
+		"GIT_TERMINAL_PROMPT",
+		"GIT_ASKPASS",
+		"SSH_ASKPASS",
+		"GCM_INTERACTIVE",
+		"GCM_CREDENTIAL_STORE",
+		"GIT_SSH",
+		"GIT_SSH_COMMAND",
+		"GIT_CREDENTIAL_HELPER",
 	}
-	return env
+}
+
+// removeEnvKeys drops every "key=..." entry whose key appears in keys, keeping
+// the remaining entries in their original order.
+func removeEnvKeys(env []string, keys ...string) []string {
+	drop := make(map[string]bool, len(keys))
+	for _, k := range keys {
+		drop[k] = true
+	}
+	kept := make([]string, 0, len(env))
+	for _, entry := range env {
+		if i := strings.IndexByte(entry, '='); i > 0 && drop[entry[:i]] {
+			continue
+		}
+		kept = append(kept, entry)
+	}
+	return kept
+}
+
+// ttyCommandHook lets a test attach a real controlling terminal to the
+// command the production runner builds (stdin/stdout/stderr are wired by the
+// hook before Start). Production never sets it; when unset the runner runs
+// exactly as on any host.
+var ttyCommandHook atomic.Pointer[func(*exec.Cmd)]
+
+// SetTTYCommandHookForTest installs (fn != nil) or clears (fn == nil) the
+// terminal hook used by the controlling-terminal witness. It exists so the
+// red-first test drives the PRODUCTION ExecRunner and its environment
+// establishment instead of a test-local copy of them.
+func SetTTYCommandHookForTest(fn func(*exec.Cmd)) {
+	if fn == nil {
+		ttyCommandHook.Store(nil)
+		return
+	}
+	ttyCommandHook.Store(&fn)
 }
 
 // DefaultRunner is the production runner backed by os/exec.
