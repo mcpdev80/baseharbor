@@ -67,7 +67,11 @@ func inspectRepositorySource(ctx context.Context, source string, out io.Writer) 
 	cmd.Stdin = strings.NewReader("")
 	cmd.Stdout = io.Discard
 	cmd.Stderr = &stderr
-	cmd.Env = append(cmd.Env, "GIT_TERMINAL_PROMPT=0")
+	// Env is derived from the parent environment so the clone keeps
+	// HOME/PATH/gitconfig/credential-helper while the prompt is suppressed.
+	// Deriving from os.Environ() (not appending to the nil cmd.Env) avoids
+	// replacing the inherited environment and dropping the credential helper.
+	cmd.Env = withGitPromptDisabled(os.Environ())
 	if nativeUsed, nerr := cloneNonInteractive(ctx, out, source); nativeUsed {
 		fmt.Fprintf(out, "[info] reusing native authentication for %s (no interactive prompt)\n", source)
 	} else if nerr != nil {
