@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 )
@@ -22,14 +23,42 @@ type ExecRunner struct{}
 // Invoke runs name+args with the given stdin and returns its stdout. On failure
 // the error carries only a redacted class and exit status; the raw stderr is
 // never surfaced so helper payloads and secrets cannot leak through it.
+//
+// The child is forced fully non-interactive: git/ssh prompt variables are set to
+// a non-interactive sentinel so a missing credential helper, an empty reply, or
+// a helper that would otherwise wait on the controlling terminal fails closed
+// instantly instead of hanging on a password prompt. This keeps the native
+// probe fail-closed on a host with no native credential source.
 func (ExecRunner) Invoke(ctx context.Context, name string, stdin string, args ...string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Stdin = strings.NewReader(stdin)
+	cmd.Env = appendNonInteractiveEnv(cmd.Env)
 	out, err := cmd.Output()
 	if err != nil {
 		return out, exitStatusError(name, err)
 	}
 	return out, nil
+}
+
+// appendNonInteractiveEnv pins the git/ssh prompt variables to non-interactive
+// sentinels so a missing credential helper or a helper that would otherwise
+// wait on the controlling terminal fails closed instead of hanging. The base
+// env is the inherited process environment (or the caller's explicit env),
+// extended with these overrides; it never collapses the environment to only
+// the sentinels, which would drop HOME/PATH the helper needs.
+func appendNonInteractiveEnv(base []string) []string {
+	env := base
+	if env == nil {
+		env = os.Environ()
+	}
+	for _, pair := range []string{
+		"GIT_TERMINAL_PROMPT=0",
+		"GIT_ASKPASS=/bin/false",
+		"SSH_ASKPASS=/bin/false",
+	} {
+		env = append(env, pair)
+	}
+	return env
 }
 
 // DefaultRunner is the production runner backed by os/exec.
