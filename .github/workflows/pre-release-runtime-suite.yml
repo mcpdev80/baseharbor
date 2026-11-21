@@ -127,7 +127,7 @@ jobs:
     - name: Set up Go
       if: inputs.reuse_from == '' && (inputs.candidate_artifact == '' || inputs.gate == 'backup-restore' || inputs.gate == 'observability' || inputs.gate == 'lifecycle' || inputs.gate
         == 'rabbitmq-runtime' || inputs.gate == 'mongodb-runtime' || inputs.gate == 'durable-key-value' || inputs.gate
-        == 'control-plane-recovery' || inputs.gate == 'loki-runtime' || inputs.gate == 'tempo-runtime')
+        == 'control-plane-recovery' || inputs.gate == 'loki-runtime' || inputs.gate == 'tempo-runtime' || inputs.gate == 'ci-fast-check')
       uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
       with:
         go-version-file: go.mod
@@ -222,12 +222,27 @@ jobs:
       env:
         GATE: ${{ inputs.gate }}
         RUNTIME: ${{ inputs.runtime }}
+        TAG: ${{ inputs.tag }}
       run: |
         set -euo pipefail
         registry="${{ steps.demo.outputs.workdir }}/tests/gate-resources.json"
         test -s "$registry"
-        jq -e --arg gate "$GATE" 'has($gate)' "$registry" >/dev/null
-        declared_class="$(jq -r --arg gate "$GATE" '.[$gate].class' "$registry")"
+        if jq -e --arg gate "$GATE" 'has($gate)' "$registry" >/dev/null; then
+          declared_class="$(jq -r --arg gate "$GATE" '.[$gate].class' "$registry")"
+          profile="$(jq -r --arg gate "$GATE" '.[$gate].profile' "$registry")"
+          capabilities="$(jq -c --arg gate "$GATE" '.[$gate].capabilities' "$registry")"
+        else
+          gate_id="atomic/$RUNTIME/$GATE"
+          jq -e --arg gate "$gate_id" --arg tag "$TAG" \
+            '[.gates[] | select(.id == $gate and (.jobs | index("static_gates")) and (.required_for | index($tag)))] | length == 1' \
+            scripts/release-requirements.json >/dev/null || {
+              echo "::error::Missing release-gate catalog entry for $gate_id; register it in scripts/release-requirements.json." >&2
+              exit 2
+            }
+          declared_class=static
+          profile=light
+          capabilities='[]'
+        fi
         if [ "$RUNTIME" = "static" ]; then
           test "$declared_class" = "static"
         else
@@ -237,8 +252,8 @@ jobs:
           esac
         fi
         echo "class=$declared_class" >> "$GITHUB_OUTPUT"
-        echo "profile=$(jq -r --arg gate "$GATE" '.[$gate].profile' "$registry")" >> "$GITHUB_OUTPUT"
-        echo "capabilities=$(jq -c --arg gate "$GATE" '.[$gate].capabilities' "$registry")" >> "$GITHUB_OUTPUT"
+        echo "profile=$profile" >> "$GITHUB_OUTPUT"
+        echo "capabilities=$capabilities" >> "$GITHUB_OUTPUT"
     - name: Run static gate
       id: static_gate
       if: inputs.reuse_from == '' && (inputs.runtime == 'static')
@@ -267,6 +282,7 @@ jobs:
           mcp) bash "$workdir/tests/mcp/run.sh" ;;
           agent) bash "$workdir/tests/agent/run.sh" ;;
           shell-ux) bash "$workdir/tests/shell-ux/run.sh" ;;
+          ci-fast-check) bash scripts/ci-fast-check.sh ;;
           *) echo "Unsupported static gate: $GATE" >&2; exit 2 ;;
         esac
     - name: Run runtime gate

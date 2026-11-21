@@ -799,6 +799,9 @@ def targeted_plan(diff, requirements, mapping, repository='.',
     release = mapping['release']
     if release not in requirements.get('releases', []):
         raise ValueError('release absent from gate catalog')
+    # Release-only gates stay tied to their explicit catalog label. In particular,
+    # atomic/static/ci-fast-check is introduced for v0.4.28 and must not enter the
+    # v0.4.27 PR selection or the normal feature-PR CI path.
     catalog = [g['id'] for g in requirements['gates'] if release in g['required_for']]
     if len(set(catalog)) != len(catalog) or not catalog:
         raise ValueError('duplicate or empty gate catalog')
