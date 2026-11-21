@@ -1,0 +1,28 @@
+{
+  "database": {
+    "file": {
+      "folder": "/persistence/database",
+      "extension": "json"
+    }
+  },
+  "security": {
+    "secret_file_allowed_directories": [
+      "/etc/perses/datasource-trust"
+    ]
+  },
+  "provisioning": {
+    "folders": [
+      "/etc/perses/provisioning"
+    ],
+    "interval": "300s",
+    "enable_watch": true
+  },
+  "datasource": {
+    "proxy": {
+      "allowed_networks": [
+        "127.0.0.0/8",
+        "::1/128"
+      ]
+    }
+  }
+}
