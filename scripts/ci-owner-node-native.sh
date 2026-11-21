@@ -30,6 +30,10 @@ bash scripts/test-ci-impact-selectors.sh
 bash scripts/ci-install-oras.sh
 require_pass ./internal/identityprovider TestKeycloakSingleNativeSQLInCI 16m
 bash scripts/ci-runtime-reset.sh "$BASEHARBOR_TEST_RUNTIME"
+# Keep this isolated ownership regression ahead of the broader Core lifecycle
+# test, whose separate operator-auth fixture can fail on an older base.
+export BASEHARBOR_CORE_FOREIGN_NETWORK_ACCEPTANCE=1
+require_pass ./cmd/baha TestCoreDefaultNetworkBindingRejectsUnownedNativeNetwork 3m
 require_pass ./cmd/baha TestControlPlaneSingleDefaultNativeRuntimeInCI 20m
 # These are production-CLI/HTTP contract regressions, not live remote E2E.
 # They must run in both native jobs and may neither skip nor silently pass.

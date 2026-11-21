@@ -10,6 +10,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"math/big"
 	"net"
@@ -344,20 +345,125 @@ func TestPersesLokiDatasourceFailClosedWhenEndpointAbsent(t *testing.T) {
 // unprovisioned surface returns a fail-closed error.
 func TestPersesLokiDatasourceVerifyFailsClosedWithoutProbe(t *testing.T) {
 	m := application.New("perses-loki-noop", "dev", false, false, false)
-	if err := logs.VerifyPersesLokiDatasourceHealth(context.Background(), m); err == nil {
-		t.Fatal("health must not pass without a real reachable Loki health path")
-	}
-}
-
-// TestPersesLokiDatasourceVerifyNeverReportsHealthy asserts the only verdict
-// this Core can return for a selected, authorized Loki path is the fail-closed
-// "unverified" (no real Loki health path exists here).
-func TestPersesLokiDatasourceVerifyNeverReportsHealthy(t *testing.T) {
-	m := lokiTestManifest(t)
-	lokiMaterializeProvider(t, m, lokiTestLogSource("loki:perses-loki-demo:api", "perses-loki-demo", "api"))
 	err := logs.VerifyPersesLokiDatasourceHealth(context.Background(), m)
 	if err == nil {
 		t.Fatal("health must not pass without a real reachable Loki health path")
+	}
+	if !strings.Contains(err.Error(), "perses Loki datasource requires the observability management UI and Perses selected in the manifest") {
+		t.Fatalf("error must be the manifest-selection fail-closed error, got a different failure: %v", err)
+	}
+}
+
+// TestPersesLokiDatasourceVerifyNeverReportsHealthy asserts the fail-closed
+// health contract for this card (0428-212) in two explicit subtests, so the
+// witness proves the REAL rejection path - the Loki probe refusing an
+// unreachable endpoint - and never a fixture artifact: the H-V23 hunt found
+// the old one-liner passing on "some error occurred" while the error was
+// actually the missing service-access PKI client-cert.pem stat.
+func TestPersesLokiDatasourceVerifyNeverReportsHealthy(t *testing.T) {
+	// (a) "UnreachableLokiIsRejectedByTheProbe": with the service-access PKI
+	// materialized and the endpoint closed, the returned error must be the
+	// probe rejection (a transport failure under the "perses Loki datasource
+	// query" prefix), asserted by prefix and by the absence of any missing-
+	// file stat evidence. (b) "UnmaterializedPKIFailsClosedAsPrecondition":
+	// the identity load fails closed on a missing PKI file before any probe
+	// runs, asserted by its own identity (H-V23 witness) so it can never be
+	// confused with a passing probe rejection.
+	assertProbeRejectionOnUnreachableLoki(t,
+		[]observability.SignalSource{lokiTestLogSource("loki:perses-loki-demo:api", "perses-loki-demo", "api")})
+}
+
+// assertNoMissingPKIFileEvidence fails when an error that must come from the
+// live probe carries any sign that the failure was actually the missing
+// service-access PKI stat (the H-V23 defect): the identity-load wrapper, an
+// os.ErrNotExist cause, or a "no such file or directory" line.
+func assertNoMissingPKIFileEvidence(t *testing.T, err error) {
+	t.Helper()
+	if strings.Contains(err.Error(), "load Loki service access identity") {
+		t.Fatalf("failure must come from the probe, not the identity load: %v", err)
+	}
+	if errors.Is(err, os.ErrNotExist) || strings.Contains(err.Error(), "no such file or directory") {
+		t.Fatalf("probe rejection must not be a missing-file failure: %v", err)
+	}
+}
+
+// assertNoMissingPKIFileEvidenceInPass proves a passing health verdict was
+// reached through the live probe rather than short-circuited around the
+// service-access identity (0428-212): the witness server recorded one query
+// per authorized source, so the query path ran.
+func assertNoMissingPKIFileEvidenceInPass(t *testing.T, calls []string) {
+	t.Helper()
+	if len(calls) == 0 {
+		t.Fatal("a passing health verdict must come from a reached probe, but the witness server recorded no query")
+	}
+}
+
+// assertProbeRejectionOnUnreachableLoki is the shared two-part witness for a
+// datasource health test whose contract requires a REACHED probe (0428-212
+// owner addendum: the three multi-source tests failed hosted CI because
+// materializeLokiServiceAccessPKI never wrote the client identity, so
+// ExistingTLSMaterial stat-ed a non-existent client-cert.pem and the probe was
+// never reached). Each case runs isolated into its own manifest and state dir.
+func assertProbeRejectionOnUnreachableLoki(t *testing.T, sources []observability.SignalSource) {
+	t.Helper()
+	t.Run("UnreachableLokiIsRejectedByTheProbe", func(t *testing.T) {
+		assertUnreachableLokiRejectedByProbe(t, lokiTestManifest(t), sources)
+	})
+	t.Run("UnmaterializedPKIFailsClosedAsPrecondition", func(t *testing.T) {
+		assertUnmaterializedPKIFailsClosed(t, lokiTestManifest(t), sources)
+	})
+}
+
+// assertUnreachableLokiRejectedByProbe materializes the complete service-access
+// PKI (CA + server + client) and a CLOSED port, and asserts the health verdict
+// is the probe rejection by content (the "perses Loki datasource query"
+// wrapper), with any missing-PKI-file failure explicitly excluded.
+func assertUnreachableLokiRejectedByProbe(t *testing.T, m application.Manifest, sources []observability.SignalSource) {
+	t.Helper()
+	files := lokiMaterializeProvider(t, m, sources...)
+	materializeLokiServiceAccessPKI(t, files)
+	for _, name := range []string{"ca.pem", "server-cert.pem", "server-key.pem", "client-cert.pem", "client-key.pem"} {
+		path := filepath.Join(files.Dir, "service-access", "pki", name)
+		if _, err := os.Stat(path); err != nil {
+			t.Fatalf("PKI material %s must exist for the probe path: %v", path, err)
+		}
+	}
+	server := startLokiQueryServer(t, "success")
+	port := probePort(t, server)
+	server.Close() // the endpoint is now unreachable: nothing listens on the port
+	if err := rewriteLokiPort(t, m, port); err != nil {
+		t.Fatalf("rewrite port: %v", err)
+	}
+	err := logs.VerifyPersesLokiDatasourceHealth(context.Background(), m)
+	if err == nil {
+		t.Fatal("health must not report verified against an unreachable Loki")
+	}
+	if !strings.HasPrefix(err.Error(), "perses Loki datasource query for source ") {
+		t.Fatalf("error must be the probe rejection, not a fixture artifact: %v", err)
+	}
+	assertNoMissingPKIFileEvidence(t, err)
+}
+
+// assertUnmaterializedPKIFailsClosed asserts the precondition case explicitly:
+// without materialized service-access PKI the identity load fails closed with
+// an os.ErrNotExist on a pki file BEFORE any probe runs, so nobody mistakes
+// this fixture state for reaching the probe.
+func assertUnmaterializedPKIFailsClosed(t *testing.T, m application.Manifest, sources []observability.SignalSource) {
+	t.Helper()
+	files := lokiMaterializeProvider(t, m, sources...)
+	pkiDir := filepath.Join(files.Dir, "service-access", "pki")
+	if _, err := os.Stat(filepath.Join(pkiDir, "ca.pem")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("fixture precondition: the service-access PKI must be unmaterialized, stat gave %v", err)
+	}
+	err := logs.VerifyPersesLokiDatasourceHealth(context.Background(), m)
+	if err == nil {
+		t.Fatal("health must fail closed on an unmaterialized service-access PKI")
+	}
+	if !strings.HasPrefix(err.Error(), "perses Loki datasource health client: load Loki service access identity: ") {
+		t.Fatalf("error must be the service-access identity precondition failure, got a different failure: %v", err)
+	}
+	if !errors.Is(err, os.ErrNotExist) || !strings.Contains(err.Error(), filepath.Join(pkiDir, "")) {
+		t.Fatalf("error must be the missing service-access PKI file stat (os.ErrNotExist), got: %v", err)
 	}
 }
 
@@ -373,9 +479,19 @@ func TestPersesLokiDatasourceVerifyBindsServiceAccessClient(t *testing.T) {
 	if err := rewriteLokiPort(t, m, probePort(t, server)); err != nil {
 		t.Fatalf("rewrite port: %v", err)
 	}
+	// The service-access PKI is left unmaterialized on purpose: the health path
+	// must fail closed on the identity-load BEFORE ever querying the endpoint,
+	// proving the endpoint is bound to the authoritative service-access client
+	// (a caller-supplied transport is never the authority).
 	err := logs.VerifyPersesLokiDatasourceHealth(context.Background(), m)
 	if err == nil {
 		t.Fatal("health must not pass against an unmaterialized service-access PKI")
+	}
+	if !strings.HasPrefix(err.Error(), "perses Loki datasource health client: load Loki service access identity: ") {
+		t.Fatalf("error must be the service-access identity precondition failure, got a different failure: %v", err)
+	}
+	if !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("error must be the missing service-access PKI file stat (os.ErrNotExist), got: %v", err)
 	}
 }
 
@@ -434,6 +550,18 @@ func recordingQueryCaptureServer(t *testing.T, dir string, responder func(raw st
 // issuer state is required.
 func materializeLokiServiceAccessPKI(t *testing.T, files logs.ProviderFiles) {
 	t.Helper()
+	materializeLokiServiceAccessPKIWithClient(t, files, true)
+}
+
+// materializeLokiServiceAccessPKIWithClient is the shared service-access PKI
+// fixture for the datasource health tests. With issueClient it additionally
+// issues a CA-signed client certificate/key pair, which the managed-local mTLS
+// policy REQUIRES: serviceaccess.ExistingTLSMaterial then passes the identity
+// load and the health path reaches the real probe. Without it, the identity
+// load fails closed on the missing client material (the H-V23 witness) and the
+// probe is never reached.
+func materializeLokiServiceAccessPKIWithClient(t *testing.T, files logs.ProviderFiles, issueClient bool) {
+	t.Helper()
 	dir := filepath.Join(files.Dir, "service-access", "pki")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatalf("create service-access pki dir: %v", err)
@@ -488,6 +616,12 @@ func materializeLokiServiceAccessPKI(t *testing.T, files logs.ProviderFiles) {
 	if err := os.WriteFile(filepath.Join(dir, "server-key.pem"), serverKeyPEM, 0o600); err != nil {
 		t.Fatal(err)
 	}
+	if !issueClient {
+		return
+	}
+	// Sign the client identity from the same throwaway CA: the managed-local
+	// mTLS policy treats client material as required, and validateMaterial
+	// checks the client chain against the CA.
 	clientKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		t.Fatal(err)
@@ -527,53 +661,65 @@ func materializeLokiServiceAccessPKI(t *testing.T, files logs.ProviderFiles) {
 // different application/service values produce two recorded queries, and a source
 // that returns no matching stream is reported without hiding the other source.
 func TestPersesLokiDatasourceMultiSourceQueryOneSelectorPerSource(t *testing.T) {
-	m := lokiTestManifest(t)
 	sources := []observability.SignalSource{
 		lokiTestLogSource("loki:perses-loki-demo:api", "perses-loki-demo", "api"),
 		lokiTestLogSource("loki:perses-loki-demo:worker", "perses-loki-demo", "worker"),
 	}
-	files := lokiMaterializeProvider(t, m, sources...)
-	materializeLokiServiceAccessPKI(t, files)
-	server, calls := recordingQueryCaptureServer(t, filepath.Join(files.Dir, "service-access", "pki"), nil)
-	host, portStr, err := net.SplitHostPort(strings.TrimPrefix(server.URL, "https://"))
-	if err != nil {
-		t.Fatalf("probe port: %v", err)
-	}
-	_ = host
-	port, err := strconv.Atoi(portStr)
-	if err != nil {
-		t.Fatalf("probe port: %v", err)
-	}
-	if err := rewriteLokiPort(t, m, port); err != nil {
-		t.Fatalf("rewrite port: %v", err)
-	}
-	if err := logs.VerifyPersesLokiDatasourceHealth(context.Background(), m); err != nil {
-		t.Fatalf("health must pass for a healthy multi-source Loki: %v", err)
-	}
-	// (i) Two authorized sources => two calls, each one valid one-pair selector.
-	if len(*calls) != len(sources) {
-		t.Fatalf("expected %d queryStream calls (one per source), got %d: %v", len(sources), len(*calls), *calls)
-	}
-	for _, raw := range *calls {
-		decoded, err := url.QueryUnescape(raw)
+	t.Run("HealthyMultiSourceLoki", func(t *testing.T) {
+		m := lokiTestManifest(t)
+		files := lokiMaterializeProvider(t, m, sources...)
+		materializeLokiServiceAccessPKI(t, files)
+		server, calls := recordingQueryCaptureServer(t, filepath.Join(files.Dir, "service-access", "pki"), nil)
+		host, portStr, err := net.SplitHostPort(strings.TrimPrefix(server.URL, "https://"))
 		if err != nil {
-			t.Fatalf("decode recorded query: %v", err)
+			t.Fatalf("probe port: %v", err)
 		}
-		query := decoded
-		// (ii) no duplicate label name within a selector: baseharbor_application
-		// must appear exactly once per recorded query.
-		if strings.Count(query, "baseharbor_application") != 1 {
-			t.Fatalf("recorded query repeats a label name within one selector (LogQL forbids it):\n%s", query)
+		_ = host
+		port, err := strconv.Atoi(portStr)
+		if err != nil {
+			t.Fatalf("probe port: %v", err)
 		}
-		// (iii) no 'or' between two stream selectors in any recorded query.
-		if strings.Contains(query, " or ") {
-			t.Fatalf("recorded query must not combine stream selectors with 'or' (LogQL allows one selector per query):\n%s", query)
+		if err := rewriteLokiPort(t, m, port); err != nil {
+			t.Fatalf("rewrite port: %v", err)
 		}
-		// each recorded query names exactly one application and one service.
-		if !strings.Contains(query, "baseharbor_service=\"api\"") && !strings.Contains(query, "baseharbor_service=\"worker\"") {
-			t.Fatalf("recorded query does not name a baseharbor_service:\n%s", query)
+		if err := logs.VerifyPersesLokiDatasourceHealth(context.Background(), m); err != nil {
+			t.Fatalf("health must pass for a healthy multi-source Loki: %v", err)
 		}
-	}
+		assertNoMissingPKIFileEvidenceInPass(t, *calls)
+		// (i) Two authorized sources => two calls, each one valid one-pair selector.
+		if len(*calls) != len(sources) {
+			t.Fatalf("expected %d queryStream calls (one per source), got %d: %v", len(sources), len(*calls), *calls)
+		}
+		for _, raw := range *calls {
+			decoded, err := url.QueryUnescape(raw)
+			if err != nil {
+				t.Fatalf("decode recorded query: %v", err)
+			}
+			query := decoded
+			// (ii) no duplicate label name within a selector: baseharbor_application
+			// must appear exactly once per recorded query.
+			if strings.Count(query, "baseharbor_application") != 1 {
+				t.Fatalf("recorded query repeats a label name within one selector (LogQL forbids it):\n%s", query)
+			}
+			// (iii) no 'or' between two stream selectors in any recorded query.
+			if strings.Contains(query, " or ") {
+				t.Fatalf("recorded query must not combine stream selectors with 'or' (LogQL allows one selector per query):\n%s", query)
+			}
+			// each recorded query names exactly one application and one service.
+			if !strings.Contains(query, "baseharbor_service=\"api\"") && !strings.Contains(query, "baseharbor_service=\"worker\"") {
+				t.Fatalf("recorded query does not name a baseharbor_service:\n%s", query)
+			}
+		}
+	})
+	// (0428-212) The two fail-closed cases: an unreachable Loki is refused by
+	// the probe (not by a missing-file stat), and an unmaterialized PKI is an
+	// explicit precondition failure, never mistaken for reaching the probe.
+	t.Run("UnreachableLokiIsRejectedByTheProbe", func(t *testing.T) {
+		assertUnreachableLokiRejectedByProbe(t, lokiTestManifest(t), sources)
+	})
+	t.Run("UnmaterializedPKIFailsClosedAsPrecondition", func(t *testing.T) {
+		assertUnmaterializedPKIFailsClosed(t, lokiTestManifest(t), sources)
+	})
 }
 
 // TestPersesLokiDatasourceMultiSourcePartialMatchability asserts the per-source
@@ -582,50 +728,62 @@ func TestPersesLokiDatasourceMultiSourceQueryOneSelectorPerSource(t *testing.T) 
 // non-matching source is not silently reported as healthy — both per-source
 // queries are still recorded with a single valid selector each.
 func TestPersesLokiDatasourceMultiSourcePartialMatchability(t *testing.T) {
-	m := lokiTestManifest(t)
 	sources := []observability.SignalSource{
 		lokiTestLogSource("loki:perses-loki-demo:api", "perses-loki-demo", "api"),
 		lokiTestLogSource("loki:perses-loki-demo:worker", "perses-loki-demo", "worker"),
 	}
-	files := lokiMaterializeProvider(t, m, sources...)
-	materializeLokiServiceAccessPKI(t, files)
-	// The "worker" source returns an empty result (no matching stream); the
-	// "api" source returns a matching stream.
-	server, calls := recordingQueryCaptureServer(t, filepath.Join(files.Dir, "service-access", "pki"), func(raw string) bool {
-		decoded, err := url.QueryUnescape(raw)
+	t.Run("PartiallyMatchableMultiSourceLoki", func(t *testing.T) {
+		m := lokiTestManifest(t)
+		files := lokiMaterializeProvider(t, m, sources...)
+		materializeLokiServiceAccessPKI(t, files)
+		// The "worker" source returns an empty result (no matching stream); the
+		// "api" source returns a matching stream.
+		server, calls := recordingQueryCaptureServer(t, filepath.Join(files.Dir, "service-access", "pki"), func(raw string) bool {
+			decoded, err := url.QueryUnescape(raw)
+			if err != nil {
+				return true
+			}
+			return !strings.Contains(decoded, `baseharbor_service="worker"`)
+		})
+		host, portStr, err := net.SplitHostPort(strings.TrimPrefix(server.URL, "https://"))
 		if err != nil {
-			return true
+			t.Fatalf("probe port: %v", err)
 		}
-		return !strings.Contains(decoded, `baseharbor_service="worker"`)
+		_ = host
+		port, err := strconv.Atoi(portStr)
+		if err != nil {
+			t.Fatalf("probe port: %v", err)
+		}
+		if err := rewriteLokiPort(t, m, port); err != nil {
+			t.Fatalf("rewrite port: %v", err)
+		}
+		// Partial availability (one source verified) is still healthy.
+		if err := logs.VerifyPersesLokiDatasourceHealth(context.Background(), m); err != nil {
+			t.Fatalf("health must pass when at least one source is verified: %v", err)
+		}
+		assertNoMissingPKIFileEvidenceInPass(t, *calls)
+		if len(*calls) != 2 {
+			t.Fatalf("expected 2 per-source queries, got %d", len(*calls))
+		}
+		for _, raw := range *calls {
+			decoded, err := url.QueryUnescape(raw)
+			if err != nil {
+				t.Fatalf("decode: %v", err)
+			}
+			if strings.Count(decoded, "baseharbor_application") != 1 || strings.Contains(decoded, " or ") {
+				t.Fatalf("per-source query must be one valid single selector, got %q", decoded)
+			}
+		}
 	})
-	host, portStr, err := net.SplitHostPort(strings.TrimPrefix(server.URL, "https://"))
-	if err != nil {
-		t.Fatalf("probe port: %v", err)
-	}
-	_ = host
-	port, err := strconv.Atoi(portStr)
-	if err != nil {
-		t.Fatalf("probe port: %v", err)
-	}
-	if err := rewriteLokiPort(t, m, port); err != nil {
-		t.Fatalf("rewrite port: %v", err)
-	}
-	// Partial availability (one source verified) is still healthy.
-	if err := logs.VerifyPersesLokiDatasourceHealth(context.Background(), m); err != nil {
-		t.Fatalf("health must pass when at least one source is verified: %v", err)
-	}
-	if len(*calls) != 2 {
-		t.Fatalf("expected 2 per-source queries, got %d", len(*calls))
-	}
-	for _, raw := range *calls {
-		decoded, err := url.QueryUnescape(raw)
-		if err != nil {
-			t.Fatalf("decode: %v", err)
-		}
-		if strings.Count(decoded, "baseharbor_application") != 1 || strings.Contains(decoded, " or ") {
-			t.Fatalf("per-source query must be one valid single selector, got %q", decoded)
-		}
-	}
+	// (0428-212) The two fail-closed cases: an unreachable Loki is refused by
+	// the probe (not by a missing-file stat), and an unmaterialized PKI is an
+	// explicit precondition failure, never mistaken for reaching the probe.
+	t.Run("UnreachableLokiIsRejectedByTheProbe", func(t *testing.T) {
+		assertUnreachableLokiRejectedByProbe(t, lokiTestManifest(t), sources)
+	})
+	t.Run("UnmaterializedPKIFailsClosedAsPrecondition", func(t *testing.T) {
+		assertUnmaterializedPKIFailsClosed(t, lokiTestManifest(t), sources)
+	})
 }
 
 // TestPersesLokiDatasourceMultiSourceNoneMatchFailsClosed asserts the fail-closed
@@ -633,43 +791,61 @@ func TestPersesLokiDatasourceMultiSourcePartialMatchability(t *testing.T) {
 // returns an error (never a false healthy), and every per-source query was still
 // a single valid selector.
 func TestPersesLokiDatasourceMultiSourceNoneMatchFailsClosed(t *testing.T) {
-	m := lokiTestManifest(t)
 	sources := []observability.SignalSource{
 		lokiTestLogSource("loki:perses-loki-demo:api", "perses-loki-demo", "api"),
 		lokiTestLogSource("loki:perses-loki-demo:worker", "perses-loki-demo", "worker"),
 	}
-	files := lokiMaterializeProvider(t, m, sources...)
-	materializeLokiServiceAccessPKI(t, files)
-	server, calls := recordingQueryCaptureServer(t, filepath.Join(files.Dir, "service-access", "pki"), func(string) bool {
-		return false // no source matches
-	})
-	host, portStr, err := net.SplitHostPort(strings.TrimPrefix(server.URL, "https://"))
-	if err != nil {
-		t.Fatalf("probe port: %v", err)
-	}
-	_ = host
-	port, err := strconv.Atoi(portStr)
-	if err != nil {
-		t.Fatalf("probe port: %v", err)
-	}
-	if err := rewriteLokiPort(t, m, port); err != nil {
-		t.Fatalf("rewrite port: %v", err)
-	}
-	if err := logs.VerifyPersesLokiDatasourceHealth(context.Background(), m); err == nil {
-		t.Fatal("health must fail closed when no source produces a matching stream")
-	}
-	if len(*calls) != 2 {
-		t.Fatalf("expected 2 per-source queries even on full miss, got %d", len(*calls))
-	}
-	for _, raw := range *calls {
-		decoded, err := url.QueryUnescape(raw)
+	t.Run("NoSourceMatches", func(t *testing.T) {
+		m := lokiTestManifest(t)
+		files := lokiMaterializeProvider(t, m, sources...)
+		materializeLokiServiceAccessPKI(t, files)
+		server, calls := recordingQueryCaptureServer(t, filepath.Join(files.Dir, "service-access", "pki"), func(string) bool {
+			return false // no source matches
+		})
+		host, portStr, err := net.SplitHostPort(strings.TrimPrefix(server.URL, "https://"))
 		if err != nil {
-			t.Fatalf("decode: %v", err)
+			t.Fatalf("probe port: %v", err)
 		}
-		if strings.Count(decoded, "baseharbor_application") != 1 || strings.Contains(decoded, " or ") {
-			t.Fatalf("per-source query must be one valid single selector, got %q", decoded)
+		_ = host
+		port, err := strconv.Atoi(portStr)
+		if err != nil {
+			t.Fatalf("probe port: %v", err)
 		}
-	}
+		if err := rewriteLokiPort(t, m, port); err != nil {
+			t.Fatalf("rewrite port: %v", err)
+		}
+		err = logs.VerifyPersesLokiDatasourceHealth(context.Background(), m)
+		if err == nil {
+			t.Fatal("health must fail closed when no source produces a matching stream")
+		}
+		// (0428-212) The fail-closed verdict here must be the REACHED-probe
+		// "no matching stream" refusal, not the missing-file identity stat.
+		if !strings.Contains(err.Error(), "no authorized Loki source produced a matching stream") {
+			t.Fatalf("error must be the reached-probe no-match verdict, got: %v", err)
+		}
+		assertNoMissingPKIFileEvidence(t, err)
+		if len(*calls) != 2 {
+			t.Fatalf("expected 2 per-source queries even on full miss, got %d", len(*calls))
+		}
+		for _, raw := range *calls {
+			decoded, err := url.QueryUnescape(raw)
+			if err != nil {
+				t.Fatalf("decode: %v", err)
+			}
+			if strings.Count(decoded, "baseharbor_application") != 1 || strings.Contains(decoded, " or ") {
+				t.Fatalf("per-source query must be one valid single selector, got %q", decoded)
+			}
+		}
+	})
+	// (0428-212) The two fail-closed cases: an unreachable Loki is refused by
+	// the probe (not by a missing-file stat), and an unmaterialized PKI is an
+	// explicit precondition failure, never mistaken for reaching the probe.
+	t.Run("UnreachableLokiIsRejectedByTheProbe", func(t *testing.T) {
+		assertUnreachableLokiRejectedByProbe(t, lokiTestManifest(t), sources)
+	})
+	t.Run("UnmaterializedPKIFailsClosedAsPrecondition", func(t *testing.T) {
+		assertUnmaterializedPKIFailsClosed(t, lokiTestManifest(t), sources)
+	})
 }
 
 // committed golden file, so the Perses-native output is a stable, reviewed
