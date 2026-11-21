@@ -181,8 +181,9 @@ HTTPServer(("0.0.0.0", 8080), Handler).serve_forever()
 		t.Fatalf("Prometheus did not load and evaluate the managed alert rule: %v", err)
 	}
 	members := []string{"prometheus-1", "prometheus-2"}
+	preRestartSamples := make(map[string]float64, len(members))
 	for _, member := range members {
-		waitPrometheusMemberMetric(t, ctx, string(runtime.Kind()), network, files, oldMaterial, member)
+		preRestartSamples[member] = waitPrometheusMemberMetric(t, ctx, string(runtime.Kind()), network, files, oldMaterial, member)
 	}
 	if output, err := exec.CommandContext(ctx, string(runtime.Kind()), "exec", containerName, "touch", "/tmp/down").CombinedOutput(); err != nil {
 		t.Fatalf("mark test metrics target unavailable: %v\n%s", err, output)
@@ -207,7 +208,7 @@ HTTPServer(("0.0.0.0", 8080), Handler).serve_forever()
 	}
 	for _, member := range members {
 		waitPrometheusMemberMetricAfter(t, ctx, string(runtime.Kind()), network, files, oldMaterial, member, restartStartedAt)
-		assertPrometheusMetricHistorySurvivedRestart(t, ctx, string(runtime.Kind()), network, files, oldMaterial, member, restartStartedAt)
+		assertPrometheusMetricSampleSurvivedRestart(t, ctx, string(runtime.Kind()), network, files, oldMaterial, member, preRestartSamples[member])
 	}
 	waitPrometheusHAReady(t, ctx, driver, resource, binding)
 
@@ -303,7 +304,7 @@ func waitPrometheusMemberAlertFiring(t *testing.T, ctx context.Context, runtimeB
 	path := "/api/v1/query?" + url.Values{"query": []string{query}}.Encode()
 	deadline := time.Now().Add(90 * time.Second)
 	for time.Now().Before(deadline) {
-		result := queryPrometheusMember(t, ctx, runtimeBinary, network, files, material, member, "firing", path, "0")
+		result := queryPrometheusMember(t, ctx, runtimeBinary, network, files, material, member, "firing", path)
 		if result.Present {
 			return
 		}
@@ -316,14 +317,14 @@ func waitPrometheusMemberAlertFiring(t *testing.T, ctx context.Context, runtimeB
 	t.Fatalf("Prometheus member %s did not independently evaluate the alert", member)
 }
 
-func waitPrometheusMemberMetric(t *testing.T, ctx context.Context, runtimeBinary, network string, files ProviderFiles, material serviceaccess.TLSMaterial, member string) {
+func waitPrometheusMemberMetric(t *testing.T, ctx context.Context, runtimeBinary, network string, files ProviderFiles, material serviceaccess.TLSMaterial, member string) float64 {
 	t.Helper()
 	path := "/api/v1/query?" + url.Values{"query": []string{`timestamp(baseharbor_ha_acceptance)`}}.Encode()
 	deadline := time.Now().Add(90 * time.Second)
 	for time.Now().Before(deadline) {
-		result := queryPrometheusMember(t, ctx, runtimeBinary, network, files, material, member, "instant", path, "0")
-		if result.Present {
-			return
+		result := queryPrometheusMember(t, ctx, runtimeBinary, network, files, material, member, "instant", path)
+		if result.Present && result.SampleTimestamp > 0 {
+			return result.SampleTimestamp
 		}
 		select {
 		case <-ctx.Done():
@@ -332,15 +333,15 @@ func waitPrometheusMemberMetric(t *testing.T, ctx context.Context, runtimeBinary
 		}
 	}
 	t.Fatalf("Prometheus member %s did not resume scraping the fixture metric", member)
+	return 0
 }
 
 func waitPrometheusMemberMetricAfter(t *testing.T, ctx context.Context, runtimeBinary, network string, files ProviderFiles, material serviceaccess.TLSMaterial, member string, restartStartedAt time.Time) {
 	t.Helper()
 	path := "/api/v1/query?" + url.Values{"query": []string{`timestamp(baseharbor_ha_acceptance)`}}.Encode()
-	compareAt := fmt.Sprintf("%f", float64(restartStartedAt.UnixNano())/1e9)
 	deadline := time.Now().Add(90 * time.Second)
 	for time.Now().Before(deadline) {
-		result := queryPrometheusMember(t, ctx, runtimeBinary, network, files, material, member, "instant", path, compareAt)
+		result := queryPrometheusMember(t, ctx, runtimeBinary, network, files, material, member, "instant", path)
 		if result.SampleTimestamp >= float64(restartStartedAt.UnixNano())/1e9 {
 			return
 		}
@@ -353,31 +354,24 @@ func waitPrometheusMemberMetricAfter(t *testing.T, ctx context.Context, runtimeB
 	t.Fatalf("Prometheus member %s did not scrape a post-restart fixture sample", member)
 }
 
-func assertPrometheusMetricHistorySurvivedRestart(t *testing.T, ctx context.Context, runtimeBinary, network string, files ProviderFiles, material serviceaccess.TLSMaterial, member string, restartStartedAt time.Time) {
+func assertPrometheusMetricSampleSurvivedRestart(t *testing.T, ctx context.Context, runtimeBinary, network string, files ProviderFiles, material serviceaccess.TLSMaterial, member string, preRestartSample float64) {
 	t.Helper()
-	query := `timestamp(baseharbor_ha_acceptance)`
-	values := url.Values{
-		"query": []string{query},
-		"start": []string{fmt.Sprintf("%f", float64(restartStartedAt.Add(-2*time.Minute).UnixNano())/1e9)},
-		"end":   []string{fmt.Sprintf("%f", float64(time.Now().UnixNano())/1e9)},
-		"step":  []string{"5"},
-	}
-	path := "/api/v1/query_range?" + values.Encode()
-	compareAt := fmt.Sprintf("%f", float64(restartStartedAt.UnixNano())/1e9)
-	result := queryPrometheusMember(t, ctx, runtimeBinary, network, files, material, member, "history", path, compareAt)
-	if !result.BeforeRestart || !result.AfterRestart {
-		t.Fatalf("Prometheus member %s metric history before restart=%v after restart=%v; want both from its persistent TSDB", member, result.BeforeRestart, result.AfterRestart)
+	queryTime := preRestartSample + 1
+	values := url.Values{"query": []string{`timestamp(baseharbor_ha_acceptance)`}, "time": []string{fmt.Sprintf("%.6f", queryTime)}}
+	path := "/api/v1/query?" + values.Encode()
+	result := queryPrometheusMember(t, ctx, runtimeBinary, network, files, material, member, "instant", path)
+	delta := result.SampleTimestamp - preRestartSample
+	if !result.Present || delta < -0.001 || delta > 0.001 {
+		t.Fatalf("Prometheus member %s historical sample at %.3f after restart: present=%v value=%.3f; want pre-restart sample %.3f", member, queryTime, result.Present, result.SampleTimestamp, preRestartSample)
 	}
 }
 
 type prometheusMemberQueryResult struct {
 	Present         bool    `json:"present"`
 	SampleTimestamp float64 `json:"sample_timestamp"`
-	BeforeRestart   bool    `json:"before_restart"`
-	AfterRestart    bool    `json:"after_restart"`
 }
 
-func queryPrometheusMember(t *testing.T, ctx context.Context, runtimeBinary, network string, files ProviderFiles, material serviceaccess.TLSMaterial, member, mode, path, compareAt string) prometheusMemberQueryResult {
+func queryPrometheusMember(t *testing.T, ctx context.Context, runtimeBinary, network string, files ProviderFiles, material serviceaccess.TLSMaterial, member, mode, path string) prometheusMemberQueryResult {
 	t.Helper()
 	const script = `import http.client, json, socket, ssl, sys
 member, mode, path, ca_file, cert_file, key_file = sys.argv[1:7]
@@ -394,13 +388,7 @@ payload = json.loads(response.read())
 if response.status < 200 or response.status >= 300 or payload.get("status") != "success":
     raise SystemExit("Prometheus member query failed: HTTP " + str(response.status))
 result = payload.get("data", {}).get("result", [])
-answer = {"present": bool(result), "sample_timestamp": 0, "before_restart": False, "after_restart": False}
-if mode == "history":
-    for series in result:
-        for sample in series.get("values", []):
-            if len(sample) == 2:
-                answer["before_restart"] |= float(sample[1]) < float(sys.argv[7])
-                answer["after_restart"] |= float(sample[1]) >= float(sys.argv[7])
+answer = {"present": bool(result), "sample_timestamp": 0}
 if mode == "instant" and result:
     value = result[0].get("value", [])
     if len(value) == 2:
@@ -409,7 +397,7 @@ print(json.dumps(answer, separators=(",", ":")))
 `
 	pkiDir := filepath.Join(files.Dir, "service-access", "pki")
 	args := []string{"run", "--rm", "--network", network, "-v", pkiDir + ":/pki:ro", "docker.io/library/python:3.13-alpine", "python", "-c", script,
-		member, mode, path, "/pki/" + filepath.Base(material.CA), "/pki/" + filepath.Base(material.ClientCertificate), "/pki/" + filepath.Base(material.ClientKey), compareAt}
+		member, mode, path, "/pki/" + filepath.Base(material.CA), "/pki/" + filepath.Base(material.ClientCertificate), "/pki/" + filepath.Base(material.ClientKey)}
 	output, err := exec.CommandContext(ctx, runtimeBinary, args...).CombinedOutput()
 	if err != nil {
 		t.Fatalf("query Prometheus member %s: %v\n%s", member, err, output)
