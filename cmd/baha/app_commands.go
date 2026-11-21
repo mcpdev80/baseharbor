@@ -123,23 +123,25 @@ func appListCommand() *cli.Command {
 					return unknownOptionUsage("baha app list", arg, "--all-targets")
 				}
 			}
-			var authorizationErr error
-			if allTargets {
-				// The installation-wide inventory intentionally survives removal of
-				// Target configuration. Authenticate the operator without requiring
-				// an effective Target that no longer exists.
-				authorizationErr = authorizeMCPOperation(ctx, "app.list", "", "dev", "", "")
-			} else {
-				authorizationErr = authorizeCurrentMCPContext(ctx, "app.list", "", "", "")
-			}
-			if authorizationErr != nil {
-				return authorizationErr
-			}
 			// An all-targets inventory is a read-only installation-wide view. It
 			// must remain available after `destroy --all` removes the Target
 			// configuration, and must not require an effective selected Target.
-			// Remote routing still needs a configured Target, so resolve it only
-			// for the selected-target form.
+			// Resolve the effective Target (and therefore the config lookup) only
+			// for the selected-target form; the all-targets inventory is a
+			// read-only installation-wide listing that must not fail on a config.yaml
+			// the destroy path has already removed.
+			if !allTargets {
+				if err := authorizeCurrentMCPContext(ctx, "app.list", "", "", ""); err != nil {
+					return err
+				}
+			} else if err := authorizeCurrentMCPContext(ctx, "app.list", "", "", ""); err != nil {
+				// A destroyed Target left the config root without config.yaml. The
+				// all-targets inventory is read-only and installation-wide, so a
+				// missing config.yaml is a clean no-config, not a hard failure.
+				if !errors.Is(err, deployment.ErrConfigMissing) {
+					return err
+				}
+			}
 			if !allTargets {
 				target, targetErr := effectiveTarget(ctx)
 				if targetErr != nil {
