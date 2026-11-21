@@ -46,6 +46,16 @@ func TestCoreDefaultNetworkBindingRejectsUnownedNativeNetwork(t *testing.T) {
 	if output, err := exec.CommandContext(ctx, kind, args...).CombinedOutput(); err != nil {
 		t.Fatalf("create same-name native network: %v\n%s", err, output)
 	}
+	inspectTemplate := `{{.Name}}|{{ index .Labels "com.docker.compose.project" }}|{{ index .Labels "io.podman.compose.project" }}`
+	inspected, err := exec.CommandContext(ctx, kind, "network", "inspect", "--format", inspectTemplate, network).CombinedOutput()
+	if err != nil {
+		t.Fatalf("inspect same-name native network labels: %v\n%s", err, inspected)
+	}
+	parts := strings.Split(strings.TrimSpace(string(inspected)), "|")
+	if len(parts) != 3 || strings.TrimPrefix(strings.TrimSpace(parts[0]), "/") != network ||
+		(strings.TrimSpace(parts[1]) != files.Project && strings.TrimSpace(parts[2]) != files.Project) {
+		t.Fatalf("native runtime did not retain the forgeable owner labels needed by this refusal test: network=%q labels=%q output=%q", network, labels, strings.TrimSpace(string(inspected)))
+	}
 	t.Cleanup(func() {
 		cleanup, stop := context.WithTimeout(context.Background(), 30*time.Second)
 		defer stop()
@@ -55,7 +65,7 @@ func TestCoreDefaultNetworkBindingRejectsUnownedNativeNetwork(t *testing.T) {
 	})
 	bound, err := prepareCoreDefaultNetworkBinding(ctx, target, files)
 	if err == nil || !strings.Contains(err.Error(), "existing native network lacks a protected Core or shared backend owner") {
-		t.Fatalf("unowned native network must be refused with protected-owner diagnostic; got files=%+v err=%v", bound, err)
+		t.Fatalf("unowned native network must be refused with protected-owner diagnostic; got files=%+v err=%v native-labels=%q", bound, err, strings.TrimSpace(string(inspected)))
 	}
 	if bound.DefaultNetworkExternal {
 		t.Fatal("unowned native network must not be adopted as external")
