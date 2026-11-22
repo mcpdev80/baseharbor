@@ -142,6 +142,40 @@ def wizard_check(identifier):
             'command': 'python3 scripts/pr-check-runner.py execute --check ' +
                        identifier + ' --repository .'}
 
+# Exact native-gate admission for operator test seams and shared test
+# fixtures whose behavior must be qualified by native CI.
+DATA_CAPABILITY_GATES = (
+    'atomic/docker/data-capabilities',
+    'atomic/podman/data-capabilities',
+)
+GUIDED_GATES = ('atomic/docker/guided', 'atomic/podman/guided')
+CORELESS_LIFECYCLE_GATES = (
+    'integration/docker/coreless-lifecycle',
+    'integration/podman/coreless-lifecycle',
+)
+CI_INTEGRATION_OPERATOR_PATHS = frozenset({
+    'cmd/baha/ci_integration_operator_enabled.go',
+    'cmd/baha/ci_integration_operator_disabled.go',
+    'cmd/baha/ci_integration_operator_enabled_test.go',
+})
+NATIVE_TEST_GATE_COMPONENTS = {
+    **{path: DATA_CAPABILITY_GATES for path in CI_INTEGRATION_OPERATOR_PATHS},
+    'cmd/baha/test_operator_context_test.go': DATA_CAPABILITY_GATES,
+    'cmd/baha/application_lifecycle_lock_test.go': DATA_CAPABILITY_GATES,
+    'cmd/baha/app_init_source_neutral_test.go':
+        DATA_CAPABILITY_GATES + GUIDED_GATES,
+    'cmd/baha/app_init_wizard_test.go':
+        DATA_CAPABILITY_GATES + GUIDED_GATES,
+    'cmd/baha/app_perses_host_containers_cli_test.go':
+        DATA_CAPABILITY_GATES + GUIDED_GATES,
+    'cmd/baha/app_perses_infra_dashboards_cli_test.go':
+        DATA_CAPABILITY_GATES + GUIDED_GATES,
+    'cmd/baha/repository_up_init_test.go':
+        DATA_CAPABILITY_GATES + GUIDED_GATES,
+    'cmd/baha/runtime_integration_test_support_test.go':
+        DATA_CAPABILITY_GATES + GUIDED_GATES + CORELESS_LIFECYCLE_GATES,
+}
+
 # Finite component inventory from core-911..core-921. This is an exact path
 # map, never a cmd/baha prefix exemption. Pure read/presentation profiles use
 # hosted Go checks only; mutation wiring selects the existing small lifecycle
@@ -1256,6 +1290,13 @@ def targeted_plan(diff, requirements, mapping, repository='.',
             require(CODE_CHECKS)
             require(CLI_CHECKS)
             selected.add('integration/static/public-contracts')
+        elif path in NATIVE_TEST_GATE_COMPONENTS:
+            area = 'native-test-gate-component'
+            require(CODE_CHECKS)
+            require(CLI_CHECKS)
+            selected.update(NATIVE_TEST_GATE_COMPONENTS[path])
+            if path in CI_INTEGRATION_OPERATOR_PATHS:
+                require([wizard_check('ci-integration-operator-seam-tests')])
         elif path in WIZARD_COMPONENTS:
             area = 'wizard-component'
             check_id, native_gates = WIZARD_COMPONENTS[path]

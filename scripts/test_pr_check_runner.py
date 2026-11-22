@@ -577,5 +577,24 @@ class OpenBaoPackageExecutionTests(unittest.TestCase):
                                      runner.execute_validation('authority-package-tests', tmp))
                     self.assertEqual(expected, execute.call_args.args[1])
 
+    def test_operator_seam_profile_runs_with_its_required_build_tag(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / 'go.mod').write_text('module example.test/operator-seam\n\ngo 1.25\n')
+            pkg = root / 'cmd' / 'baha'
+            pkg.mkdir(parents=True)
+            (pkg / 'operator_seam_test.go').write_text('''//go:build baseharbor_ci_operator_testonly
+
+package main
+
+import "testing"
+
+func TestCIIntegrationOperatorFixture(t *testing.T) {}
+''')
+            matched = runner.execute_validation(
+                'ci-integration-operator-seam-tests', root)
+            self.assertEqual(['TestCIIntegrationOperatorFixture'], matched)
+
+
 if __name__ == '__main__':
     unittest.main()
