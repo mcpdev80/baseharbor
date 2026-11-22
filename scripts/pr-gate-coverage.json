@@ -1834,6 +1834,15 @@
       ]
     },
     {
+      "id": "internal.operatorauth.local.runtime.go",
+      "path": "internal/operatorauth/local_runtime.go",
+      "runtime_specific": true,
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
       "id": "cmd.baha.target.go",
       "path": "cmd/baha/target.go",
       "runtime_specific": true,
