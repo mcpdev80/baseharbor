@@ -49,16 +49,6 @@ func appApplyCommand(store application.Store) *cli.Command {
 			if target.AccessProvider != "" && target.AccessProvider != "local" {
 				return remoteApplicationApplyCLI(ctx, target, args, out, errOut)
 			}
-			// The documented --workload-port NAME=PORT is a persistent host-port
-			// selector for this deployment. It is only understood on the remote
-			// management path today; on the local apply path strip it here and
-			// feed it through the same context value the remote path sets so the
-			// documented option is neither rejected nor silently dropped.
-			args, workloadPorts, err := stripLocalWorkloadPorts(args)
-			if err != nil {
-				return err
-			}
-			ctx = withRequestedWorkloadPorts(ctx, workloadPorts)
 			args, format, err := parseReadOutputArgs(args, "app apply")
 			if err != nil {
 				return err
