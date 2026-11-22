@@ -162,6 +162,14 @@
       ]
     },
     {
+      "id": "source.cmd.baha.app.broker.go",
+      "path": "cmd/baha/app_broker.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
       "id": "source.cmd.baha.app.core.requirement.go",
       "path": "cmd/baha/app_core_requirement.go",
       "surfaces": [
@@ -1350,6 +1358,12 @@
       "id": "source.scripts.pre.release.integration",
       "path": "scripts/pre-release-integration.py",
       "surfaces": ["source.gate.integration.docker.coreless.lifecycle", "source.gate.integration.podman.coreless.lifecycle"],
+      "runtime_specific": true
+    },
+    {
+      "id": "source.scripts.ci.native.pr.gate",
+      "path": "scripts/ci-native-pr-gate.sh",
+      "surfaces": ["source.gate.atomic.docker.data.capabilities", "source.gate.atomic.podman.data.capabilities"],
       "runtime_specific": true
     },
     {
@@ -3069,7 +3083,8 @@
         "cmd.baha.ci_integration_operator_enabled",
         "cmd.baha.ci_integration_operator_disabled",
         "cmd.baha.ci_integration_operator_enabled_test",
-        "cmd.baha.runtime_integration_test_support_test"
+        "cmd.baha.runtime_integration_test_support_test",
+        "source.scripts.ci.native.pr.gate"
       ],
       "selection_scope": "focused"
     },
@@ -3090,7 +3105,8 @@
         "cmd.baha.ci_integration_operator_enabled",
         "cmd.baha.ci_integration_operator_disabled",
         "cmd.baha.ci_integration_operator_enabled_test",
-        "cmd.baha.runtime_integration_test_support_test"
+        "cmd.baha.runtime_integration_test_support_test",
+        "source.scripts.ci.native.pr.gate"
       ],
       "selection_scope": "focused"
     },

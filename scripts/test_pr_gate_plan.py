@@ -2208,7 +2208,10 @@ class MainRunnerContextEntrypointTests(unittest.TestCase):
         self.assertIn('"coverage_status": "resolved"', out)
 
     def test_stacked_lane_runner_context_resolves_and_keeps_unknown_paths_broad(self):
-        self._actual = diff(paths('internal/new_plan_v2/feature.go'))
+        # card 0428-242: the fail-loud guard rejects uncataloged sources, so the
+        # entrypoint context test uses a cataloged CLI source (app_broker.go)
+        # that reaches the broad Go fallback under the lane-old-base context.
+        self._actual = diff(paths('cmd/baha/app_broker.go'))
         code, out, msg = self._run_main({
             'GITHUB_REPOSITORY': 'mcpdev80/baseharbor',
             'GITHUB_BASE_REF': 'lane-old-base',
@@ -2221,7 +2224,9 @@ class MainRunnerContextEntrypointTests(unittest.TestCase):
                         {row['id'] for row in result['required_validation_checks']})
 
     def test_stacked_cli_runner_context_resolves(self):
-        self._actual = diff(paths('internal/new_plan_v2/feature.go'))
+        # Cataloged CLI source reaches the broad Go fallback under the
+        # cli2-env-policy-head context (fail-loud guard rejects uncataloged).
+        self._actual = diff(paths('cmd/baha/app_broker.go'))
         code, out, msg = self._run_main({
             'GITHUB_REPOSITORY': 'mcpdev80/baseharbor',
             'GITHUB_BASE_REF': 'cli2-env-policy-head',
@@ -3188,3 +3193,30 @@ class NativeTestGateAdmissionTests(unittest.TestCase):
         self.assertEqual('unresolved', result['coverage_status'])
         self.assertTrue(result['unresolved_coverage'])
         self.assertEqual([], result['selected_gates'])
+
+
+class PRGateCoverageGuardianDiscoveryTests(unittest.TestCase):
+    """card 0428-242: run the declarative coverage + fail-loud guard tests.
+
+    test_pr_gate_coverage.py is loaded and executed here so the new catalog
+    and guardian cases run directly by the CI 'pr-planner-tests' job (which
+    runs test_pr_gate_plan.py) without a .github change.
+    """
+
+    def test_coverage_guardian_suite_runs(self):
+        spec = importlib.util.spec_from_file_location(
+            "coverage_guardian", ROOT / "test_pr_gate_coverage.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        loader = unittest.TestLoader()
+        suite = loader.loadTestsFromModule(module)
+        runner = unittest.TextTestRunner(verbosity=0)
+        result = runner.run(suite)
+        self.assertEqual(0, len(result.failures),
+                         "failures: " + str(result.failures))
+        self.assertEqual(0, len(result.errors),
+                         "errors: " + str(result.errors))
+
+
+if __name__ == "__main__":
+    unittest.main()
