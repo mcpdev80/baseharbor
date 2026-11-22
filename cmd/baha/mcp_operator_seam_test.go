@@ -17,7 +17,8 @@ import (
 // It drives one and the same managed-environment MCP mutation (target.create in
 // a "prod" environment) through the same MCP transport twice, once with the
 // in-test operator fixture stamped onto the context and once with the context
-// explicitly created anonymous with operatorauth.WithEnforcement and no fixture principal. The two calls
+// explicitly created as anonymous with operatorauth.WithEnforcement and no
+// fixture principal. The two calls
 // must land on opposite sides of the gate:
 //
 //   - BEFORE marking (wrongly-green protocol): the stamped context carries a
