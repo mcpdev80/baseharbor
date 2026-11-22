@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -91,7 +92,7 @@ func testIsolatedSelectionContext(t *testing.T) {
 	// evaluated for THIS test's environment, so a test that legitimately
 	// persists a selection under a host root keeps observing it.
 	if activeOrganizationSelectionVisibleToHost() {
-		t.Setenv("XDG_CONFIG_HOME", hostConfigIsolationDir())
+		t.Setenv("XDG_CONFIG_HOME", hostConfigIsolationDir(t))
 	}
 }
 
@@ -110,15 +111,13 @@ func activeOrganizationSelectionVisibleToHost() bool {
 }
 
 // hostConfigIsolationDir returns a private, selection-free config root for the
-// current test process. The directory itself is discarded with the test's
-// temporary root; only the environment override needs the testing package's
-// restore.
-func hostConfigIsolationDir() string {
-	root, err := os.MkdirTemp("", "baseharbor-0428-223-cfg-")
-	if err != nil {
-		panic("create host config isolation root: " + err.Error())
-	}
-	return root
+// current test process, nested under the test's own temporary root so the
+// testing package removes it at cleanup and no entry is left in the system
+// temporary directory. The environment override still needs the testing
+// package's restore (t.Setenv), so only the directory is lifecycle-bound here.
+func hostConfigIsolationDir(t *testing.T) string {
+	t.Helper()
+	return filepath.Join(t.TempDir(), "host-config-isolation")
 }
 
 // envWithoutLeakedTargetSelection drops the inherited selection environment
@@ -138,4 +137,84 @@ func envWithoutLeakedTargetSelection(env []string) []string {
 		out = append(out, entry)
 	}
 	return out
+}
+
+// TestHostConfigIsolationDirLeavesNoSystemTempEntry proves the per-test
+// isolation directory is lifecycle-bound: when testIsolatedSelectionContext
+// redirects the organization lookup to a private root because a host
+// selection is visible, that private root is created under the test's own
+// temporary directory and the system temporary directory gains no new entry.
+//
+// The test forces the host-visible-selection branch by writing an active
+// organization selection to the default config root (without overriding
+// XDG_CONFIG_HOME), so activeOrganizationSelectionVisibleToHost() reports true.
+// It records the system temp directory's entry names before and after the call
+// and asserts that no baseharbor-0428-223-cfg-* entry — the exact prefix the
+// previous os.MkdirTemp("", …) implementation leaked into the shared temp dir —
+// appears. This is a lifecycle regression guard for card 0428-233.
+func TestHostConfigIsolationDirLeavesNoSystemTempEntry(t *testing.T) {
+	systemTemp := os.TempDir()
+	before, err := listDirNames(systemTemp)
+	if err != nil {
+		t.Fatalf("list system temp dir %q: %v", systemTemp, err)
+	}
+
+	// Force the host-visible selection branch. Write an active organization
+	// selection to the default config root the orgconfig lookup resolves
+	// WITHOUT an override. Leaving BASEHARBOR_STATE_DIR empty keeps
+	// testIsolatedSelectionContext on the isolation branch rather than the
+	// explicit-activation branch that ignores it.
+	state := orgconfig.ActiveState{
+		Resolution: orgconfig.Resolution{Source: orgconfig.Source{Kind: orgconfig.SourceLocal, Location: "organization.yaml"}},
+		Config: orgconfig.Config{APIVersion: orgconfig.ContractVersion, Organization: "acme",
+			Targets:     map[string]orgconfig.Reference{"company": {Reference: "local"}},
+			Defaults:    orgconfig.EnvironmentDefaults{Target: "company"},
+			Constraints: []orgconfig.Constraint{{Field: "target", Allowed: []string{"company"}}},
+		},
+	}
+	if err := orgconfig.SaveActive(state); err != nil {
+		t.Fatalf("write host-visible organization selection: %v", err)
+	}
+
+	// Re-capture the temp dir entries right before the call under test, so any
+	// pre-existing baseharbor-0428-223-cfg-* prefix from an earlier run in the
+	// same process cannot count as a new entry.
+	before, err = listDirNames(systemTemp)
+	if err != nil {
+		t.Fatalf("re-list system temp dir %q: %v", systemTemp, err)
+	}
+
+	testIsolatedSelectionContext(t)
+
+	after, err := listDirNames(systemTemp)
+	if err != nil {
+		t.Fatalf("re-list system temp dir %q: %v", systemTemp, err)
+	}
+
+	// The isolation directory must have been created under t.TempDir(), never
+	// in the system temp dir. A stray baseharbor-0428-223-cfg-* entry here is
+	// the exact 0428-233 defect.
+	for name := range after {
+		if _, ok := before[name]; !ok && strings.HasPrefix(name, "baseharbor-0428-223-cfg-") {
+			t.Fatalf("host config isolation dir leaked into system temp %q: new entry %q", systemTemp, name)
+		}
+	}
+}
+
+// listDirNames returns the set of entry names directly under dir. A missing or
+// unreadable directory yields an empty set, which makes the before/after diff a
+// clean no-op and never a false positive.
+func listDirNames(dir string) (map[string]struct{}, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return map[string]struct{}{}, nil
+		}
+		return nil, err
+	}
+	set := make(map[string]struct{}, len(entries))
+	for _, e := range entries {
+		set[e.Name()] = struct{}{}
+	}
+	return set, nil
 }
