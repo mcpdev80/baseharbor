@@ -418,6 +418,51 @@ func TestCIIntegrationOperatorAdmitsFootprintShowOnlyOnDataCapabilitiesGate(t *t
 	}
 }
 
+func TestCIIntegrationOperatorDataGateAppNewAdmission(t *testing.T) {
+	t.Setenv("DEMO_ATOMIC_GATE", "1")
+	for _, probe := range []struct{ runtime, gate string }{
+		{"docker", "data-capabilities"},
+		{"podman", "data-capabilities"},
+	} {
+		t.Run(probe.runtime+"/"+probe.gate, func(t *testing.T) {
+			t.Setenv("BASEHARBOR_TEST_RUNTIME", probe.runtime)
+			t.Setenv("GATE", probe.gate)
+			t.Setenv("BASEHARBOR_DEMO_OPERATOR_GATE", probe.gate)
+			target := configureIsolatedEmptyRuntimeTarget(t, "atomic-"+probe.runtime+"-"+probe.gate, probe.runtime)
+			if err := registerInstallationForTarget(t, target.Name); err != nil {
+				t.Fatalf("register %s %s Core fixture: %v", probe.runtime, probe.gate, err)
+			}
+			t.Setenv("BASEHARBOR_TARGET", target.Name)
+			if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), []string{"app", "new"})); !ok {
+				t.Fatal("canonical app new did not receive the CI operator in the selected data gate (interactive OIDC fallthrough)")
+			}
+			if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), []string{"app", "edit"})); !ok {
+				t.Fatal("exact data-capabilities app edit did not receive its CI operator")
+			}
+			for _, args := range [][]string{{"app", "new", "--yes"}, {"app", "new", "extra"}, {"app", "edit", "--yes"}, {"app", "edit", "extra"}} {
+				if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), args)); ok {
+					t.Errorf("non-canonical form %v unexpectedly received the CI operator under %s", args, probe.gate)
+				}
+			}
+		})
+	}
+	// Other gates keep the guided-only behaviour unchanged (no blanket allow).
+	for _, gate := range []string{"core-capability", "lifecycle", "observability"} {
+		t.Setenv("BASEHARBOR_TEST_RUNTIME", "docker")
+		t.Setenv("GATE", gate)
+		t.Setenv("BASEHARBOR_DEMO_OPERATOR_GATE", gate)
+		target := configureIsolatedEmptyRuntimeTarget(t, "atomic-docker-"+gate, "docker")
+		if err := registerInstallationForTarget(t, target.Name); err != nil {
+			t.Fatalf("register %s Core fixture: %v", gate, err)
+		}
+		t.Setenv("BASEHARBOR_TARGET", target.Name)
+		for _, args := range [][]string{{"app", "new"}, {"app", "edit"}} {
+			if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), args)); ok {
+				t.Errorf("app wizard admission %v escaped into gate %q", args, gate)
+			}
+		}
+	}
+}
 func TestCIIntegrationGuidedMCPPrincipalCanOnlySeeFootprintTool(t *testing.T) {
 	t.Setenv("DEMO_ATOMIC_GATE", "1")
 	t.Setenv("BASEHARBOR_TEST_RUNTIME", "docker")

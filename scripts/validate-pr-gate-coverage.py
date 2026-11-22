@@ -63,6 +63,27 @@ def resolve_covered_gates(changed_paths: list[str], coverage: dict) -> tuple[lis
     return selected_gates, unresolved
 
 
+def unresolved_source_error(unowned: list[str]) -> str:
+    """Build the fail-loud message for a changed source with no catalog entry.
+
+    A changed source component that is not declared in the declarative
+    coverage catalog must never resolve to an empty or gray matrix that
+    passes the gate. This returns a precise, actionable error naming the
+    missing catalog id (derived from the path) and the exact next step.
+    """
+    entries = []
+    for path in unowned:
+        component_id = "source." + path.replace("/", ".").replace(".", "_")
+        entries.append(
+            f"{path} (id {component_id}): add this source with its surfaces "
+            f"to scripts/pr-gate-coverage.json, e.g. "
+            f'{{"id": "{component_id}", "path": "{path}", '
+            f'"surfaces": ["source.gate.atomic.docker.data.capabilities", '
+            f'"source.gate.atomic.podman.data.capabilities"]}}'
+        )
+    return "uncataloged source change, no declared runtime gate owner: " + "; ".join(entries)
+
+
 def resolve_native_checks(changed_paths: list[str], coverage: dict) -> list[str]:
     """Resolve source components to exact runtime-specific native checks."""
     components = {row.get("id"): row for row in coverage.get("components", [])
