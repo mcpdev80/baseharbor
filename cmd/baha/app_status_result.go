@@ -36,6 +36,7 @@ type applicationStatusResult struct {
 	OperatorAuth             operatorAuthObservation                                         `json:"operator_auth"`
 	Availability             []availability.NegotiationResult                                `json:"availability,omitempty"`
 	Perses                   *capability.PersesStatus                                        `json:"perses,omitempty"`
+	DatabaseDashboards       map[string]metricsprovider.PersesDashboardAvailabilityEntry     `json:"database_dashboards,omitempty"`
 	HostContainersDashboards map[string]metricsprovider.PersesHostDashboardAvailabilityEntry `json:"host_containers_dashboards,omitempty"`
 	// PersesBackendWitness carries, per observability backend, the manifest-only
 	// three-state backend-witness (configured / not-configured / unreachable) so
@@ -303,11 +304,13 @@ func collectApplicationStatusResult(ctx context.Context, store application.Store
 	resolvedHostSignalStatus := capability.ResolveHostDashboardSignalStatus(
 		resolved.Manifest.Services.ObservabilityManagementUI, resolved.Manifest.Services.Perses)
 	infrastructureDashboardStatus := metricsprovider.PersesInfraDashboardAvailability(ctx, resolved.Manifest)
+	databaseDashboards := metricsprovider.PersesDashboardAvailability(resolved.Manifest)
 	if hasRemoteApplicationTarget(resolved) {
 		return applicationStatusResult{StatusResult: result, ApplicationID: resolved.Manifest.ApplicationID,
-			DeploymentID: resolved.DeploymentIdentity.DeploymentID,
-			OperatorAuth: collectOperatorAuthObservation(ctx, resolved.Target.Name, resolved.Manifest.Environment),
-			Perses:       persesStatus,
+			DeploymentID:       resolved.DeploymentIdentity.DeploymentID,
+			OperatorAuth:       collectOperatorAuthObservation(ctx, resolved.Target.Name, resolved.Manifest.Environment),
+			Perses:             persesStatus,
+			DatabaseDashboards: databaseDashboards,
 			HostContainersDashboards: metricsprovider.PersesHostDashboardAvailability(
 				resolvedHostSignalStatus),
 			PersesBackendWitness:     persesBackendSignalWitnessFromManifest(resolved.Manifest, resolvedHostSignalStatus, metricsprovider.PersesBackendSignalWitness{}),
@@ -413,6 +416,7 @@ func collectApplicationStatusResult(ctx context.Context, store application.Store
 		ApplicationURLs:          applicationAccessURLs(resolved, result.Ready),
 		ManagementUI:             managementUI,
 		Perses:                   persesStatus,
+		DatabaseDashboards:       databaseDashboards,
 		HostContainersDashboards: metricsprovider.PersesHostDashboardAvailability(resolvedHostSignalStatus),
 		PersesBackendWitness:     persesBackendSignalWitnessFromManifest(resolved.Manifest, resolvedHostSignalStatus, metricsprovider.PersesBackendSignalWitness{}),
 		InfrastructureDashboards: infrastructureDashboardStatus,

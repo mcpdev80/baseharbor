@@ -1,0 +1,103 @@
+{
+  "kind": "Dashboard",
+  "metadata": {
+    "name": "tempo-traces",
+    "version": 0
+  },
+  "spec": {
+    "display": {
+      "name": "BaseHarbor Tempo traces",
+      "description": "Application traces from BaseHarbor Tempo."
+    },
+    "datasources": {
+      "tempo": {
+        "default": true,
+        "plugin": {
+          "kind": "TempoDatasource",
+          "spec": {}
+        }
+      }
+    },
+    "panels": {
+      "app-traces": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "BaseHarbor application traces"
+          },
+          "plugin": {
+            "kind": "TracingGanttChart",
+            "spec": {}
+          },
+          "queries": [
+            {
+              "kind": "TraceQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "TempoTraceQuery",
+                  "spec": {
+                    "query": "{resource.service.namespace=\"$application\" \u0026\u0026 resource.deployment.environment.name=\"$env\"}"
+                  }
+                },
+                "datasource": {
+                  "kind": "TempoDatasource",
+                  "name": "tempo"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "layouts": [
+      {
+        "kind": "Grid",
+        "spec": {
+          "items": [
+            {
+              "x": 0,
+              "y": 0,
+              "width": 24,
+              "height": 12,
+              "content": {
+                "$ref": "#/spec/panels/app-traces"
+              }
+            }
+          ]
+        }
+      }
+    ],
+    "variables": [
+      {
+        "kind": "ListVariable",
+        "spec": {
+          "name": "$application",
+          "allowMultiple": false,
+          "allowAllValue": false,
+          "defaultValue": "perses-dashboard-databases",
+          "plugin": {
+            "kind": "ConstantVariable",
+            "spec": {
+              "value": "perses-dashboard-databases"
+            }
+          }
+        }
+      },
+      {
+        "kind": "ListVariable",
+        "spec": {
+          "name": "$env",
+          "allowMultiple": false,
+          "allowAllValue": false,
+          "defaultValue": "dev",
+          "plugin": {
+            "kind": "ConstantVariable",
+            "spec": {
+              "value": "dev"
+            }
+          }
+        }
+      }
+    ]
+  }
+}
