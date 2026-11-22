@@ -357,9 +357,10 @@ class CoverageCatalogTests(unittest.TestCase):
         executor = (ROOT / "ci-native-pr-gate.sh").read_text()
         for gate in ("data-capabilities", "guided", "coreless-lifecycle",
                      "environment-destroy", "service-stop"):
-            with self.subTest(gate=gate):
-                self.assertIn(f"native/docker/{gate}", executor)
-                self.assertTrue(gate == "service-stop" or f"native/podman/{gate}" in executor)
+            runtimes = ("podman",) if gate == "service-stop" else ("docker", "podman")
+            for runtime in runtimes:
+                with self.subTest(gate=gate, runtime=runtime):
+                    self.assertIn(f"native/{runtime}/{gate}", executor)
 
     def test_runtime_neutral_native_checks_use_docker_representative(self):
         data = catalog()
