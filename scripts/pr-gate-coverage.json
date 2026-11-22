@@ -1852,6 +1852,15 @@
       ]
     },
     {
+      "id": "cmd.baha.control.plane.single.native.ci.test.go",
+      "path": "cmd/baha/control_plane_single_native_ci_test.go",
+      "runtime_specific": true,
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
       "id": "cmd.baha.ci_integration_operator_enabled",
       "path": "cmd/baha/ci_integration_operator_enabled.go",
       "runtime_specific": true,
