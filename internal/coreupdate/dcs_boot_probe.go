@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	etcdbackup "github.com/mcpdev80/baseharbor/internal/corebackup/etcd"
+	"github.com/mcpdev80/baseharbor/internal/testsupport/envpin"
 )
 
 // EtcdBootProbe requires a separately booted isolated recovery cluster.
@@ -56,7 +57,15 @@ func (p EtcdBootProbe) Verify(ctx context.Context, id etcdbackup.Identity, snaps
 		}
 		members[endpoint] = true
 		cmd := exec.CommandContext(ctx, p.Binary, "--endpoints="+endpoint, "endpoint", "status", "--write-out=json")
-		cmd.Env = []string{"PATH=/usr/bin:/bin", "ETCDCTL_API=3", "ETCDCTL_CACERT=" + p.TLS.CA, "ETCDCTL_CERT=" + p.TLS.Cert, "ETCDCTL_KEY=" + p.TLS.Key}
+		// Pin PATH, API and TLS trust via envpin.PinnedEnv so a parent ETCDCTL_*
+		// key can never override them: pinnedEnv drops any inherited copy before
+		// appending the pins, making the result independent of Go's env-dedup.
+		cmd.Env = envpin.PinnedEnv(
+			"PATH=/usr/bin:/bin", "ETCDCTL_API=3",
+			"ETCDCTL_CACERT="+p.TLS.CA,
+			"ETCDCTL_CERT="+p.TLS.Cert,
+			"ETCDCTL_KEY="+p.TLS.Key,
+		)
 		out, err := cmd.Output()
 		if err != nil || len(out) > 32768 {
 			return errors.New("recovered etcd endpoint status unavailable")
