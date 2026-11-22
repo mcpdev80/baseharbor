@@ -232,19 +232,34 @@ func failRuntimeBrokerReadinessWith(ctx context.Context, compose bhruntime.Runti
 }
 
 // runtimeBrokerReadinessDiagnostics assembles the fail-closed diagnostic block
-// for broker readiness: the broker project's recent container logs plus the
-// last /readyz body read directly from the broker over its mTLS probe. Both are
-// truncated to a bounded size. The readyz channel is reduced to the dependency
-// NAME and status only, so no value (nor any credential material from the
-// broker logs) is widened by this path beyond the existing compose-logs
-// diagnostics.
+// for broker readiness. Security rule: NO raw content (body, log lines, exec
+// errors) reaches the error text. The two channels emit fixed text only, and
+// where the contract names a dependency it is a validated NAME (a restricted
+// token). The readyz body is reduced to name/status/version; a non-JSON body
+// reports only its byte length; the log channel reports a bounded count and
+// the known dependency names it mentions, never raw log lines.
 func runtimeBrokerReadinessDiagnostics(ctx context.Context, compose bhruntime.RuntimeProvider, project, composeFile, envFile string) string {
 	var b strings.Builder
 	logs, logsErr := compose.LogsProject(ctx, project, composeFile, envFile, runtimebroker.ServiceName)
 	if logsErr != nil {
-		fmt.Fprintf(&b, "broker container logs unavailable: %v\n", logsErr)
-	} else if tail := truncateDiagnosticTail(logs, 2048); tail != "" {
-		fmt.Fprintf(&b, "broker container log tail:\n%s\n", tail)
+		// Only a fixed phrase: the exec error string itself may carry paths or
+		// environment details and must not be widened into the error text.
+		fmt.Fprintf(&b, "broker container logs unavailable (channel failed)\n")
+	} else {
+		// Raw log lines can carry value-bearers (tokens, paths, environment
+		// statements), so the content is NOT echoed. Only a bounded shape and
+		// the dependency names from the FIXED vocabulary survive — the same
+		// closed set /readyz uses, matched against whole tokens.
+		lines := 0
+		if trimmed := strings.TrimSpace(logs); trimmed != "" {
+			lines = strings.Count(trimmed, "\n") + 1
+		}
+		fmt.Fprintf(&b, "broker container log tail: %d line(s), content redacted by security rule\n", lines)
+		for _, dependency := range []string{"openbao", "runtime-executor", "database"} {
+			if logMentionsDependency(logs, dependency) {
+				fmt.Fprintf(&b, "broker container log mentions dependency=%s\n", dependency)
+			}
+		}
 	}
 	if summary := lastReadyzDependency(ctx, compose, project, composeFile, envFile); summary != "" {
 		fmt.Fprintf(&b, "broker /readyz (last): %s\n", summary)
@@ -252,13 +267,57 @@ func runtimeBrokerReadinessDiagnostics(ctx context.Context, compose bhruntime.Ru
 	return strings.TrimSpace(b.String())
 }
 
-// lastReadyzDependency performs one mTLS readiness probe through the SAME
-// project and compose files the readiness loop uses, and reports status, the
-// dependency NAME and the status message (which carries the failing check's
-// own error detail) — never any value-bearing field of the body. A not_ready
-// body without a dependency field still names the dependency via the log
-// channel; an unreadable or failing probe degrades to an explicit note instead
-// of hiding the channel failure.
+// logMentionsDependency reports whether a log stream contains the whole-token
+// dependency name (bounded by non-token characters), never echoing any other
+// content.
+func logMentionsDependency(logs, dependency string) bool {
+	for _, line := range strings.Split(logs, "\n") {
+		for _, field := range strings.FieldsFunc(line, func(r rune) bool {
+			return !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-')
+		}) {
+			if strings.EqualFold(field, dependency) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// safeDependencyName accepts only the dependency names the readiness contract
+// documents (openbao, runtime-executor, database). Anything else — including a
+// hostile or malformed body — collapses to a fixed placeholder, so an
+// attacker-controlled field can never smuggle a value into the error text.
+func safeDependencyName(value string) string {
+	switch trimmed := strings.ToLower(strings.TrimSpace(value)); trimmed {
+	case "openbao", "runtime-executor", "database":
+		return trimmed
+	default:
+		return "unknown"
+	}
+}
+
+// safeBuildToken keeps short build-identity tokens (version/commit strings)
+// and rejects anything that looks like content: a token must match a strict
+// character class and be bounded.
+func safeBuildToken(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" || len(value) > 40 {
+		return ""
+	}
+	for _, r := range value {
+		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '.' || r == '-' || r == '_') {
+			return ""
+		}
+	}
+	return value
+}
+
+// lastReadyzDependency performs one mTLS readiness probe and reports only
+// fixed text plus validated names: the status (a closed set), the dependency
+// NAME (validated against the documented contract set) and build tokens that
+// pass a strict character class. A raw body — or any part of it — never
+// reaches the output: a non-JSON body is reported by byte length only, and a
+// probe/exec error is reported as a fixed phrase.
 func lastReadyzDependency(ctx context.Context, compose bhruntime.RuntimeProvider, project, composeFile, envFile string) string {
 	out, err := compose.ExecProject(ctx, project, composeFile, envFile, runtimebroker.ServiceName,
 		"curl", "--silent", "--show-error", "--connect-timeout", "1", "--max-time", "4",
@@ -269,38 +328,42 @@ func lastReadyzDependency(ctx context.Context, compose bhruntime.RuntimeProvider
 		runtimebroker.RuntimeURL+"/readyz",
 	)
 	if err != nil {
-		return "readyz probe failed: " + truncateDiagnosticTail(err.Error(), 200)
+		return "readyz probe failed (error detail redacted by security rule)"
 	}
 	var ready struct {
 		Status     string `json:"status"`
 		Dependency string `json:"dependency"`
 		Version    string `json:"version"`
+		Commit     string `json:"commit"`
 	}
 	if jsonErr := json.Unmarshal([]byte(out), &ready); jsonErr != nil {
-		return "readyz body is not valid JSON: " + truncateDiagnosticTail(out, 200)
+		return fmt.Sprintf("readyz body is not JSON (content redacted, body-length=%d bytes)", len(out))
 	}
-	summary := "status=" + strings.TrimSpace(ready.Status)
-	if dependency := strings.TrimSpace(ready.Dependency); dependency != "" {
+	summary := "status=" + safeReadyzStatus(ready.Status)
+	if dependency := safeDependencyName(ready.Dependency); ready.Dependency != "" && dependency != "unknown" {
 		summary += " dependency=" + dependency
+	} else if strings.TrimSpace(ready.Dependency) != "" {
+		summary += " dependency=unknown"
 	}
-	if version := strings.TrimSpace(ready.Version); version != "" {
+	if version := safeBuildToken(ready.Version); version != "" {
 		summary += " version=" + version
 	}
-	return truncateDiagnosticTail(summary, 400)
+	if buildCommit := safeBuildToken(ready.Commit); buildCommit != "" {
+		summary += " commit=" + buildCommit
+	}
+	return summary
 }
 
-// truncateDiagnosticTail keeps at most max trailing bytes of text on a
-// line boundary and marks the elision, so one huge log cannot swamp the error.
-func truncateDiagnosticTail(text string, max int) string {
-	text = strings.TrimSpace(text)
-	if len(text) <= max {
-		return text
+// safeReadyzStatus maps the status to the contract's closed set.
+func safeReadyzStatus(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "ready":
+		return "ready"
+	case "not_ready":
+		return "not_ready"
+	default:
+		return "unknown"
 	}
-	cut := len(text) - max
-	if nl := strings.IndexByte(text[cut:], '\n'); nl >= 0 {
-		cut += nl + 1
-	}
-	return "[…truncated…] \n" + text[cut:]
 }
 
 func ensureAndStartRuntimeProviderExecutor(ctx context.Context, progress io.Writer, compose bhruntime.RuntimeProvider, platformFiles bhruntime.Files, m application.Manifest, files application.RuntimeFiles, refreshMutableImage bool) error {
