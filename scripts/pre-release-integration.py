@@ -96,6 +96,12 @@ CORELESS_OPTIONAL_TESTS = {
         'timeout': '12m',
         'acceptance_env': 'BASEHARBOR_ENV_DESTROY_ACCEPTANCE',
     },
+    'TestApplicationCapabilityLifecycleFootprintShowDigestConsent': {
+        'source': 'cmd/baha/app_capability_runtime_test.go',
+        'shard': 'core-capability',
+        'timeout': '30m',
+        'acceptance_env': 'BASEHARBOR_CORELESS_ACCEPTANCE',
+    },
 }
 
 
