@@ -372,9 +372,12 @@ func TestCIIntegrationOperatorDataGateAppNewAdmission(t *testing.T) {
 			if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), []string{"app", "new"})); !ok {
 				t.Fatal("canonical app new did not receive the CI operator in the selected data gate (interactive OIDC fallthrough)")
 			}
-			for _, args := range [][]string{{"app", "new", "--yes"}, {"app", "new", "extra"}, {"app", "edit"}} {
+			if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), []string{"app", "edit"})); !ok {
+				t.Fatal("exact data-capabilities app edit did not receive its CI operator")
+			}
+			for _, args := range [][]string{{"app", "new", "--yes"}, {"app", "new", "extra"}, {"app", "edit", "--yes"}, {"app", "edit", "extra"}} {
 				if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), args)); ok {
-					t.Errorf("non-canonical or other-gate-scoped form %v unexpectedly received the CI operator under %s", args, probe.gate)
+					t.Errorf("non-canonical form %v unexpectedly received the CI operator under %s", args, probe.gate)
 				}
 			}
 		})
@@ -389,8 +392,10 @@ func TestCIIntegrationOperatorDataGateAppNewAdmission(t *testing.T) {
 			t.Fatalf("register %s Core fixture: %v", gate, err)
 		}
 		t.Setenv("BASEHARBOR_TARGET", target.Name)
-		if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), []string{"app", "new"})); ok {
-			t.Errorf("app new admission escaped into gate %q", gate)
+		for _, args := range [][]string{{"app", "new"}, {"app", "edit"}} {
+			if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), args)); ok {
+				t.Errorf("app wizard admission %v escaped into gate %q", args, gate)
+			}
 		}
 	}
 }
