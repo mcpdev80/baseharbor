@@ -105,6 +105,8 @@ Exakte Optionen stehen in `baha COMMAND --help`. [Globale Optionen](global-optio
 | `baha disconnect` | Remove one explicit cross-application connectivity exception | `baha disconnect SOURCE TARGET` | [↗](security-trust.md) |
 | `baha doctor` | Diagnose the current application repository, otherwise the control plane | `baha doctor [--fix --yes] [-o json\|--output json]` | [↗](core.md) |
 | `baha down` | Stop the current application, or the local control plane outside a repository | `baha down [options]` | [↗](core.md) |
+| `baha env` | Inspect and manage deployment-target environments | `baha env [show\|destroy <NAME>] [-o json\|--output json\|--json]` | [↗](applications.md) |
+| `baha env destroy` | Destroy an environment and its environment-scoped deployments | `baha env destroy [NAME] [--keep-data \| --delete-data [--confirm-delete-data]] [--yes \| --no-input] [-o json\|--output json\|--json]` | [↗](applications.md) |
 | `baha init` | Initialize or adopt the application in the current repository | `baha init --agents [--json] \| baha init [--quick] [--json] [--input NAME=VALUE]... [--yes]` | [↗](applications.md) |
 | `baha inspect` | Inspect the current repository and its application requirements | `baha inspect [options]` | [↗](applications.md) |
 | `baha list` | List managed applications on the selected Target | `baha list [--all-targets]` | [↗](applications.md) |
