@@ -1798,6 +1798,60 @@
       ]
     },
     {
+      "id": "cmd.baha.app.env.test.go",
+      "path": "cmd/baha/app_env_test.go",
+      "runtime_specific": true,
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
+      "id": "cmd.baha.app.export.command.test.go",
+      "path": "cmd/baha/app_export_command_test.go",
+      "runtime_specific": true,
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
+      "id": "cmd.baha.target.definition.change.test.go",
+      "path": "cmd/baha/target_definition_change_test.go",
+      "runtime_specific": true,
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
+      "id": "internal.operatorauth.test.operator.go",
+      "path": "internal/operatorauth/test_operator.go",
+      "runtime_specific": true,
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
+      "id": "cmd.baha.target.go",
+      "path": "cmd/baha/target.go",
+      "runtime_specific": true,
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
+      "id": "cmd.baha.target.runtime.access.provider.test.go",
+      "path": "cmd/baha/target_runtime_access_provider_test.go",
+      "runtime_specific": true,
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
       "id": "cmd.baha.ci_integration_operator_enabled",
       "path": "cmd/baha/ci_integration_operator_enabled.go",
       "runtime_specific": true,
