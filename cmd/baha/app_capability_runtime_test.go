@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -344,6 +345,131 @@ func qualifyCoreBackedSecretsLifecycle(t *testing.T, ctx context.Context, runtim
 		t.Fatal("runtime retirement/reactivation lost the original application secret")
 	}
 	assertCoreBackedSecretsState(t, ctx, runtime, inventory, reactivated, initialOwner, baseline, retainedVolumes, envDigest, true, true, true)
+}
+
+// TestApplicationCapabilityLifecycleFootprintShowDigestConsent proves the
+// selected data-capabilities acceptance shape end to end: the canonical
+// read-only 'app footprint show -o json' probe reads the applied application,
+// and the repository-source record-deployment binds the EXACT --confirm-
+// candidate digest. It exercises the failing-then-succeeding digest path: a
+// first apply without a context digest fails closed (errConsentRequiredFor-
+// CandidateSubmission) and the exact digest the production choke point prints
+// in its 'Re-run with --confirm-candidate <digest>' hint is captured, then the
+// single re-invocation through the existing coreBootstrapFixtureConsent helper
+// binds the identical submission. The footprint probe runs in the same cell
+// before and after the consented apply so the cell proves the read-only probe
+// reads a candidate that was bound with its own consented digest — no
+// missing-digest abort and no interactive operator auth on piped input.
+func TestApplicationCapabilityLifecycleFootprintShowDigestConsent(t *testing.T) {
+	if os.Getenv("BASEHARBOR_CORELESS_ACCEPTANCE") != "1" {
+		t.Skip("requires isolated exact-SHA runtime acceptance")
+	}
+	ctx, cancel := context.WithTimeout(machineNoninteractiveContext(context.Background()), 25*time.Minute)
+	defer cancel()
+	ctx = testOperatorContext(ctx)
+	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
+	target := configureTestTargetEmpty(t)
+	root := t.TempDir()
+	t.Chdir(root)
+	runtime, err := detectRuntimeForTarget(ctx, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertCorelessHost(t, ctx, runtime, target)
+	var out bytes.Buffer
+	first, err := installCore(ctx, strings.NewReader(""), &out, runtimeUpOptions{Yes: true, ControlPlaneOnly: true, MachineRole: coreinstallation.Development, RecoveryFile: filepath.Join(t.TempDir(), "recovery.json")})
+	if err != nil || !first.Ready {
+		logCoreBootstrapFailure(t, runtime, target.Name, target.RuntimeProvider)
+		t.Fatalf("explicit management install: %v\n%s", err, out.String())
+	}
+	if err := deployment.SetOperatorAuthForTargetEnvironment(target.Name, "dev", deployment.OperatorAuthEnvironmentConfig{
+		Provider: "external-oidc", Issuer: "https://issuer.test", ClientID: "cli-test",
+	}); err != nil {
+		t.Fatalf("configure isolated operator-auth boundary: %v", err)
+	}
+	t.Cleanup(func() {
+		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 3*time.Minute)
+		defer cleanupCancel()
+		if err := approvedNativeFixtureCleanup(t, testOperatorContext(machineNoninteractiveContext(cleanupCtx)), &bytes.Buffer{}); err != nil {
+			t.Errorf("isolated Core cleanup: %v", err)
+		}
+	})
+
+	m := application.WithWorkloadComponents(application.New("footprint-consent", "dev", false, false, false), "api")
+	if err := writeInitializedAuthoredManifest(t, "baseharbor.yaml", m, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile("compose.yaml", []byte(corelessHTTPWorkload), 0600); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if _, werr := os.Getwd(); werr == nil {
+			_ = os.Chdir(root)
+		}
+		resetCoreBootstrapFixtureApplication(t, testOperatorContext(machineNoninteractiveContext(ctx)))
+	}()
+
+	// The canonical read-only footprint probe is available before any apply so
+	// the cell reads the pre-apply footprint through the same JSON path.
+	if err := runWithIO(ctx, []string{"app", "footprint", "show", "-o", "json"}, &out, &out); err != nil {
+		t.Fatalf("pre-apply footprint show: %v\n%s", err, out.String())
+	}
+
+	// First apply carries no context digest: the fail-closed candidate choke
+	// point must refuse and print the exact confirm digest to re-run with.
+	out.Reset()
+	err = runWithIO(ctx, []string{"app", "apply", "--skip-memory-preflight"}, &out, &out)
+	if err == nil {
+		t.Fatalf("apply without --confirm-candidate digest must fail closed")
+	}
+	if !strings.Contains(err.Error(), "--confirm-candidate") {
+		t.Fatalf("apply failure did not name the exact confirm digest: %v\n%s", err, out.String())
+	}
+	confirmDigest := extractFootprintShowConfirmDigest(err.Error())
+	if confirmDigest == "" {
+		t.Fatalf("could not parse the exact --confirm-candidate digest from the apply refusal: %v\n%s", err, out.String())
+	}
+
+	// The single re-invocation through the existing consent helper binds the
+	// identical submission the production choke point fingerprinted.
+	out.Reset()
+	if err := runWithIO(coreBootstrapFixtureConsent(t, ctx), []string{"app", "apply", "--skip-memory-preflight"}, &out, &out); err != nil {
+		t.Fatalf("consented re-apply after digest capture: %v\n%s", err, out.String())
+	}
+
+	// The read-only footprint probe now reads the consented candidate in the
+	// same cell: no missing-digest abort, no interactive operator auth.
+	out.Reset()
+	if err := runWithIO(ctx, []string{"app", "footprint", "show", "-o", "json"}, &out, &out); err != nil {
+		t.Fatalf("post-apply footprint show: %v\n%s", err, out.String())
+	}
+	if !strings.Contains(out.String(), "footprint") {
+		t.Fatalf("post-apply footprint show did not emit the canonical JSON footprint: %s", out.String())
+	}
+	t.Logf("footprint-show digest-consent cycle complete: apply refused without digest %s, consented re-apply bound it, read-only footprint show succeeded", confirmDigest)
+}
+
+// extractFootprintShowConfirmDigest parses the exact 64-hex confirm digest from
+// an apply refusal transcript. It accepts both the interactive prompt form
+// ("confirm-hash <digest>") and the fail-closed missing-consent hint
+// ("Re-run with --confirm-candidate <digest> ... to acknowledge this exact
+// submission."), so a test can capture the digest the production choke point
+// prints on either path and re-run with it.
+func extractFootprintShowConfirmDigest(out string) string {
+	re := regexp.MustCompile(`--confirm-candidate\s+([0-9a-f]{64})`)
+	if m := re.FindStringSubmatch(out); m != nil {
+		return m[1]
+	}
+	for _, line := range strings.Split(out, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "confirm-hash ") {
+			digest := strings.TrimSpace(strings.TrimPrefix(trimmed, "confirm-hash "))
+			if digest != "" && strings.Count(digest, " ") == 0 {
+				return digest
+			}
+		}
+	}
+	return ""
 }
 
 func coreBackedApplicationSecretDigest(t *testing.T, ctx context.Context, runtime bhruntime.RuntimeProvider, inventory bhruntime.ControlPlaneRuntimeInventory, resolved resolvedApplication) [32]byte {

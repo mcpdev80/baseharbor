@@ -78,6 +78,7 @@ CORELESS_SHARD_TESTS = {
     ),
     'core-capability': (
         'TestApplicationCapabilityLifecycleExistingCore',
+        'TestApplicationCapabilityLifecycleFootprintShowDigestConsent',
     ),
 }
 
