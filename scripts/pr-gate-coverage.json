@@ -2,6 +2,7 @@
   "schema": "baseharbor.pr-gate-coverage/v1",
   "release": "v0.4.27",
   "surfaces": [
+    "source.gate.atomic.static.ci.fast.check",
     "adoption.conformance",
     "adoption.realworld-compose",
     "adoption.realworld-kubernetes",
@@ -134,6 +135,13 @@
         "source.package.atomic.docker.lifecycle",
         "source.package.atomic.podman.lifecycle"
       ]
+    },
+    {
+      "path": "internal/metrics/testdata",
+      "surfaces": [
+        "source.gate.atomic.docker.observability",
+        "source.gate.atomic.podman.observability"
+      ]
     }
   ],
   "components": [
@@ -159,6 +167,14 @@
       "surfaces": [
         "source.gate.atomic.docker.backup.restore",
         "source.gate.atomic.podman.backup.restore"
+      ]
+    },
+    {
+      "id": "source.cmd.baha.app.broker.go",
+      "path": "cmd/baha/app_broker.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
       ]
     },
     {
@@ -1353,6 +1369,108 @@
       "runtime_specific": true
     },
     {
+      "id": "source.scripts.ci.native.pr.gate",
+      "path": "scripts/ci-native-pr-gate.sh",
+      "surfaces": ["source.gate.atomic.docker.data.capabilities", "source.gate.atomic.podman.data.capabilities"],
+      "runtime_specific": true
+    },
+    {
+      "id": "source.scripts.ci.fast.check",
+      "path": "scripts/ci-fast-check.sh",
+      "surfaces": ["source.gate.atomic.static.ci.fast.check"],
+      "runtime_specific": true
+    },
+    {
+      "id": "source.cmd.baha.app.footprint.presenter.go",
+      "path": "cmd/baha/app_footprint_presenter.go",
+      "surfaces": ["source.gate.atomic.docker.data.capabilities", "source.gate.atomic.podman.data.capabilities"],
+      "runtime_specific": true
+    },
+    {
+      "id": "source.cmd.baha.local.workload.authority.go",
+      "path": "cmd/baha/local_workload_authority.go",
+      "surfaces": ["source.gate.atomic.docker.data.capabilities", "source.gate.atomic.podman.data.capabilities"],
+      "runtime_specific": true
+    },
+    {
+      "id": "source.cmd.baha.local.workload.authority.test.go",
+      "path": "cmd/baha/local_workload_authority_test.go",
+      "surfaces": ["source.gate.atomic.docker.data.capabilities", "source.gate.atomic.podman.data.capabilities"],
+      "runtime_specific": true
+    },
+    {
+      "id": "source.cmd.baha.app.broker.diagnostics.test.go",
+      "path": "cmd/baha/app_broker_diagnostics_test.go",
+      "surfaces": ["source.gate.atomic.docker.data.capabilities", "source.gate.atomic.podman.data.capabilities"],
+      "runtime_specific": true
+    },
+    {
+      "id": "source.cmd.baha.app.workload.ports.go",
+      "path": "cmd/baha/app_workload_ports.go",
+      "surfaces": ["source.gate.atomic.docker.data.capabilities", "source.gate.atomic.podman.data.capabilities"],
+      "runtime_specific": true
+    },
+    {
+      "id": "source.cmd.baha.core.installation.runtime.test.go",
+      "path": "cmd/baha/core_installation_runtime_test.go",
+      "surfaces": ["source.gate.atomic.docker.data.capabilities", "source.gate.atomic.podman.data.capabilities"],
+      "runtime_specific": true
+    },
+    {
+      "id": "source.cmd.baha.workload.port.local.regression.test.go",
+      "path": "cmd/baha/workload_port_local_regression_test.go",
+      "surfaces": ["source.gate.atomic.docker.data.capabilities", "source.gate.atomic.podman.data.capabilities"],
+      "runtime_specific": true
+    },
+    {
+      "id": "source.cmd.baha.app.status.result.go",
+      "path": "cmd/baha/app_status_result.go",
+      "surfaces": ["source.gate.atomic.docker.observability", "source.gate.atomic.podman.observability"],
+      "runtime_specific": true
+    },
+    {
+      "id": "source.cmd.baha.app.perses.cli.test.go",
+      "path": "cmd/baha/app_perses_cli_test.go",
+      "surfaces": ["source.gate.atomic.docker.observability", "source.gate.atomic.podman.observability"],
+      "runtime_specific": true
+    },
+    {
+      "id": "source.internal.metrics.perses.dashboards.go",
+      "path": "internal/metrics/perses_dashboards.go",
+      "surfaces": ["source.gate.atomic.docker.observability", "source.gate.atomic.podman.observability"],
+      "runtime_specific": true
+    },
+    {
+      "id": "source.internal.metrics.perses.dashboards.helpers.go",
+      "path": "internal/metrics/perses_dashboards_helpers.go",
+      "surfaces": ["source.gate.atomic.docker.observability", "source.gate.atomic.podman.observability"],
+      "runtime_specific": true
+    },
+    {
+      "id": "source.internal.metrics.perses.dashboards.test.go",
+      "path": "internal/metrics/perses_dashboards_test.go",
+      "surfaces": ["source.gate.atomic.docker.observability", "source.gate.atomic.podman.observability"],
+      "runtime_specific": true
+    },
+    {
+      "id": "source.internal.metrics.perses.dashboards.promql.test.go",
+      "path": "internal/metrics/perses_dashboards_promql_test.go",
+      "surfaces": ["source.gate.atomic.docker.observability", "source.gate.atomic.podman.observability"],
+      "runtime_specific": true
+    },
+    {
+      "id": "source.internal.metrics.perses.dashboards.0428-076.native.test.go",
+      "path": "internal/metrics/perses_dashboards_0428-076_native_test.go",
+      "surfaces": ["source.gate.atomic.docker.observability", "source.gate.atomic.podman.observability"],
+      "runtime_specific": true
+    },
+    {
+      "id": "source.cmd.baha.main.go",
+      "path": "cmd/baha/main.go",
+      "surfaces": ["source.gate.atomic.docker.data.capabilities", "source.gate.atomic.podman.data.capabilities"],
+      "runtime_specific": true
+    },
+    {
       "id": "source.workflow.pre.release",
       "path": ".github/workflows/pre-release.yml",
       "surfaces": ["source.gate.integration.docker.coreless.lifecycle", "source.gate.integration.podman.coreless.lifecycle"],
@@ -1783,7 +1901,8 @@
       "scope": "pr",
       "covers": [
         "capability.profile.shell-interface",
-        "gate.shell-ux"
+        "gate.shell-ux",
+        "source.gate.atomic.static.ci.fast.check"
       ],
       "kind": "static",
       "selection_scope": "focused",
@@ -3069,7 +3188,18 @@
         "cmd.baha.ci_integration_operator_enabled",
         "cmd.baha.ci_integration_operator_disabled",
         "cmd.baha.ci_integration_operator_enabled_test",
-        "cmd.baha.runtime_integration_test_support_test"
+        "cmd.baha.runtime_integration_test_support_test",
+        "source.scripts.ci.native.pr.gate",
+        "source.cmd.baha.app.footprint.presenter.go",
+        "source.cmd.baha.local.workload.authority.go",
+        "source.cmd.baha.local.workload.authority.test.go",
+        "source.cmd.baha.main.go"
+      
+      ,
+        "source.cmd.baha.app.broker.diagnostics.test.go",
+        "source.cmd.baha.app.workload.ports.go",
+        "source.cmd.baha.workload.port.local.regression.test.go",
+        "source.cmd.baha.core.installation.runtime.test.go"
       ],
       "selection_scope": "focused"
     },
@@ -3090,7 +3220,18 @@
         "cmd.baha.ci_integration_operator_enabled",
         "cmd.baha.ci_integration_operator_disabled",
         "cmd.baha.ci_integration_operator_enabled_test",
-        "cmd.baha.runtime_integration_test_support_test"
+        "cmd.baha.runtime_integration_test_support_test",
+        "source.scripts.ci.native.pr.gate",
+        "source.cmd.baha.app.footprint.presenter.go",
+        "source.cmd.baha.local.workload.authority.go",
+        "source.cmd.baha.local.workload.authority.test.go",
+        "source.cmd.baha.main.go"
+      
+      ,
+        "source.cmd.baha.app.broker.diagnostics.test.go",
+        "source.cmd.baha.app.workload.ports.go",
+        "source.cmd.baha.workload.port.local.regression.test.go",
+        "source.cmd.baha.core.installation.runtime.test.go"
       ],
       "selection_scope": "focused"
     },
