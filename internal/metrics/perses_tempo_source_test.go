@@ -404,7 +404,7 @@ func TestPersesTempoDatasourceAliasIsMaterializedGatewayIdentity(t *testing.T) {
 func TestPersesTempoDatasourceSharedBackendGatewayStaysPolicyNeutral(t *testing.T) {
 	dir := t.TempDir()
 	issuer := serviceissuer.New(t)
-	policy, err := serviceaccess.Resolve("dev", "cache", serviceaccess.AuthenticationMTLS)
+	policy, err := serviceaccess.ResolveWithPolicy("dev", "cache", serviceaccess.AuthenticationMTLS, serviceaccess.EnvironmentPolicy{TrustedLocal: true})
 	if err != nil {
 		t.Fatal(err)
 	}
