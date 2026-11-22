@@ -64,6 +64,7 @@ func TestDeterministicInitRejectsAmbiguousSourcesWithoutSelectionNegative(t *tes
 func TestDeterministicInitDoesNotPersistUnneededSourceSelection(t *testing.T) {
 	root := t.TempDir()
 	withWorkingDirectory(t, root)
+	testIsolatedSelectionContext(t)
 	if err := os.WriteFile(filepath.Join(root, "compose.yaml"), []byte("services:\n  api:\n    image: example/api:1\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -79,6 +80,7 @@ func TestDeterministicInitDoesNotPersistUnneededSourceSelection(t *testing.T) {
 func TestDeterministicInitPersistsAmbiguousSourceSelectionPositive(t *testing.T) {
 	root := t.TempDir()
 	withWorkingDirectory(t, root)
+	testIsolatedSelectionContext(t)
 	if err := os.WriteFile(filepath.Join(root, "compose.yaml"), []byte("services:\n  api:\n    image: example/api:1\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
