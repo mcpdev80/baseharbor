@@ -45,5 +45,7 @@ python3 -m unittest \
   scripts.test_pr_ci_fallback \
   scripts.test_pr_gate_plan \
   scripts.test_pre_release_runtime_reuse \
+  scripts.test_pre_release_check_plan \
+  scripts.test_ci_v0427_gate_catalog \
   scripts.test_pr_diff_base \
   scripts.test_targeted_gate_ref
