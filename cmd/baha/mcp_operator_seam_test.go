@@ -41,7 +41,7 @@ func TestMCPOperatorSeamReachesGateBothDirections(t *testing.T) {
 	// BEFORE (wrongly-green): the fixture stamps a verified operator, mirroring
 	// the production runWithIO entrypoint, so the managed mutation succeeds. This
 	// is the unmarked state the card warns about.
-	stamped := operatorAuthFixtureContext(context.Background())
+	stamped := testOperatorContext(context.Background())
 	stampedSession := workspaceMutationClientWithContext(t, stamped)
 	stampedResult, err := stampedSession.CallTool(stamped, &mcp.CallToolParams{
 		Name: "baseharbor.target.create", Arguments: input,
@@ -52,7 +52,7 @@ func TestMCPOperatorSeamReachesGateBothDirections(t *testing.T) {
 
 	// AFTER (red): the identical call on an anonymous, fixture-opted-out context
 	// is refused with the exact production denial code.
-	anonymous := withoutOperatorAuthTestContext(context.Background())
+	anonymous := operatorauth.WithEnforcement(context.Background())
 	anonymousSession := workspaceMutationClientWithContext(t, anonymous)
 	anonymousResult, err := anonymousSession.CallTool(anonymous, &mcp.CallToolParams{
 		Name: "baseharbor.target.create", Arguments: input,
