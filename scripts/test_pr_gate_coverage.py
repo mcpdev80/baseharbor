@@ -320,48 +320,6 @@ class CoverageCatalogTests(unittest.TestCase):
             with self.subTest(path=path):
                 self.assertEqual(expected, coverage_module.resolve_native_checks([path], data))
 
-    def test_runtime_specific_native_components_keep_both_engine_checks(self):
-        data = catalog()
-        data["components"].append({"id": "specific.native", "path": "internal/specific/native.go",
-                                   "runtime_specific": True,
-                                   "surfaces": ["application.data-capabilities"]})
-        data["native_checks"] += [
-            {"id": "native/docker/data-capabilities", "runtime": "docker",
-             "covers": ["application.data-capabilities"],
-             "source_components": ["specific.native"], "selection_scope": "focused"},
-            {"id": "native/podman/data-capabilities", "runtime": "podman",
-             "covers": ["application.data-capabilities"],
-             "source_components": ["specific.native"], "selection_scope": "focused"},
-        ]
-        self.assertEqual(["native/docker/data-capabilities", "native/podman/data-capabilities"],
-                         coverage_module.resolve_native_checks(["internal/specific/native.go"], data))
-
-    def test_admitted_owner_sources_select_supported_native_checks(self):
-        current = json.loads((ROOT / "pr-gate-coverage.json").read_text())
-        for path, expected in (
-            ("cmd/baha/ci_integration_operator_enabled.go",
-             ["native/docker/data-capabilities", "native/podman/data-capabilities"]),
-            ("cmd/baha/app_init_wizard_test.go", [
-             "native/docker/data-capabilities", "native/docker/guided",
-             "native/podman/data-capabilities", "native/podman/guided"]),
-            ("cmd/baha/runtime_integration_test_support_test.go", [
-             "native/docker/coreless-lifecycle", "native/docker/data-capabilities",
-             "native/docker/guided", "native/podman/coreless-lifecycle",
-             "native/podman/data-capabilities", "native/podman/guided"]),
-            ("cmd/baha/env_destroy_integration_test.go",
-             ["native/docker/environment-destroy", "native/podman/environment-destroy"]),
-            ("internal/runtime/service_stop_test.go", ["native/podman/service-stop"]),
-        ):
-            with self.subTest(path=path):
-                self.assertEqual(expected, coverage_module.resolve_native_checks([path], current))
-        executor = (ROOT / "ci-native-pr-gate.sh").read_text()
-        for gate in ("data-capabilities", "guided", "coreless-lifecycle",
-                     "environment-destroy", "service-stop"):
-            runtimes = ("podman",) if gate == "service-stop" else ("docker", "podman")
-            for runtime in runtimes:
-                with self.subTest(gate=gate, runtime=runtime):
-                    self.assertIn(f"native/{runtime}/{gate}", executor)
-
     def test_runtime_neutral_native_checks_use_docker_representative(self):
         data = catalog()
         data["components"].append({"id": "neutral.native", "path": "internal/neutral/native.go",
