@@ -29,7 +29,7 @@ func decodeSharedBackendState(data []byte) (sharedBackendState, error) {
 		return sharedBackendState{}, err
 	}
 	if state.Version != sharedBackendStateVersion {
-		return sharedBackendState{}, fmt.Errorf("unsupported shared backend state version %d", state.Version)
+		return sharedBackendState{}, &SharedBackendStateVersionMismatch{Found: state.Version, Expected: sharedBackendStateVersion}
 	}
 	if state.PostgresAdminCredential != "" && (state.PostgresMembers < 1 || state.PostgresMembers == 2) {
 		return sharedBackendState{}, fmt.Errorf("shared PostgreSQL topology is missing or invalid; do not rewrite existing provider data")
