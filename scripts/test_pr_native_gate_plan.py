@@ -90,6 +90,17 @@ class NativeGatePlanTests(unittest.TestCase):
             {'id': 'native/podman/data-capabilities', 'runtime': 'podman'},
         ]})
 
+    def test_ci_native_pr_gate_script_selects_only_data_capabilities(self):
+        # The ci-executor change must not leak unrelated native runtime gates.
+        matrix = planner.resolve_matrix(
+            ['scripts/ci-native-pr-gate.sh', 'cmd/baha/greenfield_isolated_core_native_test.go'],
+            coverage)
+        self.assertEqual(matrix, {'include': [
+            {'id': 'native/docker/data-capabilities', 'runtime': 'docker'},
+            {'id': 'native/docker/greenfield', 'runtime': 'docker'},
+            {'id': 'native/podman/data-capabilities', 'runtime': 'podman'},
+        ]})
+
 
 if __name__ == '__main__':
     unittest.main()
