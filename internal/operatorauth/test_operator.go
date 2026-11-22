@@ -30,14 +30,18 @@ func (ReadGrantingMembershipProvider) ResolveClaimMembership(_ context.Context, 
 	return []tenancy.Membership{{TenantID: "tenant-local", Role: "editor"}}, nil
 }
 
-// WithVerifiedTestOperator installs a verified test-operator principal, a
-// read-granting membership provider and enforcement on ctx, preserving a
-// principal already supplied by an authenticated caller. The IfAbsent semantics
-// mirror the package decorators exactly: an existing principal keeps its
-// identity (replacing it would discard the caller's verified principal), while
-// the membership provider is only installed when absent so an explicitly
-// scoped provider is never overwritten.
+// WithVerifiedTestOperator installs the canonical verified test-operator
+// principal, a read-granting membership provider and enforcement on ctx while
+// PRESERVING a principal an authenticated caller already supplied (exactly the
+// if-absent semantics test_operator_context_test.go had before the fan-out):
+// with a principal present the helper delegates to
+// WithVerifiedTestOperatorPrincipalIfAbsent; without one, installing the
+// canonical principal first is equivalent to the legacy order because
+// WithVerifiedPrincipal itself enables enforcement.
 func WithVerifiedTestOperator(ctx context.Context) context.Context {
+	if _, ok := PrincipalFromContext(ctx); ok {
+		return WithVerifiedTestOperatorPrincipalIfAbsent(ctx, nil)
+	}
 	return WithVerifiedTestOperatorPrincipal(ctx, TestOperatorPrincipal())
 }
 
@@ -56,11 +60,12 @@ func WithVerifiedTestOperatorPrincipalForced(ctx context.Context, principal *ide
 	return WithMembershipProvider(ctx, ReadGrantingMembershipProvider{})
 }
 
-// WithVerifiedTestOperatorPrincipalIfAbsent is the if-absent entry point for
-// call sites whose previous order installed the principal FIRST (via
-// WithVerifiedPrincipal, whose enforcement step is if-absent) and only then
-// enabled enforcement and the membership provider. It preserves a principal
-// already supplied by an authenticated caller, like WithVerifiedTestOperator.
+// WithVerifiedTestOperatorPrincipalIfAbsent preserves a principal already
+// supplied by an authenticated caller: the principal keeps its identity
+// (replacing it would discard the caller's verified principal), the
+// membership provider is installed only when absent, and enforcement is
+// enabled only when absent — the exact if-absent sequence the package
+// decorators document.
 func WithVerifiedTestOperatorPrincipalIfAbsent(ctx context.Context, principal *identity.Principal) context.Context {
 	if principal == nil {
 		principal = TestOperatorPrincipal()
@@ -74,15 +79,20 @@ func WithVerifiedTestOperatorPrincipalIfAbsent(ctx context.Context, principal *i
 	return WithEnforcementIfAbsent(ctx)
 }
 
-// WithVerifiedTestOperatorPrincipal is the single composition entry point: it
-// installs enforcement, the membership provider and the CALLER-SUPPLIED
-// verified principal on exactly one path (if-absent semantics: an existing
-// principal keeps its identity; an explicitly scoped provider is never
-// overwritten). Test call sites that used to repeat the manual
-// WithEnforcement/WithVerifiedPrincipal/WithMembershipProvider composition
-// with their own fixture identity route through this one helper.
+// WithVerifiedTestOperatorPrincipal is the single composition entry point for
+// a caller-supplied verified principal. Like the hand-written sequences it
+// replaces, it installs the principal FIRST via WithVerifiedPrincipal (whose
+// WithEnforcement step replaces prior enforcement state) and then the
+// read-granting membership provider when absent, so an explicit override
+// replaces any principal already present while an explicitly scoped provider
+// stays in place.
 func WithVerifiedTestOperatorPrincipal(ctx context.Context, principal *identity.Principal) context.Context {
-	return WithVerifiedTestOperatorPrincipalIfAbsent(ctx, principal)
+	if principal == nil {
+		principal = TestOperatorPrincipal()
+	}
+	ctx = WithVerifiedPrincipal(ctx, principal)
+	ctx = WithMembershipProviderIfAbsent(ctx, ReadGrantingMembershipProvider{})
+	return WithEnforcementIfAbsent(ctx)
 }
 
 // WithVerifiedTestOperatorForce installs fresh enforcement state, the
