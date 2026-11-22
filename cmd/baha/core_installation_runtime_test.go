@@ -370,7 +370,8 @@ func TestCoreBootstrapFixtureCleanupContextIsBoundToItsLocalTarget(t *testing.T)
 // `impact-confirmation-required` before any runtime access.
 func TestCoreBootstrapFixtureDestroyRunsThroughInstallationApplicationScope(t *testing.T) {
 	r := retainedNativeBackendFixture(t)
-	plan, err := buildRuntimeDestroyImpact(t.Context(), []targetDestroyInventory{{Target: r.Target}}, nil, true)
+	operatorCtx := machineNoninteractiveContext(testOperatorContext(t.Context()))
+	plan, err := buildRuntimeDestroyImpact(operatorCtx, []targetDestroyInventory{{Target: r.Target}}, nil, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -379,7 +380,7 @@ func TestCoreBootstrapFixtureDestroyRunsThroughInstallationApplicationScope(t *t
 		t.Fatal("aggregate destruction plan did not carry a destructive application-deployment child scope")
 	}
 	confirmed := &application.ProviderChangeConsent{PlanID: plan.Scope.PlanID, First: true, Second: true, DeleteData: true}
-	ctx, err := withInstallationApplicationScopes(withProviderChangeConsent(t.Context(), confirmed), plan)
+	ctx, err := withInstallationApplicationScopes(withProviderChangeConsent(operatorCtx, confirmed), plan)
 	if err != nil {
 		t.Fatalf("confirmed destructive installation.destroy scope refused: %v", err)
 	}
@@ -392,11 +393,11 @@ func TestCoreBootstrapFixtureDestroyRunsThroughInstallationApplicationScope(t *t
 	// (same XDG_CONFIG_HOME) cannot change which branch the missing-consent
 	// call takes.
 	negative := retainedNativeBackendFixture(t)
-	negativePlan, negBuildErr := buildRuntimeDestroyImpact(t.Context(), []targetDestroyInventory{{Target: negative.Target}}, nil, true)
+	negativePlan, negBuildErr := buildRuntimeDestroyImpact(operatorCtx, []targetDestroyInventory{{Target: negative.Target}}, nil, true)
 	if negBuildErr != nil {
 		t.Fatal(negBuildErr)
 	}
-	negCtx, negErr := withInstallationApplicationScopes(withProviderChangeConsent(t.Context(), nil), negativePlan)
+	negCtx, negErr := withInstallationApplicationScopes(withProviderChangeConsent(operatorCtx, nil), negativePlan)
 	if negErr == nil {
 		t.Fatal("installation.destroy scope admitted without consent")
 	}
