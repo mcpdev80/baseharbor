@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -154,16 +155,38 @@ func runAppPull(ctx context.Context, store application.Store, opts appPullOption
 		return err
 	}
 	if opts.OutputFormat == outputJSON {
-		return writeJSON(out, result)
-	}
-	if err := writeSourcePullResult(out, &result); err != nil {
+		if err := writeJSON(out, result); err != nil {
+			return err
+		}
+	} else if err := writeSourcePullResult(out, &result); err != nil {
 		return err
 	}
 	if !result.Successful {
 		return fmt.Errorf("%w: %s", development.ErrSourcePullBlocked, sourcePullFailureText(&result))
 	}
 	if opts.Up {
-		return bringApplicationUpAfterPull(ctx, store, resolved, out, errOut)
+		applyOut, applyErrOut := &bytes.Buffer{}, &bytes.Buffer{}
+		if err := bringApplicationUpAfterPull(ctx, store, resolved, applyOut, applyErrOut); err != nil {
+			return err
+		}
+		return emitSourcePullUpComposite(out, result, applyOut.String())
 	}
 	return nil
+}
+
+// emitSourcePullUpComposite returns one valid JSON document for `baha app pull
+// --up --output json`: the pull result plus the apply output under "up". It
+// keeps the two JSON values the apply lifecycle and the pull result each emit
+// in separate buffers and merges them, so the structured output always decodes
+// as a single object instead of two concatenated JSON values.
+func emitSourcePullUpComposite(out io.Writer, result development.SourcePullResult, upOutput string) error {
+	composite := map[string]any{
+		"schema_version": development.SourcePullSchemaVersion,
+		"pull":           result,
+		"up": map[string]any{
+			"ran":    true,
+			"output": strings.TrimSpace(upOutput),
+		},
+	}
+	return writeJSON(out, composite)
 }

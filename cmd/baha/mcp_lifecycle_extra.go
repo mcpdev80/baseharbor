@@ -9,6 +9,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"io"
+	"strings"
 )
 
 func machineNoninteractiveContext(ctx context.Context) context.Context {
@@ -87,12 +88,17 @@ func registerMCPAdditionalLifecycleTools(server *mcp.Server, store application.S
 // returned unchanged so structured clients see the same pull plan or result.
 func registerMCPAppPullTool(server *mcp.Server, store application.Store) {
 	mcp.AddTool(server, machineMCPTool("app.pull", "Safely pull selected repository sources as a strict fast-forward to their upstream, inspecting working tree, branch, upstream and divergence first; with --up converges the application via apply only after every selected source is pulled.", true),
-		func(ctx context.Context, _ *mcp.CallToolRequest, input machineApplicationInput) (*mcp.CallToolResult, any, error) {
+		func(ctx context.Context, _ *mcp.CallToolRequest, input machineApplicationPullInput) (*mcp.CallToolResult, any, error) {
 			ctx = withTargetOverride(ctx, input.Target)
 			if err := authorizeCurrentMCPContext(ctx, "app.pull", input.Target, input.Environment, ""); err != nil {
 				return machineMCPFailure(err)
 			}
+			if err := applicationlifecycle.RequireApproval("app.pull", input.Approval); err != nil {
+				return machineMCPFailure(err)
+			}
 			opts := appPullOptions{
+				Components:   machinePullComponents(input.Components),
+				Up:           input.Up,
 				OutputFormat: outputJSON,
 			}
 			outBuf, errOutBuf := &bytes.Buffer{}, &bytes.Buffer{}
@@ -105,6 +111,23 @@ func registerMCPAppPullTool(server *mcp.Server, store application.Store) {
 			}
 			return nil, machineResult, nil
 		})
+}
+
+// machinePullComponents normalizes the MCP component selection the same way the
+// CLI does: an empty selection pulls every selected repository source, while a
+// non-empty selection keeps only the given component sources. Whitespace-only
+// entries are dropped so a client that sends "" pulls everything.
+func machinePullComponents(components []string) []string {
+	if len(components) == 0 {
+		return nil
+	}
+	filtered := make([]string, 0, len(components))
+	for _, component := range components {
+		if strings.TrimSpace(component) != "" {
+			filtered = append(filtered, component)
+		}
+	}
+	return filtered
 }
 
 type machinePersesLifecycleInput struct {

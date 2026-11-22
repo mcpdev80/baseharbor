@@ -135,8 +135,13 @@ func ResolveSourcePullPlan(ctx context.Context, manifestPath string, model Sourc
 
 // ApplySourcePull performs a strict fast-forward on every repository in the
 // plan. It is applyable-checked by the caller: it refuses to run when the plan
-// is not applyable and mutates nothing when any repository fails, so a partial
-// failure never leaves a half-pulled selection. checkOnly inspects only.
+// is not applyable. Repositories are fast-forwarded sequentially, so an
+// earlier repository can advance before a later repository's fast-forward
+// fails; the aggregate result then marks the changed and the failed repositories
+// individually and stays unsuccessful, so --up never runs on a partially pulled
+// selection. There is no cross-repository rollback: a changed repository is
+// left as-is and can be retried by running the pull again. checkOnly inspects
+// only.
 func ApplySourcePull(ctx context.Context, plan SourcePullPlan, checkOnly bool) (SourcePullResult, error) {
 	if plan.SchemaVersion != SourcePullSchemaVersion {
 		return SourcePullResult{}, fmt.Errorf("invalid source pull plan schema %q", plan.SchemaVersion)

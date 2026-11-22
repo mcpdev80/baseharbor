@@ -143,9 +143,13 @@ func TestSourcePullNoGitBlocksNegative(t *testing.T) {
 	}
 }
 
-// TestSourcePullPartialFailureStaysUnsuccessful proves one clean source and one
-// dirty source yields a failed result: the clean source was updated but the
-// overall pull is not successful, so --up must never run.
+// TestSourcePullPartialFailureStaysUnsuccessful proves that a selection with a
+// blocker (a dirty working tree) is not applyable: ApplySourcePull returns the
+// plan unchanged without fast-forwarding any repository, and the result is
+// unsuccessful, so --up must never run. It does not exercise runtime
+// partial application; see TestSourcePullApplyTimePartialFailureRunsOnce
+// for the case where an earlier repository fast-forwards before a later one
+// fails.
 func TestSourcePullPartialFailureStaysUnsuccessful(t *testing.T) {
 	ctx := context.Background()
 	_, localA, peerA := createWorkspaceGitFixture(t)
@@ -196,6 +200,114 @@ func TestSourcePullPartialFailureStaysUnsuccessful(t *testing.T) {
 	}
 	if !result.SourcePullHasFailure() {
 		t.Fatalf("result must report a failure")
+	}
+}
+
+// TestSourcePullApplyTimePartialFailureRunsOnce proves that when a repository
+// fast-forwards successfully but a later repository's fast-forward fails, the
+// aggregate result marks the changed and the failed repositories individually,
+// stays unsuccessful so --up never runs, and no cross-repository rollback
+// occurs: the changed repository is left advanced and the failed repository is
+// left as-is. This is the runtime partial-update path, distinct from the
+// preflight-blocker path in TestSourcePullPartialFailureStaysUnsuccessful.
+func TestSourcePullApplyTimePartialFailureRunsOnce(t *testing.T) {
+	ctx := context.Background()
+	_, localA, peerA := createWorkspaceGitFixture(t)
+	_, localB, peerB := createWorkspaceGitFixture(t)
+
+	// api-source: clean and strictly behind its upstream, so it applies.
+	if err := os.WriteFile(filepath.Join(peerA, "remote.txt"), []byte("remote\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitTest(t, peerA, "add", "remote.txt")
+	gitTest(t, peerA, "commit", "-m", "remote")
+	gitTest(t, peerA, "push", "origin", "main")
+
+	// web-source: advance its upstream to a new revision.
+	if err := os.WriteFile(filepath.Join(peerB, "remote2.txt"), []byte("remote2\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitTest(t, peerB, "add", "remote2.txt")
+	gitTest(t, peerB, "commit", "-m", "remote2")
+	gitTest(t, peerB, "push", "origin", "main")
+
+	model := SourceModel{
+		SchemaVersion: SourceModelVersion,
+		Application:   "demo",
+		Sources: []SourceDefinition{
+			{ID: "api-source", Type: SourceRepository, Repository: "file://api", Ref: "main"},
+			{ID: "web-source", Type: SourceRepository, Repository: "file://web", Ref: "main"},
+		},
+		Components: []ComponentSource{
+			{Component: "api", Source: "api-source"},
+			{Component: "web", Source: "web-source"},
+		},
+	}
+	mapping := WorkspaceMapping{
+		SchemaVersion: WorkspaceMappingVersion,
+		Application:   "demo",
+		Sources: map[string]string{
+			"api-source": localA,
+			"web-source": localB,
+		},
+	}
+	plan, err := ResolveSourcePullPlan(ctx, "", model, mapping, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !plan.Applyable {
+		t.Fatalf("both sources must be applyable preflight: %#v", plan)
+	}
+	// Capture the web-source target before introducing a local commit that makes
+	// localB HEAD no longer an ancestor of that target; the fast-forward then
+	// fails at apply time even though api-source already advances.
+	webTarget := plan.Repositories[1].TargetRevision
+	webBefore := gitRev(t, localB)
+	gitTest(t, localB, "commit", "--allow-empty", "-m", "local drift")
+	if got := gitRev(t, localB); got == webBefore {
+		t.Fatal("expected local web-source HEAD to advance after the drift commit")
+	}
+	apiBefore := gitRev(t, localA)
+	webBefore := gitRev(t, localB)
+
+	result, err := ApplySourcePull(ctx, plan, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if result.Successful {
+		t.Fatalf("partial runtime failure must report unsuccessful: %#v", result)
+	}
+	if !result.SourcePullHasFailure() {
+		t.Fatalf("result must report a failure")
+	}
+	var (
+		apiRepo *SourcePullRepository
+		webRepo *SourcePullRepository
+	)
+	for i := range result.Repositories {
+		switch result.Repositories[i].Source {
+		case "api-source":
+			apiRepo = &result.Repositories[i]
+		case "web-source":
+			webRepo = &result.Repositories[i]
+		}
+	}
+	if apiRepo == nil || webRepo == nil {
+		t.Fatalf("result must contain both repositories: %#v", result.Repositories)
+	}
+	// api-source fast-forwarded and is now current; web-source failed and is left as-is.
+	if apiRepo.State != SourcePullCurrent || !apiRepo.Updated {
+		t.Fatalf("api-source must be updated and current: %#v", apiRepo)
+	}
+	if got := gitRev(t, localA); got == apiBefore {
+		t.Fatalf("api-source HEAD did not advance: %s", got)
+	}
+	if webRepo.State == SourcePullCurrent {
+		t.Fatalf("web-source must not be marked current: %#v", webRepo)
+	}
+	if got := gitRev(t, localB); got != webBefore {
+		t.Fatalf("web-source was mutated by the failed pull: before=%s after=%s", webBefore, got)
 	}
 }
 
