@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mcpdev80/baseharbor/internal/identity"
 	"github.com/mcpdev80/baseharbor/internal/operatorauth"
 	"github.com/mcpdev80/baseharbor/internal/orgconfig"
 )
@@ -20,17 +19,7 @@ func runWithIOAsTestOperator(ctx context.Context, args []string, out, errOut io.
 }
 
 func testOperatorContext(ctx context.Context) context.Context {
-	if _, ok := operatorauth.PrincipalFromContext(ctx); ok {
-		ctx = operatorauth.WithMembershipProviderIfAbsent(ctx, &readGrantingMembershipProvider{})
-		return operatorauth.WithEnforcementIfAbsent(ctx)
-	}
-	principal := &identity.Principal{
-		Issuer: "https://issuer.test", Subject: "cli-test-operator",
-		IssuerVerified: true, Groups: []string{"editor"},
-	}
-	ctx = operatorauth.WithVerifiedPrincipal(ctx, principal)
-	ctx = operatorauth.WithMembershipProviderIfAbsent(ctx, &readGrantingMembershipProvider{})
-	return operatorauth.WithEnforcementIfAbsent(ctx)
+	return operatorauth.WithVerifiedTestOperator(ctx)
 }
 
 // testIsolatedSelectionContext neutralises the process-wide selection state a
