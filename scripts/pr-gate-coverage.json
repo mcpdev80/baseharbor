@@ -1852,7 +1852,7 @@
       ]
     },
     {
-      "id": "cmd.baha.control.plane.single.native.ci.test.go",
+      "id": "source.cmd_baha_control_plane_single_native_ci_test_go",
       "path": "cmd/baha/control_plane_single_native_ci_test.go",
       "runtime_specific": true,
       "surfaces": [
