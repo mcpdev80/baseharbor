@@ -78,6 +78,18 @@ class NativeGatePlanTests(unittest.TestCase):
             ['cmd/baha/future_unclassified.go'], coverage)
         self.assertEqual(matrix, {'include': []})
 
+    def test_ci_native_pr_gate_script_selects_both_data_capabilities_gates(self):
+        # Card 0428-242 follow-up: scripts/ci-native-pr-gate.sh is the CI runner
+        # that executes the native gate. A change to it is a ci-executor change
+        # and must select the native data-capabilities gates for both runtimes,
+        # otherwise card 0428-237 (#1770) leaves its native matrix SKIPPED.
+        matrix = planner.resolve_matrix(
+            ['scripts/ci-native-pr-gate.sh'], coverage)
+        self.assertEqual(matrix, {'include': [
+            {'id': 'native/docker/data-capabilities', 'runtime': 'docker'},
+            {'id': 'native/podman/data-capabilities', 'runtime': 'podman'},
+        ]})
+
 
 if __name__ == '__main__':
     unittest.main()
