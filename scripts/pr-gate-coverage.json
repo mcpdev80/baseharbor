@@ -3068,7 +3068,8 @@
         "cmd.baha.test_operator_context_test",
         "cmd.baha.ci_integration_operator_enabled",
         "cmd.baha.ci_integration_operator_disabled",
-        "cmd.baha.ci_integration_operator_enabled_test"
+        "cmd.baha.ci_integration_operator_enabled_test",
+        "cmd.baha.runtime_integration_test_support_test"
       ],
       "selection_scope": "focused"
     },
@@ -3088,7 +3089,8 @@
         "cmd.baha.test_operator_context_test",
         "cmd.baha.ci_integration_operator_enabled",
         "cmd.baha.ci_integration_operator_disabled",
-        "cmd.baha.ci_integration_operator_enabled_test"
+        "cmd.baha.ci_integration_operator_enabled_test",
+        "cmd.baha.runtime_integration_test_support_test"
       ],
       "selection_scope": "focused"
     },
@@ -3103,7 +3105,8 @@
         "cmd.baha.app_init_wizard_test",
         "cmd.baha.app_perses_host_containers_cli_test",
         "cmd.baha.app_perses_infra_dashboards_cli_test",
-        "cmd.baha.repository_up_init_test"
+        "cmd.baha.repository_up_init_test",
+        "cmd.baha.runtime_integration_test_support_test"
       ],
       "selection_scope": "focused"
     },
@@ -3118,7 +3121,8 @@
         "cmd.baha.app_init_wizard_test",
         "cmd.baha.app_perses_host_containers_cli_test",
         "cmd.baha.app_perses_infra_dashboards_cli_test",
-        "cmd.baha.repository_up_init_test"
+        "cmd.baha.repository_up_init_test",
+        "cmd.baha.runtime_integration_test_support_test"
       ],
       "selection_scope": "focused"
     },
