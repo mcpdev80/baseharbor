@@ -1471,6 +1471,12 @@
       "runtime_specific": true
     },
     {
+      "id": "source.cmd.baha.mcp.go",
+      "path": "cmd/baha/mcp.go",
+      "surfaces": ["gate.mcp"],
+      "runtime_specific": true
+    },
+    {
       "id": "source.workflow.pre.release",
       "path": ".github/workflows/pre-release.yml",
       "surfaces": ["source.gate.integration.docker.coreless.lifecycle", "source.gate.integration.podman.coreless.lifecycle"],
@@ -1785,6 +1791,60 @@
     {
       "id": "cmd.baha.test_operator_context_test",
       "path": "cmd/baha/test_operator_context_test.go",
+      "runtime_specific": true,
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
+      "id": "cmd.baha.app.env.test.go",
+      "path": "cmd/baha/app_env_test.go",
+      "runtime_specific": true,
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
+      "id": "cmd.baha.app.export.command.test.go",
+      "path": "cmd/baha/app_export_command_test.go",
+      "runtime_specific": true,
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
+      "id": "cmd.baha.target.definition.change.test.go",
+      "path": "cmd/baha/target_definition_change_test.go",
+      "runtime_specific": true,
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
+      "id": "internal.operatorauth.test.operator.go",
+      "path": "internal/operatorauth/test_operator.go",
+      "runtime_specific": true,
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
+      "id": "cmd.baha.target.go",
+      "path": "cmd/baha/target.go",
+      "runtime_specific": true,
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
+      "id": "cmd.baha.target.runtime.access.provider.test.go",
+      "path": "cmd/baha/target_runtime_access_provider_test.go",
       "runtime_specific": true,
       "surfaces": [
         "source.gate.atomic.docker.data.capabilities",
