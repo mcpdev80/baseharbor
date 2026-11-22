@@ -349,6 +349,45 @@ func TestCIIntegrationOperatorAllowsOnlyGuidedDeveloperDomainAndAppNew(t *testin
 	}
 }
 
+// TestCIIntegrationOperatorAllowsOnlyAppNewInSelectedDataGates covers the
+// data-capabilities fixture's create-only source-generation step. The
+// exception is exact to the canonical app new command and remains unavailable
+// in unrelated selected gates; deployment consent still belongs to Core.
+func TestCIIntegrationOperatorAllowsOnlyAppNewInSelectedDataGates(t *testing.T) {
+	t.Setenv("DEMO_ATOMIC_GATE", "1")
+	for _, runtime := range []string{"docker", "podman"} {
+		t.Run(runtime, func(t *testing.T) {
+			t.Setenv("BASEHARBOR_TEST_RUNTIME", runtime)
+			t.Setenv("GATE", "data-capabilities")
+			t.Setenv("BASEHARBOR_DEMO_OPERATOR_GATE", "data-capabilities")
+			target := configureIsolatedEmptyRuntimeTarget(t, "atomic-"+runtime+"-data-capabilities", runtime)
+			if err := registerInstallationForTarget(t, target.Name); err != nil {
+				t.Fatalf("register %s data-capabilities Core fixture: %v", runtime, err)
+			}
+			t.Setenv("BASEHARBOR_TARGET", target.Name)
+			if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), []string{"app", "new"})); !ok {
+				t.Fatal("exact data-capabilities app new did not receive its CI operator")
+			}
+			for _, args := range [][]string{{"app", "new", "--yes"}, {"app", "new", "extra"}, {"app", "edit"}} {
+				if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), args)); ok {
+					t.Errorf("noncanonical or unrelated app command %v unexpectedly received the CI operator", args)
+				}
+			}
+		})
+	}
+	t.Setenv("BASEHARBOR_TEST_RUNTIME", "docker")
+	t.Setenv("GATE", "lifecycle")
+	t.Setenv("BASEHARBOR_DEMO_OPERATOR_GATE", "lifecycle")
+	lifecycle := configureIsolatedEmptyRuntimeTarget(t, "atomic-docker-lifecycle", "docker")
+	if err := registerInstallationForTarget(t, lifecycle.Name); err != nil {
+		t.Fatalf("register lifecycle Core fixture: %v", err)
+	}
+	t.Setenv("BASEHARBOR_TARGET", lifecycle.Name)
+	if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), []string{"app", "new"})); ok {
+		t.Fatal("data-capabilities app-new exception escaped into another selected gate")
+	}
+}
+
 // TestCIIntegrationOperatorAllowsFootprintShowInSelectedDataGates is the card
 // 0428-241 Option-A regression: the selected data-capabilities and
 // core-capability gates run the read-only `app footprint show -o json`

@@ -123,10 +123,10 @@ func ciIntegrationManagedLocalGateReason(args []string, target deployment.Resolv
 	if !managedWorkload && gate == "guided" && ciIntegrationGuidedDevDomain(args) {
 		managedWorkload = true
 	}
-	// Guided regression coverage creates and edits disposable manifests through
-	// the interactive `app new` and `app edit` wizards. Keep those mutations
-	// limited to their exact canonical commands on the selected guided fixture.
-	if !managedWorkload && gate == "guided" && ciIntegrationGuidedAppNew(args) {
+	// Guided and data-capabilities regression coverage create disposable
+	// manifests through the interactive `app new` wizard. Keep this exception
+	// limited to its exact canonical command on those selected fixtures.
+	if !managedWorkload && (gate == "guided" || gate == "data-capabilities") && ciIntegrationGuidedAppNew(args) {
 		managedWorkload = true
 	}
 	if !managedWorkload && gate == "guided" && ciIntegrationGuidedAppEdit(args) {
