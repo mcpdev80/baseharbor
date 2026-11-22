@@ -30,7 +30,7 @@ func TestCore921ActualCommandTreeHelpAndReadOnlyEntry(t *testing.T) {
 	} {
 		output.Reset()
 		errors.Reset()
-		if err := runWithIO(context.Background(), path, &output, &errors); err != nil {
+		if err := runWithIOAsTestOperator(context.Background(), path, &output, &errors); err != nil {
 			t.Fatalf("%v --help: %v, %s", path, err, errors.String())
 		}
 		if !strings.Contains(strings.ToLower(output.String()), path[len(path)-2]) &&
@@ -411,7 +411,7 @@ func core921MCPEditConsentAndPartialExecutionThroughSDK(t *testing.T) {
 			server := mcp.NewServer(&mcp.Implementation{Name: "edit-contract-fixture", Version: "v1"}, nil)
 			registerMCPAppEditToolWithAuthorities(server, application.DefaultStore(), func(application.Store, []string) appEditAuthorities { return authorities })
 			serverTransport, clientTransport := mcp.NewInMemoryTransports()
-			serverSession, err := server.Connect(ctx, serverTransport, nil)
+			serverSession, err := server.Connect(testOperatorContext(ctx), serverTransport, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -570,7 +570,7 @@ func core921PendingPartialMCPReportsFailure(t *testing.T) {
 		server := mcp.NewServer(&mcp.Implementation{Name: "edit-contract-fixture", Version: "v1"}, nil)
 		registerMCPAppEditToolWithAuthorities(server, application.DefaultStore(), func(application.Store, []string) appEditAuthorities { return authorities })
 		serverTransport, clientTransport := mcp.NewInMemoryTransports()
-		serverSession, err := server.Connect(ctx, serverTransport, nil)
+		serverSession, err := server.Connect(testOperatorContext(ctx), serverTransport, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -812,7 +812,7 @@ func appEditBootstrapStdioClient(t *testing.T, server *mcp.Server) *mcp.ClientSe
 	t.Helper()
 	inReader, inWriter := io.Pipe()
 	outReader, outWriter := io.Pipe()
-	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(testOperatorContext(t.Context()), 10*time.Second)
 	done := make(chan error, 1)
 	go func() {
 		done <- server.Run(ctx, &drainingMCPTransport{reader: inReader, writer: outWriter, timeout: time.Second})

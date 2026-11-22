@@ -9,7 +9,40 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/tenancy"
 )
 
-func TestAuthorizeMachineOperationTrustedLocalAndManagedFailClosed(t *testing.T) {
+func TestWithEnforcementIfAbsentPreservesAuthenticatedAuthorizationState(t *testing.T) {
+	operation, ok := machine.OperationByID("destroy")
+	if !ok {
+		t.Fatal("destroy operation is not registered")
+	}
+	principal := &identity.Principal{Issuer: "https://issuer.example", Subject: "operator-a", IssuerVerified: true, Groups: []string{"editor"}}
+	ctx := WithVerifiedPrincipal(context.Background(), principal)
+	ctx = WithMembershipProvider(ctx, claimStub{memberships: []tenancy.Membership{{TenantID: "tenant-a", Role: "editor"}}})
+	decision, err := AuthorizeMachineOperation(ctx, AuthorizationRequest{
+		Operation: operation,
+		Context:   OperationContext{Application: "demo", Environment: "prod", Target: "prod-eu"},
+	})
+	if err != nil || !decision.Allowed {
+		t.Fatalf("setup authorization failed: decision=%#v err=%v", decision, err)
+	}
+
+	preserved := WithEnforcementIfAbsent(ctx)
+	gotPrincipal, ok := PrincipalFromContext(preserved)
+	if !ok || gotPrincipal.Subject != principal.Subject {
+		t.Fatalf("authenticated principal was discarded: %#v, ok=%t", gotPrincipal, ok)
+	}
+	gotDecision, ok := AuthorizationDecisionFromContext(preserved)
+	if !ok || !gotDecision.Allowed || gotDecision.Actor.Subject != principal.Subject {
+		t.Fatalf("authorization decision was discarded: %#v, ok=%t", gotDecision, ok)
+	}
+	if !EnforcementEnabled(preserved) {
+		t.Fatal("existing enforcement state was not preserved")
+	}
+	if added := WithEnforcementIfAbsent(context.Background()); !EnforcementEnabled(added) {
+		t.Fatal("missing enforcement state was not enabled")
+	}
+}
+
+func TestAuthorizeMachineOperationNameOnlyPolicyFailsClosed(t *testing.T) {
 	operation, ok := machine.OperationByID("apply")
 	if !ok {
 		t.Fatal("apply operation is not registered")
@@ -20,18 +53,15 @@ func TestAuthorizeMachineOperationTrustedLocalAndManagedFailClosed(t *testing.T)
 		Operation: operation,
 		Context:   OperationContext{Application: "demo", Environment: "dev", Target: "local"},
 	})
-	if err != nil {
-		t.Fatalf("dev authorization failed: %v", err)
+	if err == nil {
+		t.Fatalf("environment name alone unexpectedly enabled trusted-local authorization: %#v", dev)
 	}
-	if !dev.Allowed || dev.Actor.Mode != "trusted-local" || dev.Actor.Subject != "trusted-local" {
-		t.Fatalf("unexpected dev decision: %#v", dev)
-	}
-	if dev.Safety != machine.SafetyMutating || !dev.PolicyRequired {
-		t.Fatalf("machine safety metadata was not preserved: %#v", dev)
+	if dev.Allowed || dev.ReasonCode != "operator_authentication_required" {
+		t.Fatalf("dev name did not fail closed: %#v", dev)
 	}
 	storedDev, ok := AuthorizationDecisionFromContext(devCtx)
-	if !ok || storedDev.Actor.Subject != "trusted-local" || !storedDev.Allowed {
-		t.Fatalf("trusted-local decision was not retained: %#v", storedDev)
+	if !ok || storedDev.Allowed || storedDev.ReasonCode != "operator_authentication_required" {
+		t.Fatalf("name-only denial was not retained: %#v", storedDev)
 	}
 
 	managedCtx := WithEnforcement(context.Background())

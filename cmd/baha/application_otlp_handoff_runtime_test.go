@@ -42,7 +42,7 @@ func TestNativeOTLPHandoffFixtureAuthoredIntent(t *testing.T) {
 	}
 	var output bytes.Buffer
 	ctx := machineNoninteractiveContext(t.Context())
-	if err := runWithIO(ctx, []string{"app", "init", "--input", "tls_mode=local", "--yes", "--json"}, &output, &output); err != nil {
+	if err := runWithIOAsTestOperator(ctx, []string{"app", "init", "--input", "tls_mode=local", "--yes", "--json"}, &output, &output); err != nil {
 		t.Fatalf("actual native fixture initialization failed: %v\n%s", err, output.String())
 	}
 	resolved, err := resolveApplication(ctx, application.Store{}, nil, "plan")
@@ -107,12 +107,13 @@ func TestManagedRegisteredOTLPNativeConsumerHandoff(t *testing.T) {
 		}
 	}
 	var output bytes.Buffer
-	if err := runWithIO(ctx, []string{"app", "init", "--input", "tls_mode=local", "--yes", "--json"}, &output, &output); err != nil {
+	if err := runWithIOAsTestOperator(ctx, []string{"app", "init", "--input", "tls_mode=local", "--yes", "--json"}, &output, &output); err != nil {
 		t.Fatal("initialize native OTLP source", err)
 	}
 	t.Cleanup(func() {
 		cleanup, stop := context.WithTimeout(machineNoninteractiveContext(context.Background()), 3*time.Minute)
 		defer stop()
+		cleanup = testOperatorContext(cleanup)
 		if err := approvedNativeFixtureCleanup(t, cleanup, &bytes.Buffer{}); err != nil {
 			t.Errorf("owned OTLP fixture cleanup: %v", err)
 		}
@@ -141,7 +142,7 @@ func TestManagedRegisteredOTLPNativeConsumerHandoff(t *testing.T) {
 	}
 	for _, consent := range []*application.ProviderChangeConsent{nil, {PlanID: impact.PlanID, First: true}, {PlanID: "stale", First: true, Second: true}} {
 		var rejected bytes.Buffer
-		if err := runWithIO(withProviderChangeConsent(ctx, consent), []string{"app", "apply", "--skip-memory-preflight"}, &rejected, &rejected); err == nil {
+		if err := runWithIOAsTestOperator(withProviderChangeConsent(ctx, consent), []string{"app", "apply", "--skip-memory-preflight"}, &rejected, &rejected); err == nil {
 			t.Fatal("native replacement bypassed current confirmations")
 		}
 		assertNativeOTLPMaterialSnapshot(t, before)
@@ -182,7 +183,7 @@ func runNativeOTLPConsumer(t *testing.T, ctx context.Context, payload, actor str
 	t.Helper()
 
 	var out bytes.Buffer
-	if err := runWithIO(ctx, []string{"app", "exec", "api", "python", "-c", nativeOTLPConsumerPython, payload, actor}, &out, &out); err != nil {
+	if err := runWithIOAsTestOperator(ctx, []string{"app", "exec", "api", "python", "-c", nativeOTLPConsumerPython, payload, actor}, &out, &out); err != nil {
 		t.Fatalf("actual native OTLP consumer failed in %s: %v\n%s", actor, err, out.String())
 	}
 	if !strings.Contains(out.String(), "native OTLP consumer accepted") {

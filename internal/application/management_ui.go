@@ -203,13 +203,14 @@ func VerifyApplicationManagementUIChecks(ctx context.Context, m Manifest, files 
 	}
 
 	checks := []struct {
-		enabled     bool
-		name        string
-		portKey     string
-		dir         string
-		path        string
-		usernameKey string
-		passwordKey string
+		enabled               bool
+		name                  string
+		portKey               string
+		dir                   string
+		path                  string
+		usernameKey           string
+		passwordKey           string
+		datasourceProvisioned bool
 	}{
 		{
 			enabled: m.Services.SQLManagementUI && !UsesSharedPostgreSQL(m),
@@ -229,13 +230,14 @@ func VerifyApplicationManagementUIChecks(ctx context.Context, m Manifest, files 
 	if m.Services.MessagingManagementUI {
 		for _, instance := range RabbitMQInstanceNames(m) {
 			checks = append(checks, struct {
-				enabled     bool
-				name        string
-				portKey     string
-				dir         string
-				path        string
-				usernameKey string
-				passwordKey string
+				enabled               bool
+				name                  string
+				portKey               string
+				dir                   string
+				path                  string
+				usernameKey           string
+				passwordKey           string
+				datasourceProvisioned bool
 			}{
 				enabled:     true,
 				name:        rabbitmqUIRouteName(instance),
@@ -251,13 +253,14 @@ func VerifyApplicationManagementUIChecks(ctx context.Context, m Manifest, files 
 	if m.Services.DocumentDatabaseManagementUI {
 		for _, instance := range DocumentDatabaseInstanceNames(m) {
 			checks = append(checks, struct {
-				enabled     bool
-				name        string
-				portKey     string
-				dir         string
-				path        string
-				usernameKey string
-				passwordKey string
+				enabled               bool
+				name                  string
+				portKey               string
+				dir                   string
+				path                  string
+				usernameKey           string
+				passwordKey           string
+				datasourceProvisioned bool
 			}{
 				enabled:     true,
 				name:        mongodbUIRouteName(instance),
@@ -272,13 +275,14 @@ func VerifyApplicationManagementUIChecks(ctx context.Context, m Manifest, files 
 
 	if m.Services.Perses {
 		checks = append(checks, struct {
-			enabled     bool
-			name        string
-			portKey     string
-			dir         string
-			path        string
-			usernameKey string
-			passwordKey string
+			enabled               bool
+			name                  string
+			portKey               string
+			dir                   string
+			path                  string
+			usernameKey           string
+			passwordKey           string
+			datasourceProvisioned bool
 		}{
 			enabled: true,
 			name:    "perses",
@@ -287,6 +291,11 @@ func VerifyApplicationManagementUIChecks(ctx context.Context, m Manifest, files 
 			// Perses health probe, so reachability stays unverified. The check
 			// must never report "ready"/"verified" for this surface.
 			dir: PersesManagementUIPath(files),
+			// The datasource provisioning witness (0428-083): a selected surface
+			// stays configured_unverified, and the state is asserted only when
+			// the Prometheus datasource artifacts are actually provisioned
+			// under the Perses provider projection (the mount sources).
+			datasourceProvisioned: persesDatasourceArtifactsPresentForRender(files),
 		})
 	}
 
@@ -309,8 +318,13 @@ func VerifyApplicationManagementUIChecks(ctx context.Context, m Manifest, files 
 			// Perses has no health probe in this Core; a selected surface is
 			// "configured_unverified", never "ready"/"verified". Surface the
 			// unverified state as a degraded (non-ready) check without asserting
-			// reachability that this Core cannot observe.
+			// reachability that this Core cannot observe. Fail-closed
+			// (0428-083): when the Prometheus datasource never materialized,
+			// the state is not even configured — report that explicitly.
 			if check.name == "perses" {
+				if !check.datasourceProvisioned {
+					return errors.New("perses management UI is not configured: its Prometheus datasource is not provisioned (materialize the datasource before starting Perses)")
+				}
 				return fmt.Errorf("%s management UI is configured_unverified: no Perses health probe exists, reachability cannot be asserted", check.name)
 			}
 			policy, err := serviceaccess.Resolve(m.Environment, check.name, serviceaccess.AuthenticationNative)

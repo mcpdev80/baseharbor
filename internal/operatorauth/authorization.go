@@ -109,8 +109,11 @@ type MachineActorRef = machine.ActorRef
 type OperationContext = machine.OperationContext
 
 type AuthorizationRequest struct {
-	Operation machine.Operation
-	Context   OperationContext
+	Operation           machine.Operation
+	Context             OperationContext
+	EnvironmentID       string
+	TargetEnvironmentID string
+	ApplicationID       string
 }
 
 type AuthorizationDecision struct {
@@ -127,6 +130,18 @@ type AuthorizationDecision struct {
 }
 
 func AuthorizeMachineOperation(ctx context.Context, request AuthorizationRequest) (AuthorizationDecision, error) {
+	return authorizeMachineOperation(ctx, request, nil, false)
+}
+
+// AuthorizeMachineOperationWithLocalGrant applies the same policy as
+// AuthorizeMachineOperation, with an opaque grant for the local-runtime path.
+// The grant type is intentionally unexported: callers can only pass a value
+// returned by CheckLocalRuntimeGrant.
+func AuthorizeMachineOperationWithLocalGrant(ctx context.Context, request AuthorizationRequest, grant LocalOperationGrant) (AuthorizationDecision, error) {
+	return authorizeMachineOperation(ctx, request, grant, true)
+}
+
+func authorizeMachineOperation(ctx context.Context, request AuthorizationRequest, grant LocalOperationGrant, grantRequired bool) (AuthorizationDecision, error) {
 	operation := request.Operation
 	decision := AuthorizationDecision{
 		ContractVersion:      AuthorizationContractVersion,
@@ -147,6 +162,20 @@ func AuthorizeMachineOperation(ctx context.Context, request AuthorizationRequest
 		decision.Reason = "Machine operation metadata is required for authorization."
 		setAuthorizationDecision(ctx, decision)
 		return decision, machine.NewError(machine.ErrorValidationFailed, decision.Reason, "Use a registered BaseHarbor machine operation.", false)
+	}
+	grantValid := false
+	if grantRequired {
+		grantValid = localRuntimeGrantMatches(grant, request)
+		if !grantValid {
+			decision.ReasonCode = "local_runtime_grant_denied"
+			decision.Reason = "The local runtime grant is missing, mismatched, or already used."
+			setAuthorizationDecision(ctx, decision)
+			return decision, &machine.Error{
+				Code: machine.ErrorPolicyDenied, CauseCode: decision.ReasonCode,
+				Message: decision.Reason, Resource: operation.ID,
+				Next: "Repeat the local runtime check for this exact application and environment operation.",
+			}
+		}
 	}
 
 	principal, ok := PrincipalFromContext(ctx)
@@ -238,7 +267,7 @@ func AuthorizeMachineOperation(ctx context.Context, request AuthorizationRequest
 		setAuthorizationDecision(ctx, decision)
 		return decision, nil
 	}
-	if !ok && localRuntimeAuthorityMatches(ctx, request) {
+	if !ok && grantValid {
 		decision.Allowed = true
 		decision.Actor = MachineActorRef{Mode: "local-runtime", Subject: "local-runtime/" + decision.Context.Target}
 		setAuthorizationDecision(ctx, decision)
@@ -286,4 +315,49 @@ func machineOperationPermission(safety machine.SafetyClass) authorization.Permis
 	default:
 		return ""
 	}
+}
+
+// RequireHumanOperator enforces the human-authorization seam that separates
+// operator secret reveal from runtime/workload access. A verified operator
+// principal is mandatory; anything else — no principal (the local-runtime or
+// trusted-local paths that authorize ordinary application operations), an
+// unverified principal, or a principal that is not issuer-verified — fails
+// closed. This gate is scope-minimal and environment-agnostic: it is the same
+// check in managed and local/dev, so a bare runtime/trusted-local identity can
+// never satisfy a reveal while a verified operator can. It records the decision
+// under the secret.reveal machine op id so the human-authorization call is
+// traceable in the audit trail.
+func RequireHumanOperator(ctx context.Context) error {
+	principal, ok := PrincipalFromContext(ctx)
+	if !ok || principal == nil || !PrincipalsHaveVerifiedIdentity(principal) {
+		decision := AuthorizationDecision{
+			ContractVersion: AuthorizationContractVersion,
+			Operation:       "secret.reveal",
+			ReasonCode:      "operator_authentication_required",
+			Reason:          "A human secret reveal requires an authenticated BaseHarbor operator; the runtime/workload identity cannot satisfy it.",
+		}
+		setAuthorizationDecision(ctx, decision)
+		return machine.NewError(
+			machine.ErrorAuthenticationFailed,
+			decision.Reason,
+			"Authenticate the operator for the selected Target and environment, then repeat the reveal.",
+			false,
+		)
+	}
+	decision := AuthorizationDecision{
+		ContractVersion: AuthorizationContractVersion,
+		Operation:       "secret.reveal",
+		Allowed:         true,
+		Safety:          machine.SafetyReadOnly,
+		Actor:           MachineActorRef{Mode: "authenticated", Issuer: strings.TrimSpace(principal.Issuer), Subject: strings.TrimSpace(principal.Subject)},
+	}
+	setAuthorizationDecision(ctx, decision)
+	return nil
+}
+
+// PrincipalsHaveVerifiedIdentity reports whether the principal carries a
+// verified issuer signature. A workstation-mtls enrollment without a verified
+// issuer is not operator authentication for reveal.
+func PrincipalsHaveVerifiedIdentity(principal *identity.Principal) bool {
+	return principal != nil && principal.IssuerVerified
 }

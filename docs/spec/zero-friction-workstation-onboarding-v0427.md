@@ -130,8 +130,10 @@ Noninteractive runs return the structured challenge without retrying. Run `statu
 - Docker and Podman native paths must verify Core READY, invitation, workstation
   import, and remote app plan/apply/status/change/destroy. Only owned test
   resources may be removed.
-- CI is evidence for its exact source head; it does not replace live
-  workstation-to-Core acceptance.
+- The Docker and Podman native CI gates on the exact source head are the
+  end-to-end workstation-to-Core acceptance for this contract. A physical VM
+  smoke is optional for short diagnostics and is not a separate acceptance
+  prerequisite.
 
 ## Implementation boundaries
 

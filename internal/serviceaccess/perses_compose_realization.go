@@ -211,22 +211,30 @@ func ReadPersesGatewayPlan(stateDir string) (PersesGatewayPlan, error) {
 		}
 	} else if !validPersesBindAddress(record.UpstreamBindAddress) {
 		return PersesGatewayPlan{}, fmt.Errorf("the persisted Perses gateway plan bind %q is neither a loopback literal nor a service address", record.UpstreamBindAddress)
-	} else if upstreamHost := persesPersistedUpstreamHost(record.Spec.Upstream); upstreamHost != "" && strings.EqualFold(upstreamHost, record.UpstreamBindAddress) {
+	} else if upstreamHost := persesPersistedUpstreamHost(record.Spec.Upstream); upstreamHost != "" && upstreamHost != "127.0.0.1" && strings.EqualFold(upstreamHost, record.UpstreamBindAddress) {
 		// A service-name bind whose upstream names the very same host is the
-		// namespace-local pairing BuildPersesGateway verified at plan time
-		// (a shared-namespace plan never names the bind in its upstream: the
-		// gateway reaches the peer through the backend network alias).
+		// namespace-local pairing BuildPersesGateway verified at plan time: the
+		// peer lives on a reachable backend network and the gateway routes to
+		// that name. The shared-namespace form binds the namespace loopback and
+		// routes to that same loopback literal, so a loopback-upstream pairing
+		// is never the namespace-local form.
 		shared = false
 	}
-	// The topology must be self-consistent: the namespace-local form binds
-	// exactly the loopback host its upstream names; the shared-namespace form
-	// binds the loopback and routes to a service address.
+	// The topology must be self-consistent. The namespace-local form binds the
+	// loopback host its upstream names and reaches the peer over a routable
+	// backend alias. The shared-namespace form binds the loopback of the
+	// namespace its gateway joins and routes to that SAME loopback, because
+	// Perses has no network of its own (network_mode joins the gateway
+	// namespace) and the deployment-scoped service alias would otherwise
+	// resolve to the gateway itself. The two forms are distinguished by the
+	// bind: the namespace-local form binds a service name, the shared form
+	// binds a loopback literal.
 	upstreamHost := persesPersistedUpstreamHost(record.Spec.Upstream)
 	if !record.SharedGatewayNetwork && !strings.EqualFold(upstreamHost, record.UpstreamBindAddress) {
 		return PersesGatewayPlan{}, fmt.Errorf("the persisted Perses gateway plan routes to upstream host %q but binds %q: the peer can never be reached", upstreamHost, record.UpstreamBindAddress)
 	}
-	if record.SharedGatewayNetwork && strings.EqualFold(upstreamHost, record.UpstreamBindAddress) {
-		return PersesGatewayPlan{}, fmt.Errorf("the persisted Perses gateway plan declares the shared-namespace topology while its upstream and bind name the same host: that pairing is the namespace-local form")
+	if record.SharedGatewayNetwork && strings.EqualFold(upstreamHost, record.UpstreamBindAddress) && validPersesBindAddress(record.UpstreamBindAddress) && !isLoopbackLiteral(record.UpstreamBindAddress) {
+		return PersesGatewayPlan{}, fmt.Errorf("the persisted Perses gateway plan binds a service name %q while declaring the shared-namespace topology: that pairing is the namespace-local form", record.UpstreamBindAddress)
 	}
 	if record.SharedGatewayNetwork != shared {
 		return PersesGatewayPlan{}, fmt.Errorf("the persisted Perses gateway plan declares shared=%v for bind %q, which does not match", record.SharedGatewayNetwork, record.UpstreamBindAddress)
@@ -259,18 +267,17 @@ func persesPersistedUpstreamHost(raw string) string {
 // composition and the deployment tests from drifting apart.
 func PersesServiceMounts() []string {
 	return []string{
-		// Directory binds for both: a file bind under /etc/perses would make
-		// dockerd create the missing parent (/etc/perses/secrets) root-owned,
-		// and the distroless nonroot server could not read through it. The
-		// config dir must carry its own directory name as the bind source
-		// (a bare "providers" bind would shadow every other managed UI below
-		// it inside /etc/perses); its non-contract files (the legacy TLS
-		// projection) stay inside the tree. Each directory bind owns its
-		// subtree, so the two never shadow each other, and the tmpfs
-		// overlays (/etc/perses/database, the plugins dir) still win on top.
-		// The key lives under a dedicated, minimal directory — never the
-		// whole runtime root.
-		"./providers/management-ui/perses:" + PersesConfigMountDir + ":ro",
+		// The configuration is mounted FILE-wise at its contract path
+		// (PersesConfigContainerPath) rather than the whole /etc/perses
+		// directory: a directory bind of /etc/perses would shadow the
+		// /etc/perses/database mountpoint. Mounting the single config file
+		// read-only keeps /etc/perses writable so the tmpfs mountpoint for the
+		// database folder and the named-volume mountpoint for the plugin
+		// extraction target can both be created. Each bind owns its subtree,
+		// so the two never shadow each other. The database tmpfs and the plugin
+		// named volume are emitted separately (writePersesGatewayComposeServices),
+		// not here, because they are not file binds.
+		"./providers/management-ui/perses/config.yaml:" + PersesConfigContainerPath + ":ro",
 		PersesEncryptionKeyComposeBindDir + ":" + PersesEncryptionKeyMountDir + ":ro",
 		PersesPersistenceVolumeName + ":/persistence",
 		// The Tempo datasource access boundary (0428-091 P1/P2): the Perses
@@ -407,6 +414,18 @@ func persesComposeServices(ctx context.Context, plan PersesGatewayPlan, files HT
 		// nothing can route to Perses from outside its own namespace.
 		b.WriteString("    networks: []\n")
 	}
+	// The database folder /etc/perses/database does not exist as a directory
+	// inside the pinned, distroless Perses image, and the container rootfs is
+	// read-only. The pinned Perses release extracts the shipped plugin archives
+	// into /etc/perses/plugins at startup, so that path is the writable target
+	// the extraction needs: a deployment-scoped named volume replaces the
+	// original tmpfs there, writable and owned by the deployment, never a host
+	// bind. Perses never executes from it, so it keeps the isolation the tmpfs
+	// motivated. The database folder is writable via a tmpfs of its own: the
+	// mountpoint is created by runc even though the image has no such
+	// directory, and the file-database folder is ephemeral per deployment. The
+	// /tmp tmpfs is kept unchanged: /tmp exists in every image, so its
+	// mountpoint is safe.
 	b.WriteString("    tmpfs:\n")
 	b.WriteString("      - /tmp:rw,noexec,nosuid,nodev\n")
 	b.WriteString("      - /etc/perses/database:rw,noexec,nosuid,nodev\n")
@@ -469,6 +488,13 @@ func persesComposeServices(ctx context.Context, plan PersesGatewayPlan, files HT
 	for _, mount := range mounts {
 		fmt.Fprintf(&b, "      - %s\n", strconv.Quote(mount))
 	}
+	// The shipped plugin archives extract into /etc/perses/plugins at startup;
+	// the pinned distroless image has no such directory and its rootfs is
+	// read-only, so a deployment-scoped named volume provides the writable,
+	// host-isolated extraction target the tmpfs used to. Perses writes the
+	// extracted module trees to it and never executes from it, so the isolation
+	// the tmpfs motivated is preserved.
+	fmt.Fprintf(&b, "      - perses-plugins:%s\n", PersesPluginsContainerPath)
 	return b.String(), nil
 }
 

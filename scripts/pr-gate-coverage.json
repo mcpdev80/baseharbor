@@ -445,6 +445,27 @@
       ]
     },
     {
+      "id": "workstation.operator-api-runbook",
+      "path": "docs/how-to/operator-api.md",
+      "surfaces": [
+        "workstation.onboarding"
+      ]
+    },
+    {
+      "id": "workstation.remote-workstation-runbook",
+      "path": "docs/how-to/remote-workstation.md",
+      "surfaces": [
+        "workstation.onboarding"
+      ]
+    },
+    {
+      "id": "workstation.onboarding-contract",
+      "path": "docs/spec/zero-friction-workstation-onboarding-v0427.md",
+      "surfaces": [
+        "workstation.onboarding"
+      ]
+    },
+    {
       "id": "source.internal.application.manifest.go",
       "path": "internal/application/manifest.go",
       "surfaces": [
@@ -1426,6 +1447,268 @@
         "source.gate.integration.podman.coreless.lifecycle"
       ],
       "required_test_names": ["TestManagedRegisteredOTLPNativeConsumerHandoff"]
+    },
+    {
+      "id": "source.cmd.baha.commands.env.destroy",
+      "path": "cmd/baha/commands.go",
+      "surfaces": [
+        "source.gate.integration.docker.coreless.lifecycle",
+        "source.gate.integration.podman.coreless.lifecycle"
+      ]
+    },
+    {
+      "id": "source.cmd.baha.env.destroy",
+      "path": "cmd/baha/env_destroy.go",
+      "surfaces": [
+        "source.gate.integration.docker.coreless.lifecycle",
+        "source.gate.integration.podman.coreless.lifecycle"
+      ]
+    },
+    {
+      "id": "source.cmd.baha.env.destroy.integration.test",
+      "path": "cmd/baha/env_destroy_integration_test.go",
+      "runtime_specific": true,
+      "surfaces": [
+        "source.gate.integration.docker.coreless.lifecycle",
+        "source.gate.integration.podman.coreless.lifecycle"
+      ],
+      "required_test_names": ["TestEnvironmentDestroyNativeLifecycle"]
+    },
+    {
+      "id": "source.cmd.baha.machine.coverage.env.destroy",
+      "path": "cmd/baha/machine_coverage.go",
+      "surfaces": [
+        "source.gate.integration.docker.coreless.lifecycle",
+        "source.gate.integration.podman.coreless.lifecycle"
+      ]
+    },
+    {
+      "id": "source.docs.cli.command.index.env.destroy",
+      "path": "docs/cli/command-index.md",
+      "surfaces": [
+        "source.gate.integration.docker.coreless.lifecycle",
+        "source.gate.integration.podman.coreless.lifecycle"
+      ]
+    },
+    {
+      "id": "source.docs.de.cli.command.index.env.destroy",
+      "path": "docs/de/cli/command-index.md",
+      "surfaces": [
+        "source.gate.integration.docker.coreless.lifecycle",
+        "source.gate.integration.podman.coreless.lifecycle"
+      ]
+    },
+    {
+      "id": "source.docs.reference.cli.machine.coverage.env.destroy",
+      "path": "docs/reference/cli-machine-coverage.md",
+      "surfaces": [
+        "source.gate.integration.docker.coreless.lifecycle",
+        "source.gate.integration.podman.coreless.lifecycle"
+      ]
+    },
+    {
+      "id": "source.internal.deployment.environment.destroy.scope",
+      "path": "internal/deployment/environment_destroy_scope.go",
+      "surfaces": [
+        "source.gate.integration.docker.coreless.lifecycle",
+        "source.gate.integration.podman.coreless.lifecycle"
+      ]
+    },
+    {
+      "id": "source.internal.deployment.environment.destroy.scope.test",
+      "path": "internal/deployment/environment_destroy_scope_test.go",
+      "surfaces": [
+        "source.gate.integration.docker.coreless.lifecycle",
+        "source.gate.integration.podman.coreless.lifecycle"
+      ]
+    },
+    {
+      "id": "cmd.baha.application_lifecycle_lock_test",
+      "path": "cmd/baha/application_lifecycle_lock_test.go",
+      "runtime_specific": true,
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ],
+      "required_test_names": [
+        "TestStaleDestructionConsentRequiresRepreview",
+        "TestSharedBackendReconcileRejectsSecondProcess",
+        "TestTargetSelectionMutationRejectsSecondProcess",
+        "TestSharedConsumersSerializeOnAppOwner",
+        "TestProductionTargetWideMutationCannotOverlapLocalAppLifecycle",
+        "TestProductionAppCannotBeginDuringTargetWideScan",
+        "TestProductionTargetWideScanFailsClosedOnScanError",
+        "TestIndependentAppsDoNotSerializeOnSharedTarget",
+        "TestDestroyNotStarvedByBoundedRetry",
+        "TestTargetLifecycleLockRejectsSecondProcess",
+        "TestUnenforcingFilesystemFailsClosedWithoutRetry",
+        "TestGenuineContentionStillEntersBoundedRetry"
+      ]
+    },
+    {
+      "id": "cmd.baha.app_init_source_neutral_test",
+      "path": "cmd/baha/app_init_source_neutral_test.go",
+      "runtime_specific": true,
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.docker.guided",
+        "source.gate.atomic.podman.data.capabilities",
+        "source.gate.atomic.podman.guided"
+      ],
+      "required_test_names": [
+        "TestManifestFromCreateArgsSourceNeutralWorkloadPositive",
+        "TestParseWorkloadSourceArgPositive",
+        "TestParseWorkloadSourceArgRejectsUnknownKindNegative",
+        "TestDeterministicInitRejectsAmbiguousSourcesWithoutSelectionNegative",
+        "TestDeterministicInitDoesNotPersistUnneededSourceSelection",
+        "TestDeterministicInitPersistsAmbiguousSourceSelectionPositive",
+        "TestParseWorkloadSourceArgRejectsDuplicateNegative"
+      ]
+    },
+    {
+      "id": "cmd.baha.app_init_wizard_test",
+      "path": "cmd/baha/app_init_wizard_test.go",
+      "runtime_specific": true,
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.docker.guided",
+        "source.gate.atomic.podman.data.capabilities",
+        "source.gate.atomic.podman.guided"
+      ],
+      "required_test_names": [
+        "TestDetectAppProjectFindsComposeBackendsWorkloadAndSecretNames",
+        "TestGuidedInitQuickDoesNotPromoteHeuristicSecrets",
+        "TestGuidedInitInteractiveCanAcceptDetectedDefaults",
+        "TestGuidedInitDeterministicPathRequiresExplicitContract",
+        "TestGuidedInitDeterministicCapabilitiesFailClosedWhenRepositoryWorkloadExists",
+        "TestGuidedInitDeterministicExplicitWorkloadSelectionSucceeds",
+        "TestGuidedInitExplicitFlagsKeepDeterministicPath",
+        "TestGuidedInitQuickFailsClosedOnAmbiguousCompose",
+        "TestQuickInitPreservesWorkloadOnlyRepository",
+        "TestQuickInitDoesNotPromoteSuggestedCapability",
+        "TestQuickInitIsolatesMixedComposeInfrastructureAndGeneratesDetectedIntent",
+        "TestQuickInitFailsClosedOnAmbiguousMetricsTarget",
+        "TestQuickInitScopesConcreteRuntimePermissionToSingleWorkload",
+        "TestQuickInitFailsClosedOnAmbiguousComposeServiceRole",
+        "TestPromptCapabilityListNonTTYKeepsDetectedDefaults",
+        "TestPromptCapabilityListNonTTYAcceptsExplicitSelection",
+        "TestPromptAmbiguousComposeServicesConfirmsWorkloadSelection",
+        "TestPromptSecretPoliciesSupportsRenameOptionalGenerateAndSkip",
+        "TestGuidedSecretSummaryShowsPolicyWithoutValues",
+        "TestAdoptionSummaryMinimal",
+        "TestAdoptionSummaryFullyPopulated",
+        "TestBuildGuidedInitManifestIncludesAllV0419ServiceFamilies",
+        "TestBuildGuidedInitManifestPreservesExplicitHTTPSExposureEvidence",
+        "TestGuidedInitDeterministicPositionalEnvironmentAliases"
+      ]
+    },
+    {
+      "id": "cmd.baha.app_perses_host_containers_cli_test",
+      "path": "cmd/baha/app_perses_host_containers_cli_test.go",
+      "runtime_specific": true,
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.docker.guided",
+        "source.gate.atomic.podman.data.capabilities",
+        "source.gate.atomic.podman.guided"
+      ],
+      "required_test_names": [
+        "TestBahaStatusHostContainersDashboardsExposesUnavailable"
+      ]
+    },
+    {
+      "id": "cmd.baha.app_perses_infra_dashboards_cli_test",
+      "path": "cmd/baha/app_perses_infra_dashboards_cli_test.go",
+      "runtime_specific": true,
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.docker.guided",
+        "source.gate.atomic.podman.data.capabilities",
+        "source.gate.atomic.podman.guided"
+      ],
+      "required_test_names": [
+        "TestBahaStatusInfrastructureDashboardsExposesEveryPanel",
+        "TestBahaStatusInfrastructureDashboardsNotSelectedOmitsFace"
+      ]
+    },
+    {
+      "id": "cmd.baha.repository_up_init_test",
+      "path": "cmd/baha/repository_up_init_test.go",
+      "runtime_specific": true,
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.docker.guided",
+        "source.gate.atomic.podman.data.capabilities",
+        "source.gate.atomic.podman.guided"
+      ],
+      "required_test_names": [
+        "TestInitializeRepositoryManifestForUpQuickCreatesDetectedContract",
+        "TestInitializeRepositoryManifestForUpIgnoresDirectoryWithoutProjectSignals",
+        "TestInitializeRepositoryManifestForUpQuickFailsClosedOnAmbiguousCompose"
+      ]
+    },
+    {
+      "id": "cmd.baha.runtime_integration_test_support_test",
+      "path": "cmd/baha/runtime_integration_test_support_test.go",
+      "runtime_specific": true,
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.docker.guided",
+        "source.gate.atomic.podman.data.capabilities",
+        "source.gate.atomic.podman.guided",
+        "source.gate.integration.docker.coreless.lifecycle",
+        "source.gate.integration.podman.coreless.lifecycle"
+      ],
+      "required_test_names": [
+        "TestIntegrationRuntimeProviderSelection",
+        "TestMissingRuntimeIsolationCannotFallBackToBootstrap"
+      ]
+    },
+    {
+      "id": "cmd.baha.test_operator_context_test",
+      "path": "cmd/baha/test_operator_context_test.go",
+      "runtime_specific": true,
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
+      "id": "cmd.baha.ci_integration_operator_enabled",
+      "path": "cmd/baha/ci_integration_operator_enabled.go",
+      "runtime_specific": true,
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
+      "id": "cmd.baha.ci_integration_operator_disabled",
+      "path": "cmd/baha/ci_integration_operator_disabled.go",
+      "runtime_specific": true,
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
+      "id": "cmd.baha.ci_integration_operator_enabled_test",
+      "path": "cmd/baha/ci_integration_operator_enabled_test.go",
+      "runtime_specific": true,
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ],
+      "required_test_names": [
+        "TestCIIntegrationOperatorTraceKeepsMachineErrorStreamClean",
+        "TestCIIntegrationOperatorIsLimitedToRemoteCoreAndTargetBootstrap",
+        "TestCIIntegrationOperatorAllowsOnlyGuidedCoreRebootstrapRoot",
+        "TestCIIntegrationOperatorIsExplicitlyScopedToManagedLocalGate",
+        "TestCIIntegrationOperatorAllowsRootDestroyOnlyForGuidedGate",
+        "TestCIIntegrationOperatorAllowsOnlyGuidedDeveloperDomainAndAppNew",
+        "TestCIIntegrationGuidedMCPPrincipalCanOnlySeeFootprintTool",
+        "TestCIIntegrationOperatorAllowsOnlyObservabilityLogProbe"
+      ]
     }
   ],
   "gates": [
@@ -2725,7 +3008,24 @@
         "workstation.onboarding"
       ],
       "source_components": [
-        "workstation.onboarding-tests"
+        "workstation.onboarding-tests",
+        "workstation.operator-api-runbook",
+        "workstation.remote-workstation-runbook",
+        "workstation.onboarding-contract"
+      ],
+      "selection_scope": "focused"
+    },
+    {
+      "id": "native/podman/workstation-onboarding",
+      "runtime": "podman",
+      "covers": [
+        "workstation.onboarding"
+      ],
+      "source_components": [
+        "workstation.onboarding-tests",
+        "workstation.operator-api-runbook",
+        "workstation.remote-workstation-runbook",
+        "workstation.onboarding-contract"
       ],
       "selection_scope": "focused"
     },
@@ -2749,6 +3049,146 @@
       ],
       "source_components": [
         "podman.second-target-conflict-tests"
+      ],
+      "selection_scope": "focused"
+    },
+    {
+      "id": "native/docker/data-capabilities",
+      "runtime": "docker",
+      "covers": [
+        "source.gate.atomic.docker.data.capabilities"
+      ],
+      "source_components": [
+        "cmd.baha.application_lifecycle_lock_test",
+        "cmd.baha.app_init_source_neutral_test",
+        "cmd.baha.app_init_wizard_test",
+        "cmd.baha.app_perses_host_containers_cli_test",
+        "cmd.baha.app_perses_infra_dashboards_cli_test",
+        "cmd.baha.repository_up_init_test",
+        "cmd.baha.test_operator_context_test",
+        "cmd.baha.ci_integration_operator_enabled",
+        "cmd.baha.ci_integration_operator_disabled",
+        "cmd.baha.ci_integration_operator_enabled_test",
+        "cmd.baha.runtime_integration_test_support_test"
+      ],
+      "selection_scope": "focused"
+    },
+    {
+      "id": "native/podman/data-capabilities",
+      "runtime": "podman",
+      "covers": [
+        "source.gate.atomic.podman.data.capabilities"
+      ],
+      "source_components": [
+        "cmd.baha.application_lifecycle_lock_test",
+        "cmd.baha.app_init_source_neutral_test",
+        "cmd.baha.app_init_wizard_test",
+        "cmd.baha.app_perses_host_containers_cli_test",
+        "cmd.baha.app_perses_infra_dashboards_cli_test",
+        "cmd.baha.repository_up_init_test",
+        "cmd.baha.test_operator_context_test",
+        "cmd.baha.ci_integration_operator_enabled",
+        "cmd.baha.ci_integration_operator_disabled",
+        "cmd.baha.ci_integration_operator_enabled_test",
+        "cmd.baha.runtime_integration_test_support_test"
+      ],
+      "selection_scope": "focused"
+    },
+    {
+      "id": "native/docker/guided",
+      "runtime": "docker",
+      "covers": [
+        "source.gate.atomic.docker.guided"
+      ],
+      "source_components": [
+        "cmd.baha.app_init_source_neutral_test",
+        "cmd.baha.app_init_wizard_test",
+        "cmd.baha.app_perses_host_containers_cli_test",
+        "cmd.baha.app_perses_infra_dashboards_cli_test",
+        "cmd.baha.repository_up_init_test",
+        "cmd.baha.runtime_integration_test_support_test"
+      ],
+      "selection_scope": "focused"
+    },
+    {
+      "id": "native/podman/guided",
+      "runtime": "podman",
+      "covers": [
+        "source.gate.atomic.podman.guided"
+      ],
+      "source_components": [
+        "cmd.baha.app_init_source_neutral_test",
+        "cmd.baha.app_init_wizard_test",
+        "cmd.baha.app_perses_host_containers_cli_test",
+        "cmd.baha.app_perses_infra_dashboards_cli_test",
+        "cmd.baha.repository_up_init_test",
+        "cmd.baha.runtime_integration_test_support_test"
+      ],
+      "selection_scope": "focused"
+    },
+    {
+      "id": "native/docker/coreless-lifecycle",
+      "runtime": "docker",
+      "covers": [
+        "source.gate.integration.docker.coreless.lifecycle"
+      ],
+      "source_components": [
+        "cmd.baha.runtime_integration_test_support_test",
+        "source.cmd.baha.app.backend.selective.runtime.test.go",
+        "source.cmd.baha.app.application.backend.runtime.test.go",
+        "source.cmd.baha.app.capability.runtime.test.go",
+        "source.cmd.baha.app.https.selective.runtime.test.go",
+        "source.cmd.baha.application.otlp.handoff.runtime.test.go"
+      ],
+      "selection_scope": "focused"
+    },
+    {
+      "id": "native/podman/coreless-lifecycle",
+      "runtime": "podman",
+      "covers": [
+        "source.gate.integration.podman.coreless.lifecycle"
+      ],
+      "source_components": [
+        "cmd.baha.runtime_integration_test_support_test",
+        "source.cmd.baha.app.backend.selective.runtime.test.go",
+        "source.cmd.baha.app.application.backend.runtime.test.go",
+        "source.cmd.baha.app.capability.runtime.test.go",
+        "source.cmd.baha.app.https.selective.runtime.test.go",
+        "source.cmd.baha.application.otlp.handoff.runtime.test.go"
+      ],
+      "selection_scope": "focused"
+    },
+    {
+      "id": "native/docker/environment-destroy",
+      "runtime": "docker",
+      "covers": [
+        "source.gate.integration.docker.coreless.lifecycle"
+      ],
+      "source_components": [
+        "source.cmd.baha.env.destroy.integration.test"
+      ],
+      "selection_scope": "focused"
+    },
+    {
+      "id": "native/podman/environment-destroy",
+      "runtime": "podman",
+      "covers": [
+        "source.gate.integration.podman.coreless.lifecycle"
+      ],
+      "source_components": [
+        "source.cmd.baha.env.destroy.integration.test"
+      ],
+      "selection_scope": "focused"
+    },
+    {
+      "id": "native/podman/service-stop",
+      "runtime": "podman",
+      "covers": [
+        "source.gate.atomic.podman.lifecycle"
+      ],
+      "source_components": [
+        "runtime.podman-service-stop",
+        "runtime.podman-service-stop-tests"
       ],
       "selection_scope": "focused"
     }

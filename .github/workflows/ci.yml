@@ -9,6 +9,7 @@ on:
       - 'runtime-validation/ci/**'
       - 'runtime-validation/source-preflight/**'
       - 'runtime-validation/ha/**'
+      - 'runtime-validation/onboarding/**'
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
     branches:
@@ -258,8 +259,46 @@ jobs:
         timeout-minutes: 3
         run: bash scripts/ci-runtime-reset.sh podman
 
+  targeted_workstation_onboarding:
+    name: Targeted · Workstation onboarding · ${{ matrix.runtime }}
+    if: github.event_name == 'push' && startsWith(github.ref_name, 'runtime-validation/onboarding/')
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        runtime: [docker, podman]
+    runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
+    timeout-minutes: 45
+    env:
+      BASEHARBOR_TEST_RUNTIME: ${{ matrix.runtime }}
+      NATIVE_GATE_ID: ${{ matrix.runtime == 'docker' && 'native/docker/onboarding' || 'native/podman/workstation-onboarding' }}
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Prepare isolated rootless runtime
+        run: bash scripts/ci-core-rootless-runtime.sh
+      - name: Install verified ORAS for native Core bootstrap
+        run: bash scripts/ci-install-oras.sh
+      - name: Run exact workstation onboarding gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          bash scripts/ci-native-pr-gate.sh "$NATIVE_GATE_ID"
+      - name: Cleanup native runtime
+        if: always()
+        run: bash scripts/ci-runtime-reset.sh "${{ matrix.runtime }}"
+
   validate:
-    if: github.event_name != 'pull_request' && !startsWith(github.ref_name, 'runtime-validation/source-preflight/') && !startsWith(github.ref_name, 'runtime-validation/ha/')
+    if: github.event_name != 'pull_request' && !startsWith(github.ref_name, 'runtime-validation/source-preflight/') && !startsWith(github.ref_name, 'runtime-validation/ha/') && !startsWith(github.ref_name, 'runtime-validation/onboarding/')
     runs-on: ubuntu-latest
     timeout-minutes: 20
     services:
@@ -300,6 +339,15 @@ jobs:
 
       - name: Prepare verified rootless runtime
         run: bash scripts/ci-core-rootless-runtime.sh
+
+      - name: Install interactive shells for the shell-wrapper path
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y zsh fish
+          echo "zsh: $(command -v zsh)"
+          echo "fish: $(command -v fish)"
 
       - name: Reset persistent runner state
         id: reset
@@ -1094,12 +1142,14 @@ jobs:
           out="$RUNNER_TEMP/pr-exact-candidate"
           mkdir -p "$out"
           CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.commit=$GITHUB_SHA -X main.date=unknown" -o "$out/baha" ./cmd/baha
+          CGO_ENABLED=0 go build -trimpath -tags=baseharbor_ci_operator_testonly -ldflags="-s -w -X main.commit=$GITHUB_SHA -X main.date=unknown" -o "$out/baha-ci-operator-testonly" ./cmd/baha
           "$out/baha" version | grep -F "$GITHUB_SHA"
+          "$out/baha-ci-operator-testonly" version | grep -F "$GITHUB_SHA"
           cp deploy/control-plane/Dockerfile.binary "$out/Dockerfile"
           docker build --pull -t localhost/baseharbor-runtime:pre-release "$out"
           docker image inspect localhost/baseharbor-runtime:pre-release >/dev/null
           docker save -o "$out/baseharbor-runtime-pre-release.tar" localhost/baseharbor-runtime:pre-release
-          (cd "$out" && sha256sum baha baseharbor-runtime-pre-release.tar > checksums.sha256)
+          (cd "$out" && sha256sum baha baha-ci-operator-testonly baseharbor-runtime-pre-release.tar > checksums.sha256)
           printf '%s\n' "$GITHUB_SHA" > "$out/candidate.sha"
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
@@ -1201,6 +1251,15 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
+      - name: Install interactive shells for the shell-wrapper path
+        if: matrix.shard == 'cli-3'
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y zsh fish
+          echo "zsh: $(command -v zsh)"
+          echo "fish: $(command -v fish)"
       - name: Execute selected Go tests with isolated PostgreSQL
         shell: bash
         run: bash scripts/pr-unit-database.sh "${{ matrix.shard }}"
@@ -1265,6 +1324,10 @@ jobs:
               git fetch --no-tags origin "$BASE_SHA"
               git show "$BASE_SHA":scripts/pr-check-runner.py > "$RUNNER_TEMP/pr-check-runner.py"
               python3 "$RUNNER_TEMP/pr-check-runner.py" execute --check "$VALIDATION" --repository "$GITHUB_WORKSPACE"
+              ;;
+            ci-integration-operator-seam-tests)
+              go test -tags=baseharbor_ci_operator_testonly ./cmd/baha -run '^TestCIIntegrationOperator' -count=1 -v | tee operator-seam-tests.log
+              grep -q '^--- PASS: TestCIIntegrationOperator' operator-seam-tests.log
               ;;
             wizard-*-tests)
               git fetch --no-tags origin "$BASE_SHA"
@@ -1619,6 +1682,20 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
+      - name: Install interactive shells for the shell-wrapper path
+        if: ${{ matrix.shard == 'cli-3' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y zsh fish
+          echo "zsh: $(command -v zsh)"
+          echo "fish: $(command -v fish)"
+      - name: Run installed zsh and fish wrapper regression
+        if: ${{ matrix.shard == 'cli-3' }}
+        shell: bash
+        run: |
+          go test ./cmd/baha -run TestEndToEndInstalledZshAndFishWrappers -count=1 -v
       - name: Reuse canonical CLI shards and test selected non-CLI packages
         shell: bash
         env:

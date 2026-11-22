@@ -71,7 +71,7 @@ func TestApplicationInitDoesNotAskForOrBootstrapCore(t *testing.T) {
 				return coreinstallation.State{}, errors.New("Core bootstrap failed")
 			}
 			appInitInput = interactiveCoreInput(t, answer)
-			if err := runWithIO(context.Background(), []string{"app", "init", "--quick"}, io.Discard, io.Discard); err != nil {
+			if err := runWithIOAsTestOperator(context.Background(), []string{"app", "init", "--quick"}, io.Discard, io.Discard); err != nil {
 				t.Fatal(err)
 			}
 			if _, err := os.Stat("baseharbor.yaml"); err != nil {
@@ -95,7 +95,7 @@ func TestApplicationInitContinuesWithoutManagementInstallation(t *testing.T) {
 		return coreinstallation.State{Ready: true}, nil
 	}
 	appInitInput = interactiveCoreInput(t, "y\n1\n")
-	if err := runWithIO(context.Background(), []string{"app", "init", "--quick"}, io.Discard, io.Discard); err != nil {
+	if err := runWithIOAsTestOperator(context.Background(), []string{"app", "init", "--quick"}, io.Discard, io.Discard); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat("baseharbor.yaml"); err != nil || calls != 0 {

@@ -189,6 +189,18 @@ class CoverageCatalogTests(unittest.TestCase):
                       "-timeout", "20m"]],
                     integration.coreless_anchor_checks(gate, temporary))
 
+    def test_environment_destroy_native_test_selects_both_coreless_gates(self):
+        current = json.loads((ROOT / "pr-gate-coverage.json").read_text())
+        path = "cmd/baha/env_destroy_integration_test.go"
+        selected, unresolved = coverage_module.resolve_covered_gates([path], current)
+        self.assertEqual(["integration/docker/coreless-lifecycle",
+                          "integration/podman/coreless-lifecycle"], selected)
+        self.assertEqual([], unresolved)
+        component = next(row for row in current["components"] if row["path"] == path)
+        self.assertTrue(component["runtime_specific"])
+        self.assertEqual(["TestEnvironmentDestroyNativeLifecycle"],
+                         component["required_test_names"])
+
     def test_shared_backend_helper_maps_to_both_coreless_integration_gates(self):
         current = json.loads((ROOT / "pr-gate-coverage.json").read_text())
         path = "cmd/baha/app_backend_shared_runtime_test.go"
@@ -296,6 +308,17 @@ class CoverageCatalogTests(unittest.TestCase):
         selected = coverage_module.resolve_native_checks(
             ["cmd/baha/second_target_conflict_native_test.go"], catalog())
         self.assertEqual(["native/podman/second-target-conflict"], selected)
+
+    def test_workstation_onboarding_selects_docker_and_podman_for_docs_and_test_changes(self):
+        expected = ["native/docker/onboarding", "native/podman/workstation-onboarding"]
+        data = json.loads((ROOT / "pr-gate-coverage.json").read_text())
+        for path in (
+                "cmd/baha/workstation_onboarding_remote_native_test.go",
+                "docs/how-to/operator-api.md",
+                "docs/how-to/remote-workstation.md",
+                "docs/spec/zero-friction-workstation-onboarding-v0427.md"):
+            with self.subTest(path=path):
+                self.assertEqual(expected, coverage_module.resolve_native_checks([path], data))
 
     def test_runtime_neutral_native_checks_use_docker_representative(self):
         data = catalog()

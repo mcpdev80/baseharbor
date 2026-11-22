@@ -19,7 +19,7 @@ import (
 
 func TestAgentDescribeJSON(t *testing.T) {
 	var out bytes.Buffer
-	if err := runWithIO(context.Background(), []string{"agent", "describe", "-o", "json"}, &out, &bytes.Buffer{}); err != nil {
+	if err := runWithIOAsTestOperator(context.Background(), []string{"agent", "describe", "-o", "json"}, &out, &bytes.Buffer{}); err != nil {
 		t.Fatal(err)
 	}
 	var got agentDescription
@@ -43,7 +43,10 @@ func TestAgentDescribeJSON(t *testing.T) {
 		t.Fatalf("destroy safety metadata = %#v", destroy)
 	}
 	for _, operation := range got.Operations {
-		if operation.MCPTool == "" {
+		// Human-only authorization seams (secret.reveal, 0428-057) and host-
+		// only execution categories (app.exec, 0428-063; #787) carry no MCP
+		// tool by design and say so in the operation description.
+		if operation.MCPTool == "" && !strings.Contains(operation.Description, "MCP tool boundary by design") {
 			t.Fatalf("operation missing MCP tool: %#v", operation)
 		}
 	}
@@ -82,7 +85,7 @@ func TestMCPGenericClientDiscoversCompleteSemanticSurfaceAndExercisesReadOnlyToo
 	registerTestDeployment(t, target, manifest, root, filepath.Join(root, application.RepositoryManifestName))
 	server := newMCPServer(store)
 	serverTransport, clientTransport := mcp.NewInMemoryTransports()
-	serverSession, err := server.Connect(context.Background(), serverTransport, nil)
+	serverSession, err := server.Connect(testOperatorContext(context.Background()), serverTransport, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,6 +97,7 @@ func TestMCPGenericClientDiscoversCompleteSemanticSurfaceAndExercisesReadOnlyToo
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = clientSession.Close() })
+	unauthenticatedSession := workspaceMutationClientUnauthenticated(t)
 
 	list, err := clientSession.ListTools(context.Background(), nil)
 	if err != nil {
@@ -128,6 +132,31 @@ func TestMCPGenericClientDiscoversCompleteSemanticSurfaceAndExercisesReadOnlyToo
 			if strings.Contains(strings.ToLower(tool.Name), forbidden) {
 				t.Fatalf("forbidden generic execution primitive exposed: %s", tool.Name)
 			}
+		}
+	}
+
+	// 0428-225 regression: the four optional-Peses lifecycle tools must be on the
+	// live MCP surface AND in the machine contract in the same direction. The
+	// hosted release static-mcp gate failed with
+	// "MCP contract mismatch: missing=[] unexpected=[baseharbor.app.perses.*]"
+	// when the surface exposed them but the expected list did not. The contract
+	// (internal/machine/contract.go) is the record and is correct, so the surface
+	// must carry them: a regression that strips the surface fails here first.
+	for _, toolName := range []string{
+		"baseharbor.app.perses.status",
+		"baseharbor.app.perses.enable",
+		"baseharbor.app.perses.disable",
+		"baseharbor.app.perses.remove",
+	} {
+		found := false
+		for _, tool := range list.Tools {
+			if tool.Name == toolName {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("perses tool %q missing from live MCP surface: it is declared in the machine contract", toolName)
 		}
 	}
 
@@ -233,7 +262,7 @@ func TestMCPGenericClientDiscoversCompleteSemanticSurfaceAndExercisesReadOnlyToo
 		if err := writeInitializedAuthoredManifest(t, filepath.Join(prodRoot, application.RepositoryManifestName), prodManifest, 0o644); err != nil {
 			t.Fatal(err)
 		}
-		result, err := clientSession.CallTool(context.Background(), &mcp.CallToolParams{
+		result, err := unauthenticatedSession.CallTool(context.Background(), &mcp.CallToolParams{
 			Name:      "baseharbor.inspect",
 			Arguments: map[string]any{"path": prodRoot},
 		})
@@ -255,7 +284,7 @@ func TestMCPGenericClientDiscoversCompleteSemanticSurfaceAndExercisesReadOnlyToo
 	t.Run("managed mutation fails closed before filesystem mutation", func(t *testing.T) {
 		parent := t.TempDir()
 		name := "managed-denied"
-		result, err := clientSession.CallTool(context.Background(), &mcp.CallToolParams{
+		result, err := unauthenticatedSession.CallTool(context.Background(), &mcp.CallToolParams{
 			Name: "baseharbor.app.new",
 			Arguments: map[string]any{
 				"directory":   parent,

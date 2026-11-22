@@ -2220,6 +2220,19 @@ class MainRunnerContextEntrypointTests(unittest.TestCase):
         self.assertTrue({'go-unit-tests', 'go-vet', 'go-build'} <=
                         {row['id'] for row in result['required_validation_checks']})
 
+    def test_stacked_cli_runner_context_resolves(self):
+        self._actual = diff(paths('internal/new_plan_v2/feature.go'))
+        code, out, msg = self._run_main({
+            'GITHUB_REPOSITORY': 'mcpdev80/baseharbor',
+            'GITHUB_BASE_REF': 'cli2-env-policy-head',
+        })
+        self.assertIsNone(code, msg or out)
+        result = json.loads(out)
+        self.assertEqual('resolved', result['coverage_status'])
+        self.assertTrue(result['fallback_used'])
+        self.assertTrue({'go-unit-tests', 'go-vet', 'go-build'} <=
+                        {row['id'] for row in result['required_validation_checks']})
+
     def test_empty_context_fails_closed(self):
         # Missing runner context must be rejected before plan() runs: the
         # entrypoint refuses to qualify with an unknown authenticated context.
@@ -2867,16 +2880,34 @@ class AuthorityPackageCompletenessTests(unittest.TestCase):
         result = planner.plan(diff(paths('internal/serviceaccess/new_package/auth.go')), REQ, MAP_26)
         self.assertEqual('unresolved', result['coverage_status'])
 
-    def test_operatorauth_source_and_tests_select_real_package_runner(self):
-        for path in ('internal/operatorauth/config.go',
-                     'internal/operatorauth/config_explicit_policy_test.go'):
+    def test_serviceaccess_policy_files_skip_unrelated_cli_runtime_tests(self):
+        for path in planner.SERVICEACCESS_POLICY_FILES:
             for status in ('added', 'modified'):
                 with self.subTest(path=path, status=status):
                     result = planner.plan(diff([{'path': path, 'status': status}]), REQ, MAP_26)
                     self.assertEqual('resolved', result['coverage_status'], result)
-                    self.assertTrue({'authority-package-tests', 'source-contracts',
-                                     'cli-build', 'cli-vet'} <=
-                                    {row['id'] for row in result['required_validation_checks']})
+                    checks = {row['id'] for row in result['required_validation_checks']}
+                    self.assertTrue({'authority-package-tests', 'source-contracts'} <= checks)
+                    self.assertFalse({'go-unit-tests', 'cli-package-tests', 'cli-build',
+                                      'cli-guided-tests', 'cli-vet'} & checks)
+                    self.assertEqual([], result['selected_gates'])
+
+    def test_operatorauth_source_and_tests_select_real_package_runner(self):
+        for path in ('internal/operatorauth/config.go',
+                     'internal/operatorauth/config_explicit_policy_test.go',
+                     'internal/operatorauth/authorization_test.go',
+                     'internal/operatorauth/operatorauth_test.go',
+                     'internal/operatorauth/local_runtime.go',
+                     'internal/operatorauth/local_runtime_test.go'):
+            for status in ('added', 'modified'):
+                with self.subTest(path=path, status=status):
+                    result = planner.plan(diff([{'path': path, 'status': status}]), REQ, MAP_26)
+                    self.assertEqual('resolved', result['coverage_status'], result)
+                    selected_checks = {row['id'] for row in result['required_validation_checks']}
+                    self.assertTrue({'authority-package-tests', 'source-contracts'} <=
+                                    selected_checks)
+                    self.assertFalse({'go-unit-tests', 'cli-package-tests', 'cli-build',
+                                      'cli-guided-tests', 'cli-vet'} & selected_checks)
                     self.assertEqual([], result['selected_gates'])
 
     def test_workload_security_policy_files_run_application_package_tests(self):
@@ -3095,3 +3126,65 @@ class IdentityProviderPackageRoutingTests(unittest.TestCase):
         checks = {row['id'] for row in result['required_validation_checks']}
         self.assertTrue({'go-unit-tests', 'go-build', 'go-vet'} <= checks)
         self.assertNotIn('identity-provider-package-tests', checks)
+
+
+class EnvironmentDestroyNativeGateRoutingTests(unittest.TestCase):
+    def test_complete_env_destroy_candidate_selects_both_coreless_gates(self):
+        gate_ids = ['integration/docker/coreless-lifecycle',
+                    'integration/podman/coreless-lifecycle']
+        requirements = copy.deepcopy(REQ)
+        requirements['gates'].extend({'id': gate, 'required_for': ['v0.4.26']}
+                                     for gate in gate_ids)
+        changes = [
+            {'status': 'modified', 'path': 'cmd/baha/commands.go'},
+            {'status': 'added', 'path': 'cmd/baha/env_destroy.go'},
+            {'status': 'added', 'path': 'cmd/baha/env_destroy_integration_test.go'},
+            {'status': 'modified', 'path': 'cmd/baha/machine_coverage.go'},
+            {'status': 'modified', 'path': 'docs/cli/command-index.md'},
+            {'status': 'modified', 'path': 'docs/de/cli/command-index.md'},
+            {'status': 'modified', 'path': 'docs/reference/cli-machine-coverage.md'},
+            {'status': 'added', 'path': 'internal/deployment/environment_destroy_scope.go'},
+            {'status': 'added', 'path': 'internal/deployment/environment_destroy_scope_test.go'},
+        ]
+        result = planner.plan(diff(changes), requirements, MAP_26)
+        self.assertEqual('resolved', result['coverage_status'])
+        self.assertEqual([], result['unresolved_coverage'])
+        self.assertEqual(gate_ids, result['selected_gates'])
+        checks = {row['id'] for row in result['required_validation_checks']}
+        self.assertTrue({'cli-package-tests', 'deployment-package-tests'} <= checks)
+
+    def test_registration_paths_alone_remain_unresolved(self):
+        result = planner.plan(diff(paths('cmd/baha/commands.go',
+                                         'cmd/baha/machine_coverage.go')), REQ, MAP_26)
+        self.assertEqual('unresolved', result['coverage_status'])
+        self.assertTrue(result['unresolved_coverage'])
+
+
+class NativeTestGateAdmissionTests(unittest.TestCase):
+    def test_operator_seams_and_shared_runtime_test_context_select_native_gates(self):
+        required_gates = sorted({gate for gates in planner.NATIVE_TEST_GATE_COMPONENTS.values()
+                                 for gate in gates})
+        requirements = {
+            **REQ,
+            'gates': REQ['gates'] + [
+                {'id': gate, 'required_for': ['v0.4.26']}
+                for gate in required_gates
+                if gate not in {row['id'] for row in REQ['gates']}
+            ],
+        }
+        for path, gates in planner.NATIVE_TEST_GATE_COMPONENTS.items():
+            with self.subTest(path=path):
+                result = planner.plan(diff(paths(path)), requirements, MAP_26)
+                self.assertEqual('resolved', result['coverage_status'])
+                self.assertEqual(set(gates), set(result['selected_gates']))
+                self.assertFalse(result['unresolved_coverage'])
+                checks = {row['id'] for row in result['required_validation_checks']}
+                self.assertTrue({'cli-vet', 'cli-build'} <= checks)
+                if path in planner.CI_INTEGRATION_OPERATOR_PATHS:
+                    self.assertIn('ci-integration-operator-seam-tests', checks)
+
+    def test_unmapped_cli_source_remains_fail_closed(self):
+        result = planner.plan(diff(paths('cmd/baha/unreviewed_operator_fixture.go')), REQ, MAP_26)
+        self.assertEqual('unresolved', result['coverage_status'])
+        self.assertTrue(result['unresolved_coverage'])
+        self.assertEqual([], result['selected_gates'])

@@ -10,6 +10,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/coreinstallation"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
+	"github.com/mcpdev80/baseharbor/internal/machine"
 	"github.com/mcpdev80/baseharbor/internal/operatorauth"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/tenancy"
@@ -21,6 +22,68 @@ type localAuthorityRuntime struct {
 	engine       *bhruntime.DockerEngineObservation
 	localErr     error
 	observations int
+}
+
+func TestCLILocalWorkloadOperationIncludesGrantBackedRoots(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{name: "root plan", args: []string{"plan"}, want: "plan"},
+		{name: "root plan with options", args: []string{"plan", "demo", "--output", "json"}, want: "plan"},
+		{name: "root up", args: []string{"up"}, want: "apply"},
+		{name: "root up with options", args: []string{"up", "--yes"}, want: "apply"},
+		{name: "root doctor uses control-plane authorization", args: []string{"doctor"}},
+		{name: "app doctor", args: []string{"app", "doctor"}, want: "doctor"},
+		{name: "app plan", args: []string{"app", "plan"}, want: "plan"},
+		{name: "app apply", args: []string{"app", "apply"}, want: "apply"},
+		{name: "other root command", args: []string{"version"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := cliLocalWorkloadOperation(tt.args); got != tt.want {
+				t.Fatalf("cliLocalWorkloadOperation(%v) = %q, want %q", tt.args, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestVerifiedLocalRuntimeGrantSatisfiesManagedEnvironmentBoundary(t *testing.T) {
+	target := configureTestTarget(t)
+	for _, name := range []string{operatorauth.EnvIssuer, operatorauth.EnvClientID, operatorauth.EnvScopes, operatorauth.EnvCallbackPort} {
+		t.Setenv(name, "")
+	}
+	environmentID, err := deployment.EnvironmentID(target.Name, "dev")
+	if err != nil {
+		t.Fatal(err)
+	}
+	operation, ok := machine.OperationByID("apply")
+	if !ok {
+		t.Fatal("apply operation is not registered")
+	}
+	grant, err := operatorauth.CheckLocalRuntimeGrant(operation, environmentID, "5b09b7a8-9380-43cc-8000-000000000002", func() error { return nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ensureManagedEnvironmentOperatorBoundary(t.Context(), target.Name, "dev", grant); err != nil {
+		t.Fatalf("verified local runtime grant was rejected without OIDC: %v", err)
+	}
+	if err := ensureManagedEnvironmentOperatorBoundary(t.Context(), target.Name, "dev", nil); err != nil {
+		t.Fatalf("local boundary without OIDC unexpectedly required an operator: %v", err)
+	}
+	request := operatorauth.AuthorizationRequest{
+		Operation:     operation,
+		Context:       operatorauth.OperationContext{Target: target.Name, Environment: "dev", Application: "onboard-native"},
+		EnvironmentID: environmentID, TargetEnvironmentID: environmentID,
+		ApplicationID: "5b09b7a8-9380-43cc-8000-000000000002",
+	}
+	if _, err := operatorauth.AuthorizeMachineOperation(t.Context(), request); err == nil {
+		t.Fatal("local workload authorization succeeded without a grant or operator")
+	}
+	if _, err := operatorauth.AuthorizeMachineOperationWithLocalGrant(t.Context(), request, grant); err != nil {
+		t.Fatalf("local workload authorization rejected its verified one-call grant: %v", err)
+	}
 }
 
 func (r *localAuthorityRuntime) Kind() bhruntime.ProviderKind                     { return r.kind }
@@ -37,7 +100,7 @@ func TestLocalWorkloadAuthorityPreservesAllNonlocalAndPolicyBoundaries(t *testin
 			for _, name := range []string{operatorauth.EnvIssuer, operatorauth.EnvClientID, operatorauth.EnvScopes, operatorauth.EnvCallbackPort} {
 				t.Setenv(name, "")
 			}
-			ctx := localWorkloadScope(withLocalInvocation(operatorauth.WithEnforcement(t.Context()), "cli"), "apply")
+			ctx := context.WithValue(localWorkloadScope(withLocalInvocation(operatorauth.WithEnforcement(t.Context()), "cli"), "apply"), localApplicationIDKey{}, "5b09b7a8-9380-43cc-8000-000000000002")
 			native := &localAuthorityRuntime{kind: bhruntime.ProviderDocker, engine: &bhruntime.DockerEngineObservation{Endpoint: "unix:///run/user/1000/docker.sock", Mode: "rootless", DaemonID: "owned-engine", Verified: true}}
 			root, err := targetRuntimeStateRoot(target)
 			if err != nil {
@@ -136,7 +199,7 @@ func TestLocalWorkloadAuthorityPreservesAllNonlocalAndPolicyBoundaries(t *testin
 				t.Fatalf("local authority=%t allowed=%t error=%v", local, allowed, err)
 			}
 			if allowed {
-				if authority.Operation != "apply" || authority.Target != target.Name || authority.Environment != "prod" || calls != 1 {
+				if authority == nil || calls != 1 {
 					t.Fatal("proof is not bound to the observed operation/Target/environment")
 				}
 				if _, err := os.Lstat(filepath.Join(root, "docker-engine.json")); !os.IsNotExist(err) {
@@ -146,7 +209,7 @@ func TestLocalWorkloadAuthorityPreservesAllNonlocalAndPolicyBoundaries(t *testin
 			if scenario == "local-podman" && native.observations != 1 {
 				t.Fatal("Podman authority inferred from provider kind without actual local observation")
 			}
-			observation := collectOperatorAuthObservationWithLocalAuthority(ctx, target.Name, "prod", func(observeCtx context.Context, target, environment string) (operatorauth.LocalRuntimeAuthority, bool, error) {
+			observation := collectOperatorAuthObservationWithLocalAuthority(ctx, target.Name, "prod", func(observeCtx context.Context, target, environment string) (operatorauth.LocalOperationGrant, bool, error) {
 				return verifiedLocalWorkloadAuthorityWithRuntime(observeCtx, target, environment, resolve)
 			})
 			// Status observes its own read operation; this cannot authorize the
