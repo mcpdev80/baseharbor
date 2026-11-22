@@ -341,8 +341,9 @@ jobs:
       run: |
         set -euo pipefail
         sudo apt-get update
-        sudo apt-get install --no-install-recommends -y zsh
+        sudo apt-get install --no-install-recommends -y zsh fish
         echo "zsh: $(command -v zsh)"
+        echo "fish: $(command -v fish)"
     - name: Run discovered release-source test shard
       id: source_tests
       shell: bash
