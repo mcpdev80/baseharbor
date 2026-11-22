@@ -40,6 +40,7 @@ func runtimeBrokerMetricsTarget(m application.Manifest) string {
 }
 
 var errRuntimeBrokerIncompatible = errors.New("runtime broker image is incompatible")
+
 // errRuntimeBrokerStarting marks a non-final readiness state: the broker
 // container is still warming (compose healthcheck start_period reports
 // "starting", or the first check has not run and health is empty). Callers
