@@ -68,7 +68,7 @@ func withCIIntegrationOperator(ctx context.Context, args []string) context.Conte
 		}
 		ciIntegrationOperatorTrace("managed-local-gate", args, target, nil)
 		operatorContext := ciIntegrationOperatorContext(ctx)
-		if strings.TrimSpace(os.Getenv("BASEHARBOR_DEMO_OPERATOR_GATE")) == "guided" && ciIntegrationGuidedMCPServe(args) {
+		if ciIntegrationGuidedMCPServe(args) && ciIntegrationMCPFootprintParityGate() {
 			return context.WithValue(operatorContext, ciMCPToolsetContextKey{}, true)
 		}
 		return operatorContext
@@ -129,16 +129,35 @@ func ciIntegrationManagedLocalGateReason(args []string, target deployment.Resolv
 	if !managedWorkload && gate == "guided" && ciIntegrationGuidedAppNew(args) {
 		managedWorkload = true
 	}
-	if !managedWorkload && gate == "guided" && ciIntegrationGuidedAppEdit(args) {
+	// The selected data-capabilities fixture's new_application (create-only)
+	// step runs exact canonical `app new` and `app edit` forms on its
+	// disposable Target; without these admissions the tagged CI binary falls
+	// through to an interactive OIDC prompt and the PTY step times out. Both
+	// matches remain strict and scoped to their selected fixture gate.
+	if !managedWorkload && gate == "data-capabilities" && ciIntegrationGuidedAppNew(args) {
+		managedWorkload = true
+	}
+	if !managedWorkload && (gate == "guided" || gate == "data-capabilities") && ciIntegrationGuidedAppEdit(args) {
 		managedWorkload = true
 	}
 	if !managedWorkload && gate == "guided" && ciIntegrationGuidedFootprintShow(args) {
 		managedWorkload = true
 	}
+	// The data-capabilities/core-capability acceptance gates read the
+	// disposable fixture's footprint with the exact canonical
+	// `app footprint show -o json` display. Admit that read-only form for the
+	// selected gates, independent of the guided-only form above; the write
+	// path (record-deployment) stays digest-bound and untouched.
+	if !managedWorkload && (gate == "data-capabilities" || gate == "core-capability") && ciIntegrationGuidedFootprintShow(args) {
+		managedWorkload = true
+	}
 	// The guided fixture compares the read-only CLI Footprint JSON with its
 	// local stdio MCP client. That client starts the exact canonical server;
-	// the fixture invokes only app.footprint.show.
-	if !managedWorkload && gate == "guided" && ciIntegrationGuidedMCPServe(args) {
+	// the fixture invokes only app.footprint.show. The data-capabilities and
+	// core-capability parity fixtures compare the same two sources, so the
+	// exact canonical MCP server process is admitted there too - always with
+	// the one-tool restriction below, never as a general MCP server exception.
+	if !managedWorkload && ciIntegrationGuidedMCPServe(args) && ciIntegrationMCPFootprintParityGate() {
 		managedWorkload = true
 	}
 	// The observability acceptance gate reads the disposable demo workload's
@@ -235,6 +254,20 @@ func ciIntegrationGuidedFootprintShow(args []string) bool {
 
 func ciIntegrationGuidedMCPServe(args []string) bool {
 	return len(args) == 2 && args[0] == "mcp" && args[1] == "serve"
+}
+
+// ciIntegrationMCPFootprintParityGate reports whether the selected disposable
+// demo fixture is one of the footprint-parity gates (guided,
+// data-capabilities, core-capability) whose acceptance compares the CLI
+// Footprint JSON against a local stdio MCP client. The MCP-serve admission is
+// limited to exactly these gates; every other gate keeps failing closed.
+func ciIntegrationMCPFootprintParityGate() bool {
+	switch strings.TrimSpace(os.Getenv("BASEHARBOR_DEMO_OPERATOR_GATE")) {
+	case "guided", "data-capabilities", "core-capability":
+		return true
+	default:
+		return false
+	}
 }
 
 func ciIntegrationConfigureStatusOperatorBoundary(target string) error {
