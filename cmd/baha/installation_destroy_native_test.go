@@ -44,7 +44,7 @@ func TestInstallationDestroyCurrentChildrenInterruptedVolumeAndRetry(t *testing.
 	}
 	ctx = operatorauth.WithEnforcement(ctx)
 	ctx = operatorauth.WithVerifiedPrincipal(ctx, operator)
-	ctx = operatorauth.WithMembershipProvider(ctx, &readGrantingMembershipProvider{})
+	ctx = operatorauth.WithMembershipProvider(ctx, operatorauth.ReadGrantingMembershipProvider{})
 	// Register this fresh local target as an authenticated operator. The local
 	// runtime authority used by later workload operations does not authorize
 	// target.create, which remains an operator-only management operation.

@@ -374,7 +374,7 @@ func appExportAuthorizedTestContext() context.Context {
 		Groups:         []string{"editor"},
 		IssuerVerified: true,
 	})
-	return operatorauth.WithMembershipProvider(ctx, readGrantingMembershipProvider{})
+	return operatorauth.WithMembershipProvider(ctx, operatorauth.ReadGrantingMembershipProvider{})
 }
 
 // appExportFixtureContext composes the operator-authentication fixture that
@@ -397,7 +397,7 @@ func appExportFixtureContext(transport string) context.Context {
 		Groups:         []string{"editor"},
 		IssuerVerified: true,
 	})
-	ctx = operatorauth.WithMembershipProvider(ctx, &readGrantingMembershipProvider{})
+	ctx = operatorauth.WithMembershipProvider(ctx, operatorauth.ReadGrantingMembershipProvider{})
 	return localWorkloadScope(
 		withLocalInvocation(ctx, transport),
 		applicationBoundaryOperation("export"))

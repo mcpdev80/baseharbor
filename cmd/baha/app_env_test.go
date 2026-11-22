@@ -34,7 +34,7 @@ func runWithIOAndOperator(ctx context.Context, args []string, out, errOut io.Wri
 	ctx = cli.WithOutputOptions(ctx, opts)
 	ctx = operatorauth.WithEnforcement(ctx)
 	ctx = operatorauth.WithVerifiedPrincipal(ctx, principal)
-	ctx = operatorauth.WithMembershipProvider(ctx, &readGrantingMembershipProvider{})
+	ctx = operatorauth.WithMembershipProvider(ctx, operatorauth.ReadGrantingMembershipProvider{})
 	ctx = operatorauth.WithInteractive(ctx, os.Stdin, out, errOut)
 	ctx = localCLIProviderConsentContext(ctx, filtered)
 	ctx = withLocalInvocation(ctx, "cli")
@@ -44,18 +44,12 @@ func runWithIOAndOperator(ctx context.Context, args []string, out, errOut io.Wri
 	return rootCommand().Execute(ctx, filtered, out, errOut)
 }
 
-// readGrantingMembershipProvider resolves any verified principal to a tenant
-// membership carrying editor read/write roles, so the surrounding app.*
-// operations (which require claim-to-membership resolution once a verified
-// principal is present) authorize while the reveal gate is what we exercise.
-type readGrantingMembershipProvider struct{}
-
-func (readGrantingMembershipProvider) ResolveClaimMembership(_ context.Context, principal *identity.Principal) ([]tenancy.Membership, error) {
-	if principal == nil || !operatorauth.PrincipalsHaveVerifiedIdentity(principal) {
-		return nil, operatorauth.ErrClaimsNotVerified
-	}
-	return []tenancy.Membership{{TenantID: "tenant-local", Role: "editor"}}, nil
-}
+// The verified-operator fixture composition lives on exactly one path now
+// (card 0428-231): operatorauth.WithVerifiedTestOperator and
+// operatorauth.ReadGrantingMembershipProvider in internal/operatorauth/
+// test_operator.go. runWithIOAndOperator above keeps its own explicit
+// principal because it takes the principal as an argument and layers the
+// interactive surface on top.
 
 func TestAppEnvMasksSecretsByDefaultAndRevealsExplicitly(t *testing.T) {
 	target := configureTestTarget(t)
