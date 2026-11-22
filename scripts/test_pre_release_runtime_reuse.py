@@ -384,6 +384,16 @@ class CoreRuntimeGateMapPairingTests(unittest.TestCase):
             with self.subTest(path=path):
                 self.assertEqual(set(gates), set(impact["core"][path]))
 
+    def test_native_test_source_components_have_native_check_owners(self):
+        coverage = json.loads(Path(__file__).with_name("pr-gate-coverage.json").read_text())
+        components = {row["path"]: row["id"] for row in coverage["components"]}
+        native_owners = {owner for check in coverage["native_checks"]
+                         for owner in check.get("source_components", [])}
+        for path in planner.NATIVE_TEST_GATE_COMPONENTS:
+            with self.subTest(path=path):
+                self.assertIn(path, components)
+                self.assertIn(components[path], native_owners)
+
 
 if __name__ == "__main__":
     unittest.main()

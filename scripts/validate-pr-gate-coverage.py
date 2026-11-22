@@ -78,13 +78,17 @@ def resolve_native_checks(changed_paths: list[str], coverage: dict) -> list[str]
     # representative when both runtime variants cover that same component;
     # a separate Podman-only component in the same PR still selects Podman.
     for component_id in changed_ids:
+        component = components[component_id]
         matching = {check["id"] for check in checks
                     if component_id in check.get("source_components", [])}
-        for check_id in list(matching):
-            parts = check_id.split("/")
-            if len(parts) == 3 and parts[0] == "native" and parts[1] == "podman":
-                if f"native/docker/{parts[2]}" in matching:
-                    matching.remove(check_id)
+        # Runtime-specific components must retain both engine siblings. Shared
+        # components use Docker as the representative when both are declared.
+        if component.get("runtime_specific") is not True:
+            for check_id in list(matching):
+                parts = check_id.split("/")
+                if len(parts) == 3 and parts[0] == "native" and parts[1] == "podman":
+                    if f"native/docker/{parts[2]}" in matching:
+                        matching.remove(check_id)
         selected.update(matching)
     return sorted(selected)
 
