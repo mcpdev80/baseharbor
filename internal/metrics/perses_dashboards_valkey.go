@@ -325,12 +325,30 @@ func persesValkeyDashboardCatalogWithStatus(status capability.ObservabilitySuppo
 // production callers feed the availability gate. It is the authoritative
 // resolution of whether Valkey's metrics signal (if any) has actually been
 // backend-verified — the second axis the verified dashboard requires on top of
-// a supported signal. Today, with the reference catalog resolving Valkey
-// metrics to ObservabilityUnsupported, this is false: no verified signal
-// exists, so the shipped entry stays UNAVAILABLE. A future native,
-// backend-verified Valkey signal promotes this to true and realizes the
-// dashboard panels.
+// a supported signal. It reads the SAME reference catalog as
+// persesValkeyResolvedSignalStatus so both axes come from one witness and can
+// never drift apart: a signal declared Supported AND backend-verified reports
+// ObservabilityVerifyBackend and realizes the verified dashboard panels, while
+// every other case (Unsupported, RequiresAdapter, or a signal whose verification
+// is not backend-query) reports ObservabilityVerifyNone and stays
+// UNAVAILABLE — fail closed, never self-confirmed. Today the catalog resolves
+// Valkey metrics to ObservabilityUnsupported with Verification=none, so this is
+// unavailable; a future native, backend-verified Valkey signal promotes it.
 func persesValkeyBackendVerified() capability.ObservabilityVerificationMode {
+	for _, descriptor := range capability.ReferenceIntegrations() {
+		if descriptor.ID != "baseharbor/valkey" {
+			continue
+		}
+		for _, signal := range descriptor.Observability.Signals {
+			if signal.Name != "metrics" {
+				continue
+			}
+			if signal.Status == capability.ObservabilitySupported {
+				return signal.Verification
+			}
+			return capability.ObservabilityVerifyNone
+		}
+	}
 	return capability.ObservabilityVerifyNone
 }
 

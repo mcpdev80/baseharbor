@@ -469,3 +469,57 @@ func keysOf(m map[string]PersesValkeyPanelCatalogEntry) []string {
 	}
 	return out
 }
+
+// TestPersesValkeyBackendVerifiedReadsReferenceCatalog exercises the canonical
+// production resolver seam (0428-183 round 1, fix1714): persesValkeyBackendVerified
+// must resolve its backend-verification verdict from the SAME reference catalog as
+// persesValkeyResolvedSignalStatus, not a hardcoded constant, so the two axes of
+// the verified-dashboard predicate can never drift apart. It drives all three
+// contract states through a mutating catalog witness:
+//
+//   - supported + backend-verified  -> ObservabilityVerifyBackend (realizes the dashboard)
+//   - supported + non-backend       -> ObservabilityVerifyNone (supported but not verified)
+//   - unsupported                   -> ObservabilityVerifyNone (fail closed, unavailable)
+//
+// and restores the shipped ValkeyIntegration after each case so the package-level
+// reference catalog is left exactly as the shipped release declares it.
+func TestPersesValkeyBackendVerifiedReadsReferenceCatalog(t *testing.T) {
+	restore := func() {
+		capability.ValkeyIntegration.Observability.Signals = nil
+	}
+
+	t.Run("supported_backend_verified_promotes", func(t *testing.T) {
+		defer restore()
+		capability.ValkeyIntegration.Observability.Signals = []capability.ProviderObservabilitySignal{
+			{Name: "metrics", Kind: capability.ObservabilityMetrics, Status: capability.ObservabilitySupported, Mode: capability.ObservabilityNative, Protocol: "openmetrics", Verification: capability.ObservabilityVerifyBackend},
+		}
+		if got := persesValkeyBackendVerified(); got != capability.ObservabilityVerifyBackend {
+			t.Fatalf("supported + backend-verified valkey metrics must report %q, got %q", capability.ObservabilityVerifyBackend, got)
+		}
+	})
+
+	t.Run("supported_non_backend_verified_is_unavailable", func(t *testing.T) {
+		defer restore()
+		capability.ValkeyIntegration.Observability.Signals = []capability.ProviderObservabilitySignal{
+			{Name: "metrics", Kind: capability.ObservabilityMetrics, Status: capability.ObservabilitySupported, Mode: capability.ObservabilityNative, Protocol: "openmetrics", Verification: capability.ObservabilityVerifyNone},
+		}
+		if got := persesValkeyBackendVerified(); got != capability.ObservabilityVerifyNone {
+			t.Fatalf("supported but non-backend-verified valkey metrics must report %q, got %q", capability.ObservabilityVerifyNone, got)
+		}
+	})
+
+	t.Run("unsupported_is_unavailable_fail_closed", func(t *testing.T) {
+		defer restore()
+		capability.ValkeyIntegration.Observability.Signals = []capability.ProviderObservabilitySignal{
+			{Name: "metrics", Kind: capability.ObservabilityMetrics, Status: capability.ObservabilityUnsupported, Verification: capability.ObservabilityVerifyNone},
+		}
+		if got := persesValkeyBackendVerified(); got != capability.ObservabilityVerifyNone {
+			t.Fatalf("unsupported valkey metrics must report %q, got %q", capability.ObservabilityVerifyNone, got)
+		}
+		// The canonical production resolver must still report unavailable today.
+		avail := PersesValkeyDashboardAvailabilityResolved()
+		if entry := avail[PersesValkeyDashboardCatalogKey]; entry.Available != "unavailable" {
+			t.Fatalf("canonical resolver must report unavailable for unsupported valkey, got %q", entry.Available)
+		}
+	})
+}
