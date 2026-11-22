@@ -349,6 +349,52 @@ func TestCIIntegrationOperatorAllowsOnlyGuidedDeveloperDomainAndAppNew(t *testin
 	}
 }
 
+// TestCIIntegrationOperatorDataGateAppNewAdmission is the card 0428-241 narrow
+// fix regression: the selected data-capabilities fixture's new_application
+// (create-only) step runs the exact canonical `app new` form. The tagged CI
+// binary must admit it (no interactive OIDC fallthrough), keep every
+// non-canonical form denied, and leave all other gates unchanged.
+func TestCIIntegrationOperatorDataGateAppNewAdmission(t *testing.T) {
+	t.Setenv("DEMO_ATOMIC_GATE", "1")
+	for _, probe := range []struct{ runtime, gate string }{
+		{"docker", "data-capabilities"},
+		{"podman", "data-capabilities"},
+	} {
+		t.Run(probe.runtime+"/"+probe.gate, func(t *testing.T) {
+			t.Setenv("BASEHARBOR_TEST_RUNTIME", probe.runtime)
+			t.Setenv("GATE", probe.gate)
+			t.Setenv("BASEHARBOR_DEMO_OPERATOR_GATE", probe.gate)
+			target := configureIsolatedEmptyRuntimeTarget(t, "atomic-"+probe.runtime+"-"+probe.gate, probe.runtime)
+			if err := registerInstallationForTarget(t, target.Name); err != nil {
+				t.Fatalf("register %s %s Core fixture: %v", probe.runtime, probe.gate, err)
+			}
+			t.Setenv("BASEHARBOR_TARGET", target.Name)
+			if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), []string{"app", "new"})); !ok {
+				t.Fatal("canonical app new did not receive the CI operator in the selected data gate (interactive OIDC fallthrough)")
+			}
+			for _, args := range [][]string{{"app", "new", "--yes"}, {"app", "new", "extra"}, {"app", "edit"}} {
+				if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), args)); ok {
+					t.Errorf("non-canonical or other-gate-scoped form %v unexpectedly received the CI operator under %s", args, probe.gate)
+				}
+			}
+		})
+	}
+	// Other gates keep the guided-only behaviour unchanged (no blanket allow).
+	for _, gate := range []string{"core-capability", "lifecycle", "observability"} {
+		t.Setenv("BASEHARBOR_TEST_RUNTIME", "docker")
+		t.Setenv("GATE", gate)
+		t.Setenv("BASEHARBOR_DEMO_OPERATOR_GATE", gate)
+		target := configureIsolatedEmptyRuntimeTarget(t, "atomic-docker-"+gate, "docker")
+		if err := registerInstallationForTarget(t, target.Name); err != nil {
+			t.Fatalf("register %s Core fixture: %v", gate, err)
+		}
+		t.Setenv("BASEHARBOR_TARGET", target.Name)
+		if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), []string{"app", "new"})); ok {
+			t.Errorf("app new admission escaped into gate %q", gate)
+		}
+	}
+}
+
 // TestCIIntegrationOperatorAllowsFootprintShowInSelectedDataGates is the card
 // 0428-241 Option-A regression: the selected data-capabilities and
 // core-capability gates run the read-only `app footprint show -o json`
