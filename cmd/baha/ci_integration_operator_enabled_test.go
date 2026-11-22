@@ -349,6 +349,58 @@ func TestCIIntegrationOperatorAllowsOnlyGuidedDeveloperDomainAndAppNew(t *testin
 	}
 }
 
+// TestCIIntegrationOperatorAllowsFootprintShowInSelectedDataGates is the card
+// 0428-241 Option-A regression: the selected data-capabilities and
+// core-capability gates run the read-only `app footprint show -o json`
+// display against their disposable fixture. The tagged CI binary must stamp
+// the synthetic operator for that exact canonical form instead of rejecting
+// it with command-not-in-managed-workload-set, while non-canonical forms and
+// unrelated gates keep failing closed. The write path is untouched: no
+// footprint form admits an un-digested deployment record.
+func TestCIIntegrationOperatorAllowsFootprintShowInSelectedDataGates(t *testing.T) {
+	t.Setenv("DEMO_ATOMIC_GATE", "1")
+	for _, probe := range []struct{ runtime, gate string }{
+		{"docker", "data-capabilities"},
+		{"podman", "data-capabilities"},
+		{"docker", "core-capability"},
+		{"podman", "core-capability"},
+	} {
+		t.Run(probe.runtime+"/"+probe.gate, func(t *testing.T) {
+			t.Setenv("BASEHARBOR_TEST_RUNTIME", probe.runtime)
+			t.Setenv("GATE", probe.gate)
+			t.Setenv("BASEHARBOR_DEMO_OPERATOR_GATE", probe.gate)
+			target := configureIsolatedEmptyRuntimeTarget(t, "atomic-"+probe.runtime+"-"+probe.gate, probe.runtime)
+			if err := registerInstallationForTarget(t, target.Name); err != nil {
+				t.Fatalf("register %s %s Core fixture: %v", probe.runtime, probe.gate, err)
+			}
+			t.Setenv("BASEHARBOR_TARGET", target.Name)
+			if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), []string{"app", "footprint", "show", "-o", "json"})); !ok {
+				t.Fatal("exact read-only footprint show did not receive the CI operator in the selected gate")
+			}
+			// The read seam is exact: non-canonical footprint forms stay
+			// rejected. (app.configure is itself a managed local workload
+			// operation and is admitted by the untouched generic branch -
+			// its write record-deployment digest obligation lives in the
+			// product authority, which this fixture never relaxes.)
+			for _, args := range [][]string{{"app", "footprint", "show", "--json"}, {"app", "footprint", "show", "-o", "json", "extra"}, {"app", "footprint", "show"}} {
+				if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), args)); ok {
+					t.Errorf("noncanonical footprint form %v unexpectedly received the CI operator", args)
+				}
+			}
+		})
+	}
+	// The exception is limited to the selected data gates: another gate must
+	// not inherit it.
+	t.Setenv("BASEHARBOR_TEST_RUNTIME", "docker")
+	t.Setenv("GATE", "lifecycle")
+	t.Setenv("BASEHARBOR_DEMO_OPERATOR_GATE", "lifecycle")
+	lifecycle := configureIsolatedEmptyRuntimeTarget(t, "atomic-docker-lifecycle", "docker")
+	t.Setenv("BASEHARBOR_TARGET", lifecycle.Name)
+	if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), []string{"app", "footprint", "show", "-o", "json"})); ok {
+		t.Fatal("footprint-show data-gate exception escaped into another selected gate")
+	}
+}
+
 func TestCIIntegrationGuidedMCPPrincipalCanOnlySeeFootprintTool(t *testing.T) {
 	t.Setenv("DEMO_ATOMIC_GATE", "1")
 	t.Setenv("BASEHARBOR_TEST_RUNTIME", "docker")

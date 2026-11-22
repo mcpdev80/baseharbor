@@ -135,6 +135,14 @@ func ciIntegrationManagedLocalGateReason(args []string, target deployment.Resolv
 	if !managedWorkload && gate == "guided" && ciIntegrationGuidedFootprintShow(args) {
 		managedWorkload = true
 	}
+	// The data-capabilities/core-capability acceptance gates read the
+	// disposable fixture's footprint with the exact canonical
+	// `app footprint show -o json` display. Admit that read-only form for the
+	// selected gates, independent of the guided-only form above; the write
+	// path (record-deployment) stays digest-bound and untouched.
+	if !managedWorkload && (gate == "data-capabilities" || gate == "core-capability") && ciIntegrationGuidedFootprintShow(args) {
+		managedWorkload = true
+	}
 	// The guided fixture compares the read-only CLI Footprint JSON with its
 	// local stdio MCP client. That client starts the exact canonical server;
 	// the fixture invokes only app.footprint.show.
