@@ -1392,6 +1392,12 @@
       "runtime_specific": true
     },
     {
+      "id": "source.cmd.baha.app.broker.diagnostics.test.go",
+      "path": "cmd/baha/app_broker_diagnostics_test.go",
+      "surfaces": ["source.gate.atomic.docker.data.capabilities", "source.gate.atomic.podman.data.capabilities"],
+      "runtime_specific": true
+    },
+    {
       "id": "source.cmd.baha.main.go",
       "path": "cmd/baha/main.go",
       "surfaces": ["source.gate.atomic.docker.data.capabilities", "source.gate.atomic.podman.data.capabilities"],
@@ -3122,6 +3128,8 @@
         "source.cmd.baha.local.workload.authority.test.go",
         "source.cmd.baha.main.go"
       
+      ,
+        "source.cmd.baha.app.broker.diagnostics.test.go"
       ],
       "selection_scope": "focused"
     },
@@ -3149,6 +3157,8 @@
         "source.cmd.baha.local.workload.authority.test.go",
         "source.cmd.baha.main.go"
       
+      ,
+        "source.cmd.baha.app.broker.diagnostics.test.go"
       ],
       "selection_scope": "focused"
     },

@@ -89,6 +89,19 @@ class NativeGatePlanTests(unittest.TestCase):
             {'id': 'native/podman/data-capabilities', 'runtime': 'podman'},
         ]})
 
+    def test_app_broker_diagnostics_test_selects_both_data_capabilities_gates(self):
+        # Card 0428-248 follow-up: cmd/baha/app_broker_diagnostics_test.go is
+        # the broker diagnostics test source (#1763's file). The catalog maps it
+        # like cmd/baha/app_broker.go, so a change to it selects the native
+        # data-capabilities gates for both runtimes instead of the fail-loud
+        # uncataloged abort.
+        matrix = planner.resolve_matrix(
+            ['cmd/baha/app_broker_diagnostics_test.go'], coverage)
+        self.assertEqual(matrix, {'include': [
+            {'id': 'native/docker/data-capabilities', 'runtime': 'docker'},
+            {'id': 'native/podman/data-capabilities', 'runtime': 'podman'},
+        ]})
+
 
 if __name__ == '__main__':
     unittest.main()
