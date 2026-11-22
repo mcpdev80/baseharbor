@@ -1381,6 +1381,18 @@
       "runtime_specific": true
     },
     {
+      "id": "source.scripts.test.pre.release.check.plan",
+      "path": "scripts/test_pre_release_check_plan.py",
+      "surfaces": ["source.gate.atomic.static.ci.fast.check"],
+      "runtime_specific": true
+    },
+    {
+      "id": "source.scripts.test.ci.v0427.gate.catalog",
+      "path": "scripts/test_ci_v0427_gate_catalog.py",
+      "surfaces": ["source.gate.atomic.static.ci.fast.check"],
+      "runtime_specific": true
+    },
+    {
       "id": "source.cmd.baha.app.footprint.presenter.go",
       "path": "cmd/baha/app_footprint_presenter.go",
       "surfaces": ["source.gate.atomic.docker.data.capabilities", "source.gate.atomic.podman.data.capabilities"],
@@ -1901,13 +1913,25 @@
       "scope": "pr",
       "covers": [
         "capability.profile.shell-interface",
-        "gate.shell-ux",
-        "source.gate.atomic.static.ci.fast.check"
+        "gate.shell-ux"
       ],
       "kind": "static",
       "selection_scope": "focused",
       "demo_contract": {
         "profile": "shell-interface",
+        "capabilities": []
+      }
+    },
+    {
+      "id": "atomic/static/ci-fast-check",
+      "runtime": "static",
+      "class": "static",
+      "scope": "pr",
+      "covers": ["source.gate.atomic.static.ci.fast.check"],
+      "kind": "static",
+      "selection_scope": "focused",
+      "demo_contract": {
+        "profile": "machine-interface",
         "capabilities": []
       }
     },
