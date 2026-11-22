@@ -75,7 +75,7 @@ func TestCoreDefaultNetworkBindingRejectsUnownedNativeNetwork(t *testing.T) {
 		}
 	})
 	bound, err := prepareCoreDefaultNetworkBinding(ctx, target, files)
-	if err == nil || !strings.Contains(err.Error(), "existing native network lacks a protected Core or shared backend owner") {
+	if err == nil || !strings.Contains(err.Error(), "no verifiable protected Core or shared backend owner") {
 		provider, providerErr := detectRuntimeForTarget(ctx, target)
 		var owned []bhruntime.ProjectResource
 		var inspectErr error
