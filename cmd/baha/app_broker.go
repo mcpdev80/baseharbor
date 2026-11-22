@@ -199,14 +199,108 @@ func ensureAndStartRuntimeBrokerWithCore(ctx context.Context, progress io.Writer
 	}
 	diagnosticCtx, diagnosticCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer diagnosticCancel()
-	if diagnostic, ok := compose.(interface {
-		DiagnosticsProject(context.Context, string, string, string) string
-	}); ok {
-		if details := strings.TrimSpace(diagnostic.DiagnosticsProject(diagnosticCtx, project, brokerFiles.Compose, files.Env)); details != "" {
-			return fmt.Errorf("application runtime broker readiness failed: %w; runtime diagnostics:\n%s", verifyErr, details)
-		}
+	// The readiness loop's last error says the broker is unhealthy but not WHY.
+	// Surface both dependency channels through the shared failure branch.
+	return failRuntimeBrokerReadinessWith(diagnosticCtx, compose, m, files, brokerComposePath(brokerFiles, files), verifyErr)
+}
+
+// brokerComposePath names the broker compose file for the diagnostics
+// channels, falling back to the application compose file when the broker state
+// cannot be re-read (the failure case this diagnostic path exists for).
+func brokerComposePath(brokerFiles runtimebroker.Files, files application.RuntimeFiles) string {
+	if strings.TrimSpace(brokerFiles.Compose) != "" {
+		return brokerFiles.Compose
 	}
-	return fmt.Errorf("application runtime broker readiness failed: %w", verifyErr)
+	return files.Compose
+}
+
+// failRuntimeBrokerReadiness is the test entry point into the readiness
+// failure branch below (same code the ensure path returns).
+func failRuntimeBrokerReadiness(ctx context.Context, compose bhruntime.RuntimeProvider, m application.Manifest, files application.RuntimeFiles, verifyErr error) error {
+	return failRuntimeBrokerReadinessWith(ctx, compose, m, files, files.Compose, verifyErr)
+}
+
+func failRuntimeBrokerReadinessWith(ctx context.Context, compose bhruntime.RuntimeProvider, m application.Manifest, files application.RuntimeFiles, brokerCompose string, verifyErr error) error {
+	// The broker names its failing dependency on two channels: the /readyz body
+	// (writeNotReady in internal/controlplaneruntime/server.go) and its container
+	// log ("dependency=openbao" / "dependency=runtime-executor" in
+	// internal/controlplaneruntime/server_run.go). Surface both here, each
+	// bounded, so the CLI failure text carries the dependency name.
+	project := runtimebroker.ProjectNameForRuntime(m, files)
+	return fmt.Errorf("application runtime broker readiness failed: %w; runtime diagnostics:\n%s",
+		verifyErr, runtimeBrokerReadinessDiagnostics(ctx, compose, project, brokerCompose, files.Env))
+}
+
+// runtimeBrokerReadinessDiagnostics assembles the fail-closed diagnostic block
+// for broker readiness: the broker project's recent container logs plus the
+// last /readyz body read directly from the broker over its mTLS probe. Both are
+// truncated to a bounded size. The readyz channel is reduced to the dependency
+// NAME and status only, so no value (nor any credential material from the
+// broker logs) is widened by this path beyond the existing compose-logs
+// diagnostics.
+func runtimeBrokerReadinessDiagnostics(ctx context.Context, compose bhruntime.RuntimeProvider, project, composeFile, envFile string) string {
+	var b strings.Builder
+	logs, logsErr := compose.LogsProject(ctx, project, composeFile, envFile, runtimebroker.ServiceName)
+	if logsErr != nil {
+		fmt.Fprintf(&b, "broker container logs unavailable: %v\n", logsErr)
+	} else if tail := truncateDiagnosticTail(logs, 2048); tail != "" {
+		fmt.Fprintf(&b, "broker container log tail:\n%s\n", tail)
+	}
+	if summary := lastReadyzDependency(ctx, compose, project, composeFile, envFile); summary != "" {
+		fmt.Fprintf(&b, "broker /readyz (last): %s\n", summary)
+	}
+	return strings.TrimSpace(b.String())
+}
+
+// lastReadyzDependency performs one mTLS readiness probe through the SAME
+// project and compose files the readiness loop uses, and reports status, the
+// dependency NAME and the status message (which carries the failing check's
+// own error detail) — never any value-bearing field of the body. A not_ready
+// body without a dependency field still names the dependency via the log
+// channel; an unreadable or failing probe degrades to an explicit note instead
+// of hiding the channel failure.
+func lastReadyzDependency(ctx context.Context, compose bhruntime.RuntimeProvider, project, composeFile, envFile string) string {
+	out, err := compose.ExecProject(ctx, project, composeFile, envFile, runtimebroker.ServiceName,
+		"curl", "--silent", "--show-error", "--connect-timeout", "1", "--max-time", "4",
+		"--resolve", "baseharbor-runtime:8443:127.0.0.1",
+		"--cacert", "/run/baseharbor/identity/ca.pem",
+		"--cert", "/run/secrets/probe-client-cert",
+		"--key", "/run/secrets/probe-client-key",
+		runtimebroker.RuntimeURL+"/readyz",
+	)
+	if err != nil {
+		return "readyz probe failed: " + truncateDiagnosticTail(err.Error(), 200)
+	}
+	var ready struct {
+		Status     string `json:"status"`
+		Dependency string `json:"dependency"`
+		Version    string `json:"version"`
+	}
+	if jsonErr := json.Unmarshal([]byte(out), &ready); jsonErr != nil {
+		return "readyz body is not valid JSON: " + truncateDiagnosticTail(out, 200)
+	}
+	summary := "status=" + strings.TrimSpace(ready.Status)
+	if dependency := strings.TrimSpace(ready.Dependency); dependency != "" {
+		summary += " dependency=" + dependency
+	}
+	if version := strings.TrimSpace(ready.Version); version != "" {
+		summary += " version=" + version
+	}
+	return truncateDiagnosticTail(summary, 400)
+}
+
+// truncateDiagnosticTail keeps at most max trailing bytes of text on a
+// line boundary and marks the elision, so one huge log cannot swamp the error.
+func truncateDiagnosticTail(text string, max int) string {
+	text = strings.TrimSpace(text)
+	if len(text) <= max {
+		return text
+	}
+	cut := len(text) - max
+	if nl := strings.IndexByte(text[cut:], '\n'); nl >= 0 {
+		cut += nl + 1
+	}
+	return "[…truncated…] \n" + text[cut:]
 }
 
 func ensureAndStartRuntimeProviderExecutor(ctx context.Context, progress io.Writer, compose bhruntime.RuntimeProvider, platformFiles bhruntime.Files, m application.Manifest, files application.RuntimeFiles, refreshMutableImage bool) error {
