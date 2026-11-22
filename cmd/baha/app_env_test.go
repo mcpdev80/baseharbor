@@ -32,9 +32,7 @@ func runWithIOAndOperator(ctx context.Context, args []string, out, errOut io.Wri
 	}
 	ctx = withTargetOverride(ctx, target)
 	ctx = cli.WithOutputOptions(ctx, opts)
-	ctx = operatorauth.WithEnforcement(ctx)
-	ctx = operatorauth.WithVerifiedPrincipal(ctx, principal)
-	ctx = operatorauth.WithMembershipProvider(ctx, operatorauth.ReadGrantingMembershipProvider{})
+	ctx = operatorauth.WithVerifiedTestOperatorPrincipalForced(ctx, principal)
 	ctx = operatorauth.WithInteractive(ctx, os.Stdin, out, errOut)
 	ctx = localCLIProviderConsentContext(ctx, filtered)
 	ctx = withLocalInvocation(ctx, "cli")
@@ -128,7 +126,7 @@ TLS_PRIVATE_KEY=NEVER_EXPOSE
 	}
 
 	// With a verified operator the reveal returns the native service URLs.
-	operator := &identity.Principal{Issuer: "https://issuer.example", Subject: "operator-reveal", IssuerVerified: true, Groups: []string{"editor"}}
+	operator := operatorauth.TestPrincipal("https://issuer.example", "operator-reveal")
 	out.Reset()
 	if err := runWithIOAndOperator(context.Background(), []string{"app", "env", "demo", "--reveal", "--format", "json"}, &out, &out, operator); err != nil {
 		t.Fatalf("explicit reveal with a verified operator failed: %v", err)
@@ -161,14 +159,9 @@ func TestHumanRevealRequiresAuthorizedMembership(t *testing.T) {
 		{name: "membership without permission", group: "guest", memberships: []tenancy.Membership{{TenantID: "tenant-a", Role: "guest"}}, wantCause: "tenant_permission_denied"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			principal := &identity.Principal{
-				Issuer:         "https://issuer.example",
-				Subject:        "operator-without-reveal-access",
-				IssuerVerified: true,
-				Groups:         []string{tc.group},
-			}
-			ctx := operatorauth.WithEnforcement(context.Background())
-			ctx = operatorauth.WithVerifiedPrincipal(ctx, principal)
+			principal := operatorauth.TestPrincipal("https://issuer.example", "operator-without-reveal-access")
+			principal.Groups = []string{tc.group}
+			ctx := operatorauth.WithVerifiedTestOperatorPrincipal(context.Background(), principal)
 			ctx = operatorauth.WithMembershipProvider(ctx, &firstRunMembershipProvider{memberships: tc.memberships})
 
 			err := authorizeHumanReveal(ctx, "target-a", "dev", "application-a")
@@ -219,7 +212,7 @@ func TestAppCredsRevealRequiresVerifiedOperator(t *testing.T) {
 		t.Skip("postgres binding not materialized in this runtime fixture")
 	}
 
-	operator := &identity.Principal{Issuer: "https://issuer.example", Subject: "operator-creds", IssuerVerified: true, Groups: []string{"editor"}}
+	operator := operatorauth.TestPrincipal("https://issuer.example", "operator-creds")
 
 	out := bytes.Buffer{}
 	// Without an operator the creds reveal must fail closed.

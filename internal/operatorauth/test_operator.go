@@ -38,13 +38,51 @@ func (ReadGrantingMembershipProvider) ResolveClaimMembership(_ context.Context, 
 // the membership provider is only installed when absent so an explicitly
 // scoped provider is never overwritten.
 func WithVerifiedTestOperator(ctx context.Context) context.Context {
+	return WithVerifiedTestOperatorPrincipal(ctx, TestOperatorPrincipal())
+}
+
+// WithVerifiedTestOperatorPrincipalForced is the forced-compose entry point for
+// call sites whose previous order enabled enforcement, installed a verified
+// principal and then the read-granting membership provider (the
+// WithEnforcement here replaces any prior enforcement, mirroring those
+// compositions exactly). The supplied principal owns the identity; an empty
+// principal means the canonical test operator.
+func WithVerifiedTestOperatorPrincipalForced(ctx context.Context, principal *identity.Principal) context.Context {
+	if principal == nil {
+		principal = TestOperatorPrincipal()
+	}
+	ctx = WithEnforcement(ctx)
+	ctx = WithVerifiedPrincipal(ctx, principal)
+	return WithMembershipProvider(ctx, ReadGrantingMembershipProvider{})
+}
+
+// WithVerifiedTestOperatorPrincipalIfAbsent is the if-absent entry point for
+// call sites whose previous order installed the principal FIRST (via
+// WithVerifiedPrincipal, whose enforcement step is if-absent) and only then
+// enabled enforcement and the membership provider. It preserves a principal
+// already supplied by an authenticated caller, like WithVerifiedTestOperator.
+func WithVerifiedTestOperatorPrincipalIfAbsent(ctx context.Context, principal *identity.Principal) context.Context {
+	if principal == nil {
+		principal = TestOperatorPrincipal()
+	}
 	if _, ok := PrincipalFromContext(ctx); ok {
 		ctx = WithMembershipProviderIfAbsent(ctx, ReadGrantingMembershipProvider{})
 		return WithEnforcementIfAbsent(ctx)
 	}
-	ctx = WithVerifiedPrincipal(ctx, TestOperatorPrincipal())
+	ctx = WithVerifiedPrincipal(ctx, principal)
 	ctx = WithMembershipProviderIfAbsent(ctx, ReadGrantingMembershipProvider{})
 	return WithEnforcementIfAbsent(ctx)
+}
+
+// WithVerifiedTestOperatorPrincipal is the single composition entry point: it
+// installs enforcement, the membership provider and the CALLER-SUPPLIED
+// verified principal on exactly one path (if-absent semantics: an existing
+// principal keeps its identity; an explicitly scoped provider is never
+// overwritten). Test call sites that used to repeat the manual
+// WithEnforcement/WithVerifiedPrincipal/WithMembershipProvider composition
+// with their own fixture identity route through this one helper.
+func WithVerifiedTestOperatorPrincipal(ctx context.Context, principal *identity.Principal) context.Context {
+	return WithVerifiedTestOperatorPrincipalIfAbsent(ctx, principal)
 }
 
 // WithVerifiedTestOperatorForce installs fresh enforcement state, the
@@ -58,13 +96,27 @@ func WithVerifiedTestOperatorForce(ctx context.Context) context.Context {
 	return WithMembershipProvider(ctx, ReadGrantingMembershipProvider{})
 }
 
-// TestOperatorPrincipal returns the canonical verified editor principal the
-// CLI test surface used to build inline at every call site.
-func TestOperatorPrincipal() *identity.Principal {
+// TestPrincipal builds a verified editor principal for the CLI test surface
+// with the given issuer and subject, so fixture identities (which tests used
+// to inline at each call site) ride the same one composition path as the
+// canonical operator. Empty arguments fall back to the canonical values.
+func TestPrincipal(issuer, subject string) *identity.Principal {
+	if issuer == "" {
+		issuer = "https://issuer.test"
+	}
+	if subject == "" {
+		subject = "cli-test-operator"
+	}
 	return &identity.Principal{
-		Issuer:         "https://issuer.test",
-		Subject:        "cli-test-operator",
+		Issuer:         issuer,
+		Subject:        subject,
 		IssuerVerified: true,
 		Groups:         []string{"editor"},
 	}
+}
+
+// TestOperatorPrincipal returns the canonical verified editor principal the
+// CLI test surface used to build inline at every call site.
+func TestOperatorPrincipal() *identity.Principal {
+	return TestPrincipal("", "")
 }
