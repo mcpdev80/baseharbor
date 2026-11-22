@@ -3158,3 +3158,33 @@ class EnvironmentDestroyNativeGateRoutingTests(unittest.TestCase):
                                          'cmd/baha/machine_coverage.go')), REQ, MAP_26)
         self.assertEqual('unresolved', result['coverage_status'])
         self.assertTrue(result['unresolved_coverage'])
+
+
+class NativeTestGateAdmissionTests(unittest.TestCase):
+    def test_operator_seams_and_shared_runtime_test_context_select_native_gates(self):
+        required_gates = sorted({gate for gates in planner.NATIVE_TEST_GATE_COMPONENTS.values()
+                                 for gate in gates})
+        requirements = {
+            **REQ,
+            'gates': REQ['gates'] + [
+                {'id': gate, 'required_for': ['v0.4.26']}
+                for gate in required_gates
+                if gate not in {row['id'] for row in REQ['gates']}
+            ],
+        }
+        for path, gates in planner.NATIVE_TEST_GATE_COMPONENTS.items():
+            with self.subTest(path=path):
+                result = planner.plan(diff(paths(path)), requirements, MAP_26)
+                self.assertEqual('resolved', result['coverage_status'])
+                self.assertEqual(set(gates), set(result['selected_gates']))
+                self.assertFalse(result['unresolved_coverage'])
+                checks = {row['id'] for row in result['required_validation_checks']}
+                self.assertTrue({'cli-vet', 'cli-build'} <= checks)
+                if path in planner.CI_INTEGRATION_OPERATOR_PATHS:
+                    self.assertIn('ci-integration-operator-seam-tests', checks)
+
+    def test_unmapped_cli_source_remains_fail_closed(self):
+        result = planner.plan(diff(paths('cmd/baha/unreviewed_operator_fixture.go')), REQ, MAP_26)
+        self.assertEqual('unresolved', result['coverage_status'])
+        self.assertTrue(result['unresolved_coverage'])
+        self.assertEqual([], result['selected_gates'])
