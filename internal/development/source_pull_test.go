@@ -258,17 +258,15 @@ func TestSourcePullApplyTimePartialFailureRunsOnce(t *testing.T) {
 	if !plan.Applyable {
 		t.Fatalf("both sources must be applyable preflight: %#v", plan)
 	}
-	// Capture the web-source target before introducing a local commit that makes
-	// localB HEAD no longer an ancestor of that target; the fast-forward then
-	// fails at apply time even though api-source already advances.
-	webTarget := plan.Repositories[1].TargetRevision
+	// Introduce a local commit that makes localB HEAD no longer an ancestor of
+	// the captured web-source target; the fast-forward then fails at apply time
+	// even though api-source already advances.
 	webBefore := gitRev(t, localB)
 	gitTest(t, localB, "commit", "--allow-empty", "-m", "local drift")
 	if got := gitRev(t, localB); got == webBefore {
 		t.Fatal("expected local web-source HEAD to advance after the drift commit")
 	}
 	apiBefore := gitRev(t, localA)
-	webBefore := gitRev(t, localB)
 
 	result, err := ApplySourcePull(ctx, plan, false)
 	if err != nil {
