@@ -100,9 +100,10 @@ func TestRuntimeBrokerReadinessDiagnosticsNeverEchoesValueMarker(t *testing.T) {
 		readyz string
 	}{
 		{"non-json body with marker", "clean log line dependency=openbao", "health endpoint says " + marker},
-		{"json body with marker in unknown field", "logs " + marker + " mention nothing else", `{"status":"not_ready","dependency":"openbao","leaked":"` + marker + `"}`},
-		{"marker only in log stream", "broker started " + marker + " dependency=runtime-executor refused", `{"status":"not_ready","dependency":"runtime-executor"}`},
 		{"hostile dependency value", "plain log", `{"status":"not_ready","dependency":"` + marker + `"}`},
+		{"json body with marker in unknown field", "logs " + marker + " mention nothing else", `{"status":"not_ready","dependency":"openbao","leaked":"` + marker + `"}`},
+		{"hostile body: not JSON at all", "plain log", marker},
+		{"marker only in log stream", "broker started " + marker + " dependency=runtime-executor refused", `{"status":"not_ready","dependency":"runtime-executor"}`},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -118,8 +119,8 @@ func TestRuntimeBrokerReadinessDiagnosticsNeverEchoesValueMarker(t *testing.T) {
 					t.Fatalf("safe dependency name lost: %q", details)
 				}
 			}
-			if !strings.Contains(details, "dependency=") && !strings.Contains(details, "readyz body is not JSON") {
-				t.Fatalf("redaction dropped every dependency signal from the channel: %q", details)
+			if !strings.Contains(details, "dependency=") && !strings.Contains(details, "status=unknown") {
+				t.Fatalf("redaction dropped every dependency/status signal from the channel: %q", details)
 			}
 			for _, fragment := range strings.Fields(details) {
 				if strings.Contains(fragment, "=") && !strings.HasPrefix(fragment, "status=") &&

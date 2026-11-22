@@ -337,7 +337,11 @@ func lastReadyzDependency(ctx context.Context, compose bhruntime.RuntimeProvider
 		Commit     string `json:"commit"`
 	}
 	if jsonErr := json.Unmarshal([]byte(out), &ready); jsonErr != nil {
-		return fmt.Sprintf("readyz body is not JSON (content redacted, body-length=%d bytes)", len(out))
+		// A valid-JSON body whose fields are all unusable (hostile
+		// dependency, unparseable status) still reported at least
+		// "status=unknown", so the non-JSON note carries the same minimum
+		// signal; the byte length is a number, never content.
+		return fmt.Sprintf("readyz body is not JSON (content redacted, status=unknown, body-length=%d bytes)", len(out))
 	}
 	summary := "status=" + safeReadyzStatus(ready.Status)
 	if dependency := safeDependencyName(ready.Dependency); ready.Dependency != "" && dependency != "unknown" {
