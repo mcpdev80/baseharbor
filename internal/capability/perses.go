@@ -356,13 +356,25 @@ func hostProviderMetricsNativeVerified() bool {
 // Any missing axis resolves to the empty status, which the dashboard reports
 // as unavailable-preserving.
 func ResolveHostDashboardSignalStatus(observabilityManagementUI bool, persesSelected bool) ObservabilitySupportStatus {
+	return resolveHostDashboardSignalStatusWith(observabilityManagementUI, persesSelected, hostProviderMetricsNativeVerified)
+}
+
+// resolveHostDashboardSignalStatusWith is the witness-seam form of the public
+// resolver: the native host/provider-metrics witness is supplied by a probe
+// instead of read from the shipped catalog. The public function passes the
+// shipped catalog's verdict, so behavior is identical in production. The seam
+// exists for the regression cell that proves the witness axis is
+// non-forgeable from manifest truth alone — manifest selection must never
+// mark the host dashboard available when the verified-native-signal witness
+// reports false, no matter what the booleans assert.
+func resolveHostDashboardSignalStatusWith(observabilityManagementUI, persesSelected bool, signalWitness func() bool) ObservabilitySupportStatus {
 	if !observabilityManagementUI || !persesSelected {
 		return ""
 	}
 	if ValidatePersesRelease(PersesDefaultRelease) != nil {
 		return ""
 	}
-	if !hostProviderMetricsNativeVerified() {
+	if !signalWitness() {
 		return ""
 	}
 	return ObservabilitySupported

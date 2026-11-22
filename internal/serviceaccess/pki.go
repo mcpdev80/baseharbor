@@ -101,6 +101,112 @@ func EnsureTLSMaterial(ctx context.Context, issuer Issuer, policy Policy, dir st
 }
 
 func ExistingTLSMaterial(policy Policy, dir string) (TLSMaterial, error) {
+	// The source-tree resolution is attempted, not demanded: under the
+	// managed-local source the gateway's runtime projection beside it gets
+	// its turn first, and a source error only decides when the projection
+	// cannot answer at all. Every other PKI source fails closed on its own
+	// resolution, unchanged (0428-091: the valkey and Keycloak
+	// redirected-projection CI regressions).
+	material, sourceErr := existingTLSMaterialAt(policy, dir)
+	if sourceErr != nil && policy.PKISource != PKIManagedLocal {
+		return TLSMaterial{}, sourceErr
+	}
+	if policy.PKISource != PKIManagedLocal {
+		return material, nil
+	}
+	gatewayDir := filepath.Dir(filepath.Clean(dir))
+	runtimeDir := filepath.Join(gatewayDir, "runtime")
+	// Managed-local reader support: the gateway's container-readable runtime
+	// projection (the layout projectGatewayMaterial writes: ca.pem,
+	// server.pem, server-key.pem and, wherever an identity is enrolled,
+	// client-cert.pem/client-key.pem) is the material the boundary itself
+	// mounts, regenerated from the protected pki/ source on every reconcile.
+	// A consumer that reads service-access/pki therefore resolves the SAME
+	// bytes by preferring the projection sitting beside it, whenever that
+	// projection is complete (an HTTP gateway's runtime/server-key.pem exists
+	// beside runtime/server.pem; a TCP gateway projects only the combined
+	// runtime/server.pem, so its readers keep the source-tree layout) and
+	// valid. The pki/ layout stays the fallback:
+	// a provider whose gateway projection was never reconciled fails closed
+	// exactly as before, and an external/BYOC source is untouched (its
+	// material resolves from the policy paths). Where a complete projection
+	// EXISTS, a client pair it no longer carries is a retired identity: this
+	// reader never resurrects a stale pki/ pair behind the boundary's back.
+	projected := managedLocalProjection(policy, runtimeDir)
+	// The layout marker is read with os.Lstat, not os.Stat: an ABSENT key
+	// (ErrNotExist — the TCP/combined layout, projectTCPMaterial, keeps
+	// both pointers on the combined runtime/server.pem) means "no per-file
+	// projection" and the source tree keeps resolving, unchanged. A key
+	// that EXISTS at all — regular file or symlink, dangling or redirected
+	// — IS this gateway's projection and is judged below; os.Stat would
+	// answer through a redirected key's TARGET and reclassify a tampered
+	// projection as "no projection", silently resolving the source tree
+	// behind the boundary's back (0428-091: the valkey and
+	// redirected-projection CI regressions).
+	if _, statErr := os.Lstat(projected.ServerKey); statErr != nil && !errors.Is(statErr, os.ErrNotExist) {
+		return TLSMaterial{}, statErr
+	} else if statErr == nil {
+		// The projection is COMPLETE (the per-file layout projectGatewayMaterial
+		// writes, including the server key beside it): it is the reader's
+		// authoritative reference, the bytes the boundary mounts, regenerated
+		// on every reconcile. It must be valid, and under an mTLS policy it
+		// must carry the enrolled client pair — a projection whose client
+		// identity was retired (a reconcile that raised the gateway posture
+		// without minting a pair for this reader's policy) fails closed HERE,
+		// never falling back to a stale source-tree pair the gateway does not
+		// reference.
+		requireClient := policy.AuthenticationRequired && policy.Authentication == AuthenticationMTLS
+		if requireClient {
+			if _, err := os.Stat(projected.ClientCertificate); err != nil {
+				return TLSMaterial{}, fmt.Errorf("the managed gateway projection at %s carries no enrolled client identity: %w", runtimeDir, err)
+			}
+		}
+		if err := validateMaterial(projected, requireClient); err != nil {
+			if requireClient {
+				// Under an enrolled-client duty a projection that cannot
+				// present the pair the boundary mounts is a RETIRED (or
+				// redirected — the key path resolves but carries foreign
+				// bytes) identity: fail closed HERE, never resurrecting a
+				// stale pki/ pair behind the gateway's back (the retired-
+				// identity rule; 0428-091, the Keycloak redirected-
+				// projection CI regression).
+				return TLSMaterial{}, err
+			}
+			if sourceErr == nil {
+				// A complete-but-unvalidatable projection under a policy
+				// with no client duty, with a source tree that resolved:
+				// the reader keeps exactly the source answer it had
+				// before this card.
+				return material, nil
+			}
+			return TLSMaterial{}, err
+		}
+		return projected, nil
+	}
+	// No gateway projection beside this pki/ reference: the source-tree
+	// resolution is the answer (fail-closed on its own completeness).
+	if sourceErr != nil {
+		return TLSMaterial{}, sourceErr
+	}
+	return material, nil
+}
+
+// managedLocalProjection names the gateway's container-readable runtime
+// projection files (the layout projectGatewayMaterial writes and the compose
+// service mounts) in dir.
+func managedLocalProjection(policy Policy, dir string) TLSMaterial {
+	return TLSMaterial{
+		Source:            policy.PKISource,
+		CA:                filepath.Join(dir, "ca.pem"),
+		ServerCertificate: filepath.Join(dir, "server.pem"),
+		ServerKey:         filepath.Join(dir, "server-key.pem"),
+		ClientCertificate: filepath.Join(dir, "client-cert.pem"),
+		ClientKey:         filepath.Join(dir, "client-key.pem"),
+		ServerName:        policy.ServerName,
+	}
+}
+
+func existingTLSMaterialAt(policy Policy, dir string) (TLSMaterial, error) {
 	if policy.PKISource == PKIBYOC || (policy.PKISource == PKIExternal && strings.TrimSpace(policy.IssuerReference) == "") {
 		return externalTLSMaterial(policy)
 	}
@@ -186,6 +292,12 @@ func externalTLSMaterial(policy Policy) (TLSMaterial, error) {
 		CA:                policy.TrustBundle,
 		ServerCertificate: policy.ServerCertificate,
 		ServerKey:         policy.ServerKey,
+		// The BYOC/external contract names the client identity through the
+		// policy fields (BASEHARBOR_*_SERVICE_TLS_CLIENT_*): those ARE the
+		// authoritative pair for this source, wherever a reader resolved
+		// its directory. A caller that wants the directory layout (an
+		// external-pki issuer tree) receives them via EnsureTLSMaterial's
+		// file projection, not this function.
 		ClientCertificate: policy.ClientCertificate,
 		ClientKey:         policy.ClientKey,
 		ServerName:        policy.ServerName,
