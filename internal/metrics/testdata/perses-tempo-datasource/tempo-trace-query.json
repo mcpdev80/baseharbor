@@ -1,0 +1,15 @@
+{
+  "kind": "TraceQuery",
+  "spec": {
+    "plugin": {
+      "kind": "TempoTraceQuery",
+      "spec": {
+        "datasource": {
+          "kind": "TempoDatasource",
+          "name": "baseharbor-tempo"
+        },
+        "query": "{ .resource[\"service.name\"] == \"perses-tempo-demo\" }"
+      }
+    }
+  }
+}
