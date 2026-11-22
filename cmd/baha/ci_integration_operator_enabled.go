@@ -135,6 +135,16 @@ func ciIntegrationManagedLocalGateReason(args []string, target deployment.Resolv
 	if !managedWorkload && gate == "guided" && ciIntegrationGuidedFootprintShow(args) {
 		managedWorkload = true
 	}
+	// The data-capabilities fixture reads the same canonical CLI Footprint JSON
+	// after its managed boundary is configured. It is a read-only probe
+	// (machine_coverage.go maps `baha app footprint show` to app.footprint.show;
+	// app_registration_921.go documents the -o json form), so admit only that
+	// exact canonical form on the selected data-capabilities gate, mirroring the
+	// guided admission. Keep the fail-closed branch below rejecting every other
+	// command.
+	if !managedWorkload && gate == "data-capabilities" && ciIntegrationDataCapabilitiesFootprintShow(args) {
+		managedWorkload = true
+	}
 	// The guided fixture compares the read-only CLI Footprint JSON with its
 	// local stdio MCP client. That client starts the exact canonical server;
 	// the fixture invokes only app.footprint.show.
@@ -231,6 +241,12 @@ func ciIntegrationGuidedAppEdit(args []string) bool {
 
 func ciIntegrationGuidedFootprintShow(args []string) bool {
 	return len(args) == 5 && args[0] == "app" && args[1] == "footprint" && args[2] == "show" && args[3] == "-o" && args[4] == "json"
+}
+
+// ciIntegrationDataCapabilitiesFootprintShow mirrors ciIntegrationGuidedFootprintShow
+// for the data-capabilities gate: the canonical read-only footprint probe.
+func ciIntegrationDataCapabilitiesFootprintShow(args []string) bool {
+	return ciIntegrationGuidedFootprintShow(args)
 }
 
 func ciIntegrationGuidedMCPServe(args []string) bool {
