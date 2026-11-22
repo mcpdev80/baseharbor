@@ -947,6 +947,12 @@ func createRuntimeIntegrationBootstrapTarget(ctx context.Context, name, runtime 
 	if runtime != "docker" && runtime != "podman" {
 		return fmt.Errorf("bootstrap Target requires docker or podman runtime, got %q", runtime)
 	}
+	// The caller may already have placed the fresh name in the environment.
+	// Clear it while target.create resolves its authorization preflight against
+	// the currently configured selection, then select the new target below.
+	if err := os.Unsetenv("BASEHARBOR_TARGET"); err != nil {
+		return err
+	}
 	args := []string{"target", "create", name, "--runtime-provider", runtime, "--access", "local", "--access-provider", "local", "--reference", "local", "--default"}
 	if err := runWithIOAsTestOperator(ctx, args, out, out); err != nil {
 		return err
