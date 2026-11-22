@@ -389,15 +389,51 @@ class CoreRuntimeGateMapPairingTests(unittest.TestCase):
             with self.subTest(path=path):
                 self.assertEqual(set(gates), set(impact["core"][path]))
 
-    def test_native_test_source_components_have_native_check_owners(self):
+    def test_native_test_source_components_have_exact_two_way_gate_admission(self):
         coverage = json.loads(Path(__file__).with_name("pr-gate-coverage.json").read_text())
-        components = {row["path"]: row["id"] for row in coverage["components"]}
-        native_owners = {owner for check in coverage["native_checks"]
-                         for owner in check.get("source_components", [])}
-        for path in planner.NATIVE_TEST_GATE_COMPONENTS:
+        components = {row["path"]: row for row in coverage["components"]}
+
+        expected_by_path = {}
+        for path, gates in planner.NATIVE_TEST_GATE_COMPONENTS.items():
+            native_ids = set()
+            for gate in gates:
+                _, runtime, name = gate.split("/")
+                if gate.startswith("integration/"):
+                    name = "coreless-lifecycle"
+                native_ids.add(f"native/{runtime}/{name}")
+            expected_by_path[path] = native_ids
+
+        runtime_pair = {"native/docker/coreless-lifecycle",
+                        "native/podman/coreless-lifecycle"}
+        expected_by_path.update({
+            "cmd/baha/env_destroy_integration_test.go": {
+                "native/docker/environment-destroy", "native/podman/environment-destroy"},
+            "internal/runtime/service_stop.go": {"native/podman/service-stop"},
+            "internal/runtime/service_stop_test.go": {"native/podman/service-stop"},
+            "cmd/baha/app_backend_selective_runtime_test.go": runtime_pair,
+            "cmd/baha/app_application_backend_runtime_test.go": runtime_pair,
+            "cmd/baha/app_capability_runtime_test.go": runtime_pair,
+            "cmd/baha/app_https_selective_runtime_test.go": runtime_pair,
+            "cmd/baha/application_otlp_handoff_runtime_test.go": runtime_pair,
+        })
+
+        actual_by_path = {}
+        for path in expected_by_path:
             with self.subTest(path=path):
                 self.assertIn(path, components)
-                self.assertIn(components[path], native_owners)
+                component_id = components[path]["id"]
+                actual_by_path[path] = {
+                    check["id"] for check in coverage["native_checks"]
+                    if component_id in check.get("source_components", [])}
+                self.assertEqual(expected_by_path[path], actual_by_path[path])
+
+        intended_paths = set(expected_by_path)
+        native_owned_intended_paths = {
+            row["path"] for row in coverage["components"]
+            if row.get("path") in intended_paths
+            and any(row["id"] in check.get("source_components", [])
+                    for check in coverage["native_checks"])}
+        self.assertEqual(intended_paths, native_owned_intended_paths)
 
     def test_native_gate_catalog_selects_runtime_checks_and_executor_cases(self):
         coverage = json.loads(Path(__file__).with_name("pr-gate-coverage.json").read_text())
