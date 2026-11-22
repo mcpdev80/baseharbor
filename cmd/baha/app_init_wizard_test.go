@@ -225,6 +225,9 @@ func mustWriteWizardTestFile(t *testing.T, path, content string) {
 
 func withWizardTestDir(t *testing.T, dir string) {
 	t.Helper()
+	// Same reason as withWorkingDirectory: the Target selection is process
+	// state, so changing only the working directory does not isolate it.
+	testIsolatedSelectionContext(t)
 	old, err := os.Getwd()
 	if err != nil {
 		t.Fatal(err)
