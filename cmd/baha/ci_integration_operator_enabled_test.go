@@ -377,6 +377,40 @@ func TestCIIntegrationOperatorAllowsFootprintShowInSelectedDataGates(t *testing.
 			if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), []string{"app", "footprint", "show", "-o", "json"})); !ok {
 				t.Fatal("exact read-only footprint show did not receive the CI operator in the selected gate")
 			}
+			// Parity half 2: the same fixture starts a local stdio MCP client
+			// whose tools/call must see exactly what the CLI JSON shows. The
+			// exact canonical server process receives the CI operator with the
+			// one-tool restriction; every other MCP tool stays denied.
+			mcpCtx := withCIIntegrationOperator(context.Background(), []string{"mcp", "serve"})
+			if _, ok := operatorauth.PrincipalFromContext(mcpCtx); !ok {
+				t.Fatal("exact canonical mcp serve did not receive the CI operator in the selected gate")
+			}
+			if restricted, _ := mcpCtx.Value(ciMCPToolsetContextKey{}).(bool); !restricted {
+				t.Fatal("mcp serve in the selected gate did not receive the one-tool footprint restriction")
+			}
+			server := newMCPServerForContext(mcpCtx, application.DefaultStore())
+			serverTransport, clientTransport := mcp.NewInMemoryTransports()
+			serverSession, err := server.Connect(mcpCtx, serverTransport, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = serverSession.Close() })
+			client := mcp.NewClient(&mcp.Implementation{Name: "data-gate-footprint-parity-test", Version: "v1"}, nil)
+			clientSession, err := client.Connect(mcpCtx, clientTransport, &mcp.ClientSessionOptions{ProtocolVersion: "2026-07-28"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = clientSession.Close() })
+			listed, err := clientSession.ListTools(mcpCtx, &mcp.ListToolsParams{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(listed.Tools) != 1 || listed.Tools[0].Name != "baseharbor.app.footprint.show" {
+				t.Fatalf("selected-gate test MCP server tools = %v, want only baseharbor.app.footprint.show", listed.Tools)
+			}
+			if _, err := clientSession.CallTool(mcpCtx, &mcp.CallToolParams{Name: "baseharbor.app.destroy", Arguments: map[string]any{"name": "demo"}}); err == nil {
+				t.Fatal("data-gate test MCP principal could call baseharbor.app.destroy")
+			}
 			// The read seam is exact: non-canonical footprint forms stay
 			// rejected. (app.configure is itself a managed local workload
 			// operation and is admitted by the untouched generic branch -
@@ -398,6 +432,9 @@ func TestCIIntegrationOperatorAllowsFootprintShowInSelectedDataGates(t *testing.
 	t.Setenv("BASEHARBOR_TARGET", lifecycle.Name)
 	if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), []string{"app", "footprint", "show", "-o", "json"})); ok {
 		t.Fatal("footprint-show data-gate exception escaped into another selected gate")
+	}
+	if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), []string{"mcp", "serve"})); ok {
+		t.Fatal("footprint-parity mcp serve admission escaped into another selected gate")
 	}
 }
 
