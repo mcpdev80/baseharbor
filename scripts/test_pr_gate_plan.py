@@ -3188,3 +3188,30 @@ class NativeTestGateAdmissionTests(unittest.TestCase):
         self.assertEqual('unresolved', result['coverage_status'])
         self.assertTrue(result['unresolved_coverage'])
         self.assertEqual([], result['selected_gates'])
+
+
+class PRGateCoverageGuardianDiscoveryTests(unittest.TestCase):
+    """card 0428-242: run the declarative coverage + fail-loud guard tests.
+
+    test_pr_gate_coverage.py is loaded and executed here so the new catalog
+    and guardian cases run directly by the CI 'pr-planner-tests' job (which
+    runs test_pr_gate_plan.py) without a .github change.
+    """
+
+    def test_coverage_guardian_suite_runs(self):
+        spec = importlib.util.spec_from_file_location(
+            "coverage_guardian", ROOT / "test_pr_gate_coverage.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        loader = unittest.TestLoader()
+        suite = loader.loadTestsFromModule(module)
+        runner = unittest.TextTestRunner(verbosity=0)
+        result = runner.run(suite)
+        self.assertEqual(0, len(result.failures),
+                         "failures: " + str(result.failures))
+        self.assertEqual(0, len(result.errors),
+                         "errors: " + str(result.errors))
+
+
+if __name__ == "__main__":
+    unittest.main()
