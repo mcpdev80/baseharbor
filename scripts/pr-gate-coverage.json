@@ -1361,6 +1361,12 @@
       "runtime_specific": true
     },
     {
+      "id": "source.scripts.ci.native.pr.gate",
+      "path": "scripts/ci-native-pr-gate.sh",
+      "surfaces": ["source.gate.atomic.docker.data.capabilities", "source.gate.atomic.podman.data.capabilities"],
+      "runtime_specific": true
+    },
+    {
       "id": "source.workflow.pre.release",
       "path": ".github/workflows/pre-release.yml",
       "surfaces": ["source.gate.integration.docker.coreless.lifecycle", "source.gate.integration.podman.coreless.lifecycle"],
@@ -3077,7 +3083,8 @@
         "cmd.baha.ci_integration_operator_enabled",
         "cmd.baha.ci_integration_operator_disabled",
         "cmd.baha.ci_integration_operator_enabled_test",
-        "cmd.baha.runtime_integration_test_support_test"
+        "cmd.baha.runtime_integration_test_support_test",
+        "source.scripts.ci.native.pr.gate"
       ],
       "selection_scope": "focused"
     },
@@ -3098,7 +3105,8 @@
         "cmd.baha.ci_integration_operator_enabled",
         "cmd.baha.ci_integration_operator_disabled",
         "cmd.baha.ci_integration_operator_enabled_test",
-        "cmd.baha.runtime_integration_test_support_test"
+        "cmd.baha.runtime_integration_test_support_test",
+        "source.scripts.ci.native.pr.gate"
       ],
       "selection_scope": "focused"
     },
