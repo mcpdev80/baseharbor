@@ -1678,6 +1678,15 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
+      - name: Install interactive shells for the shell-wrapper path
+        if: matrix.shard == 'cli-3'
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y zsh fish
+          echo "zsh: $(command -v zsh)"
+          echo "fish: $(command -v fish)"
       - name: Reuse canonical CLI shards and test selected non-CLI packages
         shell: bash
         env:
