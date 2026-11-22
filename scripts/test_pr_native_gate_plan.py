@@ -9,6 +9,10 @@ ROOT = Path(__file__).resolve().parent
 spec = importlib.util.spec_from_file_location('pr_native_gate_plan', ROOT / 'pr-native-gate-plan.py')
 planner = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(planner)
+validator_spec = importlib.util.spec_from_file_location(
+    'pr_gate_coverage_validator', ROOT / 'validate-pr-gate-coverage.py')
+validator = importlib.util.module_from_spec(validator_spec)
+validator_spec.loader.exec_module(validator)
 coverage = json.loads((ROOT / 'pr-gate-coverage.json').read_text())
 
 
@@ -117,6 +121,69 @@ class NativeGatePlanTests(unittest.TestCase):
                     {'id': 'native/docker/data-capabilities', 'runtime': 'docker'},
                     {'id': 'native/podman/data-capabilities', 'runtime': 'podman'},
                 ]})
+
+    def test_core_installation_runtime_test_selects_both_data_capabilities_gates(self):
+        # Card 0428-248 coreinst-slice: cmd/baha/core_installation_runtime_test.go
+        # is the #1738 file (installation destroy-stamp through the real
+        # boundary). The catalog maps it in the #1768/#1777 pattern onto the
+        # existing data-capabilities surfaces for both runtimes, so a change
+        # selects the native gates instead of the fail-loud uncataloged abort.
+        matrix = planner.resolve_matrix(
+            ['cmd/baha/core_installation_runtime_test.go'], coverage)
+        self.assertEqual(matrix, {'include': [
+            {'id': 'native/docker/data-capabilities', 'runtime': 'docker'},
+            {'id': 'native/podman/data-capabilities', 'runtime': 'podman'},
+        ]})
+
+    def test_perses_cluster_sources_are_cataloged_on_both_observability_surfaces(self):
+        # Card 0428-248 perses round: the #1597 sources (the perses dashboards
+        # cluster in internal/metrics plus the CLI/status surfaces in
+        # cmd/baha) must be cataloged so the trusted-planner guardian resolves
+        # them instead of aborting with an uncataloged source change. They map
+        # onto the existing source.gate.atomic observability surfaces, which
+        # are owned by the gate-owned atomic observability gates (no native
+        # check covers them, so the native matrix stays empty - exactly like
+        # the existing cmd/baha/app_observability_acceptance_test.go entry).
+        paths = (
+            'cmd/baha/app_status_result.go',
+            'cmd/baha/app_perses_cli_test.go',
+            'internal/metrics/perses_dashboards.go',
+            'internal/metrics/perses_dashboards_helpers.go',
+            'internal/metrics/perses_dashboards_test.go',
+            'internal/metrics/perses_dashboards_promql_test.go',
+            'internal/metrics/perses_dashboards_0428-076_native_test.go',
+        )
+        surfaces = {'source.gate.atomic.docker.observability',
+                    'source.gate.atomic.podman.observability'}
+        catalog = {component['path']: component
+                   for component in coverage['components']
+                   if 'path' in component}
+        for path in paths:
+            with self.subTest(path=path):
+                self.assertIn(path, catalog)
+                self.assertEqual(set(catalog[path]['surfaces']), surfaces)
+                # Guardian: the path resolves to declared owners, never to the
+                # fail-loud uncataloged abort. runtime_specific sources select
+                # both the docker and podman atomic observability gates.
+                covered, unowned = validator.resolve_covered_gates([path], coverage)
+                self.assertEqual(unowned, [])
+                self.assertEqual(
+                    set(covered),
+                    {'atomic/docker/observability', 'atomic/podman/observability'})
+                # No native check exists for these surfaces, so the native
+                # matrix must stay empty rather than invent gates.
+                self.assertEqual(planner.resolve_matrix([path], coverage),
+                                 {'include': []})
+        # The #1597 testdata JSON files ride the same observability ownership
+        # through the internal/metrics/testdata package row (shared, not
+        # runtime-specific: the representative docker gate). None of them may
+        # hit the fail-loud uncataloged abort.
+        covered, unowned = validator.resolve_covered_gates([
+            'internal/metrics/testdata/perses-dashboards/loki-logs.json',
+            'internal/metrics/testdata/perses-native/v0.55.1/loki-app-errors.json',
+        ], coverage)
+        self.assertEqual(unowned, [])
+        self.assertEqual(set(covered), {'atomic/docker/observability'})
 
 
 if __name__ == '__main__':

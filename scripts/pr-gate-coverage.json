@@ -135,6 +135,13 @@
         "source.package.atomic.docker.lifecycle",
         "source.package.atomic.podman.lifecycle"
       ]
+    },
+    {
+      "path": "internal/metrics/testdata",
+      "surfaces": [
+        "source.gate.atomic.docker.observability",
+        "source.gate.atomic.podman.observability"
+      ]
     }
   ],
   "components": [
@@ -1404,9 +1411,57 @@
       "runtime_specific": true
     },
     {
+      "id": "source.cmd.baha.core.installation.runtime.test.go",
+      "path": "cmd/baha/core_installation_runtime_test.go",
+      "surfaces": ["source.gate.atomic.docker.data.capabilities", "source.gate.atomic.podman.data.capabilities"],
+      "runtime_specific": true
+    },
+    {
       "id": "source.cmd.baha.workload.port.local.regression.test.go",
       "path": "cmd/baha/workload_port_local_regression_test.go",
       "surfaces": ["source.gate.atomic.docker.data.capabilities", "source.gate.atomic.podman.data.capabilities"],
+      "runtime_specific": true
+    },
+    {
+      "id": "source.cmd.baha.app.status.result.go",
+      "path": "cmd/baha/app_status_result.go",
+      "surfaces": ["source.gate.atomic.docker.observability", "source.gate.atomic.podman.observability"],
+      "runtime_specific": true
+    },
+    {
+      "id": "source.cmd.baha.app.perses.cli.test.go",
+      "path": "cmd/baha/app_perses_cli_test.go",
+      "surfaces": ["source.gate.atomic.docker.observability", "source.gate.atomic.podman.observability"],
+      "runtime_specific": true
+    },
+    {
+      "id": "source.internal.metrics.perses.dashboards.go",
+      "path": "internal/metrics/perses_dashboards.go",
+      "surfaces": ["source.gate.atomic.docker.observability", "source.gate.atomic.podman.observability"],
+      "runtime_specific": true
+    },
+    {
+      "id": "source.internal.metrics.perses.dashboards.helpers.go",
+      "path": "internal/metrics/perses_dashboards_helpers.go",
+      "surfaces": ["source.gate.atomic.docker.observability", "source.gate.atomic.podman.observability"],
+      "runtime_specific": true
+    },
+    {
+      "id": "source.internal.metrics.perses.dashboards.test.go",
+      "path": "internal/metrics/perses_dashboards_test.go",
+      "surfaces": ["source.gate.atomic.docker.observability", "source.gate.atomic.podman.observability"],
+      "runtime_specific": true
+    },
+    {
+      "id": "source.internal.metrics.perses.dashboards.promql.test.go",
+      "path": "internal/metrics/perses_dashboards_promql_test.go",
+      "surfaces": ["source.gate.atomic.docker.observability", "source.gate.atomic.podman.observability"],
+      "runtime_specific": true
+    },
+    {
+      "id": "source.internal.metrics.perses.dashboards.0428-076.native.test.go",
+      "path": "internal/metrics/perses_dashboards_0428-076_native_test.go",
+      "surfaces": ["source.gate.atomic.docker.observability", "source.gate.atomic.podman.observability"],
       "runtime_specific": true
     },
     {
@@ -3143,7 +3198,8 @@
       ,
         "source.cmd.baha.app.broker.diagnostics.test.go",
         "source.cmd.baha.app.workload.ports.go",
-        "source.cmd.baha.workload.port.local.regression.test.go"
+        "source.cmd.baha.workload.port.local.regression.test.go",
+        "source.cmd.baha.core.installation.runtime.test.go"
       ],
       "selection_scope": "focused"
     },
@@ -3174,7 +3230,8 @@
       ,
         "source.cmd.baha.app.broker.diagnostics.test.go",
         "source.cmd.baha.app.workload.ports.go",
-        "source.cmd.baha.workload.port.local.regression.test.go"
+        "source.cmd.baha.workload.port.local.regression.test.go",
+        "source.cmd.baha.core.installation.runtime.test.go"
       ],
       "selection_scope": "focused"
     },
