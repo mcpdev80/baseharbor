@@ -132,8 +132,12 @@ func TestEnvironmentDestroyNativeLifecycle(t *testing.T) {
 		t.Fatalf("native environment identity remains after success: exists=%t err=%v", exists, err)
 	}
 	record, found, err := deployment.FindDeployment(target.Name, resolved.Manifest.ApplicationID, "prod")
-	if err != nil || !found || record.Observed.State != "stopped" || record.Observed.Ready {
-		t.Fatalf("KEEP must retain the stopped deployment owner: found=%t state=%q ready=%t err=%v", found, record.Observed.State, record.Observed.Ready, err)
+	if err != nil || !found || record.Observed.State != "runtime-retired" || record.Observed.Ready {
+		t.Fatalf("KEEP must retain the runtime-retired deployment owner: found=%t state=%q ready=%t err=%v", found, record.Observed.State, record.Observed.Ready, err)
+	}
+	status, _, err = collectResolvedApplicationStatus(ctx, resolved)
+	if err != nil || status.State != "stopped" || status.Ready {
+		t.Fatalf("KEEP must report the retained deployment as stopped: state=%q ready=%t err=%v", status.State, status.Ready, err)
 	}
 	containers, err = runtime.ListRuntimeContainers(ctx)
 	if err != nil {
