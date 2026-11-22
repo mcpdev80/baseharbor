@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"github.com/mcpdev80/baseharbor/internal/machine"
 )
 
 type EffectiveValue struct {
@@ -26,6 +28,25 @@ type EffectivePolicy struct {
 	Source    string `json:"source"`
 }
 
+// EnvironmentResolutionInput carries the Core-authoritative identity for the
+// active environment as stamped by the deployment registry (card 0428-054,
+// environment.json). It is optional and orthogonal to the organization-config
+// definition layer: callers that have no registry identity in scope pass the
+// zero value, which leaves reconciliation inert but never weakens the
+// provider/defaults vs mandatory-policy resolution.
+type EnvironmentResolutionInput struct {
+	// CoreIdentity is the registry-returned durable identity reference for the
+	// active environment. Empty means "no registry identity available", which
+	// the reconciliation treats as an absent authoritative source rather than
+	// a matching one.
+	CoreIdentity string
+}
+
+// Effective is the resolved view of the organization configuration for one
+// environment. EnvironmentIdentity (card 0428-056) reconciles the
+// organization-config identity declaration against the Core registry identity;
+// it is only populated when they match and is never an authorization
+// credential on its own.
 type Effective struct {
 	ContractVersion string                       `json:"contract_version"`
 	Organization    string                       `json:"organization"`
@@ -35,20 +56,40 @@ type Effective struct {
 	Providers       map[string]EffectiveProvider `json:"providers,omitempty"`
 	Trust           map[string]EffectiveValue    `json:"trust,omitempty"`
 	Policies        []EffectivePolicy            `json:"policies,omitempty"`
-	Resolution      Resolution                   `json:"resolution"`
-	Provenance      map[string]ValueProvenance   `json:"provenance,omitempty"`
-	PolicyDecisions []ConstraintDecision         `json:"policy_decisions,omitempty"`
+	// EnvironmentIdentity reconciles the organization-config declaration
+	// (definition layer) against the Core registry identity (runtime source of
+	// truth, card 0428-054). It is populated only when the declared reference
+	// matches the registry identity; a mismatch returns an error and leaves
+	// this nil so a drifted identity never leaks into downstream resolution.
+	EnvironmentIdentity *EffectiveEnvironmentIdentity `json:"environment_identity,omitempty"`
+	Resolution          Resolution                    `json:"resolution"`
+	Provenance          map[string]ValueProvenance    `json:"provenance,omitempty"`
+	PolicyDecisions     []ConstraintDecision          `json:"policy_decisions,omitempty"`
 }
 
-func ResolveEffective(state ActiveState, environment string, preferences ...PreferenceLayer) (Effective, error) {
+// EffectiveEnvironmentIdentity is the reconciled identity for the active
+// environment. Authoritative is true only after the organization-config
+// declaration matches the Core registry identity; it is never an
+// authorization credential on its own.
+type EffectiveEnvironmentIdentity struct {
+	Reference     string `json:"reference"`
+	Authoritative bool   `json:"authoritative"`
+	Source        string `json:"source"`
+}
+
+// resolveEffectiveInner is the shared resolution core. ResolveEffective is the
+// definition-layer-only entry point with the stable two-or-three-arg public
+// signature; ResolveEffectiveWithCoreIdentity adds card 0428-056
+// environment-identity reconciliation on top of it.
+func resolveEffectiveInner(state ActiveState, environment string, coreEnv EnvironmentResolutionInput, preferences []PreferenceLayer) (Effective, error) {
+	layers, err := orderedPreferences(preferences)
+	if err != nil {
+		return Effective{}, err
+	}
 	if err := state.Config.Validate(); err != nil {
 		return Effective{}, err
 	}
 	if err := state.Resolution.Validate(); err != nil {
-		return Effective{}, err
-	}
-	layers, err := orderedPreferences(preferences)
-	if err != nil {
 		return Effective{}, err
 	}
 	environment = strings.TrimSpace(environment)
@@ -76,6 +117,19 @@ func ResolveEffective(state ActiveState, environment string, preferences ...Pref
 		candidate.Source = "organization.environment." + environment
 		recordCandidates(&result, env, candidate)
 		applyDefaults(&result, env, "organization.environment."+environment)
+	}
+	// Organization-environment reconciliation (card 0428-056). The organization
+	// configuration is the definition/authorship layer; the deployment registry
+	// (card 0428-054, environment.json) is the authoritative runtime source of
+	// truth. When the organization declares a shared-environment identity, it is
+	// reconciled against the Core registry identity supplied by the caller:
+	// a match marks the identity authoritative; a mismatch fails closed and
+	// returns an error so a drifted identity never reaches downstream resolution.
+	// An absent registry identity is treated as "no authoritative source
+	// available" — reconciliation stays inert and never downgrades the
+	// provider/defaults vs mandatory-policy resolution.
+	if err := reconcileEnvironmentIdentity(&result, state, environment, coreEnv); err != nil {
+		return Effective{}, err
 	}
 	if team := state.Config.Team; team != nil {
 		source := "team." + team.Name
@@ -142,6 +196,66 @@ func ResolveEffective(state ActiveState, environment string, preferences ...Pref
 		}
 	}
 	return result, nil
+}
+
+// ResolveEffective resolves the effective organization configuration for an
+// environment. It is definition-layer-only: it reconciles provider/defaults vs
+// mandatory policy but does NOT reconcile the shared environment identity with
+// the Core registry. Existing call sites use this stable signature.
+func ResolveEffective(state ActiveState, environment string, preferences ...PreferenceLayer) (Effective, error) {
+	return resolveEffectiveInner(state, environment, EnvironmentResolutionInput{}, preferences)
+}
+
+// ResolveEffectiveWithCoreIdentity resolves the effective organization
+// configuration and additionally reconciles the shared environment identity
+// (card 0428-056) against the Core registry identity (card 0428-054) supplied by
+// the caller. A mismatch fails closed. Callers without a registry identity in
+// scope pass EnvironmentResolutionInput{} and get definition-layer resolution
+// identical to ResolveEffective.
+func ResolveEffectiveWithCoreIdentity(state ActiveState, environment string, coreEnv EnvironmentResolutionInput, preferences ...PreferenceLayer) (Effective, error) {
+	return resolveEffectiveInner(state, environment, coreEnv, preferences)
+}
+
+// reconcileEnvironmentIdentity applies the card 0428-056 reconciliation. It is
+// definition-layer-only: it never mutates the deployment registry or the
+// organization configuration, only the in-memory Effective result. A declared
+// identity that matches the registry identity is authoritative; a declared
+// identity that diverges fails closed; an absent registry identity is inert.
+func reconcileEnvironmentIdentity(result *Effective, state ActiveState, environment string, coreEnv EnvironmentResolutionInput) error {
+	declared := state.Config.Environments[environment].Identity
+	if declared == nil {
+		return nil
+	}
+	registryIdentity := strings.TrimSpace(coreEnv.CoreIdentity)
+	if registryIdentity == "" {
+		// No authoritative registry identity in this resolution scope; the
+		// declaration stands as authored but is not yet authoritative. The
+		// definition layer still carries the reference for tooling/display, but
+		// downstream consumers must not treat it as reconciled.
+		result.EnvironmentIdentity = &EffectiveEnvironmentIdentity{
+			Reference: strings.TrimSpace(declared.Reference),
+			Source:    "organization.environment." + environment,
+		}
+		return nil
+	}
+	if strings.TrimSpace(declared.Reference) == "" {
+		return fmt.Errorf("organization environment %q declares an empty identity; a registry identity %q is present", environment, registryIdentity)
+	}
+	if strings.TrimSpace(declared.Reference) != registryIdentity {
+		return &machine.Error{
+			Code:      machine.ErrorPolicyDenied,
+			CauseCode: "environment_identity_mismatch",
+			Message:   "The organization environment identity does not match the Core registry identity.",
+			Resource:  "environments." + environment + ".identity.reference",
+			Next:      "Reconcile the managed organization configuration with the deployment registry (environment.json) or correct the declared identity reference.",
+		}
+	}
+	result.EnvironmentIdentity = &EffectiveEnvironmentIdentity{
+		Reference:     registryIdentity,
+		Authoritative: true,
+		Source:        "organization.environment." + environment + " (reconciled with deployment registry)",
+	}
+	return nil
 }
 
 func applyDefaults(result *Effective, defaults EnvironmentDefaults, source string) {
