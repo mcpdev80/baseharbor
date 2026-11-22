@@ -719,7 +719,30 @@ func ensureTargetRuntimeFiles(ctx context.Context, ports bhruntime.Ports, ha boo
 }
 
 func detectRuntimeForTarget(ctx context.Context, target deployment.ResolvedTarget) (bhruntime.RuntimeProvider, error) {
-	if access := strings.TrimSpace(target.AccessProvider); access != "" && access != "local" {
+	// Host-local Target access arrives in two shapes: the bare alias "local"
+	// and the runtime-specific "local-<runtime>" provider names that
+	// `target create --access local-docker` (and its Podman sibling) records.
+	// Both are LOCAL for the runtime probe - the sibling grant path
+	// (local_workload_authority.go isLocalRuntimeAccessProvider) already
+	// accepts exactly these names - but a local-<runtime> name is only valid
+	// when the declared runtime matches: local-docker pairs exclusively with
+	// the Docker runtime and local-podman exclusively with Podman. Any other
+	// provider (remote, connector, unknown) and any provider-vs-runtime
+	// mismatch keeps failing closed here, before engine ownership.
+	access := strings.TrimSpace(target.AccessProvider)
+	switch access {
+	case "", "local":
+	case "local-docker", "local-podman":
+		want := bhruntime.ProviderDocker
+		if access == "local-podman" {
+			want = bhruntime.ProviderPodman
+		}
+		if !strings.EqualFold(strings.TrimSpace(target.RuntimeProvider), string(want)) {
+			return nil, machine.NewError(machine.ErrorCapabilityMissing,
+				"Selected remote Target has no authenticated live runtime binding.",
+				"Establish the selected Target Access session; BaseHarbor never executes a remote selection locally.", true)
+		}
+	default:
 		return nil, machine.NewError(machine.ErrorCapabilityMissing,
 			"Selected remote Target has no authenticated live runtime binding.",
 			"Establish the selected Target Access session; BaseHarbor never executes a remote selection locally.", true)
