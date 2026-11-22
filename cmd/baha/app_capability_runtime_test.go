@@ -454,7 +454,9 @@ func TestApplicationCapabilityLifecycleFootprintShowDigestConsent(t *testing.T) 
 // ("confirm-hash <digest>") and the fail-closed missing-consent hint
 // ("Re-run with --confirm-candidate <digest> ... to acknowledge this exact
 // submission."), so a test can capture the digest the production choke point
-// prints on either path and re-run with it.
+// prints on either path and re-run with it. This gate path is wired into the
+// data-capabilities and coreless-lifecycle native gates (scripts/ci-native-pr-gate.sh)
+// and the core-capability shard (scripts/pre-release-integration.py).
 func extractFootprintShowConfirmDigest(out string) string {
 	re := regexp.MustCompile(`--confirm-candidate\s+([0-9a-f]{64})`)
 	if m := re.FindStringSubmatch(out); m != nil {
