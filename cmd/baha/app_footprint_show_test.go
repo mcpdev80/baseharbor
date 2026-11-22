@@ -272,8 +272,13 @@ func TestAppFootprintShowHumanAndJSONAgreeOnUnused(t *testing.T) {
 			Unused:   []string{"orphaned-cache", "stale-queue"},
 		},
 	}
-	var human, machine bytes.Buffer
-	if err := appFootprintShowContext(&human, view, appFootprintShowOptions{
+	var defaultHuman, detailedHuman, machine bytes.Buffer
+	if err := appFootprintShowContext(&defaultHuman, view, appFootprintShowOptions{
+		Target: "dev",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := appFootprintShowContext(&detailedHuman, view, appFootprintShowOptions{
 		Target: "dev", Details: true,
 	}); err != nil {
 		t.Fatal(err)
@@ -290,17 +295,19 @@ func TestAppFootprintShowHumanAndJSONAgreeOnUnused(t *testing.T) {
 		}
 	}
 	// Human surface must carry the same IDs as the JSON contract.
-	for _, id := range view.Footprint.Unused {
-		if !strings.Contains(human.String(), id) {
-			t.Fatalf("human footprint missing Unused instance %q: %s", id, human.String())
+	for _, humanOutput := range []string{defaultHuman.String(), detailedHuman.String()} {
+		for _, id := range view.Footprint.Unused {
+			if !strings.Contains(humanOutput, id) {
+				t.Fatalf("human footprint missing Unused instance %q: %s", id, humanOutput)
+			}
+		}
+		// Human surface reports the count consistently with the contract.
+		if !strings.Contains(humanOutput, "Unused (resolved but not selected): 2") {
+			t.Fatalf("human footprint missing unused count summary: %s", humanOutput)
 		}
 	}
-	// Human surface reports the count consistently with the contract.
-	if !strings.Contains(human.String(), "Unused (resolved but not selected): 2") {
-		t.Fatalf("human footprint missing unused count summary: %s", human.String())
-	}
 	// No GuidedReadContext metadata leaks into either surface.
-	for _, output := range []string{human.String(), machine.String()} {
+	for _, output := range []string{defaultHuman.String(), detailedHuman.String(), machine.String()} {
 		if strings.Contains(output, "private-revision") {
 			t.Fatal("leaked GuidedReadContext metadata")
 		}

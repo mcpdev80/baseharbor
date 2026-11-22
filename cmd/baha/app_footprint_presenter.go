@@ -52,6 +52,9 @@ func renderAppFootprint(fp application.Footprint, contextComplete bool, options 
 	// the human and machine surfaces agree for the resolved footprint.
 	if len(fp.Unused) > 0 {
 		fmt.Fprintf(&out, "Unused (resolved but not selected): %d\n", len(fp.Unused))
+		for _, instanceID := range fp.Unused {
+			fmt.Fprintf(&out, "- %s: resolved but not selected (unused)\n", footprintLabel(instanceID))
+		}
 	}
 	if !options.Details {
 		if len(fp.Existing)+len(fp.Additional) > 0 {
@@ -70,9 +73,6 @@ func renderAppFootprint(fp application.Footprint, contextComplete bool, options 
 			fmt.Fprintf(&out, "Unbound requirement: %s/%s (provider unknown)\n",
 				requirement.Requirement.Kind, footprintLabel(requirement.Requirement.Name))
 		}
-	}
-	for _, instanceID := range fp.Unused {
-		fmt.Fprintf(&out, "- %s: resolved but not selected (unused)\n", footprintLabel(instanceID))
 	}
 	if !fp.Complete || !contextComplete {
 		fmt.Fprintln(&out, "Unverified dependency inventories and capacity remain unknown.")
