@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/development"
@@ -93,6 +94,25 @@ func writeSourcePullResult(out io.Writer, result *development.SourcePullResult) 
 	} else {
 		fmt.Fprintln(out, "Source pull succeeded; all selected sources are current.")
 	}
+	return nil
+}
+
+// writeSourcePullUpHuman renders the human (non-JSON) --up document: the pull
+// result followed by the apply output under an "up" heading. Unlike the JSON
+// path, which is a single composite object, the human document is the pull
+// result and the up output concatenated as two human-readable sections.
+func writeSourcePullUpHuman(out io.Writer, result *development.SourcePullResult, upOutput string) error {
+	if err := writeSourcePullResult(out, result); err != nil {
+		return err
+	}
+	upTrimmed := strings.TrimSpace(upOutput)
+	if upTrimmed == "" {
+		upTrimmed = "no apply output"
+	}
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, "Up")
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, upTrimmed)
 	return nil
 }
 

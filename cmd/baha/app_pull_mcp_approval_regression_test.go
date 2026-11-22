@@ -37,31 +37,40 @@ func TestAppPullMCPApprovalRegression(t *testing.T) {
 		}
 		encoded, _ := json.Marshal(result.StructuredContent)
 		var payload machineToolError
-		if err := json.Unmarshal(encoded, &payload); err != nil || payload.Error.Code == "" {
-			t.Fatalf("the refusal must carry a classified approval error: %s", encoded)
+		if err := json.Unmarshal(encoded, &payload); err != nil {
+			t.Fatalf("the refusal payload must decode as a machine error: %v\n%s", err, encoded)
 		}
-		if payload.Error.Message == "" {
-			t.Fatalf("the refusal must carry a message explaining the approval requirement: %s", encoded)
+		if payload.Error.Code == "" {
+			t.Fatalf("the refusal must carry a classified approval error code: %s", encoded)
+		}
+		// The failure must be the approval gate, not a dirty-tree or resolution
+		// error: the fixture is a clean, committed repository, so a non-approval
+		// failure here would hide a missing approval check (F4 regression risk).
+		if !containsApprovalRefusal(payload.Error.Message) {
+			t.Fatalf("STOP CRITERION: approval=false must be refused by the approval gate, but the refusal is not an approval-required message: %s", encoded)
 		}
 	})
 
 	t.Run("approval-granted-proceeds-past-gate", func(t *testing.T) {
 		// With approval granted the approval gate must NOT refuse. The pull then
-		// proceeds to the shared lifecycle; a clean single-source repository
-		// succeeds, which is the strongest witness that the gate passed.
+		// proceeds to the shared lifecycle; the clean fixture reaches a
+		// source-model resolution error (no workspace initialized) instead of an
+		// approval refusal, which proves the gate passed: a missing approval
+		// check would instead fail on this clean repository with a
+		// dirty-tree or resolution error, never with an approval message.
 		result, callErr := callAppPullMCP(t, fixture.store, mcpCallPull{Approval: true})
 		if callErr != nil {
 			t.Fatalf("MCP app.pull approval=true transport error: %v", callErr)
 		}
-		// The approval gate must not be the failure: a refusal payload whose
-		// message mentions approval proves the gate rejected, which must not
-		// happen with approval granted.
 		if result != nil && result.IsError {
 			encoded, _ := json.Marshal(result.StructuredContent)
 			var payload machineToolError
 			if err := json.Unmarshal(encoded, &payload); err == nil {
 				if containsApprovalRefusal(payload.Error.Message) {
 					t.Fatalf("STOP CRITERION: baseharbor.app.pull with approval=true must pass the approval gate, but the refusal mentions approval: %s", encoded)
+				}
+				if payload.Error.CauseCode == "explicit_approval_required" || strings.Contains(strings.ToLower(payload.Error.Message), "approval") {
+					t.Fatalf("STOP CRITERION: approval=true passed but the failure is approval-related: %s", encoded)
 				}
 			}
 		}
@@ -117,6 +126,11 @@ func appPullMCPRepository(t *testing.T) appPullMCPFixture {
 	if err := writeInitializedAuthoredManifest(t, manifestPath, manifest, 0o600); err != nil {
 		t.Fatal(err)
 	}
+	// Commit the manifest so the git source stays clean: the source pull inspects
+	// `git status --porcelain` and a dirty tree would fail the pull on a
+	// dirty-tree blocker instead of the approval gate this test exercises.
+	mustGitUpdateTest(t, local, "add", application.RepositoryManifestName)
+	mustGitUpdateTest(t, local, "commit", "-m", "add baseharbor manifest")
 	t.Chdir(local)
 	return appPullMCPFixture{root: root, store: application.Store{Root: filepath.Join(root, ".baseharbor", "apps")}, remote: remote, local: local}
 }

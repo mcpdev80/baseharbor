@@ -154,13 +154,6 @@ func runAppPull(ctx context.Context, store application.Store, opts appPullOption
 	if err != nil {
 		return err
 	}
-	if opts.OutputFormat == outputJSON {
-		if err := writeJSON(out, result); err != nil {
-			return err
-		}
-	} else if err := writeSourcePullResult(out, &result); err != nil {
-		return err
-	}
 	if !result.Successful {
 		return fmt.Errorf("%w: %s", development.ErrSourcePullBlocked, sourcePullFailureText(&result))
 	}
@@ -169,9 +162,25 @@ func runAppPull(ctx context.Context, store application.Store, opts appPullOption
 		if err := bringApplicationUpAfterPull(ctx, store, resolved, applyOut, applyErrOut); err != nil {
 			return err
 		}
-		return emitSourcePullUpComposite(out, result, applyOut.String())
+		// With --up there is exactly one JSON document to emit: the composite
+		// (pull result + apply output under "up"). Emitting the bare result
+		// first (as the non--up path does) would concatenate a second JSON
+		// value onto the same writer and break the single-document contract
+		// that structured clients parse; the MCP handler unmarshals the combined
+		// buffer as one value, so a double write fails decoding there too.
+		if opts.OutputFormat == outputJSON {
+			return emitSourcePullUpComposite(out, result, applyOut.String())
+		}
+		if err := writeSourcePullResult(out, &result); err != nil {
+			return err
+		}
+		fmt.Fprintln(out, "")
+		return writeSourcePullUpHuman(out, &result, applyOut.String())
 	}
-	return nil
+	if opts.OutputFormat == outputJSON {
+		return writeJSON(out, result)
+	}
+	return writeSourcePullResult(out, &result)
 }
 
 // emitSourcePullUpComposite returns one valid JSON document for `baha app pull
