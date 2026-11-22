@@ -102,6 +102,22 @@ class NativeGatePlanTests(unittest.TestCase):
             {'id': 'native/podman/data-capabilities', 'runtime': 'podman'},
         ]})
 
+    def test_workload_port_sources_select_both_data_capabilities_gates(self):
+        # Card 0428-248 round-2: cmd/baha/app_workload_ports.go and
+        # cmd/baha/workload_port_local_regression_test.go are the #1723 files
+        # on the local --workload-port path. The catalog maps both like the
+        # broker entries, so a change to either selects the native
+        # data-capabilities gates for both runtimes instead of the fail-loud
+        # uncataloged abort.
+        for path in ('cmd/baha/app_workload_ports.go',
+                     'cmd/baha/workload_port_local_regression_test.go'):
+            with self.subTest(path=path):
+                matrix = planner.resolve_matrix([path], coverage)
+                self.assertEqual(matrix, {'include': [
+                    {'id': 'native/docker/data-capabilities', 'runtime': 'docker'},
+                    {'id': 'native/podman/data-capabilities', 'runtime': 'podman'},
+                ]})
+
 
 if __name__ == '__main__':
     unittest.main()

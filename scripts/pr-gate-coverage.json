@@ -1398,6 +1398,18 @@
       "runtime_specific": true
     },
     {
+      "id": "source.cmd.baha.app.workload.ports.go",
+      "path": "cmd/baha/app_workload_ports.go",
+      "surfaces": ["source.gate.atomic.docker.data.capabilities", "source.gate.atomic.podman.data.capabilities"],
+      "runtime_specific": true
+    },
+    {
+      "id": "source.cmd.baha.workload.port.local.regression.test.go",
+      "path": "cmd/baha/workload_port_local_regression_test.go",
+      "surfaces": ["source.gate.atomic.docker.data.capabilities", "source.gate.atomic.podman.data.capabilities"],
+      "runtime_specific": true
+    },
+    {
       "id": "source.cmd.baha.main.go",
       "path": "cmd/baha/main.go",
       "surfaces": ["source.gate.atomic.docker.data.capabilities", "source.gate.atomic.podman.data.capabilities"],
@@ -3129,7 +3141,9 @@
         "source.cmd.baha.main.go"
       
       ,
-        "source.cmd.baha.app.broker.diagnostics.test.go"
+        "source.cmd.baha.app.broker.diagnostics.test.go",
+        "source.cmd.baha.app.workload.ports.go",
+        "source.cmd.baha.workload.port.local.regression.test.go"
       ],
       "selection_scope": "focused"
     },
@@ -3158,7 +3172,9 @@
         "source.cmd.baha.main.go"
       
       ,
-        "source.cmd.baha.app.broker.diagnostics.test.go"
+        "source.cmd.baha.app.broker.diagnostics.test.go",
+        "source.cmd.baha.app.workload.ports.go",
+        "source.cmd.baha.workload.port.local.regression.test.go"
       ],
       "selection_scope": "focused"
     },
