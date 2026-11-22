@@ -162,6 +162,14 @@
       ]
     },
     {
+      "id": "source.cmd.baha.app.broker.go",
+      "path": "cmd/baha/app_broker.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
       "id": "source.cmd.baha.app.core.requirement.go",
       "path": "cmd/baha/app_core_requirement.go",
       "surfaces": [

@@ -134,14 +134,16 @@ class V0427PrGateDedupRegression(unittest.TestCase):
         }
 
     def test_reviewed_cli_candidate_resolves_under_v0427(self):
-        # A concrete reviewed exact-path candidate (openbao retry) still resolves
-        # under the moved release, proving the dedup gate set stayed live.
+        # A concrete reviewed exact-path candidate still resolves under the moved
+        # release, proving the dedup gate set stayed live. The fail-loud catalog
+        # guard (card 0428-242) rejects uncataloged sources, so this uses a
+        # cataloged OpenBao source (bootstrap_auth.go) that maps to a declared
+        # runtime gate owner rather than an unowned legacy hint.
         self.mapping  # noqa: B018 - mapping loaded in setUp
         load('pr-gate-plan')  # noqa: F841 - module side effects
         diff = self._valid_diff(
             [
-                {'path': 'internal/openbao/bootstrap.go', 'status': 'modified'},
-                {'path': 'internal/openbao/bootstrap_test.go', 'status': 'modified'},
+                {'path': 'internal/openbao/bootstrap_auth.go', 'status': 'modified'},
             ],
             'v0.4.27',
         )
@@ -153,13 +155,15 @@ class V0427PrGateDedupRegression(unittest.TestCase):
             conservative_fallback=True,
         )
         # The reviewed OpenBao candidate resolves with the mandatory package
-        # check plus broad Go fallback. Its legacy lifecycle hint is not a
-        # declared gate owner, so no runtime gate is guessed.
+        # check, source-contracts, and its declared control-plane-recovery gate.
+        # The fail-loud catalog guard (card 0428-242) rejects uncataloged
+        # sources, so this proves the dedup gate set stayed live for a
+        # cataloged exact-path candidate that maps to a declared gate owner.
         self.assertEqual('resolved', result['coverage_status'])
         ids = {row['id'] for row in result['required_validation_checks']}
         self.assertIn('openbao-package-tests', ids)
-        self.assertIn('go-unit-tests', ids)
-        self.assertEqual([], result['selected_gates'])
+        self.assertIn('source-contracts', ids)
+        self.assertEqual(['atomic/docker/control-plane-recovery'], result['selected_gates'])
 
     def test_unknown_path_selects_conservative_fallback_under_v0427(self):
         diff = self._valid_diff(

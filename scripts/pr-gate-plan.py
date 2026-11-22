@@ -1820,12 +1820,23 @@ def plan(diff, requirements, mapping, repository='.', context_repository=None,
     if coverage_path.is_file():
         coverage = json.loads(coverage_path.read_text())
         if coverage.get('release') == result['release']:
-            coverage_errors = _coverage_module().validate(coverage, requirements)
-            if coverage_errors:
-                raise ValueError('invalid trusted PR gate coverage catalog: ' + '; '.join(coverage_errors))
             paths = [change[key] for change in diff.get('changes', [])
                      for key in ('path', 'old_path', 'new_path') if key in change]
             covered, unowned = _coverage_module().resolve_covered_gates(paths, coverage)
+            # Fail-loud: a changed SOURCE component (cmd/ or internal/) with no
+            # declared catalog owner must never resolve to an empty/gray matrix
+            # that passes the gate. Surface the precise next action and abort
+            # here. The catalog owns source code; docs, release pins and other
+            # legacy-handled paths stay out of this guard.
+            source_unowned = [p for p in unowned
+                              if (p.startswith('cmd/') or p.startswith('internal/'))]
+            if source_unowned:
+                raise ValueError(
+                    'invalid trusted PR gate coverage catalog: '
+                    + _coverage_module().unresolved_source_error(source_unowned))
+            coverage_errors = _coverage_module().validate(coverage, requirements)
+            if coverage_errors:
+                raise ValueError('invalid trusted PR gate coverage catalog: ' + '; '.join(coverage_errors))
             legacy_selected = set(result['selected_gates'])
             required = {gate['id'] for gate in requirements.get('gates', [])
                         if result['release'] in gate.get('required_for', [])}
