@@ -1,0 +1,7 @@
+{
+  "kind": "DashboardUnavailable",
+  "key": "postgresql-targets",
+  "backend": "postgresql",
+  "unavailable": true,
+  "reason": "PostgreSQL has no native metrics signal in BaseHarbor (no collector metrics signal in the pinned reference catalog); the dashboard is explicitly unavailable and no exporter is installed"
+}
