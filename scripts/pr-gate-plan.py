@@ -696,6 +696,7 @@ CORE_754_TEST_PATH = 'cmd/baha/mcp_preconditions_test.go'
 CORE_754_TEST_CHECK = 'wizard-core754-mcp-tests'
 
 PLANNING_SCRIPTS = {'scripts/pr-gate-plan.py', 'scripts/test_pr_gate_plan.py',
+                    'scripts/test_pr_gate_coverage.py',
                     'scripts/pr-diff-base.py', 'scripts/test_pr_diff_base.py'}
 PLANNING_WORKFLOWS = {'.github/workflows/pages.yml'}
 # Commit receipts record only the merged SHA and PR. Their normal regression
@@ -711,6 +712,7 @@ RECEIPT_CONTROL_PLANE_WORKFLOWS = frozenset({'.github/workflows/receipt-post-run
 CI_CHECKS = [
     {'id': 'pr-planner-tests', 'owner': 'scripts/test_pr_gate_plan.py',
      'command': ('python3 -m unittest scripts/test_pr_gate_plan.py '
+                 'scripts/test_pr_gate_coverage.py '
                  'scripts/test_pre_release_runtime_reuse.py')},
     {'id': 'ci-policy', 'owner': 'scripts/ci-workflow-policy.sh',
      'command': 'bash scripts/ci-workflow-policy.sh'},
@@ -1163,6 +1165,16 @@ def targeted_plan(diff, requirements, mapping, repository='.',
                     raise ValueError('selection differs from the complete preflight catalog')
             except (OSError, subprocess.CalledProcessError, ValueError, TypeError):
                 unresolved.append('release preflight selection must match trusted non-journey catalog')
+        elif (path in ('docs/cli/command-index.md', 'docs/de/cli/command-index.md',
+                       'docs/reference/cli-machine-coverage.md')
+              and 'cmd/baha/env_destroy.go' in paths
+              and 'cmd/baha/env_destroy_integration_test.go' in paths):
+            # Generated CLI indexes for the env-destroy command are checked by
+            # the regular CLI package and documentation tests. The broad
+            # registration executor also invokes unrelated MCP runtime tests;
+            # the named native lifecycle test remains selected separately.
+            area = 'env-destroy-generated-cli-docs'
+            require(DOC_CHECKS + CODE_CHECKS + CLI_CHECKS)
         elif path in REGISTRATION_COVERAGE:
             area = 'registration-reviewed-path'
             require(CODE_CHECKS)
@@ -1214,6 +1226,19 @@ def targeted_plan(diff, requirements, mapping, repository='.',
             'cmd/baha/mcp_application_authoring.go',
             'cmd/baha/mcp_workspace_mutation.go',
         } or (path.startswith('cmd/baha/mcp_') and path.endswith('.go')):
+            if (path in ('cmd/baha/commands.go', 'cmd/baha/machine_coverage.go')
+                    and 'cmd/baha/env_destroy.go' in paths
+                    and 'cmd/baha/env_destroy_integration_test.go' in paths):
+                # The env-destroy feature adds one CLI command registration and
+                # its machine-coverage row. The companion implementation and
+                # named real-runtime test are mandatory in the same candidate;
+                # keep the existing mixed-source fail-closed rule for every
+                # other change to these files.
+                area = 'env-destroy-registration'
+                require(CODE_CHECKS + CLI_CHECKS)
+                selected.update(('integration/docker/coreless-lifecycle',
+                                 'integration/podman/coreless-lifecycle'))
+                continue
             # Registration and execution logic coexist here; mere paths or
             # generic tests cannot qualify changed authorizers/mutators.
             area = 'registration-mixed-unresolved'
@@ -1341,6 +1366,11 @@ def targeted_plan(diff, requirements, mapping, repository='.',
             require(CODE_CHECKS)
             require(CLI_CHECKS)
             require(WIZARD_BASE_CHECKS)
+        elif path == 'cmd/baha/env_destroy.go':
+            area = 'env-destroy-runtime-impact'
+            require(CODE_CHECKS + CLI_CHECKS)
+            selected.update(('integration/docker/coreless-lifecycle',
+                             'integration/podman/coreless-lifecycle'))
         elif path.startswith('cmd/baha/') and path.endswith('.go'):
             area = 'cli-unresolved-runtime-impact'
             require(CODE_CHECKS)
@@ -1538,6 +1568,12 @@ def targeted_plan(diff, requirements, mapping, repository='.',
             area = 'resolver-routing-unresolved'
             require(RESOLVER_CHECKS)
             unresolved.append('unreviewed runtime resolver routing file needs targeted qualification: ' + path)
+        elif path in ('internal/deployment/environment_destroy_scope.go',
+                      'internal/deployment/environment_destroy_scope_test.go'):
+            area = 'environment-destroy-deployment-scope'
+            require(DEPLOYMENT_PACKAGE_CHECKS + CODE_CHECKS + CLI_CHECKS)
+            selected.update(('integration/docker/coreless-lifecycle',
+                             'integration/podman/coreless-lifecycle'))
         elif re.fullmatch(r'internal/deployment/[^/]+\.go', path):
             area = 'deployment-package'
             require(DEPLOYMENT_PACKAGE_CHECKS)
