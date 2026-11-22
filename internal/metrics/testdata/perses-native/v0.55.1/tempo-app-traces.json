@@ -36,7 +36,7 @@
                 "plugin": {
                   "kind": "TempoTraceQuery",
                   "spec": {
-                    "query": "{resource.service.namespace=\"$application\" && resource.deployment.environment.name=\"$env\"}"
+                    "query": "{resource.service.namespace=\"$application\" \u0026\u0026 resource.deployment.environment.name=\"$env\"}"
                   }
                 },
                 "datasource": {
