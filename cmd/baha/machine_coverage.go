@@ -176,6 +176,8 @@ var cliPresentationCommands = map[string]string{
 	"baha workstation list":               "Core-local inventory of workstation certificate ownership, expiry and revocation state.",
 	"baha tui":                            "Human interactive presentation; its product actions require individual semantic coverage.",
 	"baha app version":                    "Repository-bound presentation of the app.versions read model for the current deployment; machine clients invoke app.versions with explicit identity.",
+	"baha env":                            "Command group routing to env.show and env.destroy; invoke the supported subcommands explicitly.",
+	"baha env destroy":                    "Environment-scoped identity removal with a CLI JSON impact plan; no machine tool yet (pending semantic MCP coverage). The --json surface exposes the plan.",
 	// The optional Perses lifecycle surface (0428-084/#1604) is guided human
 	// presentation: enable and disable fold into the manifest services.observability
 	// selection and the apply/preflight flow, status is a repository-bound read of

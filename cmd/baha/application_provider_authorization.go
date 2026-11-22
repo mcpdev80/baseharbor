@@ -78,6 +78,31 @@ func authorizeApplicationProviderChanges(ctx context.Context, resolved resolvedA
 	return validateApplicationProviderExecution(resolved, current.ProviderPlan.Impact)
 }
 
+// manifestIntentEqual compares two manifests for identical deployment intent,
+// ignoring the deployment-only, never-serialized providerPreferences projection.
+// Nil (inherit) and an explicit empty selection are semantically identical
+// (both mean "automatic"); a strict reflect.DeepEqual would distinguish a nil
+// pointer from an empty non-nil one and reject an unchanged manifest as stale.
+func manifestIntentEqual(a, b application.Manifest) bool {
+	if reflect.DeepEqual(a, b) {
+		return true
+	}
+	// The deployment-only, never-serialized providerPreferences projection
+	// distinguishes a nil (inherit) pointer from an explicit empty selection
+	// under reflect.DeepEqual, though both mean "automatic". Normalise both
+	// sides so revalidation compares deployment intent, not that projection.
+	if reflect.DeepEqual(a, b.CanonicalizeProviderPreferences()) {
+		return true
+	}
+	if reflect.DeepEqual(a.CanonicalizeProviderPreferences(), b) {
+		return true
+	}
+	if reflect.DeepEqual(a.CanonicalizeProviderPreferences(), b.CanonicalizeProviderPreferences()) {
+		return true
+	}
+	return false
+}
+
 // The source transfer proves exact bytes, not application ownership. The
 // previously authorized resolution is the owner: never accept a source that
 // claims a different application, environment or identity.
@@ -129,7 +154,7 @@ func revalidateApplicationProviderIntent(ctx context.Context, resolved resolvedA
 	if err != nil {
 		return err
 	}
-	if selection.ManifestPath != resolved.ManifestPath || !reflect.DeepEqual(selection.Manifest, resolved.Manifest) {
+	if selection.ManifestPath != resolved.ManifestPath || !manifestIntentEqual(selection.Manifest, resolved.Manifest) {
 		return classifyProviderChangeConsent(&application.ProviderChangeError{Code: "stale-impact-consent"})
 	}
 	return nil
