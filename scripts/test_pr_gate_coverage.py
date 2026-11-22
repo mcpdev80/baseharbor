@@ -358,10 +358,18 @@ class CoverageCatalogTests(unittest.TestCase):
     def test_repo_core_paths_preserve_legacy_release_gate_coverage(self):
         legacy = json.loads((ROOT / "pre-release-runtime-impact.json").read_text())
         current = json.loads((ROOT / "pr-gate-coverage.json").read_text())
+        requirements = json.loads((ROOT / "release-requirements.json").read_text())
+        active_release_gates = {
+            gate["id"] for gate in requirements["gates"]
+            if current["release"] in gate.get("required_for", [])
+        }
         for path, expected in legacy["core"].items():
             with self.subTest(path=path):
                 selected, _ = coverage_module.resolve_covered_gates([path], current)
-                expected = set(expected)
+                # The release impact map can include gates introduced by a newer
+                # release. PR coverage remains pinned to its declared release,
+                # so only require gates active for that coverage version here.
+                expected = set(expected) & active_release_gates
                 # The full-release impact map names the two coreless integration
                 # jobs, while PR CI executes this changed acceptance test through
                 # the corresponding native lifecycle gates.
