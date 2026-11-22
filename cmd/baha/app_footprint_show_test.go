@@ -252,3 +252,64 @@ func TestAppFootprintShowFootprintCompletenessIndependentOfPlan(t *testing.T) {
 		t.Fatal("handlers modified input context")
 	}
 }
+
+// TestAppFootprintShowHumanAndJSONAgreeOnUnused asserts the regression from
+// card 0428-245: the human-readable footprint surface must render the same
+// Unused provider instances the JSON/MCP contract carries for the same resolved
+// footprint. Before the fix the human presenter silently dropped Unused while
+// the JSON path preserved it, so the two surfaces disagreed.
+func TestAppFootprintShowHumanAndJSONAgreeOnUnused(t *testing.T) {
+	view := GuidedReadContext{
+		Target:           "dev",
+		Complete:         true,
+		SnapshotRevision: "private-revision",
+		Footprint: application.Footprint{
+			Version:  application.FootprintVersion,
+			Target:   "dev",
+			Core:     application.CoreNotRequired,
+			Complete: true,
+			Existing: []application.ProviderFootprint{},
+			Unused:   []string{"orphaned-cache", "stale-queue"},
+		},
+	}
+	var defaultHuman, detailedHuman, machine bytes.Buffer
+	if err := appFootprintShowContext(&defaultHuman, view, appFootprintShowOptions{
+		Target: "dev",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := appFootprintShowContext(&detailedHuman, view, appFootprintShowOptions{
+		Target: "dev", Details: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := appFootprintShowContext(&machine, view, appFootprintShowOptions{
+		Target: "dev", JSON: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// JSON contract carries the exact instance IDs.
+	for _, id := range view.Footprint.Unused {
+		if !strings.Contains(machine.String(), id) {
+			t.Fatalf("JSON footprint missing Unused instance %q: %s", id, machine.String())
+		}
+	}
+	// Human surface must carry the same IDs as the JSON contract.
+	for _, humanOutput := range []string{defaultHuman.String(), detailedHuman.String()} {
+		for _, id := range view.Footprint.Unused {
+			if !strings.Contains(humanOutput, id) {
+				t.Fatalf("human footprint missing Unused instance %q: %s", id, humanOutput)
+			}
+		}
+		// Human surface reports the count consistently with the contract.
+		if !strings.Contains(humanOutput, "Unused (resolved but not selected): 2") {
+			t.Fatalf("human footprint missing unused count summary: %s", humanOutput)
+		}
+	}
+	// No GuidedReadContext metadata leaks into either surface.
+	for _, output := range []string{defaultHuman.String(), detailedHuman.String(), machine.String()} {
+		if strings.Contains(output, "private-revision") {
+			t.Fatal("leaked GuidedReadContext metadata")
+		}
+	}
+}
