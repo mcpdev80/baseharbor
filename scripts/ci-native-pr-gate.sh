@@ -25,6 +25,12 @@ if version.get("commit") != sys.argv[1]:
   cp deploy/control-plane/Dockerfile.binary "$build_dir/Dockerfile"
   "$runtime" build --pull --tag "$image" "$build_dir"
   "$runtime" image inspect "$image" >/dev/null
+  "$runtime" run --rm "$image" version -o json | python3 -c '
+import json, sys
+version = json.load(sys.stdin)
+if version.get("commit") != sys.argv[1]:
+    raise SystemExit("native runtime image does not contain the checked-out source SHA")
+' "$source_sha"
   export BASEHARBOR_RUNTIME_IMAGE="$image"
   printf 'Using exact native runtime image %s\n' "$image"
 }
