@@ -130,15 +130,14 @@ func ciIntegrationManagedLocalGateReason(args []string, target deployment.Resolv
 		managedWorkload = true
 	}
 	// The selected data-capabilities fixture's new_application (create-only)
-	// step runs the same exact canonical `app new` form on its disposable
-	// Target; without this admission the tagged CI binary falls through to an
-	// interactive OIDC prompt and the PTY step times out. Same strict
-	// canonical arg match, this gate only - `app edit` and every other gate
-	// keep the guided behaviour unchanged.
+	// step runs exact canonical `app new` and `app edit` forms on its
+	// disposable Target; without these admissions the tagged CI binary falls
+	// through to an interactive OIDC prompt and the PTY step times out. Both
+	// matches remain strict and scoped to their selected fixture gate.
 	if !managedWorkload && gate == "data-capabilities" && ciIntegrationGuidedAppNew(args) {
 		managedWorkload = true
 	}
-	if !managedWorkload && gate == "guided" && ciIntegrationGuidedAppEdit(args) {
+	if !managedWorkload && (gate == "guided" || gate == "data-capabilities") && ciIntegrationGuidedAppEdit(args) {
 		managedWorkload = true
 	}
 	if !managedWorkload && gate == "guided" && ciIntegrationGuidedFootprintShow(args) {
