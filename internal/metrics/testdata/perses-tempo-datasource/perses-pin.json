@@ -1,0 +1,63 @@
+{
+  "persesVersion": "v0.55.1",
+  "persesCommit": "34599751521f9b91ccffbf2fb198d727e1ccdc83",
+  "specModule": "github.com/perses/spec v0.3.0",
+  "specCommit": "88c10b39b842e9288c0ffbdea82f65e295a88aca",
+  "resource": {
+    "kind": "Datasource",
+    "scope": "project"
+  },
+  "datasourcePluginKinds": [
+    "TempoDatasource"
+  ],
+  "traceQueryWrapperKind": "TraceQuery",
+  "traceQueryPluginKinds": [
+    "TempoTraceQuery"
+  ],
+  "pluginSpecFields": [
+    "directUrl",
+    "proxy"
+  ],
+  "witnessFiles": [
+    {
+      "path": "upstream/dev-data-datasource.json",
+      "sha256": "1422773aaa86fafebe45598005618a6ee42d9b2b6b56617d3de5bf0588eaf487"
+    },
+    {
+      "path": "upstream/perses-datasource-model.go.txt",
+      "sha256": "3fc6f6382d0c006e61b88b3fa230e7d0f7ada3f8f9ec763db3c384dec0fc7854"
+    },
+    {
+      "path": "upstream/perses-kind-model.go.txt",
+      "sha256": "44a0552d991465f5d5870343ba2855cb3b46c49089b60c4a1e7960a4400bd433"
+    },
+    {
+      "path": "upstream/perses-metadata-model.go.txt",
+      "sha256": "88f1efdfc5c2e6290087b3b40234c0828e5cffce71602aeed7e36c444d129a46"
+    },
+    {
+      "path": "upstream/spec-dashboard-model.go.txt",
+      "sha256": "becbdb451e94016dec03d0457c3b14f783279cb6b90144cce2581fcdca8f52cc"
+    },
+    {
+      "path": "upstream/spec-datasource-model.go.txt",
+      "sha256": "d5a58667df386f59132c325a8041651c1725518ecc1b21056a9b05aede8d3a38"
+    },
+    {
+      "path": "upstream/spec-plugin-model.go.txt",
+      "sha256": "e9f889168fc0b89cd79f413e803a611a3c5abf5c1215a40b665dc37b7ba10ee7"
+    },
+    {
+      "path": "upstream/spec-proxy-http-model.go.txt",
+      "sha256": "d2ef67a26a8ab78bb0e1ba55b917d04bcab7d17123b76c05476364799fa5d47c"
+    },
+    {
+      "path": "upstream/spec-proxy-model.go.txt",
+      "sha256": "5261bac781a0f5b054446e151da3640c12606b6a7e548012a0b824e900d7492c"
+    },
+    {
+      "path": "upstream/tracequery-example-dashboard.json",
+      "sha256": "2955598d5a8f4498eaa7e1f93357af1bfa0442c548fe62b89a268ce0c4e976da"
+    }
+  ]
+}
