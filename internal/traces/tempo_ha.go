@@ -280,8 +280,12 @@ func tempoHAQueryAccessSpec() serviceaccess.HTTPGatewaySpec {
 		PublishedPortEnv: "BASEHARBOR_TEMPO_PORT",
 		ContainerPort:    8443,
 		Networks:         []string{"traces"},
-		NetworkAliases:   []string{"tempo-api"},
-		CertificateNames: []string{"tempo-api"},
+		// The managed access aliases (0428-091 P1) ride every gateway form of
+		// this provider: the datasource endpoint names them in both the
+		// single and the HA topology, so the HA gateway must carry and
+		// register them too.
+		NetworkAliases:   append([]string{"tempo-api"}, ManagedAccessAliases("tempo-access")...),
+		CertificateNames: append([]string{"tempo-api"}, ManagedAccessAliases("tempo-access")...),
 		RequireClient:    true,
 		HealthURI:        "/ready",
 	}

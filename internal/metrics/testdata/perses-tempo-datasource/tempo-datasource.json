@@ -1,0 +1,21 @@
+{
+  "kind": "Datasource",
+  "metadata": {
+    "name": "baseharbor-tempo",
+    "project": "baseharbor"
+  },
+  "spec": {
+    "default": true,
+    "plugin": {
+      "kind": "TempoDatasource",
+      "spec": {
+        "proxy": {
+          "kind": "HTTPProxy",
+          "spec": {
+            "url": "https://tempo-access.access.baseharbor.internal:39901"
+          }
+        }
+      }
+    }
+  }
+}

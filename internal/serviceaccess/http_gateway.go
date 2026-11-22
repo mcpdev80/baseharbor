@@ -122,6 +122,17 @@ func EnsureHTTPGateway(ctx context.Context, issuer Issuer, policy Policy, provid
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return HTTPGatewayFiles{}, fmt.Errorf("create service access state: %w", err)
 	}
+	// A gateway that VERIFIES client certificates at runtime enforces exactly
+	// that posture at provisioning time: the reconciled PKI must carry an
+	// enrolled client identity, so the managed-local path mints one under the
+	// strict policy. Without this, a RequireClient gateway in an environment
+	// whose default marks authentication optional (dev) would come up
+	// demanding an identity its own reconciliation never enrolled — every
+	// TLS-verifying consumer path dead on arrival, and readers tempted to
+	// downgrade the requirement to make the stack "work".
+	if spec.RequireClient && !policy.AuthenticationRequired && policy.Authentication == AuthenticationMTLS {
+		policy.AuthenticationRequired = true
+	}
 	certificateNames := append([]string{spec.ServiceName, "127.0.0.1"}, spec.CertificateNames...)
 	material, err := EnsureTLSMaterial(ctx, issuer, policy, filepath.Join(dir, "pki"), certificateNames...)
 	if err != nil {
@@ -565,7 +576,7 @@ func newHTTPClient(material TLSMaterial, requireClient bool, bearerToken string)
 	transport := &http.Transport{
 		TLSClientConfig:     config,
 		TLSHandshakeTimeout: 5 * time.Second,
-		DialContext:         (&net.Dialer{Timeout: 5 * time.Second}).DialContext,
+		DialContext:         managedGatewayDialContext,
 	}
 	var roundTripper http.RoundTripper = transport
 	if bearerToken != "" {
