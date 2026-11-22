@@ -52,6 +52,11 @@ func runPersesHostContainersStatusCommand(t *testing.T, ctx context.Context) per
 // face, and returns its parsed host_containers_dashboards status report.
 func hostContainersProbeAppReport(t *testing.T, ctx context.Context, perses bool) persesHostContainersReport {
 	t.Helper()
+	// Probe resolution reads the ambient Target selection, so neutralise any
+	// BASEHARBOR_TARGET/ENV activation or host-persisted organization
+	// selection leaked into this package process before the probe resolves
+	// its application.
+	testIsolatedSelectionContext(t)
 	root := t.TempDir()
 	m := application.New("perses-host-cli", "dev", false, false, false)
 	m = application.WithWorkloadComponents(m, "api")
