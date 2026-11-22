@@ -1679,7 +1679,7 @@ jobs:
           go-version-file: go.mod
           cache: false
       - name: Install interactive shells for the shell-wrapper path
-        if: matrix.shard == 'cli-3'
+        if: ${{ matrix.shard == 'cli-3' }}
         shell: bash
         run: |
           set -euo pipefail
