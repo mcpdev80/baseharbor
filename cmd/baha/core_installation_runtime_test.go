@@ -319,8 +319,33 @@ func TestCoreBootstrapFixtureCleanupContextIsBoundToItsLocalTarget(t *testing.T)
 	if err != nil || resolved.Name != target.Name || resolved.RuntimeProvider != target.RuntimeProvider || resolved.AccessProvider != "local" {
 		t.Fatalf("fixture cleanup selected an unexpected Target: %+v %v", resolved, err)
 	}
+	// Assert through the production boundary the cleanup path really takes.
+	// The fixture stamp here (WithVerifiedPrincipal -> WithMembershipProvider)
+	// turned the green on at the previous err==nil check, but a verified
+	// principal in a managed environment resolves claim membership before the
+	// fail-closed branch at internal/operatorauth/authorization.go:285 is ever
+	// reachable, so the green demonstrated the stamp, not production authority.
+	// Run the same boundary the production cleanup path runs
+	// (operator_auth_boundary.go:55) and name the authority mode that admitted
+	// the operation; an unproven mode (e.g. an unstamped synthetic principal)
+	// is rejected.
+	if err := ensureOperatorAuthForBoundary(ctx, target.Name, "prod"); err != nil {
+		t.Fatalf("fixture cleanup operator could not pass the operator-auth boundary for the managed teardown scope: %v", err)
+	}
 	if err := authorizeMCPOperation(ctx, "installation.destroy", target.Name, "prod", "", ""); err != nil {
 		t.Fatalf("fixture cleanup operator could not authorize the managed teardown scope: %v", err)
+	}
+	if decision, ok := operatorauth.AuthorizationDecisionFromContext(ctx); ok {
+		t.Logf("fixture cleanup admitted installation.destroy by operatorauth mode=%s subject=%s issuer=%s methods=%v",
+			decision.Actor.Mode, decision.Actor.Subject, decision.Actor.Issuer, decision.Actor.Methods)
+		if !decision.Allowed || decision.Operation != "installation.destroy" {
+			t.Fatalf("fixture cleanup admitted an unexpected authorization decision: allowed=%t operation=%q", decision.Allowed, decision.Operation)
+		}
+		if decision.Actor.Mode != "authenticated" && decision.Actor.Mode != "local-runtime" {
+			t.Fatalf("fixture cleanup admitted the managed teardown by an unproven operatorauth mode %q", decision.Actor.Mode)
+		}
+	} else {
+		t.Fatal("fixture cleanup recorded no operatorauth authorization decision for installation.destroy")
 	}
 	remote := target
 	remote.AccessProvider = "ssh"
@@ -331,6 +356,76 @@ func TestCoreBootstrapFixtureCleanupContextIsBoundToItsLocalTarget(t *testing.T)
 	if _, err := coreBootstrapFixtureCleanupContext(withPrincipal, target); err == nil {
 		t.Fatal("fixture cleanup reused an unrelated verified principal")
 	}
+}
+
+// Core bootstrap teardown proves its managed `installation.destroy` scope
+// through the production destruction-planner authority seam (the same seam the
+// real destroy path takes): the `installationApplicationScope` proof minted by
+// `withInstallationApplicationScopes` (`cmd/baha/installation_application_scopes.go:20-45`)
+// is what sets `operation = "installation.destroy"` in
+// `buildApplicationDestructionPlan` (`cmd/baha/application_destroy_authorization.go:32-37`),
+// NOT the operator-auth boundary. This proves reachability in both directions
+// without touching the synthetic teardown stamp above: a confirmed destructive
+// scope admits, and the same scope without consent fails closed with
+// `impact-confirmation-required` before any runtime access.
+//
+// The production destroy path runs the aggregate plan through the operator-auth
+// boundary (operator_auth_boundary.go:55) before it reaches the destruction
+// planner, so the fixture must carry the same verified operator principal the
+// real `installation.destroy` operation proves; without it the aggregate plan
+// build fails closed on the operator-auth seam before the scope claim is ever
+// reachable. The enforcement + verified principal + granting membership provider
+// are established on t.Context() before the fixture so the fixture's own
+// internal context resolves the same production boundary.
+func TestCoreBootstrapFixtureDestroyRunsThroughInstallationApplicationScope(t *testing.T) {
+	ctx := operatorauth.WithEnforcement(t.Context())
+	ctx = operatorauth.WithVerifiedPrincipal(ctx, &identity.Principal{
+		Issuer:         "https://issuer.example",
+		Subject:        "installation-destroy-operator",
+		IssuerVerified: true,
+		Groups:         []string{"editor"},
+	})
+	ctx = operatorauth.WithMembershipProvider(ctx, &readGrantingMembershipProvider{})
+
+	r := retainedNativeBackendFixture(t)
+	plan, err := buildRuntimeDestroyImpact(ctx, []targetDestroyInventory{{Target: r.Target}}, nil, true)
+	if err != nil {
+		t.Fatalf("aggregate plan failed the operator-auth boundary before the destroy-planner claim: %v", err)
+	}
+	if len(plan.Applications) != 1 || plan.Applications[0].Scope.Owner.Owner != "application-deployment" ||
+		!plan.Applications[0].Scope.Destructive {
+		t.Fatal("aggregate destruction plan did not carry a destructive application-deployment child scope")
+	}
+	confirmed := &application.ProviderChangeConsent{PlanID: plan.Scope.PlanID, First: true, Second: true, DeleteData: true}
+	ctx, err = withInstallationApplicationScopes(withProviderChangeConsent(ctx, confirmed), plan)
+	if err != nil {
+		t.Fatalf("confirmed destructive installation.destroy scope refused: %v", err)
+	}
+	if _, err := authorizeApplicationDestruction(ctx, r, true, io.Discard); err != nil {
+		t.Fatalf("confirmed installation.destroy child refused: %v", err)
+	}
+	t.Log("confirmed installation.destroy scope admitted through the destruction-planner seam")
+
+	// A fresh fixture for the negative so the positive path's shared test state
+	// (same XDG_CONFIG_HOME) cannot change which branch the missing-consent
+	// call takes. The verified operator principal is carried on t.Context() for
+	// this fixture too, so the negative still reaches the destroy-planner claim
+	// and fails closed on the consent boundary, not on the operator-auth seam.
+	negative := retainedNativeBackendFixture(t)
+	negativePlan, negBuildErr := buildRuntimeDestroyImpact(ctx, []targetDestroyInventory{{Target: negative.Target}}, nil, true)
+	if negBuildErr != nil {
+		t.Fatalf("negative aggregate plan failed the operator-auth boundary before the destroy-planner claim: %v", negBuildErr)
+	}
+	negCtx, negErr := withInstallationApplicationScopes(withProviderChangeConsent(ctx, nil), negativePlan)
+	if negErr == nil {
+		t.Fatal("installation.destroy scope admitted without consent")
+	}
+	_ = negCtx
+	var failure *machine.Error
+	if !errors.As(negErr, &failure) || failure.CauseCode != "impact-confirmation-required" {
+		t.Fatalf("missing consent did not fail closed with impact-confirmation-required: %v", negErr)
+	}
+	t.Log("missing consent rejected with impact-confirmation-required")
 }
 
 // Observe only this fixture's resources before deferred cleanup removes them.
