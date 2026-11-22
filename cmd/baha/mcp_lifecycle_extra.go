@@ -6,6 +6,8 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/applicationlifecycle"
 	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"encoding/json"
+	"bytes"
 	"io"
 )
 
@@ -75,6 +77,34 @@ func registerMCPAdditionalLifecycleTools(server *mcp.Server, store application.S
 	mcp.AddTool(server, machineMCPTool("app.perses.remove", "Retire only BaseHarbor-owned Perses runtime resources and disable the surface; Prometheus, Loki, Tempo and foreign data are never removed. Explicit confirmation is mandatory and ownership verification remains fail-closed.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machinePersesLifecycleInput) (*mcp.CallToolResult, any, error) {
 		return callPersesLifecycleTool(ctx, store, input, application.PersesLifecycleRemove, false)
 	})
+	registerMCPAppPullTool(server, store)
+}
+
+// registerMCPAppPullTool exposes the guided source pull through the typed MCP
+// tool boundary. It mirrors the CLI 'baha app pull' exactly: the current MCP
+// context is authorized for app.pull, then the shared runAppPull implementation
+// is reused (no logic rebuilt here) and the JSON machine result the CLI emits is
+// returned unchanged so structured clients see the same pull plan or result.
+func registerMCPAppPullTool(server *mcp.Server, store application.Store) {
+	mcp.AddTool(server, machineMCPTool("app.pull", "Safely pull selected repository sources as a strict fast-forward to their upstream, inspecting working tree, branch, upstream and divergence first; with --up converges the application via apply only after every selected source is pulled.", true),
+		func(ctx context.Context, _ *mcp.CallToolRequest, input machineApplicationInput) (*mcp.CallToolResult, any, error) {
+			ctx = withTargetOverride(ctx, input.Target)
+			if err := authorizeCurrentMCPContext(ctx, "app.pull", input.Target, input.Environment, ""); err != nil {
+				return machineMCPFailure(err)
+			}
+			opts := appPullOptions{
+				OutputFormat: outputJSON,
+			}
+			outBuf, errOutBuf := &bytes.Buffer{}, &bytes.Buffer{}
+			if err := runAppPull(ctx, store, opts, outBuf, errOutBuf); err != nil {
+				return machineMCPFailure(err)
+			}
+			var machineResult any
+			if err := json.Unmarshal(outBuf.Bytes(), &machineResult); err != nil {
+				return machineMCPFailure(err)
+			}
+			return nil, machineResult, nil
+		})
 }
 
 type machinePersesLifecycleInput struct {
