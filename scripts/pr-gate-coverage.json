@@ -1471,6 +1471,12 @@
       "runtime_specific": true
     },
     {
+      "id": "source.cmd.baha.mcp.go",
+      "path": "cmd/baha/mcp.go",
+      "surfaces": ["gate.mcp"],
+      "runtime_specific": true
+    },
+    {
       "id": "source.workflow.pre.release",
       "path": ".github/workflows/pre-release.yml",
       "surfaces": ["source.gate.integration.docker.coreless.lifecycle", "source.gate.integration.podman.coreless.lifecycle"],
