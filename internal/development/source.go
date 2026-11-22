@@ -220,6 +220,82 @@ func validateLocalSourceLocation(id, location string) error {
 	return nil
 }
 
+// FilterSourcesForComponents restricts a source model and its workspace mapping
+// to the sources backing the requested components. Components are optional and
+// unique per app, and several components may share one source, so the filtered
+// model keeps each underlying repository exactly once. An empty request returns
+// the model and mapping unchanged. Every requested component must resolve to a
+// declared source; an unknown request fails closed so a constrained pull is
+// never silently partial. The filtered model is a valid SourceModel (same
+// schema_version, application, sources and the shared components), so callers
+// can hand it to the existing inspection/update helpers unchanged.
+func FilterSourcesForComponents(model SourceModel, mapping WorkspaceMapping, requested []string) (SourceModel, WorkspaceMapping, error) {
+	if len(requested) == 0 {
+		return model, mapping, nil
+	}
+
+	if err := model.Validate(); err != nil {
+		return SourceModel{}, WorkspaceMapping{}, err
+	}
+
+	byID := map[string]SourceDefinition{}
+	for _, source := range model.Sources {
+		byID[source.ID] = source
+	}
+
+	selected := map[string]struct{}{}
+	for _, declaredComponent := range model.Components {
+		name := strings.TrimSpace(declaredComponent.Component)
+		if name == "" || !containsRequested(requested, name) {
+			continue
+		}
+		source, ok := byID[declaredComponent.Source]
+		if !ok {
+			return SourceModel{}, WorkspaceMapping{}, fmt.Errorf("component %q references unknown source %q", name, declaredComponent.Source)
+		}
+		selected[source.ID] = struct{}{}
+	}
+	if len(selected) == 0 {
+		return SourceModel{}, WorkspaceMapping{}, fmt.Errorf("%w: no component named %q resolves to a source", ErrWorkspaceSourceMissing, strings.Join(requested, ", "))
+	}
+
+	filtered := model
+	filtered.Sources = make([]SourceDefinition, 0, len(selected))
+	for _, source := range model.Sources {
+		if _, ok := selected[source.ID]; ok {
+			filtered.Sources = append(filtered.Sources, source)
+		}
+	}
+	filtered.Components = nil
+	for _, component := range model.Components {
+		source, ok := byID[component.Source]
+		if !ok {
+			continue
+		}
+		if _, keep := selected[source.ID]; keep {
+			filtered.Components = append(filtered.Components, component)
+		}
+	}
+
+	filteredMapping := mapping
+	filteredMapping.Sources = map[string]string{}
+	for id, path := range mapping.Sources {
+		if _, keep := selected[id]; keep {
+			filteredMapping.Sources[id] = path
+		}
+	}
+	return filtered, filteredMapping, nil
+}
+
+func containsRequested(requested []string, value string) bool {
+	for _, item := range requested {
+		if strings.TrimSpace(item) == value {
+			return true
+		}
+	}
+	return false
+}
+
 func LoadSourceModel(manifestPath string) (SourceModel, string, error) {
 	manifestPath, err := filepath.Abs(strings.TrimSpace(manifestPath))
 	if err != nil {

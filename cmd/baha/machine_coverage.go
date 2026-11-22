@@ -123,6 +123,7 @@ var cliMachineOperations = map[string]string{
 	"baha app versions": "app.versions",
 	"baha app update":   "update", "baha app evidence": "evidence", "baha app backup": "backup", "baha app restore": "restore", "baha app destroy": "destroy",
 	"baha app workspace resolve": "workspace.resolve", "baha workspace resolve": "workspace.resolve",
+	"baha app pull":             "app.pull",
 	"baha app workspace status": "workspace.status", "baha workspace status": "workspace.status", "baha app workspace update": "workspace.update", "baha workspace update": "workspace.update",
 	"baha app workspace init": "workspace.init", "baha workspace init": "workspace.init", "baha app workspace map": "workspace.map", "baha workspace map": "workspace.map",
 	"baha provider list": "provider.list", "baha provider inspect": "provider.inspect", "baha provider verify": "provider.verify", "baha provider add": "provider.add", "baha provider remove": "provider.remove",
@@ -227,4 +228,5 @@ var cliSemanticModes = map[string]string{
 	"baha app creds":          "MCP exposes connection metadata without passwords or credential-bearing URIs; CLI credential reveal is operator-local and excluded from MCP.",
 	"baha app prune":          "Registry-only removal of a dangling deployment record whose source repository is gone; never loads source or runtime, and refuses when source is present or multiple records match.",
 	"baha dev credentials":    "Ensure/reset/configuration use the shared authority. MCP returns username and protected file reference; CLI password display is an excluded operator-local mode.",
+	"baha app pull":           "Pulls the selected repository sources as a strict fast-forward to their upstream after inspecting working tree, branch, upstream and divergence; a dirty, ahead or diverged source blocks that source without touching others. With --up it converges the application through the shared apply operation after every selected source is pulled. Fails closed non-interactively.",
 }

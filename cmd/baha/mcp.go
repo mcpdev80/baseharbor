@@ -92,6 +92,20 @@ type machineApplicationInput struct {
 	Environment string `json:"environment,omitempty" jsonschema:"optional deployment environment selected from repository intent"`
 }
 
+// machineApplicationPullInput is the typed input for the guided source pull
+// tool. It mirrors the CLI 'baha app pull' flags: components selects which
+// repository sources are pulled; up brings the application up with the same
+// apply operation as 'baha app update' only after every selected source is
+// pulled successfully.
+type machineApplicationPullInput struct {
+	Target      string   `json:"target,omitempty" jsonschema:"optional BaseHarbor deployment target; otherwise uses BASEHARBOR_TARGET or configured default-target"`
+	Name        string   `json:"name,omitempty" jsonschema:"optional stored application name; omit inside an application repository"`
+	Environment string   `json:"environment,omitempty" jsonschema:"optional deployment environment selected from repository intent"`
+	Components  []string `json:"components,omitempty" jsonschema:"optional repository component sources to pull; omits pull every selected repository source"`
+	Up          bool     `json:"up,omitempty" jsonschema:"explicitly request bringing the application up with apply only after every selected source is pulled"`
+	Approval    bool     `json:"approval,omitempty" jsonschema:"explicit operator confirmation required for this mutating source pull; the pull refuses to run without it"`
+}
+
 type machineApplicationStopInput struct {
 	Target                string                             `json:"target,omitempty" jsonschema:"optional BaseHarbor deployment target"`
 	Name                  string                             `json:"name,omitempty" jsonschema:"optional stored application name; omit inside an application repository"`
