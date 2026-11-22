@@ -1690,7 +1690,9 @@ jobs:
       - name: Run installed zsh and fish wrapper regression
         if: matrix.shard == 'cli-3'
         shell: bash
-        run: go test ./cmd/baha -run '^TestEndToEndInstalledZshAndFishWrappers        shell: bash
+        run: go test ./cmd/baha -run TestEndToEndInstalledZshAndFishWrappers -count=1 -v
+      - name: Reuse canonical CLI shards and test selected non-CLI packages
+        shell: bash
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
