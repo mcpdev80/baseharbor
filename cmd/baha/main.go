@@ -169,6 +169,15 @@ func cliLocalWorkloadOperation(args []string) string {
 	if len(args) > 0 && args[0] == "up" {
 		return "apply"
 	}
+	// The root quick `init` authors portable source exactly like `baha app
+	// init --quick` (both persist the adoption through
+	// persistRepositoryApplication, machine operation app.adopt), so the
+	// invocation must carry the same local-workload scope; without it an
+	// isolated local Target is denied and asked for an OIDC operator. The
+	// interactive wizard form keeps its own operator-auth path untouched.
+	if len(args) > 0 && args[0] == "init" && (len(args) == 1 || quickAdoptionOnlyArguments(args[1:])) {
+		return "app.adopt"
+	}
 	return ""
 }
 
