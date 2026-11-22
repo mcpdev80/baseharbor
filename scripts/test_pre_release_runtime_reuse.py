@@ -16,6 +16,12 @@ reuse = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(reuse)
 
 
+planner_spec = importlib.util.spec_from_file_location(
+    "pr_gate_plan", Path(__file__).with_name("pr-gate-plan.py"))
+planner = importlib.util.module_from_spec(planner_spec)
+planner_spec.loader.exec_module(planner)
+
+
 NOW = "2026-11-15T12:00:00Z"
 RUN_AT = "2026-11-15T10:00:00Z"
 ARTIFACT_AT = "2026-11-15T11:59:59Z"
@@ -369,6 +375,14 @@ class RuntimeReuseTests(unittest.TestCase):
         self.assertFalse(self.decide(
             now="2026-11-22T12:00:01Z",
             current_run_created_at="2026-11-22T12:00:00Z"))
+
+
+class CoreRuntimeGateMapPairingTests(unittest.TestCase):
+    def test_native_test_gate_admission_matches_pre_release_impact(self):
+        impact = json.loads(Path(__file__).with_name("pre-release-runtime-impact.json").read_text())
+        for path, gates in planner.NATIVE_TEST_GATE_COMPONENTS.items():
+            with self.subTest(path=path):
+                self.assertEqual(set(gates), set(impact["core"][path]))
 
 
 if __name__ == "__main__":

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -722,6 +723,24 @@ func isUnbeginningTeardownError(err error) bool {
 func ensureRuntimeIntegrationTrustPlane(t *testing.T, ctx context.Context) {
 	t.Helper()
 	runtimeIntegrationTrustPlaneOnce.Do(func() {
+		// The validate cell's integration step reaches the production ORAS
+		// gate at runtimeUpGuided (cmd/baha/runtime.go) through the shared
+		// runWithIOAsTestOperator path, before any of the cell's own up
+		// commands run. That gate is intentionally fail-closed without a
+		// terminal (cmd/baha/oras_setup.go: ensureORASForCoreUp), and the
+		// validate job has no ORAS install step — only the native-gate jobs
+		// provision scripts/ci-install-oras.sh (.github/** is Owner scope) —
+		// so every selected runtime test fails with `ORAS is required before
+		// Core setup` before its first assertion. Provision the SAME pinned
+		// release here, through the production installer (installORAS:
+		// official orasSetupVersion download, checksum-verified, ~/.local/bin,
+		// PATH extended for this process). A no-op when oras is already
+		// findable; the refuse-to-overwrite guard keeps any operator or
+		// workflow provisioning untouched.
+		if err := provisionORASForIntegrationCell(ctx); err != nil {
+			runtimeIntegrationTrustPlaneErr = err
+			return
+		}
 		// Capture the data root BEFORE any XDG_DATA_HOME switch below. TestMain
 		// claims the durable provisioning marker under the initial data root; if
 		// this helper unconditionally pointed XDG_DATA_HOME at a fresh temp
@@ -1402,4 +1421,24 @@ func TestMissingRuntimeIsolationCannotFallBackToBootstrap(t *testing.T) {
 	if _, err := cfg.ResolveTarget(selected, ""); err == nil {
 		t.Fatal("unconfigured isolation guard resolved to the bootstrap target")
 	}
+}
+
+// provisionORASForIntegrationCell gives this package process the pinned ORAS
+// the production Core bootstrap requires, using the same release the product
+// installer would fetch (orasSetupVersion, official checksum). It is a
+// no-op when exec.LookPath finds oras already (the native-gate provisioning
+// step or the operator did it) or when the user-local install is present and
+// can be put on PATH; only a truly missing installation triggers the
+// production download. Failures are real failures: the caller must not reach
+// the trust plane without the tool.
+func provisionORASForIntegrationCell(ctx context.Context) error {
+	if _, err := exec.LookPath("oras"); err == nil {
+		return nil
+	}
+	if err := includeInstalledORASOnPath(); err == nil {
+		if _, err := exec.LookPath("oras"); err == nil {
+			return nil
+		}
+	}
+	return installORAS(ctx)
 }
