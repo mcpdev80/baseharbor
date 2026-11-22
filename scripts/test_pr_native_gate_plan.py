@@ -122,6 +122,19 @@ class NativeGatePlanTests(unittest.TestCase):
                     {'id': 'native/podman/data-capabilities', 'runtime': 'podman'},
                 ]})
 
+    def test_core_installation_runtime_test_selects_both_data_capabilities_gates(self):
+        # Card 0428-248 coreinst-slice: cmd/baha/core_installation_runtime_test.go
+        # is the #1738 file (installation destroy-stamp through the real
+        # boundary). The catalog maps it in the #1768/#1777 pattern onto the
+        # existing data-capabilities surfaces for both runtimes, so a change
+        # selects the native gates instead of the fail-loud uncataloged abort.
+        matrix = planner.resolve_matrix(
+            ['cmd/baha/core_installation_runtime_test.go'], coverage)
+        self.assertEqual(matrix, {'include': [
+            {'id': 'native/docker/data-capabilities', 'runtime': 'docker'},
+            {'id': 'native/podman/data-capabilities', 'runtime': 'podman'},
+        ]})
+
     def test_perses_cluster_sources_are_cataloged_on_both_observability_surfaces(self):
         # Card 0428-248 perses round: the #1597 sources (the perses dashboards
         # cluster in internal/metrics plus the CLI/status surfaces in
