@@ -21,6 +21,11 @@ planner_spec = importlib.util.spec_from_file_location(
 planner = importlib.util.module_from_spec(planner_spec)
 planner_spec.loader.exec_module(planner)
 
+coverage_spec = importlib.util.spec_from_file_location(
+    "pr_gate_coverage", Path(__file__).with_name("validate-pr-gate-coverage.py"))
+coverage_validator = importlib.util.module_from_spec(coverage_spec)
+coverage_spec.loader.exec_module(coverage_validator)
+
 
 NOW = "2026-11-15T12:00:00Z"
 RUN_AT = "2026-11-15T10:00:00Z"
@@ -393,6 +398,34 @@ class CoreRuntimeGateMapPairingTests(unittest.TestCase):
             with self.subTest(path=path):
                 self.assertIn(path, components)
                 self.assertIn(components[path], native_owners)
+
+    def test_native_gate_catalog_selects_runtime_checks_and_executor_cases(self):
+        coverage = json.loads(Path(__file__).with_name("pr-gate-coverage.json").read_text())
+        requirements = json.loads(Path(__file__).with_name("release-requirements.json").read_text())
+        self.assertEqual([], coverage_validator.validate(coverage, requirements))
+        expectations = {
+            "cmd/baha/ci_integration_operator_enabled.go": [
+                "native/docker/data-capabilities", "native/podman/data-capabilities"],
+            "cmd/baha/app_init_wizard_test.go": [
+                "native/docker/data-capabilities", "native/docker/guided",
+                "native/podman/data-capabilities", "native/podman/guided"],
+            "cmd/baha/runtime_integration_test_support_test.go": [
+                "native/docker/coreless-lifecycle", "native/docker/data-capabilities",
+                "native/docker/guided", "native/podman/coreless-lifecycle",
+                "native/podman/data-capabilities", "native/podman/guided"],
+            "cmd/baha/env_destroy_integration_test.go": [
+                "native/docker/environment-destroy", "native/podman/environment-destroy"],
+            "internal/runtime/service_stop_test.go": ["native/podman/service-stop"],
+        }
+        for path, expected in expectations.items():
+            with self.subTest(path=path):
+                self.assertEqual(expected, coverage_validator.resolve_native_checks([path], coverage))
+        executor = Path(__file__).with_name("ci-native-pr-gate.sh").read_text()
+        for gate in ("data-capabilities", "guided", "coreless-lifecycle", "environment-destroy"):
+            with self.subTest(gate=gate):
+                self.assertIn(f"native/docker/{gate}", executor)
+                self.assertIn(f"native/podman/{gate}", executor)
+        self.assertIn("native/podman/service-stop", executor)
 
 
 if __name__ == "__main__":
