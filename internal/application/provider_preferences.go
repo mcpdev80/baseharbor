@@ -23,6 +23,26 @@ func WithProviderPreferences(m Manifest, preferences []ProviderPreference) Manif
 	return m
 }
 
+// ProviderPreferencesIsNil reports whether the deployment-only preference
+// projection is unset (nil inherits) versus an explicit empty selection. Nil
+// and empty are semantically identical (both mean "automatic"); callers that
+// compare manifests must not distinguish them.
+func (m Manifest) ProviderPreferencesIsNil() bool {
+	return m.providerPreferences == nil
+}
+
+// CanonicalizeProviderPreferences returns a copy of the manifest whose
+// deployment-only, never-serialized providerPreferences projection is normalised
+// so that a nil (inherit) and an explicit empty selection compare equal. The
+// projection is never serialized, so this only affects in-memory manifest
+// identity (e.g. reflect.DeepEqual) used by revalidation compares.
+func (m Manifest) CanonicalizeProviderPreferences() Manifest {
+	if m.providerPreferences != nil && len(*m.providerPreferences) == 0 {
+		m.providerPreferences = nil
+	}
+	return m
+}
+
 // DesiredProviderPreferencesAt reads intent from the canonical deployment owner,
 // never from portable application source or another Target's registry.
 func DesiredProviderPreferencesAt(root string, m Manifest) ([]ProviderPreference, error) {

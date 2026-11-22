@@ -31,6 +31,7 @@ WIZARD_TEST_FAMILIES = {
     'wizard-app-edit-tests': (r'^TestAppEditApply', r'^TestAppEditCommand'),
     'wizard-footprint-command-tests': (r'^TestAppFootprintShow',),
     'wizard-machine-adapter-tests': (r'^TestAppMachineAdapters',),
+    'ci-integration-operator-seam-tests': (r'^TestCIIntegrationOperator',),
     # core-921 reviewed production registration regressions; each family distinct
     # and must actually RUN/PASS (never a combined OR that can hide a miss).
     'wizard-core921-tests': (
@@ -61,6 +62,10 @@ WIZARD_TEST_FAMILIES = {
         r'^TestHumanCommandIndexTracksExactCommandMetadata',
         r'^TestMCPRegistrationCI',
     ),
+}
+
+WIZARD_TEST_TAGS = {
+    'ci-integration-operator-seam-tests': ('baseharbor_ci_operator_testonly',),
 }
 
 OPENBAO_REQUIRED_TESTS = (
@@ -253,9 +258,11 @@ def execute_validation(check, repository):
         patterns = tuple(pattern + chr(36) for pattern in patterns)
     repo = Path(repository)
     all_matches = []
+    tags = WIZARD_TEST_TAGS.get(check, ())
+    build_flags = ['-tags=' + ','.join(tags)] if tags else []
     for pattern in patterns:
         listed = subprocess.run(
-            ['go', 'test', './cmd/baha', '-list', pattern],
+            ['go', 'test', *build_flags, './cmd/baha', '-list', pattern],
             cwd=repo, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         if listed.returncode:
             raise RuntimeError('test discovery failed for ' + pattern + ': ' + listed.stderr.strip())
@@ -269,7 +276,7 @@ def execute_validation(check, repository):
         # Run each mandatory family independently so a combined OR expression
         # cannot replace missing tests or silently skip a required family.
         executed = subprocess.run(
-            ['go', 'test', './cmd/baha', '-run', pattern, '-count=1', '-v'],
+            ['go', 'test', *build_flags, './cmd/baha', '-run', pattern, '-count=1', '-v'],
             cwd=repo, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         if executed.returncode:
             raise RuntimeError('test execution failed for ' + check +

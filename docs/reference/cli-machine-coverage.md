@@ -25,6 +25,7 @@ Inspect current data with `baha agent describe -o json` (`cli_coverage`). Update
 | `baha app env` | semantic | CLI --format json (masked) / typed MCP result | baseharbor.app.environment | MCP exposes masked values only. --reveal and loading the protected local dotenv file are execution-host credential access and are explicitly excluded modes. |
 | `baha app evidence` | semantic | CLI -o json / typed MCP result | baseharbor.evidence |  |
 | `baha app exec` | excluded |  |  | Arbitrary process execution is intentionally excluded: #787 forbids generic exec passthrough; use typed lifecycle and observation tools. |
+| `baha app export` | presentation |  |  | Operator-local, password-locked file export of explicitly selected local credentials; no runtime mutation or machine tool, and fails closed on an empty selection. Ciphertext opens only with the export password; managed-secret sources require the human-authorization reveal seam. |
 | `baha app footprint` | presentation |  |  | Command group; invoke its supported subcommands. |
 | `baha app footprint show` | semantic | CLI -o json / typed MCP result | baseharbor.app.footprint.show |  |
 | `baha app init` | semantic | CLI -o json / typed MCP result | baseharbor.app.adopt | New repository intent uses app.adopt; an existing repository uses app.configure. Interactive suggestions are presentation only. |
@@ -102,6 +103,8 @@ Inspect current data with `baha agent describe -o json` (`cli_coverage`). Update
 | `baha disconnect` | semantic | CLI -o json / typed MCP result | baseharbor.connectivity.disconnect |  |
 | `baha doctor` | semantic | CLI -o json / typed MCP result | baseharbor.control-plane.doctor | Control-plane mode maps here; --fix uses control-plane.repair and rechecks readiness. Repository mode uses doctor or repair. |
 | `baha down` | semantic | CLI -o json / typed MCP result | baseharbor.control-plane.stop | Control-plane mode maps here; repository application mode uses app.stop. |
+| `baha env` | presentation |  |  | Command group routing to env.show and env.destroy; invoke the supported subcommands explicitly. |
+| `baha env destroy` | presentation |  |  | Environment-scoped identity removal with a CLI JSON impact plan; no machine tool yet (pending semantic MCP coverage). The --json surface exposes the plan. |
 | `baha init` | semantic | CLI -o json / typed MCP result | baseharbor.app.adopt |  |
 | `baha inspect` | semantic | CLI -o json / typed MCP result | baseharbor.inspect |  |
 | `baha list` | semantic | CLI -o json / typed MCP result | baseharbor.app.list |  |

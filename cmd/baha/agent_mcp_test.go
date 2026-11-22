@@ -135,6 +135,31 @@ func TestMCPGenericClientDiscoversCompleteSemanticSurfaceAndExercisesReadOnlyToo
 		}
 	}
 
+	// 0428-225 regression: the four optional-Peses lifecycle tools must be on the
+	// live MCP surface AND in the machine contract in the same direction. The
+	// hosted release static-mcp gate failed with
+	// "MCP contract mismatch: missing=[] unexpected=[baseharbor.app.perses.*]"
+	// when the surface exposed them but the expected list did not. The contract
+	// (internal/machine/contract.go) is the record and is correct, so the surface
+	// must carry them: a regression that strips the surface fails here first.
+	for _, toolName := range []string{
+		"baseharbor.app.perses.status",
+		"baseharbor.app.perses.enable",
+		"baseharbor.app.perses.disable",
+		"baseharbor.app.perses.remove",
+	} {
+		found := false
+		for _, tool := range list.Tools {
+			if tool.Name == toolName {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("perses tool %q missing from live MCP surface: it is declared in the machine contract", toolName)
+		}
+	}
+
 	calls := []struct {
 		name string
 		args map[string]any

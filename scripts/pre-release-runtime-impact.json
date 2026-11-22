@@ -29,6 +29,17 @@
   "core": {
     "cmd/baha/app_machine_adapters.go": ["atomic/docker/data-capabilities", "atomic/podman/data-capabilities"],
     "cmd/baha/app_machine_adapters_test.go": ["atomic/docker/data-capabilities", "atomic/podman/data-capabilities"],
+    "cmd/baha/ci_integration_operator_enabled.go": ["atomic/docker/data-capabilities", "atomic/podman/data-capabilities"],
+    "cmd/baha/ci_integration_operator_disabled.go": ["atomic/docker/data-capabilities", "atomic/podman/data-capabilities"],
+    "cmd/baha/ci_integration_operator_enabled_test.go": ["atomic/docker/data-capabilities", "atomic/podman/data-capabilities"],
+    "cmd/baha/test_operator_context_test.go": ["atomic/docker/data-capabilities", "atomic/podman/data-capabilities"],
+    "cmd/baha/application_lifecycle_lock_test.go": ["atomic/docker/data-capabilities", "atomic/podman/data-capabilities"],
+    "cmd/baha/app_init_source_neutral_test.go": ["atomic/docker/data-capabilities", "atomic/podman/data-capabilities", "atomic/docker/guided", "atomic/podman/guided"],
+    "cmd/baha/app_init_wizard_test.go": ["atomic/docker/data-capabilities", "atomic/podman/data-capabilities", "atomic/docker/guided", "atomic/podman/guided"],
+    "cmd/baha/app_perses_host_containers_cli_test.go": ["atomic/docker/data-capabilities", "atomic/podman/data-capabilities", "atomic/docker/guided", "atomic/podman/guided"],
+    "cmd/baha/app_perses_infra_dashboards_cli_test.go": ["atomic/docker/data-capabilities", "atomic/podman/data-capabilities", "atomic/docker/guided", "atomic/podman/guided"],
+    "cmd/baha/repository_up_init_test.go": ["atomic/docker/data-capabilities", "atomic/podman/data-capabilities", "atomic/docker/guided", "atomic/podman/guided"],
+    "cmd/baha/runtime_integration_test_support_test.go": ["atomic/docker/data-capabilities", "atomic/podman/data-capabilities", "atomic/docker/guided", "atomic/podman/guided", "integration/docker/coreless-lifecycle", "integration/podman/coreless-lifecycle"],
     "cmd/baha/app_core_requirement.go": [
       "atomic/docker/guided", "atomic/podman/guided",
       "atomic/docker/data-capabilities", "atomic/podman/data-capabilities"

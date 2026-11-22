@@ -117,6 +117,11 @@ func TestStaleDestructionConsentRequiresRepreview(t *testing.T) {
 // a second separate process entering the production reconcile path must be
 // rejected fail-closed with the explicit contention message.
 func TestSharedBackendReconcileRejectsSecondProcess(t *testing.T) {
+	// The selection lives in the environment the child inherits: neutralise a
+	// leaked activation or a host-persisted organization selection for this
+	// process AND the self-executed child (envWithoutLeakedTargetSelection)
+	// before either enters the production reconcile path.
+	testIsolatedSelectionContext(t)
 	if os.Getenv("BAHA_TEST_SHARED_CHILD") == "reconcile" {
 		m := application.New("shared-a", "dev", true, false, false)
 		m.ApplicationID = application.MustNewApplicationID()
@@ -149,7 +154,8 @@ func TestSharedBackendReconcileRejectsSecondProcess(t *testing.T) {
 	}
 	t.Cleanup(parentUnlock)
 	child := exec.Command(os.Args[0], "-test.run=^TestSharedBackendReconcileRejectsSecondProcess$")
-	child.Env = append(os.Environ(), "BAHA_TEST_SHARED_CHILD=reconcile", "BAHA_TEST_SHARED_DIR="+dir)
+	child.Env = append(envWithoutLeakedTargetSelection(os.Environ()),
+		"BAHA_TEST_SHARED_CHILD=reconcile", "BAHA_TEST_SHARED_DIR="+dir)
 	out, err := child.CombinedOutput()
 	if ee, ok := err.(*exec.ExitError); !ok || ee.ExitCode() != 3 {
 		t.Fatalf("second process was not rejected fail-closed on the shared provider owner; exit=%v output:\n%s", err, out)
