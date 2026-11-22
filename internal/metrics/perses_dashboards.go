@@ -337,7 +337,8 @@ func persesPanelPrometheus() PersesPanel {
 }
 
 // persesPanelLoki is the BaseHarbor Loki dashboard panel set. It queries the
-// real Loki log source (job="baseharbor-applications") with a LogQL log query.
+// application labels attached by the managed Loki syslog sources in
+// internal/logs/render.go.
 func persesPanelLoki() PersesPanel {
 	return PersesPanel{
 		Kind: PersesPanelKind,
@@ -349,7 +350,7 @@ func persesPanelLoki() PersesPanel {
 				Spec: PersesQuerySpec{
 					Plugin: PersesQueryPlugin{
 						Kind: PersesQueryLoki,
-						Spec: mustJSON(map[string]any{"query": `{job="baseharbor-applications"} |= "error"`}),
+						Spec: mustJSON(map[string]any{"query": `{baseharbor_source_class="application",baseharbor_application="$application",baseharbor_environment="$env"} |= "error"`}),
 					},
 					Datasource: &PersesDatasourceRef{Kind: PersesDatasourceLoki, Name: "loki"},
 				},
@@ -371,7 +372,7 @@ func persesPanelTempo() PersesPanel {
 				Spec: PersesQuerySpec{
 					Plugin: PersesQueryPlugin{
 						Kind: PersesQueryTempo,
-						Spec: mustJSON(map[string]any{"query": `{service.name="baseharbor-applications"}`}),
+						Spec: mustJSON(map[string]any{"query": `{resource.service.namespace="$application" && resource.deployment.environment.name="$env"}`}),
 					},
 					Datasource: &PersesDatasourceRef{Kind: PersesDatasourceTempo, Name: "tempo"},
 				},

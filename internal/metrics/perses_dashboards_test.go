@@ -220,6 +220,45 @@ func TestPersesDashboardQueriesAreValidPromQL(t *testing.T) {
 	}
 }
 
+// TestPersesLokiAndTempoQueriesUseEmittedAttributes pins the query selectors
+// to the labels/resources BaseHarbor actually emits. Loki's managed syslog
+// labels come from internal/logs/render.go; OTLP resource attributes come from
+// internal/telemetry/otlp_payload.go. Keeping these exact query witnesses beside
+// the dashboard goldens prevents a valid-looking selector from silently
+// producing empty panels after either telemetry source changes.
+func TestPersesLokiAndTempoQueriesUseEmittedAttributes(t *testing.T) {
+	want := map[string]string{
+		"loki-logs":    `{baseharbor_source_class="application",baseharbor_application="$application",baseharbor_environment="$env"} |= "error"`,
+		"tempo-traces": `{resource.service.namespace="$application" && resource.deployment.environment.name="$env"}`,
+	}
+	for key, expected := range want {
+		t.Run(key, func(t *testing.T) {
+			entry := persesDashboardCatalog()[key]
+			raw, err := persesPanelJSON(entry)
+			if err != nil {
+				t.Fatalf("marshal dashboard: %v", err)
+			}
+			var dashboard PersesDashboard
+			if err := json.Unmarshal(raw, &dashboard); err != nil {
+				t.Fatalf("decode dashboard: %v", err)
+			}
+			for _, panel := range dashboard.Spec.Panels {
+				for _, query := range panel.Spec.Queries {
+					var spec map[string]any
+					if err := json.Unmarshal(query.Spec.Plugin.Spec, &spec); err != nil {
+						t.Fatalf("decode %s query: %v", query.Spec.Plugin.Kind, err)
+					}
+					got, _ := spec["query"].(string)
+					if got == expected {
+						return
+					}
+				}
+			}
+			t.Fatalf("%s query must select emitted application/environment attributes; want %q", key, expected)
+		})
+	}
+}
+
 // assertValidPromQL asserts the Prometheus selector is syntactically valid: it
 // must be closed with '}' and carry only name="value" matchers, which is exactly
 // what a real Prometheus parser rejects otherwise (the r1 trailing-token and

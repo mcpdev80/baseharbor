@@ -36,7 +36,7 @@
                 "plugin": {
                   "kind": "LokiLogQuery",
                   "spec": {
-                    "query": "{job=\"baseharbor-applications\"} |= \"error\""
+                    "query": "{baseharbor_source_class=\"application\",baseharbor_application=\"$application\",baseharbor_environment=\"$env\"} |= \"error\""
                   }
                 },
                 "datasource": {

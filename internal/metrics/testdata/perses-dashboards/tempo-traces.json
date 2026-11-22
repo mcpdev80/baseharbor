@@ -36,7 +36,7 @@
                 "plugin": {
                   "kind": "TempoTraceQuery",
                   "spec": {
-                    "query": "{service.name=\"baseharbor-applications\"}"
+                    "query": "{resource.service.namespace=\"$application\" && resource.deployment.environment.name=\"$env\"}"
                   }
                 },
                 "datasource": {
