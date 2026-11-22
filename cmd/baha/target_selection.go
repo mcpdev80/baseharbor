@@ -12,12 +12,20 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/machine"
 )
 
+// targetSelectionPath is the one seam where the persisted Target selection
+// resolves. BASEHARBOR_STATE_DIR is the authoritative isolated installation
+// root, so with it set the selection lives below that root — beside the
+// Target configuration it chooses between (BF-01, h-d28 akte;
+// docs/explanation/targets.md: an isolated installation cannot discover or
+// rewrite the normal user's Target selection). Without the override the
+// selection is the user-wide activation it has always been, resolving
+// through the user configuration locations.
 func targetSelectionPath() (string, error) {
-	configPath, err := deployment.ConfigPath()
+	selectionRoot, err := deployment.TargetSelectionRoot()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(filepath.Dir(configPath), "active-target"), nil
+	return filepath.Join(selectionRoot, "active-target"), nil
 }
 
 func readPersistedTarget() (string, error) {
@@ -76,7 +84,14 @@ func selectedTargetName(explicit, environment string, cfg deployment.Config) (st
 	if cfg.DefaultTarget != "" {
 		return cfg.DefaultTarget, nil
 	}
-	if len(cfg.Targets) == 1 {
+	if len(cfg.Targets) == 1 && !deployment.StateRootSelected() {
+		// A single registration implies its own selection — the first-run
+		// convenience of the user installation. Under a dedicated state
+		// root BF-01 forbids the shortcut: an implicit choice would let a
+		// lower layer (the builtin fallback, or a foreign installation's
+		// organization default) decide what this root acts on; the
+		// root-local organization state answers explicitly instead (see
+		// resolveTargetWithOrganization).
 		for name := range cfg.Targets {
 			return name, nil
 		}

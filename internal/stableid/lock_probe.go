@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+
+	"github.com/mcpdev80/baseharbor/internal/testsupport/envpin"
 )
 
 //go:embed testdata/lock-probe-linux-amd64
@@ -123,7 +125,7 @@ func probeEnv() []string {
 		parts = append(parts, matches...)
 	}
 	parts = append(parts, "/usr/bin", "/bin", "/usr/local/bin")
-	return append([]string{"PATH=" + strings.Join(parts, ":")}, os.Environ()...)
+	return envpin.PinnedEnv("PATH=" + strings.Join(parts, ":"))
 }
 
 // runToolchainProbe is the cross-platform fallback: it writes the stdlib-only

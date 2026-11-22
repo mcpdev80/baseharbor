@@ -128,8 +128,25 @@ type ResolvedTarget struct {
 	DeploymentPolicy *TargetDeploymentPolicy `json:"deployment_policy,omitempty"`
 }
 
+// stateRootOverride returns the trimmed BASEHARBOR_STATE_DIR value: the
+// authoritative isolated state root that owns all selection and registration
+// state for the invocation.
+func stateRootOverride() string {
+	return strings.TrimSpace(os.Getenv("BASEHARBOR_STATE_DIR"))
+}
+
+// StateRootSelected reports whether BASEHARBOR_STATE_DIR selects a dedicated
+// isolated installation root for this invocation. An isolated installation
+// cannot discover or rewrite the normal user's Target selection, and the
+// selection layers it owns — the persisted activation and its own
+// organization state — live exclusively below that root (BF-01, h-d28 akte;
+// docs/explanation/targets.md).
+func StateRootSelected() bool {
+	return stateRootOverride() != ""
+}
+
 func ConfigPath() (string, error) {
-	if root := strings.TrimSpace(os.Getenv("BASEHARBOR_STATE_DIR")); root != "" {
+	if root := stateRootOverride(); root != "" {
 		return filepath.Join(root, "config", "config.yaml"), nil
 	}
 	if root := strings.TrimSpace(os.Getenv("XDG_CONFIG_HOME")); root != "" {
@@ -142,8 +159,32 @@ func ConfigPath() (string, error) {
 	return filepath.Join(home, ".config", "baseharbor", "config.yaml"), nil
 }
 
+// TargetSelectionRoot returns the directory that owns the persisted Target
+// selection (the `active-target` file). BASEHARBOR_STATE_DIR is the
+// authoritative isolated installation root: with it set, the selection
+// resolves below that root — beside the Target configuration it chooses
+// between — and the selection state of any other installation is never read
+// or written (BF-01, h-d28 akte; docs/explanation/targets.md: an isolated
+// installation cannot discover or rewrite the normal user's Target
+// selection). Without the override the selection is the user-wide activation
+// it has always been, resolving through the same XDG/user precedence as the
+// configuration file.
+func TargetSelectionRoot() (string, error) {
+	if root := stateRootOverride(); root != "" {
+		return filepath.Join(root, "config"), nil
+	}
+	if root := strings.TrimSpace(os.Getenv("XDG_CONFIG_HOME")); root != "" {
+		return filepath.Join(root, "baseharbor"), nil
+	}
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return "", errors.New("cannot determine BaseHarbor config directory")
+	}
+	return filepath.Join(home, ".config", "baseharbor"), nil
+}
+
 func DataRoot() (string, error) {
-	if root := strings.TrimSpace(os.Getenv("BASEHARBOR_STATE_DIR")); root != "" {
+	if root := stateRootOverride(); root != "" {
 		return filepath.Clean(root), nil
 	}
 	if root := strings.TrimSpace(os.Getenv("XDG_DATA_HOME")); root != "" {
