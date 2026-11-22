@@ -223,7 +223,8 @@ func TestSourcePullApplyTimePartialFailureRunsOnce(t *testing.T) {
 	gitTest(t, peerA, "commit", "-m", "remote")
 	gitTest(t, peerA, "push", "origin", "main")
 
-	// web-source: advance its upstream to a new revision.
+	// web-source: advance its upstream to a new revision so the web-source
+	// becomes strictly behind its (applyable) upstream.
 	if err := os.WriteFile(filepath.Join(peerB, "remote2.txt"), []byte("remote2\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -258,13 +259,20 @@ func TestSourcePullApplyTimePartialFailureRunsOnce(t *testing.T) {
 	if !plan.Applyable {
 		t.Fatalf("both sources must be applyable preflight: %#v", plan)
 	}
-	// Introduce a local commit that makes localB HEAD no longer an ancestor of
-	// the captured web-source target; the fast-forward then fails at apply time
-	// even though api-source already advances.
+	// Capture the base HEAD before any local commit.
+	baseRev := gitRev(t, localB)
+	// Introduce a local commit on localB that is NOT a descendant of the
+	// captured web-source target. localB was behind its upstream at plan time
+	// (base < upstream target); this local commit diverges localB from that
+	// target. `git merge --ff-only <target>` then aborts with a fast-forward
+	// conflict at apply time, even though api-source already advanced. The
+	// web-source is left exactly where it was: the failing pull must NOT roll
+	// localB back to its base revision.
+	gitTest(t, localB, "commit", "--allow-empty", "-m", "local divergence")
+	// webBefore is the diverged HEAD the failed pull must leave untouched.
 	webBefore := gitRev(t, localB)
-	gitTest(t, localB, "commit", "--allow-empty", "-m", "local drift")
-	if got := gitRev(t, localB); got == webBefore {
-		t.Fatal("expected local web-source HEAD to advance after the drift commit")
+	if webBefore == baseRev {
+		t.Fatal("expected the divergence commit to advance local web-source HEAD")
 	}
 	apiBefore := gitRev(t, localA)
 
@@ -304,8 +312,11 @@ func TestSourcePullApplyTimePartialFailureRunsOnce(t *testing.T) {
 	if webRepo.State == SourcePullCurrent {
 		t.Fatalf("web-source must not be marked current: %#v", webRepo)
 	}
+	// The failed pull leaves the web-source exactly at its diverged HEAD: the
+	// failed pull must NOT roll it back to its base (pre-divergence) revision.
+	// This is a real partial failure, not a rollback to pre-drift.
 	if got := gitRev(t, localB); got != webBefore {
-		t.Fatalf("web-source was mutated by the failed pull: before=%s after=%s", webBefore, got)
+		t.Fatalf("web-source must stay at its diverged HEAD after the failed pull: before=%s after=%s", webBefore, got)
 	}
 }
 
