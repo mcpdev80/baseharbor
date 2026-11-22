@@ -96,6 +96,11 @@ func TestInitializeRepositoryManifestForUpQuickFailsClosedOnAmbiguousCompose(t *
 
 func withWorkingDirectory(t *testing.T, dir string) {
 	t.Helper()
+	// The selection lives in the package process, not in the working directory:
+	// a BASEHARBOR_TARGET or BASEHARBOR_STATE_DIR leaked by an earlier
+	// runtime-integration test would make this case resolve a Target it never
+	// configured, whatever directory it runs in.
+	testIsolatedSelectionContext(t)
 	old, err := os.Getwd()
 	if err != nil {
 		t.Fatal(err)

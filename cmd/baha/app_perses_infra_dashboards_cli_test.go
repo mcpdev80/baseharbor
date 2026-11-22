@@ -58,6 +58,11 @@ func runPersesInfraStatusCommand(t *testing.T, ctx context.Context) persesInfraS
 // applied=false keeps the not-applied face.
 func persesInfraAppReport(t *testing.T, ctx context.Context, perses, observabilityUI bool) persesInfraStatusReport {
 	t.Helper()
+	// Probe resolution reads the ambient Target selection, so neutralise any
+	// BASEHARBOR_TARGET/ENV activation or host-persisted organization
+	// selection leaked into this package process before the probe resolves
+	// its application.
+	testIsolatedSelectionContext(t)
 	root := t.TempDir()
 	m := application.New("perses-infra-cli", "dev", false, false, false)
 	m = application.WithWorkloadComponents(m, "api")
