@@ -1325,6 +1325,10 @@ jobs:
               git show "$BASE_SHA":scripts/pr-check-runner.py > "$RUNNER_TEMP/pr-check-runner.py"
               python3 "$RUNNER_TEMP/pr-check-runner.py" execute --check "$VALIDATION" --repository "$GITHUB_WORKSPACE"
               ;;
+            ci-integration-operator-seam-tests)
+              go test -tags=baseharbor_ci_operator_testonly ./cmd/baha -run '^TestCIIntegrationOperator' -count=1 -v | tee operator-seam-tests.log
+              grep -q '^--- PASS: TestCIIntegrationOperator' operator-seam-tests.log
+              ;;
             wizard-*-tests)
               git fetch --no-tags origin "$BASE_SHA"
               git show "$BASE_SHA":scripts/pr-check-runner.py > "$RUNNER_TEMP/pr-check-runner.py"

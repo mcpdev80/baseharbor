@@ -7,8 +7,12 @@ report="$(mktemp "${RUNNER_TEMP:-/tmp}/baseharbor-native-pr-gate.XXXXXX.jsonl")"
 trap 'rm -f "$report"' EXIT
 
 run_exact_test() {
-  local test_name="$1" timeout="$2" package="${3:-./cmd/baha}"
-  go test -p 1 "$package" -run "^${test_name}$" -count=1 -timeout "$timeout" -json | tee "$report"
+  local test_name="$1" timeout="$2" package="${3:-./cmd/baha}" env_assignment="${4:-}"
+  if [[ -n "$env_assignment" ]]; then
+    env "$env_assignment" go test -p 1 "$package" -run "^${test_name}$" -count=1 -timeout "$timeout" -json | tee "$report"
+  else
+    go test -p 1 "$package" -run "^${test_name}$" -count=1 -timeout "$timeout" -json | tee "$report"
+  fi
   python3 - "$report" "$test_name" <<'PY'
 import json
 import pathlib
@@ -40,7 +44,7 @@ case "$gate_id" in
     export BASEHARBOR_GREENFIELD_NATIVE_ACCEPTANCE=1
     run_exact_test TestGreenfieldIsolatedCoreNativeInCI 20m
     ;;
-  native/docker/onboarding|native/podman/onboarding|native/podman/workstation-onboarding)
+  native/docker/onboarding|native/podman/onboarding|native/podman/workstation-onboarding|native/docker/guided|native/podman/guided)
     export BASEHARBOR_CI_RUNTIME_INTEGRATION=1
     export BASEHARBOR_GREENFIELD_NATIVE_ACCEPTANCE=1
     export BASEHARBOR_ONBOARDING_NATIVE_ACCEPTANCE=1
@@ -72,6 +76,29 @@ PY
   native/docker/perses-runtime-smoke)
     export BASEHARBOR_PERSES_RUNTIME_SMOKE=1
     run_exact_test TestPersesRuntimeSmokeDockerIsolated 5m ./internal/application
+    ;;
+  native/docker/data-capabilities|native/podman/data-capabilities)
+    run_exact_test TestApplicationCapabilityLifecycleExistingCore 20m ./cmd/baha \
+      BASEHARBOR_CORELESS_ACCEPTANCE=1
+    ;;
+  native/docker/coreless-lifecycle|native/podman/coreless-lifecycle)
+    run_exact_test TestSelectiveBackendCleanupPreservesRuntimeBaseline 30m ./cmd/baha \
+      BASEHARBOR_BACKEND_LIFECYCLE_ACCEPTANCE=1
+    run_exact_test TestSelectiveApplicationBackendRuntimeAddRemoveReAdd 30m ./cmd/baha \
+      BASEHARBOR_BACKEND_LIFECYCLE_ACCEPTANCE=1
+    run_exact_test TestApplicationCapabilityLifecycleExistingCore 30m ./cmd/baha \
+      BASEHARBOR_CORELESS_ACCEPTANCE=1
+    run_exact_test TestSelectiveHTTPSRuntimeAddRemoveReAdd 30m ./cmd/baha \
+      BASEHARBOR_HTTPS_LIFECYCLE_ACCEPTANCE=1
+    run_exact_test TestManagedRegisteredOTLPNativeConsumerHandoff 30m ./cmd/baha \
+      BASEHARBOR_OTLP_HANDOFF_ACCEPTANCE=1
+    ;;
+  native/docker/environment-destroy|native/podman/environment-destroy)
+    run_exact_test TestEnvironmentDestroyNativeLifecycle 30m ./cmd/baha \
+      BASEHARBOR_ENV_DESTROY_ACCEPTANCE=1
+    ;;
+  native/podman/service-stop)
+    run_exact_test TestSelectedStopAcceptsPinnedContainerName 5m ./internal/runtime
     ;;
   *)
     echo "REJECT: unsupported native PR gate $gate_id" >&2
