@@ -369,6 +369,27 @@ func TestApplicationCapabilityLifecycleFootprintShowDigestConsent(t *testing.T) 
 	ctx = testOperatorContext(ctx)
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
 	target := configureTestTargetEmpty(t)
+	if os.Getenv("BASEHARBOR_TEST_RUNTIME") == "podman" {
+		// Mirrors TestApplicationCapabilityLifecycleExistingCore (:34-47): the
+		// selected podman data-capabilities gate sets BASEHARBOR_TEST_RUNTIME=podman
+		// but the empty target defaults to the rootful docker provider, so the
+		// runtime selection below fails with "detected Docker endpoint rootful vs
+		// Target rootless". Pin the provider override before detecting the runtime.
+		cfg, err := deployment.LoadConfig()
+		if err != nil {
+			t.Fatal(err)
+		}
+		definition := cfg.Targets[target.Name]
+		definition.Runtime.Provider = "podman"
+		cfg.Targets[target.Name] = definition
+		if err := cfg.Save(); err != nil {
+			t.Fatal(err)
+		}
+		target, err = cfg.ResolveTarget("", "")
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
 	root := t.TempDir()
 	t.Chdir(root)
 	runtime, err := detectRuntimeForTarget(ctx, target)
@@ -403,10 +424,20 @@ func TestApplicationCapabilityLifecycleFootprintShowDigestConsent(t *testing.T) 
 		t.Fatal(err)
 	}
 	defer func() {
+		// Robust teardown: chdir back to the safe root first, then run the
+		// fixture cleanup via t.Cleanup's verified-owner path so a mid-test
+		// failure still drains the isolated Core/target without aborting the
+		// reset. resetCoreBootstrapFixtureApplication requires an already-resolved
+		// target/deployment owner and fails closed once the cell is torn down,
+		// so prefer the cleanup helper instead.
 		if _, werr := os.Getwd(); werr == nil {
 			_ = os.Chdir(root)
 		}
-		resetCoreBootstrapFixtureApplication(t, testOperatorContext(machineNoninteractiveContext(ctx)))
+		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 3*time.Minute)
+		defer cleanupCancel()
+		if err := approvedNativeFixtureCleanup(t, testOperatorContext(machineNoninteractiveContext(cleanupCtx)), &bytes.Buffer{}); err != nil {
+			t.Errorf("footprint-consent fixture cleanup: %v", err)
+		}
 	}()
 
 	// The canonical read-only footprint probe is available before any apply so
@@ -425,7 +456,11 @@ func TestApplicationCapabilityLifecycleFootprintShowDigestConsent(t *testing.T) 
 	if !strings.Contains(err.Error(), "--confirm-candidate") {
 		t.Fatalf("apply failure did not name the exact confirm digest: %v\n%s", err, out.String())
 	}
-	confirmDigest := extractFootprintShowConfirmDigest(err.Error())
+	// The fail-closed missing-consent error surfaces the exact confirm digest only
+	// in the usage Hint (rendered to captured stdout), not in err.Error(), which
+	// carries just the message. Extract from the combination of err.Error() and
+	// the captured out buffer so the digest the choke point printed is recovered.
+	confirmDigest := extractFootprintShowConfirmDigest(err.Error() + "\n" + out.String())
 	if confirmDigest == "" {
 		t.Fatalf("could not parse the exact --confirm-candidate digest from the apply refusal: %v\n%s", err, out.String())
 	}
