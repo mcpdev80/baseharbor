@@ -327,5 +327,3 @@ if __name__ == '__main__':
         main()
     except (ValueError, KeyError, OSError, subprocess.SubprocessError) as error:
         raise SystemExit(f'integration checks failed: {error}')
-
-// NOTE: the digest-consent harness test runs in the core-capability shard.
