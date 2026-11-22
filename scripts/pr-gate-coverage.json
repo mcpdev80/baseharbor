@@ -2,6 +2,7 @@
   "schema": "baseharbor.pr-gate-coverage/v1",
   "release": "v0.4.27",
   "surfaces": [
+    "source.gate.atomic.static.ci.fast.check",
     "adoption.conformance",
     "adoption.realworld-compose",
     "adoption.realworld-kubernetes",
@@ -1367,6 +1368,36 @@
       "runtime_specific": true
     },
     {
+      "id": "source.scripts.ci.fast.check",
+      "path": "scripts/ci-fast-check.sh",
+      "surfaces": ["source.gate.atomic.static.ci.fast.check"],
+      "runtime_specific": true
+    },
+    {
+      "id": "source.cmd.baha.app.footprint.presenter.go",
+      "path": "cmd/baha/app_footprint_presenter.go",
+      "surfaces": ["source.gate.atomic.docker.data.capabilities", "source.gate.atomic.podman.data.capabilities"],
+      "runtime_specific": true
+    },
+    {
+      "id": "source.cmd.baha.local.workload.authority.go",
+      "path": "cmd/baha/local_workload_authority.go",
+      "surfaces": ["source.gate.atomic.docker.data.capabilities", "source.gate.atomic.podman.data.capabilities"],
+      "runtime_specific": true
+    },
+    {
+      "id": "source.cmd.baha.local.workload.authority.test.go",
+      "path": "cmd/baha/local_workload_authority_test.go",
+      "surfaces": ["source.gate.atomic.docker.data.capabilities", "source.gate.atomic.podman.data.capabilities"],
+      "runtime_specific": true
+    },
+    {
+      "id": "source.cmd.baha.main.go",
+      "path": "cmd/baha/main.go",
+      "surfaces": ["source.gate.atomic.docker.data.capabilities", "source.gate.atomic.podman.data.capabilities"],
+      "runtime_specific": true
+    },
+    {
       "id": "source.workflow.pre.release",
       "path": ".github/workflows/pre-release.yml",
       "surfaces": ["source.gate.integration.docker.coreless.lifecycle", "source.gate.integration.podman.coreless.lifecycle"],
@@ -1797,7 +1828,8 @@
       "scope": "pr",
       "covers": [
         "capability.profile.shell-interface",
-        "gate.shell-ux"
+        "gate.shell-ux",
+        "source.gate.atomic.static.ci.fast.check"
       ],
       "kind": "static",
       "selection_scope": "focused",
@@ -3084,7 +3116,12 @@
         "cmd.baha.ci_integration_operator_disabled",
         "cmd.baha.ci_integration_operator_enabled_test",
         "cmd.baha.runtime_integration_test_support_test",
-        "source.scripts.ci.native.pr.gate"
+        "source.scripts.ci.native.pr.gate",
+        "source.cmd.baha.app.footprint.presenter.go",
+        "source.cmd.baha.local.workload.authority.go",
+        "source.cmd.baha.local.workload.authority.test.go",
+        "source.cmd.baha.main.go"
+      
       ],
       "selection_scope": "focused"
     },
@@ -3106,7 +3143,12 @@
         "cmd.baha.ci_integration_operator_disabled",
         "cmd.baha.ci_integration_operator_enabled_test",
         "cmd.baha.runtime_integration_test_support_test",
-        "source.scripts.ci.native.pr.gate"
+        "source.scripts.ci.native.pr.gate",
+        "source.cmd.baha.app.footprint.presenter.go",
+        "source.cmd.baha.local.workload.authority.go",
+        "source.cmd.baha.local.workload.authority.test.go",
+        "source.cmd.baha.main.go"
+      
       ],
       "selection_scope": "focused"
     },
