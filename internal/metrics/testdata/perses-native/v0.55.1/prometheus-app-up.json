@@ -1,0 +1,104 @@
+{
+  "kind": "Dashboard",
+  "metadata": {
+    "name": "prometheus-targets",
+    "version": 0
+  },
+  "spec": {
+    "display": {
+      "name": "BaseHarbor Prometheus targets",
+      "description": "Application up-signal scraped by BaseHarbor Prometheus."
+    },
+    "datasources": {
+      "prometheus": {
+        "default": true,
+        "plugin": {
+          "kind": "PrometheusDatasource",
+          "spec": {}
+        }
+      }
+    },
+    "panels": {
+      "app-up": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "BaseHarbor application up"
+          },
+          "plugin": {
+            "kind": "StatChart",
+            "spec": {}
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "up{job=\"baseharbor-applications\",baseharbor_application=\"$application\",baseharbor_environment=\"$env\"}"
+                  }
+                },
+                "datasource": {
+                  "kind": "PrometheusDatasource",
+                  "name": "prometheus"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "layouts": [
+      {
+        "kind": "Grid",
+        "spec": {
+          "items": [
+            {
+              "x": 0,
+              "y": 0,
+              "width": 24,
+              "height": 6,
+              "content": {
+                "$ref": "#/spec/panels/app-up"
+              }
+            }
+          ]
+        }
+      }
+    ],
+    "variables": [
+      {
+        "kind": "ListVariable",
+        "spec": {
+          "name": "$application",
+          "allowMultiple": false,
+          "allowAllValue": false,
+          "defaultValue": "perses-dashboard-databases",
+          "plugin": {
+            "kind": "ConstantVariable",
+            "spec": {
+              "value": "perses-dashboard-databases"
+            }
+          }
+        }
+      },
+      {
+        "kind": "ListVariable",
+        "spec": {
+          "name": "$env",
+          "allowMultiple": false,
+          "allowAllValue": false,
+          "defaultValue": "dev",
+          "plugin": {
+            "kind": "ConstantVariable",
+            "spec": {
+              "value": "dev"
+            }
+          }
+        }
+      }
+    ],
+    "duration": "5m"
+  }
+}
