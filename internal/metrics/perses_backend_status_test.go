@@ -94,3 +94,37 @@ func TestPersesBackendAnswersStatusSilentProbeErrorFailsClosed(t *testing.T) {
 		t.Fatalf("a probe transport error must fail closed to %q, got %+v", capability.PersesStatusConfiguredUnverified, got)
 	}
 }
+
+// TestPersesBackendAnswersStatusProductionUnselectedFailsClosedToNotConfigured
+// is the 0428-186 production-entry regression: an unselected Perses surface
+// must report not_configured through the REAL PersesBackendAnswersStatusNow
+// entry point even when its per-target endpoint setup (materialized provider)
+// would fail. The selection guard must win over the fail-closed endpoint error.
+func TestPersesBackendAnswersStatusProductionUnselectedFailsClosedToNotConfigured(t *testing.T) {
+	m := persesPrometheusDatasourceManifest()
+	m.Services.Perses = false
+	m.Services.ObservabilityManagementUI = false
+	// No materialized provider: persesPrometheusDatasourceEndpoint fails, but
+	// the unselected guard must return not_configured before the endpoint error.
+	got := PersesBackendAnswersStatusNow(t.Context(), m)
+	if got == nil || *got != capability.PersesStatusNotConfigured {
+		t.Fatalf("an unselected Perses surface must report not_configured via PersesBackendAnswersStatusNow even with endpoint setup failing, got %+v", got)
+	}
+}
+
+// TestPersesBackendAnswersStatusProductionSelectedEndpointErrorFailsClosed is
+// the 0428-186 production-entry ordering regression: a SELECTED, pinned Perses
+// surface whose per-target endpoint setup fails (no materialized provider) must
+// report configured_unverified through the REAL PersesBackendAnswersStatusNow —
+// NOT not_configured. The selection guard passes (selected) so the fail-closed
+// endpoint error correctly resolves to configured_unverified for a selected
+// surface.
+func TestPersesBackendAnswersStatusProductionSelectedEndpointErrorFailsClosed(t *testing.T) {
+	m := persesPrometheusDatasourceManifest()
+	// No materialized provider: persesPrometheusDatasourceEndpoint fails. The
+	// surface is still selected+pinned, so this must be configured_unverified.
+	got := PersesBackendAnswersStatusNow(t.Context(), m)
+	if got == nil || *got != capability.PersesStatusConfiguredUnverified {
+		t.Fatalf("a selected+pinned Perses surface with endpoint setup failing must report configured_unverified via PersesBackendAnswersStatusNow, got %+v", got)
+	}
+}

@@ -36,6 +36,19 @@ import (
 // probe result only, so pin validation alone cannot promote it. The
 // verified-only predicate in perses_selection.go stays untouched.
 func PersesBackendAnswersStatusNow(ctx context.Context, m application.Manifest) *capability.PersesStatus {
+	// Selection and release guards FIRST: an unselected surface or an
+	// invalid/unpinned release fails closed to not_configured, and this MUST
+	// win over any endpoint-setup error that would otherwise resolve a
+	// selected+pinned surface to configured_unverified.
+	if !m.Services.ObservabilityManagementUI || !m.Services.Perses {
+		return persesStatusNotConfigured()
+	}
+	if capability.ValidatePersesRelease(capability.PersesDefaultRelease) != nil {
+		return persesStatusNotConfigured()
+	}
+	// The real per-target probe. A materialized-endpoint or transport error
+	// here is only a silent/not-probed target for a selected, pinned surface,
+	// so it fails closed to configured_unverified.
 	files, _, err := persesPrometheusDatasourceEndpoint(m)
 	if err != nil {
 		return persesStatusConfiguredUnverified()
