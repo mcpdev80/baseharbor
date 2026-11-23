@@ -342,6 +342,14 @@
       ]
     },
     {
+      "id": "source.cmd.baha.app.new.wizard.test.go",
+      "path": "cmd/baha/app_new_wizard_test.go",
+      "surfaces": [
+        "source.gate.atomic.docker.guided",
+        "source.gate.atomic.podman.guided"
+      ]
+    },
+    {
       "id": "source.cmd.baha.app.observability.acceptance.test.go",
       "path": "cmd/baha/app_observability_acceptance_test.go",
       "surfaces": [
