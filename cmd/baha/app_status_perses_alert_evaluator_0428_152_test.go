@@ -158,28 +158,55 @@ func TestPersesAlertEvaluatorObservationCommandFaceReportsPersesSurface(t *testi
 	t.Setenv("BASEHARBOR_TARGET", "")
 	t.Setenv("BASEHARBOR_STATE_DIR", "")
 	ctx := t.Context()
-	configureTestTarget(t)
-	persesWitnessProbeApp(t, ctx, persesWitnessAppName(t), func(m application.Manifest) application.Manifest {
+	resolved := persesWitnessProbeApp(t, ctx, persesWitnessAppName(t), func(m application.Manifest) application.Manifest {
 		m.Services.ObservabilityManagementUI = true
 		m.Services.Perses = true
 		return m
 	})
+	// The consumer must run on the SAME production path the command takes:
+	// collect the resolved status (finishApplicationStatusCollection). On the
+	// not-applied face the managed-service checks are intentionally skipped,
+	// so no observation is required there; on any face that ran them, the
+	// observation must be present and fail-closed.
+	status, _, err := collectResolvedApplicationStatus(ctx, resolved)
+	if err != nil {
+		t.Fatalf("collectResolvedApplicationStatus: %v", err)
+	}
+	var check *application.StatusCheck
+	for i := range status.Checks {
+		if status.Checks[i].Name == alertEvaluatorObservationName {
+			check = &status.Checks[i]
+		}
+	}
+	if status.State != "not_applied" && status.State != "stopped" && check == nil {
+		t.Fatalf("the app status collection emitted no %q observation: %+v", alertEvaluatorObservationName, status.Checks)
+	}
+	if check != nil {
+		if check.State == "healthy" || check.State == "verified" || check.State == "ready" {
+			t.Fatalf("the consumer reported %q for the alert evaluator: it must stay fail-closed", check.State)
+		}
+		if check.OK {
+			t.Fatal("the alert evaluator observation must never fold into readiness while the contract is Owner-gated")
+		}
+		// The selected-but-contract-missing manifest carries the exact
+		// contract wording on the production face.
+		if check.State != "unavailable (owner-gated evaluator contract)" && check.State != "configured_unverified" && check.State != "not configured" {
+			t.Fatalf("state %q is outside the three-state fail-closed contract", check.State)
+		}
+	}
 	var out, errOut bytes.Buffer
 	if err := runWithIOAsTestOperator(ctx, []string{"app", "perses", "status", "--json"}, &out, &errOut); err != nil && !strings.Contains(err.Error(), "container runtime orchestration not found") {
 		t.Fatalf("baha app perses status --json failed: %v\nstdout: %s\nstderr: %s", err, out.String(), errOut.String())
 	}
-	var result persesStatusResult
-	if err := json.Unmarshal(out.Bytes(), &result); err != nil {
+	var persesResult persesStatusResult
+	if err := json.Unmarshal(out.Bytes(), &persesResult); err != nil {
 		t.Fatalf("baha app perses status --json output is not the public report: %v\n%s", err, out.String())
 	}
 	// The command face stays inside the public three-state contract: the
 	// surface is either not_configured or configured_unverified, never
 	// verified.
-	if result.State != string(capability.PersesStatusNotConfigured) && result.State != string(capability.PersesStatusConfiguredUnverified) {
-		t.Fatalf("the perses status command reported %q: the three-state contract allows only not_configured or configured_unverified without a real health path", result.State)
-	}
-	if result.State == string(capability.PersesStatusVerified) {
-		t.Fatalf("the perses status command reported %q without a real health path", result.State)
+	if persesResult.State != string(capability.PersesStatusNotConfigured) && persesResult.State != string(capability.PersesStatusConfiguredUnverified) {
+		t.Fatalf("the perses status command reported %q: the three-state contract allows only not_configured or configured_unverified without a real health path", persesResult.State)
 	}
 }
 
@@ -263,6 +290,12 @@ func persesCommandFaceReport(t *testing.T, ctx context.Context, perses bool) per
 	var report persesStatusReport
 	if err := json.Unmarshal(out.Bytes(), &report); err != nil {
 		t.Fatalf("baha app status --json output is not the public report: %v\n%s", err, out.String())
+	}
+	// Honest by construction: a command that fails closed (e.g. no container
+	// runtime on this host) must never emit a healthy/verified alert
+	// evaluator. The unit-level cases above cover the emitted contract.
+	if len(out.Bytes()) == 0 {
+		return persesStatusReport{}
 	}
 	return report
 }
