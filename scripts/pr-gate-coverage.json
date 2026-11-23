@@ -1999,6 +1999,102 @@
         "TestCIIntegrationGuidedMCPPrincipalCanOnlySeeFootprintTool",
         "TestCIIntegrationOperatorAllowsOnlyObservabilityLogProbe"
       ]
+    },
+    {
+      "id": "source.cmd_baha_app_observe_go",
+      "path": "cmd/baha/app_observe.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
+      "id": "source.cmd_baha_app_status_versions_test_go",
+      "path": "cmd/baha/app_status_versions_test.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
+      "id": "source.cmd_baha_app_tls_go",
+      "path": "cmd/baha/app_tls.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
+      "id": "source.cmd_baha_app_version_unified_test_go",
+      "path": "cmd/baha/app_version_unified_test.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
+      "id": "source.cmd_baha_app_version_view_go",
+      "path": "cmd/baha/app_version_view.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
+      "id": "source.cmd_baha_app_versions_backend_test_go",
+      "path": "cmd/baha/app_versions_backend_test.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
+      "id": "source.cmd_baha_app_versions_command_go",
+      "path": "cmd/baha/app_versions_command.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
+      "id": "source.cmd_baha_app_versions_view_go",
+      "path": "cmd/baha/app_versions_view.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
+      "id": "source.cmd_baha_app_versions_view_parity_test_go",
+      "path": "cmd/baha/app_versions_view_parity_test.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
+      "id": "source.cmd_baha_app_workspace_source_model_go",
+      "path": "cmd/baha/app_workspace_source_model.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
+      "id": "source.cmd_baha_management_core_git_candidate_test_go",
+      "path": "cmd/baha/management_core_git_candidate_test.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
+      "id": "source.internal_machinereadmodels_release_go",
+      "path": "internal/machinereadmodels/release.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
     }
   ],
   "gates": [
