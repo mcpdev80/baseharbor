@@ -246,7 +246,10 @@ func parseWorkloadExecArgs(args []string, commandName string) (selectorArgs []st
 		}
 		command = []string{cmdValue}
 	default:
-		if len(positional) > 0 {
+		if componentValue != "" {
+			service = componentValue
+			command = positional
+		} else if len(positional) > 0 {
 			service = positional[0]
 			command = positional[1:]
 		}
