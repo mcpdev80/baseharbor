@@ -203,16 +203,23 @@ func statusHumanDetailValue(check application.StatusCheck, verbose bool) string 
 func appStatusCommand(store application.Store) *cli.Command {
 	return &cli.Command{
 		Name:    "status",
-		Summary: "Show application runtime and readiness status",
-		Usage:   "baha app status [NAME] [-o json|--output json]",
-		Long:    "Reports materialized backend state, repository workload state and protocol-level readiness. Human and structured output are rendered from the same secret-safe readiness result.",
+		Summary: "Show application runtime, readiness and version status",
+		Usage:   "baha app status [NAME] [-c COMPONENT[,COMPONENT]] [-o json|--output json]",
+		Long:    "Reports materialized backend state, repository workload state, protocol-level readiness and the unified version section (wanted/applied/observed reference dimensions plus component rows with their source-model provenance). Human and structured output are rendered from the same secret-safe readiness result. An unknown -c component fails closed.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
-			filtered, format, err := parseReadOutputArgs(args, "app status")
+			selected, filtered, err := parseComponentSelectorArgs(args, "status")
+			if err != nil {
+				return err
+			}
+			filtered, format, err := parseReadOutputArgs(filtered, "app status")
 			if err != nil {
 				return err
 			}
 			result, err := collectApplicationStatusResult(ctx, store, filtered)
 			if err != nil {
+				return err
+			}
+			if err := applyStatusComponentSelector(&result, selected); err != nil {
 				return err
 			}
 			if format == outputJSON {
@@ -221,6 +228,7 @@ func appStatusCommand(store application.Store) *cli.Command {
 				}
 			} else {
 				renderApplicationStatusWithExtra(ctx, out, errOut, result.StatusResult, func(term *cli.Terminal) {
+					renderStatusVersions(out, result)
 					term.Section("Access")
 					term.Info("operator mode", result.OperatorAuth.Mode)
 					term.Info("operator status", result.OperatorAuth.Status)
@@ -251,6 +259,40 @@ func applicationStatusCommandError(result application.StatusResult) error {
 	if !result.Ready && result.HasFailures() {
 		return cli.Presented(errors.New("application is not ready"))
 	}
+	return nil
+}
+
+// renderStatusVersions emits the unified version section of the human status
+// view (card 0428-062). A deployment without any recorded reference dimension
+// renders one compact UNCLEAR line instead of an empty table.
+func renderStatusVersions(out io.Writer, result applicationStatusResult) {
+	if result.Versions.Stages.Wanted == nil && result.Versions.Stages.Applied == nil && result.Versions.Stages.Observed == nil && len(result.Versions.Components) == 0 {
+		return
+	}
+	if result.State == "not_applied" {
+		return
+	}
+	if !result.Versions.Stages.AnyRecorded() && len(result.Versions.Components) == 0 {
+		fmt.Fprintln(out, "\nVersions: UNCLEAR (no reference dimension recorded yet)")
+		for _, warning := range result.VersionWarnings {
+			fmt.Fprintf(out, "[WARN] %s\n", warning)
+		}
+		return
+	}
+	renderVersionsSection(out, result.Versions, result.VersionWarnings)
+}
+
+// applyStatusComponentSelector filters the unified component rows inside the
+// status result by -c selections shared across status/version/versions. An
+// unknown selection fails closed.
+func applyStatusComponentSelector(result *applicationStatusResult, selected []string) error {
+	if len(selected) == 0 {
+		return nil
+	}
+	if err := requireKnownComponentSelections(selected, result.Versions.Components, "status"); err != nil {
+		return err
+	}
+	result.Versions.Components = filterComponentRows(result.Versions.Components, selected)
 	return nil
 }
 

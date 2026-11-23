@@ -295,6 +295,13 @@ func TestGuidedExecParsesComponentCmdAndExitStatus(t *testing.T) {
 	if got := workloadExecCommandArgs(workloadInvocation{argv: []string{"printf", "%s", "a b"}}, "api"); !reflect.DeepEqual(got, []string{"exec", "-T", "api", "printf", "%s", "a b"}) {
 		t.Fatalf("positional commands must remain direct argv: %v", got)
 	}
+	selector, service, command, err = parseWorkloadExecArgs([]string{"api", "python", "-c", "print('ok')", "payload"}, "exec")
+	if err != nil || service != "api" || len(selector) != 0 || !reflect.DeepEqual(command, []string{"python", "-c", "print('ok')", "payload"}) {
+		t.Fatalf("command flags must pass through unchanged: %v %q %v %v", selector, service, command, err)
+	}
+	if got := workloadExecCommandArgs(workloadInvocation{argv: command}, service); !reflect.DeepEqual(got, []string{"exec", "-T", "api", "python", "-c", "print('ok')", "payload"}) {
+		t.Fatalf("command flags must remain direct argv: %v", got)
+	}
 	selector, service, command, err = parseWorkloadExecArgs([]string{"--app", "mailflow", "api", "ps", "flag"}, "exec")
 	if err != nil || service != "api" || len(command) != 2 || len(selector) != 2 {
 		t.Fatalf("--app selector split: %v %q %v %v", selector, service, command, err)

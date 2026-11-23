@@ -62,6 +62,13 @@ func classifyCommandCoverage(path string, command *cli.Command) commandCoverage 
 		row.Reason = "Command group; invoke its supported subcommands."
 		return row
 	}
+	// Workspace namespace clones (workspaceNamespaceCommand) classify through
+	// their canonical app-workspace twins; group rows above already matched.
+	if isWorkspaceNamespaceClone(path) {
+		twin := classifyCommandCoverage(canonicalCoveragePath(path), command)
+		twin.Command = path
+		return twin
+	}
 	if operationID, ok := cliMachineOperations[path]; ok {
 		if operation, exists := machine.OperationByID(operationID); exists {
 			row.Classification = "semantic"
@@ -88,15 +95,39 @@ func classifyCommandCoverage(path string, command *cli.Command) commandCoverage 
 	if reason, ok := cliPresentationCommands[path]; ok {
 		row.Classification = "presentation"
 		row.Reason = reason
+		return row
 	}
 	return row
 }
 
+// isWorkspaceNamespaceClone reports whether a path belongs to the root
+// workspace namespace, including its nested group commands.
+func isWorkspaceNamespaceClone(path string) bool {
+	return strings.HasPrefix(path, "baha workspace") && !strings.HasPrefix(path, "baha app workspace")
+}
+
+// canonicalCoveragePath maps a root-namespace workspace command onto its
+// canonical app-workspace twin. Both namespaces execute identical shared
+// implementations (workspaceNamespaceCommand reuses the app workspace tree),
+// so one classification table serves both surfaces; the generated
+// machine-coverage reference still lists every command path explicitly.
+func canonicalCoveragePath(path string) string {
+	if !isWorkspaceNamespaceClone(path) {
+		return path
+	}
+	remainder := strings.TrimSpace(strings.TrimPrefix(path, "baha workspace"))
+	if remainder == "" {
+		return "baha app workspace"
+	}
+	return "baha app workspace " + remainder
+}
+
+// isWorkspaceNamespaceClone reports whether a path belongs to the root
+
 var cliMachineOperations = map[string]string{
-	"baha app edit":           "app.edit",
-	"baha app footprint show": "app.footprint.show",
-	"baha update":             "release.check",
-	"baha up":                 "control-plane.up", "baha down": "control-plane.stop", "baha destroy": "control-plane.destroy", "baha status": "control-plane.status", "baha doctor": "control-plane.doctor",
+	"baha app edit": "app.edit", "baha app footprint show": "app.footprint.show",
+	"baha update": "release.check",
+	"baha up":     "control-plane.up", "baha down": "control-plane.stop", "baha destroy": "control-plane.destroy", "baha status": "control-plane.status", "baha doctor": "control-plane.doctor",
 	"baha openbao status":    "openbao.status",
 	"baha openbao bootstrap": "openbao.bootstrap",
 	"baha openbao unseal":    "openbao.unseal",
@@ -125,6 +156,8 @@ var cliMachineOperations = map[string]string{
 	"baha app workspace resolve": "workspace.resolve", "baha workspace resolve": "workspace.resolve",
 	"baha app workspace status": "workspace.status", "baha workspace status": "workspace.status", "baha app workspace update": "workspace.update", "baha workspace update": "workspace.update",
 	"baha app workspace init": "workspace.init", "baha workspace init": "workspace.init", "baha app workspace map": "workspace.map", "baha workspace map": "workspace.map",
+	"baha app workspace path": "workspace.map",
+
 	"baha provider list": "provider.list", "baha provider inspect": "provider.inspect", "baha provider verify": "provider.verify", "baha provider add": "provider.add", "baha provider remove": "provider.remove",
 	"baha policy check": "policy.check", "baha policy explain": "policy.explain",
 	"baha config organization show": "organization.inspect", "baha config organization check": "organization.check", "baha config organization set": "organization.set", "baha config organization update": "organization.update",

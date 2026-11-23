@@ -66,7 +66,7 @@ starts the lifecycle.
 | `baha up` | Converge an application |
 | `baha app apply` | Apply/reconcile through the application lifecycle |
 | `baha app stop` / `baha down` | Stop application runtime while preserving persistent data |
-| `baha status` | Observe application state |
+| `baha status` | Observe application state, readiness and the unified version section |
 | `baha doctor` | Diagnose and optionally repair |
 | `baha app update` | Update supported application source/state |
 | `baha app destroy NAME` | Remove one application and its owned resources |
@@ -102,11 +102,13 @@ renders; they never consult a second parallel source of truth.
   output and finishes. JSON output never follows an unbounded stream;
   `--tail` with `--json` is the bounded machine form. Managed (Loki) collection
   is reported explicitly with its machine result instead of a silent reroute.
-- `baha app exec [COMPONENT] [COMMAND [ARG...]] [-c NAME] [--cmd CMD]` opens
-  the default shell when no command is given (same as `baha app shell`);
-  `--cmd` takes exactly one command string and runs it through the workload's
-  POSIX shell; positional commands remain direct argv. The executed command's
-  exit status is preserved by `baha`.
+- `baha app exec [--app NAME] [-e ENV|--environment ENV] [COMPONENT | -c NAME] [COMMAND [ARG...]]`
+  opens the default shell when no command is given (same as `baha app shell`).
+  Put selector options before the command; once `COMMAND` starts, its remaining
+  arguments, including flags such as Python's `-c`, pass through unchanged.
+  `--cmd` remains the separate form for one string run through the workload's
+  POSIX shell. Positional commands remain direct argv and preserve their exit
+  status.
 - `baha app urls [NAME] [-c NAME]... [--print] [--json]` lists only the
   application's own URLs and the GUI URLs of its bound app/shared services,
   each with its verified/unverified accessibility. Nothing is guessed, invented

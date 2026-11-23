@@ -34,7 +34,7 @@ Der vollständige lokale, Remote- und Team-Weg beginnt unter [Lokal, remote und 
 | `baha app preflight` | Vor Mutation validieren |
 | `baha up` / `baha app apply` | Application konvergieren/abgleichen |
 | `baha down` | Application-Runtime stoppen |
-| `baha status` | Zustand beobachten |
+| `baha status` | Zustand beobachten, inklusive Readiness und vereinigter Versionssektion |
 | `baha doctor` | Diagnostizieren, optional reparieren |
 | `baha app update` | Unterstützte Application-Source aktualisieren |
 | `baha app destroy NAME` | Eine Application und ihre eigenen Ressourcen entfernen |
@@ -87,11 +87,13 @@ eine fehlende Wahl aus demselben geheimnissicheren Read-View, den
   Ausgabe und endet. JSON-Ausgabe folgt nie einem unbegrenzten Stream; `--tail`
   mit `--json` ist die begrenzte Maschinenform. Managed-Sammlung (Loki) wird
   ausdrücklich statt stillschweigend umgeleitet gemeldet.
-- `baha app exec [COMPONENT] [COMMAND [ARG...]] [-c NAME] [--cmd CMD]` öffnet
-  ohne Command die Standard-Shell (wie `baha app shell`); `--cmd` nimmt genau
-  einen Command-String und führt ihn über die POSIX-Shell im Workload aus.
-  Positionsargumente bleiben direkte argv-Argumente. `baha` gibt den Exit-Status
-  des ausgeführten Commands weiter.
+- `baha app exec [--app NAME] [-e ENV|--environment ENV] [COMPONENT | -c NAME] [COMMAND [ARG...]]`
+  öffnet ohne Command die Standard-Shell (wie `baha app shell`). Auswahloptionen
+  stehen vor dem Command; sobald `COMMAND` beginnt, werden alle folgenden
+  Argumente einschließlich Flags wie Pythons `-c` unverändert weitergegeben.
+  `--cmd` bleibt die separate Form für einen Command-String über die POSIX-Shell
+  im Workload. Positionsargumente bleiben direktes argv und ihr Exit-Status wird
+  weitergegeben.
 - `baha app urls [NAME] [-c NAME]... [--print] [--json]` listet nur die URLs
   der Anwendung selbst und die GUI-URLs ihrer gebundenen App-/Shared-Dienste,
   jeweils mit verifiziertem oder ungeprüftem Zugriffsstatus. Nichts wird

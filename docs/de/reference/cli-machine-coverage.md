@@ -190,7 +190,7 @@ Aktuelle Daten liefert `baha agent describe -o json` (`cli_coverage`). Nach Code
 | `baha use` | Darstellung |  |  | Persists local user selection; machine clients supply explicit target arguments on each semantic operation. |
 | `baha version` | Darstellung |  |  | Executable build identity is provided by agent describe and MCP initialization. |
 | `baha whoami` | semantisch | CLI -o json / typed MCP result | baseharbor.operator.identity |  |
-| `baha workspace` | Darstellung |  |  | Canonical interactive presentation of the same workspace.init/map operations. |
+| `baha workspace` | Darstellung |  |  | Canonical interactive presentation of the same workspace.init/map operations. `baha workspace source` und `baha workspace component` sind die Kanalnamen für die Gruppenpflege von Quellen und Komponenten. |
 | `baha workspace init` | semantisch | CLI -o json / typed MCP result | baseharbor.workspace.init |  |
 | `baha workspace map` | semantisch | CLI -o json / typed MCP result | baseharbor.workspace.map |  |
 | `baha workspace resolve` | semantisch | CLI -o json / typed MCP result | baseharbor.workspace.resolve |  |
