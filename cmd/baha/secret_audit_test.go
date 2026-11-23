@@ -344,3 +344,90 @@ func TestAuthorizeHumanRevealFailedRecordsRevealAudit(t *testing.T) {
 		t.Fatalf("failed reveal must record AuthorizationResult=deny, got %q", event.AuthorizationResult)
 	}
 }
+
+// TestRecordEnvDestroyAuditRuntimeSuccessIsAllowNotPerson proves the runtime
+// actor attribution fix for env.destroy: a succeeded local runtime env-destroy
+// (no verified human, no decision, outcome=success) must attribute the runtime
+// actor (trusted-local, not the cli/local-operator person default) and record
+// AuthorizationResult=allow to match the success outcome.
+func TestRecordEnvDestroyAuditRuntimeSuccessIsAllowNotPerson(t *testing.T) {
+	root := t.TempDir()
+	targetStateRoot = func(string) (string, error) { return root, nil }
+	defer func() { targetStateRoot = deployment.TargetStateRoot }()
+
+	ctx := context.Background()
+	recordEnvDestroyAudit(ctx, "local", "demo", "succeeded", "success")
+
+	events, err := evidence.Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("expected exactly one audit event, got %d", len(events))
+	}
+	event := events[0]
+	if event.Actor.Identity != "trusted-local" {
+		t.Fatalf("succeeded runtime env-destroy must attribute runtime actor trusted-local, got %q", event.Actor.Identity)
+	}
+	if event.Actor.Subject == "local-operator" || event.Actor.Identity == "local-operator" {
+		t.Fatalf("runtime env-destroy must not attribute the cli/local-operator person default, got %+v", event.Actor)
+	}
+	if event.AuthorizationResult != "allow" {
+		t.Fatalf("succeeded runtime env-destroy must record AuthorizationResult=allow, got %q", event.AuthorizationResult)
+	}
+}
+
+// TestRecordEnvDestroyAuditRuntimeFailureIsDenyWithRuntimeActor proves that a
+// failed local runtime env-destroy (no verified human, no decision,
+// outcome=failure) attributes the runtime actor and records
+// AuthorizationResult=deny, matching the failure outcome.
+func TestRecordEnvDestroyAuditRuntimeFailureIsDenyWithRuntimeActor(t *testing.T) {
+	root := t.TempDir()
+	targetStateRoot = func(string) (string, error) { return root, nil }
+	defer func() { targetStateRoot = deployment.TargetStateRoot }()
+
+	ctx := context.Background()
+	recordEnvDestroyAudit(ctx, "local", "demo", "failed to remove", "failed")
+
+	events, err := evidence.Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("expected exactly one audit event, got %d", len(events))
+	}
+	event := events[0]
+	if event.Actor.Identity != "trusted-local" {
+		t.Fatalf("failed runtime env-destroy must attribute runtime actor trusted-local, got %q", event.Actor.Identity)
+	}
+	if event.AuthorizationResult != "deny" {
+		t.Fatalf("failed runtime env-destroy must record AuthorizationResult=deny, got %q", event.AuthorizationResult)
+	}
+}
+
+// TestRecordEnvDestroyAuditDeniedIsDenyWithRuntimeActor proves that a denied
+// runtime env-destroy (no verified human, no decision, outcome=denied)
+// attributes the runtime actor and records AuthorizationResult=deny.
+func TestRecordEnvDestroyAuditDeniedIsDenyWithRuntimeActor(t *testing.T) {
+	root := t.TempDir()
+	targetStateRoot = func(string) (string, error) { return root, nil }
+	defer func() { targetStateRoot = deployment.TargetStateRoot }()
+
+	ctx := context.Background()
+	recordEnvDestroyAudit(ctx, "local", "demo", "denied by policy", "denied")
+
+	events, err := evidence.Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("expected exactly one audit event, got %d", len(events))
+	}
+	event := events[0]
+	if event.Actor.Identity != "trusted-local" {
+		t.Fatalf("denied runtime env-destroy must attribute runtime actor trusted-local, got %q", event.Actor.Identity)
+	}
+	if event.AuthorizationResult != "deny" {
+		t.Fatalf("denied runtime env-destroy must record AuthorizationResult=deny, got %q", event.AuthorizationResult)
+	}
+}

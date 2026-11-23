@@ -335,7 +335,7 @@ func confirmedDataDeletion(ctx context.Context, out io.Writer, explicitFlag bool
 // denial / failure), exact environment and target, and the human vs runtime
 // actor are recorded without any environment-scoped data values.
 func recordEnvDestroyAudit(ctx context.Context, target, envName, detail, outcome string) {
-	root, rootErr := deployment.TargetStateRoot(target)
+	root, rootErr := targetStateRoot(target)
 	if rootErr != nil {
 		fmt.Fprintln(os.Stderr, "Warning: could not resolve target state root for env destroy audit:", rootErr)
 		return
@@ -343,6 +343,7 @@ func recordEnvDestroyAudit(ctx context.Context, target, envName, detail, outcome
 	event := evidence.NewAuditEvent(ctx, target, "", envName, "env.destroy", outcome)
 	event.Environment = envName
 	event.Resource = envName
+	event.Application = envName
 	event.Detail = detail
 	if decision, ok := operatorauth.AuthorizationDecisionFromContext(ctx); ok {
 		// A present AuthorizationDecision takes precedence over any principal:
@@ -356,9 +357,17 @@ func recordEnvDestroyAudit(ctx context.Context, target, envName, detail, outcome
 	} else if _, ok := operatorauth.PrincipalFromContext(ctx); ok {
 		event.AuthorizationResult = "allow"
 	} else {
-		// No verified operator on the enforcement seam: attribute the runtime
-		// actor rather than a person. trusted-local is not a person.
-		event.AuthorizationResult = "deny"
+		// No verified operator on the enforcement seam. A succeeded local
+		// runtime env-destroy attributes the runtime actor (trusted-local, not
+		// the cli/local-operator person default) and records
+		// AuthorizationResult=allow to match the success outcome; only a
+		// denied/failed outcome without a decision is correctly a deny.
+		event.Actor.Identity = "trusted-local"
+		if strings.EqualFold(outcome, "success") {
+			event.AuthorizationResult = "allow"
+		} else {
+			event.AuthorizationResult = "deny"
+		}
 	}
 	if err := evidence.Append(root, event); err != nil {
 		fmt.Fprintln(os.Stderr, "Warning: could not record env destroy audit:", err)
