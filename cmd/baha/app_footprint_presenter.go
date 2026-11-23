@@ -15,6 +15,13 @@ type appFootprintPresenterOptions struct {
 
 // presentAppFootprint renders the already resolved authoritative footprint.
 // It neither resolves providers nor assumes resources from capability names.
+// The human view is a curated subset: provider Scope, Ownership, Shared,
+// Consumers and Ancillary are intentionally not rendered here (they carry
+// machine-facing detail that the compact human view omits). The same resolved
+// footprint reports those fields via the JSON/MCP contract
+// (application.Footprint / ProviderFootprint, internal/application/footprint.go),
+// so the two surfaces agree on the data even though the human view shows only a
+// presentation-oriented subset.
 func presentAppFootprint(ctx GuidedReadContext, options appFootprintPresenterOptions) string {
 	return renderAppFootprint(ctx.Footprint, ctx.Complete, options)
 }
@@ -80,16 +87,29 @@ func renderAppFootprint(fp application.Footprint, contextComplete bool, options 
 	return strings.TrimSuffix(out.String(), "\n")
 }
 
-func writeAppFootprintResource(out *strings.Builder, resource application.ProviderFootprint) {
-	state := "unverified"
-	switch resource.State {
+// renderProviderStateLabel maps the canonical ProviderState machine token to the
+// human-facing label used by the footprint presenter. This mapping is the sole
+// human↔machine state-to-label correspondence: the JSON/MCP contract (the
+// application.Footprint struct, internal/application/footprint.go:115) reports
+// the canonical ProviderState verbatim ("running", "stopped-but-owned",
+// "newly-required", "unverifiable", "foreign"), while the human view renders a
+// friendlier phrase. The two must stay in sync — when the canonical enum changes
+// here, update the label below.
+func renderProviderStateLabel(state application.ProviderState) string {
+	switch state {
 	case application.ProviderNewRequired:
-		state = "new"
+		return "new"
 	case application.ProviderRunning:
-		state = "reused/running"
+		return "reused/running"
 	case application.ProviderStoppedOwned:
-		state = "stopped/owned (not running)"
+		return "stopped/owned (not running)"
+	default:
+		return "unverified"
 	}
+}
+
+func writeAppFootprintResource(out *strings.Builder, resource application.ProviderFootprint) {
+	state := renderProviderStateLabel(resource.State)
 	fmt.Fprintf(out, "- %s: %s; RAM %s; containers %s\n",
 		footprintLabel(resource.InstanceID), state,
 		footprintQuantity(resource.MemoryBytes, "bytes"),

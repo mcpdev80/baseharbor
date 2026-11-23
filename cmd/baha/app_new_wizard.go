@@ -481,13 +481,32 @@ func directoryIsEmpty(path string) (bool, error) {
 	return len(entries) == 0, nil
 }
 
+// orgDefaultStackNotInCatalog reports whether an organization-default stack name
+// resolves to a stack that is absent from the effective stack catalog. It is the
+// shared guard for guidedStackProfile so the missing-stack case can present a
+// usageError instead of a raw error.
+func orgDefaultStackNotInCatalog(name string, catalog development.ProfileCatalogEntries) bool {
+	if name == "" {
+		return false
+	}
+	_, exists := catalog[name]
+	return !exists
+}
+
+// organizationDefaultStackName returns the organization-default stack name for
+// the given environment, or "" when no default is configured. It is a package
+// indirection so tests can supply a deterministic default without touching the
+// on-disk organization configuration.
+var organizationDefaultStackName = func(environment string) (string, error) {
+	return organizationDefaultStack(environment)
+}
+
 func guidedStackProfile(reader *bufio.Reader, out io.Writer, catalog development.ProfileCatalogEntries, registry development.Registry) (guidedStackSelection, error) {
-	if name, err := organizationDefaultStack("dev"); err != nil {
+	if name, err := organizationDefaultStackName("dev"); err != nil {
 		return guidedStackSelection{}, err
+	} else if orgDefaultStackNotInCatalog(name, catalog) {
+		return guidedStackSelection{}, usageError("organization default stack %q is not available in the effective stack catalog", "Remove the organization stack default or add the stack to the effective catalog, then re-run app new.")
 	} else if name != "" {
-		if _, exists := catalog[name]; !exists {
-			return guidedStackSelection{}, fmt.Errorf("organization default stack %q is not available in the effective stack catalog", name)
-		}
 		resolved, err := development.ResolveStackProfile(name, development.ProfileMap(catalog))
 		if err != nil {
 			return guidedStackSelection{}, err

@@ -54,6 +54,12 @@ type applicationStatusResult struct {
 	// TestBahaStatusInfrastructureDashboardsExposesEveryPanel asserts; the
 	// producer is set below in both status paths.
 	InfrastructureDashboards map[string]metricsprovider.PersesInfraDashboardAvailabilityEntry `json:"infrastructure_dashboards,omitempty"`
+	// Versions is the unified version dimension of this deployment (card
+	// 0428-062): the separated wanted/applied/observed cells from the delivered
+	// read model plus the component rows with their source-model provenance.
+	// VersionWarnings names why a dimension or row could not be answered.
+	Versions        appStatusVersions `json:"versions"`
+	VersionWarnings []string          `json:"version_warnings,omitempty"`
 
 	tlsStatus     *applicationTLSStatus
 	tlsErr        error
@@ -305,6 +311,7 @@ func collectApplicationStatusResult(ctx context.Context, store application.Store
 		resolved.Manifest.Services.ObservabilityManagementUI, resolved.Manifest.Services.Perses)
 	infrastructureDashboardStatus := metricsprovider.PersesInfraDashboardAvailability(ctx, resolved.Manifest)
 	databaseDashboards := metricsprovider.PersesDashboardAvailability(resolved.Manifest)
+	earlyVersions, earlyVersionWarnings := collectAppStatusVersions(resolved)
 	if hasRemoteApplicationTarget(resolved) {
 		return applicationStatusResult{StatusResult: result, ApplicationID: resolved.Manifest.ApplicationID,
 			DeploymentID:       resolved.DeploymentIdentity.DeploymentID,
@@ -314,7 +321,9 @@ func collectApplicationStatusResult(ctx context.Context, store application.Store
 			HostContainersDashboards: metricsprovider.PersesHostDashboardAvailability(
 				resolvedHostSignalStatus),
 			PersesBackendWitness:     persesBackendSignalWitnessFromManifest(resolved.Manifest, resolvedHostSignalStatus, metricsprovider.PersesBackendSignalWitness{}),
-			InfrastructureDashboards: infrastructureDashboardStatus}, nil
+			InfrastructureDashboards: infrastructureDashboardStatus,
+			Versions:                 earlyVersions,
+			VersionWarnings:          earlyVersionWarnings}, nil
 	}
 	tlsStatus, tlsObservation, tlsErr := collectApplicationTLSObservation(resolved)
 	if tlsErr != nil || (tlsObservation != nil && !tlsObservation.Healthy) {
@@ -403,6 +412,7 @@ func collectApplicationStatusResult(ctx context.Context, store application.Store
 			}
 		}
 	}
+	versions, versionWarnings := collectAppStatusVersions(resolved)
 	return applicationStatusResult{
 		StatusResult:             result,
 		ApplicationID:            resolved.Manifest.ApplicationID,
@@ -420,6 +430,8 @@ func collectApplicationStatusResult(ctx context.Context, store application.Store
 		HostContainersDashboards: metricsprovider.PersesHostDashboardAvailability(resolvedHostSignalStatus),
 		PersesBackendWitness:     persesBackendSignalWitnessFromManifest(resolved.Manifest, resolvedHostSignalStatus, metricsprovider.PersesBackendSignalWitness{}),
 		InfrastructureDashboards: infrastructureDashboardStatus,
+		Versions:                 versions,
+		VersionWarnings:          versionWarnings,
 		tlsStatus:                tlsStatus,
 		tlsErr:                   tlsErr,
 		serviceTLSErr:            serviceTLSErr,

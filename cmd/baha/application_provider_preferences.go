@@ -241,6 +241,14 @@ func finishAppNewWizard(ctx context.Context, reader *bufio.Reader, root string, 
 	defer func() { _ = os.Chdir(previous) }()
 	err := appNewLifecycleExecutor(ctx, application.DefaultStore(), nil, out, errOut)
 	if digest := candidateConsentDigestFromError(err); digest != "" {
+		// The candidate identity is the operator's explicit confirmation of the
+		// deployment to bind. Surface it together with the pre-chdir working
+		// directory so the operator confirms the exact submission in its own
+		// context, not silently inside the freshly created project.
+		fmt.Fprintf(out, "\nCandidate to bind for confirmation:\n")
+		fmt.Fprintf(out, "  working dir before New: %s\n", displayUserPath(previous))
+		fmt.Fprintf(out, "  project files:         %s\n", displayUserPath(root))
+		fmt.Fprintf(out, "  confirm-hash %s\n", digest)
 		confirmed, promptErr := promptYesNo(reader, out,
 			"Bind this exact candidate and continue with its lifecycle?", false)
 		if promptErr != nil {

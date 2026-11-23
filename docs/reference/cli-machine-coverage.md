@@ -70,8 +70,8 @@ Inspect current data with `baha agent describe -o json` (`cli_coverage`). Update
 | `baha app workspace component remove` | presentation |  |  | Edits the versioned source model through the mutating workspace.init contract. |
 | `baha app workspace init` | semantic | CLI -o json / typed MCP result | baseharbor.workspace.init |  |
 | `baha app workspace map` | semantic | CLI -o json / typed MCP result | baseharbor.workspace.map |  |
-| `baha app workspace path` | presentation |  |  | Sets or reads a local checkout path in the versioned source model; writes require workspace.map authorization and never create or delete files. |
-| `baha app workspace paths` | alias |  |  | Canonical command: baha app workspace path; shares its coverage classification. |
+| `baha app workspace path` | semantic | CLI -o json / typed MCP result | baseharbor.workspace.map |  |
+| `baha app workspace paths` | alias | CLI -o json / typed MCP result | baseharbor.workspace.map | Canonical command: baha app workspace path; shares its coverage classification. |
 | `baha app workspace resolve` | semantic | CLI -o json / typed MCP result | baseharbor.workspace.resolve |  |
 | `baha app workspace show` | semantic | CLI -o json / typed MCP result | baseharbor.workspace.show |  |
 | `baha app workspace source` | presentation |  |  | Source-model maintenance group; presentation over the portable source model that workspace.init reads and writes. |
@@ -171,20 +171,20 @@ Inspect current data with `baha agent describe -o json` (`cli_coverage`). Update
 | `baha user offboard` | excluded |  |  | Human-confirmed operator directory action disables the owned Keycloak user and revokes its workstation leaves; no typed MCP operation, so excluded from the machine tool boundary by design. |
 | `baha version` | presentation |  |  | Executable build identity is provided by agent describe and MCP initialization. |
 | `baha whoami` | semantic | CLI -o json / typed MCP result | baseharbor.operator.identity |  |
-| `baha workspace` | presentation |  |  | Canonical interactive presentation of the same workspace.init/map operations. |
-| `baha workspace component` | presentation |  |  | Alias for the source-model component maintenance group; writes require workspace.init and reads require workspace.show. |
-| `baha workspace component add` | presentation |  |  | Alias for component add; edits the source model through workspace.init. |
-| `baha workspace component list` | presentation |  |  | Alias for component list; reads the source model through workspace.show. |
-| `baha workspace component remove` | presentation |  |  | Alias for component remove; edits the source model through workspace.init. |
+| `baha workspace` | presentation |  |  | Interactive presentation combining workspace.init and workspace.map; clients invoke those typed operations explicitly. |
+| `baha workspace component` | presentation |  |  | Source-model component maintenance group; presentation over the portable source model that workspace.init/map/show/resolve read and write. |
+| `baha workspace component add` | presentation |  |  | Edits the versioned source model through the mutating workspace.init contract. |
+| `baha workspace component list` | presentation |  |  | Reads the versioned source model through the workspace.show contract. |
+| `baha workspace component remove` | presentation |  |  | Edits the versioned source model through the mutating workspace.init contract. |
 | `baha workspace init` | semantic | CLI -o json / typed MCP result | baseharbor.workspace.init |  |
 | `baha workspace map` | semantic | CLI -o json / typed MCP result | baseharbor.workspace.map |  |
-| `baha workspace path` | presentation |  |  | Alias for setting or reading a local checkout path; writes require workspace.map and never create or delete files. |
-| `baha workspace paths` | alias |  |  | Canonical command: baha workspace path; shares its coverage classification. |
+| `baha workspace path` | semantic | CLI -o json / typed MCP result | baseharbor.workspace.map |  |
+| `baha workspace paths` | alias | CLI -o json / typed MCP result | baseharbor.workspace.map | Canonical command: baha workspace path; shares its coverage classification. |
 | `baha workspace resolve` | semantic | CLI -o json / typed MCP result | baseharbor.workspace.resolve |  |
 | `baha workspace show` | semantic | CLI -o json / typed MCP result | baseharbor.workspace.show |  |
-| `baha workspace source` | presentation |  |  | Alias for the source-model maintenance group; writes require workspace.init. |
-| `baha workspace source add` | presentation |  |  | Alias for source add; edits the source model through workspace.init. |
-| `baha workspace source remove` | presentation |  |  | Alias for source remove; detaches model references without deleting local files. |
+| `baha workspace source` | presentation |  |  | Source-model maintenance group; presentation over the portable source model that workspace.init reads and writes. |
+| `baha workspace source add` | presentation |  |  | Edits the versioned source model through the mutating workspace.init contract. |
+| `baha workspace source remove` | presentation |  |  | Detaches source, mapping and component entries through the mutating workspace.init contract; no local file deletion. |
 | `baha workspace status` | semantic | CLI -o json / typed MCP result | baseharbor.workspace.status |  |
 | `baha workspace update` | semantic | CLI -o json / typed MCP result | baseharbor.workspace.update |  |
 | `baha workstation` | presentation |  |  | Command group; invoke its supported subcommands. |
