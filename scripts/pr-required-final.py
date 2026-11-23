@@ -65,6 +65,14 @@ def verify(base_plan, needs, *, head=None, integration=None):
             required.add('pr_public_contracts')
         elif gate in CORELESS_LIFECYCLE_GATES:
             pass
+        elif len(parts) == 3 and parts[0] == 'atomic' and parts[1] == 'static':
+            # card 0428-208/#1746: atomic/static/* focused gates (e.g.
+            # atomic/static/shell-ux) execute through the PR · Focused Python job.
+            # Without this mapping every static gate fell through to
+            # 'selected gate has no workflow executor' and blocked the run; the gate
+            # is not a runtime/native gate, so it only needs the focused validation
+            # job, mirroring the base BASE_JOBS surface.
+            required.add('pr_focused')
         else:
             errors.append('selected gate has no workflow executor: ' + gate)
     if 'pr_runtime_selected' in required or 'pr_public_contracts' in required:
