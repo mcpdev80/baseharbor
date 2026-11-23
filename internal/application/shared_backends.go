@@ -16,6 +16,38 @@ import (
 
 const sharedBackendStateVersion = 3
 
+// SharedBackendStateVersionMismatch is returned when a retained shared-backend
+// state file carries a version other than the supported sharedBackendStateVersion.
+// It is the owner's fail-closed verdict on an upgrade-from-outside state: the
+// file is neither migrated nor discarded, only reported. Callers use
+// IsSharedBackendStateVersionMismatch to tell this from an unreadable or corrupt
+// state file, which is a different failure class.
+type SharedBackendStateVersionMismatch struct {
+	Found    int
+	Expected int
+}
+
+func (e *SharedBackendStateVersionMismatch) Error() string {
+	if e == nil {
+		return "shared backend state version error"
+	}
+	return fmt.Sprintf(
+		"shared backend state version %d is not supported; the supported version is %d. This is an upgrade-from-outside state: do not migrate or rewrite it, upgrade the shared backend provider to a release that writes version %d first",
+		e.Found, e.Expected, e.Expected)
+}
+
+func (e *SharedBackendStateVersionMismatch) Unwrap() error { return nil }
+
+// IsSharedBackendStateVersionMismatch reports whether err (or any error in its
+// chain) is the authoritative unsupported-shared-backend-state-version verdict.
+func IsSharedBackendStateVersionMismatch(err error) bool {
+	if err == nil {
+		return false
+	}
+	var mismatch *SharedBackendStateVersionMismatch
+	return errors.As(err, &mismatch)
+}
+
 type sharedBackendState struct {
 	NetworkExternal               bool                             `json:"network_external,omitempty"`
 	CoreSQL                       *bhruntime.Files                 `json:"core_sql,omitempty"`
