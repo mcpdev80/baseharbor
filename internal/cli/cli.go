@@ -78,6 +78,38 @@ func IsPresented(err error) bool {
 	return errors.As(err, &presented)
 }
 
+// ExitCodeError preserves a subprocess status through the command tree while
+// retaining the original error for normal rendering and diagnostics.
+type ExitCodeError struct {
+	Code int
+	Err  error
+}
+
+func (e *ExitCodeError) Error() string {
+	if e == nil || e.Err == nil {
+		return "command failed"
+	}
+	return e.Err.Error()
+}
+
+func (e *ExitCodeError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.Err
+}
+
+// WithExitCode associates an operating-system exit status with an error.
+func WithExitCode(code int, err error) error {
+	if err == nil {
+		return nil
+	}
+	if code < 1 || code > 255 {
+		return err
+	}
+	return &ExitCodeError{Code: code, Err: err}
+}
+
 // ExitCode maps command errors to stable process exit codes: 0 success, 1 runtime failure, 2 usage error.
 func ExitCode(err error) int {
 	if err == nil {
@@ -86,6 +118,10 @@ func ExitCode(err error) int {
 	var usage *UsageError
 	if errors.As(err, &usage) {
 		return 2
+	}
+	var exitCode *ExitCodeError
+	if errors.As(err, &exitCode) && exitCode.Code > 0 && exitCode.Code <= 255 {
+		return exitCode.Code
 	}
 	return 1
 }

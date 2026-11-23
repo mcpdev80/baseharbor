@@ -24,14 +24,14 @@ Inspect current data with `baha agent describe -o json` (`cli_coverage`). Update
 | `baha app edit` | semantic | Interactive CLI / typed two-phase MCP consent | baseharbor.app.edit |  |
 | `baha app env` | semantic | CLI --format json (masked) / typed MCP result | baseharbor.app.environment | MCP exposes masked values only. --reveal and loading the protected local dotenv file are execution-host credential access and are explicitly excluded modes. |
 | `baha app evidence` | semantic | CLI -o json / typed MCP result | baseharbor.evidence |  |
-| `baha app exec` | excluded |  |  | Arbitrary process execution is intentionally excluded: #787 forbids generic exec passthrough; use typed lifecycle and observation tools. |
+| `baha app exec` | excluded |  |  | Arbitrary process execution is intentionally excluded: #787 forbids generic exec passthrough; use typed lifecycle and observation tools. The CLI path is guided (component from the contract, --cmd one command, exit status preserved) but never becomes a machine tool. |
 | `baha app export` | presentation |  |  | Operator-local, password-locked file export of explicitly selected local credentials; no runtime mutation or machine tool, and fails closed on an empty selection. Ciphertext opens only with the export password; managed-secret sources require the human-authorization reveal seam. |
 | `baha app footprint` | presentation |  |  | Command group; invoke its supported subcommands. |
 | `baha app footprint show` | semantic | CLI -o json / typed MCP result | baseharbor.app.footprint.show |  |
 | `baha app init` | semantic | CLI -o json / typed MCP result | baseharbor.app.adopt | New repository intent uses app.adopt; an existing repository uses app.configure. Interactive suggestions are presentation only. |
 | `baha app inspect` | semantic | CLI -o json / typed MCP result | baseharbor.inspect |  |
 | `baha app list` | semantic | CLI -o json / typed MCP result | baseharbor.app.list |  |
-| `baha app logs` | excluded |  |  | Raw/follow runtime streams can include application secrets and require a streaming transport; status, doctor and evidence provide bounded secret-safe observation. |
+| `baha app logs` | excluded |  |  | Raw/follow runtime streams can include application secrets and require a streaming transport; status, doctor and evidence provide bounded secret-safe observation. The CLI read path is guided over the same read view (deployment log policy plus contract components); JSON output carries only bounded results, never a followed stream. |
 | `baha app new` | semantic | CLI -o json / typed MCP result | baseharbor.app.new |  |
 | `baha app perses` | presentation |  |  | Command group; invoke its supported subcommands. |
 | `baha app perses disable` | semantic | CLI -o json / typed MCP result | baseharbor.app.perses.disable | Clears services.perses in the repository manifest through the shared lifecycle seam; the backend observability owner is preserved. |
@@ -53,7 +53,7 @@ Inspect current data with `baha agent describe -o json` (`cli_coverage`). Update
 | `baha app secret tls-set` | semantic | CLI -o json / typed MCP result | baseharbor.secret.tls-set |  |
 | `baha app secure-profile` | presentation |  |  | Command group; invoke its supported subcommands. |
 | `baha app secure-profile export` | presentation |  |  | Operator-local, password-locked file export of opt-in local credentials; no runtime mutation or machine tool. Ciphertext opens only with the export password. |
-| `baha app shell` | excluded |  |  | Interactive container terminal is host/TTY dependent and would grant arbitrary exec; use typed lifecycle and app.environment instead. |
+| `baha app shell` | excluded |  |  | Interactive container terminal is host/TTY dependent and would grant arbitrary exec; use typed lifecycle and app.environment instead. It is the shell default of the guided app.exec path. |
 | `baha app show` | semantic | CLI -o json / typed MCP result | baseharbor.app.show |  |
 | `baha app sql` | excluded |  |  | Interactive database terminal and raw SQL passthrough are excluded; app.connection supplies secret-safe connection metadata for an operator-owned client. |
 | `baha app status` | semantic | CLI -o json / typed MCP result | baseharbor.status |  |
@@ -62,6 +62,7 @@ Inspect current data with `baha agent describe -o json` (`cli_coverage`). Update
 | `baha app tls update` | semantic | CLI -o json / typed MCP result | baseharbor.tls.update |  |
 | `baha app up` | semantic | CLI -o json / typed MCP result | baseharbor.apply |  |
 | `baha app update` | semantic | CLI -o json / typed MCP result | baseharbor.update |  |
+| `baha app urls` | excluded |  |  | Lists only the verified URLs and bound-service GUI surfaces of the status read model; typed clients inspect app.status and TLS state instead. Opening a browser remains the excluded human seam 'baha open'. |
 | `baha app version` | presentation |  |  | Repository-bound presentation of the app.versions read model for the current deployment; machine clients invoke app.versions with explicit identity. |
 | `baha app versions` | semantic | CLI -o json / typed MCP result | baseharbor.app.versions |  |
 | `baha app workspace` | presentation |  |  | Interactive presentation combining workspace.init and workspace.map; clients invoke those typed operations explicitly. |
@@ -71,8 +72,8 @@ Inspect current data with `baha agent describe -o json` (`cli_coverage`). Update
 | `baha app workspace component remove` | presentation |  |  | Edits the versioned source model through the mutating workspace.init contract. |
 | `baha app workspace init` | semantic | CLI -o json / typed MCP result | baseharbor.workspace.init |  |
 | `baha app workspace map` | semantic | CLI -o json / typed MCP result | baseharbor.workspace.map |  |
-| `baha app workspace path` | presentation |  |  | Sets or reads a local checkout path in the versioned source model; writes require workspace.map authorization and never create or delete files. |
-| `baha app workspace paths` | alias |  |  | Canonical command: baha app workspace path; shares its coverage classification. |
+| `baha app workspace path` | semantic | CLI -o json / typed MCP result | baseharbor.workspace.map |  |
+| `baha app workspace paths` | alias | CLI -o json / typed MCP result | baseharbor.workspace.map | Canonical command: baha app workspace path; shares its coverage classification. |
 | `baha app workspace resolve` | semantic | CLI -o json / typed MCP result | baseharbor.workspace.resolve |  |
 | `baha app workspace show` | semantic | CLI -o json / typed MCP result | baseharbor.workspace.show |  |
 | `baha app workspace source` | presentation |  |  | Source-model maintenance group; presentation over the portable source model that workspace.init reads and writes. |
@@ -172,20 +173,20 @@ Inspect current data with `baha agent describe -o json` (`cli_coverage`). Update
 | `baha user offboard` | excluded |  |  | Human-confirmed operator directory action disables the owned Keycloak user and revokes its workstation leaves; no typed MCP operation, so excluded from the machine tool boundary by design. |
 | `baha version` | presentation |  |  | Executable build identity is provided by agent describe and MCP initialization. |
 | `baha whoami` | semantic | CLI -o json / typed MCP result | baseharbor.operator.identity |  |
-| `baha workspace` | presentation |  |  | Canonical interactive presentation of the same workspace.init/map operations. |
-| `baha workspace component` | presentation |  |  | Alias for the source-model component maintenance group; writes require workspace.init and reads require workspace.show. |
-| `baha workspace component add` | presentation |  |  | Alias for component add; edits the source model through workspace.init. |
-| `baha workspace component list` | presentation |  |  | Alias for component list; reads the source model through workspace.show. |
-| `baha workspace component remove` | presentation |  |  | Alias for component remove; edits the source model through workspace.init. |
+| `baha workspace` | presentation |  |  | Interactive presentation combining workspace.init and workspace.map; clients invoke those typed operations explicitly. |
+| `baha workspace component` | presentation |  |  | Source-model component maintenance group; presentation over the portable source model that workspace.init/map/show/resolve read and write. |
+| `baha workspace component add` | presentation |  |  | Edits the versioned source model through the mutating workspace.init contract. |
+| `baha workspace component list` | presentation |  |  | Reads the versioned source model through the workspace.show contract. |
+| `baha workspace component remove` | presentation |  |  | Edits the versioned source model through the mutating workspace.init contract. |
 | `baha workspace init` | semantic | CLI -o json / typed MCP result | baseharbor.workspace.init |  |
 | `baha workspace map` | semantic | CLI -o json / typed MCP result | baseharbor.workspace.map |  |
-| `baha workspace path` | presentation |  |  | Alias for setting or reading a local checkout path; writes require workspace.map and never create or delete files. |
-| `baha workspace paths` | alias |  |  | Canonical command: baha workspace path; shares its coverage classification. |
+| `baha workspace path` | semantic | CLI -o json / typed MCP result | baseharbor.workspace.map |  |
+| `baha workspace paths` | alias | CLI -o json / typed MCP result | baseharbor.workspace.map | Canonical command: baha workspace path; shares its coverage classification. |
 | `baha workspace resolve` | semantic | CLI -o json / typed MCP result | baseharbor.workspace.resolve |  |
 | `baha workspace show` | semantic | CLI -o json / typed MCP result | baseharbor.workspace.show |  |
-| `baha workspace source` | presentation |  |  | Alias for the source-model maintenance group; writes require workspace.init. |
-| `baha workspace source add` | presentation |  |  | Alias for source add; edits the source model through workspace.init. |
-| `baha workspace source remove` | presentation |  |  | Alias for source remove; detaches model references without deleting local files. |
+| `baha workspace source` | presentation |  |  | Source-model maintenance group; presentation over the portable source model that workspace.init reads and writes. |
+| `baha workspace source add` | presentation |  |  | Edits the versioned source model through the mutating workspace.init contract. |
+| `baha workspace source remove` | presentation |  |  | Detaches source, mapping and component entries through the mutating workspace.init contract; no local file deletion. |
 | `baha workspace status` | semantic | CLI -o json / typed MCP result | baseharbor.workspace.status |  |
 | `baha workspace update` | semantic | CLI -o json / typed MCP result | baseharbor.workspace.update |  |
 | `baha workstation` | presentation |  |  | Command group; invoke its supported subcommands. |

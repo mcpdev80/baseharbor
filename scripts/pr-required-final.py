@@ -51,7 +51,18 @@ def verify(base_plan, needs, *, head=None, integration=None):
         if not isinstance(deferred, list) or not all(isinstance(gate, str) for gate in deferred):
             errors.append('invalid deferred integration gates')
             deferred = []
-        allowed_deferred = {'integration/static/public-contracts'}
+        allowed_deferred = {
+            'integration/static/public-contracts',
+            # Release-only atomic/static gates whose executable check runs only
+            # at release/qualify (pre-release.yml:663 static_gates ->
+            # pre-release-runtime-suite.yml:267, GATE=shell-ux runs
+            # tests/shell-ux/run.sh, GATE=ci-fast-check runs scripts/ci-fast-check.sh),
+            # never in a PR. No PR executor exists; the requirement is honoured by
+            # deferral, not by a focused-python regression. See pr-stage-boundary.py.
+            'atomic/static/shell-ux',
+            'atomic/static/ci-fast-check',
+            'atomic/static/mcp',
+        }
         unknown_deferred = set(deferred) - allowed_deferred
         if unknown_deferred:
             errors.append('unsupported deferred gate: ' + ', '.join(sorted(unknown_deferred)))

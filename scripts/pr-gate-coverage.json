@@ -178,6 +178,14 @@
       ]
     },
     {
+      "id": "source.cmd_baha_app_new_wizard_org_default_test_go",
+      "path": "cmd/baha/app_new_wizard_org_default_test.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
       "id": "source.cmd.baha.app.pull.go",
       "path": "cmd/baha/app_pull.go",
       "surfaces": [
@@ -336,6 +344,22 @@
     {
       "id": "source.cmd.baha.app.new.wizard.go",
       "path": "cmd/baha/app_new_wizard.go",
+      "surfaces": [
+        "source.gate.atomic.docker.guided",
+        "source.gate.atomic.podman.guided"
+      ]
+    },
+    {
+      "id": "source.cmd_baha_app_new_wizard_test_go",
+      "path": "cmd/baha/app_new_wizard_test.go",
+      "surfaces": [
+        "source.gate.atomic.docker.guided",
+        "source.gate.atomic.podman.guided"
+      ]
+    },
+    {
+      "id": "source.cmd_baha_application_provider_preferences_go",
+      "path": "cmd/baha/application_provider_preferences.go",
       "surfaces": [
         "source.gate.atomic.docker.guided",
         "source.gate.atomic.podman.guided"
@@ -1478,6 +1502,12 @@
       "runtime_specific": true
     },
     {
+      "id": "source.cmd.baha.app.status.result.test.go",
+      "path": "cmd/baha/app_status_result_test.go",
+      "surfaces": ["source.gate.atomic.docker.data.capabilities", "source.gate.atomic.podman.data.capabilities"],
+      "runtime_specific": true
+    },
+    {
       "id": "source.cmd.baha.app.perses.cli.test.go",
       "path": "cmd/baha/app_perses_cli_test.go",
       "surfaces": ["source.gate.atomic.docker.observability", "source.gate.atomic.podman.observability"],
@@ -1505,6 +1535,12 @@
       "id": "source.internal.metrics.perses.dashboards.0428-076.native.test.go",
       "path": "internal/metrics/perses_dashboards_0428-076_native_test.go",
       "surfaces": ["source.gate.atomic.docker.observability", "source.gate.atomic.podman.observability"],
+      "runtime_specific": true
+    },
+    {
+      "id": "source.internal.metrics.realization.go",
+      "path": "internal/metrics/realization.go",
+      "surfaces": ["source.gate.atomic.docker.data.capabilities", "source.gate.atomic.podman.data.capabilities"],
       "runtime_specific": true
     },
     {
@@ -1987,6 +2023,160 @@
         "TestCIIntegrationGuidedMCPPrincipalCanOnlySeeFootprintTool",
         "TestCIIntegrationOperatorAllowsOnlyObservabilityLogProbe"
       ]
+    },
+    {
+      "id": "source.cmd_baha_app_observe_go",
+      "path": "cmd/baha/app_observe.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
+      "id": "source.cmd_baha_app_status_versions_test_go",
+      "path": "cmd/baha/app_status_versions_test.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
+      "id": "source.cmd_baha_app_tls_go",
+      "path": "cmd/baha/app_tls.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
+      "id": "source.cmd_baha_app_version_unified_test_go",
+      "path": "cmd/baha/app_version_unified_test.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
+      "id": "source.cmd_baha_app_version_view_go",
+      "path": "cmd/baha/app_version_view.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
+      "id": "source.cmd_baha_app_versions_backend_test_go",
+      "path": "cmd/baha/app_versions_backend_test.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
+      "id": "source.cmd_baha_app_versions_command_go",
+      "path": "cmd/baha/app_versions_command.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
+      "id": "source.cmd_baha_app_versions_view_go",
+      "path": "cmd/baha/app_versions_view.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
+      "id": "source.cmd_baha_app_versions_view_parity_test_go",
+      "path": "cmd/baha/app_versions_view_parity_test.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
+      "id": "source.cmd_baha_app_workspace_source_model_go",
+      "path": "cmd/baha/app_workspace_source_model.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
+      "id": "source.cmd_baha_management_core_git_candidate_test_go",
+      "path": "cmd/baha/management_core_git_candidate_test.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
+      "id": "source.internal_machinereadmodels_release_go",
+      "path": "internal/machinereadmodels/release.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
+      "id": "source.cmd_baha_app_exec_go",
+      "path": "cmd/baha/app_exec.go",
+      "surfaces": ["source.gate.atomic.docker.data.capabilities", "source.gate.atomic.podman.data.capabilities"]
+    },
+    {
+      "id": "source.cmd_baha_app_access_urls_go",
+      "path": "cmd/baha/app_access_urls.go",
+      "surfaces": ["source.gate.atomic.docker.data.capabilities", "source.gate.atomic.podman.data.capabilities"]
+    },
+    {
+      "id": "source.cmd_baha_app_interact_go",
+      "path": "cmd/baha/app_interact.go",
+      "surfaces": ["source.gate.atomic.docker.data.capabilities", "source.gate.atomic.podman.data.capabilities"]
+    },
+    {
+      "id": "source.cmd_baha_app_interact_test_go",
+      "path": "cmd/baha/app_interact_test.go",
+      "surfaces": ["source.gate.atomic.docker.data.capabilities", "source.gate.atomic.podman.data.capabilities"],
+      "runtime_specific": true
+    },
+    {
+      "id": "source.cmd_baha_app_logs_go",
+      "path": "cmd/baha/app_logs.go",
+      "surfaces": ["source.gate.atomic.docker.data.capabilities", "source.gate.atomic.podman.data.capabilities"]
+    },
+    {
+      "id": "source.cmd_baha_human_open_go",
+      "path": "cmd/baha/human_open.go",
+      "surfaces": ["source.gate.atomic.docker.data.capabilities", "source.gate.atomic.podman.data.capabilities"]
+    },
+    {
+      "id": "source.cmd_baha_operator_auth_boundary_go",
+      "path": "cmd/baha/operator_auth_boundary.go",
+      "surfaces": ["source.gate.atomic.docker.data.capabilities", "source.gate.atomic.podman.data.capabilities"]
+    },
+    {
+      "id": "source.internal_cli_cli_go",
+      "path": "internal/cli/cli.go",
+      "surfaces": ["source.gate.atomic.docker.data.capabilities", "source.gate.atomic.podman.data.capabilities"]
+    },
+    {
+      "id": "source.internal_cli_cli_test_go",
+      "path": "internal/cli/cli_test.go",
+      "surfaces": ["source.gate.atomic.docker.data.capabilities", "source.gate.atomic.podman.data.capabilities"],
+      "runtime_specific": true
+    },
+    {
+      "id": "source.internal_operatorauth_context_go",
+      "path": "internal/operatorauth/context.go",
+      "surfaces": ["source.gate.atomic.docker.data.capabilities", "source.gate.atomic.podman.data.capabilities"]
+    },
+    {
+      "id": "source.internal_operatorauth_interaction_operations_test_go",
+      "path": "internal/operatorauth/interaction_operations_test.go",
+      "surfaces": ["source.gate.atomic.docker.data.capabilities", "source.gate.atomic.podman.data.capabilities"],
+      "runtime_specific": true
     }
   ],
   "gates": [
@@ -2061,11 +2251,25 @@
       "scope": "pr",
       "covers": [
         "capability.profile.shell-interface",
-        "gate.shell-ux",
-        "source.gate.atomic.static.ci.fast.check"
+        "gate.shell-ux"
       ],
       "kind": "static",
       "selection_scope": "focused",
+      "demo_contract": {
+        "profile": "shell-interface",
+        "capabilities": []
+      }
+    },
+    {
+      "id": "atomic/static/ci-fast-check",
+      "runtime": "static",
+      "class": "static",
+      "scope": "pr",
+      "covers": [
+        "source.gate.atomic.static.ci.fast.check"
+      ],
+      "kind": "static",
+      "selection_scope": "release-only",
       "demo_contract": {
         "profile": "shell-interface",
         "capabilities": []

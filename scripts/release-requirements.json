@@ -6,7 +6,8 @@
     "v0.4.24",
     "v0.4.25",
     "v0.4.26",
-    "v0.4.27"
+    "v0.4.27",
+    "v0.4.28"
   ],
   "gates": [
     {
@@ -59,7 +60,8 @@
         "v0.4.24",
         "v0.4.25",
         "v0.4.26",
-        "v0.4.27"
+        "v0.4.27",
+        "v0.4.28"
       ],
       "dependencies": [
         "core",
@@ -1255,6 +1257,19 @@
         "v0.4.25",
         "v0.4.26",
         "v0.4.27"
+      ],
+      "dependencies": [
+        "core"
+      ]
+    },
+    {
+      "id": "atomic/static/ci-fast-check",
+      "schema": "baseharbor.pre-release.gate-evidence/v1",
+      "jobs": [
+        "static_gates"
+      ],
+      "required_for": [
+        "v0.4.28"
       ],
       "dependencies": [
         "core"

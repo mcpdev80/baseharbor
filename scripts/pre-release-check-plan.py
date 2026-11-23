@@ -4,7 +4,7 @@ import argparse
 import json
 from pathlib import Path
 
-STATIC = ['config-matrix', 'init', 'mcp', 'agent', 'shell-ux']
+STATIC = ['config-matrix', 'init', 'mcp', 'agent', 'shell-ux', 'ci-fast-check']
 LIGHT = ['guided', 'lifecycle', 'policy', 'connectivity', 'reconciliation', 'failure', 'full-destroy']
 HEAVY = ['data-capabilities', 'observability', 'identity', 'security', 'backup-restore',
          'rabbitmq-runtime', 'mongodb-runtime', 'durable-key-value', 'control-plane-recovery',
@@ -45,7 +45,7 @@ def select(inventory, tag, requested=''):
             result[name + '_' + runtime] = [g for g in gates if f'{prefix}/{runtime}/{g}' in keys]
             handled.update(f'{prefix}/{runtime}/{g}' for g in gates)
     if keys - handled:
-        raise ValueError('selected check has no executor: ' + ', '.join(sorted(keys - handled)))
+        raise ValueError('missing release-suite executor for catalog gate ' + ', '.join(sorted(keys - handled)) + '; register each ID in STATIC and the pre-release-runtime-suite dispatch')
     return result
 
 
@@ -55,7 +55,11 @@ def main():
     parser.add_argument('--only-gates', default='')
     args = parser.parse_args()
     inventory = json.loads(Path(__file__).with_name('release-requirements.json').read_text())
-    for name, values in select(inventory, args.tag, args.only_gates).items():
+    try:
+        selection = select(inventory, args.tag, args.only_gates)
+    except ValueError as exc:
+        parser.exit(2, f'Pre-Release gate selection failed: {exc}\n')
+    for name, values in selection.items():
         print(name + '=' + json.dumps(values, separators=(',', ':')))
         print(name + '_count=' + str(len(values)))
 

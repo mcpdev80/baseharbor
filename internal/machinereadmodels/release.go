@@ -86,6 +86,10 @@ type ComponentVersion struct {
 	Annotation     string    `json:"version_annotation,omitempty"`
 	AnnotationNote string    `json:"annotation_note,omitempty"`
 	SourceRevision string    `json:"source_revision,omitempty"`
+	Source         string    `json:"source,omitempty"`
+	SourceType     string    `json:"source_type,omitempty"`
+	SourceIdentity string    `json:"source_identity,omitempty"`
+	SubPath        string    `json:"sub_path,omitempty"`
 	Title          string    `json:"title,omitempty"`
 	ObservedAt     time.Time `json:"observed_at,omitempty"`
 	Stale          bool      `json:"stale,omitempty"`
@@ -149,6 +153,17 @@ func ReleaseViewFromRecordWithStageKinds(record deployment.DeploymentRecord, kin
 	// last-applied; no observation counts as stale, never as up to date.
 	view.Stages.Observed.Stale = record.Stale() != nil
 	return view
+}
+
+// AnyRecorded reports whether the record answered at least one of the three
+// reference dimensions.
+func (s ViewStages) AnyRecorded() bool {
+	for _, cell := range []*ViewStageCell{s.Wanted, s.Applied, s.Observed} {
+		if cell != nil && !cell.MissingData {
+			return true
+		}
+	}
+	return false
 }
 
 // UnclearSummary is the compact cell rendering for an unrecorded dimension in

@@ -66,6 +66,7 @@ Aktuelle Daten liefert `baha agent describe -o json` (`cli_coverage`). Nach Code
 | `baha app tls` | Darstellung |  |  | Command group; invoke its supported subcommands. |
 | `baha app tls update` | semantisch | CLI -o json / typed MCP result | baseharbor.tls.update |  |
 | `baha app up` | semantisch | CLI -o json / typed MCP result | baseharbor.apply |  |
+| `baha app urls` | ausgeschlossen |  |  | Listet nur die verifizierten URLs und GUI-URLs gebundener Dienste des Status-Read-Modells; typisierte Clients prüfen app.status und TLS-Zustand. Das Öffnen im Browser bleibt die ausgeschlossene menschliche Naht 'baha open'. |
 | `baha app update` | semantisch | CLI -o json / typed MCP result | baseharbor.update |  |
 | `baha app version` | Darstellung |  |  | Repository-bound presentation of the app.versions read model for the current deployment; machine clients invoke app.versions with explicit identity. |
 | `baha app versions` | semantisch | CLI -o json / typed MCP result | baseharbor.app.versions |  |
@@ -190,7 +191,7 @@ Aktuelle Daten liefert `baha agent describe -o json` (`cli_coverage`). Nach Code
 | `baha use` | Darstellung |  |  | Persists local user selection; machine clients supply explicit target arguments on each semantic operation. |
 | `baha version` | Darstellung |  |  | Executable build identity is provided by agent describe and MCP initialization. |
 | `baha whoami` | semantisch | CLI -o json / typed MCP result | baseharbor.operator.identity |  |
-| `baha workspace` | Darstellung |  |  | Canonical interactive presentation of the same workspace.init/map operations. |
+| `baha workspace` | Darstellung |  |  | Canonical interactive presentation of the same workspace.init/map operations. `baha workspace source` und `baha workspace component` sind die Kanalnamen für die Gruppenpflege von Quellen und Komponenten. |
 | `baha workspace init` | semantisch | CLI -o json / typed MCP result | baseharbor.workspace.init |  |
 | `baha workspace map` | semantisch | CLI -o json / typed MCP result | baseharbor.workspace.map |  |
 | `baha workspace resolve` | semantisch | CLI -o json / typed MCP result | baseharbor.workspace.resolve |  |

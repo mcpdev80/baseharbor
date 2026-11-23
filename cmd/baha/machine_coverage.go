@@ -62,6 +62,13 @@ func classifyCommandCoverage(path string, command *cli.Command) commandCoverage 
 		row.Reason = "Command group; invoke its supported subcommands."
 		return row
 	}
+	// Workspace namespace clones (workspaceNamespaceCommand) classify through
+	// their canonical app-workspace twins; group rows above already matched.
+	if isWorkspaceNamespaceClone(path) {
+		twin := classifyCommandCoverage(canonicalCoveragePath(path), command)
+		twin.Command = path
+		return twin
+	}
 	if operationID, ok := cliMachineOperations[path]; ok {
 		if operation, exists := machine.OperationByID(operationID); exists {
 			row.Classification = "semantic"
@@ -88,15 +95,39 @@ func classifyCommandCoverage(path string, command *cli.Command) commandCoverage 
 	if reason, ok := cliPresentationCommands[path]; ok {
 		row.Classification = "presentation"
 		row.Reason = reason
+		return row
 	}
 	return row
 }
 
+// isWorkspaceNamespaceClone reports whether a path belongs to the root
+// workspace namespace, including its nested group commands.
+func isWorkspaceNamespaceClone(path string) bool {
+	return strings.HasPrefix(path, "baha workspace") && !strings.HasPrefix(path, "baha app workspace")
+}
+
+// canonicalCoveragePath maps a root-namespace workspace command onto its
+// canonical app-workspace twin. Both namespaces execute identical shared
+// implementations (workspaceNamespaceCommand reuses the app workspace tree),
+// so one classification table serves both surfaces; the generated
+// machine-coverage reference still lists every command path explicitly.
+func canonicalCoveragePath(path string) string {
+	if !isWorkspaceNamespaceClone(path) {
+		return path
+	}
+	remainder := strings.TrimSpace(strings.TrimPrefix(path, "baha workspace"))
+	if remainder == "" {
+		return "baha app workspace"
+	}
+	return "baha app workspace " + remainder
+}
+
+// isWorkspaceNamespaceClone reports whether a path belongs to the root
+
 var cliMachineOperations = map[string]string{
-	"baha app edit":           "app.edit",
-	"baha app footprint show": "app.footprint.show",
-	"baha update":             "release.check",
-	"baha up":                 "control-plane.up", "baha down": "control-plane.stop", "baha destroy": "control-plane.destroy", "baha status": "control-plane.status", "baha doctor": "control-plane.doctor",
+	"baha app edit": "app.edit", "baha app footprint show": "app.footprint.show",
+	"baha update": "release.check",
+	"baha up":     "control-plane.up", "baha down": "control-plane.stop", "baha destroy": "control-plane.destroy", "baha status": "control-plane.status", "baha doctor": "control-plane.doctor",
 	"baha openbao status":    "openbao.status",
 	"baha openbao bootstrap": "openbao.bootstrap",
 	"baha openbao unseal":    "openbao.unseal",
@@ -126,6 +157,8 @@ var cliMachineOperations = map[string]string{
 	"baha app pull":             "app.pull",
 	"baha app workspace status": "workspace.status", "baha workspace status": "workspace.status", "baha app workspace update": "workspace.update", "baha workspace update": "workspace.update",
 	"baha app workspace init": "workspace.init", "baha workspace init": "workspace.init", "baha app workspace map": "workspace.map", "baha workspace map": "workspace.map",
+	"baha app workspace path": "workspace.map",
+
 	"baha provider list": "provider.list", "baha provider inspect": "provider.inspect", "baha provider verify": "provider.verify", "baha provider add": "provider.add", "baha provider remove": "provider.remove",
 	"baha policy check": "policy.check", "baha policy explain": "policy.explain",
 	"baha config organization show": "organization.inspect", "baha config organization check": "organization.check", "baha config organization set": "organization.set", "baha config organization update": "organization.update",
@@ -197,12 +230,13 @@ var cliPresentationCommands = map[string]string{
 var cliExcludedCommands = map[string]string{
 	"baha dev hosts":          "Workstation-local hosts-file opt-in and ownership cleanup; cannot mutate the MCP server host on behalf of a remote client. Names come from authenticated control-plane.status metadata.",
 	"baha dev cleanup":        "Workstation-local removal of owned hosts and CA trust, preserving other connections; explicit host operator approval required. No Core or application mutation.",
-	"baha app exec":           "Arbitrary process execution is intentionally excluded: #787 forbids generic exec passthrough; use typed lifecycle and observation tools.",
-	"baha app shell":          "Interactive container terminal is host/TTY dependent and would grant arbitrary exec; use typed lifecycle and app.environment instead.",
+	"baha app exec":           "Arbitrary process execution is intentionally excluded: #787 forbids generic exec passthrough; use typed lifecycle and observation tools. The CLI path is guided (component from the contract, --cmd one command, exit status preserved) but never becomes a machine tool.",
+	"baha app shell":          "Interactive container terminal is host/TTY dependent and would grant arbitrary exec; use typed lifecycle and app.environment instead. It is the shell default of the guided app.exec path.",
 	"baha app sql":            "Interactive database terminal and raw SQL passthrough are excluded; app.connection supplies secret-safe connection metadata for an operator-owned client.",
 	"baha app cache":          "Interactive database terminal and arbitrary command passthrough are excluded; app.connection supplies secret-safe connection metadata for an operator-owned client.",
-	"baha app logs":           "Raw/follow runtime streams can include application secrets and require a streaming transport; status, doctor and evidence provide bounded secret-safe observation.",
+	"baha app logs":           "Raw/follow runtime streams can include application secrets and require a streaming transport; status, doctor and evidence provide bounded secret-safe observation. The CLI read path is guided over the same read view (deployment log policy plus contract components); JSON output carries only bounded results, never a followed stream.",
 	"baha logs":               "Top-level shorthand for the excluded baha app logs: raw/follow runtime streams can include application secrets and require a streaming transport; status, doctor and evidence provide bounded secret-safe observation.",
+	"baha app urls":           "Lists only the verified URLs and bound-service GUI surfaces of the status read model; typed clients inspect app.status and TLS state instead. Opening a browser remains the excluded human seam 'baha open'.",
 	"baha login":              "Authorization Code/PKCE browser handoff establishes the operator's local protected session before semantic requests; operator.identity verifies that boundary without returning tokens.",
 	"baha logout":             "Removes a client-local protected login session; performed by the authentication client, outside server product actions. operator.identity reports the resulting boundary.",
 	"baha serve":              "Starts a long-lived TLS API/broker transport using host-held credentials; transport supervision belongs to the host, typed lifecycle tools operate managed resources.",
