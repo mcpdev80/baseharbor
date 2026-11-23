@@ -1478,6 +1478,12 @@
       "runtime_specific": true
     },
     {
+      "id": "source.cmd.baha.app.status.result.test.go",
+      "path": "cmd/baha/app_status_result_test.go",
+      "surfaces": ["source.gate.atomic.docker.data.capabilities", "source.gate.atomic.podman.data.capabilities"],
+      "runtime_specific": true
+    },
+    {
       "id": "source.cmd.baha.app.perses.cli.test.go",
       "path": "cmd/baha/app_perses_cli_test.go",
       "surfaces": ["source.gate.atomic.docker.observability", "source.gate.atomic.podman.observability"],
@@ -1505,6 +1511,12 @@
       "id": "source.internal.metrics.perses.dashboards.0428-076.native.test.go",
       "path": "internal/metrics/perses_dashboards_0428-076_native_test.go",
       "surfaces": ["source.gate.atomic.docker.observability", "source.gate.atomic.podman.observability"],
+      "runtime_specific": true
+    },
+    {
+      "id": "source.internal.metrics.realization.go",
+      "path": "internal/metrics/realization.go",
+      "surfaces": ["source.gate.atomic.docker.data.capabilities", "source.gate.atomic.podman.data.capabilities"],
       "runtime_specific": true
     },
     {
