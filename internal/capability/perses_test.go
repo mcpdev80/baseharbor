@@ -12,20 +12,25 @@ func TestValidatePersesReleaseFailClosedWithoutPin(t *testing.T) {
 	}
 }
 
-// TestPersesStatusNowVerifiedFromRealSource is the 0428-186 positive case: the
-// three-state contract now HAS a real "verified" source, so a selected, validly
-// pinned Perses surface whose backend answers (the shipped reference provider
-// catalog declares a native, backend-verified metrics signal) reports EXACTLY
-// "verified". The value is DERIVED FROM the reference-catalog witness
-// (hostProviderMetricsNativeVerified), never asserted: it is a positive
-// is-equality claim, not a literal true.
-func TestPersesStatusNowVerifiedFromRealSource(t *testing.T) {
-	if !hostProviderMetricsNativeVerified() {
-		t.Skip("reference catalog must declare a native backend-verified signal for the real backends")
-	}
+// TestPersesStatusNowSilentTargetFailsClosedToConfiguredUnverified is the 0428-186
+// fail-closed case: the "verified" state is a PROBE result (it follows only from
+// a real per-target health probe that answers whether THIS selection's Perses
+// backend actually answers), and Core ships no such health probe
+// (PersesManagementSurfaceNow keeps reachability unverified). So a selected,
+// validly pinned Perses surface yields EXACTLY "configured_unverified" — never
+// "verified" from manifest truth alone, and never a literal/static true. This
+// is the CODEX-REVIEW correction: verified is no longer derived from
+// hostProviderMetricsNativeVerified() (a static ReferenceIntegrations scan with
+// no selection target/provider input).
+func TestPersesStatusNowSilentTargetFailsClosedToConfiguredUnverified(t *testing.T) {
+	// Silent / not-probed target: selected + pinned must be configured_unverified.
 	got := PersesStatusNow(true)
-	if got == nil || *got != PersesStatusVerified {
-		t.Fatalf("selected+backend-answers Perses must report %q, got %+v", PersesStatusVerified, got)
+	if got == nil || *got != PersesStatusConfiguredUnverified {
+		t.Fatalf("selected+pinned Perses without a real probe must report %q, got %+v", PersesStatusConfiguredUnverified, got)
+	}
+	// "verified" must never be reachable from manifest truth alone in this Core.
+	if PersesStatusNow(true) != nil && *PersesStatusNow(true) == PersesStatusVerified {
+		t.Fatalf("a selected Perses surface must never report %q without a real per-target probe: verified is reserved", PersesStatusVerified)
 	}
 	// Unselected still fails closed to not_configured.
 	notConfigured := PersesStatusNow(false)
@@ -34,19 +39,24 @@ func TestPersesStatusNowVerifiedFromRealSource(t *testing.T) {
 	}
 }
 
-// TestPersesStatusNowVerifiedIsDerivedNotSupplied pins that the verified value
-// is never self-confirmed: it follows from the reference-catalog witness, so
-// the seam seam can never report verified from manifest truth alone. The
-// fail-closed variant (PersesConfiguredStatusNow) ANDs operator authorization,
-// so no status path reports a configured surface that is not actually protected.
-func TestPersesStatusNowVerifiedIsDerivedNotSupplied(t *testing.T) {
-	// The witness is the ONLY way to reach verified, so it must be the real
-	// catalog verdict, never a caller boolean.
-	if !hostProviderMetricsNativeVerified() {
-		t.Skip("reference catalog must declare a native backend-verified signal for the real backends")
+// TestPersesStatusNowVerifiedReservesRealProbeForAnsweringTarget pins that the
+// "verified" state is reserved for a real per-target health probe: a target
+// that actually answers a real probe (a future probe, not the static catalog
+// scan) would yield "verified", while the same selection with no answering
+// probe stays "configured_unverified". No static catalog scan substitutes for
+// the probe, so the static source alone can never produce a true "verified".
+func TestPersesStatusNowVerifiedReservesRealProbeForAnsweringTarget(t *testing.T) {
+	// The static catalog verdict is NOT a probe: it must not by itself make the
+	// selected surface verified.
+	if hostProviderMetricsNativeVerified() {
+		if got := PersesStatusNow(true); got == nil || *got != PersesStatusConfiguredUnverified {
+			t.Fatalf("the static reference-catalog verdict must not make the selected surface verified, got %+v", got)
+		}
 	}
-	if got := resolveHostDashboardSignalStatusWith(true, true, hostProviderMetricsNativeVerified); got != ObservabilitySupported {
-		t.Fatalf("resolved observability-signal verdict must be %q when the witness holds, got %q", ObservabilitySupported, got)
+	// A real answering probe would flip this to verified; the reservation is what
+	// keeps the state from being a static/literal true.
+	if PersesStatusNow(true) == nil || *PersesStatusNow(true) == PersesStatusVerified {
+		t.Fatalf("verified must stay a reserved probe result, not a static true")
 	}
 }
 

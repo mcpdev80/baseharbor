@@ -236,19 +236,20 @@ func persesStatusNotConfiguredInstance() *PersesStatus {
 // PersesStatusNow maps the manifest truth to the public three-state contract:
 //   - unselected surface            -> not_configured
 //   - selected but release invalid  -> not_configured (fail-closed)
-//   - selected + pinned release OK, backend answers -> verified (real source)
-//   - selected + pinned release OK, backend silent  -> configured_unverified
+//   - selected + pinned release OK  -> configured_unverified
 //
-// The "verified" state is DERIVED FROM real evidence, never asserted: the
-// shipped reference provider catalog (internal/capability/reference.go) declares
-// a native, backend-verified metrics signal for every real BaseHarbor backend,
-// so hostProviderMetricsNativeVerified() is the same non-forgeable source that
-// gates the host/container dashboards (ResolveHostDashboardSignalStatus). A
-// selected, pinned surface whose backend does NOT answer a real metrics signal
-// stays configured_unverified — pin validation alone never maps into
-// "verified"/"ready". The "verified" path exists so a positive status can be
-// proven; it is NOT a literal true and is never reachable by manifest truth
-// alone.
+// "verified" is a PROBE result: it follows only from a real per-target health
+// probe that answers whether THIS selection's Perses backend actually answers.
+// No such Core health probe exists (PersesManagementSurfaceNow below keeps
+// reachability unverified — this Core defines only the seam), so a selected,
+// pinned surface can never report "verified" from manifest truth alone. A
+// static reference-catalog scan is NOT a probe: ReferenceIntegrations() has no
+// selection target or provider input and cannot decide whether this Target
+// answers, so deriving "verified" from it would be a static/literal true and a
+// false "selected backend answers" claim. "verified" therefore stays reserved
+// for a future real probe; until one exists every selected, pinned surface is
+// configured_unverified (fail-closed), and pin validation never maps into
+// "verified"/"ready".
 //
 // The declaration check is deliberately release-only. Operator authorization is
 // a separate question with its own fail-closed verdict; see
@@ -263,16 +264,11 @@ func PersesStatusNow(selected bool) *PersesStatus {
 		status := PersesStatusNotConfigured
 		return &status
 	}
-	// The real, non-forgeable source that decides "the Perses backend answers
-	// for this selection": the shipped reference catalog declares a real,
-	// native, backend-verified metrics signal for the selected backend. Without
-	// it the surface stays configured_unverified (fail-closed), so a caller
-	// cannot obtain "verified" from manifest truth alone.
-	if !hostProviderMetricsNativeVerified() {
-		status := PersesStatusConfiguredUnverified
-		return &status
-	}
-	status := PersesStatusVerified
+	// Fail-closed: "verified" requires a real per-target health probe that this
+	// Core does not ship. A selected, validly pinned surface is therefore
+	// configured_unverified — never a literal/static "verified" from a static
+	// reference-catalog scan, which has no selection target/provider input.
+	status := PersesStatusConfiguredUnverified
 	return &status
 }
 

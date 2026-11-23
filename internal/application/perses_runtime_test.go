@@ -352,11 +352,11 @@ func TestPersesNotConfiguredWithoutSelection(t *testing.T) {
 	}
 }
 
-// TestPersesConfiguredUnverifiedWhenSelectedPinned asserts the positive contract:
-// selected + pinned release with a backend that answers reports "verified"
-// (derived from the shipped reference-catalog witness, 0428-186), and the
-// surface is declared. The verified value follows from real evidence, never a
-// literal true.
+// TestPersesConfiguredUnverifiedWhenSelectedPinned asserts the fail-closed
+// positive contract: selected + pinned release with no real per-target health
+// probe reports "configured_unverified" (0428-186, CODEX-REVIEW correction —
+// verified is a reserved probe result, no longer derived from the static
+// reference catalog), and the surface is declared.
 func TestPersesConfiguredUnverifiedWhenSelectedPinned(t *testing.T) {
 	m := persesRuntimeManifest(t, true)
 	files := persesRuntimeFiles(t, m)
@@ -371,10 +371,10 @@ func TestPersesConfiguredUnverifiedWhenSelectedPinned(t *testing.T) {
 		}
 	}
 	if !declared {
-		t.Fatal("selected+backend-answers Perses must declare an observability surface")
+		t.Fatal("selected+pinned Perses must declare an observability surface")
 	}
-	if *status != capability.PersesStatusVerified {
-		t.Fatalf("selected+backend-answers Perses status = %q, want verified", *status)
+	if *status != capability.PersesStatusConfiguredUnverified {
+		t.Fatalf("selected+pinned Perses without a real probe status = %q, want configured_unverified", *status)
 	}
 }
 
