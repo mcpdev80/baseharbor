@@ -95,8 +95,11 @@ func TestRecordSecretAuditWritesOutcomeWithoutValue(t *testing.T) {
 }
 
 // TestRecordSecretAuditDistinguishesRuntimeActorWithoutVerifiedOperator proves
-// that a secret audit without a verified human attribute the runtime actor
-// rather than inventing a person. trusted-local is not a person.
+// that a secret audit without a verified human operator attributes the runtime
+// actor (trusted-local, not the cli/local-operator person default) and, because
+// the operation succeeded, records AuthorizationResult=allow. trusted-local is
+// not a person, and a succeeded local workload operation is an allow, not a
+// deny.
 func TestRecordSecretAuditRuntimeActorWithoutVerifiedOperator(t *testing.T) {
 	root := t.TempDir()
 	targetStateRoot = func(string) (string, error) { return root, nil }
@@ -113,8 +116,12 @@ func TestRecordSecretAuditRuntimeActorWithoutVerifiedOperator(t *testing.T) {
 	if len(events) != 1 {
 		t.Fatalf("expected one audit event, got %d", len(events))
 	}
-	if events[0].AuthorizationResult != "deny" {
-		t.Fatalf("runtime actor audit should record AuthorizationResult deny without a verified operator, got %q", events[0].AuthorizationResult)
+	event := events[0]
+	if event.Actor.Identity != "trusted-local" {
+		t.Fatalf("runtime actor audit must attribute the runtime actor trusted-local, got %q", event.Actor.Identity)
+	}
+	if event.AuthorizationResult != "allow" {
+		t.Fatalf("succeeded runtime op must record AuthorizationResult=allow, got %q", event.AuthorizationResult)
 	}
 }
 
@@ -126,6 +133,68 @@ func TestRecordSecretAuditBailsQuietlyWhenStateRootUnreachable(t *testing.T) {
 	ctx := context.Background()
 	resolved := secretAuditResolvedApplication("local", "demo", "dev")
 	recordSecretAudit(ctx, resolved, "secret.set", "API_TOKEN", classifySecretOutcome(nil))
+}
+
+// TestRecordSecretAuditRuntimeSuccessIsAllowNotPerson proves the precedence and
+// attribution fix: a local runtime operation that succeeded (no verified human,
+// no decision, outcome=success) must attribute the runtime actor (trusted-local)
+// rather than the cli/local-operator person default, and record
+// AuthorizationResult=allow to match the actual success outcome.
+func TestRecordSecretAuditRuntimeSuccessIsAllowNotPerson(t *testing.T) {
+	root := t.TempDir()
+	targetStateRoot = func(string) (string, error) { return root, nil }
+	defer func() { targetStateRoot = deployment.TargetStateRoot }()
+
+	ctx := context.Background()
+	resolved := secretAuditResolvedApplication("local", "demo", "dev")
+	recordSecretAudit(ctx, resolved, "secret.set", "API_TOKEN", classifySecretOutcome(nil))
+
+	events, err := evidence.Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("expected exactly one audit event, got %d", len(events))
+	}
+	event := events[0]
+	if event.Actor.Identity != "trusted-local" {
+		t.Fatalf("succeeded runtime op must attribute runtime actor trusted-local, got %q", event.Actor.Identity)
+	}
+	if event.Actor.Subject == "local-operator" || event.Actor.Identity == "local-operator" {
+		t.Fatalf("runtime op must not attribute the cli/local-operator person default, got %+v", event.Actor)
+	}
+	if event.AuthorizationResult != "allow" {
+		t.Fatalf("succeeded runtime op must record AuthorizationResult=allow, got %q", event.AuthorizationResult)
+	}
+}
+
+// TestRecordSecretAuditRuntimeFailureIsDenyWithRuntimeActor proves that a
+// failed local runtime operation (no verified human, no decision,
+// outcome=failure) attributes the runtime actor and records AuthorizationResult
+// =deny, matching the actual failure outcome.
+func TestRecordSecretAuditRuntimeFailureIsDenyWithRuntimeActor(t *testing.T) {
+	root := t.TempDir()
+	targetStateRoot = func(string) (string, error) { return root, nil }
+	defer func() { targetStateRoot = deployment.TargetStateRoot }()
+
+	ctx := context.Background()
+	resolved := secretAuditResolvedApplication("local", "demo", "dev")
+	recordSecretAudit(ctx, resolved, "secret.delete", "API_TOKEN", classifySecretOutcome(errors.New("boom")))
+
+	events, err := evidence.Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("expected exactly one audit event, got %d", len(events))
+	}
+	event := events[0]
+	if event.Actor.Identity != "trusted-local" {
+		t.Fatalf("failed runtime op must attribute runtime actor trusted-local, got %q", event.Actor.Identity)
+	}
+	if event.AuthorizationResult != "deny" {
+		t.Fatalf("failed runtime op must record AuthorizationResult=deny, got %q", event.AuthorizationResult)
+	}
 }
 
 // TestRecordSecretAuditPresentDeniedDecisionOverridesVerifiedPrincipal proves
@@ -174,5 +243,104 @@ func TestRecordSecretAuditPresentDeniedDecisionOverridesVerifiedPrincipal(t *tes
 	}
 	if event.Actor.Subject != decision.Actor.Subject {
 		t.Fatalf("actor must follow the denied decision, got %q want %q", event.Actor.Subject, decision.Actor.Subject)
+	}
+}
+
+// TestAuthorizeHumanRevealSuccessRecordsRevealAudit proves the success path of
+// the reveal audit: a human reveal that succeeds records a reveal audit event
+// with operation "secret.reveal", the success outcome, and AuthorizationResult
+// =allow, against a temp state root.
+func TestAuthorizeHumanRevealSuccessRecordsRevealAudit(t *testing.T) {
+	root := t.TempDir()
+	targetStateRoot = func(string) (string, error) { return root, nil }
+	defer func() { targetStateRoot = deployment.TargetStateRoot }()
+
+	principal := &identity.Principal{Subject: "operator", Issuer: "issuer", IssuerVerified: true}
+	ctx := operatorauth.WithVerifiedPrincipal(context.Background(), principal)
+
+	// The success helper records against the temp state root.
+	recordRevealForTarget(ctx, "local", resolvedApplication{
+		Target:   deployment.ResolvedTarget{Name: "local"},
+		Manifest: application.Manifest{Name: "demo", Environment: "dev"},
+	}, "success", "")
+
+	events, err := evidence.Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("expected exactly one reveal audit event, got %d", len(events))
+	}
+	event := events[0]
+	if event.Operation != "secret.reveal" || event.Outcome != "success" {
+		t.Fatalf("success reveal must record operation secret.reveal / outcome success, got %#v", event)
+	}
+	if event.AuthorizationResult != "allow" {
+		t.Fatalf("success reveal must record AuthorizationResult=allow, got %q", event.AuthorizationResult)
+	}
+}
+
+// TestAuthorizeHumanRevealDeniedRecordsRevealAudit proves that when the human
+// operator check fails (no verified operator), the denied reveal is audited
+// with operation "secret.reveal" and the denied outcome, so the audit captures
+// denied reveals, not only successful ones.
+func TestAuthorizeHumanRevealDeniedRecordsRevealAudit(t *testing.T) {
+	root := t.TempDir()
+	targetStateRoot = func(string) (string, error) { return root, nil }
+	defer func() { targetStateRoot = deployment.TargetStateRoot }()
+
+	ctx := context.Background()
+
+	err := authorizeHumanReveal(ctx, "local", "dev", "demo")
+	if err == nil {
+		t.Fatalf("secret.reveal must fail when no human operator is present")
+	}
+
+	events, err := evidence.Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("expected exactly one reveal audit event for the denial, got %d", len(events))
+	}
+	event := events[0]
+	if event.Operation != "secret.reveal" || event.Outcome != "denied" {
+		t.Fatalf("denied reveal must record operation secret.reveal / outcome denied, got %#v", event)
+	}
+	if event.AuthorizationResult != "deny" {
+		t.Fatalf("denied reveal must record AuthorizationResult=deny, got %q", event.AuthorizationResult)
+	}
+}
+
+// TestAuthorizeHumanRevealFailedRecordsRevealAudit proves the failed-reveal
+// helper records a reveal audit event with operation "secret.reveal", the
+// failed outcome, a failure reason in the detail, and AuthorizationResult=deny,
+// so the audit captures failed reveals (not only denied or successful ones).
+func TestAuthorizeHumanRevealFailedRecordsRevealAudit(t *testing.T) {
+	root := t.TempDir()
+	targetStateRoot = func(string) (string, error) { return root, nil }
+	defer func() { targetStateRoot = deployment.TargetStateRoot }()
+
+	ctx := context.Background()
+
+	cause := errors.New("policy denied")
+	recordRevealFailed(ctx, "local", "dev", "demo", cause)
+
+	events, err := evidence.Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("expected exactly one reveal audit event for the failure, got %d", len(events))
+	}
+	event := events[0]
+	if event.Operation != "secret.reveal" || event.Outcome != "failed" {
+		t.Fatalf("failed reveal must record operation secret.reveal / outcome failed, got %#v", event)
+	}
+	if !strings.Contains(event.Detail, "policy denied") {
+		t.Fatalf("failed reveal must record the failure reason in detail, got %q", event.Detail)
+	}
+	if event.AuthorizationResult != "deny" {
+		t.Fatalf("failed reveal must record AuthorizationResult=deny, got %q", event.AuthorizationResult)
 	}
 }

@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 
+	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/applicationsecret"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/evidence"
@@ -66,9 +68,18 @@ func recordSecretAudit(ctx context.Context, resolved resolvedApplication, operat
 		event.Actor.Methods = append([]string(nil), principal.Methods...)
 		event.AuthorizationResult = "allow"
 	} else {
-		// No verified operator on the enforcement seam: attribute the runtime
-		// actor rather than a person. trusted-local is not a person.
-		event.AuthorizationResult = "deny"
+		// No verified operator on the enforcement seam. A succeeded local
+		// workload operation attributes the runtime actor (not the
+		// cli/local-operator person default — trusted-local is not a person),
+		// and the AuthorizationResult matches the actual outcome: a success is
+		// an allow, not a deny. A failure with no decision is the one case that
+		// is correctly denied.
+		event.Actor.Identity = "trusted-local"
+		if strings.EqualFold(outcome, "success") {
+			event.AuthorizationResult = "allow"
+		} else {
+			event.AuthorizationResult = "deny"
+		}
 	}
 	if err := evidence.Append(root, event); err != nil {
 		fmt.Fprintln(os.Stderr, "Warning: could not record secret audit:", err)
@@ -97,11 +108,97 @@ func authorizeApplicationOperation(ctx context.Context, id string, resolved reso
 // verified human identity, then applies the registered secret.reveal operation's
 // normal target, environment, membership, and permission checks. Workload reads
 // that do not reveal keep using their existing operation and are unaffected.
-func authorizeHumanReveal(ctx context.Context, target, environment, application string) error {
+func authorizeHumanReveal(ctx context.Context, target, environment, appName string) error {
 	if err := operatorauth.RequireHumanOperator(ctx); err != nil {
+		// Reveal denied at the human-operator seam: audit the denial so the
+		// audit captures denied reveals, not only successful ones.
+		recordRevealDenied(ctx, target, environment, appName)
 		return err
 	}
-	return authorizeMCPOperation(ctx, "secret.reveal", target, environment, application, "")
+	if err := authorizeMCPOperation(ctx, "secret.reveal", target, environment, appName, ""); err != nil {
+		// Reveal failed after the human operator was verified (policy,
+		// membership, permissions, runtime): audit the failure too.
+		recordRevealFailed(ctx, target, environment, appName, err)
+		return err
+	}
+	// Reveal succeeded for a human operator: record the success outcome.
+	recordRevealSuccess(ctx, target, environment, appName)
+	return nil
+}
+
+// recordRevealDenied records a denied human reveal (failed human-operator
+// check) against a synthesized resolved target.
+func recordRevealDenied(ctx context.Context, target, environment, appName string) {
+	recordRevealForTarget(ctx, target, resolvedApplication{
+		Target:   deployment.ResolvedTarget{Name: target},
+		Manifest: application.Manifest{Environment: environment, Name: appName},
+	}, "denied", "")
+}
+
+// recordRevealFailed records a failed human reveal (post-operator failure) with
+// a failure reason in the event detail.
+func recordRevealFailed(ctx context.Context, target, environment, appName string, cause error) {
+	reason := "reveal failed"
+	if cause != nil {
+		reason = cause.Error()
+	}
+	recordRevealForTarget(ctx, target, resolvedApplication{
+		Target:   deployment.ResolvedTarget{Name: target},
+		Manifest: application.Manifest{Environment: environment, Name: appName},
+	}, "failed", reason)
+}
+
+// recordRevealSuccess records a successful human reveal.
+func recordRevealSuccess(ctx context.Context, target, environment, appName string) {
+	recordRevealForTarget(ctx, target, resolvedApplication{
+		Target:   deployment.ResolvedTarget{Name: target},
+		Manifest: application.Manifest{Environment: environment, Name: appName},
+	}, "success", "")
+}
+
+// recordRevealForTarget resolves the target state root and records a reveal
+// audit with the given outcome. detail is recorded on failed outcomes so the
+// failure reason is captured; it is ignored for the denied/success outcomes.
+func recordRevealForTarget(ctx context.Context, target string, resolved resolvedApplication, outcome, detail string) {
+	root, rootErr := targetStateRoot(resolved.Target.Name)
+	if rootErr != nil {
+		fmt.Fprintln(os.Stderr, "Warning: could not resolve target state root for reveal audit:", rootErr)
+		return
+	}
+	event := evidence.NewAuditEvent(ctx, resolved.Target.Name, resolved.Manifest.Name, resolved.Manifest.Environment, "secret.reveal", outcome)
+	event.Capability = "app.secret"
+	event.ApplicationID = resolved.Manifest.ApplicationID
+	event.DeploymentID = resolved.DeploymentIdentity.DeploymentID
+	if detail != "" {
+		event.Detail = detail
+	}
+	if decision, ok := operatorauth.AuthorizationDecisionFromContext(ctx); ok {
+		event.Actor.Subject = decision.Actor.Subject
+		event.Actor.Assurance = decision.Actor.Assurance
+		event.Actor.Methods = append([]string(nil), decision.Actor.Methods...)
+		if decision.Allowed {
+			event.AuthorizationResult = "allow"
+		} else {
+			event.AuthorizationResult = "deny"
+		}
+	} else if principal, ok := operatorauth.PrincipalFromContext(ctx); ok {
+		event.Actor.Identity = principal.Subject
+		event.Actor.Issuer = principal.Issuer
+		event.Actor.Subject = principal.Subject
+		event.Actor.Assurance = principal.Assurance
+		event.Actor.Methods = append([]string(nil), principal.Methods...)
+		event.AuthorizationResult = "allow"
+	} else {
+		event.Actor.Identity = "trusted-local"
+		if strings.EqualFold(outcome, "success") {
+			event.AuthorizationResult = "allow"
+		} else {
+			event.AuthorizationResult = "deny"
+		}
+	}
+	if err := evidence.Append(root, event); err != nil {
+		fmt.Fprintln(os.Stderr, "Warning: could not record reveal audit:", err)
+	}
 }
 func listApplicationSecrets(ctx context.Context, resolved resolvedApplication) ([]applicationsecret.Metadata, error) {
 	if err := authorizeApplicationOperation(ctx, "secret.list", resolved); err != nil {
