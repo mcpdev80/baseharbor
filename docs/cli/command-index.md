@@ -26,7 +26,7 @@ Find exact options with `baha COMMAND --help`. [Global options](global-options.m
 | `baha app edit` | Edit current application needs with preview and impact consent | `baha app edit [NAME] [-e ENV\|--environment ENV]` | [↗](applications.md) |
 | `baha app env` | Show the standard environment contract for an application | `baha app env [NAME] [--format dotenv\|shell\|json\|yaml] [--reveal] [--path]` | [↗](applications.md) |
 | `baha app evidence` | Export secret-safe application lifecycle and verification evidence | `baha app evidence [NAME] [-e ENV\|--environment ENV] [-o json\|--output json]` | [↗](applications.md) |
-| `baha app exec` | Execute a command in an application workload service | `baha app exec [--app NAME] [-e ENV\|--environment ENV] [COMPONENT \| -c NAME] [COMMAND [ARG...]]` | [↗](applications.md) |
+| `baha app exec` | Execute a command in an application workload service | `baha app exec [--app NAME] [-e ENV\|--environment ENV] [COMPONENT\|-c NAME] [--cmd CMD\|COMMAND [ARG...]]` | [↗](applications.md) |
 | `baha app export` | Export selected local application credentials into an encrypted file | `baha app export [NAME] [--include STATE]... --password-file FILE [--output FILE]` | [↗](applications.md) |
 | `baha app footprint` | Read the current application footprint | `baha app footprint show [NAME] [-o json\|--output json] [--details]` | [↗](applications.md) |
 | `baha app footprint show` | Display the authoritative Target footprint without mutation | `baha app footprint show [NAME] [-o json\|--output json] [--details]` | [↗](applications.md) |

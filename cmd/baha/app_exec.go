@@ -49,7 +49,7 @@ func appExecCommand(store application.Store) *cli.Command {
 	return &cli.Command{
 		Name:    "exec",
 		Summary: "Execute a command in an application workload service",
-		Usage:   "baha app exec [--app NAME] [-e ENV|--environment ENV] [--uuid ID] [COMPONENT|-c NAME] [COMMAND [ARG...]]",
+		Usage:   "baha app exec [--app NAME] [-e ENV|--environment ENV] [COMPONENT|-c NAME] [--cmd CMD|COMMAND [ARG...]]",
 		Long:    "Runs COMMAND in the guided workload component; with no COMMAND the default interactive shell opens, same as 'baha app shell'. Choose a component with COMPONENT or -c NAME. Put selector options before COMMAND; once COMMAND starts, its remaining arguments, including flags such as Python's -c, are passed through unchanged. A missing COMPONENT follows the same guidance and never blocks scripts. --cmd takes exactly one command string and runs it through the workload's POSIX shell; it cannot be combined with positional command arguments. The command's exit status is preserved: baha exits with the same code the command returned.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 			return runGuidedWorkloadExec(ctx, store, args, out, errOut, "exec", workloadInvocation{})
