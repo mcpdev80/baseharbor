@@ -2177,6 +2177,21 @@
       "path": "internal/operatorauth/interaction_operations_test.go",
       "surfaces": ["source.gate.atomic.docker.data.capabilities", "source.gate.atomic.podman.data.capabilities"],
       "runtime_specific": true
+    },
+    {
+      "id": "source.cmd_baha_app_candidate_consent_go",
+      "path": "cmd/baha/app_candidate_consent.go",
+      "surfaces": ["source.gate.atomic.docker.data.capabilities", "source.gate.atomic.docker.guided", "source.gate.atomic.podman.data.capabilities", "source.gate.atomic.podman.guided"]
+    },
+    {
+      "id": "source.cmd_baha_app_input_resolver_go",
+      "path": "cmd/baha/app_input_resolver.go",
+      "surfaces": ["source.gate.atomic.docker.guided", "source.gate.atomic.podman.guided"]
+    },
+    {
+      "id": "source.cmd_baha_runtime_ports_test_go",
+      "path": "cmd/baha/runtime_ports_test.go",
+      "surfaces": ["source.gate.atomic.docker.guided", "source.gate.atomic.podman.guided"]
     }
   ],
   "gates": [
