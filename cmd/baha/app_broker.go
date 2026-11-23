@@ -41,13 +41,6 @@ func runtimeBrokerMetricsTarget(m application.Manifest) string {
 
 var errRuntimeBrokerIncompatible = errors.New("runtime broker image is incompatible")
 
-// errRuntimeBrokerStarting marks a non-final readiness state: the broker
-// container is still warming (compose healthcheck start_period reports
-// "starting", or the first check has not run and health is empty). Callers
-// must treat it as transient and keep polling instead of aborting, because
-// the healthcheck's retries:12 / start_period:30s window has not elapsed.
-var errRuntimeBrokerStarting = errors.New("runtime broker still starting")
-
 // envAllowMutableDevelopmentRuntimeImage opts a development deployment into the
 // legacy mutable-tag fallback when the artifact endpoint merely could not be
 // resolved. Without it, an unpinned reference is never pulled. It cannot
@@ -206,14 +199,175 @@ func ensureAndStartRuntimeBrokerWithCore(ctx context.Context, progress io.Writer
 	}
 	diagnosticCtx, diagnosticCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer diagnosticCancel()
-	if diagnostic, ok := compose.(interface {
-		DiagnosticsProject(context.Context, string, string, string) string
-	}); ok {
-		if details := strings.TrimSpace(diagnostic.DiagnosticsProject(diagnosticCtx, project, brokerFiles.Compose, files.Env)); details != "" {
-			return fmt.Errorf("application runtime broker readiness failed: %w; runtime diagnostics:\n%s", verifyErr, details)
+	// The readiness loop's last error says the broker is unhealthy but not WHY.
+	// Surface both dependency channels through the shared failure branch.
+	return failRuntimeBrokerReadinessWith(diagnosticCtx, compose, m, files, brokerComposePath(brokerFiles, files), verifyErr)
+}
+
+// brokerComposePath names the broker compose file for the diagnostics
+// channels, falling back to the application compose file when the broker state
+// cannot be re-read (the failure case this diagnostic path exists for).
+func brokerComposePath(brokerFiles runtimebroker.Files, files application.RuntimeFiles) string {
+	if strings.TrimSpace(brokerFiles.Compose) != "" {
+		return brokerFiles.Compose
+	}
+	return files.Compose
+}
+
+// failRuntimeBrokerReadiness is the test entry point into the readiness
+// failure branch below (same code the ensure path returns).
+func failRuntimeBrokerReadiness(ctx context.Context, compose bhruntime.RuntimeProvider, m application.Manifest, files application.RuntimeFiles, verifyErr error) error {
+	return failRuntimeBrokerReadinessWith(ctx, compose, m, files, files.Compose, verifyErr)
+}
+
+func failRuntimeBrokerReadinessWith(ctx context.Context, compose bhruntime.RuntimeProvider, m application.Manifest, files application.RuntimeFiles, brokerCompose string, verifyErr error) error {
+	// The broker names its failing dependency on two channels: the /readyz body
+	// (writeNotReady in internal/controlplaneruntime/server.go) and its container
+	// log ("dependency=openbao" / "dependency=runtime-executor" in
+	// internal/controlplaneruntime/server_run.go). Surface both here, each
+	// bounded, so the CLI failure text carries the dependency name.
+	project := runtimebroker.ProjectNameForRuntime(m, files)
+	return fmt.Errorf("application runtime broker readiness failed: %w; runtime diagnostics:\n%s",
+		verifyErr, runtimeBrokerReadinessDiagnostics(ctx, compose, project, brokerCompose, files.Env))
+}
+
+// runtimeBrokerReadinessDiagnostics assembles the fail-closed diagnostic block
+// for broker readiness. Security rule: NO raw content (body, log lines, exec
+// errors) reaches the error text. The two channels emit fixed text only, and
+// where the contract names a dependency it is a validated NAME (a restricted
+// token). The readyz body is reduced to name/status/version; a non-JSON body
+// reports only its byte length; the log channel reports a bounded count and
+// the known dependency names it mentions, never raw log lines.
+func runtimeBrokerReadinessDiagnostics(ctx context.Context, compose bhruntime.RuntimeProvider, project, composeFile, envFile string) string {
+	var b strings.Builder
+	logs, logsErr := compose.LogsProject(ctx, project, composeFile, envFile, runtimebroker.ServiceName)
+	if logsErr != nil {
+		// Only a fixed phrase: the exec error string itself may carry paths or
+		// environment details and must not be widened into the error text.
+		fmt.Fprintf(&b, "broker container logs unavailable (channel failed)\n")
+	} else {
+		// Raw log lines can carry value-bearers (tokens, paths, environment
+		// statements), so the content is NOT echoed. Only a bounded shape and
+		// the dependency names from the FIXED vocabulary survive — the same
+		// closed set /readyz uses, matched against whole tokens.
+		lines := 0
+		if trimmed := strings.TrimSpace(logs); trimmed != "" {
+			lines = strings.Count(trimmed, "\n") + 1
+		}
+		fmt.Fprintf(&b, "broker container log tail: %d line(s), content redacted by security rule\n", lines)
+		for _, dependency := range []string{"openbao", "runtime-executor", "database"} {
+			if logMentionsDependency(logs, dependency) {
+				fmt.Fprintf(&b, "broker container log mentions dependency=%s\n", dependency)
+			}
 		}
 	}
-	return fmt.Errorf("application runtime broker readiness failed: %w", verifyErr)
+	if summary := lastReadyzDependency(ctx, compose, project, composeFile, envFile); summary != "" {
+		fmt.Fprintf(&b, "broker /readyz (last): %s\n", summary)
+	}
+	return strings.TrimSpace(b.String())
+}
+
+// logMentionsDependency reports whether a log stream contains the whole-token
+// dependency name (bounded by non-token characters), never echoing any other
+// content.
+func logMentionsDependency(logs, dependency string) bool {
+	for _, line := range strings.Split(logs, "\n") {
+		for _, field := range strings.FieldsFunc(line, func(r rune) bool {
+			return !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-')
+		}) {
+			if strings.EqualFold(field, dependency) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// safeDependencyName accepts only the dependency names the readiness contract
+// documents (openbao, runtime-executor, database). Anything else — including a
+// hostile or malformed body — collapses to a fixed placeholder, so an
+// attacker-controlled field can never smuggle a value into the error text.
+func safeDependencyName(value string) string {
+	switch trimmed := strings.ToLower(strings.TrimSpace(value)); trimmed {
+	case "openbao", "runtime-executor", "database":
+		return trimmed
+	default:
+		return "unknown"
+	}
+}
+
+// safeBuildToken keeps short build-identity tokens (version/commit strings)
+// and rejects anything that looks like content: a token must match a strict
+// character class and be bounded.
+func safeBuildToken(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" || len(value) > 40 {
+		return ""
+	}
+	for _, r := range value {
+		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '.' || r == '-' || r == '_') {
+			return ""
+		}
+	}
+	return value
+}
+
+// lastReadyzDependency performs one mTLS readiness probe and reports only
+// fixed text plus validated names: the status (a closed set), the dependency
+// NAME (validated against the documented contract set) and build tokens that
+// pass a strict character class. A raw body — or any part of it — never
+// reaches the output: a non-JSON body is reported by byte length only, and a
+// probe/exec error is reported as a fixed phrase.
+func lastReadyzDependency(ctx context.Context, compose bhruntime.RuntimeProvider, project, composeFile, envFile string) string {
+	out, err := compose.ExecProject(ctx, project, composeFile, envFile, runtimebroker.ServiceName,
+		"curl", "--silent", "--show-error", "--connect-timeout", "1", "--max-time", "4",
+		"--resolve", "baseharbor-runtime:8443:127.0.0.1",
+		"--cacert", "/run/baseharbor/identity/ca.pem",
+		"--cert", "/run/secrets/probe-client-cert",
+		"--key", "/run/secrets/probe-client-key",
+		runtimebroker.RuntimeURL+"/readyz",
+	)
+	if err != nil {
+		return "readyz probe failed (error detail redacted by security rule)"
+	}
+	var ready struct {
+		Status     string `json:"status"`
+		Dependency string `json:"dependency"`
+		Version    string `json:"version"`
+		Commit     string `json:"commit"`
+	}
+	if jsonErr := json.Unmarshal([]byte(out), &ready); jsonErr != nil {
+		// A valid-JSON body whose fields are all unusable (hostile
+		// dependency, unparseable status) still reported at least
+		// "status=unknown", so the non-JSON note carries the same minimum
+		// signal; the byte length is a number, never content.
+		return fmt.Sprintf("readyz body is not JSON (content redacted, status=unknown, body-length=%d bytes)", len(out))
+	}
+	summary := "status=" + safeReadyzStatus(ready.Status)
+	if dependency := safeDependencyName(ready.Dependency); ready.Dependency != "" && dependency != "unknown" {
+		summary += " dependency=" + dependency
+	} else if strings.TrimSpace(ready.Dependency) != "" {
+		summary += " dependency=unknown"
+	}
+	if version := safeBuildToken(ready.Version); version != "" {
+		summary += " version=" + version
+	}
+	if buildCommit := safeBuildToken(ready.Commit); buildCommit != "" {
+		summary += " commit=" + buildCommit
+	}
+	return summary
+}
+
+// safeReadyzStatus maps the status to the contract's closed set.
+func safeReadyzStatus(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "ready":
+		return "ready"
+	case "not_ready":
+		return "not_ready"
+	default:
+		return "unknown"
+	}
 }
 
 func ensureAndStartRuntimeProviderExecutor(ctx context.Context, progress io.Writer, compose bhruntime.RuntimeProvider, platformFiles bhruntime.Files, m application.Manifest, files application.RuntimeFiles, refreshMutableImage bool) error {
@@ -422,11 +576,7 @@ func verifyRuntimeBrokerRunning(ctx context.Context, compose bhruntime.RuntimePr
 			case "unhealthy":
 				return errors.New("application runtime broker healthcheck is unhealthy")
 			case "", "starting":
-				// During the compose healthcheck start_period the container
-				// reports "starting" (or empty before the first check). Treat
-				// those transient states as non-final so the retry loop keeps
-				// polling instead of aborting before the healthcheck gives up.
-				return errRuntimeBrokerStarting
+				return errors.New("application runtime broker healthcheck is not ready")
 			default:
 				return fmt.Errorf("application runtime broker healthcheck state %q is not ready", container.Health)
 			}
@@ -452,17 +602,6 @@ func verifyRuntimeBrokerRunning(ctx context.Context, compose bhruntime.RuntimePr
 			return errors.New("application runtime broker container is not running")
 		}
 		health := strings.ToLower(strings.TrimSpace(container.Health))
-		// The compose healthcheck hits /readyz with start_period: 30s,
-		// interval: 5s, retries: 12. During that start period the container
-		// reports "starting", and a warming broker (executor/openbao not yet
-		// serving) can transiently report "unhealthy" before the healthcheck
-		// gives up. Treat "starting" as non-final: surface a sentinel so the
-		// caller keeps polling the retry loop instead of aborting before the
-		// healthcheck's retries elapse. Only a non-running container, or a
-		// genuinely non-transient health state, is fatal.
-		if health == "starting" {
-			return errRuntimeBrokerStarting
-		}
 		if health != "" && health != "healthy" {
 			return fmt.Errorf("application runtime broker container health is %s", health)
 		}
@@ -521,7 +660,7 @@ func verifyRuntimeBrokerBuildIdentity(actualVersion, actualCommit string) error 
 	if expectedVersion != "" && actualVersion != expectedVersion {
 		developmentPair := expectedVersion == "dev" && actualVersion == "edge"
 		if !developmentPair {
-			return fmt.Errorf("%w: CLI version %s requires runtime version %s, got %s", errRuntimeBrokerIncompatible, expectedVersion, actualVersion, actualVersion)
+			return fmt.Errorf("%w: CLI version %s requires runtime version %s, got %s", errRuntimeBrokerIncompatible, expectedVersion, expectedVersion, actualVersion)
 		}
 	}
 	// Commit SHAs are build provenance, not a runtime compatibility contract.
