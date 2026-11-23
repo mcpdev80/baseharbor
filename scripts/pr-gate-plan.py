@@ -203,6 +203,8 @@ WIZARD_COMPONENTS = {
                                    ('atomic/docker/lifecycle', 'atomic/podman/lifecycle')),
     'cmd/baha/app_new_wizard_test.go': ('wizard-app-new-tests',
                                         ('atomic/docker/lifecycle', 'atomic/podman/lifecycle')),
+    'cmd/baha/app_new_wizard_org_default_test.go': ('wizard-app-new-tests',
+                                                    ('atomic/docker/lifecycle', 'atomic/podman/lifecycle')),
     'cmd/baha/app_edit.go': ('wizard-app-edit-tests',
                              ('atomic/docker/data-capabilities', 'atomic/podman/data-capabilities')),
     'cmd/baha/app_edit_test.go': ('wizard-app-edit-tests',

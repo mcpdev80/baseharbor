@@ -505,7 +505,10 @@ func guidedStackProfile(reader *bufio.Reader, out io.Writer, catalog development
 	if name, err := organizationDefaultStackName("dev"); err != nil {
 		return guidedStackSelection{}, err
 	} else if orgDefaultStackNotInCatalog(name, catalog) {
-		return guidedStackSelection{}, usageError("organization default stack %q is not available in the effective stack catalog", "Remove the organization stack default or add the stack to the effective catalog, then re-run app new.")
+		return guidedStackSelection{}, usageError(
+			fmt.Sprintf("organization default stack %q is not available in the effective stack catalog", name),
+			"Remove the organization stack default or add the stack to the effective catalog, then re-run app new.",
+		)
 	} else if name != "" {
 		resolved, err := development.ResolveStackProfile(name, development.ProfileMap(catalog))
 		if err != nil {

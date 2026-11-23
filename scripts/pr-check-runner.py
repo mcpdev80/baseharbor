@@ -23,7 +23,7 @@ WIZARD_TEST_FAMILIES = {
     'wizard-footprint-presenter-tests': (r'^TestAppFootprintPresenter',),
     'wizard-change-presentation-tests': (r'^TestAppChangePreview', r'^TestAppChangeResultPresenter'),
     'wizard-controller-tests': (r'^TestAppWizardController',),
-    'wizard-app-new-tests': (r'^TestAppNewWizard',),
+    'wizard-app-new-tests': (r'^TestAppNewWizard', r'^TestGuidedStackProfile', r'^TestOrgDefault'),
     # Command regressions cover preview failures, SQL preferences and replacement intent.
     # Stable-preview regressions execute in the existing Edit family; shared
     # controller, New and machine-adapter families also verify coherent reads
