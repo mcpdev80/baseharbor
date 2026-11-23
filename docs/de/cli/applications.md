@@ -73,6 +73,37 @@ menschenlesbare Prüfergebnisse.
 
 Für ein Remote-Target wählst du mit `baha app apply NAME --workload-port VARIABLE=PORT` einen freien veröffentlichten Workload-Port. BaseHarbor prüft, ob die Variable im Compose-Workload des Repositorys vorkommt und der Port auf dem Core-Host frei ist, und speichert die Wahl für dieses Deployment. Beispiel: `--workload-port DEMO_HTTPS_PORT=8081` weicht einem Konflikt auf Port 8080 aus, ohne die Repository-Quelle zu ändern.
 
+## Geführte Beobachtung und Zugriffe
+
+`baha app logs`, `baha app exec`/`baha app shell` und `baha app urls` führen
+eine fehlende Wahl aus demselben geheimnissicheren Read-View, den
+`baha app status` rendert; sie konsultieren nie eine zweite parallele Wahrheit.
+
+- `baha app logs [COMPONENT] [--follow] [--tail N] [-c NAME]...` leitet die
+  streambaren Komponenten aus der Deployment-Log-Policy und dem Contract ab.
+  Ohne `COMPONENT` wird die eindeutige deklarierte Komponente abgeleitet; im
+  Terminal erscheinen die Optionen; mit `--no-input` oder in Skripten bricht
+  der Befehl mit den Optionen ab, statt zu blockieren. `--tail N` begrenzt die
+  Ausgabe und endet. JSON-Ausgabe folgt nie einem unbegrenzten Stream; `--tail`
+  mit `--json` ist die begrenzte Maschinenform. Managed-Sammlung (Loki) wird
+  ausdrücklich statt stillschweigend umgeleitet gemeldet.
+- `baha app exec [--app NAME] [-e ENV|--environment ENV] [COMPONENT | -c NAME] [COMMAND [ARG...]]`
+  öffnet ohne Command die Standard-Shell (wie `baha app shell`). Auswahloptionen
+  stehen vor dem Command; sobald `COMMAND` beginnt, werden alle folgenden
+  Argumente einschließlich Flags wie Pythons `-c` unverändert weitergegeben.
+  `--cmd` bleibt die separate Form für einen Command-String über die POSIX-Shell
+  im Workload. Positionsargumente bleiben direktes argv und ihr Exit-Status wird
+  weitergegeben.
+- `baha app urls [NAME] [-c NAME]... [--print] [--json]` listet nur die URLs
+  der Anwendung selbst und die GUI-URLs ihrer gebundenen App-/Shared-Dienste,
+  jeweils mit verifiziertem oder ungeprüftem Zugriffsstatus. Nichts wird
+  geraten, erfunden oder geöffnet; das Öffnen im Browser bleibt `baha open`.
+
+Jeder Pfad autorisiert seine Operationskategorie (`app.logs`, `app.exec`,
+`app.urls`) fail-closed vor jeder Auflösung oder Ausführung, nach dem Vorbild
+der `secret.reveal`-Naht: eine unauthentisierte Grenze verweigert, statt
+fortzufahren.
+
 ## Erzeugen oder übernehmen
 
 In einem übergeordneten Verzeichnis ohne vorhandenen Ordner `shop-api`:

@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
@@ -151,26 +152,65 @@ func appLogsCommand(store application.Store) *cli.Command {
 	return &cli.Command{
 		Name:    "logs",
 		Summary: "Show logs for the current application workload",
-		Usage:   "baha app logs [SERVICE] [--follow] [--app NAME]",
+		Usage:   "baha app logs [COMPONENT] [--follow] [--tail N] [-c NAME]... [--app NAME] [-e ENV|--environment ENV] [--json]",
+		Long:    "Reads application logs through the same read-view logic 'baha app status' renders: the deployment log policy decides the source and the application contract decides the streamable components. A missing COMPONENT is guided - a unique declared component is derived, ambiguity lists the options in a terminal, and --no-input or scripts never block and fail closed with the options. --tail N bounds the output to the N most recent lines and finishes. -c filters the stream to the named components. JSON output never follows: unbounded streaming has no JSON contract; bounded --tail reads do. Managed (Loki) collection is reported explicitly, never silently rerouted.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
-			appName, service, follow, err := parseLogsArgs(args)
+			filtered, format, err := parseReadOutputArgs(args, "app logs")
 			if err != nil {
 				return err
 			}
-			compose, workload, environment, composeFiles, err := resolveWorkloadAccess(ctx, store, appName)
+			options, err := parseLogsOptions(filtered)
 			if err != nil {
 				return err
 			}
-			if service != "" && !containsString(workload.Services, service) {
-				return fmt.Errorf("workload service %q is not selected by the application contract", service)
+			// Usage validation fails closed before any operator-auth gate: a
+			// --follow/--json conflict or an invalid component selection is a
+			// caller error, never a runtime authorization failure. Defer the
+			// operator-auth boundary past this validation; re-enforce it below.
+			if format == outputJSON && options.follow {
+				return usageError("--follow cannot be combined with JSON output", "Unbounded streams have no JSON contract. Use --tail N for a bounded machine result or drop --json.")
 			}
-			cmdArgs := []string{"logs"}
-			if follow {
-				cmdArgs = append(cmdArgs, "--follow")
+			deferredAuthCtx := operatorauth.WithSkipResolveOperatorBoundary(ctx)
+			resolved, declared, err := resolveWorkloadComponentsForCommand(deferredAuthCtx, store, options.nameArgs, "logs")
+			if err != nil {
+				return err
 			}
-			if service != "" {
-				cmdArgs = append(cmdArgs, service)
+			workloadComponents, managed, err := readViewLogsSelection(resolved)
+			if err != nil {
+				return err
 			}
+			candidates := workloadComponents
+			if len(candidates) == 0 {
+				candidates = declared
+			}
+			selected := options.service
+			selectedComponents := append([]string(nil), options.components...)
+			if len(selectedComponents) == 0 && selected == "" {
+				selected, err = chooseWorkloadComponentSource(ctx, os.Stdin, errOut, "logs", workloadComponents, candidates, "")
+				if err != nil {
+					return err
+				}
+			}
+			if len(selectedComponents) == 0 && selected != "" {
+				selectedComponents = []string{selected}
+			}
+			if err := validateWorkloadLogComponents(selectedComponents, candidates); err != nil {
+				return err
+			}
+			// The operator-auth boundary was deferred past usage validation;
+			// re-enforce it explicitly before anything runs.
+			ctx = operatorauth.ClearResolveOperatorBoundary(ctx)
+			if err := authorizeApplicationOperation(ctx, "app.logs", resolved); err != nil {
+				return err
+			}
+			if managed {
+				return reportManagedLogGuidance(format, out, resolved, selectedComponents)
+			}
+			compose, workload, environment, composeFiles, err := resolveWorkloadAccessFromResolution(ctx, resolved)
+			if err != nil {
+				return err
+			}
+			cmdArgs := workloadLogsCommandArgs(options, selectedComponents)
 			// Compose implementations disagree on whether workload logs are emitted on stdout or stderr.
 			// The BaseHarbor CLI contract normalizes both streams to stdout for `baha app logs`.
 			return compose.RunProjectFilesEnv(ctx, workload.Project, workload.RepositoryRoot, environment, os.Stdin, out, out, composeFiles, cmdArgs...)
@@ -178,49 +218,148 @@ func appLogsCommand(store application.Store) *cli.Command {
 	}
 }
 
-func appShellCommand(store application.Store) *cli.Command {
-	return &cli.Command{
-		Name:    "shell",
-		Summary: "Open a shell in an application workload service",
-		Usage:   "baha app shell SERVICE [--app NAME]",
-		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
-			appName, service, err := parseServiceTarget(args, "shell")
-			if err != nil {
-				return err
-			}
-			compose, workload, environment, composeFiles, err := resolveWorkloadAccess(ctx, store, appName)
-			if err != nil {
-				return err
-			}
-			if !containsString(workload.Services, service) {
-				return fmt.Errorf("workload service %q is not selected by the application contract", service)
-			}
-			return compose.RunProjectFilesEnv(ctx, workload.Project, workload.RepositoryRoot, environment, os.Stdin, out, errOut, composeFiles, "exec", service, "sh")
-		},
+func validateWorkloadLogComponents(selected, candidates []string) error {
+	if len(candidates) == 0 {
+		if len(selected) > 0 {
+			return usageError("application contract does not declare workload components", "Run 'baha app status' to inspect the application workload before requesting component logs.")
+		}
+		return nil
 	}
+	for _, component := range selected {
+		if !containsString(candidates, component) {
+			return usageError(fmt.Sprintf("workload component %q is not selected by the application contract", component), "Choose one of the declared components: "+componentList(candidates)+"\n  Run 'baha app logs --help' for usage.")
+		}
+	}
+	return nil
 }
 
-func appExecCommand(store application.Store) *cli.Command {
-	return &cli.Command{
-		Name:    "exec",
-		Summary: "Execute a command in an application workload service",
-		Usage:   "baha app exec SERVICE COMMAND [ARG...] [--app NAME]",
-		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
-			appName, service, command, err := parseExecArgs(args)
-			if err != nil {
-				return err
-			}
-			compose, workload, environment, composeFiles, err := resolveWorkloadAccess(ctx, store, appName)
-			if err != nil {
-				return err
-			}
-			if !containsString(workload.Services, service) {
-				return fmt.Errorf("workload service %q is not selected by the application contract", service)
-			}
-			cmdArgs := append([]string{"exec", "-T", service}, command...)
-			return compose.RunProjectFilesEnv(ctx, workload.Project, workload.RepositoryRoot, environment, os.Stdin, out, errOut, composeFiles, cmdArgs...)
-		},
+func workloadLogsCommandArgs(options logsOptions, selected []string) []string {
+	args := []string{"logs"}
+	if options.tail > 0 {
+		args = append(args, "--tail", strconv.Itoa(options.tail))
 	}
+	if options.follow {
+		args = append(args, "--follow")
+	}
+	return append(args, selected...)
+}
+
+// logsOptions is the parsed option set of `baha app logs`.
+type logsOptions struct {
+	nameArgs   []string
+	service    string
+	components []string
+	follow     bool
+	tail       int
+}
+
+func parseLogsOptions(args []string) (logsOptions, error) {
+	options := logsOptions{nameArgs: []string{}}
+	var positional []string
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		switch {
+		case arg == "--follow" || arg == "-f":
+			options.follow = true
+		case arg == "-c" || arg == "--component":
+			if i+1 >= len(args) || strings.HasPrefix(args[i+1], "-") {
+				return logsOptions{}, usageError(arg+" requires NAME", "Use -c NAME; repeat for more than one component or pass a comma-separated list.")
+			}
+			i++
+			if err := appendComponentSelection(&options.components, args[i]); err != nil {
+				return logsOptions{}, err
+			}
+		case strings.HasPrefix(arg, "--component="):
+			if err := appendComponentSelection(&options.components, strings.TrimPrefix(arg, "--component=")); err != nil {
+				return logsOptions{}, err
+			}
+		case arg == "--tail":
+			if i+1 >= len(args) || strings.HasPrefix(args[i+1], "-") {
+				return logsOptions{}, usageError("--tail requires N", "Use --tail N with a positive line count, for example --tail 100.")
+			}
+			i++
+			value, parseErr := strconv.Atoi(strings.TrimSpace(args[i]))
+			if parseErr != nil || value < 1 {
+				return logsOptions{}, usageError("invalid --tail value "+args[i], "Use a positive line count, for example --tail 100.")
+			}
+			options.tail = value
+		case strings.HasPrefix(arg, "--tail="):
+			value, parseErr := strconv.Atoi(strings.TrimSpace(strings.TrimPrefix(arg, "--tail=")))
+			if parseErr != nil || value < 1 {
+				return logsOptions{}, usageError("invalid --tail value "+arg, "Use a positive line count, for example --tail=100.")
+			}
+			options.tail = value
+		case arg == "--app" || arg == "-e" || arg == "--environment" || arg == "--uuid":
+			options.nameArgs = append(options.nameArgs, arg)
+			if i+1 >= len(args) {
+				return logsOptions{}, usageError(arg+" requires a value", "Run 'baha app logs --help' for usage.")
+			}
+			i++
+			options.nameArgs = append(options.nameArgs, args[i])
+		case strings.HasPrefix(arg, "--app=") || strings.HasPrefix(arg, "--environment=") || strings.HasPrefix(arg, "--uuid="):
+			options.nameArgs = append(options.nameArgs, arg)
+		case strings.HasPrefix(arg, "-"):
+			return logsOptions{}, usageError("unknown option "+arg, "Run 'baha app logs --help' for usage.")
+		default:
+			positional = append(positional, arg)
+		}
+	}
+	if len(positional) > 1 {
+		return logsOptions{}, usageError("too many arguments", "Specify at most one workload COMPONENT.")
+	}
+	if len(positional) == 1 {
+		options.service = positional[0]
+	}
+	if options.service != "" && len(options.components) > 0 && !containsString(options.components, options.service) {
+		return logsOptions{}, usageError("-c filters conflict with the named COMPONENT "+options.service, "Remove the -c filters or name the same component.")
+	}
+	return options, nil
+}
+
+func appendComponentSelection(components *[]string, value string) error {
+	for _, part := range strings.Split(value, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			return usageError("empty component name", "Use -c NAME with a workload component name.")
+		}
+		duplicate := false
+		for _, existing := range *components {
+			duplicate = duplicate || existing == part
+		}
+		if !duplicate {
+			*components = append(*components, part)
+		}
+	}
+	return nil
+}
+
+// reportManagedLogGuidance keeps the managed (Loki) collection path explicit:
+// this command does not read or stream logs from the provider. Both output
+// modes point to the verified status read view without changing deployment
+// policy or silently falling back to another source.
+func reportManagedLogGuidance(format cliOutputFormat, out io.Writer, resolved resolvedApplication, components []string) error {
+	if format == outputJSON {
+		result := map[string]any{
+			"machine":     "unimplemented",
+			"operation":   "app.logs.managed-stream",
+			"application": resolved.Manifest.Name,
+			"environment": resolved.Manifest.Environment,
+			"target":      resolved.Target.Name,
+			"components":  components,
+			"collection":  "managed-loki",
+			"next":        "Use 'baha app status --json' to inspect verified provider log surfaces and their accessibility.",
+			"guidance":    "Managed Loki-backed streaming is not implemented on this path; nothing was streamed and no policy was weakened.",
+		}
+		if len(components) == 1 {
+			result["component"] = components[0]
+		} else if len(components) == 0 {
+			result["component"] = "COMPONENT"
+		}
+		return writeJSON(out, result)
+	}
+	fmt.Fprintf(out, "Logs are collected through the managed Loki provider for application %s (%s).\n", resolved.Manifest.Name, resolved.Manifest.Environment)
+	fmt.Fprintln(out, "Managed Loki streaming is not available on this path; no logs were read. Use 'baha app status --json' to inspect verified provider log surfaces and their accessibility.")
+	return usageError("managed Loki streaming is not exposed on this path", "Use 'baha app status --json' to inspect the verified provider log surfaces.")
 }
 
 // recordConnectionRevealAudit appends a per-reveal audit event for the human
@@ -321,6 +460,13 @@ func resolveWorkloadAccess(ctx context.Context, store application.Store, appName
 	if err != nil {
 		return nil, application.WorkloadFiles{}, nil, nil, err
 	}
+	return resolveWorkloadAccessFromResolution(ctx, resolved)
+}
+
+// resolveWorkloadAccessFromResolution materializes the workload access
+// surface for an already-resolved application so guided commands authorize
+// and resolve once, then reuse the same resolution for the runtime call.
+func resolveWorkloadAccessFromResolution(ctx context.Context, resolved resolvedApplication) (bhruntime.RuntimeProvider, application.WorkloadFiles, map[string]string, []string, error) {
 	if !resolved.FromRepository {
 		return nil, application.WorkloadFiles{}, nil, nil, fmt.Errorf("workload access requires a repository-owned baseharbor.yaml")
 	}
