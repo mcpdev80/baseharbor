@@ -163,7 +163,12 @@ func TestPersesAlertEvaluatorObservationPersesStatusSurface(t *testing.T) {
 		}
 		t.Run(name, func(t *testing.T) {
 			configureTestTarget(t)
-			resolved := persesWitnessProbeApp(t, ctx, persesWitnessAppName(t), func(m application.Manifest) application.Manifest {
+			// Author the repository with an isolated per-cell application name
+			// (persesWitnessProbeApp's documented collision rule): the seam
+			// call below resolves by name so a chdir into another cell's
+			// repository can never leak into this assertion.
+			appName := persesWitnessAppName(t)
+			resolved := persesWitnessProbeApp(t, ctx, appName, func(m application.Manifest) application.Manifest {
 				m.Services.ObservabilityManagementUI = true
 				m.Services.Perses = selected
 				return m
@@ -194,7 +199,7 @@ func TestPersesAlertEvaluatorObservationPersesStatusSurface(t *testing.T) {
 
 			// The seam function itself: observation on the OUTPUT of
 			// reportPersesSurfaceStatus.
-			seam, err := reportPersesSurfaceStatus(ctx, resolved.Store, nil)
+			seam, err := reportPersesSurfaceStatus(ctx, resolved.Store, []string{appName})
 			if err != nil {
 				t.Fatalf("reportPersesSurfaceStatus: %v", err)
 			}
@@ -203,7 +208,7 @@ func TestPersesAlertEvaluatorObservationPersesStatusSurface(t *testing.T) {
 			// And the same truth through the real command entry, which is
 			// what 'baha app perses status' emits as JSON.
 			var out, errOut bytes.Buffer
-			if err := runWithIOAsTestOperator(ctx, []string{"app", "perses", "status", "--json"}, &out, &errOut); err != nil {
+			if err := runWithIOAsTestOperator(ctx, []string{"app", "perses", "status", appName, "--json"}, &out, &errOut); err != nil {
 				t.Fatalf("baha app perses status --json failed: %v\nstdout: %s\nstderr: %s", err, out.String(), errOut.String())
 			}
 			var result persesStatusResult
@@ -212,6 +217,12 @@ func TestPersesAlertEvaluatorObservationPersesStatusSurface(t *testing.T) {
 			}
 			if result.State == string(capability.PersesStatusVerified) {
 				t.Fatalf("the perses status command reported %q without a real health path", result.State)
+			}
+			// The command face must carry the observation on an applied
+			// deployment; the seam call above proves the report builder, this
+			// proves the command dispatch actually emits it.
+			if result.AlertEvaluator == nil {
+				t.Fatalf("the command face emitted no alert_evaluator observation: %s", out.String())
 			}
 			assertPersesAlertEvaluatorObservation(t, result.AlertEvaluator, selected)
 		})
@@ -261,6 +272,35 @@ func TestPersesAlertEvaluatorObservationAppStatusCollectionFace(t *testing.T) {
 		if check.State != "unavailable (owner-gated evaluator contract)" && check.State != "configured_unverified" && check.State != "not configured" {
 			t.Fatalf("state %q is outside the three-state fail-closed contract", check.State)
 		}
+	}
+}
+
+// TestPersesAlertEvaluatorObservationUnappliedReportsNotConfigured pins the
+// 'baha app perses status' face for a repository whose runtime was never
+// applied: the alert evaluator must honestly report "not configured" there
+// (nothing is provisioned), never healthy/verified.
+func TestPersesAlertEvaluatorObservationUnappliedReportsNotConfigured(t *testing.T) {
+	t.Setenv("BASEHARBOR_TARGET", "")
+	t.Setenv("BASEHARBOR_STATE_DIR", "")
+	ctx := t.Context()
+	configureTestTarget(t)
+	persesWitnessProbeApp(t, ctx, persesWitnessAppName(t), nil)
+	var out, errOut bytes.Buffer
+	if err := runWithIOAsTestOperator(ctx, []string{"app", "perses", "status", "--json"}, &out, &errOut); err != nil {
+		t.Fatalf("baha app perses status --json failed: %v\nstdout: %s\nstderr: %s", err, out.String(), errOut.String())
+	}
+	var result persesStatusResult
+	if err := json.Unmarshal(out.Bytes(), &result); err != nil {
+		t.Fatalf("baha app perses status --json output is not the public report: %v\n%s", err, out.String())
+	}
+	if result.AlertEvaluator == nil {
+		t.Fatalf("the unapplied face emitted no alert_evaluator observation: %s", out.String())
+	}
+	if result.AlertEvaluator.State != "not configured" {
+		t.Fatalf("unapplied surface must state %q, got %q", "not configured", result.AlertEvaluator.State)
+	}
+	if result.AlertEvaluator.OK {
+		t.Fatal("a not-configured alert evaluator must never fold into readiness")
 	}
 }
 
