@@ -48,6 +48,12 @@ func loadWorkspaceSourceModel(ctx context.Context, manifestArg string) (string, 
 	if err != nil {
 		return "", sourceModelContext{}, err
 	}
+	// Authorize through the registered read operation and then apply the
+	// source-model contract (Validate on every persisted write); the CLI
+	// mutation surface and the typed MCP workspace operations share this core.
+	if err := authorizeMCPOperation(ctx, "workspace.show", "", manifest.Environment, manifest.ApplicationID, manifestPath); err != nil {
+		return "", sourceModelContext{}, err
+	}
 	model, modelPath, err := development.LoadSourceModel(manifestPath)
 	if err != nil {
 		return "", sourceModelContext{}, err

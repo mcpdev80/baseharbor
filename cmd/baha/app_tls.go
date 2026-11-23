@@ -281,7 +281,11 @@ func appStatusCommandWithTLS(store application.Store) *cli.Command {
 	cmd := appStatusCommand(store)
 	cmd.Long += " Repository deployment TLS mode and certificate state are rendered as part of the same status view."
 	cmd.Run = func(ctx context.Context, args []string, out, errOut io.Writer) error {
-		filtered, format, err := parseReadOutputArgs(args, "app status")
+		selected, filtered, err := parseComponentSelectorArgs(args, "status")
+		if err != nil {
+			return err
+		}
+		filtered, format, err := parseReadOutputArgs(filtered, "app status")
 		if err != nil {
 			return err
 		}
@@ -296,6 +300,9 @@ func appStatusCommandWithTLS(store application.Store) *cli.Command {
 		if err != nil {
 			return err
 		}
+		if err := applyStatusComponentSelector(&result, selected); err != nil {
+			return err
+		}
 
 		if format == outputJSON {
 			if err := writeJSON(out, result); err != nil {
@@ -303,6 +310,7 @@ func appStatusCommandWithTLS(store application.Store) *cli.Command {
 			}
 		} else {
 			renderApplicationStatusWithExtra(ctx, out, errOut, result.StatusResult, func(term *cli.Terminal) {
+				renderStatusVersions(out, result)
 				if result.RuntimeDocsURL != "" {
 					term.Section("Runtime")
 					term.Info("Swagger/OpenAPI", result.RuntimeDocsURL)

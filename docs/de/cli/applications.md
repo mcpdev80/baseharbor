@@ -34,7 +34,7 @@ Der vollständige lokale, Remote- und Team-Weg beginnt unter [Lokal, remote und 
 | `baha app preflight` | Vor Mutation validieren |
 | `baha up` / `baha app apply` | Application konvergieren/abgleichen |
 | `baha down` | Application-Runtime stoppen |
-| `baha status` | Zustand beobachten |
+| `baha status` | Zustand beobachten, inklusive Readiness und vereinigter Versionssektion |
 | `baha doctor` | Diagnostizieren, optional reparieren |
 | `baha app update` | Unterstützte Application-Source aktualisieren |
 | `baha app destroy NAME` | Eine Application und ihre eigenen Ressourcen entfernen |
