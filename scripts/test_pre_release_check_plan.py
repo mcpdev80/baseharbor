@@ -30,11 +30,15 @@ class ReleaseCheckPlanTests(unittest.TestCase):
         self.assertEqual(['integration/static/live-console'], result['integration'])
         self.assertEqual(2, sum(map(len, result.values())))
 
-    def test_v0428_carries_forward_existing_gates_and_adds_fast_check(self):
+    def test_v0428_adds_only_fast_check_and_moves_no_other_gate(self):
+        # card 0428-208 / #1746 (Owner authorization 2026-11-23): the ci-fast-check
+        # requirement moves to v0.4.28 and no other gate is tagged v0.4.28. Every other
+        # gate stays at v0.4.27, so v0.4.28 carries forward exactly one gate.
         self.assertIn('v0.4.28', self.inventory['releases'])
         v0427 = {g['id'] for g in self.inventory['gates'] if 'v0.4.27' in g.get('required_for', [])}
         v0428 = {g['id'] for g in self.inventory['gates'] if 'v0.4.28' in g.get('required_for', [])}
-        self.assertEqual(v0427 | {'atomic/static/ci-fast-check'}, v0428)
+        self.assertEqual(v0428, {'atomic/static/ci-fast-check'})
+        self.assertTrue({'atomic/docker/failure'} & v0427)
         selected = plan.select(self.inventory, 'v0.4.28', 'atomic/static/ci-fast-check')
         self.assertEqual(['ci-fast-check'], selected['static'])
         self.assertEqual(1, sum(map(len, selected.values())))
