@@ -53,6 +53,16 @@ func TestGuidedStackProfileOrgDefaultMissingStackUsageError(t *testing.T) {
 	if errors.Is(err, io.EOF) {
 		t.Fatalf("org-default missing-stack must not surface as EOF/abort")
 	}
+	// Regression: the message must expand the org-default stack name, not
+	// print the literal format verb. Precedent usageError messages quote the
+	// value (e.g. app_init_prompts fmt.Sprintf("... %q ...", line)).
+	const wantQuoted = `"ghost"`
+	if !strings.Contains(usageErr.Message, wantQuoted) {
+		t.Fatalf("usageError message must contain the quoted stack name %q, got: %q", wantQuoted, usageErr.Message)
+	}
+	if strings.Contains(usageErr.Message, "%q") {
+		t.Fatalf("usageError message must not contain a literal format verb, got: %q", usageErr.Message)
+	}
 }
 
 // TestGuidedStackProfileOrgDefaultPresentStackResolves proves that a present
