@@ -1575,19 +1575,19 @@
       "runtime_specific": true
     },
     {
-      "id": "source.cmd.baha.app.status.collect.go",
+      "id": "source.cmd_baha_app_status_collect_go",
       "path": "cmd/baha/app_status_collect.go",
       "surfaces": ["source.gate.atomic.docker.data.capabilities", "source.gate.atomic.podman.data.capabilities"],
       "runtime_specific": true
     },
     {
-      "id": "source.cmd.baha.app.status.perses.alert.evaluator.0428.152.test.go",
+      "id": "source.cmd_baha_app_status_perses_alert_evaluator_0428_152_test_go",
       "path": "cmd/baha/app_status_perses_alert_evaluator_0428_152_test.go",
       "surfaces": ["source.gate.atomic.docker.data.capabilities", "source.gate.atomic.podman.data.capabilities"],
       "runtime_specific": true
     },
     {
-      "id": "source.cmd.baha.perses.lifecycle.go",
+      "id": "source.cmd_baha_perses_lifecycle_go",
       "path": "cmd/baha/perses_lifecycle.go",
       "surfaces": ["source.gate.atomic.docker.data.capabilities", "source.gate.atomic.podman.data.capabilities"],
       "runtime_specific": true
