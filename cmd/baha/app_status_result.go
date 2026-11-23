@@ -60,6 +60,13 @@ type applicationStatusResult struct {
 	// VersionWarnings names why a dimension or row could not be answered.
 	Versions        appStatusVersions `json:"versions"`
 	VersionWarnings []string          `json:"version_warnings,omitempty"`
+	// IdentityDashboardEligible is the non-forgeable availability of the
+	// Keycloak identity dashboard: eligible ONLY when a real Keycloak native
+	// metrics signal exists for this Target, the identity provider is actually
+	// selected, and the Keycloak placement is a valid, BaseHarbor-owned
+	// authorization (fail-closed). Derived from IdentitySelectionWitness via
+	// NonForgeableAvailable() — never a caller-supplied status boolean.
+	IdentityDashboardEligible bool `json:"identity_dashboard_eligible,omitempty"`
 
 	tlsStatus     *applicationTLSStatus
 	tlsErr        error
@@ -316,9 +323,30 @@ func collectApplicationStatusResult(ctx context.Context, store application.Store
 		resolved.Manifest.Services.ObservabilityManagementUI, resolved.Manifest.Services.Perses)
 	infrastructureDashboardStatus := metricsprovider.PersesInfraDashboardAvailability(ctx, resolved.Manifest)
 	databaseDashboards := metricsprovider.PersesDashboardAvailability(resolved.Manifest)
-	earlyVersions, earlyVersionWarnings := collectAppStatusVersions(resolved)
+	// The Keycloak identity dashboard realizes the identity provider, so its
+	// availability is a non-forgeable decision: it is eligible ONLY when the
+	// Perses dashboard is actually selected AND verified (PersesStatusNow maps
+	// manifest truth to not_configured | configured_unverified | verified, and
+	// a real Perses health probe is required to reach verified), a real
+	// Keycloak native metrics signal exists for this Target, the identity
+	// provider is actually selected, and the Keycloak placement is a valid,
+	// BaseHarbor-owned authorization for this Target (fail-closed). The
+	// predicate is verified-only: both not_configured and configured_unverified
+	// fail closed — configured_unverified means no real Perses health path
+	// exists, so eligibility must never be emitted for that state. Resolve the
+	// witness from real primitives before the remote-target early return so the
+	// gate is evaluated on both local and remote-target faces. An eligible
+	// identity-dashboard status can NEVER be emitted while Perses is
+	// not_configured or configured_unverified.
+	identityBackendAvailable := identityDashboardBackendEligible(
+		persesStatus,
+		resolved.Manifest,
+		resolved.TargetStateRoot,
+		resolved.Target.Name,
+	)
 	if hasRemoteApplicationTarget(resolved) {
-		return applicationStatusResult{StatusResult: result, ApplicationID: resolved.Manifest.ApplicationID,
+		return withIdentityDashboardStatus(applicationStatusResult{StatusResult: result,
+			ApplicationID:      resolved.Manifest.ApplicationID,
 			DeploymentID:       resolved.DeploymentIdentity.DeploymentID,
 			OperatorAuth:       collectOperatorAuthObservation(ctx, resolved.Target.Name, resolved.Manifest.Environment),
 			Perses:             persesStatus,
@@ -326,9 +354,7 @@ func collectApplicationStatusResult(ctx context.Context, store application.Store
 			HostContainersDashboards: metricsprovider.PersesHostDashboardAvailability(
 				resolvedHostSignalStatus),
 			PersesBackendWitness:     persesBackendSignalWitnessFromManifest(resolved.Manifest, resolvedHostSignalStatus, metricsprovider.PersesBackendSignalWitness{}),
-			InfrastructureDashboards: infrastructureDashboardStatus,
-			Versions:                 earlyVersions,
-			VersionWarnings:          earlyVersionWarnings}, nil
+			InfrastructureDashboards: infrastructureDashboardStatus}, persesStatus, identityBackendAvailable), nil
 	}
 	tlsStatus, tlsObservation, tlsErr := collectApplicationTLSObservation(resolved)
 	if tlsErr != nil || (tlsObservation != nil && !tlsObservation.Healthy) {
@@ -418,7 +444,7 @@ func collectApplicationStatusResult(ctx context.Context, store application.Store
 		}
 	}
 	versions, versionWarnings := collectAppStatusVersions(resolved)
-	return applicationStatusResult{
+	return withIdentityDashboardStatus(applicationStatusResult{
 		StatusResult:             result,
 		ApplicationID:            resolved.Manifest.ApplicationID,
 		DeploymentID:             resolved.DeploymentIdentity.DeploymentID,
@@ -440,5 +466,47 @@ func collectApplicationStatusResult(ctx context.Context, store application.Store
 		tlsStatus:                tlsStatus,
 		tlsErr:                   tlsErr,
 		serviceTLSErr:            serviceTLSErr,
-	}, nil
+	}, persesStatus, identityBackendAvailable), nil
+}
+
+// withIdentityDashboardStatus binds the same verified-only decision to both
+// local and remote public status results.
+func withIdentityDashboardStatus(result applicationStatusResult, persesStatus *capability.PersesStatus, eligible bool) applicationStatusResult {
+	result.Perses = persesStatus
+	result.IdentityDashboardEligible = eligible
+	return result
+}
+
+// identityDashboardBackendEligible is the verified-only, non-forgeable decision
+// the identity-dashboard gate publishes on BOTH status faces (the local return
+// and the remote-target early return share this one call). It is eligible ONLY
+// when:
+//
+//   - the Perses dashboard is verified (persesStatus == verified). PersesStatusNow
+//     maps manifest truth to not_configured | configured_unverified | verified;
+//     verified requires a real Perses health probe, so a selected, pinned
+//     surface without that probe stays configured_unverified and fails closed.
+//     Both not_configured and configured_unverified therefore fail closed.
+//
+//   - a real, current Keycloak native metrics signal exists for this concrete
+//     Target (MetricCurrent), the identity provider is actually selected, and
+//     the Keycloak placement is a valid, BaseHarbor-owned authorization for this
+//     Target (fail-closed). This is IdentitySelectionWitnessAt().NonForgeableAvailable(),
+//     which binds the signal to this Target's binding so a foreign Target's
+//     signal on the same sharing boundary cannot forge it.
+//
+// It is the single validated entrance for the identity-dashboard availability
+// flag on the status JSON; a caller can never obtain true by supplying a
+// verified status alone without the real witness (fail-closed on both faces).
+func identityDashboardBackendEligible(persesStatus *capability.PersesStatus, m application.Manifest, targetStateRoot, targetName string) bool {
+	// verified-only: not_configured and configured_unverified fail closed.
+	if persesStatus == nil || *persesStatus != capability.PersesStatusVerified {
+		return false
+	}
+	keycloakPlacement, keycloakErr := application.ResolveProviderPlacement(m, capability.ProviderKeycloak)
+	if keycloakErr != nil {
+		return false
+	}
+	identityWitness := metricsprovider.IdentitySelectionWitnessAt(m, keycloakPlacement, targetStateRoot, targetName)
+	return identityWitness.NonForgeableAvailable()
 }
