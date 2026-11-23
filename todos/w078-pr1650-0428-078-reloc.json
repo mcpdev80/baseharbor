@@ -1,0 +1,13 @@
+{
+  "id": "w078-pr1650-0428-078-reloc",
+  "title": "#1650 hop onto f3d847874 + identity-gate (b) environmental",
+  "steps": [
+    { "done": true, "text": "Reality check: PR #1650 head 22a76d68, develop f3d847874, backing branches (ls-remote). PR head lane-0428-078-perses-identity-on-resolver was on old base 7880a8f6." },
+    { "done": true, "text": "Delta-check: develop f3d847874 touches app_status_result.go + scripts/pr-gate-coverage.json vs 1650's base. app_status_result.go had #1650's IdentityDashboardEligible replaced by 0428-062 Versions dimension. CONFLICT in app_status_result.go." },
+    { "done": true, "text": "Resolve: take develop's app_status_result.go + app_status_result_test.go (identity field superseded, wired via perses_selection gate TestEligibleForIdentityDashboardEligibleWithGlobalWitness). Take develop's app_status_result_test.go (no dangling identityDashboardBackendEligible refs). Keep 1650's keycloak_files.go, keycloak_realization.go, perses_dashboards_test.go, realization.go (additive identity-witness). NET diff vs develop = 4 files only." },
+    { "done": true, "text": "Build/vet/tests clean on cf43c6e89: go build 0, go vet 0, metrics+cmd/baha identity/perses tests pass, CI Validation · identity-provider-package-tests SUCCESS." },
+    { "done": true, "text": "Push cf43c6e89 to lane-0428-078-perses-identity-on-resolver (was 22a76d68). ls-remote refs/pull/1650/head == cf43c6e89." },
+    { "done": true, "text": "CI run 45195781651 terminal FAILURE. BASE_SHA == f3d847874 (trusted-plan SUCCESS). All gates pass EXCEPT docker/identity gate: Managed Identity PASS, OIDC Discovery PASS, demo-identity FAIL on --confirm-candidate consent wall." },
+    { "done": false, "text": "IDENTIFICATION/QUESTION pending: identity-gate failure classified (b) environmental (1623-coreless pattern: per-submission --confirm-candidate consent CI cannot auto-provide). NOT (a) code fix — keycloak_realization.go change is purely additive RegisterKeycloakMetricsSignalsAt wrapper, code gate passes. NOT (c) flake — deterministic exit 41. Awaiting owner decision on identity-gate consent harness. akte on origin/main 57f47e977." }
+  ]
+}
