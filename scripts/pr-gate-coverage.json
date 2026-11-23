@@ -213,6 +213,23 @@
       ]
     },
     {
+      "id": "source.cmd.baha.app.access.go",
+      "path": "cmd/baha/app_access.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
+      "id": "cmd.baha.app.access.test.go",
+      "path": "cmd/baha/app_access_test.go",
+      "runtime_specific": true,
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
       "id": "source.cmd.baha.app.edit.apply.go",
       "path": "cmd/baha/app_edit_apply.go",
       "surfaces": [
@@ -1453,12 +1470,6 @@
       "runtime_specific": true
     },
     {
-      "id": "source.internal.metrics.perses.dashboards.promql.test.go",
-      "path": "internal/metrics/perses_dashboards_promql_test.go",
-      "surfaces": ["source.gate.atomic.docker.observability", "source.gate.atomic.podman.observability"],
-      "runtime_specific": true
-    },
-    {
       "id": "source.internal.metrics.perses.dashboards.0428-076.native.test.go",
       "path": "internal/metrics/perses_dashboards_0428-076_native_test.go",
       "surfaces": ["source.gate.atomic.docker.observability", "source.gate.atomic.podman.observability"],
@@ -1827,6 +1838,33 @@
     {
       "id": "internal.operatorauth.test.operator.go",
       "path": "internal/operatorauth/test_operator.go",
+      "runtime_specific": true,
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
+      "id": "internal.operatorauth.local_runtime.go",
+      "path": "internal/operatorauth/local_runtime.go",
+      "runtime_specific": true,
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
+      "id": "internal.operatorauth.local_runtime_test.go",
+      "path": "internal/operatorauth/local_runtime_test.go",
+      "runtime_specific": true,
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
+      "id": "cmd.baha.control_plane_single_native_ci_test.go",
+      "path": "cmd/baha/control_plane_single_native_ci_test.go",
       "runtime_specific": true,
       "surfaces": [
         "source.gate.atomic.docker.data.capabilities",

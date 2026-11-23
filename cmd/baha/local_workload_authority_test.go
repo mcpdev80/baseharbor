@@ -38,6 +38,8 @@ func TestCLILocalWorkloadOperationIncludesGrantBackedRoots(t *testing.T) {
 		{name: "app doctor", args: []string{"app", "doctor"}, want: "doctor"},
 		{name: "app plan", args: []string{"app", "plan"}, want: "plan"},
 		{name: "app apply", args: []string{"app", "apply"}, want: "apply"},
+		{name: "root init quick", args: []string{"init", "--quick"}, want: "app.adopt"},
+		{name: "root init plain", args: []string{"init"}, want: "app.adopt"},
 		{name: "other root command", args: []string{"version"}},
 	}
 	for _, tt := range tests {
@@ -46,6 +48,24 @@ func TestCLILocalWorkloadOperationIncludesGrantBackedRoots(t *testing.T) {
 				t.Fatalf("cliLocalWorkloadOperation(%v) = %q, want %q", tt.args, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestCLILocalRuntimeAccessProviderForms(t *testing.T) {
+	// Host-local Target access arrives as the bare alias "local" and as the
+	// runtime-specific "local-<runtime>" provider form written by the static-
+	// cell fixtures ("--access local-docker" and its Podman sibling). The
+	// grant check must accept both; everything remote or unset keeps failing
+	// closed. The runtime probe still decides actual engine ownership.
+	for _, provider := range []string{"local", "local-docker", "local-podman"} {
+		if !isLocalRuntimeAccessProvider(provider) {
+			t.Fatalf("host-local access form %q must qualify for the grant", provider)
+		}
+	}
+	for _, provider := range []string{"", "baseharbor-core", "baseharbor-node-connector", "docker-remote"} {
+		if isLocalRuntimeAccessProvider(provider) {
+			t.Fatalf("access provider %q must not qualify as a host-local form", provider)
+		}
 	}
 }
 
@@ -225,5 +245,23 @@ func TestLocalWorkloadAuthorityPreservesAllNonlocalAndPolicyBoundaries(t *testin
 				t.Fatal("adapter manufactured a principal")
 			}
 		})
+	}
+}
+
+func TestCLIInitQuickMapsToLocalWorkloadAdoption(t *testing.T) {
+	if got := cliLocalWorkloadOperation([]string{"init", "--quick"}); got != "app.adopt" {
+		t.Fatalf("root quick init maps to %q, want app.adopt", got)
+	}
+	if got := cliLocalWorkloadOperation([]string{"init"}); got != "app.adopt" {
+		t.Fatalf("root init maps to %q, want app.adopt", got)
+	}
+	if got := cliLocalWorkloadOperation([]string{"init", "--environment", "dev"}); got != "" {
+		t.Fatalf("interactive wizard must not carry the quick-adoption scope, got %q", got)
+	}
+}
+
+func TestCLIAppInitQuickMapsToLocalWorkloadAdoption(t *testing.T) {
+	if got := cliLocalWorkloadOperation([]string{"app", "init", "--quick"}); got != "app.adopt" {
+		t.Fatalf("app init --quick maps to %q, want app.adopt", got)
 	}
 }

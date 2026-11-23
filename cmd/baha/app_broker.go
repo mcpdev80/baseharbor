@@ -41,6 +41,13 @@ func runtimeBrokerMetricsTarget(m application.Manifest) string {
 
 var errRuntimeBrokerIncompatible = errors.New("runtime broker image is incompatible")
 
+// errRuntimeBrokerStarting marks a non-final readiness state: the broker
+// container is still warming (compose healthcheck start_period reports
+// "starting", or the first check has not run and health is empty). Callers
+// must treat it as transient and keep polling instead of aborting, because
+// the healthcheck's retries:12 / start_period:30s window has not elapsed.
+var errRuntimeBrokerStarting = errors.New("runtime broker still starting")
+
 // envAllowMutableDevelopmentRuntimeImage opts a development deployment into the
 // legacy mutable-tag fallback when the artifact endpoint merely could not be
 // resolved. Without it, an unpinned reference is never pulled. It cannot
@@ -415,7 +422,11 @@ func verifyRuntimeBrokerRunning(ctx context.Context, compose bhruntime.RuntimePr
 			case "unhealthy":
 				return errors.New("application runtime broker healthcheck is unhealthy")
 			case "", "starting":
-				return errors.New("application runtime broker healthcheck is not ready")
+				// During the compose healthcheck start_period the container
+				// reports "starting" (or empty before the first check). Treat
+				// those transient states as non-final so the retry loop keeps
+				// polling instead of aborting before the healthcheck gives up.
+				return errRuntimeBrokerStarting
 			default:
 				return fmt.Errorf("application runtime broker healthcheck state %q is not ready", container.Health)
 			}
@@ -441,6 +452,17 @@ func verifyRuntimeBrokerRunning(ctx context.Context, compose bhruntime.RuntimePr
 			return errors.New("application runtime broker container is not running")
 		}
 		health := strings.ToLower(strings.TrimSpace(container.Health))
+		// The compose healthcheck hits /readyz with start_period: 30s,
+		// interval: 5s, retries: 12. During that start period the container
+		// reports "starting", and a warming broker (executor/openbao not yet
+		// serving) can transiently report "unhealthy" before the healthcheck
+		// gives up. Treat "starting" as non-final: surface a sentinel so the
+		// caller keeps polling the retry loop instead of aborting before the
+		// healthcheck's retries elapse. Only a non-running container, or a
+		// genuinely non-transient health state, is fatal.
+		if health == "starting" {
+			return errRuntimeBrokerStarting
+		}
 		if health != "" && health != "healthy" {
 			return fmt.Errorf("application runtime broker container health is %s", health)
 		}
@@ -499,7 +521,7 @@ func verifyRuntimeBrokerBuildIdentity(actualVersion, actualCommit string) error 
 	if expectedVersion != "" && actualVersion != expectedVersion {
 		developmentPair := expectedVersion == "dev" && actualVersion == "edge"
 		if !developmentPair {
-			return fmt.Errorf("%w: CLI version %s requires runtime version %s, got %s", errRuntimeBrokerIncompatible, expectedVersion, expectedVersion, actualVersion)
+			return fmt.Errorf("%w: CLI version %s requires runtime version %s, got %s", errRuntimeBrokerIncompatible, expectedVersion, actualVersion, actualVersion)
 		}
 	}
 	// Commit SHAs are build provenance, not a runtime compatibility contract.
