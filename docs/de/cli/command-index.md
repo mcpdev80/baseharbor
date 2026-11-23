@@ -26,14 +26,14 @@ Exakte Optionen stehen in `baha COMMAND --help`. [Globale Optionen](global-optio
 | `baha app edit` | Edit current application needs with preview and impact consent | `baha app edit [NAME] [-e ENV\|--environment ENV]` | [↗](applications.md) |
 | `baha app env` | Show the standard environment contract for an application | `baha app env [NAME] [--format dotenv\|shell\|json\|yaml] [--reveal] [--path]` | [↗](applications.md) |
 | `baha app evidence` | Export secret-safe application lifecycle and verification evidence | `baha app evidence [NAME] [-e ENV\|--environment ENV] [-o json\|--output json]` | [↗](applications.md) |
-| `baha app exec` | Execute a command in an application workload service | `baha app exec SERVICE COMMAND [ARG...] [--app NAME]` | [↗](applications.md) |
+| `baha app exec` | Execute a command in an application workload service | `baha app exec [--app NAME] [-e ENV\|--environment ENV] [COMPONENT\|-c NAME] [--cmd CMD\|COMMAND [ARG...]]` | [↗](applications.md) |
 | `baha app export` | Export selected local application credentials into an encrypted file | `baha app export [NAME] [--include STATE]... --password-file FILE [--output FILE]` | [↗](applications.md) |
 | `baha app footprint` | Read the current application footprint | `baha app footprint show [NAME] [-o json\|--output json] [--details]` | [↗](applications.md) |
 | `baha app footprint show` | Display the authoritative Target footprint without mutation | `baha app footprint show [NAME] [-o json\|--output json] [--details]` | [↗](applications.md) |
 | `baha app init` | Create the application contract or initialize deployment settings | `baha app init --agents [--json] \| baha app init [--quick] [--json] \| baha app init [--input NAME=VALUE]... [--hostname HOST] [--tls acme\|existing\|local] [--cert-dir DIR] [--yes] \| baha app init [NAME] [-e ENV\|--environment ENV] [--sql\|--sql-instance NAME] [--cache\|--cache-instance NAME] [--key-value\|--key-value-instance NAME] [--document-db\|--document-db-instance NAME] [--messaging-queue\|--messaging-queue-instance NAME] [--messaging-pubsub\|--messaging-pubsub-instance NAME] [--messaging-stream\|--messaging-stream-instance NAME] [--s3\|--s3-bucket NAME] [--secrets\|--require-secret NAME] [--workload-component NAME]... [--workload-source KIND:PATH]` | [↗](applications.md) |
 | `baha app inspect` | Inspect a repository without changing it | `baha app inspect [PATH] [--verbose] [-o json\|--output json\|--json]` | [↗](applications.md) |
 | `baha app list` | List registered deployments for the effective target | `baha app list [--all-targets]` | [↗](applications.md) |
-| `baha app logs` | Show logs for the current application workload | `baha app logs [SERVICE] [--follow] [--app NAME]` | [↗](applications.md) |
+| `baha app logs` | Show logs for the current application workload | `baha app logs [COMPONENT] [--follow] [--tail N] [-c NAME]... [--app NAME] [-e ENV\|--environment ENV] [--json]` | [↗](applications.md) |
 | `baha app new` | Create a new ecosystem-native application from a BaseHarbor contract | `baha app new [NAME] [--directory PARENT] [--stack go\|nextjs\|python\|quarkus \| --stack-profile NAME] [--emit-backstage --backstage-owner OWNER [--backstage-lifecycle LIFECYCLE]] [-e ENV\|--environment ENV] [--http] [--sql] [--cache] [--key-value] [--document-db] [--queue] [--pubsub] [--stream] [--s3] [--secrets] [--require-secret NAME]... [--telemetry] [--all] [-o json\|--output json]` | [↗](applications.md) |
 | `baha app perses` | Guide enable/status/disable and ownership-safe removal of the optional Perses surface | `baha app perses <command> [NAME] [--json]` | [↗](applications.md) |
 | `baha app perses disable` | Deselect the optional Perses management-ui surface | `baha app perses disable [NAME] [--json]` | [↗](applications.md) |
@@ -54,17 +54,18 @@ Exakte Optionen stehen in `baha COMMAND --help`. [Globale Optionen](global-optio
 | `baha app secret tls-set` | Validate and store a TLS certificate chain and private key | `baha app secret tls-set [NAME] --cert-file PATH --key-file PATH [--chain-file PATH]` | [↗](applications.md) |
 | `baha app secure-profile` | Encrypt explicitly selected local credentials into a password-locked export | `baha app secure-profile export [NAME] --password-file FILE --output FILE` | [↗](applications.md) |
 | `baha app secure-profile export` | Encrypt selected local credentials into a password-locked export file | `baha app secure-profile export [NAME] --password-file FILE [--output FILE]` | [↗](applications.md) |
-| `baha app shell` | Open a shell in an application workload service | `baha app shell SERVICE [--app NAME]` | [↗](applications.md) |
+| `baha app shell` | Open a shell in an application workload service | `baha app shell [COMPONENT] [-c NAME] [--app NAME] [-e ENV\|--environment ENV]` | [↗](applications.md) |
 | `baha app show` | Show a coherent application overview | `baha app show [NAME]` | [↗](applications.md) |
 | `baha app sql` | Open the managed SQL console for the current application | `baha app sql [INSTANCE] [--app NAME]` | [↗](applications.md) |
-| `baha app status` | Show application runtime and readiness status | `baha app status [NAME] [-o json\|--output json]` | [↗](applications.md) |
+| `baha app status` | Show application runtime, readiness and version status | `baha app status [NAME] [-c COMPONENT[,COMPONENT]] [-o json\|--output json]` | [↗](applications.md) |
 | `baha app stop` | Stop application runtimes while preserving data for reactivation | `baha app stop [NAME] [--yes]` | [↗](applications.md) |
 | `baha app tls` | Inspect and maintain application TLS certificates | `baha app tls <command>` | [↗](applications.md) |
 | `baha app tls update` | Check for or install a newer existing TLS certificate | `baha app tls update [--check]` | [↗](applications.md) |
 | `baha app up` | Start an existing application runtime and verify readiness | `baha app up [NAME] [--yes\|-y] [--skip-memory-preflight]` | [↗](applications.md) |
 | `baha app update` | Safely inspect or update a Git-backed application | `baha app update [--check] [--backup-password-file FILE \| --no-backup]` | [↗](applications.md) |
-| `baha app version` | Show separated wanted/applied/observed release and component versions | `baha app version [NAME] [-o json\|--output json]` | [↗](applications.md) |
-| `baha app versions` | Show readable wanted/applied/observed versions for recorded deployments | `baha app versions [--all-targets] [-o json\|--output json]` | [↗](applications.md) |
+| `baha app urls` | List verified application and service GUI URLs with their accessibility | `baha app urls [NAME] [-c NAME]... [--print] [--json] [-e ENV\|--environment ENV]` | [↗](applications.md) |
+| `baha app version` | Show separated wanted/applied/observed release and component versions | `baha app version [NAME] [-c COMPONENT[,COMPONENT]] [-o json\|--output json]` | [↗](applications.md) |
+| `baha app versions` | Show readable wanted/applied/observed versions for recorded deployments | `baha app versions [--all-targets] [-c COMPONENT[,COMPONENT]] [-o json\|--output json]` | [↗](applications.md) |
 | `baha app workspace` | Manage local multi-repository workspace mappings | `baha app workspace [<init\|map\|show\|resolve\|status\|update\|path\|source\|component> [options]]` | [↗](applications.md) |
 | `baha app workspace component` | Inspect and maintain unique component-to-source mappings | `baha app workspace component <list\|add\|remove> [options]` | [↗](applications.md) |
 | `baha app workspace component add` | Add or retarget the unique mapping of one component without inventing it implicitly | `baha app workspace component add COMPONENT SOURCE[@SUBPATH] [--manifest PATH] [-o json]` | [↗](applications.md) |

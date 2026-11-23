@@ -110,6 +110,22 @@ func TestAppNewWizardRunExplicitlyConfirmsExactCandidate(t *testing.T) {
 	if !strings.Contains(out.String(), "Bind this exact candidate") || !strings.Contains(out.String(), "Lifecycle: VERIFIED") {
 		t.Fatalf("New omitted the exact consent prompt or verified receipt:\n%s", out.String())
 	}
+	// The candidate context must name the pre-chdir working directory so the
+	// operator confirms the exact submission in its own context, not silently
+	// inside the freshly created project.
+	if !strings.Contains(out.String(), "working dir before New") {
+		t.Fatalf("New omitted the pre-chdir working directory from the candidate context:\n%s", out.String())
+	}
+	// The banner must appear before the confirm prompt fires.
+	contextIdx := strings.Index(out.String(), "working dir before New")
+	promptIdx := strings.Index(out.String(), "Bind this exact candidate")
+	if contextIdx == -1 || promptIdx == -1 || contextIdx > promptIdx {
+		t.Fatalf("candidate context must be shown before the confirm prompt:\n%s", out.String())
+	}
+	// The working dir shown must be the current process directory at confirm time.
+	if cwd, err := os.Getwd(); err == nil && !strings.Contains(out.String(), cwd) {
+		t.Fatalf("candidate context must name the actual pre-chdir working directory %q:\n%s", cwd, out.String())
+	}
 }
 
 func TestAppNewWizardCandidateConsentNoKeepsProjectAndDoesNotRetry(t *testing.T) {
