@@ -65,6 +65,7 @@ Aktuelle Daten liefert `baha agent describe -o json` (`cli_coverage`). Nach Code
 | `baha app tls` | Darstellung |  |  | Command group; invoke its supported subcommands. |
 | `baha app tls update` | semantisch | CLI -o json / typed MCP result | baseharbor.tls.update |  |
 | `baha app up` | semantisch | CLI -o json / typed MCP result | baseharbor.apply |  |
+| `baha app urls` | ausgeschlossen |  |  | Listet nur die verifizierten URLs und GUI-URLs gebundener Dienste des Status-Read-Modells; typisierte Clients prüfen app.status und TLS-Zustand. Das Öffnen im Browser bleibt die ausgeschlossene menschliche Naht 'baha open'. |
 | `baha app update` | semantisch | CLI -o json / typed MCP result | baseharbor.update |  |
 | `baha app version` | Darstellung |  |  | Repository-bound presentation of the app.versions read model for the current deployment; machine clients invoke app.versions with explicit identity. |
 | `baha app versions` | semantisch | CLI -o json / typed MCP result | baseharbor.app.versions |  |
