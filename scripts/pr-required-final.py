@@ -17,8 +17,8 @@ CORELESS_LIFECYCLE_GATES = {
     'integration/podman/coreless-lifecycle',
 }
 # card 0428-208/#1746 (INGRESS base policy): the atomic/static/* focused gates
-# (e.g. atomic/static/shell-ux, atomic/static/ci-fast-check) run their executable
-# check inside the PR itself. See the classification at
+# (e.g. atomic/static/shell-ux, atomic/static/ci-fast-check, atomic/static/mcp)
+# run their executable check inside the PR itself. See the classification at
 # pr-stage-boundary.py:ATOMIC_STATIC_PR_EXECUTED_GATES -- the stage boundary marks
 # these as PR-executed, never deferred. This maps them to the focused validation
 # job so the required-checks pass. Every other atomic/static-shaped name stays
@@ -26,6 +26,7 @@ CORELESS_LIFECYCLE_GATES = {
 ATOMIC_STATIC_FOCUSED_GATES = frozenset({
     'atomic/static/shell-ux',
     'atomic/static/ci-fast-check',
+    'atomic/static/mcp',
 })
 
 

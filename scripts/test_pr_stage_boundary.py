@@ -64,6 +64,13 @@ class PRStageBoundaryTests(unittest.TestCase):
                 result = stage.stage(self.plan)
                 self.assertEqual([gate], result["selected_gates"])
                 self.assertEqual([], result["deferred_integration_gates"])
+        # atomic/static/mcp gained the same PR-executed class as its siblings:
+        # it stays selected, is never deferred, and leaves native acceptance
+        # unchanged (mirrors the shell-ux/ci-fast-check regression below).
+        self.plan["selected_gates"] = ["atomic/static/mcp"]
+        result = stage.stage(self.plan)
+        self.assertEqual(["atomic/static/mcp"], result["selected_gates"])
+        self.assertEqual([], result["deferred_integration_gates"])
         # Mixed with a native gate: the native selection/deferral behaviour is
         # asserted UNCHANGED (native stays selected, nothing deferred).
         self.plan["selected_gates"] = ["atomic/static/shell-ux",

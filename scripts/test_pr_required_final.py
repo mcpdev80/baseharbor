@@ -156,6 +156,19 @@ class FinalChecks(unittest.TestCase):
         self.needs['pr_demo_pin'] = {'result': 'failure'}
         self.assertTrue(final.verify(self.plan, self.needs))
 
+    def test_mcp_static_gate_executes_through_focused_job(self):
+        # (regression, 0428-208 #1793) the trusted planner selects the
+        # release-only atomic/static/mcp gate. The final verifier must classify
+        # it as PR-executed, map it to the focused validation job (never to a
+        # deferred or unknown executor), and require only that job to succeed.
+        self.plan['selected_gates'] = ['atomic/static/mcp']
+        # A classify error is any residual gate that reaches the else branch
+        # ("no workflow executor"): it must not appear for the mcp gate.
+        self.assertEqual([], final.verify(self.plan, self.needs))
+        needs = copy.deepcopy(self.needs)
+        needs['pr_focused'] = {'result': 'skipped'}
+        self.assertTrue(final.verify(self.plan, needs))
+
 
 if __name__ == '__main__':
     unittest.main()
