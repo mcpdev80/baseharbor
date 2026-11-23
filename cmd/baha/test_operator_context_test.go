@@ -80,7 +80,7 @@ func testIsolatedSelectionContext(t *testing.T) {
 	// evaluated for THIS test's environment, so a test that legitimately
 	// persists a selection under a host root keeps observing it.
 	if activeOrganizationSelectionVisibleToHost() {
-		t.Setenv("XDG_CONFIG_HOME", hostConfigIsolationDir())
+		t.Setenv("XDG_CONFIG_HOME", hostConfigIsolationDir(t))
 	}
 }
 
@@ -99,14 +99,18 @@ func activeOrganizationSelectionVisibleToHost() bool {
 }
 
 // hostConfigIsolationDir returns a private, selection-free config root for the
-// current test process. The directory itself is discarded with the test's
-// temporary root; only the environment override needs the testing package's
-// restore.
-func hostConfigIsolationDir() string {
-	root, err := os.MkdirTemp("", "baseharbor-0428-223-cfg-")
-	if err != nil {
-		panic("create host config isolation root: " + err.Error())
-	}
+// current test process. The directory lives under the testing package's
+// per-test temporary root, so the isolated host config is removed on cleanup
+// (t.Cleanup) instead of leaking into the global /tmp the previous
+// os.MkdirTemp("", ...) left behind. Only the environment override needs the
+// testing package's restore.
+func hostConfigIsolationDir(t *testing.T) string {
+	root := t.TempDir()
+	t.Cleanup(func() {
+		if err := os.RemoveAll(root); err != nil {
+			t.Errorf("remove host config isolation root %q: %v", root, err)
+		}
+	})
 	return root
 }
 
@@ -127,4 +131,28 @@ func envWithoutLeakedTargetSelection(env []string) []string {
 		out = append(out, entry)
 	}
 	return out
+}
+
+// TestHostConfigIsolationDirCleanedUp proves the isolated host-config root
+// created by hostConfigIsolationDir is removed on test cleanup instead of
+// leaking into the global /tmp the previous os.MkdirTemp("", ...) left behind
+// with no cleanup: after the test's cleanup the directory must no longer
+// exist. t.TempDir() owns the path; the guarantee this card enforces is the
+// explicit t.Cleanup removal, not where the OS happens to place the temp root.
+func TestHostConfigIsolationDirCleanedUp(t *testing.T) {
+	var root string
+	if !t.Run("isolated root is removed by cleanup", func(t *testing.T) {
+		root = hostConfigIsolationDir(t)
+		if _, err := os.Stat(root); err != nil {
+			t.Fatalf("host config isolation root before cleanup: %v", err)
+		}
+	}) {
+		t.Fatal("host config isolation subtest failed")
+	}
+	// t.Run returns only after the subtest's registered t.Cleanup callbacks
+	// have run, so this checks the helper's cleanup rather than deleting the
+	// directory from the assertion itself.
+	if _, err := os.Stat(root); !os.IsNotExist(err) {
+		t.Fatalf("host config isolation root %q still exists after cleanup (leak): err=%v", root, err)
+	}
 }
