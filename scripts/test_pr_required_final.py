@@ -92,28 +92,6 @@ class FinalChecks(unittest.TestCase):
         self.plan['deferred_integration_gates'].append('integration/unknown')
         self.assertTrue(final.verify(self.plan, self.needs))
 
-    def test_shell_ux_static_gate_executes_through_focused_job(self):
-        # card 0428-208/#1746 (INGRESS base policy): atomic/static/* focused gates
-        # (e.g. atomic/static/shell-ux) execute through the PR · Focused Python job.
-        self.plan['selected_gates'] = ['atomic/static/shell-ux']
-        # Without pr_focused succeeding it blocks; with it it passes.
-        self.needs['pr_focused'] = {'result': 'failure'}
-        self.assertTrue(final.verify(self.plan, self.needs))
-        self.needs['pr_focused'] = {'result': 'success'}
-        self.assertEqual([], final.verify(self.plan, self.needs))
-        self.needs['pr_focused'] = {'result': 'skipped'}
-        self.assertTrue(final.verify(self.plan, self.needs))
-
-    def test_generic_static_class_gate_executes_through_focused_job(self):
-        # The static-class mapping is general, not shell-ux-specific: any
-        # atomic/static/* focused gate (e.g. atomic/static/ci-fast-check) runs in
-        # the focused job. This mirrors the atomic/{docker,podman} mapping precedent.
-        self.plan['selected_gates'] = ['atomic/static/ci-fast-check']
-        self.needs['pr_focused'] = {'result': 'failure'}
-        self.assertTrue(final.verify(self.plan, self.needs))
-        self.needs['pr_focused'] = {'result': 'success'}
-        self.assertEqual([], final.verify(self.plan, self.needs))
-
     def test_unknown_empty_unresolved_and_stale_are_not_success(self):
         for change in ({'selected_gates': ['ha/docker/data']},
                        {'required_validation_checks': []},
@@ -156,18 +134,34 @@ class FinalChecks(unittest.TestCase):
         self.needs['pr_demo_pin'] = {'result': 'failure'}
         self.assertTrue(final.verify(self.plan, self.needs))
 
-    def test_mcp_static_gate_executes_through_focused_job(self):
-        # (regression, 0428-208 #1793) the trusted planner selects the
-        # release-only atomic/static/mcp gate. The final verifier must classify
-        # it as PR-executed, map it to the focused validation job (never to a
-        # deferred or unknown executor), and require only that job to succeed.
+    def test_release_only_atomic_static_gate_is_deferred_not_pr_executed(self):
+        # Finding (0428-208 #1793): `atomic/static/mcp` is a release-only static
+        # gate whose executable proof runs only at release/qualify
+        # (docker-runtime-acceptance.yml:630), never inside a PR. It must be
+        # classified DEFERRED release-only by the stage boundary and must NOT
+        # require any PR-executed job in the final verifier: no PR executor
+        # exists, and no silent-pass is created by mapping it to pr_focused.
+        self.plan['required_consumer_dependencies'] = ['core', 'demo']
         self.plan['selected_gates'] = ['atomic/static/mcp']
-        # A classify error is any residual gate that reaches the else branch
-        # ("no workflow executor"): it must not appear for the mcp gate.
-        self.assertEqual([], final.verify(self.plan, self.needs))
-        needs = copy.deepcopy(self.needs)
-        needs['pr_focused'] = {'result': 'skipped'}
-        self.assertTrue(final.verify(self.plan, needs))
+        staged = stage.stage(self.plan)
+        # (a) mcp is pulled out of the selected list and recorded as deferred;
+        # no required PR-check exists for it, and verify passes the remaining
+        # base workflow jobs without any mcp proof running in the PR.
+        self.assertEqual([], staged['selected_gates'])
+        self.assertEqual(['atomic/static/mcp'], staged['deferred_integration_gates'])
+        self.assertEqual([], final.verify(staged, self.needs))
+        # (b) A failing PR-executed job still blocks -- the deferral is real and
+        # visible, not a silent cover for a missing mcp proof.
+        failing = copy.deepcopy(self.needs)
+        failing['pr_validations'] = {'result': 'failure'}
+        self.assertTrue(final.verify(staged, failing))
+
+    def test_unsupported_deferred_gate_still_blocks(self):
+        # The mcp deferral widens the allow-list by exactly one known release
+        # gate; an invented deferred gate is still rejected.
+        self.plan['selected_gates'] = []
+        self.plan['deferred_integration_gates'] = ['atomic/static/phantom']
+        self.assertTrue(final.verify(self.plan, self.needs))
 
 
 if __name__ == '__main__':
