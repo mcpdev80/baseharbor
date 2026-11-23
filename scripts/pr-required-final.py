@@ -16,18 +16,6 @@ CORELESS_LIFECYCLE_GATES = {
     'integration/docker/coreless-lifecycle',
     'integration/podman/coreless-lifecycle',
 }
-# card 0428-208/#1746: the atomic/static/* focused static gates (shell-ux,
-# ci-fast-check) run their executable check inside the PR itself (via the
-# Focused Python job). The stage boundary (pr-stage-boundary.py:ATOMIC_STATIC_PR_EXECUTED_GATES)
-# marks them PR-executed, never deferred. They must map to the real, existing
-# pr_focused executor here; dropping this set (as happened in the #1793
-# mcp-reclassification) leaves them in 'selected gate has no workflow
-# executor'. atomic/static/mcp is intentionally NOT here: it is a
-# release-only deferred gate (see allowed_deferred below).
-ATOMIC_STATIC_FOCUSED_GATES = frozenset({
-    'atomic/static/shell-ux',
-    'atomic/static/ci-fast-check',
-})
 
 
 def verify(base_plan, needs, *, head=None, integration=None):
@@ -65,12 +53,14 @@ def verify(base_plan, needs, *, head=None, integration=None):
             deferred = []
         allowed_deferred = {
             'integration/static/public-contracts',
-            # Release-only atomic/static gate: its executable proof runs only at
-            # release/qualify (pre-release.yml:663 static_gates ->
-            # pre-release-runtime-suite.yml:267, GATE=mcp runs tests/mcp/run.sh),
-            # never in a PR.
-            # No PR executor exists; the requirement is honoured by deferral, not
-            # by a focused-python regression. See pr-stage-boundary.py.
+            # Release-only atomic/static gates whose executable check runs only
+            # at release/qualify (pre-release.yml:663 static_gates ->
+            # pre-release-runtime-suite.yml:267, GATE=shell-ux runs
+            # tests/shell-ux/run.sh, GATE=ci-fast-check runs scripts/ci-fast-check.sh),
+            # never in a PR. No PR executor exists; the requirement is honoured by
+            # deferral, not by a focused-python regression. See pr-stage-boundary.py.
+            'atomic/static/shell-ux',
+            'atomic/static/ci-fast-check',
             'atomic/static/mcp',
         }
         unknown_deferred = set(deferred) - allowed_deferred
@@ -86,12 +76,6 @@ def verify(base_plan, needs, *, head=None, integration=None):
             required.add('pr_public_contracts')
         elif gate in CORELESS_LIFECYCLE_GATES:
             pass
-        elif gate in ATOMIC_STATIC_FOCUSED_GATES:
-            # Focused static gates (shell-ux, ci-fast-check) run their executable
-            # check in the PR via the Focused Python job (mirrors the
-            # atomic/{docker,podman} mapping above and the stage-boundary
-            # PR-executed classification). Require that job to succeed.
-            required.add('pr_focused')
         else:
             errors.append('selected gate has no workflow executor: ' + gate)
     if 'pr_runtime_selected' in required or 'pr_public_contracts' in required:
