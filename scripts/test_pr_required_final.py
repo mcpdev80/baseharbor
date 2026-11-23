@@ -165,6 +165,47 @@ class FinalChecks(unittest.TestCase):
         self.plan['deferred_integration_gates'] = ['atomic/static/phantom']
         self.assertTrue(final.verify(self.plan, self.needs))
 
+    def test_focused_static_gates_map_to_pr_focused_executor(self):
+        # Post-merge #1793 fix: shell-ux and ci-fast-check are the
+        # atomic/static/* focused static gates. The stage boundary marks them
+        # PR-executed (never deferred), so the final verifier must map them to
+        # the real, existing pr_focused executor -- NOT fall into
+        # 'selected gate has no workflow executor'.
+        self.plan['required_consumer_dependencies'] = ['core', 'demo']
+        self.plan['selected_gates'] = ['atomic/static/shell-ux',
+                                       'atomic/static/ci-fast-check']
+        staged = stage.stage(self.plan)
+        # Both stay selected (PR-executed), nothing deferred.
+        self.assertEqual(['atomic/static/shell-ux', 'atomic/static/ci-fast-check'],
+                         staged['selected_gates'])
+        self.assertEqual([], staged['deferred_integration_gates'])
+        # With pr_focused succeeding they pass; with it failing/skipped they block.
+        self.assertEqual([], final.verify(staged, self.needs))
+        failing = copy.deepcopy(self.needs)
+        failing['pr_focused'] = {'result': 'failure'}
+        self.assertTrue(final.verify(staged, failing))
+        skipped = copy.deepcopy(self.needs)
+        skipped['pr_focused'] = {'result': 'skipped'}
+        self.assertTrue(final.verify(staged, skipped))
+
+    def test_unknown_atomic_static_gate_still_has_no_executor(self):
+        # The focused-mapping only covers the enumerated focused gates; any
+        # other atomic/static/* gate still yields the no-executor error.
+        self.plan['required_consumer_dependencies'] = ['core', 'demo']
+        self.plan['selected_gates'] = ['atomic/static/phantom']
+        self.assertTrue(final.verify(self.plan, self.needs))
+
+    def test_mcp_deferral_unchanged_by_focused_mapping(self):
+        # Restoring ATOMIC_STATIC_FOCUSED_GATES must NOT pull mcp into the
+        # focused executor: mcp stays release-only deferred and requires no PR
+        # check. (Regression guard against the focused set swallowing mcp.)
+        self.plan['required_consumer_dependencies'] = ['core', 'demo']
+        self.plan['selected_gates'] = ['atomic/static/mcp']
+        staged = stage.stage(self.plan)
+        self.assertEqual([], staged['selected_gates'])
+        self.assertEqual(['atomic/static/mcp'], staged['deferred_integration_gates'])
+        self.assertEqual([], final.verify(staged, self.needs))
+
 
 if __name__ == '__main__':
     unittest.main()
