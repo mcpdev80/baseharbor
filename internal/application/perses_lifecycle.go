@@ -158,8 +158,11 @@ func ResolvePersesLifecycle(m Manifest, action PersesLifecycleAction, setPerses 
 // PersesLifecycleStatus derives the public three-state contract for the optional
 // Perses surface from manifest truth, reusing the seam's three-state mapper.
 // It returns the exact state string (not_configured |
-// configured_unverified) and never "verified": this Core ships no Perses health
-// path, so a selected surface is always configured_unverified.
+// configured_unverified) and never "verified": this lifecycle read surfaces the
+// post-transition state; the runtime status probe (metrics.PersesBackendAnswers
+// status entry) is the only path that can promote a selected, pinned,
+// answering surface to "verified". Enable/disable/remove never run a health
+// probe, so they fail closed to configured_unverified for a selected surface.
 func PersesLifecycleStatus(m Manifest) string {
 	status := capability.PersesStatusNow(m.Services.ObservabilityManagementUI && m.Services.Perses)
 	if status == nil {
