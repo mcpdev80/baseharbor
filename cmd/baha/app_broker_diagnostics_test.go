@@ -132,3 +132,38 @@ func TestRuntimeBrokerReadinessDiagnosticsNeverEchoesValueMarker(t *testing.T) {
 		})
 	}
 }
+
+// TestRuntimeBrokerBuildIdentityMismatchReportsTrueRuntimeVersion guards the
+// build-identity mismatch diagnostic: when the runtime version does not match
+// the CLI's expected version, the error must name the ACTUAL runtime version
+// observed, never the CLI's expected version repeated as if it were the
+// runtime's. Regression for a fix-loud that echoed expectedVersion in the
+// "got" slot, hiding the observed runtime value.
+func TestRuntimeBrokerBuildIdentityMismatchReportsTrueRuntimeVersion(t *testing.T) {
+	oldVersion, oldCommit := version, commit
+	t.Cleanup(func() {
+		version, commit = oldVersion, oldCommit
+	})
+	version = "0.4.15"
+	commit = "abc123"
+
+	const observedRuntimeVersion = "0.4.14"
+	err := verifyRuntimeBrokerBuildIdentity(observedRuntimeVersion, "different-commit")
+	if err == nil {
+		t.Fatal("mismatched runtime version must be rejected")
+	}
+	msg := err.Error()
+	// The true observed runtime value must appear in the diagnostic...
+	if !strings.Contains(msg, observedRuntimeVersion) {
+		t.Fatalf("mismatch diagnostic must report the actual runtime version %q: %q", observedRuntimeVersion, msg)
+	}
+	// ...and the CLI's expected version must also appear, distinctly.
+	if !strings.Contains(msg, "0.4.15") {
+		t.Fatalf("mismatch diagnostic must also name the CLI's expected version: %q", msg)
+	}
+	// The runtime version must appear exactly once (not duplicated from the
+	// expected value).
+	if strings.Count(msg, observedRuntimeVersion) != 1 {
+		t.Fatalf("diagnostic must report the runtime version exactly once (not duplicated): %q", msg)
+	}
+}
