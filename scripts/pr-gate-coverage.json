@@ -146,6 +146,32 @@
   ],
   "components": [
     {
+      "id": "source.cmd_baha_secret_audit_test_go",
+      "path": "cmd/baha/secret_audit_test.go",
+      "surfaces": ["source.gate.atomic.docker.data.capabilities", "source.gate.atomic.podman.data.capabilities"]
+    },
+    {
+      "id": "source.cmd_baha_secret_operations_go",
+      "path": "cmd/baha/secret_operations.go",
+      "surfaces": ["source.gate.atomic.docker.data.capabilities", "source.gate.atomic.podman.data.capabilities"]
+    },
+    {
+      "id": "source.internal_application_perses_lifecycle_test_go",
+      "path": "internal/application/perses_lifecycle_test.go",
+      "surfaces": ["source.gate.atomic.docker.observability", "source.gate.atomic.podman.observability"],
+      "runtime_specific": true
+    },
+    {
+      "id": "source.internal_capability_perses_go",
+      "path": "internal/capability/perses.go",
+      "surfaces": ["source.gate.integration.static.public.contracts"]
+    },
+    {
+      "id": "source.internal_capability_perses_test_go",
+      "path": "internal/capability/perses_test.go",
+      "surfaces": ["source.gate.integration.static.public.contracts"]
+    },
+    {
       "id": "source.cmd.baha.app.apply.go",
       "path": "cmd/baha/app_apply.go",
       "surfaces": [
@@ -1522,6 +1548,12 @@
     {
       "id": "source.internal.metrics.perses.dashboards.helpers.go",
       "path": "internal/metrics/perses_dashboards_helpers.go",
+      "surfaces": ["source.gate.atomic.docker.observability", "source.gate.atomic.podman.observability"],
+      "runtime_specific": true
+    },
+    {
+      "id": "source.internal_metrics_perses_dashboards_keycloak_go",
+      "path": "internal/metrics/perses_dashboards_keycloak.go",
       "surfaces": ["source.gate.atomic.docker.observability", "source.gate.atomic.podman.observability"],
       "runtime_specific": true
     },
