@@ -1184,9 +1184,6 @@ func probeDockerDaemonMode(ctx context.Context, endpoint string) (string, bool) 
 }
 
 func TestAppEditCommandCompleteProviderEditRunsRealLifecycle(t *testing.T) {
-	// A real Core-backed App Edit needs a running, initialized control plane;
-	// skip on a pure-unit host unless the runtime acceptance marker is set.
-	mustHaveRuntimeForStagedCandidate(t)
 	t.Setenv("BASEHARBOR_STATE_DIR", filepath.Join(t.TempDir(), "state"))
 	t.Setenv(application.ProviderScopeEnv(capability.ProviderPostgreSQL), string(capability.ScopeApplication))
 	// Hosted CI provides an explicitly selected Docker daemon endpoint via
