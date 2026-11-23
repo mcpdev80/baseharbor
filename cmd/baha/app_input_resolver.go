@@ -533,6 +533,7 @@ func runtimeUpCommandWithInputResolver(ctx context.Context, args []string, out, 
 	if err != nil {
 		return err
 	}
+	ctx = withRuntimeUpCandidateConsent(ctx, opts)
 	restoreEnvironment := pushApplicationEnvironmentOverride(opts.Environment)
 	defer restoreEnvironment()
 	ctx = withMemoryPreflightOverride(ctx, opts.SkipMemoryPreflight)
