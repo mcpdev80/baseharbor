@@ -53,12 +53,14 @@ def verify(base_plan, needs, *, head=None, integration=None):
             deferred = []
         allowed_deferred = {
             'integration/static/public-contracts',
-            # Release-only atomic/static gate: its executable proof runs only at
-            # release/qualify (pre-release.yml:663 static_gates ->
-            # pre-release-runtime-suite.yml:267, GATE=mcp runs tests/mcp/run.sh),
-            # never in a PR.
-            # No PR executor exists; the requirement is honoured by deferral, not
-            # by a focused-python regression. See pr-stage-boundary.py.
+            # Release-only atomic/static gates whose executable check runs only
+            # at release/qualify (pre-release.yml:663 static_gates ->
+            # pre-release-runtime-suite.yml:267, GATE=shell-ux runs
+            # tests/shell-ux/run.sh, GATE=ci-fast-check runs scripts/ci-fast-check.sh),
+            # never in a PR. No PR executor exists; the requirement is honoured by
+            # deferral, not by a focused-python regression. See pr-stage-boundary.py.
+            'atomic/static/shell-ux',
+            'atomic/static/ci-fast-check',
             'atomic/static/mcp',
         }
         unknown_deferred = set(deferred) - allowed_deferred

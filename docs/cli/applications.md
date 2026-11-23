@@ -66,7 +66,7 @@ starts the lifecycle.
 | `baha up` | Converge an application |
 | `baha app apply` | Apply/reconcile through the application lifecycle |
 | `baha app stop` / `baha down` | Stop application runtime while preserving persistent data |
-| `baha status` | Observe application state |
+| `baha status` | Observe application state, readiness and the unified version section |
 | `baha doctor` | Diagnose and optionally repair |
 | `baha app update` | Update supported application source/state |
 | `baha app destroy NAME` | Remove one application and its owned resources |
