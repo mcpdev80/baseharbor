@@ -1,22 +1,54 @@
 package operatorauth
 
 import (
-	"context"
-	"strings"
+	"errors"
+	"sync/atomic"
+
+	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/environment"
+	"github.com/mcpdev80/baseharbor/internal/machine"
 )
 
-type localRuntimeAuthorityKey struct{}
+// A local operation grant binds one successful runtime check to one policy
+// decision. It prevents accidental internal reuse or substitution. It is not a
+// security boundary against the local OS user, who controls this process; the
+// OS user is the actual trust boundary for local runtime operations.
+type localOperationGrant struct {
+	operation     machine.Operation
+	environmentID string
+	applicationID string
+	nonce         uint64
+	used          atomic.Bool
+}
 
-// LocalRuntimeAuthority is invocation evidence supplied by a trusted adapter
-// after observing its local runtime binding and explicit authentication policy.
-// It is not a principal, persisted identity, or machine-request input. One
-// operation on one Target/environment is covered; tenant/Core operations are
-// never authorized through this authority.
-type LocalRuntimeAuthority struct {
-	Operation   string
-	Target      string
-	Environment string
-	Runtime     string
+// LocalOperationGrant is an opaque handle. Its unexported method prevents
+// other packages from implementing or forging a grant value.
+type LocalOperationGrant interface{ isLocalOperationGrant() }
+
+func (*localOperationGrant) isLocalOperationGrant() {}
+
+var localOperationNonce atomic.Uint64
+
+// CheckLocalRuntimeGrant runs the local runtime check and, only on success,
+// returns an opaque grant for one operation on one application/environment.
+// The private grant type and fields prevent accidental construction or edits
+// by callers. This deliberately does not attempt to defend against the local
+// OS user, who can modify or replace this process.
+func CheckLocalRuntimeGrant(operation machine.Operation, environmentID, applicationID string, check func() error) (LocalOperationGrant, error) {
+	registered, ok := machine.OperationByID(operation.ID)
+	if !ok || registered != operation || !LocalWorkloadOperation(operation.ID) {
+		return nil, errors.New("local runtime grant requires a registered operation")
+	}
+	if environment.Validate(environmentID) != nil || application.ValidateApplicationID(applicationID) != nil || check == nil {
+		return nil, errors.New("local runtime grant requires canonical identities and a runtime check")
+	}
+	if err := check(); err != nil {
+		return nil, err
+	}
+	return &localOperationGrant{
+		operation: operation, environmentID: environmentID,
+		applicationID: applicationID, nonce: localOperationNonce.Add(1),
+	}, nil
 }
 
 func LocalWorkloadOperation(operation string) bool {
@@ -28,18 +60,14 @@ func LocalWorkloadOperation(operation string) bool {
 	}
 }
 
-func WithVerifiedLocalRuntimeAuthority(ctx context.Context, authority LocalRuntimeAuthority) context.Context {
-	authority.Operation = strings.TrimSpace(authority.Operation)
-	authority.Target = strings.TrimSpace(authority.Target)
-	authority.Environment = strings.ToLower(strings.TrimSpace(authority.Environment))
-	return context.WithValue(ctx, localRuntimeAuthorityKey{}, authority)
-}
-
-func WithoutLocalRuntimeAuthority(ctx context.Context) context.Context {
-	return context.WithValue(ctx, localRuntimeAuthorityKey{}, LocalRuntimeAuthority{})
-}
-
-func localRuntimeAuthorityMatches(ctx context.Context, request AuthorizationRequest) bool {
-	authority, ok := ctx.Value(localRuntimeAuthorityKey{}).(LocalRuntimeAuthority)
-	return ok && LocalWorkloadOperation(authority.Operation) && authority.Operation == request.Operation.ID && authority.Target != "" && authority.Target == strings.TrimSpace(request.Context.Target) && authority.Environment != "" && authority.Environment == strings.ToLower(strings.TrimSpace(request.Context.Environment)) && (authority.Runtime == "docker" || authority.Runtime == "podman")
+func localRuntimeGrantMatches(opaque LocalOperationGrant, request AuthorizationRequest) bool {
+	grant, ok := opaque.(*localOperationGrant)
+	if !ok || grant == nil || grant.nonce == 0 || grant.used.Load() {
+		return false
+	}
+	return grant.operation == request.Operation &&
+		grant.environmentID == request.EnvironmentID &&
+		grant.environmentID == request.TargetEnvironmentID &&
+		grant.applicationID != "" && grant.applicationID == request.ApplicationID &&
+		grant.used.CompareAndSwap(false, true)
 }

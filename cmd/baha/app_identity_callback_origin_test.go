@@ -130,7 +130,7 @@ func TestSelectiveIdentityOAuthFixtureUsesValidSourceOnlyInitialization(t *testi
 		t.Fatal(err)
 	}
 	var out bytes.Buffer
-	if err := runWithIO(machineNoninteractiveContext(t.Context()), []string{"app", "init", "--input", "tls_mode=local", "--yes", "--json"}, &out, &out); err != nil {
+	if err := runWithIOAsTestOperator(machineNoninteractiveContext(t.Context()), []string{"app", "init", "--input", "tls_mode=local", "--yes", "--json"}, &out, &out); err != nil {
 		t.Fatalf("actual source-only OAuth initialization failed: %v", err)
 	}
 	resolved, err := resolveApplication(t.Context(), application.Store{}, nil, "plan")

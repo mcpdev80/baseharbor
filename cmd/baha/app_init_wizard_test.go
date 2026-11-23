@@ -70,7 +70,7 @@ SECRET_KEY=also-must-not-be-copied
 
 	withWizardTestDir(t, dir)
 	var out bytes.Buffer
-	if err := appGuidedInitCommand().Run(context.Background(), []string{"--quick"}, &out, &bytes.Buffer{}); err != nil {
+	if err := appGuidedInitCommand().Run(testOperatorContext(context.Background()), []string{"--quick"}, &out, &bytes.Buffer{}); err != nil {
 		t.Fatal(err)
 	}
 	data, err := os.ReadFile(filepath.Join(dir, "baseharbor.yaml"))
@@ -114,7 +114,7 @@ func TestGuidedInitInteractiveCanAcceptDetectedDefaults(t *testing.T) {
 	t.Cleanup(func() { appInitInput = oldInput })
 
 	var out bytes.Buffer
-	if err := appGuidedInitCommand().Run(context.Background(), nil, &out, &bytes.Buffer{}); err != nil {
+	if err := appGuidedInitCommand().Run(testOperatorContext(context.Background()), nil, &out, &bytes.Buffer{}); err != nil {
 		t.Fatal(err)
 	}
 	text := out.String()
@@ -136,7 +136,7 @@ func TestGuidedInitDeterministicPathRequiresExplicitContract(t *testing.T) {
 	withWizardTestDir(t, dir)
 
 	var out bytes.Buffer
-	err := appGuidedInitCommand().Run(context.Background(), []string{"demo", "-e", "dev"}, &out, &bytes.Buffer{})
+	err := appGuidedInitCommand().Run(testOperatorContext(context.Background()), []string{"demo", "-e", "dev"}, &out, &bytes.Buffer{})
 	if err == nil || !strings.Contains(err.Error(), "requires an explicit capability or workload selection") {
 		t.Fatalf("expected explicit-contract failure, got %v", err)
 	}
@@ -151,7 +151,7 @@ func TestGuidedInitDeterministicCapabilitiesFailClosedWhenRepositoryWorkloadExis
 	withWizardTestDir(t, dir)
 
 	var out bytes.Buffer
-	err := appGuidedInitCommand().Run(context.Background(), []string{"demo", "--sql", "--cache"}, &out, &bytes.Buffer{})
+	err := appGuidedInitCommand().Run(testOperatorContext(context.Background()), []string{"demo", "--sql", "--cache"}, &out, &bytes.Buffer{})
 	if err == nil || !strings.Contains(err.Error(), "repository workload evidence") {
 		t.Fatalf("expected unresolved workload failure, got %v", err)
 	}
@@ -166,7 +166,7 @@ func TestGuidedInitDeterministicExplicitWorkloadSelectionSucceeds(t *testing.T) 
 	withWizardTestDir(t, dir)
 
 	var out bytes.Buffer
-	if err := appGuidedInitCommand().Run(context.Background(), []string{"demo", "--sql", "--workload-source", "compose:compose.yaml", "--workload-component", "app"}, &out, &bytes.Buffer{}); err != nil {
+	if err := appGuidedInitCommand().Run(testOperatorContext(context.Background()), []string{"demo", "--sql", "--workload-source", "compose:compose.yaml", "--workload-component", "app"}, &out, &bytes.Buffer{}); err != nil {
 		t.Fatal(err)
 	}
 	m, err := application.LoadManifestFile(filepath.Join(dir, application.RepositoryManifestName))
@@ -186,7 +186,7 @@ func TestGuidedInitExplicitFlagsKeepDeterministicPath(t *testing.T) {
 	dir := t.TempDir()
 	withWizardTestDir(t, dir)
 	var out bytes.Buffer
-	if err := appGuidedInitCommand().Run(context.Background(), []string{"demo", "--sql", "--cache", "--require-secret", "API_TOKEN"}, &out, &bytes.Buffer{}); err != nil {
+	if err := appGuidedInitCommand().Run(testOperatorContext(context.Background()), []string{"demo", "--sql", "--cache", "--require-secret", "API_TOKEN"}, &out, &bytes.Buffer{}); err != nil {
 		t.Fatal(err)
 	}
 	data, err := os.ReadFile(filepath.Join(dir, "baseharbor.yaml"))
@@ -207,7 +207,7 @@ func TestGuidedInitQuickFailsClosedOnAmbiguousCompose(t *testing.T) {
 	mustWriteWizardTestFile(t, filepath.Join(dir, "docker-compose.yml"), "services:\n  api:\n    image: example/api\n")
 	withWizardTestDir(t, dir)
 	var out bytes.Buffer
-	err := appGuidedInitCommand().Run(context.Background(), []string{"--quick"}, &out, &bytes.Buffer{})
+	err := appGuidedInitCommand().Run(testOperatorContext(context.Background()), []string{"--quick"}, &out, &bytes.Buffer{})
 	if err == nil || !strings.Contains(err.Error(), "multiple Compose files") {
 		t.Fatalf("expected ambiguous compose error, got %v", err)
 	}
@@ -225,6 +225,9 @@ func mustWriteWizardTestFile(t *testing.T, path, content string) {
 
 func withWizardTestDir(t *testing.T, dir string) {
 	t.Helper()
+	// Same reason as withWorkingDirectory: the Target selection is process
+	// state, so changing only the working directory does not isolate it.
+	testIsolatedSelectionContext(t)
 	old, err := os.Getwd()
 	if err != nil {
 		t.Fatal(err)
@@ -250,7 +253,7 @@ func TestQuickInitPreservesWorkloadOnlyRepository(t *testing.T) {
 	withWizardTestDir(t, root)
 
 	var out bytes.Buffer
-	if err := appGuidedInitCommand().Run(context.Background(), []string{"--quick"}, &out, &bytes.Buffer{}); err != nil {
+	if err := appGuidedInitCommand().Run(testOperatorContext(context.Background()), []string{"--quick"}, &out, &bytes.Buffer{}); err != nil {
 		t.Fatal(err)
 	}
 	m, err := application.LoadManifestFile(filepath.Join(root, application.RepositoryManifestName))
@@ -272,7 +275,7 @@ func TestQuickInitDoesNotPromoteSuggestedCapability(t *testing.T) {
 	withWizardTestDir(t, root)
 
 	var out bytes.Buffer
-	err := appGuidedInitCommand().Run(context.Background(), []string{"--quick"}, &out, &bytes.Buffer{})
+	err := appGuidedInitCommand().Run(testOperatorContext(context.Background()), []string{"--quick"}, &out, &bytes.Buffer{})
 	if err == nil || !strings.Contains(err.Error(), "no unambiguous application requirements were detected") {
 		t.Fatalf("expected fail-closed quick init, got %v", err)
 	}
@@ -302,7 +305,7 @@ func metrics() string { return "/metrics" }
 	withWizardTestDir(t, root)
 
 	var out bytes.Buffer
-	if err := appGuidedInitCommand().Run(context.Background(), []string{"--quick"}, &out, &bytes.Buffer{}); err != nil {
+	if err := appGuidedInitCommand().Run(testOperatorContext(context.Background()), []string{"--quick"}, &out, &bytes.Buffer{}); err != nil {
 		t.Fatal(err)
 	}
 	data, err := os.ReadFile(filepath.Join(root, application.RepositoryManifestName))
@@ -346,7 +349,7 @@ const metricsPath = "/metrics"
 `)
 	withWizardTestDir(t, root)
 
-	err := appGuidedInitCommand().Run(context.Background(), []string{"--quick"}, &bytes.Buffer{}, &bytes.Buffer{})
+	err := appGuidedInitCommand().Run(testOperatorContext(context.Background()), []string{"--quick"}, &bytes.Buffer{}, &bytes.Buffer{})
 	if err == nil || !strings.Contains(err.Error(), "metrics endpoint was detected") {
 		t.Fatalf("expected fail-closed metrics ambiguity, got %v", err)
 	}
@@ -364,7 +367,7 @@ func provision(client *S3Client) { client.CreateBucket("tenant") }
 	withWizardTestDir(t, root)
 
 	var out bytes.Buffer
-	if err := appGuidedInitCommand().Run(context.Background(), []string{"--quick"}, &out, &bytes.Buffer{}); err != nil {
+	if err := appGuidedInitCommand().Run(testOperatorContext(context.Background()), []string{"--quick"}, &out, &bytes.Buffer{}); err != nil {
 		t.Fatal(err)
 	}
 	data, err := os.ReadFile(filepath.Join(root, application.RepositoryManifestName))
@@ -390,7 +393,7 @@ func TestQuickInitFailsClosedOnAmbiguousComposeServiceRole(t *testing.T) {
 	withWizardTestDir(t, root)
 
 	var out bytes.Buffer
-	err := appGuidedInitCommand().Run(context.Background(), []string{"--quick"}, &out, &bytes.Buffer{})
+	err := appGuidedInitCommand().Run(testOperatorContext(context.Background()), []string{"--quick"}, &out, &bytes.Buffer{})
 	if err == nil || !strings.Contains(err.Error(), "ambiguous Compose service classification") {
 		t.Fatalf("expected ambiguous service classification failure, got %v", err)
 	}
@@ -684,7 +687,7 @@ func TestGuidedInitDeterministicPositionalEnvironmentAliases(t *testing.T) {
 			mustWriteWizardTestFile(t, filepath.Join(dir, "compose.yaml"), "services:\n  api:\n    image: example/api:1\n")
 			withWizardTestDir(t, dir)
 			var out bytes.Buffer
-			err := appGuidedInitCommand().Run(context.Background(), []string{
+			err := appGuidedInitCommand().Run(testOperatorContext(context.Background()), []string{
 				"demo", flag, "dev", "--sql",
 				"--workload-source", "compose:compose.yaml",
 				"--workload-component", "api",

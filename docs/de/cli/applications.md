@@ -2,6 +2,14 @@
 
 Application-Befehle arbeiten mit dem portablen Contract und seinem Deployment-Zustand.
 
+Der Standardpfad von `baha app new` erstellt nur das Projekt: Er schreibt die
+Repository-Dateien und zeigt die nächsten Schritte an, registriert aber noch
+kein Deployment auf dem ausgewählten Target. `baha app list` zeigt registrierte
+Deployments; das erzeugte Projekt erscheint dort erst nach Initialisierung und
+Anwendung. Führe im erzeugten Repository `baha app init --quick` und danach
+`baha up` aus. Falls das ausgewählte Target eine Operator-Sitzung verlangt,
+melde dich vor der Initialisierung an.
+
 Bei `baha app new` erstellt die Auswahl `run` zunächst das Projekt und zeigt
 dann die genaue Identität samt Bestätigungshash des Repository-Kandidaten an.
 Erst nach ausdrücklicher Bestätigung läuft das Deployment weiter. Bei Ablehnung
@@ -244,3 +252,23 @@ Anschließend das Target mit `baha app list` nachprüfen. Kommandos mit `--uuid`
 bleiben auf einem solchen Target nutzbar; name-adressierte nicht, bis das
 Duplikat stillgelegt ist. Das Paar `(application_id, environment)` ist die
 System-Identität nach ADR 0017.
+
+Zwei Selektoren werden hier oft verwechselt, und sie sind nicht austauschbar.
+`--uuid <deployment-id>` ist der **Identitäts**-Selector: er benennt das
+Deployment per UUID und wird nur von den Kommandos verstanden, die ein
+Deployment per Identität lesen — `baha app show`, `baha app status`,
+`baha app plan` und `baha app destroy`. Jeder dieser Befehle akzeptiert
+`--uuid` ohne Positions-`NAME`: der Selector wird vor dem `NAME`-Limit entfernt
+und leitet direkt am Registry seam weiter, sodass `baha app status --uuid <deployment-id>`
+(ohne `NAME`) das exakte Deployment per Identität auflöst. `-e/--environment`
+ist **kein** Identitäts-Selector: er setzt oder überschreibt den
+Umgebungswert, und er kann ein kollidierendes Deployment nicht disambiguieren, wie
+das eine UUID tut. `baha app plan` ist die Ausnahme auf einem Remote-Target, wo
+es `--uuid` ablehnt und den registrierten `NAME` verlangt. Der Identitäts-
+Selector ist **nicht** Teil von `baha app env`; diese Wahl referenziert sein
+Deployment allein per `NAME` (plus `--format`/`--reveal`/`--path`) und lehnt
+sowohl `--uuid` als auch `-e/--environment` im eigenen Parser ab
+(`unknown option`), also ist keiner der beiden Selektoren für `app env`
+ausführbar; innerhalb einer Duplikat-Situation braucht `app env` einen anderen
+`NAME` (eine andere Umgebung oder ein ausser Dienst gestelltes Twin-Deployment),
+kein `--uuid`-Flag.

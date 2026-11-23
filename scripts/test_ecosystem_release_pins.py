@@ -264,6 +264,12 @@ class ReleaseWorkflowPinsTests(unittest.TestCase):
         jobs = release['jobs']
         self.assertEqual(jobs['checks']['uses'], './.github/workflows/pre-release.yml')
         self.assertEqual(jobs['checks']['with']['ref'], '${{ needs.tag.outputs.tag_sha }}')
+        self.assertEqual(jobs['tag']['outputs']['develop_sha'], '${{ steps.tag.outputs.develop_sha }}')
+        self.assertEqual(jobs['checks']['with']['develop_sha'], '${{ needs.tag.outputs.develop_sha }}')
+        self.assertIn('git merge-base --is-ancestor "$sha" "$develop_sha"',
+                      jobs['tag']['steps'][1]['run'])
+        self.assertIn('docs/reference/releases.md#hotfix-releases',
+                      jobs['tag']['steps'][1]['run'])
         for job in ['runtime-image', 'release']:
             self.assertIn('checks', jobs[job]['needs'])
         self.assertNotIn('approval', jobs)

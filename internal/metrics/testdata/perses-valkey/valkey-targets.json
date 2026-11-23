@@ -1,0 +1,7 @@
+{
+  "kind": "DashboardUnavailable",
+  "key": "valkey-targets",
+  "backend": "valkey",
+  "unavailable": true,
+  "reason": "Valkey has no native metrics signal in BaseHarbor (observability status ObservabilityUnsupported); the dashboard is explicitly unavailable and no exporter is installed"
+}

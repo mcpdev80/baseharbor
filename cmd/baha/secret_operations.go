@@ -21,17 +21,15 @@ func authorizeApplicationOperation(ctx context.Context, id string, resolved reso
 }
 
 // authorizeHumanReveal gates any path that would return a managed secret value
-// to a human operator (CLI --reveal, app creds --reveal). It lives on the
-// separate human-authorization seam enforced by
-// operatorauth.RequireHumanOperator: a verified operator principal is mandatory,
-// and the local-runtime/workload authority and trusted-local fallback that cover
-// ordinary application operations can never satisfy it. Workload reads that do
-// not reveal keep using their existing operation (app.environment/app.connection)
-// and are unaffected. The distinct secret.reveal machine operation id in the
-// machine contract documents this seam; the runtime enforcement is the explicit,
-// fail-closed RequireHumanOperator gate (owner: mechanism B, 057).
+// to a human operator (CLI --reveal, app creds --reveal). It first requires a
+// verified human identity, then applies the registered secret.reveal operation's
+// normal target, environment, membership, and permission checks. Workload reads
+// that do not reveal keep using their existing operation and are unaffected.
 func authorizeHumanReveal(ctx context.Context, target, environment, application string) error {
-	return operatorauth.RequireHumanOperator(ctx)
+	if err := operatorauth.RequireHumanOperator(ctx); err != nil {
+		return err
+	}
+	return authorizeMCPOperation(ctx, "secret.reveal", target, environment, application, "")
 }
 func listApplicationSecrets(ctx context.Context, resolved resolvedApplication) ([]applicationsecret.Metadata, error) {
 	if err := authorizeApplicationOperation(ctx, "secret.list", resolved); err != nil {

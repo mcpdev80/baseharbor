@@ -15,7 +15,7 @@ func TestCLIJSONAndMCPShareApplicationOverviewAndDevelopmentDomain(t *testing.T)
 	configureTestTarget(t)
 	t.Chdir(t.TempDir())
 	var out, errOut bytes.Buffer
-	if err := runWithIO(context.Background(), []string{"app", "create", "parity-demo", "--sql", "--json"}, &out, &errOut); err != nil {
+	if err := runWithIOAsTestOperator(context.Background(), []string{"app", "create", "parity-demo", "--sql", "--json"}, &out, &errOut); err != nil {
 		t.Fatalf("create: %v %s", err, errOut.String())
 	}
 	var created applicationAdoptionResult
@@ -37,7 +37,7 @@ func TestCLIJSONAndMCPShareApplicationOverviewAndDevelopmentDomain(t *testing.T)
 	} {
 		out.Reset()
 		errOut.Reset()
-		if err := runWithIO(context.Background(), test.args, &out, &errOut); err != nil {
+		if err := runWithIOAsTestOperator(context.Background(), test.args, &out, &errOut); err != nil {
 			t.Fatalf("%s CLI: %v %s", test.tool, err, errOut.String())
 		}
 		var cliResult any

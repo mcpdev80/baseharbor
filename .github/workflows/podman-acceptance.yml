@@ -12,9 +12,8 @@ on:
   workflow_dispatch:
     inputs:
       ref:
-        description: Git ref to test
+        description: Git ref to test (defaults to the branch selected for this dispatch)
         required: false
-        default: release/v0.4.21
         type: string
   push:
     branches:

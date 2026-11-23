@@ -82,7 +82,7 @@ func TestNodeDisconnectRequiresBothCurrentAcknowledgementsWithoutMutation(t *tes
 		t.Fatal(err)
 	}
 	raw, _ := json.Marshal(plan)
-	if plan.Scope.Complete || plan.Scope.ConfirmationsRequired != 2 || plan.Scope.Attention != "Achtung" || len(plan.Materials) < 2 || len(plan.Functions) < 2 || strings.Contains(string(raw), a.status.Serial) {
+	if plan.Scope.Complete || plan.Scope.ConfirmationsRequired != 2 || plan.Scope.Attention != "Warning" || len(plan.Materials) < 2 || len(plan.Functions) < 2 || strings.Contains(string(raw), a.status.Serial) {
 		t.Fatal("missing concrete, secret-safe incomplete impact")
 	}
 	for range 25 {

@@ -27,14 +27,17 @@ type GitCredentialSource struct {
 }
 
 // ErrGitCredentialUnavailable documents the documented-absent case: no helper is
-// configured and no credential can be resolved from a native source.
-var ErrGitCredentialUnavailable = fmt.Errorf("git: no native credential helper available for host")
+// configured and no credential can be resolved from a native source. The error
+// names the host so the caller surfaces "no credential for this host" instead
+// of a timeout or a generic panic.
+var ErrGitCredentialUnavailable = fmt.Errorf("git: no native credential helper available")
 
 // Resolve queries the git credential helper for an https://host entry. A
 // successful helper reply yields resolved=true; an absent helper, a non-zero
-// exit, or an empty reply fails closed with ErrGitCredentialUnavailable. The
-// secret payload is never surfaced: callers only learn whether a source
-// resolved, never its value.
+// exit, or an empty reply fails closed with a host-named error so the caller
+// reports "no credential for this host" rather than a hang or a generic
+// failure. The secret payload is never surfaced: callers only learn whether a
+// source resolved, never its value.
 func (s GitCredentialSource) Resolve(ctx context.Context, host string) (resolved bool, err error) {
 	host = strings.TrimSpace(host)
 	if host == "" {
@@ -49,10 +52,10 @@ func (s GitCredentialSource) Resolve(ctx context.Context, host string) (resolved
 	out, runErr := s.runner().Invoke(ctx, name, in, args...)
 
 	if runErr != nil {
-		return false, gitUnavailable(runErr)
+		return false, gitUnavailable(host, runErr)
 	}
 	if len(resolvedField(out, "username")) == 0 && len(resolvedField(out, "password")) == 0 {
-		return false, ErrGitCredentialUnavailable
+		return false, fmt.Errorf("%w: host %s", ErrGitCredentialUnavailable, host)
 	}
 	return true, nil
 }
@@ -72,11 +75,11 @@ func (s GitCredentialSource) helperCommand() (string, []string) {
 // Source interface so callers clean uniformly.
 func (s GitCredentialSource) Cleanup() error { return nil }
 
-func gitUnavailable(err error) error {
+func gitUnavailable(host string, err error) error {
 	if err == nil {
-		return ErrGitCredentialUnavailable
+		return fmt.Errorf("%w: host %s", ErrGitCredentialUnavailable, host)
 	}
-	return fmt.Errorf("%w: %v", ErrGitCredentialUnavailable, err)
+	return fmt.Errorf("%w: host %s: %v", ErrGitCredentialUnavailable, host, err)
 }
 
 // resolvedField extracts the value of a key=value line from the helper reply,

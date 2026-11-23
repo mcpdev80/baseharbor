@@ -175,6 +175,12 @@ type ProviderImpactPlan struct {
 	ConfirmationsRequired int              `json:"confirmations_required"`
 	Destructive           bool             `json:"destructive"`
 	Impacts               []ProviderImpact `json:"impacts"`
+	// Authority carries the consent-authority surface this plan was computed
+	// from (provider_consent_authority.go). It is internal: never serialized,
+	// never a wire field. The raw PlanID stays the acknowledgement identity;
+	// the post-consent revalidation uses this surface to recognize unchanged
+	// authority when volatile observation churn moved the digest.
+	Authority *ConsentAuthority `json:"-"`
 }
 
 // Fields acknowledge consequences of the same concrete plan. Interactive CLI

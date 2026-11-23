@@ -138,9 +138,23 @@ func writeRepositoryTreeFingerprint(ctx context.Context, write func(string, []by
 	}
 	for _, rel := range paths {
 		path := filepath.Join(root, filepath.FromSlash(rel))
-		info, err := os.Stat(path)
+		info, err := os.Lstat(path)
 		if err != nil {
 			return fmt.Errorf("inspect desired-state input %s: %w", rel, err)
+		}
+		label := filepath.ToSlash(rel)
+		if strings.TrimSpace(logicalPrefix) != "" {
+			label = strings.TrimSuffix(logicalPrefix, "/") + "/" + label
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			// Hash the link itself, never the target. Following a source-tree
+			// symlink here could read data outside the declared component root.
+			target, err := os.Readlink(path)
+			if err != nil {
+				return fmt.Errorf("read desired-state symlink %s: %w", rel, err)
+			}
+			write(label, []byte("symlink:"+target))
+			continue
 		}
 		if !info.Mode().IsRegular() {
 			continue
@@ -149,11 +163,7 @@ func writeRepositoryTreeFingerprint(ctx context.Context, write func(string, []by
 		if err != nil {
 			return fmt.Errorf("read desired-state input %s: %w", rel, err)
 		}
-		label := filepath.ToSlash(rel)
-		if strings.TrimSpace(logicalPrefix) != "" {
-			label = strings.TrimSuffix(logicalPrefix, "/") + "/" + label
-		}
-		write(label, data)
+		write(label, append([]byte("file:"), data...))
 	}
 	return nil
 }
@@ -205,7 +215,7 @@ func fingerprintResolvedWorkspace(ctx context.Context, resolved resolvedApplicat
 			return err
 		}
 		write("component/"+component.Component+"/source-identity.json", identity)
-		if component.Type == development.SourceRepository {
+		if component.Type == development.SourceRepository || component.Type == development.SourceLocal {
 			if err := writeRepositoryTreeFingerprint(ctx, write, "component/"+component.Component+"/source", component.Root); err != nil {
 				return fmt.Errorf("fingerprint component %s source: %w", component.Component, err)
 			}
@@ -249,7 +259,7 @@ func repositoryTrackedAndUntrackedFiles(ctx context.Context, repoRoot string) ([
 			}
 			return nil
 		}
-		if entry.Type().IsRegular() {
+		if entry.Type().IsRegular() || entry.Type()&os.ModeSymlink != 0 {
 			paths = append(paths, rel)
 		}
 		return nil

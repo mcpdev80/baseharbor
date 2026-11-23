@@ -11,6 +11,7 @@ import sys
 ROOT = Path(__file__).resolve().parent
 SCHEMA = "baseharbor.pr-gate-coverage/v1"
 SURFACE_RE = re.compile(r"^[a-z][a-z0-9_.-]*$")
+TEST_NAME_RE = re.compile(r"^Test[A-Za-z0-9_]+$")
 
 
 def resolve_covered_gates(changed_paths: list[str], coverage: dict) -> tuple[list[str], list[str]]:
@@ -47,15 +48,40 @@ def resolve_covered_gates(changed_paths: list[str], coverage: dict) -> tuple[lis
         # own contract and therefore keeps its exact Podman gate. Resolve each
         # source independently so a separate Podman-only source in the same
         # change set is not erased by a shared Docker source.
+        runtime_specific = any(
+            row.get("runtime_specific") is True and
+            len(row["path"].rstrip("/")) == longest
+            for row in owners)
         for gate_id in list(matching):
             parts = gate_id.split("/")
-            if len(parts) >= 3 and parts[1] == "podman":
+            if not runtime_specific and len(parts) >= 3 and parts[1] == "podman":
                 docker_sibling = "/".join((parts[0], "docker", *parts[2:]))
                 if docker_sibling in matching:
                     matching.remove(gate_id)
         selected_gates.update(matching)
     selected_gates = sorted(selected_gates)
     return selected_gates, unresolved
+
+
+def unresolved_source_error(unowned: list[str]) -> str:
+    """Build the fail-loud message for a changed source with no catalog entry.
+
+    A changed source component that is not declared in the declarative
+    coverage catalog must never resolve to an empty or gray matrix that
+    passes the gate. This returns a precise, actionable error naming the
+    missing catalog id (derived from the path) and the exact next step.
+    """
+    entries = []
+    for path in unowned:
+        component_id = "source." + path.replace("/", ".").replace(".", "_")
+        entries.append(
+            f"{path} (id {component_id}): add this source with its surfaces "
+            f"to scripts/pr-gate-coverage.json, e.g. "
+            f'{{"id": "{component_id}", "path": "{path}", '
+            f'"surfaces": ["source.gate.atomic.docker.data.capabilities", '
+            f'"source.gate.atomic.podman.data.capabilities"]}}'
+        )
+    return "uncataloged source change, no declared runtime gate owner: " + "; ".join(entries)
 
 
 def resolve_native_checks(changed_paths: list[str], coverage: dict) -> list[str]:
@@ -73,13 +99,17 @@ def resolve_native_checks(changed_paths: list[str], coverage: dict) -> list[str]
     # representative when both runtime variants cover that same component;
     # a separate Podman-only component in the same PR still selects Podman.
     for component_id in changed_ids:
+        component = components[component_id]
         matching = {check["id"] for check in checks
                     if component_id in check.get("source_components", [])}
-        for check_id in list(matching):
-            parts = check_id.split("/")
-            if len(parts) == 3 and parts[0] == "native" and parts[1] == "podman":
-                if f"native/docker/{parts[2]}" in matching:
-                    matching.remove(check_id)
+        # Runtime-specific components must retain both engine siblings. Shared
+        # components use Docker as the representative when both are declared.
+        if component.get("runtime_specific") is not True:
+            for check_id in list(matching):
+                parts = check_id.split("/")
+                if len(parts) == 3 and parts[0] == "native" and parts[1] == "podman":
+                    if f"native/docker/{parts[2]}" in matching:
+                        matching.remove(check_id)
         selected.update(matching)
     return sorted(selected)
 
@@ -169,6 +199,14 @@ def validate(coverage: dict, requirements: dict) -> list[str]:
                 errors.append(f"component {component_id!r} references undeclared surface {surface!r}")
             else:
                 component_surfaces.add(surface)
+        if "runtime_specific" in component and type(component["runtime_specific"]) is not bool:
+            errors.append(f"component {component_id!r} runtime_specific must be boolean")
+        if "required_test_names" in component:
+            names = component["required_test_names"]
+            if (not isinstance(names, list) or not names or
+                    any(not isinstance(name, str) or not TEST_NAME_RE.fullmatch(name)
+                        for name in names) or len(names) != len(set(names))):
+                errors.append(f"component {component_id!r} required_test_names must be unique Go test names")
 
     seen_gates: set[str] = set()
     gate_surfaces: set[str] = set()

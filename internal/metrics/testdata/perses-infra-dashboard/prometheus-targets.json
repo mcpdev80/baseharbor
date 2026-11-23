@@ -1,0 +1,187 @@
+{
+  "kind": "Dashboard",
+  "metadata": {
+    "name": "prometheus-targets",
+    "project": "baseharbor"
+  },
+  "spec": {
+    "display": {
+      "name": "BaseHarbor infrastructure"
+    },
+    "duration": "15m",
+    "panels": {
+      "cpu": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Target health load"
+          },
+          "plugin": {
+            "kind": "StatChart",
+            "spec": {
+              "calculation": "last-value"
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "datasource": {
+                      "kind": "Datasource",
+                      "name": "prometheus"
+                    },
+                    "query": "max(up{job=\"baseharbor-providers\",baseharbor_provider=\"tempo\",baseharbor_source=\"tempo:runtime\"})"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "disk": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Samples stored"
+          },
+          "plugin": {
+            "kind": "StatChart",
+            "spec": {
+              "calculation": "last-value"
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "datasource": {
+                      "kind": "Datasource",
+                      "name": "prometheus"
+                    },
+                    "query": "scrape_samples_scraped{job=\"baseharbor-providers\",baseharbor_provider=\"tempo\",baseharbor_source=\"tempo:runtime\"}"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "memory": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Samples after relabeling"
+          },
+          "plugin": {
+            "kind": "StatChart",
+            "spec": {
+              "calculation": "last-value"
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "datasource": {
+                      "kind": "Datasource",
+                      "name": "prometheus"
+                    },
+                    "query": "scrape_samples_post_metric_relabeling{job=\"baseharbor-providers\",baseharbor_provider=\"tempo\",baseharbor_source=\"tempo:runtime\"}"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "network": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Scrape latency"
+          },
+          "plugin": {
+            "kind": "StatChart",
+            "spec": {
+              "calculation": "last-value"
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "datasource": {
+                      "kind": "Datasource",
+                      "name": "prometheus"
+                    },
+                    "query": "scrape_duration_seconds{job=\"baseharbor-providers\",baseharbor_provider=\"tempo\",baseharbor_source=\"tempo:runtime\"}"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "layouts": [
+      {
+        "kind": "Grid",
+        "spec": {
+          "display": {
+            "name": "Infrastructure signals"
+          },
+          "items": [
+            {
+              "x": 0,
+              "y": 0,
+              "width": 12,
+              "height": 8,
+              "content": {
+                "$ref": "#/spec/panels/cpu"
+              }
+            },
+            {
+              "x": 12,
+              "y": 0,
+              "width": 12,
+              "height": 8,
+              "content": {
+                "$ref": "#/spec/panels/memory"
+              }
+            },
+            {
+              "x": 0,
+              "y": 8,
+              "width": 12,
+              "height": 8,
+              "content": {
+                "$ref": "#/spec/panels/disk"
+              }
+            },
+            {
+              "x": 12,
+              "y": 8,
+              "width": 12,
+              "height": 8,
+              "content": {
+                "$ref": "#/spec/panels/network"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

@@ -4,9 +4,8 @@ import "testing"
 
 // These tests pin the name→policy seam replaced by card t-20261114-r28-cli2-env-policy (0428-053):
 // the environment NAME no longer reaches into the authentication decision. The
-// decision now follows an explicit EnvironmentPolicy; the historical mapping is
-// preserved through TrustedLocalForEnvironment so no existing guarded
-// environment weakens.
+// decision now follows an explicit EnvironmentPolicy; compatibility wrappers
+// with no policy source fail closed for every name.
 
 // TestResolveNameNoLongerDrivesAuthentication proves a name cannot by itself
 // decide authentication: two names with the same explicit policy behave
@@ -65,45 +64,19 @@ func TestResolveDefaultPolicyIsManagedFailsClosed(t *testing.T) {
 	}
 }
 
-// TestResolveByDefaultWrapsNameMapping preserves the historical behavior that
-// Resolve(name) treats dev/development as trusted-local and everything else as
-// managed.
-func TestResolveByDefaultWrapsNameMapping(t *testing.T) {
-	dev, err := Resolve("dev", "prometheus", AuthenticationMTLS)
-	if err != nil {
-		t.Fatalf("Resolve(dev): %v", err)
-	}
-	if dev.AuthenticationRequired {
-		t.Fatalf("dev must stay trusted-local via the preserved name mapping: %+v", dev)
-	}
-
-	prod, err := Resolve("prod", "prometheus", AuthenticationMTLS)
-	if err != nil {
-		t.Fatalf("Resolve(prod): %v", err)
-	}
-	if !prod.AuthenticationRequired {
-		t.Fatalf("prod must stay managed via the preserved name mapping: %+v", prod)
-	}
-
-	custom, err := Resolve("staging", "prometheus", AuthenticationMTLS)
-	if err != nil {
-		t.Fatalf("Resolve(staging): %v", err)
-	}
-	if !custom.AuthenticationRequired {
-		t.Fatalf("custom environment must be managed via the preserved name mapping: %+v", custom)
-	}
-}
-
-// TestTrustedLocalForEnvironment pins the single visible name→trusted mapping.
-func TestTrustedLocalForEnvironment(t *testing.T) {
-	for _, name := range []string{"dev", "development"} {
-		if !TrustedLocalForEnvironment(name) {
-			t.Fatalf("name %q must map to trusted-local", name)
+// TestResolveCompatibilityWrapperFailsClosedForEveryName pins that the legacy
+// API cannot grant trusted-local behavior based on an environment name.
+func TestResolveCompatibilityWrapperFailsClosedForEveryName(t *testing.T) {
+	for _, name := range []string{"dev", "development", "test", "staging", "prod", "production", "custom-env"} {
+		p, err := Resolve(name, "prometheus", AuthenticationMTLS)
+		if err != nil {
+			t.Fatalf("Resolve(%q): %v", name, err)
 		}
-	}
-	for _, name := range []string{"", "test", "staging", "prod", "production", "custom-env"} {
+		if !p.AuthenticationRequired {
+			t.Fatalf("Resolve(%q) must fail closed as managed: %+v", name, p)
+		}
 		if TrustedLocalForEnvironment(name) {
-			t.Fatalf("name %q must map to managed (not trusted-local)", name)
+			t.Fatalf("name %q must not establish trusted-local policy", name)
 		}
 	}
 }

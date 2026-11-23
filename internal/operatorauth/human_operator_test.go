@@ -52,24 +52,45 @@ func TestRequireHumanOperatorRecordsRevealDecisionUnderDistinctOp(t *testing.T) 
 	}
 }
 
-// TestRequireHumanOperatorScopedToRevealKeepsOtherOperationsUnchanged ensures the
-// gate is scoped to secret.reveal: ordinary local-runtime operations (apply,
-// app.environment) still authorize in local/dev, so workload reads stay
-// independently allowed.
+// TestRequireHumanOperatorScopedToRevealKeepsOtherOperationsUnchanged ensures
+// an explicit trusted-local policy and a successful local runtime check allow
+// only the bound workload operation. Neither one authenticates a human for
+// secret reveal.
 func TestRequireHumanOperatorScopedToRevealKeepsOtherOperationsUnchanged(t *testing.T) {
 	operation, ok := machine.OperationByID("apply")
 	if !ok {
 		t.Fatal("apply operation is not registered")
 	}
-	ctx := WithEnforcement(context.Background())
-	dev, err := AuthorizeMachineOperation(ctx, AuthorizationRequest{
-		Operation: operation,
-		Context:   OperationContext{Application: "demo", Environment: "dev", Target: "local"},
-	})
-	if err != nil {
-		t.Fatalf("apply in dev should still authorize via trusted-local: %v", err)
+	if ManagedEnvironmentWithPolicy("dev", true) {
+		t.Fatal("explicit trusted-local policy must apply independently of the environment name")
 	}
-	if !dev.Allowed || dev.Actor.Mode != "trusted-local" {
+	if !ManagedEnvironment("dev") {
+		t.Fatal("environment name alone must remain managed (fail closed)")
+	}
+	const environmentID = "5b09b7a8-9380-43cc-8000-000000000001"
+	const applicationID = "5b09b7a8-9380-43cc-8000-000000000002"
+	grant, err := CheckLocalRuntimeGrant(operation, environmentID, applicationID, func() error { return nil })
+	if err != nil {
+		t.Fatalf("issue local grant after successful runtime check: %v", err)
+	}
+	ctx := WithEnforcement(context.Background())
+	request := AuthorizationRequest{
+		Operation:           operation,
+		Context:             OperationContext{Application: "demo", Environment: "dev", Target: "local"},
+		EnvironmentID:       environmentID,
+		TargetEnvironmentID: environmentID,
+		ApplicationID:       applicationID,
+	}
+	dev, err := AuthorizeMachineOperationWithLocalGrant(ctx, request, grant)
+	if err != nil {
+		t.Fatalf("apply with its explicit local runtime grant should authorize: %v", err)
+	}
+	if !dev.Allowed || dev.Actor.Mode != "local-runtime" {
 		t.Fatalf("apply decision changed: %#v", dev)
+	}
+	if err := RequireHumanOperator(ctx); err == nil {
+		t.Fatal("explicit trusted-local policy or workload grant authorized secret reveal without a human operator")
+	} else if classified := machine.Classify(err); classified.Code != machine.ErrorAuthenticationFailed {
+		t.Fatalf("local secret reveal denial code = %q, want %q", classified.Code, machine.ErrorAuthenticationFailed)
 	}
 }

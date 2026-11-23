@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/mcpdev80/baseharbor/internal/testsupport/envpin"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -92,7 +93,11 @@ func (e IsolatedEtcdutl) RestoreIsolated(ctx context.Context, archive, destinati
 	}
 	args := []string{"snapshot", "restore", archive, "--data-dir", destination, "--name", e.MemberName, "--initial-cluster", e.InitialCluster, "--initial-advertise-peer-urls", e.InitialAdvertisePeerURLs, "--initial-cluster-token", token}
 	cmd := exec.CommandContext(ctx, e.Binary, args...)
-	cmd.Env = []string{"PATH=/usr/bin:/bin"}
+	// Isolation means never executing inside the running distroless etcd
+	// container and writing to a fresh target data-dir; it does not mean
+	// excluding the parent environment. pinnedEnv inherits the parent env minus
+	// the pinned PATH so the pin is never overridden by the parent env.
+	cmd.Env = envpin.PinnedEnv("PATH=/usr/bin:/bin")
 	cmd.Stdout = nil
 	cmd.Stderr = nil
 	if err := cmd.Run(); err != nil {

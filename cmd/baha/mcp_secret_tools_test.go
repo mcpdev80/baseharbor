@@ -14,7 +14,7 @@ func TestSecretToolsDenyManagedOperationsBeforeProtectedInput(t *testing.T) {
 	configureTestTarget(t)
 	manifest := workspaceMutationFixture(t, "prod")
 	t.Chdir(filepath.Dir(manifest))
-	session := workspaceMutationClient(t)
+	session := workspaceMutationClientUnauthenticated(t)
 	for _, id := range []string{"secret.list", "secret.set", "secret.delete", "secret.tls-set"} {
 		input := map[string]any{}
 		switch id {

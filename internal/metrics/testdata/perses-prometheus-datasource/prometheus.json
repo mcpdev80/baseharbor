@@ -1,0 +1,10 @@
+{
+  "kind": "PrometheusDatasource",
+  "name": "prometheus",
+  "default": true,
+  "config": {
+    "url": "https://127.0.0.1:39901",
+    "access": "proxy",
+    "authentication": "unsupported"
+  }
+}
