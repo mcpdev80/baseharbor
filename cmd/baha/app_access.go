@@ -14,6 +14,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/cli"
+	"github.com/mcpdev80/baseharbor/internal/operatorauth"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
@@ -159,12 +160,17 @@ func appLogsCommand(store application.Store) *cli.Command {
 			if err != nil {
 				return err
 			}
-			resolved, declared, err := selectWorkloadComponentsForCommand(ctx, store, options.nameArgs, "logs")
-			if err != nil {
-				return err
-			}
+			// Usage validation fails closed before any operator-auth gate: a
+			// --follow/--json conflict or an invalid component selection is a
+			// caller error, never a runtime authorization failure. Defer the
+			// operator-auth boundary past this validation; re-enforce it below.
 			if format == outputJSON && options.follow {
 				return usageError("--follow cannot be combined with JSON output", "Unbounded streams have no JSON contract. Use --tail N for a bounded machine result or drop --json.")
+			}
+			deferredAuthCtx := operatorauth.WithSkipResolveOperatorBoundary(ctx)
+			resolved, declared, err := resolveWorkloadComponentsForCommand(deferredAuthCtx, store, options.nameArgs, "logs")
+			if err != nil {
+				return err
 			}
 			workloadComponents, managed, err := readViewLogsSelection(resolved)
 			if err != nil {
@@ -186,6 +192,12 @@ func appLogsCommand(store application.Store) *cli.Command {
 				selectedComponents = []string{selected}
 			}
 			if err := validateWorkloadLogComponents(selectedComponents, candidates); err != nil {
+				return err
+			}
+			// The operator-auth boundary was deferred past usage validation;
+			// re-enforce it explicitly before anything runs.
+			ctx = operatorauth.ClearResolveOperatorBoundary(ctx)
+			if err := authorizeApplicationOperation(ctx, "app.logs", resolved); err != nil {
 				return err
 			}
 			if managed {
@@ -393,12 +405,25 @@ func runGuidedWorkloadExec(ctx context.Context, store application.Store, args []
 	} else {
 		invocation.argv = commandArgs
 	}
-	resolved, declared, err := selectWorkloadComponentsForCommand(ctx, store, selectorArgs, "exec")
+	// Usage validation (ambiguity / missing component) fails closed before any
+	// operator-auth gate: a caller error is never a runtime authorization
+	// failure. Defer the operator-auth boundary past this validation.
+	deferredAuthCtx := operatorauth.WithSkipResolveOperatorBoundary(ctx)
+	resolved, declared, err := resolveWorkloadComponentsForCommand(deferredAuthCtx, store, selectorArgs, "exec")
 	if err != nil {
 		return err
 	}
 	selected, err := chooseWorkloadComponentSource(ctx, os.Stdin, errOut, commandName, nil, declared, service)
 	if err != nil {
+		return err
+	}
+	if len(declared) > 0 && !containsString(declared, selected) {
+		return usageError(fmt.Sprintf("workload component %q is not selected by the application contract", selected), "Choose one of the declared components: "+componentList(declared)+"\n  Run 'baha app "+commandName+" --help' for usage.")
+	}
+	// The operator-auth boundary was deferred past usage validation; re-enforce
+	// it explicitly before anything runs.
+	ctx = operatorauth.ClearResolveOperatorBoundary(ctx)
+	if err := authorizeApplicationOperation(ctx, "app.exec", resolved); err != nil {
 		return err
 	}
 	compose, workload, environment, composeFiles, err := resolveWorkloadAccessFromResolution(ctx, resolved)

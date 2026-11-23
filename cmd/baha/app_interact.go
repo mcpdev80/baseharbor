@@ -30,6 +30,23 @@ import (
 // itself performs no privilege escalation - it only reads what the authorized
 // operation already may read.
 
+// resolveWorkloadComponentsForCommand resolves the application and the workload
+// components named by the read view (the contract's selection over the
+// repository compose file) for one command category WITHOUT the operator-auth
+// gate. The boundary is deferred past caller-error usage validation; the caller
+// re-authorizes the actual runtime operation explicitly before anything runs.
+func resolveWorkloadComponentsForCommand(ctx context.Context, store application.Store, args []string, command string) (resolvedApplication, []string, error) {
+	resolved, err := resolveApplication(ctx, store, args, command)
+	if err != nil {
+		return resolvedApplication{}, nil, err
+	}
+	components, err := declaredWorkloadComponents(resolved)
+	if err != nil {
+		return resolvedApplication{}, nil, err
+	}
+	return resolved, components, nil
+}
+
 // selectWorkloadComponentsForCommand resolves the application and the workload
 // components named by the read view (the contract's selection over the
 // repository compose file) for one command category. Authorization happens
@@ -39,7 +56,7 @@ import (
 // local compose materialization below can never run there, and silently
 // operating on the wrong host is not an option.
 func selectWorkloadComponentsForCommand(ctx context.Context, store application.Store, args []string, command string) (resolvedApplication, []string, error) {
-	resolved, err := resolveApplication(ctx, store, args, command)
+	resolved, components, err := resolveWorkloadComponentsForCommand(ctx, store, args, command)
 	if err != nil {
 		return resolvedApplication{}, nil, err
 	}
@@ -48,10 +65,6 @@ func selectWorkloadComponentsForCommand(ctx context.Context, store application.S
 	}
 	if isRemoteApplication(resolved) {
 		return resolvedApplication{}, nil, usageError("app "+command+" is host-bound and has no remote Core transport yet", "Read secret-safe state with 'baha app status NAME -t "+resolved.Target.Name+" --json'; guided "+command+" runs where the workload actually executes.")
-	}
-	components, err := declaredWorkloadComponents(resolved)
-	if err != nil {
-		return resolvedApplication{}, nil, err
 	}
 	return resolved, components, nil
 }

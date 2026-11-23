@@ -13,6 +13,36 @@ type enforcementState struct {
 
 type enforcementKey struct{}
 
+// skipResolveBoundaryKey, when present, tells ensureOperatorAuthForBoundary to
+// defer the interactive operator-auth boundary until the caller re-authorizes
+// explicitly (after caller-error usage validation has run). It never weakens
+// the enforced boundary; it only reorders it so usage failures surface before
+// an authorization failure.
+type skipResolveBoundaryKey struct{}
+
+// WithSkipResolveOperatorBoundary marks ctx so the operator-auth boundary does
+// not fire during application resolution. Callers must re-authorize the actual
+// runtime operation before anything runs.
+func WithSkipResolveOperatorBoundary(ctx context.Context) context.Context {
+	return context.WithValue(ctx, skipResolveBoundaryKey{}, true)
+}
+
+// ShouldSkipResolveOperatorBoundary reports whether ctx carries the deferred
+// operator-auth boundary marker.
+func ShouldSkipResolveOperatorBoundary(ctx context.Context) bool {
+	v, ok := ctx.Value(skipResolveBoundaryKey{}).(bool)
+	return ok && v
+}
+
+// ClearResolveOperatorBoundary returns a ctx without the deferred-boundary
+// marker so the next operator-auth boundary check re-enforces the boundary.
+func ClearResolveOperatorBoundary(ctx context.Context) context.Context {
+	if !ShouldSkipResolveOperatorBoundary(ctx) {
+		return ctx
+	}
+	return context.WithValue(ctx, skipResolveBoundaryKey{}, false)
+}
+
 func WithEnforcement(ctx context.Context) context.Context {
 	return context.WithValue(ctx, enforcementKey{}, &enforcementState{})
 }

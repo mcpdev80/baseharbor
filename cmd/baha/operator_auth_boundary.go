@@ -56,6 +56,13 @@ func ensureOperatorAuthForBoundary(ctx context.Context, target, environment stri
 	if !operatorauth.ManagedEnvironment(environment) || !operatorauth.EnforcementEnabled(ctx) {
 		return nil
 	}
+	// The operator-auth boundary may be deferred past caller-error usage
+	// validation: a usage failure must surface before an authorization failure.
+	// The caller re-authorizes the actual runtime operation explicitly before
+	// anything runs; this never weakens the enforced boundary.
+	if operatorauth.ShouldSkipResolveOperatorBoundary(ctx) {
+		return nil
+	}
 	if _, ok := operatorauth.PrincipalFromContext(ctx); ok {
 		return nil
 	}
