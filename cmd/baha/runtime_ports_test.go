@@ -28,6 +28,18 @@ func TestParseRuntimeUpOptions(t *testing.T) {
 	}
 }
 
+func TestRuntimeUpCandidateConsentIsRetainedForLocalApply(t *testing.T) {
+	const digest = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+	opts, err := parseRuntimeUpOptions([]string{"--confirm-candidate", digest})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := withRuntimeUpCandidateConsent(context.Background(), opts)
+	if got := candidateConsentOverride(ctx); got != digest {
+		t.Fatalf("local up candidate consent = %q, want the exact supplied digest", got)
+	}
+}
+
 func TestRuntimeUpYesDoesNotImplicitlyTrustHostCA(t *testing.T) {
 	opts, err := parseRuntimeUpOptions([]string{"--yes"})
 	if err != nil {
