@@ -148,16 +148,84 @@ func TestPersesAlertEvaluatorObservationNeverReportsHealthyOrVerified(t *testing
 	}
 }
 
-// TestPersesAlertEvaluatorObservationCommandFaceReportsPersesSurface drives
-// the real `baha app perses status` production entry for the selected surface
-// and pins its public three-state contract: the surface is either
-// not_configured or configured_unverified, never verified. The alert-
-// evaluator consumer reports the verifier result on `baha app status`;
-// neither face may claim a health this Core cannot observe.
-func TestPersesAlertEvaluatorObservationCommandFaceReportsPersesSurface(t *testing.T) {
+// TestPersesAlertEvaluatorObservationPersesStatusSurface drives the exact
+// seam behind 'baha app perses status' (reportPersesSurfaceStatus, also the
+// MCP app.perses.status read model) for the selected and the unselected
+// manifest and asserts the alert-evaluator observation on its OUTPUT.
+func TestPersesAlertEvaluatorObservationPersesStatusSurface(t *testing.T) {
 	t.Setenv("BASEHARBOR_TARGET", "")
 	t.Setenv("BASEHARBOR_STATE_DIR", "")
 	ctx := t.Context()
+	for _, selected := range []bool{true, false} {
+		name := "selected"
+		if !selected {
+			name = "unselected"
+		}
+		t.Run(name, func(t *testing.T) {
+			configureTestTarget(t)
+			resolved := persesWitnessProbeApp(t, ctx, persesWitnessAppName(t), func(m application.Manifest) application.Manifest {
+				m.Services.ObservabilityManagementUI = true
+				m.Services.Perses = selected
+				return m
+			})
+			// Author the applied face exactly as persesProbeApp does: the
+			// surface is only visible once the deployment was applied, and
+			// the contract-missing ("unavailable") state belongs to a
+			// provisioned but not-live-verified evaluator. The datasource
+			// witness artifacts are NOT provisioned here, which is the very
+			// selected-but-contract-missing case the card names.
+			files := application.RuntimeFilesFor(resolved.Store, resolved.Manifest)
+			if err := os.MkdirAll(files.Dir, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			canonical, err := application.RuntimeComposeYAMLForProject(resolved.Manifest, files)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(files.Compose, []byte(canonical), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(files.Env, []byte("preserved=protected\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if err := recordAppliedDeployment(ctx, resolved, files); err != nil {
+				t.Fatalf("record applied probe deployment: %v", err)
+			}
+
+			// The seam function itself: observation on the OUTPUT of
+			// reportPersesSurfaceStatus.
+			seam, err := reportPersesSurfaceStatus(ctx, resolved.Store, nil)
+			if err != nil {
+				t.Fatalf("reportPersesSurfaceStatus: %v", err)
+			}
+			assertPersesAlertEvaluatorObservation(t, seam.AlertEvaluator, selected)
+
+			// And the same truth through the real command entry, which is
+			// what 'baha app perses status' emits as JSON.
+			var out, errOut bytes.Buffer
+			if err := runWithIOAsTestOperator(ctx, []string{"app", "perses", "status", "--json"}, &out, &errOut); err != nil {
+				t.Fatalf("baha app perses status --json failed: %v\nstdout: %s\nstderr: %s", err, out.String(), errOut.String())
+			}
+			var result persesStatusResult
+			if err := json.Unmarshal(out.Bytes(), &result); err != nil {
+				t.Fatalf("baha app perses status --json output is not the public report: %v\n%s", err, out.String())
+			}
+			if result.State == string(capability.PersesStatusVerified) {
+				t.Fatalf("the perses status command reported %q without a real health path", result.State)
+			}
+			assertPersesAlertEvaluatorObservation(t, result.AlertEvaluator, selected)
+		})
+	}
+}
+
+// TestPersesAlertEvaluatorObservationAppStatusCollectionFace asserts the
+// consumer also runs on the app-status collection path (the face where
+// collectManagedServiceChecks executes) without claiming health.
+func TestPersesAlertEvaluatorObservationAppStatusCollectionFace(t *testing.T) {
+	t.Setenv("BASEHARBOR_TARGET", "")
+	t.Setenv("BASEHARBOR_STATE_DIR", "")
+	ctx := t.Context()
+	configureTestTarget(t)
 	resolved := persesWitnessProbeApp(t, ctx, persesWitnessAppName(t), func(m application.Manifest) application.Manifest {
 		m.Services.ObservabilityManagementUI = true
 		m.Services.Perses = true
@@ -194,19 +262,37 @@ func TestPersesAlertEvaluatorObservationCommandFaceReportsPersesSurface(t *testi
 			t.Fatalf("state %q is outside the three-state fail-closed contract", check.State)
 		}
 	}
-	var out, errOut bytes.Buffer
-	if err := runWithIOAsTestOperator(ctx, []string{"app", "perses", "status", "--json"}, &out, &errOut); err != nil && !strings.Contains(err.Error(), "container runtime orchestration not found") {
-		t.Fatalf("baha app perses status --json failed: %v\nstdout: %s\nstderr: %s", err, out.String(), errOut.String())
+}
+
+// assertPersesAlertEvaluatorObservation pins the contract on the
+// persesStatusResult emitted by reportPersesSurfaceStatus: the observation is
+// present, its name is fixed, its state is one of the three allowed
+// fail-closed states (and for a selected manifest with metric inputs, the
+// exact configured_unverified reachability; for an unselected manifest, the
+// exact "not configured" wording), and it never claims OK/healthy/verified.
+func assertPersesAlertEvaluatorObservation(t *testing.T, check *application.StatusCheck, selected bool) {
+	t.Helper()
+	if check == nil {
+		t.Fatal("reportPersesSurfaceStatus returned no alert-evaluator observation: the perses status command face must carry the single honest consumer")
 	}
-	var persesResult persesStatusResult
-	if err := json.Unmarshal(out.Bytes(), &persesResult); err != nil {
-		t.Fatalf("baha app perses status --json output is not the public report: %v\n%s", err, out.String())
+	if check.Name != alertEvaluatorObservationName {
+		t.Fatalf("alert-evaluator observation name = %q, want %q", check.Name, alertEvaluatorObservationName)
 	}
-	// The command face stays inside the public three-state contract: the
-	// surface is either not_configured or configured_unverified, never
-	// verified.
-	if persesResult.State != string(capability.PersesStatusNotConfigured) && persesResult.State != string(capability.PersesStatusConfiguredUnverified) {
-		t.Fatalf("the perses status command reported %q: the three-state contract allows only not_configured or configured_unverified without a real health path", persesResult.State)
+	switch check.State {
+	case "healthy", "verified", "ready":
+		t.Fatalf("the perses status face reported %q for the alert evaluator: it must stay fail-closed while the contract is Owner-gated", check.State)
+	case "not configured", "unavailable (owner-gated evaluator contract)", "configured_unverified":
+	default:
+		t.Fatalf("state %q is outside the three-state fail-closed contract", check.State)
+	}
+	if check.OK {
+		t.Fatal("the alert-evaluator observation must never fold into readiness")
+	}
+	if selected && check.State != "configured_unverified" {
+		t.Fatalf("selected manifest with metric inputs must show the verifier reachability configured_unverified verbatim, got %q", check.State)
+	}
+	if !selected && check.State != "not configured" {
+		t.Fatalf("unselected manifest must state %q, got %q", "not configured", check.State)
 	}
 }
 

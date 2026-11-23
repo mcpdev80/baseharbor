@@ -487,24 +487,11 @@ func (c *applicationStatusCollection) collectManagementUICheck(ctx context.Conte
 	c.result.AddCheck("management-ui", ready == selected, fmt.Sprintf("%d/%d selected management UI surface(s) reachable", ready, selected))
 }
 
-// persesAlertEvaluatorStateNotConfigured is the user-visible state when the
-// Perses alert evaluator is not selected in the manifest, and
-// persesAlertEvaluatorStateUnavailable is the state when it IS selected but
-// the owner-gated real evaluator contract is missing (card 0428-152). These
-// are the only two fail-closed states this consumer may show; a
-// "healthy"/"verified" claim requires the Owner-approved real contract in
-// internal/metrics and can never be produced here.
-const (
-	persesAlertEvaluatorStateNotConfigured = "not configured"
-	persesAlertEvaluatorStateUnavailable   = "unavailable (owner-gated evaluator contract)"
-)
-
-// persesAlertEvaluatorReachabilityVerified is the verifier's own marker for a
-// contract that has been actually verified by internal/metrics. No producer in
-// this Core sets it (persesAlertRealEvaluatorContractPresent keeps the
-// verifier fail-closed), and as long as no verifier result carries it, this
-// consumer can never report "healthy"/"verified".
-const persesAlertEvaluatorReachabilityVerified = "verified"
+// persesAlertEvaluatorStateNotConfigured, persesAlertEvaluatorStateUnavailable,
+// persesAlertEvaluatorReachabilityVerified, persesAlertEvaluatorObservationName
+// and the consumer itself (persesAlertEvaluatorObservation) live in
+// perses_lifecycle.go, where the 'baha app perses status' seam produces its
+// result; app_status_collect.go and the tests share those constants.
 
 // collectPersesAlertEvaluatorObservation is the single honest consumer of the
 // Perses alert-evaluator verifier contract in internal/metrics
@@ -530,21 +517,8 @@ const persesAlertEvaluatorReachabilityVerified = "verified"
 // state holder or manifest field is introduced: the decision derives from the
 // existing manifest bindings the verifier itself reads.
 func (c *applicationStatusCollection) collectPersesAlertEvaluatorObservation() {
-	const name = "management-ui/perses/alert-evaluator"
-	result, err := metricsprovider.BuildPersesAlertEvaluator(c.manifest)
-	if err != nil {
-		state := persesAlertEvaluatorStateUnavailable
-		if strings.Contains(err.Error(), "Perses is not selected") {
-			state = persesAlertEvaluatorStateNotConfigured
-		}
-		c.result.AddObservation(name, state, "Perses alert evaluator is "+state+" (fail-closed reason from the metrics verifier: "+err.Error()+"); this Core never reports the evaluator healthy or verified")
-		return
-	}
-	state := result.Reachability
-	if state == persesAlertEvaluatorReachabilityVerified {
-		state = persesAlertEvaluatorStateUnavailable
-	}
-	c.result.AddObservation(name, state, fmt.Sprintf("Perses alert evaluator: kind %s, owner %s, verifier reachability %q shown verbatim; no live rule evaluation is claimed", result.Evaluator.Kind, result.Evaluator.Owner, result.Reachability))
+	check := persesAlertEvaluatorObservation(c.manifest)
+	c.result.AddObservation(check.Name, check.State, check.Detail)
 }
 
 func (c *applicationStatusCollection) collectSecretsAndBrokerChecks(ctx context.Context) {
