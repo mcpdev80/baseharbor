@@ -168,6 +168,9 @@ class ContractCheckTests(unittest.TestCase):
         if integration.optional_coreless_test_command(
                 'TestEnvironmentDestroyNativeLifecycle', root) is not None:
             expected.add('TestEnvironmentDestroyNativeLifecycle')
+        if integration.optional_coreless_test_command(
+                'TestApplicationCapabilityLifecycleFootprintShowDigestConsent', root) is not None:
+            expected.add('TestApplicationCapabilityLifecycleFootprintShowDigestConsent')
         for runtime in ['docker', 'podman']:
             gate = f'integration/{runtime}/coreless-lifecycle'
             integration.validate_coreless_shard_partition(gate)

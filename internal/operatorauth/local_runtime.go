@@ -53,7 +53,7 @@ func CheckLocalRuntimeGrant(operation machine.Operation, environmentID, applicat
 
 func LocalWorkloadOperation(operation string) bool {
 	switch operation {
-	case "app.create", "app.adopt", "app.configure", "app.new", "app.show", "app.environment", "app.connection", "app.preflight", "app.stop", "plan", "apply", "status", "doctor", "observe", "evidence", "update", "repair", "backup", "restore", "destroy", "workspace.show", "workspace.init", "workspace.map", "workspace.resolve", "workspace.status", "workspace.update":
+	case "app.create", "app.adopt", "app.configure", "app.new", "app.show", "app.environment", "app.connection", "app.preflight", "app.stop", "app.footprint.show", "plan", "apply", "status", "doctor", "observe", "evidence", "update", "repair", "backup", "restore", "destroy", "workspace.show", "workspace.init", "workspace.map", "workspace.resolve", "workspace.status", "workspace.update":
 		return true
 	default:
 		return false

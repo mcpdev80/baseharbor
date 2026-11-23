@@ -1,6 +1,22 @@
 package main
 
-import "testing"
+import (
+	"bytes"
+	"context"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/deployment"
+	"github.com/mcpdev80/baseharbor/internal/evidence"
+	"github.com/mcpdev80/baseharbor/internal/identity"
+	"github.com/mcpdev80/baseharbor/internal/operatorauth"
+	"github.com/mcpdev80/baseharbor/internal/tenancy"
+	"github.com/mcpdev80/baseharbor/internal/testsupport/serviceissuer"
+)
 
 func TestSelectAccessInstance(t *testing.T) {
 	got, err := selectAccessInstance([]string{"primary"}, "", "postgres")
@@ -47,4 +63,152 @@ func TestParseLogsArgs(t *testing.T) {
 	if appName != "mailflow" || service != "api" || !follow {
 		t.Fatalf("unexpected log target")
 	}
+}
+
+// TestAppCredsRevealWritesPerRevealAuditEvent pins the access-wizard
+// fail-closed fix: the human `baha app creds --reveal` path must (a) keep the
+// value masked by default, (b) still print the real value on explicit
+// `--reveal`, (c) write a per-reveal audit event (operation
+// "connection-reveal") to the target-state store, and (d) never leak the
+// secret through the JSON path. It mirrors the app_env fixture (serviceissuer)
+// and reads the target-state audit store the same way recordApplicationAudit
+// writes it.
+func TestAppCredsRevealWritesPerRevealAuditEvent(t *testing.T) {
+	target := configureTestTarget(t)
+	t.Setenv(application.ProviderScopeEnv(capability.ProviderPostgreSQL), string(capability.ScopeApplication))
+	dir := t.TempDir()
+	old, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(old)
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+
+	m := application.New("demo", "dev", true, false, false)
+	store := testDeploymentStore(t, target, m)
+	if _, err := store.Create(m); err != nil {
+		t.Fatal(err)
+	}
+	registerTestDeployment(t, target, m, "", "")
+	_, err = application.EnsureRuntime(context.Background(), serviceissuer.New(t), store, m)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	targetStateRoot, err := deployment.TargetStateRoot(target.Name)
+	if err != nil {
+		t.Fatalf("target state root: %v", err)
+	}
+
+	// Default: masked, no secret in output.
+	var out bytes.Buffer
+	if err := runConnectionRevealWithOperator([]string{"app", "creds", "postgres", "default", "--app", "demo"}, &out, &out); err != nil {
+		t.Fatalf("creds default failed: %v", err)
+	}
+	if text := out.String(); strings.Contains(text, "postgresql://") || strings.Contains(text, "PASSWORD=<masked>") == false {
+		t.Fatalf("default creds output must mask the password: %q", text)
+	}
+
+	// Explicit human reveal still prints the real value AND records an audit
+	// event with operation "connection-reveal".
+	out.Reset()
+	if err := runConnectionRevealWithOperator([]string{"app", "creds", "postgres", "default", "--app", "demo", "--reveal"}, &out, &out); err != nil {
+		t.Fatalf("creds --reveal failed: %v", err)
+	}
+	if !strings.Contains(out.String(), "PASSWORD=") || !strings.Contains(out.String(), "URI=") {
+		t.Fatalf("explicit reveal must print the connection values: %q", out.String())
+	}
+	events, err := loadTargetAuditEvents(targetStateRoot)
+	if err != nil {
+		t.Fatalf("target audit store unreadable: %v", err)
+	}
+	if !containsAuditOperation(events, "connection-reveal") {
+		t.Fatalf("no per-reveal connection-reveal audit event recorded: %+v", events)
+	}
+
+	// JSON --reveal stays blocked (contract §7).
+	out.Reset()
+	err = runConnectionRevealWithOperator([]string{"app", "creds", "postgres", "default", "--app", "demo", "--reveal", "--json"}, &out, &out)
+	if err == nil {
+		t.Fatal("expected JSON --reveal to be blocked")
+	}
+	if strings.Contains(out.String(), "PASSWORD=") {
+		t.Fatalf("JSON --reveal leaked the secret: %q", out.String())
+	}
+}
+
+func TestAppCredsRevealFailsClosedWhenAuditWriteFails(t *testing.T) {
+	target := configureTestTarget(t)
+	t.Setenv(application.ProviderScopeEnv(capability.ProviderPostgreSQL), string(capability.ScopeApplication))
+	dir := t.TempDir()
+	old, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(old)
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+
+	m := application.New("demo", "dev", true, false, false)
+	store := testDeploymentStore(t, target, m)
+	if _, err := store.Create(m); err != nil {
+		t.Fatal(err)
+	}
+	registerTestDeployment(t, target, m, "", "")
+	if _, err := application.EnsureRuntime(context.Background(), serviceissuer.New(t), store, m); err != nil {
+		t.Fatal(err)
+	}
+	targetStateRoot, err := deployment.TargetStateRoot(target.Name)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Make the audit directory path unusable after the credential binding is
+	// ready, so the reveal audit fails before the command can print a secret.
+	auditPath := filepath.Join(targetStateRoot, "evidence")
+	if err := os.RemoveAll(auditPath); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(auditPath, []byte("not a directory"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var out, errOut bytes.Buffer
+	err = runConnectionRevealWithOperator([]string{"app", "creds", "postgres", "default", "--app", "demo", "--reveal"}, &out, &errOut)
+	if err == nil {
+		t.Fatal("expected connection reveal to fail when its audit event cannot be written")
+	}
+	if strings.Contains(out.String(), "PASSWORD=") || strings.Contains(out.String(), "URI=") {
+		t.Fatalf("connection secret was emitted despite the audit failure (output length %d)", out.Len())
+	}
+}
+
+func runConnectionRevealWithOperator(args []string, out, errOut *bytes.Buffer) error {
+	ctx := operatorauth.WithVerifiedPrincipal(context.Background(), &identity.Principal{
+		Subject: "connection-reveal-fixture", Issuer: "https://issuer.example",
+		IssuerVerified: true, Groups: []string{"editor"},
+	})
+	ctx = operatorauth.WithMembershipProvider(ctx, &firstRunMembershipProvider{
+		memberships: []tenancy.Membership{{TenantID: "tenant-a", Role: "editor"}},
+	})
+	return rootCommand().Execute(ctx, args, out, errOut)
+}
+
+func loadTargetAuditEvents(root string) ([]evidence.AuditEvent, error) {
+	if strings.TrimSpace(root) == "" {
+		return nil, nil
+	}
+	return evidence.Load(root)
+}
+
+func containsAuditOperation(events []evidence.AuditEvent, operation string) bool {
+	for _, e := range events {
+		if e.Operation == operation {
+			return true
+		}
+	}
+	return false
 }

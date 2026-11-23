@@ -102,3 +102,33 @@ func TestCheckLocalRuntimeGrantFailsClosedAndUsesMonotonicNonce(t *testing.T) {
 		})
 	}
 }
+
+// TestCheckLocalRuntimeGrantAdmitsFootprintShowReadOperation is the regression
+// for card 0428-227: the selected data-capabilities acceptance gate reads the
+// canonical Target footprint with the exact read-only `app footprint show`.
+// This operation is a registered read-only operation (machine contract
+// SafetyReadOnly) and must be admitted as a managed local workload operation by
+// CheckLocalRuntimeGrant instead of failing closed with "local runtime grant
+// requires a registered operation", which triggered the consent cascade that
+// failed all four data-capabilities runtime rows.
+func TestCheckLocalRuntimeGrantAdmitsFootprintShowReadOperation(t *testing.T) {
+	footprint, ok := machine.OperationByID("app.footprint.show")
+	if !ok {
+		t.Fatal("app.footprint.show is not a registered machine operation")
+	}
+	if !LocalWorkloadOperation(footprint.ID) {
+		t.Fatal("app.footprint.show was not admitted as a managed local workload operation")
+	}
+	if footprint.Safety != machine.SafetyReadOnly {
+		t.Fatalf("expected app.footprint.show to be read-only, got %v", footprint.Safety)
+	}
+	const environmentID = "5b09b7a8-9380-43cc-8000-000000000003"
+	const applicationID = "5b09b7a8-9380-43cc-8000-000000000004"
+	grant, err := CheckLocalRuntimeGrant(footprint, environmentID, applicationID, func() error { return nil })
+	if err != nil {
+		t.Fatalf("read-only app.footprint.show was not admitted by CheckLocalRuntimeGrant: %v", err)
+	}
+	if grant == nil {
+		t.Fatal("CheckLocalRuntimeGrant returned a nil grant for read-only app.footprint.show")
+	}
+}
