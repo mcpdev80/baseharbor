@@ -349,6 +349,120 @@ func TestCIIntegrationOperatorAllowsOnlyGuidedDeveloperDomainAndAppNew(t *testin
 	}
 }
 
+func TestCIIntegrationOperatorAdmitsFootprintShowOnlyOnDataCapabilitiesGate(t *testing.T) {
+	t.Setenv("DEMO_ATOMIC_GATE", "1")
+	t.Setenv("BASEHARBOR_TEST_RUNTIME", "docker")
+	t.Setenv("GATE", "data-capabilities")
+	t.Setenv("BASEHARBOR_DEMO_OPERATOR_GATE", "data-capabilities")
+	target := configureIsolatedEmptyRuntimeTarget(t, "atomic-docker-data-capabilities", "docker")
+	t.Setenv("BASEHARBOR_TARGET", target.Name)
+	if err := registerInstallationForTarget(t, target.Name); err != nil {
+		t.Fatalf("register data-capabilities Core fixture: %v", err)
+	}
+
+	// Positive: the canonical read-only footprint probe is admitted on the gate
+	// that needs it and receives the scoped test-only operator.
+	canonical := []string{"app", "footprint", "show", "-o", "json"}
+	if !ciIntegrationManagedLocalGate(canonical, target) {
+		t.Fatalf("canonical footprint show was not admitted to the selected data-capabilities gate")
+	}
+	if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), canonical)); !ok {
+		t.Fatalf("canonical footprint show did not receive the scoped operator on the data-capabilities gate")
+	}
+
+	// Negative: any other command stays fail-closed, including the mutating and
+	// noncanonical footprint forms as well as unrelated read/app commands.
+	for _, args := range [][]string{
+		{"app", "footprint", "show", "--json"},
+		{"app", "footprint", "show"},
+		{"app", "footprint", "show", "prod/docker-dev"},
+		{"app", "logs", "demo-app"},
+	} {
+		if ciIntegrationManagedLocalGate(args, target) {
+			t.Errorf("noncanonical or unrelated command %v was admitted on the data-capabilities gate", args)
+		}
+		if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), args)); ok {
+			t.Errorf("noncanonical or unrelated command %v received the operator on the data-capabilities gate", args)
+		}
+	}
+
+	// The guided admission is unchanged: the same canonical footprint probe is
+	// admitted when the selected gate is guided, and rejected on an unrelated
+	// gate that selects neither guided nor data-capabilities.
+	guidedTarget := configureIsolatedEmptyRuntimeTarget(t, "atomic-docker-guided", "docker")
+	t.Setenv("GATE", "guided")
+	t.Setenv("BASEHARBOR_DEMO_OPERATOR_GATE", "guided")
+	t.Setenv("BASEHARBOR_TARGET", guidedTarget.Name)
+	if err := registerInstallationForTarget(t, guidedTarget.Name); err != nil {
+		t.Fatalf("register guided Core fixture: %v", err)
+	}
+	if !ciIntegrationManagedLocalGate(canonical, guidedTarget) {
+		t.Fatal("canonical footprint show was not admitted on the guided gate")
+	}
+	if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), canonical)); !ok {
+		t.Fatal("canonical footprint show did not receive its operator on the guided gate")
+	}
+
+	lifecycleTarget := configureIsolatedEmptyRuntimeTarget(t, "atomic-docker-lifecycle", "docker")
+	t.Setenv("GATE", "lifecycle")
+	t.Setenv("BASEHARBOR_DEMO_OPERATOR_GATE", "lifecycle")
+	t.Setenv("BASEHARBOR_TARGET", lifecycleTarget.Name)
+	if err := registerInstallationForTarget(t, lifecycleTarget.Name); err != nil {
+		t.Fatalf("register lifecycle Core fixture: %v", err)
+	}
+	if ciIntegrationManagedLocalGate(canonical, lifecycleTarget) {
+		t.Fatal("canonical footprint show escaped into the lifecycle gate")
+	}
+	if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), canonical)); ok {
+		t.Fatal("canonical footprint show received an operator in the lifecycle gate")
+	}
+}
+
+func TestCIIntegrationOperatorDataGateAppNewAdmission(t *testing.T) {
+	t.Setenv("DEMO_ATOMIC_GATE", "1")
+	for _, probe := range []struct{ runtime, gate string }{
+		{"docker", "data-capabilities"},
+		{"podman", "data-capabilities"},
+	} {
+		t.Run(probe.runtime+"/"+probe.gate, func(t *testing.T) {
+			t.Setenv("BASEHARBOR_TEST_RUNTIME", probe.runtime)
+			t.Setenv("GATE", probe.gate)
+			t.Setenv("BASEHARBOR_DEMO_OPERATOR_GATE", probe.gate)
+			target := configureIsolatedEmptyRuntimeTarget(t, "atomic-"+probe.runtime+"-"+probe.gate, probe.runtime)
+			if err := registerInstallationForTarget(t, target.Name); err != nil {
+				t.Fatalf("register %s %s Core fixture: %v", probe.runtime, probe.gate, err)
+			}
+			t.Setenv("BASEHARBOR_TARGET", target.Name)
+			if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), []string{"app", "new"})); !ok {
+				t.Fatal("canonical app new did not receive the CI operator in the selected data gate (interactive OIDC fallthrough)")
+			}
+			if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), []string{"app", "edit"})); !ok {
+				t.Fatal("exact data-capabilities app edit did not receive its CI operator")
+			}
+			for _, args := range [][]string{{"app", "new", "--yes"}, {"app", "new", "extra"}, {"app", "edit", "--yes"}, {"app", "edit", "extra"}} {
+				if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), args)); ok {
+					t.Errorf("non-canonical form %v unexpectedly received the CI operator under %s", args, probe.gate)
+				}
+			}
+		})
+	}
+	// Other gates keep the guided-only behaviour unchanged (no blanket allow).
+	for _, gate := range []string{"core-capability", "lifecycle", "observability"} {
+		t.Setenv("BASEHARBOR_TEST_RUNTIME", "docker")
+		t.Setenv("GATE", gate)
+		t.Setenv("BASEHARBOR_DEMO_OPERATOR_GATE", gate)
+		target := configureIsolatedEmptyRuntimeTarget(t, "atomic-docker-"+gate, "docker")
+		if err := registerInstallationForTarget(t, target.Name); err != nil {
+			t.Fatalf("register %s Core fixture: %v", gate, err)
+		}
+		t.Setenv("BASEHARBOR_TARGET", target.Name)
+		for _, args := range [][]string{{"app", "new"}, {"app", "edit"}} {
+			if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), args)); ok {
+				t.Errorf("app wizard admission %v escaped into gate %q", args, gate)
+			}
+		}
+	}
+}
 func TestCIIntegrationGuidedMCPPrincipalCanOnlySeeFootprintTool(t *testing.T) {
 	t.Setenv("DEMO_ATOMIC_GATE", "1")
 	t.Setenv("BASEHARBOR_TEST_RUNTIME", "docker")
