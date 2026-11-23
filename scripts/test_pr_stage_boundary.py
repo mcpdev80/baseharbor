@@ -75,8 +75,9 @@ class PRStageBoundaryTests(unittest.TestCase):
         self.assertEqual([], result["deferred_integration_gates"])
 
     def test_other_atomic_static_names_stay_unclassified(self):
-        # Only the enumerated PR-executed static gates gained a class; the
-        # failure-injection list for invented atomic/static gates stands.
+        # Only the enumerated PR-executed static gates and the enumerated
+        # release-only deferred static gate gained a class; the failure-injection
+        # list for invented atomic/static gates stands.
         for gate in ["atomic/static/lifecycle", "atomic/static/config-matrix",
                      "atomic/static/init"]:
             with self.subTest(gate=gate):
@@ -84,14 +85,32 @@ class PRStageBoundaryTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     stage.stage(self.plan)
 
-    def test_only_coreless_lifecycle_gates_stay_selected(self):
+    def test_release_only_atomic_static_mcp_is_deferred_not_pr_executed(self):
+        # Finding (0428-208 #1793): `atomic/static/mcp` is a release-only static
+        # gate whose executable proof runs only at release/qualify
+        # (pre-release.yml:663 -> pre-release-runtime-suite.yml:267,
+        # GATE=mcp runs tests/mcp/run.sh). It must be classified DEFERRED
+        # release-only (like the cross-repo gate), never emitted as a PR-executed
+        # static gate. The PR-executed static class is unchanged.
+        self.plan["selected_gates"] = ["atomic/static/mcp"]
+        result = stage.stage(self.plan)
+        self.assertEqual([], result["selected_gates"])
+        self.assertEqual(["atomic/static/mcp"], result["deferred_integration_gates"])
+
+    def test_release_only_atomic_static_mcp_with_native_gate_stays_deferred(self):
+        # Mixed with a native gate the mcp deferral stands and native stays
+        # selected; nothing PR-executed is claimed for the release-only gate.
+        self.plan["selected_gates"] = ["atomic/static/mcp",
+                                       "atomic/docker/lifecycle"]
+        result = stage.stage(self.plan)
+        self.assertEqual(["atomic/docker/lifecycle"], result["selected_gates"])
+        self.assertEqual(["atomic/static/mcp"], result["deferred_integration_gates"])
+
+    def test_coreless_lifecycle_gates_stay_selected(self):
         coreless = ["integration/docker/coreless-lifecycle",
                     "integration/podman/coreless-lifecycle"]
-        deferred = ["integration/static/public-contracts"]
-        self.plan["selected_gates"] = coreless + deferred
-        result = stage.stage(self.plan)
-        self.assertEqual(coreless, result["selected_gates"])
-        self.assertEqual(deferred, result["deferred_integration_gates"])
+        self.plan["selected_gates"] = coreless
+        self.assertEqual(coreless, stage.stage(self.plan)["selected_gates"])
 
     def test_unresolved_coverage_cannot_be_laundered(self):
         self.plan.update(coverage_status="unresolved",
