@@ -178,6 +178,14 @@
       ]
     },
     {
+      "id": "source.cmd_baha_app_new_wizard_org_default_test_go",
+      "path": "cmd/baha/app_new_wizard_org_default_test.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
       "id": "source.cmd.baha.app.pull.go",
       "path": "cmd/baha/app_pull.go",
       "surfaces": [
@@ -355,14 +363,6 @@
       "surfaces": [
         "source.gate.atomic.docker.guided",
         "source.gate.atomic.podman.guided"
-      ]
-    },
-    {
-      "id": "source.cmd_baha_app_new_wizard_org_default_test_go",
-      "path": "cmd/baha/app_new_wizard_org_default_test.go",
-      "surfaces": [
-        "source.gate.atomic.docker.data.capabilities",
-        "source.gate.atomic.podman.data.capabilities"
       ]
     },
     {
