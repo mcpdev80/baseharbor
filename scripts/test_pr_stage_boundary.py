@@ -51,6 +51,39 @@ class PRStageBoundaryTests(unittest.TestCase):
         self.assertEqual(gates, result["selected_gates"])
         self.assertEqual([], result["deferred_integration_gates"])
 
+    def test_atomic_static_release_gates_are_pr_executed_not_unclassified(self):
+        # Finding (#1746 run 45041976030): the trusted planner selects the
+        # release-only atomic/static/shell-ux gate, but the stage boundary
+        # classified it as an unclassified gate and aborted. The PR-executed
+        # static class (atomic/static/shell-ux and, once #1746 lands,
+        # atomic/static/ci-fast-check) must stay selected, must never be
+        # deferred, and must leave native acceptance unchanged.
+        for gate in ("atomic/static/shell-ux", "atomic/static/ci-fast-check"):
+            with self.subTest(gate=gate):
+                self.plan["selected_gates"] = [gate]
+                result = stage.stage(self.plan)
+                self.assertEqual([gate], result["selected_gates"])
+                self.assertEqual([], result["deferred_integration_gates"])
+        # Mixed with a native gate: the native selection/deferral behaviour is
+        # asserted UNCHANGED (native stays selected, nothing deferred).
+        self.plan["selected_gates"] = ["atomic/static/shell-ux",
+                                       "atomic/docker/lifecycle",
+                                       "atomic/podman/lifecycle"]
+        result = stage.stage(self.plan)
+        self.assertEqual(["atomic/static/shell-ux", "atomic/docker/lifecycle",
+                          "atomic/podman/lifecycle"], result["selected_gates"])
+        self.assertEqual([], result["deferred_integration_gates"])
+
+    def test_other_atomic_static_names_stay_unclassified(self):
+        # Only the enumerated PR-executed static gates gained a class; the
+        # failure-injection list for invented atomic/static gates stands.
+        for gate in ["atomic/static/lifecycle", "atomic/static/config-matrix",
+                     "atomic/static/init"]:
+            with self.subTest(gate=gate):
+                self.plan["selected_gates"] = [gate]
+                with self.assertRaises(ValueError):
+                    stage.stage(self.plan)
+
     def test_only_coreless_lifecycle_gates_stay_selected(self):
         coreless = ["integration/docker/coreless-lifecycle",
                     "integration/podman/coreless-lifecycle"]

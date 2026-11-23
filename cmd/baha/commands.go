@@ -138,6 +138,7 @@ func rootCommand() *cli.Command {
 		stackCommand(),
 		workspaceNamespaceCommand(),
 		targetCommand(),
+		envDestroyCommand(),
 		useTargetCommand(),
 		nodeCommand(),
 		onboardCommand(),

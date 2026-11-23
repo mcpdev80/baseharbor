@@ -1,9 +1,12 @@
 package metrics
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"github.com/mcpdev80/baseharbor/internal/capability"
 )
 
 // Perses-native Valkey dashboard for BaseHarbor.
@@ -30,8 +33,11 @@ import (
 // truth and the deterministic golden-file witnesses are their marshalling.
 //
 // Signal contract (0428-081 task): Valkey metrics are declared
-// ObservabilityRequiresAdapter in internal/capability/reference.go (Valkey has
-// NO native metrics signal in BaseHarbor) and the Perses seam
+// ObservabilityUnsupported in internal/capability/reference.go (Valkey has
+// NO native metrics signal in BaseHarbor; 0428-182 / f5ce95af moved the
+// declaration from the earlier ObservabilityRequiresAdapter to
+// ObservabilityUnsupported — either way no real native signal, so the shipped
+// entry stays EXPLICITLY UNAVAILABLE). The Perses seam
 // (internal/capability/perses.go) forbids false-declaring a metric. This file
 // therefore delivers the first Valkey dashboard CONDITIONAL on validated
 // Valkey/compatible metrics: Valkey currently has no native signal, so the
@@ -183,21 +189,202 @@ type PersesValkeyPanelCatalogEntry struct {
 // persesValkeyUnavailableReason is the concrete reason the Valkey dashboard
 // reports today. It names the missing native signal exactly, per the card
 // contract.
-const persesValkeyUnavailableReason = "Valkey has no native metrics signal in BaseHarbor (observability status RequiresAdapter); the dashboard is explicitly unavailable and no exporter is installed"
+const persesValkeyUnavailableReason = "Valkey has no native metrics signal in BaseHarbor (observability status ObservabilityUnsupported); the dashboard is explicitly unavailable and no exporter is installed"
 
-// persesValkeyDashboardCatalog builds the shipped Perses Valkey catalog for the
-// pinned release. It contains exactly one entry (valkey-targets). Valkey has no
-// native metrics signal in BaseHarbor, so the entry is explicitly UNAVAILABLE:
-// no panel ships and no exporter is installed. This is the conditional
-// dashboard: a native Valkey signal would promote this entry to a real
-// dashboard, but that signal does not yet exist.
-func persesValkeyDashboardCatalog() map[string]PersesValkeyPanelCatalogEntry {
+// mustJSONPersesValkey marshals v to compact JSON without HTML escaping, and
+// panics on error. It is a build helper for building Valkey Perses plugin specs
+// from raw compile-time constants, so marshalling cannot fail at runtime. The
+// & character is emitted literally (not \u0026) so the golden witnesses are
+// human-readable Perses-native JSON. It is disjoint from the host/container
+// mustJSONHosts helper.
+func mustJSONPersesValkey(v any) json.RawMessage {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(v); err != nil {
+		panic("perses valkey panel spec marshal failed: " + err.Error())
+	}
+	return json.RawMessage(bytes.TrimRight(buf.Bytes(), "\n"))
+}
+
+// persesValkeyResolvedSignalStatus is the real producer of the Valkey dashboard
+// availability verdict — the authoritative, non-forgeable resolution of the
+// shipped reference provider catalog. It answers the Valkey backend's OWN
+// native metrics signal only, never inferred from another backend's health or
+// from any manifest declaration the caller supplies.
+//
+// It mirrors hostProviderMetricsNativeVerified() (internal/capability/perses.go)
+// and ResolveHostDashboardSignalStatus(), which gate the host/container
+// dashboards the same way: it iterates the reference catalog (the same
+// source host/provider metrics read) and returns ObservabilitySupported only
+// when Valkey's metrics signal is declared real, native and backend-verified.
+// A RequiresAdapter signal (as Valkey has today) resolves to
+// ObservabilityRequiresAdapter and stays unavailable-preserving. Manifest
+// declaration alone (perses selected, backend running) is NOT availability —
+// only this catalog resolution promotes the entry.
+func persesValkeyResolvedSignalStatus() capability.ObservabilitySupportStatus {
+	for _, descriptor := range capability.ReferenceIntegrations() {
+		if descriptor.ID != "baseharbor/valkey" {
+			continue
+		}
+		for _, signal := range descriptor.Observability.Signals {
+			if signal.Name != "metrics" {
+				continue
+			}
+			switch signal.Status {
+			case capability.ObservabilitySupported:
+				return capability.ObservabilitySupported
+			case capability.ObservabilityRequiresAdapter:
+				return capability.ObservabilityRequiresAdapter
+			default:
+				return signal.Status
+			}
+		}
+	}
+	return ""
+}
+
+// persesValkeyPanelValkeyUp is the one verified Valkey panel: the Valkey
+// provider up-signal, queried through the pinned Prometheus datasource. It is
+// the sole panel of the verified dashboard resource.
+func persesValkeyPanelValkeyUp() PersesValkeyPanel {
+	return PersesValkeyPanel{
+		Kind: PersesValkeyPanelKind,
+		Spec: PersesValkeyPanelSpec{
+			Display: PersesValkeyDisplay{Name: "Valkey provider up"},
+			Plugin: PersesValkeyPanelPlugin{
+				Kind: PersesValkeyPanelPluginGraph,
+			},
+			Queries: []PersesValkeyQueryWrapper{{
+				Kind: PersesValkeyQueryWrapperKind,
+				Spec: PersesValkeyQueryPlugin{
+					Kind: PersesValkeyQueryPluginGraph,
+					// The verified panel carries a real Perses query: a Prometheus
+					// expression selecting the BaseHarbor Prometheus scrape of the
+					// valkey provider container. It scopes on baseharbor_provider —
+					// the real emitted label (see
+					// internal/metrics/prometheus_files.go targetGroupPayload: job,
+					// baseharbor_provider, baseharbor_source, baseharbor_source_class,
+					// baseharbor_metrics_path; there is NO `backend` label emitted
+					// anywhere). A query keying on `backend="valkey"` can never
+					// resolve against the emitted series (0428-183 round 3 Finding 1);
+					// the source-scoped baseharbor_provider label is the one that
+					// matches, mirroring the host/container working pattern
+					// (perses_dashboards_hosts.go:234/:249-251). A graph panel without
+					// this data basis would be a fabricated panel (0428-183 P2: every
+					// exported panel must carry a runnable query).
+					Spec:       mustJSONPersesValkey(map[string]string{"query": `up{baseharbor_provider="valkey"}`}),
+					Datasource: &PersesValkeyDatasourceRef{Kind: PersesValkeyDatasourcePrometheus, Name: "valkey"},
+				},
+			}},
+		},
+	}
+}
+
+// persesValkeyDashboardCatalogWithStatus is the catalog builder over the
+// authoritative resolved Valkey backend-signal status and its verification
+// result. A signal resolved to ObservabilitySupported AND backend-verified
+// (verification == ObservabilityVerifyBackend) realizes the real dashboard
+// panels; any other resolved status (the empty/absent status, a
+// RequiresAdapter signal that only requires an adapter, or a supported-but-not
+// verified signal) reports the entry as explicitly UNAVAILABLE with a concrete
+// reason naming the missing verified signal. Catalog presence never becomes a
+// fabricated panel.
+//
+// verification is an injectable test anchor, NOT a finished enum the caller
+// pre-resolves: the CLI and every production caller pass their real
+// backend-verification verdict (persesValkeyBackendVerified()), so the
+// verified-panel code only runs when a real verified signal is present. A test
+// drives the verified branch by supplying a backend-verified anchor
+// (ObservabilityVerifyBackend), never by setting the supported status alone —
+// that is what keeps the positive witness real (0428-183 round 4) and not a
+// caller-asserted enum value.
+func persesValkeyDashboardCatalogWithStatus(status capability.ObservabilitySupportStatus, verification capability.ObservabilityVerificationMode) map[string]PersesValkeyPanelCatalogEntry {
+	if status == capability.ObservabilitySupported && verification == capability.ObservabilityVerifyBackend {
+		return map[string]PersesValkeyPanelCatalogEntry{
+			PersesValkeyDashboardCatalogKey: {
+				Key:            PersesValkeyDashboardCatalogKey,
+				Backend:        "valkey",
+				Datasource:     "prometheus",
+				DatasourceName: "valkey",
+				Dashboard:      persesValkeyDashboard(),
+			},
+		}
+	}
 	return map[string]PersesValkeyPanelCatalogEntry{
 		PersesValkeyDashboardCatalogKey: {
 			Key:         PersesValkeyDashboardCatalogKey,
 			Backend:     "valkey",
 			Unavailable: true,
 			Reason:      persesValkeyUnavailableReason,
+		},
+	}
+}
+
+// persesValkeyBackendVerified is the real backend-verification verdict the
+// production callers feed the availability gate. It is the authoritative
+// resolution of whether Valkey's metrics signal (if any) has actually been
+// backend-verified — the second axis the verified dashboard requires on top of
+// a supported signal. It reads the SAME reference catalog as
+// persesValkeyResolvedSignalStatus so both axes come from one witness and can
+// never drift apart: a signal declared Supported AND backend-verified reports
+// ObservabilityVerifyBackend and realizes the verified dashboard panels, while
+// every other case (Unsupported, RequiresAdapter, or a signal whose verification
+// is not backend-query) reports ObservabilityVerifyNone and stays
+// UNAVAILABLE — fail closed, never self-confirmed. Today the catalog resolves
+// Valkey metrics to ObservabilityUnsupported with Verification=none, so this is
+// unavailable; a future native, backend-verified Valkey signal promotes it.
+func persesValkeyBackendVerified() capability.ObservabilityVerificationMode {
+	for _, descriptor := range capability.ReferenceIntegrations() {
+		if descriptor.ID != "baseharbor/valkey" {
+			continue
+		}
+		for _, signal := range descriptor.Observability.Signals {
+			if signal.Name != "metrics" {
+				continue
+			}
+			if signal.Status == capability.ObservabilitySupported {
+				return signal.Verification
+			}
+			return capability.ObservabilityVerifyNone
+		}
+	}
+	return capability.ObservabilityVerifyNone
+}
+
+// persesValkeyDashboardCatalog builds the shipped Perses Valkey catalog for the
+// pinned release. It contains exactly one entry (valkey-targets). Valkey has no
+// native metrics signal in BaseHarbor today, so the entry is explicitly
+// UNAVAILABLE: no panel ships and no exporter is installed. This is the
+// conditional dashboard: a native Valkey signal would promote this entry to a
+// real dashboard, but that signal does not yet exist. It resolves the status
+// from the authoritative reference catalog (persesValkeyResolvedSignalStatus).
+func persesValkeyDashboardCatalog() map[string]PersesValkeyPanelCatalogEntry {
+	return persesValkeyDashboardCatalogWithStatus(
+		persesValkeyResolvedSignalStatus(),
+		persesValkeyBackendVerified(),
+	)
+}
+
+// persesValkeyDashboard builds the BaseHarbor Valkey dashboard resource for the
+// verified current signal. It ships real panels queried through the pinned
+// Prometheus datasource and no fabricated panel. This is the verified-branch
+// realization: a real Valkey metrics signal of this manifest promotes the entry
+// from the explicitly-unavailable reason document to this dashboard resource.
+func persesValkeyDashboard() PersesValkeyDashboard {
+	return PersesValkeyDashboard{
+		Kind:     PersesValkeyDashboardKind,
+		Metadata: PersesValkeyDashboardMetadata{Name: "valkey-targets", Version: 0},
+		Spec: PersesValkeyDashboardSpec{
+			Display:     PersesValkeyDisplay{Name: "BaseHarbor Valkey target", Description: "Valkey provider container up-signal scraped by BaseHarbor Prometheus."},
+			Datasources: map[string]PersesValkeyDatasource{"prometheus": {Kind: PersesValkeyDatasourcePrometheus, Name: "valkey", Default: true}},
+			Panels: map[string]PersesValkeyPanel{
+				"valkey-up": persesValkeyPanelValkeyUp(),
+			},
+			Layouts: []PersesValkeyLayout{{Kind: PersesValkeyGridLayoutKind, Spec: PersesValkeyLayoutSpec{Items: []PersesValkeyGridItem{
+				{X: 0, Y: 0, Width: 24, Height: 6, Content: PersesValkeyGridContent{Ref: "#/spec/panels/valkey-up"}},
+			}}}},
+			Duration: "5m",
 		},
 	}
 }
@@ -221,7 +408,8 @@ func persesValkeyDashboardCatalogJSON() ([]byte, error) {
 
 // persesValkeyPanelJSON marshals one catalog entry to deterministic Perses-native
 // JSON. For the unavailable entry it emits the reason document; a real dashboard
-// would emit the full dashboard resource.
+// emits the full dashboard resource. The available/unavailable branch is the
+// catalog's own claim, never a self-confirmation of the caller.
 func persesValkeyPanelJSON(entry PersesValkeyPanelCatalogEntry) ([]byte, error) {
 	if entry.Unavailable {
 		return marshalIndentNoEscape(struct {
@@ -242,14 +430,27 @@ func persesValkeyPanelJSON(entry PersesValkeyPanelCatalogEntry) ([]byte, error) 
 }
 
 // PersesValkeyDashboardAvailability returns the availability verdict of the
-// Valkey catalog entry, keyed by catalog key, for the pinned release. A real
-// backend returns "available" with its Perses datasource kind; Valkey today
-// returns "unavailable" with the reason naming the missing signal. This is the
-// deterministic CLI witness that Valkey remains explicitly unavailable rather
-// than silently fabricated — the mirror image of the PostgreSQL/MongoDB
-// handling in the #1597 inventory.
-func PersesValkeyDashboardAvailability() map[string]PersesValkeyDashboardAvailabilityEntry {
-	catalog := persesValkeyDashboardCatalog()
+// Valkey catalog entry, keyed by catalog key, for the pinned release, over the
+// authoritative resolved Valkey backend-signal status. A real, backend-verified
+// Valkey native metrics signal (resolved to ObservabilitySupported) returns
+// "available" with its Perses datasource kind; any other status (the empty
+// status of the CLI face, a RequiresAdapter signal, or any other resolved
+// status) returns "unavailable" with the reason naming the missing verified
+// signal. This is the deterministic CLI witness that Valkey is reported as
+// available ONLY when its own verified signal proves it, never self-confirmed
+// by the manifest declaration it is meant to gate — the mirror image of the
+// host/container dashboard status (perses_dashboards_hosts.go) and the
+// verified-only predicate the identity dashboard hardened (0428-078).
+//
+// status is the verdict produced by persesValkeyResolvedSignalStatus() (the
+// real reference-catalog producer); a caller may pass it through, but the CLI
+// face must NOT fabricate a status — the CLI face reads the real producer.
+//
+// verification is the real backend-verification verdict the CLI face reads
+// (persesValkeyBackendVerified()); a caller may pass it through. Only a
+// supported AND backend-verified signal promotes the entry.
+func PersesValkeyDashboardAvailability(status capability.ObservabilitySupportStatus, verification capability.ObservabilityVerificationMode) map[string]PersesValkeyDashboardAvailabilityEntry {
+	catalog := persesValkeyDashboardCatalogWithStatus(status, verification)
 	out := make(map[string]PersesValkeyDashboardAvailabilityEntry, len(catalog))
 	for key, entry := range catalog {
 		avail := PersesValkeyDashboardAvailable
@@ -267,6 +468,19 @@ func PersesValkeyDashboardAvailability() map[string]PersesValkeyDashboardAvailab
 	return out
 }
 
+// PersesValkeyDashboardAvailabilityResolved is the canonical production caller:
+// it reads BOTH the real reference-catalog producer (persesValkeyResolvedSignalStatus)
+// and the real backend-verification verdict (persesValkeyBackendVerified) and
+// surfaces the resulting availability verdict on the CLI status JSON. The CLI
+// face wires exactly this function so it never fabricates a status or a
+// verification verdict.
+func PersesValkeyDashboardAvailabilityResolved() map[string]PersesValkeyDashboardAvailabilityEntry {
+	return PersesValkeyDashboardAvailability(
+		persesValkeyResolvedSignalStatus(),
+		persesValkeyBackendVerified(),
+	)
+}
+
 // PersesValkeyDashboardAvailabilityEntry is the Valkey catalog entry's
 // availability verdict surfaced on the CLI status JSON.
 type PersesValkeyDashboardAvailabilityEntry struct {
@@ -282,4 +496,16 @@ type PersesValkeyDashboardAvailabilityEntry struct {
 const (
 	PersesValkeyDashboardAvailable   = "available"
 	PersesValkeyDashboardUnavailable = "unavailable"
+)
+
+// PersesValkey datasource / panel / query plugin kinds. These are the Perses
+// native kinds the verified Valkey dashboard resource declares; they are only
+// emitted by the verified branch, never by the unavailable reason document.
+const (
+	PersesValkeyDatasourcePrometheus = "prometheus"
+	PersesValkeyPanelKind            = "Panel"
+	PersesValkeyPanelPluginGraph     = "graph"
+	PersesValkeyQueryWrapperKind     = "query"
+	PersesValkeyQueryPluginGraph     = "graph"
+	PersesValkeyGridLayoutKind       = "grid"
 )

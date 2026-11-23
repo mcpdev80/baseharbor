@@ -27,6 +27,14 @@ func withoutLocalInvocation(ctx context.Context) context.Context {
 	return withLocalInvocation(ctx, "")
 }
 
+// isLocalRuntimeAccessProvider reports a host-local Target access provider
+// form: the bare "local" alias or the runtime-specific "local-<runtime>"
+// name. The grant path still verifies the local engine below before it
+// trusts the invocation.
+func isLocalRuntimeAccessProvider(provider string) bool {
+	return provider == "local" || strings.HasPrefix(provider, "local-")
+}
+
 func localWorkloadScope(ctx context.Context, operation string) context.Context {
 	if !operatorauth.LocalWorkloadOperation(operation) {
 		operation = ""
@@ -59,7 +67,18 @@ func verifiedLocalWorkloadAuthorityWithRuntime(ctx context.Context, target, envi
 	if err != nil {
 		return authority, false, err
 	}
-	if selected.Name != strings.TrimSpace(target) || (selected.AccessProvider != "" && selected.AccessProvider != "local") || selected.TenantID != "" {
+	if selected.Name != strings.TrimSpace(target) || selected.TenantID != "" {
+		return authority, false, nil
+	}
+	// Host-local Target access arrives in two shapes: the bare alias "local"
+	// and the runtime-specific "local-<runtime>" provider name the fixtures and
+	// registration commands record for "--access local-docker" (and its Podman
+	// sibling) when the local reference defaults the provider. Both stay
+	// host-local: the runtime probe below still decides whether this
+	// invocation actually owns the local engine, so accepting the name never
+	// widens the trust boundary. Remote and connector providers keep failing
+	// closed.
+	if selected.AccessProvider != "" && !isLocalRuntimeAccessProvider(selected.AccessProvider) {
 		return authority, false, nil
 	}
 	if _, found, err := deployment.OperatorAuthForTargetEnvironment(target, environment); err != nil {
