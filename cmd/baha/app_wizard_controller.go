@@ -387,6 +387,23 @@ func (w appWizardController) SelectNeed(ctx context.Context, key string) (appWiz
 	return next, nil
 }
 
+// selectedKindAtCursor reports the kind under the cursor and its state before
+// the current selection key applies, so the caller can acknowledge a toggle on
+// screen. It returns an empty kind when the cursor is on a non-need row (for
+// example the extended-needs footer), where no capability toggle happened.
+func (w appWizardController) selectedKindAtCursor() string {
+	needs := w.selection.visibleNeeds()
+	if w.selection.cursor < 0 || w.selection.cursor >= len(needs) {
+		return ""
+	}
+	return string(needs[w.selection.cursor].Kind)
+}
+
+// selectedKindSelected reports whether a need kind is currently selected.
+func (w appWizardController) selectedKindSelected(kind string) bool {
+	return w.selection.selected[capability.Kind(kind)]
+}
+
 func (w appWizardController) SelectProvider(ctx context.Context, requirement capability.Requirement, instanceID string) (appWizardController, error) {
 	if err := ctx.Err(); err != nil {
 		return w.abort(), err

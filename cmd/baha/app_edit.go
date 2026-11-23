@@ -279,8 +279,14 @@ func driveAppEditNeeds(ctx context.Context, session appEditSession, key string, 
 		session.Controller, _ = session.Controller.Step(ctx, appWizardCancel)
 		return session
 	case " ", "space":
+		kind := session.Controller.selectedKindAtCursor()
 		next, _ := session.Controller.SelectNeed(ctx, "space")
 		session.Controller = next
+		if kind != "" && session.Controller.selectedKindSelected(kind) {
+			fmt.Fprintf(out, "%s selected\n", kind)
+		} else if kind != "" {
+			fmt.Fprintf(out, "%s deselected\n", kind)
+		}
 		return session
 	case "up", "k":
 		next, _ := session.Controller.SelectNeed(ctx, "up")
