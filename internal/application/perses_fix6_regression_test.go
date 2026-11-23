@@ -3,6 +3,7 @@ package application
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -158,5 +159,36 @@ func TestPersesProductionComposeMountsKeyAndConfig(t *testing.T) {
 	}
 	if authInfo.Mode().Perm() != 0o600 {
 		t.Fatalf("regression (c): the authoritative key must stay 0600, got %v", authInfo.Mode().Perm())
+	}
+}
+
+// TestPersesProductionComposeCarriesTheTempoAccessGatewayMount pins the P1
+// access boundary in the production composition: the tempo-access gateway's
+// container-readable runtime material (the trust bundle the datasource proxy
+// verifies with, and the enrolled client identity it presents) rides into the
+// Perses container as a read-only directory bind, exactly like every other
+// managed gateway mount. Removing the bind from the shared contract
+// (PersesServiceMounts) or rendering it without the contract turns this cell
+// red; the datasource can only reach the gateway alias from the backend
+// network when its trust material is actually mounted.
+func TestPersesProductionComposeCarriesTheTempoAccessGatewayMount(t *testing.T) {
+	m := persesRuntimeManifest(t, true)
+	files := persesRuntimeFiles(t, m)
+	rendered, err := RuntimeComposeYAMLForProject(m, files)
+	if err != nil {
+		t.Fatalf("render the production Perses compose: %v", err)
+	}
+	want := serviceaccess.TempoAccessRuntimeComposeBind + ":" + serviceaccess.PersesTempoAccessMountDir + ":ro"
+	if !strings.Contains(rendered, strconv.Quote(want)) {
+		t.Fatalf("the production compose must carry the tempo-access gateway mount %q", want)
+	}
+	found := false
+	for _, mount := range serviceaccess.PersesServiceMounts() {
+		if mount == want {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("the shared Perses mount contract must name the tempo-access gateway bind, got %v", serviceaccess.PersesServiceMounts())
 	}
 }

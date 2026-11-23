@@ -450,6 +450,17 @@ func resolveRegisteredApplication(ctx context.Context, target deployment.Resolve
 					Remediation: "operator_review",
 				}
 			}
+			if stateErr.Kind == "deployable_version_mismatch" {
+				found, expected := parseDeploymentRecordVersionMismatch(stateErr.Err)
+				return resolvedApplication{}, &machine.Error{
+					Code:        machine.ErrorInternal,
+					CauseCode:   "deployment_record_version_mismatch",
+					Message:     fmt.Sprintf("deployment %s/%s/%s was written by an older BaseHarbor (record version %d); this version supports version %d and refuses to load or migrate it", stateErr.Identity.Target, stateErr.Identity.Application, stateErr.Identity.Environment, found, expected),
+					Resource:    target.Name + "/" + stateErr.Identity.DeploymentID,
+					Next:        "Run the same or a newer BaseHarbor that wrote this deployment's state to inspect or remove it.",
+					Remediation: "operator_review",
+				}
+			}
 		}
 		if environment == "" {
 			return resolvedApplication{}, &machine.Error{
@@ -594,6 +605,13 @@ func commandRequiresLiveSource(command string) bool {
 	}
 }
 
+// parseDeploymentRecordVersionMismatch extracts the found and supported
+// deployment record versions from the inner message of a
+// deployable-version-mismatch deployment error so the CLI can surface the
+// exact versions instead of a generic "no registered deployment".
+func parseDeploymentRecordVersionMismatch(innerErr error) (found, expected int) {
+	return deployment.DeploymentRecordVersionMismatchVersions(innerErr)
+}
 func extractApplicationEnvironment(args []string, command string) ([]string, string, error) {
 	filtered := make([]string, 0, len(args))
 	environment := ""

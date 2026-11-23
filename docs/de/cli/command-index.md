@@ -27,6 +27,7 @@ Exakte Optionen stehen in `baha COMMAND --help`. [Globale Optionen](global-optio
 | `baha app env` | Show the standard environment contract for an application | `baha app env [NAME] [--format dotenv\|shell\|json\|yaml] [--reveal] [--path]` | [↗](applications.md) |
 | `baha app evidence` | Export secret-safe application lifecycle and verification evidence | `baha app evidence [NAME] [-e ENV\|--environment ENV] [-o json\|--output json]` | [↗](applications.md) |
 | `baha app exec` | Execute a command in an application workload service | `baha app exec SERVICE COMMAND [ARG...] [--app NAME]` | [↗](applications.md) |
+| `baha app export` | Export selected local application credentials into an encrypted file | `baha app export [NAME] [--include STATE]... --password-file FILE [--output FILE]` | [↗](applications.md) |
 | `baha app footprint` | Read the current application footprint | `baha app footprint show [NAME] [-o json\|--output json] [--details]` | [↗](applications.md) |
 | `baha app footprint show` | Display the authoritative Target footprint without mutation | `baha app footprint show [NAME] [-o json\|--output json] [--details]` | [↗](applications.md) |
 | `baha app init` | Create the application contract or initialize deployment settings | `baha app init --agents [--json] \| baha app init [--quick] [--json] \| baha app init [--input NAME=VALUE]... [--hostname HOST] [--tls acme\|existing\|local] [--cert-dir DIR] [--yes] \| baha app init [NAME] [-e ENV\|--environment ENV] [--sql\|--sql-instance NAME] [--cache\|--cache-instance NAME] [--key-value\|--key-value-instance NAME] [--document-db\|--document-db-instance NAME] [--messaging-queue\|--messaging-queue-instance NAME] [--messaging-pubsub\|--messaging-pubsub-instance NAME] [--messaging-stream\|--messaging-stream-instance NAME] [--s3\|--s3-bucket NAME] [--secrets\|--require-secret NAME] [--workload-component NAME]... [--workload-source KIND:PATH]` | [↗](applications.md) |
@@ -104,6 +105,8 @@ Exakte Optionen stehen in `baha COMMAND --help`. [Globale Optionen](global-optio
 | `baha disconnect` | Remove one explicit cross-application connectivity exception | `baha disconnect SOURCE TARGET` | [↗](security-trust.md) |
 | `baha doctor` | Diagnose the current application repository, otherwise the control plane | `baha doctor [--fix --yes] [-o json\|--output json]` | [↗](core.md) |
 | `baha down` | Stop the current application, or the local control plane outside a repository | `baha down [options]` | [↗](core.md) |
+| `baha env` | Inspect and manage deployment-target environments | `baha env [show\|destroy <NAME>] [-o json\|--output json\|--json]` | [↗](applications.md) |
+| `baha env destroy` | Destroy an environment and its environment-scoped deployments | `baha env destroy [NAME] [--keep-data \| --delete-data [--confirm-delete-data]] [--yes \| --no-input] [-o json\|--output json\|--json]` | [↗](applications.md) |
 | `baha init` | Initialize or adopt the application in the current repository | `baha init --agents [--json] \| baha init [--quick] [--json] [--input NAME=VALUE]... [--yes]` | [↗](applications.md) |
 | `baha inspect` | Inspect the current repository and its application requirements | `baha inspect [options]` | [↗](applications.md) |
 | `baha list` | List managed applications on the selected Target | `baha list [--all-targets]` | [↗](applications.md) |

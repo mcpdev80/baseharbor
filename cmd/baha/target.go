@@ -92,11 +92,31 @@ func effectiveTarget(ctx context.Context) (deployment.ResolvedTarget, error) {
 	}
 	explicit := targetOverrideFromContext(ctx)
 	activated := strings.TrimSpace(os.Getenv("BASEHARBOR_TARGET"))
+	if deployment.StateRootSelected() {
+		// BF-01 (h-d28): a dedicated state root owns this installation's
+		// selection chain; resolve it from this root's own state without
+		// the root-less selection shortcuts.
+		state, configured, stateErr := orgconfig.LoadActiveOptional()
+		if stateErr != nil {
+			return deployment.ResolvedTarget{}, stateErr
+		}
+		return resolveTargetBelowStateRoot(ctx, cfg, state, configured, explicit, activated)
+	}
 	selected, selectionErr := selectedTargetName(explicit, activated, cfg)
 	if selectionErr != nil {
 		return deployment.ResolvedTarget{}, selectionErr
 	}
+	return resolveTargetWithOrganization(ctx, cfg, explicit, selected)
+}
+
+// resolveTargetWithOrganization layers the organization preferences onto the
+// selection chain. Without an active organization the local selection
+// resolves directly.
+func resolveTargetWithOrganization(ctx context.Context, cfg deployment.Config, explicit, selected string) (deployment.ResolvedTarget, error) {
 	state, configured, err := orgconfig.LoadActiveOptional()
+	if deployment.StateRootSelected() {
+		return resolveTargetBelowStateRoot(ctx, cfg, state, configured, explicit, selected)
+	}
 	if err != nil || !configured {
 		if err == nil {
 			return cfg.ResolveTarget(selected, "")
@@ -119,6 +139,18 @@ func effectiveTarget(ctx context.Context) (deployment.ResolvedTarget, error) {
 		return deployment.ResolvedTarget{}, err
 	}
 	if effective.Target != nil {
+		// BF-01 (h-d28): with an isolated state root selected, a target the
+		// root does not register must never resolve through this call —
+		// organization defaults and the builtin `local` fallback included.
+		// Same root => same selection; other root => foreign entries stay
+		// invisible rather than silently reachable.
+		if deployment.StateRootSelected() &&
+			effective.Provenance["target"].Winner.Scope != orgconfig.ScopeUser &&
+			effective.Provenance["target"].Winner.Scope != orgconfig.ScopeInvocation {
+			if _, ok := cfg.Targets[effective.Target.Value]; !ok {
+				return deployment.ResolvedTarget{}, fmt.Errorf("organization default target %q is not registered below the selected state root", effective.Target.Value)
+			}
+		}
 		return cfg.ResolveTarget(effective.Target.Value, "")
 	}
 	return cfg.ResolveTarget(selected, "")
@@ -687,7 +719,30 @@ func ensureTargetRuntimeFiles(ctx context.Context, ports bhruntime.Ports, ha boo
 }
 
 func detectRuntimeForTarget(ctx context.Context, target deployment.ResolvedTarget) (bhruntime.RuntimeProvider, error) {
-	if access := strings.TrimSpace(target.AccessProvider); access != "" && access != "local" {
+	// Host-local Target access arrives in two shapes: the bare alias "local"
+	// and the runtime-specific "local-<runtime>" provider names that
+	// `target create --access local-docker` (and its Podman sibling) records.
+	// Both are LOCAL for the runtime probe - the sibling grant path
+	// (local_workload_authority.go isLocalRuntimeAccessProvider) already
+	// accepts exactly these names - but a local-<runtime> name is only valid
+	// when the declared runtime matches: local-docker pairs exclusively with
+	// the Docker runtime and local-podman exclusively with Podman. Any other
+	// provider (remote, connector, unknown) and any provider-vs-runtime
+	// mismatch keeps failing closed here, before engine ownership.
+	access := strings.TrimSpace(target.AccessProvider)
+	switch access {
+	case "", "local":
+	case "local-docker", "local-podman":
+		want := bhruntime.ProviderDocker
+		if access == "local-podman" {
+			want = bhruntime.ProviderPodman
+		}
+		if !strings.EqualFold(strings.TrimSpace(target.RuntimeProvider), string(want)) {
+			return nil, machine.NewError(machine.ErrorCapabilityMissing,
+				"Selected remote Target has no authenticated live runtime binding.",
+				"Establish the selected Target Access session; BaseHarbor never executes a remote selection locally.", true)
+		}
+	default:
 		return nil, machine.NewError(machine.ErrorCapabilityMissing,
 			"Selected remote Target has no authenticated live runtime binding.",
 			"Establish the selected Target Access session; BaseHarbor never executes a remote selection locally.", true)

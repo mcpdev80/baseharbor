@@ -17,6 +17,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/coreinstallation"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/identityprovider"
+	"github.com/mcpdev80/baseharbor/internal/operatorauth"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
@@ -32,8 +33,14 @@ func TestInstallationDestroyCurrentChildrenInterruptedVolumeAndRetry(t *testing.
 	if kind != "docker" && kind != "podman" {
 		t.Fatal("explicit native runtime required")
 	}
+	t.Cleanup(func() { cleanupInstallationDestroyNativeFixture(t, kind) })
 	var out bytes.Buffer
-	if err := runWithIO(ctx, []string{"target", "create", "installation-retry-native", "--provider", kind, "--access", "installation-retry-native", "--reference", "local", "--default"}, &out, &out); err != nil {
+	operator := operatorauth.TestPrincipal("https://issuer.example", "installation-destroy-operator")
+	ctx = operatorauth.WithVerifiedTestOperatorPrincipalIfAbsent(ctx, operator)
+	// Register this fresh local target as an authenticated operator. The local
+	// runtime authority used by later workload operations does not authorize
+	// target.create, which remains an operator-only management operation.
+	if err := runWithIOAndOperator(ctx, []string{"target", "create", "installation-retry-native", "--runtime-provider", kind, "--access", "local", "--access-provider", "local", "--reference", "local", "--default"}, &out, &out, operator); err != nil {
 		t.Fatal(err)
 	}
 	// A native installation destroy acceptance must first create the real
@@ -59,7 +66,7 @@ func TestInstallationDestroyCurrentChildrenInterruptedVolumeAndRetry(t *testing.
 			t.Fatal(err)
 		}
 	}
-	if err := runWithIO(ctx, []string{"app", "init", "--quick", "--json"}, &out, &out); err != nil {
+	if err := runWithIOAndOperator(ctx, []string{"app", "init", "--quick", "--json"}, &out, &out, operator); err != nil {
 		t.Fatal(err)
 	}
 	// A repository-owned candidate needs explicit, exact-submission consent.
@@ -81,7 +88,7 @@ func TestInstallationDestroyCurrentChildrenInterruptedVolumeAndRetry(t *testing.
 		applyCtx = withProviderChangeConsent(ctx, &application.ProviderChangeConsent{PlanID: impact.PlanID, First: true, Second: true})
 	}
 	out.Reset()
-	firstErr := runWithIO(applyCtx, []string{"app", "apply", "--skip-memory-preflight"}, &out, &out)
+	firstErr := runWithIOAndOperator(applyCtx, []string{"app", "apply", "--skip-memory-preflight"}, &out, &out, operator)
 	if firstErr == nil || !strings.Contains(firstErr.Error(), "candidate submission requires") {
 		t.Fatalf("expected pre-mutation candidate-consent challenge: %v\\n%s", firstErr, out.String())
 	}
@@ -90,7 +97,7 @@ func TestInstallationDestroyCurrentChildrenInterruptedVolumeAndRetry(t *testing.
 		t.Fatalf("candidate challenge did not publish an exact confirmation digest: %s", out.String())
 	}
 	out.Reset()
-	if err := runWithIO(applyCtx, []string{"app", "apply", "--skip-memory-preflight", "--confirm-candidate", match[1]}, &out, &out); err != nil {
+	if err := runWithIOAndOperator(applyCtx, []string{"app", "apply", "--skip-memory-preflight", "--confirm-candidate", match[1]}, &out, &out, operator); err != nil {
 		t.Fatalf("consented native fixture apply: %v\\n%s", err, out.String())
 	}
 	r, err := resolveApplication(ctx, application.Store{}, nil, "status")
@@ -269,4 +276,39 @@ func TestInstallationDestroyCurrentChildrenInterruptedVolumeAndRetry(t *testing.
 		t.Fatal("successful installation destroy retained selected owner")
 	}
 	t.Log("actual full-installation child reset, partial native deletion, preserved foreign authority and fresh current-plan retry completed; selected native data/configuration/owners absent")
+}
+
+func cleanupInstallationDestroyNativeFixture(t *testing.T, runtime string) {
+	t.Helper()
+	projects := []string{
+		"bh-installation-retry-native-shared",
+		"bh-installation-retry-native-core-shared",
+		"baseharbor-installation-retry-native",
+		"baseharbor-identity-core-installation-retry-native",
+	}
+	for _, project := range projects {
+		label := "label=com.docker.compose.project=" + project
+		for _, resource := range []struct {
+			listArgs []string
+			remove   []string
+		}{
+			{listArgs: []string{"ps", "-aq", "--filter", label}, remove: []string{"rm", "--force"}},
+			{listArgs: []string{"network", "ls", "-q", "--filter", label}, remove: []string{"network", "rm"}},
+			{listArgs: []string{"volume", "ls", "-q", "--filter", label}, remove: []string{"volume", "rm"}},
+		} {
+			output, err := exec.Command(runtime, resource.listArgs...).Output()
+			if err != nil {
+				t.Errorf("list own native fixture resources for project %q: %v", project, err)
+				continue
+			}
+			ids := strings.Fields(string(output))
+			if len(ids) == 0 {
+				continue
+			}
+			removeArgs := append(append([]string(nil), resource.remove...), ids...)
+			if output, err := exec.Command(runtime, removeArgs...).CombinedOutput(); err != nil {
+				t.Errorf("remove own native fixture resources for project %q: %v: %s", project, err, strings.TrimSpace(string(output)))
+			}
+		}
+	}
 }

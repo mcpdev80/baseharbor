@@ -113,6 +113,34 @@ func TestEvaluatePersesOperatorAccessFailsClosedWithoutIdentity(t *testing.T) {
 	}
 }
 
+// TestEvaluatePersesAnonymousDenialNamesNextCommand binds the actionability of
+// the anonymous Perses denial to its wording: the operator must learn which
+// precondition is missing and which command to run next, without reading source.
+func TestEvaluatePersesAnonymousDenialNamesNextCommand(t *testing.T) {
+	decision, err := EvaluatePersesOperatorAccess(
+		context.Background(),
+		PersesAccessRequest{Target: "lab-01", Environment: "production", Policy: capability.DefaultPersesSecurityPolicy()},
+	)
+	if err == nil {
+		t.Fatal("an anonymous Perses request must fail closed")
+	}
+	if !errors.Is(err, ErrPersesOwnershipUnknown) {
+		t.Fatalf("anonymous request must return the ownership sentinel, got %v", err)
+	}
+	if decision.ReasonCode != "operator_authentication_required" {
+		t.Fatalf("reason code = %q, want operator_authentication_required", decision.ReasonCode)
+	}
+	if !strings.Contains(decision.Reason, "baha login") {
+		t.Fatalf("the denial must name the next command 'baha login', got %q", decision.Reason)
+	}
+	if !strings.Contains(decision.Reason, "verified operator identity") {
+		t.Fatalf("the denial must name the missing precondition, got %q", decision.Reason)
+	}
+	if !strings.Contains(decision.Reason, "for the selected Target/environment") {
+		t.Fatalf("the denial must name the path, got %q", decision.Reason)
+	}
+}
+
 func TestEvaluatePersesOperatorAccessAllowsVerifiedRoles(t *testing.T) {
 	for _, tc := range []struct {
 		role string

@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 
 	"github.com/mcpdev80/baseharbor/internal/devaccess"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
@@ -85,6 +86,12 @@ func RuntimeFilesFor(store Store, m Manifest) RuntimeFiles {
 	}
 }
 
+// EnsureRuntime renders and reconciles the application runtime. Its
+// apply-boundary datasource call is the LAST load-time read of the seam
+// pointers: the metrics package registers them at its init, and the
+// application package's own tests register a fallback resolver in TestMain
+// (after all package inits, before any test call), so a single EnsureRuntime
+// invocation always observes the same seam state.
 func EnsureRuntime(ctx context.Context, issuer serviceaccess.Issuer, store Store, m Manifest) (RuntimeFiles, error) {
 	if err := m.Validate(); err != nil {
 		return RuntimeFiles{}, err
@@ -119,6 +126,19 @@ func EnsureRuntime(ctx context.Context, issuer serviceaccess.Issuer, store Store
 	}
 	if err := EnsureApplicationManagementUIs(ctx, issuer, files, m); err != nil {
 		return RuntimeFiles{}, fmt.Errorf("reconcile application management UIs: %w", err)
+	}
+
+	// The 0428-083 apply-boundary call site: the Prometheus datasource the
+	// RUNNING Perses consumes is materialized BEFORE the compose render, into
+	// this deployment's datasource projection root
+	// <deploymentRoot>/applications/<resourceProject>/providers/management-ui/
+	// perses — the providers/management-ui/perses/ layout the Perses service
+	// already mounts its TLS material from, one path layout for the whole
+	// provider projection. The compose render derives the mount sources from
+	// the materializer's own path formula (the seam resolver), so mounts and
+	// artifacts can never drift apart and no second constant exists.
+	if err := ensurePersesDatasourceRuntime(ctx, issuer, files, m, store); err != nil {
+		return RuntimeFiles{}, err
 	}
 
 	compose, err := RuntimeComposeYAMLForProject(m, files)
@@ -317,8 +337,91 @@ func RuntimeComposeYAML(m Manifest) (string, error) {
 	return RuntimeComposeYAMLForProject(m, RuntimeFiles{ResourceProject: RuntimeProjectName(m)})
 }
 
-// RuntimeComposeYAMLForProject renders the managed compose definition. Pure
-// callers (inventory, projection, retirement checks) pass no runtime files:
+// RegisterPersesDatasourceMaterializer registers the datasource materializer
+// entry point of the metrics package with the application lifecycle seam (card
+// 0428-083). It is called once from the metrics package init; the seam exists
+// because internal/metrics imports internal/application, so the lifecycle
+// cannot carry a static edge in the other direction without an import cycle.
+func RegisterPersesDatasourceMaterializer(fn func(Manifest, string, string) error) {
+	materialize := persesDatasourceMaterializeFunc(fn)
+	persesDatasourceMaterializer.Store(&materialize)
+}
+
+// persesDatasourceMaterializer is the lifecycle seam to the datasource
+// materializer of the metrics package. The materializer root is the datasource
+// projection of an application deployment: the providers/management-ui/perses
+// sibling of its runtime dir. The lifecycle passes the APPLICATION RUNTIME
+// DIR (RuntimeFiles.Dir, computed by RuntimeFilesFor — the one layout formula
+// of this Core), so the projection lands beside the runtime dir the compose
+// render (whose context dir is that same dir) mounts from, and no second
+// layout derivation exists on this route (0428-083 F1).
+var persesDatasourceMaterializer atomic.Pointer[persesDatasourceMaterializeFunc]
+
+// persesDatasourceMaterializeFunc is the lifecycle-visible signature of the
+// datasource materializer: (manifest, application runtime dir, namespace)
+// -> error.
+type persesDatasourceMaterializeFunc func(m Manifest, runtimeDir, namespace string) error
+
+// ensurePersesDatasourceRuntime is the apply-boundary call site of card
+// 0428-083: the validated Prometheus datasource reaches the RUNNING Perses
+// through the registered materializer BEFORE the compose render starts it,
+// and the render mounts exactly the paths the materializer wrote. Fail-closed:
+// without a registered materializer a selected surface never starts Perses
+// unprovisioned, and a deselected surface tears its projection down so a stale
+// datasource can never be served.
+func ensurePersesDatasourceRuntime(ctx context.Context, issuer serviceaccess.Issuer, files RuntimeFiles, m Manifest, store Store) error {
+	materialize := persesDatasourceMaterializer.Load()
+	if materialize == nil {
+		// No seam registered in this binary (a build without the metrics
+		// package, e.g. the application package's own test binary). The
+		// lifecycle keeps its fail-closed contract through the LOCAL layout
+		// convention: a deselected surface always removes its datasource
+		// projection; a selected surface gets the projection DIRECTORY
+		// layout (config file + provisioning folder + the trust-bundle
+		// placeholder the metrics entry point fills) written under the
+		// datasource root the render mounts, so the Perses container starts
+		// with a loadable (empty until the metrics entry point provisions
+		// it) provisioning set and never with mounts of missing files. In
+		// the CLI build the metrics seam is always registered and performs
+		// the full validated materialization here.
+		if !PersesUITLSRequired(m) {
+			return RemovePersesDatasourceProjection(files, m)
+		}
+		return ensurePersesDatasourceFallbackLayout(PersesDatasourceRuntimeRoot(files.Dir))
+	}
+	// The root argument IS the application runtime dir (files.Dir, computed
+	// by RuntimeFilesFor — the one layout formula of this Core): the
+	// materializer writes, the render mounts and this package's fallback all
+	// address the same sibling-of-runtime datasource root, so the lifecycle
+	// never carries a second layout derivation (0428-083 F1).
+	return (*materialize)(m, files.Dir, strings.TrimSpace(store.Namespace))
+}
+
+// ensurePersesDatasourceFallbackLayout writes the datasource projection
+// DIRECTORY layout (config file + provisioning folder) of a deployment that
+// runs without the metrics-side materializer seam. The config file content is
+// the deterministic provisioning contract (file database + the mounted
+// provisioning folder + the reconcile interval); the provisioning folder
+// starts EMPTY, so a Perses start never fails on a missing provisioning
+// source and never loads an unvalidated datasource either. The full
+// materialization (with validation and the GlobalDatasource resource) is the
+// metrics-side contract of the CLI build.
+func ensurePersesDatasourceFallbackLayout(datasourceRoot string) error {
+	root := filepath.Clean(datasourceRoot)
+	if err := os.MkdirAll(filepath.Join(root, "provisioning"), 0o755); err != nil {
+		return fmt.Errorf("perses datasource fallback provisioning folder: %w", err)
+	}
+	configFile := filepath.Join(root, "config.yaml")
+	if _, err := os.Stat(configFile); err == nil {
+		return nil // a previous (metrics-side) materialization owns the content
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("inspect perses datasource config: %w", err)
+	}
+	config := "{\n  \"database\": {\n    \"file\": {\n      \"folder\": \"/persistence/database\",\n      \"extension\": \"json\"\n    }\n  },\n  \"provisioning\": {\n    \"folders\": [\n      \"" + PersesDatasourceContainerProvisioningPath + "\"\n    ],\n    \"interval\": \"300s\"\n  }\n}\n"
+	return writeUIRuntimeProjection(configFile, []byte(config))
+}
+
+// RuntimeComposeYAMLForProject renders the managed compose definition. Pure// callers (inventory, projection, retirement checks) pass no runtime files:
 // the rendering then uses the deterministic relative bind sources rooted at
 // the compose file's own directory, exactly as every other managed service
 // renders them. The deployment path (EnsureRuntime) passes the materialized
@@ -329,10 +432,13 @@ func RuntimeComposeYAML(m Manifest) (string, error) {
 // caller can never mistake this form for the applied definition.
 func RuntimeComposeYAMLForProject(m Manifest, files RuntimeFiles) (string, error) {
 	resourceProject := strings.TrimSpace(files.ResourceProject)
-
 	if resourceProject == "" {
 		resourceProject = RuntimeProjectName(m)
 	}
+	return runtimeComposeYAMLForProject(m, resourceProject, files)
+}
+
+func runtimeComposeYAMLForProject(m Manifest, resourceProject string, files RuntimeFiles) (string, error) {
 	if err := CheckSupportedRuntimeServices(m); err != nil {
 		return "", err
 	}
@@ -420,6 +526,14 @@ func RuntimeComposeYAMLForProject(m Manifest, files RuntimeFiles) (string, error
 	if m.Services.Perses {
 		service := runtimeServiceName("perses", defaultServiceInstance)
 		fmt.Fprintf(&b, "  %s-data:\n    name: %s\n", service, PersesRuntimeVolumeName(resourceProject, service))
+		// The Perses database folder /etc/perses/database is writable via a
+		// tmpfs of its own (emitted in writePersesGatewayComposeServices), so
+		// it needs no named volume here. The shipped plugin archives extract
+		// into /etc/perses/plugins at startup, which the pinned distroless
+		// image has no such directory and whose rootfs is read-only, so a
+		// deployment-scoped named volume provides the writable, host-isolated
+		// extraction target the runner must support.
+		fmt.Fprintf(&b, "  %s-plugins:\n    name: %s_database\n", service, resourceProject)
 	}
 	b.WriteString("\nnetworks:\n  default:\n")
 	fmt.Fprintf(&b, "    name: %s\n", ApplicationBackendNetworkNameForProject(resourceProject))

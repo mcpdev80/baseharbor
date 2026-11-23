@@ -128,6 +128,11 @@ func appCredsCommand(store application.Store) *cli.Command {
 				fmt.Fprintf(out, "USERNAME=%s\n", binding.Username)
 			}
 			if reveal {
+				// Revealing the password/URI is a human-only operation: require
+				// an authenticated operator on the separate secret.reveal seam.
+				if err := authorizeHumanReveal(ctx, resolved.Target.Name, resolved.Manifest.Environment, resolved.Manifest.ApplicationID); err != nil {
+					return err
+				}
 				// Record the audit event before releasing credential values.
 				if err := recordConnectionRevealAudit(ctx, resolved, kind, binding.Instance); err != nil {
 					return fmt.Errorf("record connection reveal audit: %w", err)

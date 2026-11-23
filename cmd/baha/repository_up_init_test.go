@@ -29,7 +29,7 @@ func TestInitializeRepositoryManifestForUpQuickCreatesDetectedContract(t *testin
 	}
 
 	var out bytes.Buffer
-	initialized, err := initializeRepositoryManifestForUp(context.Background(), strings.NewReader(""), &out, &out, runtimeUpOptions{Yes: true})
+	initialized, err := initializeRepositoryManifestForUp(testOperatorContext(context.Background()), strings.NewReader(""), &out, &out, runtimeUpOptions{Yes: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,7 +61,7 @@ func TestInitializeRepositoryManifestForUpIgnoresDirectoryWithoutProjectSignals(
 	root := t.TempDir()
 	withWorkingDirectory(t, root)
 
-	initialized, err := initializeRepositoryManifestForUp(context.Background(), strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{}, runtimeUpOptions{Yes: true})
+	initialized, err := initializeRepositoryManifestForUp(testOperatorContext(context.Background()), strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{}, runtimeUpOptions{Yes: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,7 +82,7 @@ func TestInitializeRepositoryManifestForUpQuickFailsClosedOnAmbiguousCompose(t *
 		}
 	}
 
-	initialized, err := initializeRepositoryManifestForUp(context.Background(), strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{}, runtimeUpOptions{Yes: true})
+	initialized, err := initializeRepositoryManifestForUp(testOperatorContext(context.Background()), strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{}, runtimeUpOptions{Yes: true})
 	if !initialized {
 		t.Fatal("expected ambiguous application project to be detected")
 	}
@@ -96,6 +96,11 @@ func TestInitializeRepositoryManifestForUpQuickFailsClosedOnAmbiguousCompose(t *
 
 func withWorkingDirectory(t *testing.T, dir string) {
 	t.Helper()
+	// The selection lives in the package process, not in the working directory:
+	// a BASEHARBOR_TARGET or BASEHARBOR_STATE_DIR leaked by an earlier
+	// runtime-integration test would make this case resolve a Target it never
+	// configured, whatever directory it runs in.
+	testIsolatedSelectionContext(t)
 	old, err := os.Getwd()
 	if err != nil {
 		t.Fatal(err)

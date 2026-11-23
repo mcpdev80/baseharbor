@@ -2208,7 +2208,10 @@ class MainRunnerContextEntrypointTests(unittest.TestCase):
         self.assertIn('"coverage_status": "resolved"', out)
 
     def test_stacked_lane_runner_context_resolves_and_keeps_unknown_paths_broad(self):
-        self._actual = diff(paths('internal/new_plan_v2/feature.go'))
+        # card 0428-242: the fail-loud guard rejects uncataloged sources, so the
+        # entrypoint context test uses a cataloged CLI source (app_broker.go)
+        # that reaches the broad Go fallback under the lane-old-base context.
+        self._actual = diff(paths('cmd/baha/app_broker.go'))
         code, out, msg = self._run_main({
             'GITHUB_REPOSITORY': 'mcpdev80/baseharbor',
             'GITHUB_BASE_REF': 'lane-old-base',
@@ -2221,7 +2224,9 @@ class MainRunnerContextEntrypointTests(unittest.TestCase):
                         {row['id'] for row in result['required_validation_checks']})
 
     def test_stacked_cli_runner_context_resolves(self):
-        self._actual = diff(paths('internal/new_plan_v2/feature.go'))
+        # Cataloged CLI source reaches the broad Go fallback under the
+        # cli2-env-policy-head context (fail-loud guard rejects uncataloged).
+        self._actual = diff(paths('cmd/baha/app_broker.go'))
         code, out, msg = self._run_main({
             'GITHUB_REPOSITORY': 'mcpdev80/baseharbor',
             'GITHUB_BASE_REF': 'cli2-env-policy-head',
@@ -3126,3 +3131,92 @@ class IdentityProviderPackageRoutingTests(unittest.TestCase):
         checks = {row['id'] for row in result['required_validation_checks']}
         self.assertTrue({'go-unit-tests', 'go-build', 'go-vet'} <= checks)
         self.assertNotIn('identity-provider-package-tests', checks)
+
+
+class EnvironmentDestroyNativeGateRoutingTests(unittest.TestCase):
+    def test_complete_env_destroy_candidate_selects_both_coreless_gates(self):
+        gate_ids = ['integration/docker/coreless-lifecycle',
+                    'integration/podman/coreless-lifecycle']
+        requirements = copy.deepcopy(REQ)
+        requirements['gates'].extend({'id': gate, 'required_for': ['v0.4.26']}
+                                     for gate in gate_ids)
+        changes = [
+            {'status': 'modified', 'path': 'cmd/baha/commands.go'},
+            {'status': 'added', 'path': 'cmd/baha/env_destroy.go'},
+            {'status': 'added', 'path': 'cmd/baha/env_destroy_integration_test.go'},
+            {'status': 'modified', 'path': 'cmd/baha/machine_coverage.go'},
+            {'status': 'modified', 'path': 'docs/cli/command-index.md'},
+            {'status': 'modified', 'path': 'docs/de/cli/command-index.md'},
+            {'status': 'modified', 'path': 'docs/reference/cli-machine-coverage.md'},
+            {'status': 'added', 'path': 'internal/deployment/environment_destroy_scope.go'},
+            {'status': 'added', 'path': 'internal/deployment/environment_destroy_scope_test.go'},
+        ]
+        result = planner.plan(diff(changes), requirements, MAP_26)
+        self.assertEqual('resolved', result['coverage_status'])
+        self.assertEqual([], result['unresolved_coverage'])
+        self.assertEqual(gate_ids, result['selected_gates'])
+        checks = {row['id'] for row in result['required_validation_checks']}
+        self.assertTrue({'cli-package-tests', 'deployment-package-tests'} <= checks)
+
+    def test_registration_paths_alone_remain_unresolved(self):
+        result = planner.plan(diff(paths('cmd/baha/commands.go',
+                                         'cmd/baha/machine_coverage.go')), REQ, MAP_26)
+        self.assertEqual('unresolved', result['coverage_status'])
+        self.assertTrue(result['unresolved_coverage'])
+
+
+class NativeTestGateAdmissionTests(unittest.TestCase):
+    def test_operator_seams_and_shared_runtime_test_context_select_native_gates(self):
+        required_gates = sorted({gate for gates in planner.NATIVE_TEST_GATE_COMPONENTS.values()
+                                 for gate in gates})
+        requirements = {
+            **REQ,
+            'gates': REQ['gates'] + [
+                {'id': gate, 'required_for': ['v0.4.26']}
+                for gate in required_gates
+                if gate not in {row['id'] for row in REQ['gates']}
+            ],
+        }
+        for path, gates in planner.NATIVE_TEST_GATE_COMPONENTS.items():
+            with self.subTest(path=path):
+                result = planner.plan(diff(paths(path)), requirements, MAP_26)
+                self.assertEqual('resolved', result['coverage_status'])
+                self.assertEqual(set(gates), set(result['selected_gates']))
+                self.assertFalse(result['unresolved_coverage'])
+                checks = {row['id'] for row in result['required_validation_checks']}
+                self.assertTrue({'cli-vet', 'cli-build'} <= checks)
+                if path in planner.CI_INTEGRATION_OPERATOR_PATHS:
+                    self.assertIn('ci-integration-operator-seam-tests', checks)
+
+    def test_unmapped_cli_source_remains_fail_closed(self):
+        result = planner.plan(diff(paths('cmd/baha/unreviewed_operator_fixture.go')), REQ, MAP_26)
+        self.assertEqual('unresolved', result['coverage_status'])
+        self.assertTrue(result['unresolved_coverage'])
+        self.assertEqual([], result['selected_gates'])
+
+
+class PRGateCoverageGuardianDiscoveryTests(unittest.TestCase):
+    """card 0428-242: run the declarative coverage + fail-loud guard tests.
+
+    test_pr_gate_coverage.py is loaded and executed here so the new catalog
+    and guardian cases run directly by the CI 'pr-planner-tests' job (which
+    runs test_pr_gate_plan.py) without a .github change.
+    """
+
+    def test_coverage_guardian_suite_runs(self):
+        spec = importlib.util.spec_from_file_location(
+            "coverage_guardian", ROOT / "test_pr_gate_coverage.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        loader = unittest.TestLoader()
+        suite = loader.loadTestsFromModule(module)
+        runner = unittest.TextTestRunner(verbosity=0)
+        result = runner.run(suite)
+        self.assertEqual(0, len(result.failures),
+                         "failures: " + str(result.failures))
+        self.assertEqual(0, len(result.errors),
+                         "errors: " + str(result.errors))
+
+
+if __name__ == "__main__":
+    unittest.main()

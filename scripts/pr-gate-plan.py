@@ -142,6 +142,40 @@ def wizard_check(identifier):
             'command': 'python3 scripts/pr-check-runner.py execute --check ' +
                        identifier + ' --repository .'}
 
+# Exact native-gate admission for operator test seams and shared test
+# fixtures whose behavior must be qualified by native CI.
+DATA_CAPABILITY_GATES = (
+    'atomic/docker/data-capabilities',
+    'atomic/podman/data-capabilities',
+)
+GUIDED_GATES = ('atomic/docker/guided', 'atomic/podman/guided')
+CORELESS_LIFECYCLE_GATES = (
+    'integration/docker/coreless-lifecycle',
+    'integration/podman/coreless-lifecycle',
+)
+CI_INTEGRATION_OPERATOR_PATHS = frozenset({
+    'cmd/baha/ci_integration_operator_enabled.go',
+    'cmd/baha/ci_integration_operator_disabled.go',
+    'cmd/baha/ci_integration_operator_enabled_test.go',
+})
+NATIVE_TEST_GATE_COMPONENTS = {
+    **{path: DATA_CAPABILITY_GATES for path in CI_INTEGRATION_OPERATOR_PATHS},
+    'cmd/baha/test_operator_context_test.go': DATA_CAPABILITY_GATES,
+    'cmd/baha/application_lifecycle_lock_test.go': DATA_CAPABILITY_GATES,
+    'cmd/baha/app_init_source_neutral_test.go':
+        DATA_CAPABILITY_GATES + GUIDED_GATES,
+    'cmd/baha/app_init_wizard_test.go':
+        DATA_CAPABILITY_GATES + GUIDED_GATES,
+    'cmd/baha/app_perses_host_containers_cli_test.go':
+        DATA_CAPABILITY_GATES + GUIDED_GATES,
+    'cmd/baha/app_perses_infra_dashboards_cli_test.go':
+        DATA_CAPABILITY_GATES + GUIDED_GATES,
+    'cmd/baha/repository_up_init_test.go':
+        DATA_CAPABILITY_GATES + GUIDED_GATES,
+    'cmd/baha/runtime_integration_test_support_test.go':
+        DATA_CAPABILITY_GATES + GUIDED_GATES + CORELESS_LIFECYCLE_GATES,
+}
+
 # Finite component inventory from core-911..core-921. This is an exact path
 # map, never a cmd/baha prefix exemption. Pure read/presentation profiles use
 # hosted Go checks only; mutation wiring selects the existing small lifecycle
@@ -696,6 +730,7 @@ CORE_754_TEST_PATH = 'cmd/baha/mcp_preconditions_test.go'
 CORE_754_TEST_CHECK = 'wizard-core754-mcp-tests'
 
 PLANNING_SCRIPTS = {'scripts/pr-gate-plan.py', 'scripts/test_pr_gate_plan.py',
+                    'scripts/test_pr_gate_coverage.py',
                     'scripts/pr-diff-base.py', 'scripts/test_pr_diff_base.py'}
 PLANNING_WORKFLOWS = {'.github/workflows/pages.yml'}
 # Commit receipts record only the merged SHA and PR. Their normal regression
@@ -711,6 +746,7 @@ RECEIPT_CONTROL_PLANE_WORKFLOWS = frozenset({'.github/workflows/receipt-post-run
 CI_CHECKS = [
     {'id': 'pr-planner-tests', 'owner': 'scripts/test_pr_gate_plan.py',
      'command': ('python3 -m unittest scripts/test_pr_gate_plan.py '
+                 'scripts/test_pr_gate_coverage.py '
                  'scripts/test_pre_release_runtime_reuse.py')},
     {'id': 'ci-policy', 'owner': 'scripts/ci-workflow-policy.sh',
      'command': 'bash scripts/ci-workflow-policy.sh'},
@@ -1163,6 +1199,16 @@ def targeted_plan(diff, requirements, mapping, repository='.',
                     raise ValueError('selection differs from the complete preflight catalog')
             except (OSError, subprocess.CalledProcessError, ValueError, TypeError):
                 unresolved.append('release preflight selection must match trusted non-journey catalog')
+        elif (path in ('docs/cli/command-index.md', 'docs/de/cli/command-index.md',
+                       'docs/reference/cli-machine-coverage.md')
+              and 'cmd/baha/env_destroy.go' in paths
+              and 'cmd/baha/env_destroy_integration_test.go' in paths):
+            # Generated CLI indexes for the env-destroy command are checked by
+            # the regular CLI package and documentation tests. The broad
+            # registration executor also invokes unrelated MCP runtime tests;
+            # the named native lifecycle test remains selected separately.
+            area = 'env-destroy-generated-cli-docs'
+            require(DOC_CHECKS + CODE_CHECKS + CLI_CHECKS)
         elif path in REGISTRATION_COVERAGE:
             area = 'registration-reviewed-path'
             require(CODE_CHECKS)
@@ -1214,6 +1260,19 @@ def targeted_plan(diff, requirements, mapping, repository='.',
             'cmd/baha/mcp_application_authoring.go',
             'cmd/baha/mcp_workspace_mutation.go',
         } or (path.startswith('cmd/baha/mcp_') and path.endswith('.go')):
+            if (path in ('cmd/baha/commands.go', 'cmd/baha/machine_coverage.go')
+                    and 'cmd/baha/env_destroy.go' in paths
+                    and 'cmd/baha/env_destroy_integration_test.go' in paths):
+                # The env-destroy feature adds one CLI command registration and
+                # its machine-coverage row. The companion implementation and
+                # named real-runtime test are mandatory in the same candidate;
+                # keep the existing mixed-source fail-closed rule for every
+                # other change to these files.
+                area = 'env-destroy-registration'
+                require(CODE_CHECKS + CLI_CHECKS)
+                selected.update(('integration/docker/coreless-lifecycle',
+                                 'integration/podman/coreless-lifecycle'))
+                continue
             # Registration and execution logic coexist here; mere paths or
             # generic tests cannot qualify changed authorizers/mutators.
             area = 'registration-mixed-unresolved'
@@ -1231,6 +1290,13 @@ def targeted_plan(diff, requirements, mapping, repository='.',
             require(CODE_CHECKS)
             require(CLI_CHECKS)
             selected.add('integration/static/public-contracts')
+        elif path in NATIVE_TEST_GATE_COMPONENTS:
+            area = 'native-test-gate-component'
+            require(CODE_CHECKS)
+            require(CLI_CHECKS)
+            selected.update(NATIVE_TEST_GATE_COMPONENTS[path])
+            if path in CI_INTEGRATION_OPERATOR_PATHS:
+                require([wizard_check('ci-integration-operator-seam-tests')])
         elif path in WIZARD_COMPONENTS:
             area = 'wizard-component'
             check_id, native_gates = WIZARD_COMPONENTS[path]
@@ -1341,6 +1407,11 @@ def targeted_plan(diff, requirements, mapping, repository='.',
             require(CODE_CHECKS)
             require(CLI_CHECKS)
             require(WIZARD_BASE_CHECKS)
+        elif path == 'cmd/baha/env_destroy.go':
+            area = 'env-destroy-runtime-impact'
+            require(CODE_CHECKS + CLI_CHECKS)
+            selected.update(('integration/docker/coreless-lifecycle',
+                             'integration/podman/coreless-lifecycle'))
         elif path.startswith('cmd/baha/') and path.endswith('.go'):
             area = 'cli-unresolved-runtime-impact'
             require(CODE_CHECKS)
@@ -1538,6 +1609,12 @@ def targeted_plan(diff, requirements, mapping, repository='.',
             area = 'resolver-routing-unresolved'
             require(RESOLVER_CHECKS)
             unresolved.append('unreviewed runtime resolver routing file needs targeted qualification: ' + path)
+        elif path in ('internal/deployment/environment_destroy_scope.go',
+                      'internal/deployment/environment_destroy_scope_test.go'):
+            area = 'environment-destroy-deployment-scope'
+            require(DEPLOYMENT_PACKAGE_CHECKS + CODE_CHECKS + CLI_CHECKS)
+            selected.update(('integration/docker/coreless-lifecycle',
+                             'integration/podman/coreless-lifecycle'))
         elif re.fullmatch(r'internal/deployment/[^/]+\.go', path):
             area = 'deployment-package'
             require(DEPLOYMENT_PACKAGE_CHECKS)
@@ -1740,12 +1817,23 @@ def plan(diff, requirements, mapping, repository='.', context_repository=None,
     if coverage_path.is_file():
         coverage = json.loads(coverage_path.read_text())
         if coverage.get('release') == result['release']:
-            coverage_errors = _coverage_module().validate(coverage, requirements)
-            if coverage_errors:
-                raise ValueError('invalid trusted PR gate coverage catalog: ' + '; '.join(coverage_errors))
             paths = [change[key] for change in diff.get('changes', [])
                      for key in ('path', 'old_path', 'new_path') if key in change]
             covered, unowned = _coverage_module().resolve_covered_gates(paths, coverage)
+            # Fail-loud: a changed SOURCE component (cmd/ or internal/) with no
+            # declared catalog owner must never resolve to an empty/gray matrix
+            # that passes the gate. Surface the precise next action and abort
+            # here. The catalog owns source code; docs, release pins and other
+            # legacy-handled paths stay out of this guard.
+            source_unowned = [p for p in unowned
+                              if (p.startswith('cmd/') or p.startswith('internal/'))]
+            if source_unowned:
+                raise ValueError(
+                    'invalid trusted PR gate coverage catalog: '
+                    + _coverage_module().unresolved_source_error(source_unowned))
+            coverage_errors = _coverage_module().validate(coverage, requirements)
+            if coverage_errors:
+                raise ValueError('invalid trusted PR gate coverage catalog: ' + '; '.join(coverage_errors))
             legacy_selected = set(result['selected_gates'])
             required = {gate['id'] for gate in requirements.get('gates', [])
                         if result['release'] in gate.get('required_for', [])}

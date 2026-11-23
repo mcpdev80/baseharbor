@@ -14,6 +14,18 @@ CORELESS_LIFECYCLE_GATES = {
     "integration/docker/coreless-lifecycle",
     "integration/podman/coreless-lifecycle",
 }
+# Release-only STATIC gates under the atomic tier (e.g.
+# atomic/static/shell-ux, atomic/static/ci-fast-check) run their executable
+# check inside the PR itself. The stage boundary must classify them as
+# PR-executed static gates: they are selected, never deferred. Only the exact
+# gate ids listed here are PR-executed; every other atomic/static-shaped name
+# stays unclassified so failure injection keeps rejecting invented gates.
+# This changes nothing for native/runtime acceptance or for the deferred
+# cross-repo static integration.
+ATOMIC_STATIC_PR_EXECUTED_GATES = (
+    "atomic/static/shell-ux",
+    "atomic/static/ci-fast-check",
+)
 
 
 def stage(plan):
@@ -33,7 +45,8 @@ def stage(plan):
         raise ValueError("no independently executable PR validation checks")
     for gate in gates:
         parts = gate.split("/")
-        if gate not in (CROSS_REPO_STATIC, *CORELESS_LIFECYCLE_GATES) and not (
+        if gate not in (CROSS_REPO_STATIC, *CORELESS_LIFECYCLE_GATES,
+                        *ATOMIC_STATIC_PR_EXECUTED_GATES) and not (
             len(parts) == 3 and parts[0] == "atomic" and parts[1] in ("docker", "podman")
         ):
             raise ValueError("unclassified gate cannot be deferred: " + gate)

@@ -34,14 +34,24 @@ type persesManagementSurface struct {
 	AuthenticationClass string `json:"authentication_class"`
 }
 
-// persesStatusReport mirrors the public `baha status --json` face of the seam:
+// persesDashboardAvail mirrors one entry of the public database_dashboards face
+// of `baha status --json`: the availability verdict per dashboard key.
+type persesDashboardAvail struct {
+	Key        string `json:"key"`
+	Backend    string `json:"backend"`
+	Available  string `json:"available"`
+	Datasource string `json:"datasource,omitempty"`
+	Reason     string `json:"reason,omitempty"`
+}
+
 // the management_ui surface list and the readiness checks the CLI renders.
 type persesStatusReport struct {
-	State        string                    `json:"state"`
-	Ready        bool                      `json:"ready"`
-	Perses       *string                   `json:"perses"`
-	ManagementUI []persesManagementSurface `json:"management_ui"`
-	Checks       []struct {
+	State              string                          `json:"state"`
+	Ready              bool                            `json:"ready"`
+	Perses             *string                         `json:"perses"`
+	ManagementUI       []persesManagementSurface       `json:"management_ui"`
+	DatabaseDashboards map[string]persesDashboardAvail `json:"database_dashboards"`
+	Checks             []struct {
 		Name   string `json:"name"`
 		OK     bool   `json:"ok"`
 		State  string `json:"state"`
@@ -56,7 +66,7 @@ type persesStatusReport struct {
 func runPersesStatusCommand(t *testing.T, ctx context.Context) persesStatusReport {
 	t.Helper()
 	var out, errOut bytes.Buffer
-	err := runWithIO(ctx, []string{"status", "--json"}, &out, &errOut)
+	err := runWithIOAsTestOperator(ctx, []string{"status", "--json"}, &out, &errOut)
 	if err != nil && !strings.Contains(err.Error(), "container runtime orchestration not found") {
 		t.Fatalf("baha status --json failed: %v\nstdout: %s\nstderr: %s", err, out.String(), errOut.String())
 	}
@@ -293,7 +303,7 @@ func TestBahaStatusPersesCLIEntrypointResolvesWithoutContainer(t *testing.T) {
 	// The explicit app command runs the same production dispatch and must
 	// declare the identical surface entry.
 	var appOut, appErr bytes.Buffer
-	if err := runWithIO(ctx, []string{"app", "status", "--json"}, &appOut, &appErr); err != nil {
+	if err := runWithIOAsTestOperator(ctx, []string{"app", "status", "--json"}, &appOut, &appErr); err != nil {
 		t.Fatalf("baha app status --json failed: %v\nstdout: %s\nstderr: %s", err, appOut.String(), appErr.String())
 	}
 	var appReport persesStatusReport
@@ -344,7 +354,7 @@ func TestBahaStatusPersesUnknownOwnerFailsClosedThroughCLI(t *testing.T) {
 	// damaged-state conflict naming an UNKNOWN owner (identity application
 	// "unknown", blank id/environment): it never reports an attributed owner.
 	var out, errOut bytes.Buffer
-	statusErr := runWithIO(ctx, []string{"app", "status", "--json"}, &out, &errOut)
+	statusErr := runWithIOAsTestOperator(ctx, []string{"app", "status", "--json"}, &out, &errOut)
 	if statusErr == nil {
 		t.Fatalf("a status command over an unknown-owner deployment must fail closed, got report: %s", out.String())
 	}
@@ -358,7 +368,7 @@ func TestBahaStatusPersesUnknownOwnerFailsClosedThroughCLI(t *testing.T) {
 
 	// (2) The uuid-addressed form addresses the orphaned directory directly and
 	// must report the damaged-state conflict, never a resolved deployment.
-	uuidErr := runWithIO(ctx, []string{"app", "status", "--uuid", resolved.DeploymentIdentity.DeploymentID, "--json"}, &out, &errOut)
+	uuidErr := runWithIOAsTestOperator(ctx, []string{"app", "status", "--uuid", resolved.DeploymentIdentity.DeploymentID, "--json"}, &out, &errOut)
 	if uuidErr == nil {
 		t.Fatalf("the uuid-addressed status command must fail closed on an unknown owner, got: %s", out.String())
 	}
@@ -374,7 +384,7 @@ func TestBahaStatusPersesUnknownOwnerFailsClosedThroughCLI(t *testing.T) {
 	// as an authorized deployment.
 	t.Chdir(t.TempDir())
 	var showOut, showErr bytes.Buffer
-	nameErr := runWithIO(ctx, []string{"app", "show", resolved.Manifest.Name}, &showOut, &showErr)
+	nameErr := runWithIOAsTestOperator(ctx, []string{"app", "show", resolved.Manifest.Name}, &showOut, &showErr)
 	if nameErr == nil {
 		t.Fatalf("an unknown-owner orphan became an authorized listing: %s", showOut.String())
 	}
@@ -477,5 +487,89 @@ func TestPersesReleaseFailClosedOnUnknownAuthClass(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("unknown perses auth class must fail closed")
+	}
+}
+
+// TestBahaStatusDatabaseDashboardsExposesUnavailableDatabases drives the genuine
+// `baha status --json` for a manifest that selects Perses and asserts the
+// database_dashboards face is deterministic and explicit: PostgreSQL and
+// MongoDB are exposed as "unavailable" with a reason naming the missing signal,
+// and are never silently omitted.
+func TestBahaStatusDatabaseDashboardsExposesUnavailableDatabases(t *testing.T) {
+	ctx := t.Context()
+	report := persesProbeAppReport(t, ctx, true)
+
+	if report.DatabaseDashboards == nil {
+		t.Fatal("status JSON must expose the database_dashboards face")
+	}
+	for _, key := range []string{"postgresql-targets", "mongodb-targets"} {
+		avail, ok := report.DatabaseDashboards[key]
+		if !ok {
+			t.Fatalf("database_dashboards must expose %q explicitly", key)
+		}
+		if avail.Available != "unavailable" {
+			t.Fatalf("database %q must report unavailable, got %q", key, avail.Available)
+		}
+		if avail.Reason == "" {
+			t.Fatalf("database %q must carry a concrete reason", key)
+		}
+	}
+	// Positive witness: the three real backends are exposed as available.
+	for _, key := range []string{"prometheus-targets", "loki-logs", "tempo-traces"} {
+		avail, ok := report.DatabaseDashboards[key]
+		if !ok {
+			t.Fatalf("database_dashboards must expose %q", key)
+		}
+		if avail.Available != "available" {
+			t.Fatalf("database %q must report available, got %q", key, avail.Available)
+		}
+	}
+}
+
+// TestBahaStatusDatabaseDashboardsUnverifiedTargetFailsClosed drives the
+// genuine `baha status --json` for a manifest that does NOT select the
+// observability management UI and asserts the target-resolved availability gate
+// fails closed: every backend (including the three real ones) is reported
+// "unavailable" with a concrete reason naming the missing verified observability
+// signal, never an inferred "available". This is the target-verification
+// negative path the review required (review-2 Finding 1): the verdict is derived
+// from the RESOLVED manifest signal, never a caller-supplied boolean and never
+// an empty-witness inference (0428-142 class).
+func TestBahaStatusDatabaseDashboardsUnverifiedTargetFailsClosed(t *testing.T) {
+	ctx := t.Context()
+	root := t.TempDir()
+	m := application.New("perses-cli", "dev", false, false, false)
+	m = application.WithWorkloadComponents(m, "api")
+	m = application.WithMetricsSource(m, "application", "api", 8080, "/metrics")
+	// Observability management UI is NOT selected: the resolved manifest has no
+	// verified observability signal.
+	m.Services.ObservabilityManagementUI = false
+	m.Services.Perses = false
+	if err := os.WriteFile(filepath.Join(root, "compose.yaml"), []byte(persesProbeCompose), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeInitializedAuthoredManifest(t, filepath.Join(root, application.RepositoryManifestName), m, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(root)
+	_, err := resolveApplication(ctx, application.DefaultStore(), nil, "status")
+	if err != nil {
+		t.Fatalf("resolve probe application: %v", err)
+	}
+	report := runPersesStatusCommand(t, ctx)
+	if report.DatabaseDashboards == nil {
+		t.Fatal("status JSON must expose the database_dashboards face")
+	}
+	for _, key := range []string{"prometheus-targets", "loki-logs", "tempo-traces", "postgresql-targets", "mongodb-targets"} {
+		avail, ok := report.DatabaseDashboards[key]
+		if !ok {
+			t.Fatalf("database_dashboards must expose %q explicitly", key)
+		}
+		if avail.Available != "unavailable" {
+			t.Fatalf("database %q must report unavailable when observability is unverified, got %q", key, avail.Available)
+		}
+		if avail.Reason == "" {
+			t.Fatalf("database %q must carry a concrete reason when observability is unverified", key)
+		}
 	}
 }

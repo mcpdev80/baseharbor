@@ -659,7 +659,14 @@ func loadDeploymentRecordFile(target, deploymentID, path string, expected *Deplo
 		return DeploymentRecord{}, &DeploymentRecordStateError{Identity: identity, Kind: "corrupt", Err: fmt.Errorf("parse deployment.json: %w", err)}
 	}
 	if record.Version != DeploymentRecordVersion {
-		return DeploymentRecord{}, &DeploymentRecordStateError{Identity: record.Identity, Kind: "corrupt", Err: fmt.Errorf("unsupported deployment record version %d", record.Version)}
+		return DeploymentRecord{}, &DeploymentRecordStateError{
+			Identity: record.Identity,
+			Kind:     "deployable_version_mismatch",
+			Err: fmt.Errorf(
+				"deployment record version %d is not the supported version %d: the state was written by an older shipped BaseHarbor and is not loadable by this version",
+				record.Version, DeploymentRecordVersion,
+			),
+		}
 	}
 	record.Applied.Delivery = record.Applied.Delivery.Normalize()
 	if err := record.Applied.Delivery.Validate(); err != nil {

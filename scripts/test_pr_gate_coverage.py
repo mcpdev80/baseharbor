@@ -189,6 +189,18 @@ class CoverageCatalogTests(unittest.TestCase):
                       "-timeout", "20m"]],
                     integration.coreless_anchor_checks(gate, temporary))
 
+    def test_environment_destroy_native_test_selects_both_coreless_gates(self):
+        current = json.loads((ROOT / "pr-gate-coverage.json").read_text())
+        path = "cmd/baha/env_destroy_integration_test.go"
+        selected, unresolved = coverage_module.resolve_covered_gates([path], current)
+        self.assertEqual(["integration/docker/coreless-lifecycle",
+                          "integration/podman/coreless-lifecycle"], selected)
+        self.assertEqual([], unresolved)
+        component = next(row for row in current["components"] if row["path"] == path)
+        self.assertTrue(component["runtime_specific"])
+        self.assertEqual(["TestEnvironmentDestroyNativeLifecycle"],
+                         component["required_test_names"])
+
     def test_shared_backend_helper_maps_to_both_coreless_integration_gates(self):
         current = json.loads((ROOT / "pr-gate-coverage.json").read_text())
         path = "cmd/baha/app_backend_shared_runtime_test.go"
@@ -296,6 +308,17 @@ class CoverageCatalogTests(unittest.TestCase):
         selected = coverage_module.resolve_native_checks(
             ["cmd/baha/second_target_conflict_native_test.go"], catalog())
         self.assertEqual(["native/podman/second-target-conflict"], selected)
+
+    def test_workstation_onboarding_selects_docker_and_podman_for_docs_and_test_changes(self):
+        expected = ["native/docker/onboarding", "native/podman/workstation-onboarding"]
+        data = json.loads((ROOT / "pr-gate-coverage.json").read_text())
+        for path in (
+                "cmd/baha/workstation_onboarding_remote_native_test.go",
+                "docs/how-to/operator-api.md",
+                "docs/how-to/remote-workstation.md",
+                "docs/spec/zero-friction-workstation-onboarding-v0427.md"):
+            with self.subTest(path=path):
+                self.assertEqual(expected, coverage_module.resolve_native_checks([path], data))
 
     def test_runtime_neutral_native_checks_use_docker_representative(self):
         data = catalog()
@@ -474,7 +497,11 @@ class CoverageCatalogTests(unittest.TestCase):
         result = planner.plan(diff, requirements, mapping)
         self.assertEqual(["atomic/podman/lifecycle"], result["selected_gates"])
 
-    def test_unreviewed_runtime_file_falls_back_without_package_wide_false_gate(self):
+    def test_unreviewed_runtime_file_is_rejected_not_falled_back(self):
+        # Fail-loud guard (card 0428-242): a changed runtime source with no
+        # declared catalog owner must abort with exit != 0, never resolve to a
+        # broad false-pass. The conservative fallback never runs for an
+        # uncataloged source.
         requirements = json.loads((ROOT / "release-requirements.json").read_text())
         mapping = json.loads((ROOT / "pr-gate-map-v1.json").read_text())
         diff = {
@@ -483,13 +510,15 @@ class CoverageCatalogTests(unittest.TestCase):
             "broad_required": False, "reasons": [],
             "changes": [{"status": "modified", "path": "internal/runtime/new_feature.go"}],
         }
-        result = planner.plan(diff, requirements, mapping, conservative_fallback=True)
-        self.assertTrue(result["fallback_used"])
-        self.assertEqual([], result["selected_gates"])
-        self.assertNotIn("atomic/docker/data-capabilities", result["selected_gates"])
-        self.assertNotIn("atomic/podman/lifecycle", result["selected_gates"])
+        with self.assertRaises(ValueError) as ctx:
+            planner.plan(diff, requirements, mapping, conservative_fallback=True)
+        message = str(ctx.exception)
+        self.assertIn("internal/runtime/new_feature.go", message)
+        self.assertIn("scripts/pr-gate-coverage.json", message)
+        self.assertIn("atomic.docker.data.capabilities", message)
+        self.assertTrue("fallback_used" not in message)
 
-    def test_unknown_source_fallback_does_not_guess_runtime_gate(self):
+    def test_unknown_source_is_rejected_not_falled_back(self):
         requirements = json.loads((ROOT / "release-requirements.json").read_text())
         mapping = json.loads((ROOT / "pr-gate-map-v1.json").read_text())
         diff = {
@@ -498,12 +527,12 @@ class CoverageCatalogTests(unittest.TestCase):
             "broad_required": False, "reasons": [],
             "changes": [{"status": "added", "path": "internal/unknown/new.go"}],
         }
-        result = planner.plan(diff, requirements, mapping, conservative_fallback=True)
-        self.assertTrue(result["fallback_used"])
-        self.assertEqual([], result["selected_gates"])
-        self.assertIn("go-unit-tests", {row["id"] for row in result["required_validation_checks"]})
+        with self.assertRaises(ValueError) as ctx:
+            planner.plan(diff, requirements, mapping, conservative_fallback=True)
+        self.assertIn("internal/unknown/new.go", str(ctx.exception))
+        self.assertNotIn("go-unit-tests", str(ctx.exception))
 
-    def test_legacy_runtime_hint_without_catalog_owner_is_unresolved(self):
+    def test_runtime_hint_without_catalog_owner_is_rejected(self):
         requirements = json.loads((ROOT / "release-requirements.json").read_text())
         mapping = json.loads((ROOT / "pr-gate-map-v1.json").read_text())
         diff = {
@@ -512,11 +541,61 @@ class CoverageCatalogTests(unittest.TestCase):
             "broad_required": False, "reasons": [],
             "changes": [{"status": "modified", "path": "internal/runtime/new_feature.go"}],
         }
+        with self.assertRaises(ValueError):
+            planner.plan(diff, requirements, mapping, conservative_fallback=True)
+
+    # card 0428-242: catalog + fail-loud guardian.
+
+    def test_app_broker_catalog_entry_resolves_to_data_capabilities_gates(self):
+        # (catalog) cmd/baha/app_broker.go is declared with the two data.capabilities
+        # surfaces, matching the app_apply.go pattern, and resolves to the atomic
+        # data-capabilities gate (never empty/gray).
+        current = json.loads((ROOT / "pr-gate-coverage.json").read_text())
+        component = next(
+            row for row in current["components"] if row["path"] == "cmd/baha/app_broker.go")
+        self.assertEqual(
+            ["source.gate.atomic.docker.data.capabilities",
+             "source.gate.atomic.podman.data.capabilities"], component["surfaces"])
+        selected, unresolved = coverage_module.resolve_covered_gates(
+            ["cmd/baha/app_broker.go"], current)
+        self.assertEqual(["atomic/docker/data-capabilities"], selected)
+        self.assertEqual([], unresolved)
+
+    def test_planner_catalogs_app_broker_as_resolved(self):
+        requirements = json.loads((ROOT / "release-requirements.json").read_text())
+        mapping = json.loads((ROOT / "pr-gate-map-v1.json").read_text())
+        diff = {
+            "target_base_sha": "a" * 40, "head_sha": "b" * 40,
+            "merge_base_sha": "c" * 40, "integration_sha": "d" * 40,
+            "broad_required": False, "reasons": [],
+            "changes": [{"status": "modified", "path": "cmd/baha/app_broker.go"}],
+        }
+        # CI authenticates the runner context, which enables the conservative
+        # fallback that adds the broad Go vet/build/unit checks for a CLI source
+        # whose runtime impact is not otherwise targeted.
         result = planner.plan(diff, requirements, mapping, conservative_fallback=True)
-        self.assertTrue(result["fallback_used"])
         self.assertEqual("resolved", result["coverage_status"])
-        self.assertNotIn("atomic/docker/lifecycle", result["selected_gates"])
-        self.assertNotIn("atomic/podman/lifecycle", result["selected_gates"])
+        self.assertEqual([], result["unresolved_coverage"])
+        self.assertEqual(["atomic/docker/data-capabilities"], result["selected_gates"])
+
+    def test_uncataloged_source_is_rejected_with_precise_next_action(self):
+        # (guardian) an uncataloged source aborts with exit != 0 and a message
+        # that names the missing catalog id/path and the exact next step.
+        requirements = json.loads((ROOT / "release-requirements.json").read_text())
+        mapping = json.loads((ROOT / "pr-gate-map-v1.json").read_text())
+        diff = {
+            "target_base_sha": "a" * 40, "head_sha": "b" * 40,
+            "merge_base_sha": "c" * 40, "integration_sha": "d" * 40,
+            "broad_required": False, "reasons": [],
+            "changes": [{"status": "modified", "path": "internal/runtime/new_feature.go"}],
+        }
+        with self.assertRaises(ValueError) as ctx:
+            planner.plan(diff, requirements, mapping, conservative_fallback=True)
+        message = str(ctx.exception)
+        self.assertIn("internal/runtime/new_feature.go", message)
+        self.assertIn("scripts/pr-gate-coverage.json", message)
+        self.assertIn("source.internal_runtime_new_feature_go", message)
+        self.assertIn("atomic.docker.data.capabilities", message)
 
 
 if __name__ == "__main__":

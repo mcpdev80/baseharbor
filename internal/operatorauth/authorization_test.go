@@ -9,6 +9,39 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/tenancy"
 )
 
+func TestWithEnforcementIfAbsentPreservesAuthenticatedAuthorizationState(t *testing.T) {
+	operation, ok := machine.OperationByID("destroy")
+	if !ok {
+		t.Fatal("destroy operation is not registered")
+	}
+	principal := &identity.Principal{Issuer: "https://issuer.example", Subject: "operator-a", IssuerVerified: true, Groups: []string{"editor"}}
+	ctx := WithVerifiedPrincipal(context.Background(), principal)
+	ctx = WithMembershipProvider(ctx, claimStub{memberships: []tenancy.Membership{{TenantID: "tenant-a", Role: "editor"}}})
+	decision, err := AuthorizeMachineOperation(ctx, AuthorizationRequest{
+		Operation: operation,
+		Context:   OperationContext{Application: "demo", Environment: "prod", Target: "prod-eu"},
+	})
+	if err != nil || !decision.Allowed {
+		t.Fatalf("setup authorization failed: decision=%#v err=%v", decision, err)
+	}
+
+	preserved := WithEnforcementIfAbsent(ctx)
+	gotPrincipal, ok := PrincipalFromContext(preserved)
+	if !ok || gotPrincipal.Subject != principal.Subject {
+		t.Fatalf("authenticated principal was discarded: %#v, ok=%t", gotPrincipal, ok)
+	}
+	gotDecision, ok := AuthorizationDecisionFromContext(preserved)
+	if !ok || !gotDecision.Allowed || gotDecision.Actor.Subject != principal.Subject {
+		t.Fatalf("authorization decision was discarded: %#v, ok=%t", gotDecision, ok)
+	}
+	if !EnforcementEnabled(preserved) {
+		t.Fatal("existing enforcement state was not preserved")
+	}
+	if added := WithEnforcementIfAbsent(context.Background()); !EnforcementEnabled(added) {
+		t.Fatal("missing enforcement state was not enabled")
+	}
+}
+
 func TestAuthorizeMachineOperationNameOnlyPolicyFailsClosed(t *testing.T) {
 	operation, ok := machine.OperationByID("apply")
 	if !ok {
