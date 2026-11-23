@@ -43,6 +43,20 @@ def verify(base_plan, needs, *, head=None, integration=None):
         return errors + ['invalid validation checks']
     if not gates and not checks:
         errors.append('no selected checks')
+    # card 0428-208/#1746 fix: the PR-executed static gate set is single-sourced
+    # from the stage boundary (ATOMIC_STATIC_PR_EXECUTED_GATES). Only gates the
+    # boundary declares PR-executed map to pr_focused; deferred release-only
+    # static gates map to NO PR job, and an unclassified atomic/static/* gate
+    # still falls to the no-executor error. This keeps pr_focused out of the
+    # required set for deferred-only plans (pr-stage-boundary: deferral never
+    # adds a required job).
+    import importlib.util as _ilu
+    _sb_spec = _ilu.spec_from_file_location('pr_stage_boundary_for_final',
+                                           Path(__file__).parent / 'pr-stage-boundary.py')
+    _sb = _ilu.module_from_spec(_sb_spec)
+    _sb_spec.loader.exec_module(_sb)
+    _pr_executed_static = frozenset(_sb.ATOMIC_STATIC_PR_EXECUTED_GATES)
+
     required = set(BASE_JOBS)
     if set(gates) & CORELESS_LIFECYCLE_GATES:
         required.update(('pr_selected_integration', 'pr_demo_pin'))
@@ -76,13 +90,10 @@ def verify(base_plan, needs, *, head=None, integration=None):
             required.add('pr_public_contracts')
         elif gate in CORELESS_LIFECYCLE_GATES:
             pass
-        elif len(parts) == 3 and parts[0] == 'atomic' and parts[1] == 'static':
-            # card 0428-208/#1746: atomic/static/* focused gates (e.g.
-            # atomic/static/shell-ux) execute through the PR · Focused Python job.
-            # Without this mapping every static gate fell through to
-            # 'selected gate has no workflow executor' and blocked the run; the gate
-            # is not a runtime/native gate, so it only needs the focused validation
-            # job, mirroring the base BASE_JOBS surface.
+        elif gate in _pr_executed_static:
+            # PR-executed atomic/static/* gates (boundary-declared; empty today,
+            # the ci-fast-check executable proof runs in the release suite) map
+            # to the existing PR · Focused Python job only.
             required.add('pr_focused')
         else:
             errors.append('selected gate has no workflow executor: ' + gate)
