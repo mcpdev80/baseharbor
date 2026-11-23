@@ -342,6 +342,22 @@
       ]
     },
     {
+      "id": "source.cmd_baha_app_new_wizard_test_go",
+      "path": "cmd/baha/app_new_wizard_test.go",
+      "surfaces": [
+        "source.gate.atomic.docker.guided",
+        "source.gate.atomic.podman.guided"
+      ]
+    },
+    {
+      "id": "source.cmd_baha_application_provider_preferences_go",
+      "path": "cmd/baha/application_provider_preferences.go",
+      "surfaces": [
+        "source.gate.atomic.docker.guided",
+        "source.gate.atomic.podman.guided"
+      ]
+    },
+    {
       "id": "source.cmd.baha.app.observability.acceptance.test.go",
       "path": "cmd/baha/app_observability_acceptance_test.go",
       "surfaces": [
