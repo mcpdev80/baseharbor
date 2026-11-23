@@ -213,6 +213,23 @@
       ]
     },
     {
+      "id": "source.cmd.baha.app.access.go",
+      "path": "cmd/baha/app_access.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
+      "id": "cmd.baha.app.access.test.go",
+      "path": "cmd/baha/app_access_test.go",
+      "runtime_specific": true,
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
       "id": "source.cmd.baha.app.edit.apply.go",
       "path": "cmd/baha/app_edit_apply.go",
       "surfaces": [
@@ -1449,12 +1466,6 @@
     {
       "id": "source.internal.metrics.perses.dashboards.test.go",
       "path": "internal/metrics/perses_dashboards_test.go",
-      "surfaces": ["source.gate.atomic.docker.observability", "source.gate.atomic.podman.observability"],
-      "runtime_specific": true
-    },
-    {
-      "id": "source.internal.metrics.perses.dashboards.promql.test.go",
-      "path": "internal/metrics/perses_dashboards_promql_test.go",
       "surfaces": ["source.gate.atomic.docker.observability", "source.gate.atomic.podman.observability"],
       "runtime_specific": true
     },
