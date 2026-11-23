@@ -178,6 +178,38 @@
       ]
     },
     {
+      "id": "source.cmd.baha.app.pull.go",
+      "path": "cmd/baha/app_pull.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
+      "id": "source.cmd.baha.app.pull.render.go",
+      "path": "cmd/baha/app_pull_render.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
+      "id": "source.cmd.baha.app.pull.options.test.go",
+      "path": "cmd/baha/app_pull_options_test.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
+      "id": "source.cmd.baha.app.pull.mcp.approgression.test.go",
+      "path": "cmd/baha/app_pull_mcp_approval_regression_test.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
       "id": "source.cmd.baha.app.core.requirement.go",
       "path": "cmd/baha/app_core_requirement.go",
       "surfaces": [
@@ -1476,6 +1508,30 @@
       "runtime_specific": true
     },
     {
+      "id": "source.internal.development.source.go",
+      "path": "internal/development/source.go",
+      "surfaces": ["source.gate.atomic.docker.observability", "source.gate.atomic.podman.observability"],
+      "runtime_specific": true
+    },
+    {
+      "id": "source.internal.development.source.pull.go",
+      "path": "internal/development/source_pull.go",
+      "surfaces": ["source.gate.atomic.docker.observability", "source.gate.atomic.podman.observability"],
+      "runtime_specific": true
+    },
+    {
+      "id": "source.internal.development.source.pull.test.go",
+      "path": "internal/development/source_pull_test.go",
+      "surfaces": ["source.gate.atomic.docker.observability", "source.gate.atomic.podman.observability"],
+      "runtime_specific": true
+    },
+    {
+      "id": "source.internal.machine.contract.go",
+      "path": "internal/machine/contract.go",
+      "surfaces": ["source.gate.atomic.docker.observability", "source.gate.atomic.podman.observability"],
+      "runtime_specific": true
+    },
+    {
       "id": "source.cmd.baha.main.go",
       "path": "cmd/baha/main.go",
       "surfaces": ["source.gate.atomic.docker.data.capabilities", "source.gate.atomic.podman.data.capabilities"],
@@ -1484,6 +1540,12 @@
     {
       "id": "source.cmd.baha.mcp.go",
       "path": "cmd/baha/mcp.go",
+      "surfaces": ["gate.mcp"],
+      "runtime_specific": true
+    },
+    {
+      "id": "source.cmd.baha.mcp.lifecycle.extra.go",
+      "path": "cmd/baha/mcp_lifecycle_extra.go",
       "surfaces": ["gate.mcp"],
       "runtime_specific": true
     },
