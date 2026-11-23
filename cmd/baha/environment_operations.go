@@ -27,14 +27,32 @@ func inspectApplicationEnvironment(ctx context.Context, resolved resolvedApplica
 	}
 	files, err := application.ExistingRuntimeFiles(resolved.Store, resolved.Manifest)
 	if err != nil {
+		if reveal {
+			// Authorization was granted but the env contract could not be
+			// read: this is a failed reveal, not a successful one. Record the
+			// failure so the audit never logs a success for a reveal that
+			// never released material.
+			recordRevealFailed(ctx, resolved.Target.Name, resolved.Manifest.Environment, resolved.Manifest.ApplicationID, err)
+		}
 		return applicationEnvironmentResult{}, err
 	}
 	if _, err := os.Stat(files.ApplicationEnv); err != nil {
+		if reveal {
+			recordRevealFailed(ctx, resolved.Target.Name, resolved.Manifest.Environment, resolved.Manifest.ApplicationID, err)
+		}
 		return applicationEnvironmentResult{}, err
 	}
 	values, err := loadApplicationEnv(files.ApplicationEnv)
 	if err != nil {
+		if reveal {
+			recordRevealFailed(ctx, resolved.Target.Name, resolved.Manifest.Environment, resolved.Manifest.ApplicationID, err)
+		}
 		return applicationEnvironmentResult{}, err
+	}
+	if reveal {
+		// Material released successfully: record the reveal success at the
+		// release point, after the env contract was read and parsed.
+		recordRevealSuccess(ctx, resolved.Target.Name, resolved.Manifest.Environment, resolved.Manifest.ApplicationID)
 	}
 	if !reveal {
 		maskRuntimeSecrets(values)

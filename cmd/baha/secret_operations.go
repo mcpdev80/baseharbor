@@ -121,9 +121,23 @@ func authorizeHumanReveal(ctx context.Context, target, environment, appName stri
 		recordRevealFailed(ctx, target, environment, appName, err)
 		return err
 	}
-	// Reveal succeeded for a human operator: record the success outcome.
-	recordRevealSuccess(ctx, target, environment, appName)
+	// Authorization decision recorded here is distinct from the reveal outcome:
+	// this records that a human operator was authorized to reveal, not that
+	// material was released. Consumers record the actual success/failure at the
+	// release point (see recordRevealSuccess).
+	recordRevealAuthorized(ctx, target, environment, appName)
 	return nil
+}
+
+// recordRevealAuthorized records the authorization decision at the
+// secret.reveal seam: a human operator was verified and authorized to reveal.
+// It is intentionally named "authorized" (not "success") to distinguish the
+// authorization decision from the actual material-release outcome.
+func recordRevealAuthorized(ctx context.Context, target, environment, appName string) {
+	recordRevealForTarget(ctx, target, resolvedApplication{
+		Target:   deployment.ResolvedTarget{Name: target},
+		Manifest: application.Manifest{Environment: environment, Name: appName},
+	}, "authorized", "")
 }
 
 // recordRevealDenied records a denied human reveal (failed human-operator

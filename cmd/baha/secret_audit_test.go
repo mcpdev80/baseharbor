@@ -345,6 +345,126 @@ func TestAuthorizeHumanRevealFailedRecordsRevealAudit(t *testing.T) {
 	}
 }
 
+// TestAuthorizeHumanRevealSeamRecordsAuthorizationNotSuccess proves the
+// premature-success fix at the seam: authorizeHumanReveal records the
+// authorization decision (outcome "authorized") at the seam, NOT the
+// material-release outcome ("success"). The deny path (already covered by
+// TestAuthorizeHumanRevealDeniedRecordsRevealAudit) confirms the seam still
+// audits at the operator check. The success path is now
+// recordRevealAuthorized, never recordRevealSuccess, so a later read/parse
+// failure can never see a spurious "success" audit.
+func TestAuthorizeHumanRevealSeamRecordsAuthorizationNotSuccess(t *testing.T) {
+	root := t.TempDir()
+	targetStateRoot = func(string) (string, error) { return root, nil }
+	defer func() { targetStateRoot = deployment.TargetStateRoot }()
+
+	// The seam's post-authorization call is recordRevealAuthorized, which
+	// records the "authorized" outcome — never "success".
+	ctx := context.Background()
+	recordRevealAuthorized(ctx, "local", "dev", "demo")
+
+	events, err := evidence.Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("expected exactly one audit event, got %d", len(events))
+	}
+	event := events[0]
+	if event.Operation != "secret.reveal" {
+		t.Fatalf("expected secret.reveal operation, got %#v", event)
+	}
+	if event.Outcome == "success" {
+		t.Fatalf("seam must never record the success (release) outcome, got %q", event.Outcome)
+	}
+	if event.Outcome != "authorized" {
+		t.Fatalf("seam must record the authorization decision outcome authorized, got %q", event.Outcome)
+	}
+}
+
+// TestAuthorizeHumanRevealPostAuthReadFailureRecordsNoSuccess proves that when
+// the post-authorization read/parse fails, the consumer records a failure and
+// the audit contains NO "success" event — the failed reveal never released
+// material. The seam records "authorized"; the consumer's failed read records
+// "failed"; neither is a "success".
+func TestAuthorizeHumanRevealPostAuthReadFailureRecordsNoSuccess(t *testing.T) {
+	root := t.TempDir()
+	targetStateRoot = func(string) (string, error) { return root, nil }
+	defer func() { targetStateRoot = deployment.TargetStateRoot }()
+
+	ctx := context.Background()
+	// The seam records the authorization decision (not success).
+	recordRevealAuthorized(ctx, "local", "dev", "demo")
+	// The consumer's read/parse fails -> record the failure.
+	recordRevealFailed(ctx, "local", "dev", "demo", errors.New("invalid application environment contract"))
+
+	events, err := evidence.Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range events {
+		if e.Operation == "secret.reveal" && e.Outcome == "success" {
+			t.Fatalf("post-authorization read failure must not record a success reveal, got %#v", e)
+		}
+	}
+	foundAuthorized, foundFailure := false, false
+	for _, e := range events {
+		if e.Operation != "secret.reveal" {
+			continue
+		}
+		switch e.Outcome {
+		case "authorized":
+			foundAuthorized = true
+		case "failed":
+			foundFailure = true
+		}
+	}
+	if !foundAuthorized || !foundFailure {
+		t.Fatalf("expected both an authorized (seam) and a failed (read failure) reveal, got events: %#v", events)
+	}
+}
+
+// TestAuthorizeHumanRevealSuccessfulReleaseRecordsSuccess proves that a
+// successful reveal release records a "success" audit — this is recorded by
+// the consumer at the release point (recordRevealSuccess), not by the seam.
+func TestAuthorizeHumanRevealSuccessfulReleaseRecordsSuccess(t *testing.T) {
+	root := t.TempDir()
+	targetStateRoot = func(string) (string, error) { return root, nil }
+	defer func() { targetStateRoot = deployment.TargetStateRoot }()
+
+	ctx := context.Background()
+	// The seam records "authorized" (authorization decision), not success.
+	recordRevealAuthorized(ctx, "local", "dev", "demo")
+	// The consumer's read/parse succeeds -> records the release success.
+	recordRevealSuccess(ctx, "local", "dev", "demo")
+
+	events, err := evidence.Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !containsAuditOperation(events, "secret.reveal") {
+		t.Fatal("expected a secret.reveal audit event")
+	}
+	foundAuthorized, foundSuccess := false, false
+	for _, e := range events {
+		if e.Operation != "secret.reveal" {
+			continue
+		}
+		if e.Outcome == "authorized" {
+			foundAuthorized = true
+		}
+		if e.Outcome == "success" {
+			foundSuccess = true
+		}
+	}
+	if !foundAuthorized {
+		t.Fatalf("expected the seam to record an authorized decision, got events: %#v", events)
+	}
+	if !foundSuccess {
+		t.Fatalf("successful reveal release must record a success outcome, got events: %#v", events)
+	}
+}
+
 // TestRecordEnvDestroyAuditRuntimeSuccessIsAllowNotPerson proves the runtime
 // actor attribution fix for env.destroy: a succeeded local runtime env-destroy
 // (no verified human, no decision, outcome=success) must attribute the runtime
