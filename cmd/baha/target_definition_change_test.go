@@ -10,7 +10,6 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
-	"github.com/mcpdev80/baseharbor/internal/identity"
 	"github.com/mcpdev80/baseharbor/internal/machine"
 	"github.com/mcpdev80/baseharbor/internal/operatorauth"
 	"github.com/mcpdev80/baseharbor/internal/tenancy"
@@ -38,7 +37,8 @@ func targetDefinitionFixture(t *testing.T) (string, string) {
 
 func TestTargetDefinitionRejectsUnprovenTenantOwnership(t *testing.T) {
 	name, _ := targetDefinitionFixture(t)
-	ctx := operatorauth.WithVerifiedPrincipal(testOperatorContext(context.Background()), &identity.Principal{Issuer: "https://issuer.example", Subject: "synthetic-operator"})
+	ctx := operatorauth.WithVerifiedTestOperatorPrincipal(testOperatorContext(context.Background()),
+		operatorauth.TestPrincipal("https://issuer.example", "synthetic-operator"))
 	ctx = tenancy.WithContext(ctx, &tenancy.Context{TenantID: "11111111-1111-4111-8111-111111111111", ExternalIdentityID: "synthetic-operator", Roles: []string{"editor"}})
 	if _, err := buildTargetDefinitionChangePlan(ctx, name, ""); err == nil || machine.Classify(err).CauseCode != "target_definition_tenant_owner_unverifiable" {
 		t.Fatal("tenant acquired unowned global Target definition")
