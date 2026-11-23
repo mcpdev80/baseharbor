@@ -344,8 +344,15 @@ func recordEnvDestroyAudit(ctx context.Context, target, envName, detail, outcome
 	event.Environment = envName
 	event.Resource = envName
 	event.Detail = detail
-	if decision, ok := operatorauth.AuthorizationDecisionFromContext(ctx); ok && decision.Allowed {
-		event.AuthorizationResult = "allow"
+	if decision, ok := operatorauth.AuthorizationDecisionFromContext(ctx); ok {
+		// A present AuthorizationDecision takes precedence over any principal:
+		// a verified principal can coexist with a policy denial, so a present
+		// decision must never fall back to principal-allow.
+		if decision.Allowed {
+			event.AuthorizationResult = "allow"
+		} else {
+			event.AuthorizationResult = "deny"
+		}
 	} else if _, ok := operatorauth.PrincipalFromContext(ctx); ok {
 		event.AuthorizationResult = "allow"
 	} else {

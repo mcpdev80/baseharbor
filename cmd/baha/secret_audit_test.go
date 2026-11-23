@@ -9,7 +9,9 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/evidence"
+	"github.com/mcpdev80/baseharbor/internal/identity"
 	"github.com/mcpdev80/baseharbor/internal/machine"
+	"github.com/mcpdev80/baseharbor/internal/operatorauth"
 )
 
 func TestClassifySecretOutcomeMapsDenialsAndFailures(t *testing.T) {
@@ -124,4 +126,53 @@ func TestRecordSecretAuditBailsQuietlyWhenStateRootUnreachable(t *testing.T) {
 	ctx := context.Background()
 	resolved := secretAuditResolvedApplication("local", "demo", "dev")
 	recordSecretAudit(ctx, resolved, "secret.set", "API_TOKEN", classifySecretOutcome(nil))
+}
+
+// TestRecordSecretAuditPresentDeniedDecisionOverridesVerifiedPrincipal proves
+// the precedence rule: when an AuthorizationDecision is present with Allowed
+// false, the audit records AuthorizationResult=deny even though a verified
+// principal also exists in the context (authorizeMCPOperation stores denied
+// machine decisions alongside the verified principal). A present decision must
+// never fall back to principal-allow, which would corrupt the audit record.
+func TestRecordSecretAuditPresentDeniedDecisionOverridesVerifiedPrincipal(t *testing.T) {
+	root := t.TempDir()
+	targetStateRoot = func(string) (string, error) { return root, nil }
+	defer func() { targetStateRoot = deployment.TargetStateRoot }()
+
+	ctx := operatorauth.WithEnforcement(context.Background())
+	principal := &identity.Principal{
+		Subject:   "verified-operator",
+		Issuer:    "issuer",
+		Assurance: "high",
+	}
+	ctx = operatorauth.WithVerifiedPrincipal(ctx, principal)
+	decision, ok := operatorauth.AuthorizationDecisionFromContext(ctx)
+	if ok {
+		t.Fatalf("context must start without a stored decision for this fixture")
+	}
+	decision = operatorauth.AuthorizationDecision{
+		ContractVersion: "0.4.28",
+		Allowed:         false,
+		Operation:       "secret.set",
+		Actor:           operatorauth.MachineActorRef{Subject: "workload"},
+	}
+	ctx = operatorauth.WithAuthorizationDecision(ctx, decision)
+
+	resolved := secretAuditResolvedApplication("local", "demo", "dev")
+	recordSecretAudit(ctx, resolved, "secret.set", "API_TOKEN", classifySecretOutcome(nil))
+
+	events, err := evidence.Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("expected exactly one audit event, got %d", len(events))
+	}
+	event := events[0]
+	if event.AuthorizationResult != "deny" {
+		t.Fatalf("present denied decision must yield AuthorizationResult=deny, got %q", event.AuthorizationResult)
+	}
+	if event.Actor.Subject != decision.Actor.Subject {
+		t.Fatalf("actor must follow the denied decision, got %q want %q", event.Actor.Subject, decision.Actor.Subject)
+	}
 }

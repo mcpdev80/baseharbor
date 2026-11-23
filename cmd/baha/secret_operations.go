@@ -44,11 +44,20 @@ func recordSecretAudit(ctx context.Context, resolved resolvedApplication, operat
 	event.ApplicationID = resolved.Manifest.ApplicationID
 	event.DeploymentID = resolved.DeploymentIdentity.DeploymentID
 	event.Capability = "app.secret"
-	if decision, ok := operatorauth.AuthorizationDecisionFromContext(ctx); ok && decision.Allowed {
+	// A present AuthorizationDecision takes precedence over any principal: a
+	// verified principal can coexist with a policy denial (authorizeMCPOperation
+	// stores denied machine decisions in this context), so a present decision
+	// must never fall back to principal-allow. Only when no decision is present
+	// does the verified principal stand in.
+	if decision, ok := operatorauth.AuthorizationDecisionFromContext(ctx); ok {
 		event.Actor.Subject = decision.Actor.Subject
 		event.Actor.Assurance = decision.Actor.Assurance
 		event.Actor.Methods = append([]string(nil), decision.Actor.Methods...)
-		event.AuthorizationResult = "allow"
+		if decision.Allowed {
+			event.AuthorizationResult = "allow"
+		} else {
+			event.AuthorizationResult = "deny"
+		}
 	} else if principal, ok := operatorauth.PrincipalFromContext(ctx); ok {
 		event.Actor.Identity = principal.Subject
 		event.Actor.Issuer = principal.Issuer
