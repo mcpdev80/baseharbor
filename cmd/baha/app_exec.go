@@ -220,7 +220,7 @@ func parseWorkloadExecArgs(args []string, commandName string) (selectorArgs []st
 			return nil, "", nil, usageError("unknown option "+arg, "Run 'baha app "+commandName+" --help' for usage.")
 		default:
 			positional = append(positional, arg)
-			if commandName == "exec" && len(positional) == 2 {
+			if commandName == "exec" && (len(positional) == 2 || (componentValue != "" && len(positional) == 1)) {
 				commandTail = true
 			}
 		}
