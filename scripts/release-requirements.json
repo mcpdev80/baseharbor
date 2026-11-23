@@ -1261,6 +1261,19 @@
       "dependencies": [
         "core"
       ]
+    },
+    {
+      "id": "atomic/static/ci-fast-check",
+      "schema": "baseharbor.pre-release.gate-evidence/v1",
+      "jobs": [
+        "static_gates"
+      ],
+      "required_for": [
+        "v0.4.28"
+      ],
+      "dependencies": [
+        "core"
+      ]
     }
   ]
 }

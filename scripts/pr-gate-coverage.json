@@ -2251,11 +2251,25 @@
       "scope": "pr",
       "covers": [
         "capability.profile.shell-interface",
-        "gate.shell-ux",
-        "source.gate.atomic.static.ci.fast.check"
+        "gate.shell-ux"
       ],
       "kind": "static",
       "selection_scope": "focused",
+      "demo_contract": {
+        "profile": "shell-interface",
+        "capabilities": []
+      }
+    },
+    {
+      "id": "atomic/static/ci-fast-check",
+      "runtime": "static",
+      "class": "static",
+      "scope": "pr",
+      "covers": [
+        "source.gate.atomic.static.ci.fast.check"
+      ],
+      "kind": "static",
+      "selection_scope": "release-only",
       "demo_contract": {
         "profile": "shell-interface",
         "capabilities": []
