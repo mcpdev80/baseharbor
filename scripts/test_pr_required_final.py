@@ -134,6 +134,37 @@ class FinalChecks(unittest.TestCase):
         self.needs['pr_demo_pin'] = {'result': 'failure'}
         self.assertTrue(final.verify(self.plan, self.needs))
 
+    def test_release_only_atomic_static_gate_is_deferred_not_pr_executed(self):
+        # Finding (0428-208 #1793): `atomic/static/mcp` is a release-only static
+        # gate whose executable proof runs only at release/qualify
+        # (pre-release.yml:663 static_gates ->
+        # pre-release-runtime-suite.yml:267, GATE=mcp runs tests/mcp/run.sh),
+        # never inside a PR. It must be
+        # classified DEFERRED release-only by the stage boundary and must NOT
+        # require any PR-executed job in the final verifier: no PR executor
+        # exists, and no silent-pass is created by mapping it to pr_focused.
+        self.plan['required_consumer_dependencies'] = ['core', 'demo']
+        self.plan['selected_gates'] = ['atomic/static/mcp']
+        staged = stage.stage(self.plan)
+        # (a) mcp is pulled out of the selected list and recorded as deferred;
+        # no required PR-check exists for it, and verify passes the remaining
+        # base workflow jobs without any mcp proof running in the PR.
+        self.assertEqual([], staged['selected_gates'])
+        self.assertEqual(['atomic/static/mcp'], staged['deferred_integration_gates'])
+        self.assertEqual([], final.verify(staged, self.needs))
+        # (b) A failing PR-executed job still blocks -- the deferral is real and
+        # visible, not a silent cover for a missing mcp proof.
+        failing = copy.deepcopy(self.needs)
+        failing['pr_validations'] = {'result': 'failure'}
+        self.assertTrue(final.verify(staged, failing))
+
+    def test_unsupported_deferred_gate_still_blocks(self):
+        # The mcp deferral widens the allow-list by exactly one known release
+        # gate; an invented deferred gate is still rejected.
+        self.plan['selected_gates'] = []
+        self.plan['deferred_integration_gates'] = ['atomic/static/phantom']
+        self.assertTrue(final.verify(self.plan, self.needs))
+
 
 if __name__ == '__main__':
     unittest.main()
