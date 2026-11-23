@@ -28,6 +28,24 @@ case "$action" in
       echo "target image must use the isolated localhost:5000 registry" >&2
       exit 2
     }
+    # A runtime reset (ci-runtime-reset.sh) destroys the loaded runtime image
+    # and the localhost:5000 registry container before this publish runs. If
+    # the source image is gone, re-load it from the candidate archive so the
+    # tag/push/ORAS chain has an image to publish; without this the gate sees
+    # an unknown blob/manifest on the runtime image it depends on.
+    if ! runtime_cmd image inspect "$source_image" >/dev/null 2>&1; then
+      archive="${BASEHARBOR_CANDIDATE_ARCHIVE:-$RUNNER_TEMP/pre-release-candidate/baseharbor-runtime-pre-release.tar}"
+      if [ -s "$archive" ]; then
+        if [ "$runtime" = podman ]; then
+          env -u XDG_CONFIG_HOME -u XDG_DATA_HOME podman load -i "$archive"
+        else
+          docker load -i "$archive"
+        fi
+      else
+        echo "runtime source image '$source_image' is missing and no candidate archive ($archive) is available" >&2
+        exit 1
+      fi
+    fi
     runtime_cmd image inspect "$source_image" >/dev/null
     if [ "$runtime" = podman ]; then
       mkdir -p "$(dirname "$local_registry_config")"
