@@ -47,6 +47,10 @@ func withCandidateConsentDigest(ctx context.Context, digest string) context.Cont
 	return context.WithValue(ctx, candidateConsentOverrideKey{}, strings.TrimSpace(digest))
 }
 
+func withRuntimeUpCandidateConsent(ctx context.Context, opts runtimeUpOptions) context.Context {
+	return withCandidateConsentDigest(ctx, opts.CandidateConsent)
+}
+
 func clearCandidateConsentDigest(ctx context.Context) context.Context {
 	return context.WithValue(ctx, candidateConsentOverrideKey{}, "")
 }

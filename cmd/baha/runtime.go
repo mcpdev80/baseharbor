@@ -70,7 +70,7 @@ func runtimeUpCommand(ctx context.Context, args []string, out, errOut io.Writer)
 	// repository apply can clear the candidate gate in the normal up flow; the
 	// fail-closed candidate contract is unchanged (no new consent semantics, no
 	// second gate).
-	ctx = withCandidateConsentDigest(ctx, opts.CandidateConsent)
+	ctx = withRuntimeUpCandidateConsent(ctx, opts)
 	if handled, err := routeRepositoryRuntimeUp(ctx, applicationInput(ctx, runtimeInput), out, errOut, opts); handled {
 		return err
 	}
