@@ -121,6 +121,12 @@ def validate(coverage: dict, requirements: dict) -> list[str]:
     release = coverage.get("release")
     if not isinstance(release, str) or release not in requirements.get("releases", []):
         errors.append(f"coverage release {release!r} is not in release requirements")
+    # Releases up to and including this PR's release field, in declared order. A gate whose
+    # required_for lists only a release NEWER than this field is future coverage (see the
+    # extra-rule note near line 252).
+    _releases = requirements.get("releases", [])
+    _prefix_idx = _releases.index(release) if release in _releases else len(_releases)
+    releases_prefix = _releases[: _prefix_idx + 1]
 
     catalog_ids = {
         row.get("id") for row in requirements.get("gates", []) if isinstance(row, dict)
@@ -249,7 +255,18 @@ def validate(coverage: dict, requirements: dict) -> list[str]:
     required_ids = {row.get("id") for row in requirements.get("gates", [])
                     if isinstance(row, dict) and release in row.get("required_for", [])}
     missing = sorted(required_ids - seen_gates)
-    extra = sorted(seen_gates - required_ids)
+    # Future coverage (Owner authorization 2026-11-23, card 0428-208/#1746): a catalog
+    # gate whose required_for lists only releases NEWER than this PR's release field
+    # (e.g. required_for=["v0.4.28"] while release="v0.4.27") is intentional forward
+    # planning and is allowed. It is excluded from `extra` so it does not fail as
+    # "outside active release catalog". Gates required for the current release (the
+    # active set above) remain mandatory via `missing` unchanged below.
+    future_only_ids = {row.get("id") for row in requirements.get("gates", [])
+                       if isinstance(row, dict)
+                       and not (set(row.get("required_for", [])) <= set(releases_prefix))
+                       and release not in row.get("required_for", [])}
+    future_seen = {g for g in seen_gates if g in future_only_ids}
+    extra = sorted((seen_gates - required_ids) - future_seen)
     if missing:
         errors.append("coverage catalog omits active release gates: " + ", ".join(missing))
     if extra:

@@ -335,6 +335,15 @@ jobs:
       with:
         go-version-file: go.mod
         cache: false
+    - name: Install shells for the shell-wrapper test path
+      if: matrix.shard == 'cli-3'
+      shell: bash
+      run: |
+        set -euo pipefail
+        sudo apt-get update
+        sudo apt-get install --no-install-recommends -y zsh fish
+        echo "zsh: $(command -v zsh)"
+        echo "fish: $(command -v fish)"
     - name: Run discovered release-source test shard
       id: source_tests
       shell: bash

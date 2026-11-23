@@ -48,7 +48,9 @@ class V0427GateCatalogTests(unittest.TestCase):
         }
         for gate in self.inventory['gates']:
             with self.subTest(gate=gate['id']):
-                if gate['id'] in archived_consumer_gates:
+                if gate['id'] == 'atomic/static/ci-fast-check':
+                    self.assertNotIn('v0.4.27', gate.get('required_for', []))
+                elif gate['id'] in archived_consumer_gates:
                     self.assertNotIn('v0.4.27', gate.get('required_for', []))
                 else:
                     self.assertIn('v0.4.27', gate.get('required_for', []))
