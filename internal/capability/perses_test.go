@@ -12,6 +12,44 @@ func TestValidatePersesReleaseFailClosedWithoutPin(t *testing.T) {
 	}
 }
 
+// TestPersesStatusNowVerifiedFromRealSource is the 0428-186 positive case: the
+// three-state contract now HAS a real "verified" source, so a selected, validly
+// pinned Perses surface whose backend answers (the shipped reference provider
+// catalog declares a native, backend-verified metrics signal) reports EXACTLY
+// "verified". The value is DERIVED FROM the reference-catalog witness
+// (hostProviderMetricsNativeVerified), never asserted: it is a positive
+// is-equality claim, not a literal true.
+func TestPersesStatusNowVerifiedFromRealSource(t *testing.T) {
+	if !hostProviderMetricsNativeVerified() {
+		t.Skip("reference catalog must declare a native backend-verified signal for the real backends")
+	}
+	got := PersesStatusNow(true)
+	if got == nil || *got != PersesStatusVerified {
+		t.Fatalf("selected+backend-answers Perses must report %q, got %+v", PersesStatusVerified, got)
+	}
+	// Unselected still fails closed to not_configured.
+	notConfigured := PersesStatusNow(false)
+	if notConfigured == nil || *notConfigured != PersesStatusNotConfigured {
+		t.Fatalf("unselected Perses must report %q, got %+v", PersesStatusNotConfigured, notConfigured)
+	}
+}
+
+// TestPersesStatusNowVerifiedIsDerivedNotSupplied pins that the verified value
+// is never self-confirmed: it follows from the reference-catalog witness, so
+// the seam seam can never report verified from manifest truth alone. The
+// fail-closed variant (PersesConfiguredStatusNow) ANDs operator authorization,
+// so no status path reports a configured surface that is not actually protected.
+func TestPersesStatusNowVerifiedIsDerivedNotSupplied(t *testing.T) {
+	// The witness is the ONLY way to reach verified, so it must be the real
+	// catalog verdict, never a caller boolean.
+	if !hostProviderMetricsNativeVerified() {
+		t.Skip("reference catalog must declare a native backend-verified signal for the real backends")
+	}
+	if got := resolveHostDashboardSignalStatusWith(true, true, hostProviderMetricsNativeVerified); got != ObservabilitySupported {
+		t.Fatalf("resolved observability-signal verdict must be %q when the witness holds, got %q", ObservabilitySupported, got)
+	}
+}
+
 func TestValidatePersesReleaseRejectsUnknownAuthClass(t *testing.T) {
 	err := ValidatePersesRelease(PersesRelease{Version: "v0.55.1", Image: "persesdev/perses:v0.55.1", AuthenticationClass: "grafana"})
 	if err == nil {

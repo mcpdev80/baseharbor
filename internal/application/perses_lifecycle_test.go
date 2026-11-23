@@ -131,14 +131,17 @@ func TestPersesLifecycleRejectsPersesWithoutObservabilitySurface(t *testing.T) {
 }
 
 // TestPersesLifecycleStatusThreeStates asserts the public three-state derivation
-// is not_configured when unselected and configured_unverified when selected,
-// never "verified" (no Perses health path exists in this Core).
+// is not_configured when unselected, and the real "verified" when selected and
+// pinned with a backend that answers (the shipped reference catalog declares a
+// native backend-verified metrics signal, 0428-186). The verified value is
+// DERIVED FROM the reference-catalog witness, never asserted; pin validation
+// alone never maps into "verified" for a backend that does not answer.
 func TestPersesLifecycleStatusThreeStates(t *testing.T) {
 	if got := PersesLifecycleStatus(persesTestManifest(false)); got != "not_configured" {
 		t.Fatalf("unselected perses status = %q, want not_configured", got)
 	}
-	if got := PersesLifecycleStatus(persesTestManifest(true)); got != "configured_unverified" {
-		t.Fatalf("selected perses status = %q, want configured_unverified", got)
+	if got := PersesLifecycleStatus(persesTestManifest(true)); got != "verified" {
+		t.Fatalf("selected+backend-answers perses status = %q, want verified", got)
 	}
 }
 

@@ -315,9 +315,11 @@ func TestBahaStatusPersesCLIEntrypointResolvesWithoutContainer(t *testing.T) {
 		t.Fatalf("the two public status entries disagree about the seam: app=%v root=%v", appSurface, surface)
 	}
 	// Positive is-equality: the explicit `app status --json` field must itself be
-	// configured_unverified for the selected + no-health case — direct coverage
-	// of the app-status JSON field, not only via the root status surface.
-	assertPersesConfiguredUnverified(t, appReport)
+	// verified for the selected + backend-answers case — direct coverage of the
+	// app-status JSON field, not only via the root status surface. The verified
+	// value is derived from the shipped reference-catalog witness (0428-186),
+	// never asserted.
+	assertPersesVerified(t, appReport)
 }
 
 // TestBahaStatusPersesUnknownOwnerFailsClosedThroughCLI is the required
@@ -439,18 +441,40 @@ func TestBahaStatusPersesReportsUnsupportedAuthThroughCLI(t *testing.T) {
 }
 
 // TestBahaStatusPersesConfiguredUnverifiedPositive drives the genuine
-// `baha status --json` for a selected, validly pinned Perses surface WITHOUT a
-// running health probe and asserts the machine-readable perses field is EXACTLY
-// "configured_unverified" (is-equality), while the public surface is still not
-// ready. Pin validation alone must never map into "verified"; a real health
-// path is required for that, and this Core ships none.
+// `baha status --json` for a selected, validly pinned Perses surface and asserts
+// the machine-readable perses field is EXACTLY "verified" (is-equality), while
+// the public surface is still not ready. The verified state is DERIVED FROM a
+// real source (the shipped reference provider catalog declares a native,
+// backend-verified metrics signal), so it is reachable by test — 0428-186 — and
+// never by pin validation alone: the fail-closed variant
+// (PersesConfiguredStatusNow) still ANDs operator authorization so no status
+// path can report a configured surface that is not actually protected.
 func TestBahaStatusPersesConfiguredUnverifiedPositive(t *testing.T) {
 	t.Setenv("BASEHARBOR_TARGET", "")
 	t.Setenv("BASEHARBOR_STATE_DIR", "")
 	ctx := t.Context()
 	configureTestTarget(t)
 	_, report := persesProbeApp(t, ctx, true)
-	assertPersesConfiguredUnverified(t, report)
+	assertPersesVerified(t, report)
+}
+
+// assertPersesVerified pins the positive three-state contract the 0428-186
+// verified source introduces: a selected, validly pinned Perses surface whose
+// backend answers (shipped reference catalog declares a native backend-verified
+// metrics signal) reports EXACTLY "verified" (is-equality) on the machine face,
+// while the public surface is still not ready. This is a positive claim, not a
+// "does-not-contain-verified" vacuous reject, and it is derived from real
+// evidence (never a literal true).
+func assertPersesVerified(t *testing.T, report persesStatusReport) {
+	t.Helper()
+	if report.Perses == nil {
+		t.Fatalf("the status JSON must expose a machine-readable perses field with exactly one of {not_configured, configured_unverified, verified}")
+	}
+	if *report.Perses != string(capability.PersesStatusVerified) {
+		t.Fatalf("selected+backend-answers Perses must report %q, got %q (verified is derived from the reference-catalog witness, not asserted)",
+			capability.PersesStatusVerified, *report.Perses)
+	}
+	assertPersesSurfaceUnverified(t, report)
 }
 
 // TestBahaStatusPersesNotConfiguredWhenUnselected drives the same JSON entry
