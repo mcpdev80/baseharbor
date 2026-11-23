@@ -176,6 +176,11 @@
       "surfaces": ["source.gate.atomic.docker.data.capabilities", "source.gate.atomic.podman.data.capabilities"]
     },
     {
+      "id": "source.cmd_baha_environment_operations_go",
+      "path": "cmd/baha/environment_operations.go",
+      "surfaces": ["source.gate.atomic.docker.data.capabilities", "source.gate.atomic.podman.data.capabilities"]
+    },
+    {
       "id": "source.cmd_baha_secret_audit_test_go",
       "path": "cmd/baha/secret_audit_test.go",
       "surfaces": ["source.gate.atomic.docker.data.capabilities", "source.gate.atomic.podman.data.capabilities"]
