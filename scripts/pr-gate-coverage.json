@@ -161,6 +161,21 @@
       "surfaces": ["source.gate.atomic.docker.data.capabilities", "source.gate.atomic.podman.data.capabilities"]
     },
     {
+      "id": "source.internal_application_perses_lifecycle_go",
+      "path": "internal/application/perses_lifecycle.go",
+      "surfaces": ["source.gate.atomic.docker.data.capabilities", "source.gate.atomic.podman.data.capabilities"]
+    },
+    {
+      "id": "source.internal_metrics_perses_backend_status_go",
+      "path": "internal/metrics/perses_backend_status.go",
+      "surfaces": ["source.gate.atomic.docker.data.capabilities", "source.gate.atomic.podman.data.capabilities"]
+    },
+    {
+      "id": "source.internal_metrics_perses_backend_status_test_go",
+      "path": "internal/metrics/perses_backend_status_test.go",
+      "surfaces": ["source.gate.atomic.docker.data.capabilities", "source.gate.atomic.podman.data.capabilities"]
+    },
+    {
       "id": "source.cmd_baha_secret_audit_test_go",
       "path": "cmd/baha/secret_audit_test.go",
       "surfaces": ["source.gate.atomic.docker.data.capabilities", "source.gate.atomic.podman.data.capabilities"]
