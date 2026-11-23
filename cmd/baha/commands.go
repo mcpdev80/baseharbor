@@ -238,6 +238,7 @@ func configuredApplicationCommand(store application.Store) *cli.Command {
 		appShellCommand(store),
 		appExecCommand(store),
 		appUpdateCommand(store),
+		appPullCommand(store),
 		appTLSCommand(store),
 		persesLifecycleCommand(store),
 		appStatusCommandWithTLS(store),

@@ -41,6 +41,7 @@ Inspect current data with `baha agent describe -o json` (`cli_coverage`). Update
 | `baha app plan` | semantic | CLI -o json / typed MCP result | baseharbor.plan |  |
 | `baha app preflight` | semantic | CLI -o json / typed MCP result | baseharbor.app.preflight |  |
 | `baha app prune` | semantic | CLI -o json / typed MCP result | baseharbor.app.prune | Registry-only removal of a dangling deployment record whose source repository is gone; never loads source or runtime, and refuses when source is present or multiple records match. |
+| `baha app pull` | semantic | CLI -o json / typed MCP result | baseharbor.app.pull | Pulls the selected repository sources as a strict fast-forward to their upstream after inspecting working tree, branch, upstream and divergence; a dirty, ahead or diverged source blocks that source without touching others. With --up it converges the application through the shared apply operation after every selected source is pulled. Fails closed non-interactively. |
 | `baha app restore` | semantic | CLI -o json / typed MCP result | baseharbor.restore |  |
 | `baha app runtime-identity` | presentation |  |  | Command group; invoke its supported subcommands. |
 | `baha app runtime-identity revoke` | semantic | CLI -o json / typed MCP result | baseharbor.runtime-identity.revoke |  |

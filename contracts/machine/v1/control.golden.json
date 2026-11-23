@@ -744,6 +744,15 @@
             "mcp_tool": "baseharbor.workspace.update"
           },
           {
+            "id": "app.pull",
+            "description": "Pull selected repository sources as a strict fast-forward to their upstream, inspecting working tree, branch, upstream and divergence first; with --up converges the application via apply.",
+            "safety": "mutating",
+            "confirmation_required": true,
+            "policy_required": true,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.app.pull"
+          },
+          {
             "id": "app.edit",
             "description": "Preview/apply reviewed application needs with exact explicit consent.",
             "safety": "mutating",
