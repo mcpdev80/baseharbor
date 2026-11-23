@@ -21,8 +21,8 @@ CORELESS_LIFECYCLE_GATES = {
 # injection keeps rejecting invented gates. Every other atomic/static-shaped
 # name stays unclassified. No PR-executed class exists for it and none is
 # created: its only executor is the release/qualify native runtime
-# (docker-runtime-acceptance.yml:630), see the comment in
-# pr-required-final.py for the matching deferred allow-list.
+# (pre-release.yml:663 static_gates, see the comment in
+# pr-required-final.py for the matching deferred allow-list).
 ATOMIC_STATIC_DEFERRED_RELEASE_ONLY = ("atomic/static/mcp",)
 # Release-only STATIC gates under the atomic tier (e.g.
 # atomic/static/shell-ux, atomic/static/ci-fast-check) run their executable
@@ -68,7 +68,8 @@ def stage(plan):
     # integration are deferred: recorded, never reported as passed, and fulfilled
     # by develop/release acceptance. mcp has no PR-executed class; its only
     # executor is the release/qualify native runtime
-    # (docker-runtime-acceptance.yml:630), so it stays out of the PR-executed
+    # (pre-release.yml:663 -> pre-release-runtime-suite.yml:267,
+    # GATE=mcp runs tests/mcp/run.sh), so it stays out of the PR-executed
     # list exactly like the cross-repo gate below.
     deferred = [
         gate for gate in gates

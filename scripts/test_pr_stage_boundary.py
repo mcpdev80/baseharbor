@@ -88,7 +88,8 @@ class PRStageBoundaryTests(unittest.TestCase):
     def test_release_only_atomic_static_mcp_is_deferred_not_pr_executed(self):
         # Finding (0428-208 #1793): `atomic/static/mcp` is a release-only static
         # gate whose executable proof runs only at release/qualify
-        # (docker-runtime-acceptance.yml:630). It must be classified DEFERRED
+        # (pre-release.yml:663 -> pre-release-runtime-suite.yml:267,
+        # GATE=mcp runs tests/mcp/run.sh). It must be classified DEFERRED
         # release-only (like the cross-repo gate), never emitted as a PR-executed
         # static gate. The PR-executed static class is unchanged.
         self.plan["selected_gates"] = ["atomic/static/mcp"]

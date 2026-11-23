@@ -137,7 +137,9 @@ class FinalChecks(unittest.TestCase):
     def test_release_only_atomic_static_gate_is_deferred_not_pr_executed(self):
         # Finding (0428-208 #1793): `atomic/static/mcp` is a release-only static
         # gate whose executable proof runs only at release/qualify
-        # (docker-runtime-acceptance.yml:630), never inside a PR. It must be
+        # (pre-release.yml:663 static_gates ->
+        # pre-release-runtime-suite.yml:267, GATE=mcp runs tests/mcp/run.sh),
+        # never inside a PR. It must be
         # classified DEFERRED release-only by the stage boundary and must NOT
         # require any PR-executed job in the final verifier: no PR executor
         # exists, and no silent-pass is created by mapping it to pr_focused.
