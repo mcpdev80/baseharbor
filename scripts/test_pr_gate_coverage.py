@@ -355,6 +355,67 @@ class CoverageCatalogTests(unittest.TestCase):
     def test_catalog_accounts_for_every_active_release_gate(self):
         self.assertEqual([], coverage_module.validate(catalog(), requirements()))
 
+    # card 0428-208 / #1746 (Owner authorization 2026-11-23): the validator fix at
+    # validate-pr-gate-coverage.py:249-256 keeps every currently-required release gate
+    # mandatory (the `missing` rule is unchanged) while allowing catalog gates whose
+    # required_for lists only a NEWER release (future coverage) without an `extra` fail.
+
+    def test_future_only_catalog_entry_passes_as_release_only(self):
+        # (b) a catalog gate whose required_for is only v0.4.28 is allowed while the
+        # catalog release field stays v0.4.27; it is not reported as `extra`.
+        data = catalog()
+        data["gates"].append({
+            "id": "atomic/static/ci-fast-check", "runtime": "static",
+            "class": "static", "scope": "pr",
+            "covers": ["source.gate.atomic.static.ci.fast.check"], "kind": "static",
+            "selection_scope": "release-only",
+        })
+        data["surfaces"].append("source.gate.atomic.static.ci.fast.check")
+        requirements_dict = requirements()
+        requirements_dict["releases"] = ["v0.4.27", "v0.4.28"]
+        requirements_dict["gates"].append(
+            {"id": "atomic/static/ci-fast-check", "required_for": ["v0.4.28"]})
+        self.assertEqual([], coverage_module.validate(data, requirements_dict))
+
+    def test_missing_current_required_gate_still_fails(self):
+        # (a) a gate required for the active release field must still be present; the
+        # future-coverage allowance never masks a genuinely missing current gate.
+        data = catalog()
+        del data["gates"][0]  # drop DOCKER, still required at v0.4.27
+        errors = coverage_module.validate(data, requirements())
+        self.assertTrue(
+            any("coverage catalog omits active release gates" in e for e in errors))
+        self.assertTrue(any("atomic/docker/data-capabilities" in e for e in errors))
+
+    def test_release_field_stays_hard_required(self):
+        # (c) a release field absent from the releases list is still rejected outright.
+        data = catalog()
+        data["release"] = "v0.4.99"
+        errors = coverage_module.validate(data, requirements())
+        self.assertTrue(
+            any("is not in release requirements" in e for e in errors))
+
+    def test_current_required_gate_still_fails_when_future_gate_missing(self):
+        # The future allowance must not drop the mandatory `missing` enforcement: a
+        # catalog that carries a v0.4.28-only gate but omits a v0.4.27 gate fails on
+        # the missing current gate, not silently passes.
+        data = catalog()
+        data["gates"].append({
+            "id": "atomic/static/ci-fast-check", "runtime": "static",
+            "class": "static", "scope": "pr",
+            "covers": ["source.gate.atomic.static.ci.fast.check"], "kind": "static",
+            "selection_scope": "release-only",
+        })
+        data["surfaces"].append("source.gate.atomic.static.ci.fast.check")
+        data["gates"].pop(0)  # also drop DOCKER (required at v0.4.27)
+        requirements_dict = requirements()
+        requirements_dict["releases"] = ["v0.4.27", "v0.4.28"]
+        requirements_dict["gates"].append(
+            {"id": "atomic/static/ci-fast-check", "required_for": ["v0.4.28"]})
+        errors = coverage_module.validate(data, requirements_dict)
+        self.assertTrue(any("omits active release gates" in e for e in errors))
+        self.assertTrue(any("atomic/docker/data-capabilities" in e for e in errors))
+
     def test_repo_core_paths_preserve_legacy_release_gate_coverage(self):
         legacy = json.loads((ROOT / "pre-release-runtime-impact.json").read_text())
         current = json.loads((ROOT / "pr-gate-coverage.json").read_text())
