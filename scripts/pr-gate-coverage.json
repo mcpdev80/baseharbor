@@ -245,6 +245,14 @@
       ]
     },
     {
+      "id": "source.cmd.baha.app.edit_ack.test.go",
+      "path": "cmd/baha/app_edit_ack_test.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
       "id": "source.cmd.baha.app.access.go",
       "path": "cmd/baha/app_access.go",
       "surfaces": [

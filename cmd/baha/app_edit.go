@@ -324,6 +324,24 @@ func driveAppEditNeeds(ctx context.Context, session appEditSession, key string, 
 	return session
 }
 
+// selectedKindAtCursor reports the capability kind under the needs-screen
+// cursor and its state before the current selection key applies, so the caller
+// can acknowledge a Space toggle on screen. It returns an empty kind when the
+// cursor sits on a non-need row (for example the extended-needs footer), where
+// no capability toggle happened.
+func (w appWizardController) selectedKindAtCursor() string {
+	needs := w.selection.visibleNeeds()
+	if w.selection.cursor < 0 || w.selection.cursor >= len(needs) {
+		return ""
+	}
+	return string(needs[w.selection.cursor].Kind)
+}
+
+// selectedKindSelected reports whether a need kind is currently selected.
+func (w appWizardController) selectedKindSelected(kind string) bool {
+	return w.selection.selected[capability.Kind(kind)]
+}
+
 // driveAppEditPreview confirms or returns from the read-only preview. Enter and
 // no/back return to the needs screen with a fresh preview on the next advance.
 func driveAppEditPreview(ctx context.Context, session appEditSession, trimmed string) (appWizardController, error) {
