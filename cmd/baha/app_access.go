@@ -14,6 +14,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/cli"
+	"github.com/mcpdev80/baseharbor/internal/evidence"
 	"github.com/mcpdev80/baseharbor/internal/operatorauth"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
@@ -134,6 +135,10 @@ func appCredsCommand(store application.Store) *cli.Command {
 				// an authenticated operator on the separate secret.reveal seam.
 				if err := authorizeHumanReveal(ctx, resolved.Target.Name, resolved.Manifest.Environment, resolved.Manifest.ApplicationID); err != nil {
 					return err
+				}
+				// Record the audit event before releasing credential values.
+				if err := recordConnectionRevealAudit(ctx, resolved, kind, binding.Instance); err != nil {
+					return fmt.Errorf("record connection reveal audit: %w", err)
 				}
 				fmt.Fprintf(out, "PASSWORD=%s\nURI=%s\n", binding.Password, binding.URI)
 			} else {
@@ -592,6 +597,40 @@ func preserveWorkloadExitStatus(runErr error) error {
 		}
 	}
 	return runErr
+}
+
+// recordConnectionRevealAudit appends a per-reveal audit event for the human
+// `baha app creds --reveal` path. It records who revealed what, on which
+// target/app/environment/capability, without writing the secret into the event.
+func recordConnectionRevealAudit(ctx context.Context, resolved resolvedApplication, kind, instance string) error {
+	event := evidence.NewAuditEvent(
+		ctx,
+		resolved.Target.Name,
+		resolved.Manifest.Name,
+		resolved.Manifest.Environment,
+		"connection-reveal",
+		"allow",
+	)
+	event.Capability = "app.connection"
+	event.Resource = kind + "/" + instance
+	event.ApplicationID = resolved.Manifest.ApplicationID
+	event.DeploymentID = resolved.DeploymentIdentity.DeploymentID
+	if decision, ok := operatorauth.AuthorizationDecisionFromContext(ctx); ok && decision.Allowed {
+		event.Actor.Identity = decision.Actor.Subject
+		event.Actor.Issuer = decision.Actor.Issuer
+		event.Actor.Subject = decision.Actor.Subject
+		event.Actor.Assurance = decision.Actor.Assurance
+		event.Actor.Methods = append([]string(nil), decision.Actor.Methods...)
+		event.AuthorizationResult = "allow"
+	} else if principal, ok := operatorauth.PrincipalFromContext(ctx); ok {
+		event.Actor.Identity = principal.Subject
+		event.Actor.Issuer = principal.Issuer
+		event.Actor.Subject = principal.Subject
+		event.Actor.Assurance = principal.Assurance
+		event.Actor.Methods = append([]string(nil), principal.Methods...)
+		event.AuthorizationResult = "allow"
+	}
+	return evidence.Append(resolved.TargetStateRoot, event)
 }
 
 func resolveAccessBinding(ctx context.Context, store application.Store, appName, kind, instance string) (resolvedApplication, application.ServiceBinding, error) {
