@@ -57,14 +57,14 @@ Exakte Optionen stehen in `baha COMMAND --help`. [Globale Optionen](global-optio
 | `baha app shell` | Open a shell in an application workload service | `baha app shell SERVICE [--app NAME]` | [↗](applications.md) |
 | `baha app show` | Show a coherent application overview | `baha app show [NAME]` | [↗](applications.md) |
 | `baha app sql` | Open the managed SQL console for the current application | `baha app sql [INSTANCE] [--app NAME]` | [↗](applications.md) |
-| `baha app status` | Show application runtime and readiness status | `baha app status [NAME] [-o json\|--output json]` | [↗](applications.md) |
+| `baha app status` | Show application runtime, readiness and version status | `baha app status [NAME] [-c COMPONENT[,COMPONENT]] [-o json\|--output json]` | [↗](applications.md) |
 | `baha app stop` | Stop application runtimes while preserving data for reactivation | `baha app stop [NAME] [--yes]` | [↗](applications.md) |
 | `baha app tls` | Inspect and maintain application TLS certificates | `baha app tls <command>` | [↗](applications.md) |
 | `baha app tls update` | Check for or install a newer existing TLS certificate | `baha app tls update [--check]` | [↗](applications.md) |
 | `baha app up` | Start an existing application runtime and verify readiness | `baha app up [NAME] [--yes\|-y] [--skip-memory-preflight]` | [↗](applications.md) |
 | `baha app update` | Safely inspect or update a Git-backed application | `baha app update [--check] [--backup-password-file FILE \| --no-backup]` | [↗](applications.md) |
-| `baha app version` | Show separated wanted/applied/observed release and component versions | `baha app version [NAME] [-o json\|--output json]` | [↗](applications.md) |
-| `baha app versions` | Show readable wanted/applied/observed versions for recorded deployments | `baha app versions [--all-targets] [-o json\|--output json]` | [↗](applications.md) |
+| `baha app version` | Show separated wanted/applied/observed release and component versions | `baha app version [NAME] [-c COMPONENT[,COMPONENT]] [-o json\|--output json]` | [↗](applications.md) |
+| `baha app versions` | Show readable wanted/applied/observed versions for recorded deployments | `baha app versions [--all-targets] [-c COMPONENT[,COMPONENT]] [-o json\|--output json]` | [↗](applications.md) |
 | `baha app workspace` | Manage local multi-repository workspace mappings | `baha app workspace [<init\|map\|show\|resolve\|status\|update\|path\|source\|component> [options]]` | [↗](applications.md) |
 | `baha app workspace component` | Inspect and maintain unique component-to-source mappings | `baha app workspace component <list\|add\|remove> [options]` | [↗](applications.md) |
 | `baha app workspace component add` | Add or retarget the unique mapping of one component without inventing it implicitly | `baha app workspace component add COMPONENT SOURCE[@SUBPATH] [--manifest PATH] [-o json]` | [↗](applications.md) |

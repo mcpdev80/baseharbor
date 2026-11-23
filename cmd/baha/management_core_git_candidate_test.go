@@ -14,7 +14,19 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/development"
 )
 
+// This test stages a pinned Core Git candidate and archives a real Core
+// worktree; it requires an isolated rootless Docker/Podman runtime. On a
+// pure-unit host (no provisioned runtime) the native `git archive` is killed,
+// so skip unless the acceptance marker is set.
+func mustHaveRuntimeForStagedCandidate(t *testing.T) {
+	t.Helper()
+	if os.Getenv("BASEHARBOR_GIT_CANDIDATE_ACCEPTANCE") != "1" {
+		t.Skip("requires BASEHARBOR_GIT_CANDIDATE_ACCEPTANCE=1 on an isolated rootless Docker/Podman host")
+	}
+}
+
 func TestPrepareStagedCoreGitCandidatePinsCanonicalApplication(t *testing.T) {
+	mustHaveRuntimeForStagedCandidate(t)
 	root := t.TempDir()
 	git := func(args ...string) string {
 		t.Helper()
