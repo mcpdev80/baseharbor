@@ -165,6 +165,54 @@ class FinalChecks(unittest.TestCase):
         self.plan['deferred_integration_gates'] = ['atomic/static/phantom']
         self.assertTrue(final.verify(self.plan, self.needs))
 
+    def test_focused_static_gates_are_deferred_not_pr_executed(self):
+        # Pivot for the cancelled pr_focused mapping (0428-208 #1797): shell-ux
+        # and ci-fast-check are release-only atomic/static/* gates whose
+        # executable proof runs only at release/qualify (pre-release.yml:663
+        # static_gates -> pre-release-runtime-suite.yml:267), NEVER inside a PR.
+        # The stage boundary now classifies them DEFERRED release-only, so they
+        # must map to NO PR executor and must NOT be pulled into pr_focused.
+        self.plan['required_consumer_dependencies'] = ['core', 'demo']
+        self.plan['selected_gates'] = ['atomic/static/shell-ux',
+                                       'atomic/static/ci-fast-check']
+        staged = stage.stage(self.plan)
+        # Both are pulled out of the selected list and recorded as deferred;
+        # no required PR-check exists for them.
+        self.assertEqual([], staged['selected_gates'])
+        self.assertEqual(['atomic/static/shell-ux',
+                          'atomic/static/ci-fast-check'],
+                         staged['deferred_integration_gates'])
+        # With them deferred, verify passes the remaining base workflow jobs
+        # WITHOUT any pr_focused job (which is absent from needs).
+        self.assertEqual([], final.verify(staged, self.needs))
+        # A failing PR-executed job still blocks -- the deferral is real and
+        # visible, not a silent cover for missing shell-ux/ci-fast-check proof.
+        failing = copy.deepcopy(self.needs)
+        failing['pr_validations'] = {'result': 'failure'}
+        self.assertTrue(final.verify(staged, failing))
+
+    def test_unknown_atomic_static_gate_still_has_no_executor(self):
+        # Only the enumerated deferred gates are honoured; any other
+        # atomic/static/* gate still yields the no-executor error in the final
+        # verifier and is rejected as an unsupported deferred gate when staged.
+        self.plan['required_consumer_dependencies'] = ['core', 'demo']
+        self.plan['selected_gates'] = ['atomic/static/phantom']
+        self.assertTrue(final.verify(self.plan, self.needs))
+        self.plan['selected_gates'] = []
+        self.plan['deferred_integration_gates'] = ['atomic/static/phantom']
+        self.assertTrue(final.verify(self.plan, self.needs))
+
+    def test_mcp_deferral_unchanged_by_focused_mapping(self):
+        # Restoring ATOMIC_STATIC_FOCUSED_GATES must NOT pull mcp into the
+        # focused executor: mcp stays release-only deferred and requires no PR
+        # check. (Regression guard against the focused set swallowing mcp.)
+        self.plan['required_consumer_dependencies'] = ['core', 'demo']
+        self.plan['selected_gates'] = ['atomic/static/mcp']
+        staged = stage.stage(self.plan)
+        self.assertEqual([], staged['selected_gates'])
+        self.assertEqual(['atomic/static/mcp'], staged['deferred_integration_gates'])
+        self.assertEqual([], final.verify(staged, self.needs))
+
 
 if __name__ == '__main__':
     unittest.main()

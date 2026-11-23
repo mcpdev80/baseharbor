@@ -51,28 +51,29 @@ class PRStageBoundaryTests(unittest.TestCase):
         self.assertEqual(gates, result["selected_gates"])
         self.assertEqual([], result["deferred_integration_gates"])
 
-    def test_atomic_static_release_gates_are_pr_executed_not_unclassified(self):
-        # Finding (#1746 run 45041976030): the trusted planner selects the
-        # release-only atomic/static/shell-ux gate, but the stage boundary
-        # classified it as an unclassified gate and aborted. The PR-executed
-        # static class (atomic/static/shell-ux and, once #1746 lands,
-        # atomic/static/ci-fast-check) must stay selected, must never be
-        # deferred, and must leave native acceptance unchanged.
+    def test_atomic_static_release_gates_are_deferred_not_pr_executed(self):
+        # Pivot for the cancelled pr_focused mapping (0428-208 #1797): the
+        # trusted planner selects the release-only atomic/static/shell-ux gate,
+        # and per #1797 shell-ux + ci-fast-check are release-only atomic/static
+        # gates like mcp. The stage boundary now classifies them DEFERRED
+        # release-only (never PR-executed, never unclassified), and native
+        # acceptance is unchanged.
         for gate in ("atomic/static/shell-ux", "atomic/static/ci-fast-check"):
             with self.subTest(gate=gate):
                 self.plan["selected_gates"] = [gate]
                 result = stage.stage(self.plan)
-                self.assertEqual([gate], result["selected_gates"])
-                self.assertEqual([], result["deferred_integration_gates"])
-        # Mixed with a native gate: the native selection/deferral behaviour is
-        # asserted UNCHANGED (native stays selected, nothing deferred).
+                self.assertEqual([], result["selected_gates"])
+                self.assertEqual([gate], result["deferred_integration_gates"])
+        # Mixed with a native gate: shell-ux is now deferred while native stays
+        # selected; nothing PR-executed is claimed for the release-only gate.
         self.plan["selected_gates"] = ["atomic/static/shell-ux",
                                        "atomic/docker/lifecycle",
                                        "atomic/podman/lifecycle"]
         result = stage.stage(self.plan)
-        self.assertEqual(["atomic/static/shell-ux", "atomic/docker/lifecycle",
-                          "atomic/podman/lifecycle"], result["selected_gates"])
-        self.assertEqual([], result["deferred_integration_gates"])
+        self.assertEqual(["atomic/docker/lifecycle", "atomic/podman/lifecycle"],
+                         result["selected_gates"])
+        self.assertEqual(["atomic/static/shell-ux"],
+                         result["deferred_integration_gates"])
 
     def test_other_atomic_static_names_stay_unclassified(self):
         # Only the enumerated PR-executed static gates and the enumerated
@@ -105,6 +106,27 @@ class PRStageBoundaryTests(unittest.TestCase):
         result = stage.stage(self.plan)
         self.assertEqual(["atomic/docker/lifecycle"], result["selected_gates"])
         self.assertEqual(["atomic/static/mcp"], result["deferred_integration_gates"])
+
+    def test_release_only_static_gates_are_deferred(self):
+        # Pivot for the cancelled pr_focused mapping (0428-208 #1797): shell-ux
+        # and ci-fast-check are release-only atomic/static/* gates like mcp. The
+        # stage boundary classifies all three as DEFERRED release-only; only the
+        # enumerated deferred gate ids are admitted, every other
+        # atomic/static-shaped name stays unclassified (fails closed).
+        self.plan["selected_gates"] = ["atomic/static/shell-ux",
+                                       "atomic/static/ci-fast-check",
+                                       "atomic/static/mcp"]
+        result = stage.stage(self.plan)
+        self.assertEqual([], result["selected_gates"])
+        self.assertEqual(["atomic/static/shell-ux",
+                          "atomic/static/ci-fast-check",
+                          "atomic/static/mcp"],
+                         result["deferred_integration_gates"])
+
+    def test_unknown_static_gate_still_fails_closed(self):
+        self.plan["selected_gates"] = ["atomic/static/phantom"]
+        with self.assertRaises(ValueError):
+            stage.stage(self.plan)
 
     def test_coreless_lifecycle_gates_stay_selected(self):
         coreless = ["integration/docker/coreless-lifecycle",
