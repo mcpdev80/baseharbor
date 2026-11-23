@@ -110,6 +110,8 @@ PY
     prepare_exact_runtime_image
     run_exact_test TestApplicationCapabilityLifecycleExistingCore 20m ./cmd/baha \
       BASEHARBOR_CORELESS_ACCEPTANCE=1
+    run_exact_test TestApplicationCapabilityLifecycleFootprintShowDigestConsent 20m ./cmd/baha \
+      BASEHARBOR_CORELESS_ACCEPTANCE=1
     ;;
   native/docker/coreless-lifecycle|native/podman/coreless-lifecycle)
     prepare_exact_runtime_image
@@ -118,6 +120,8 @@ PY
     run_exact_test TestSelectiveApplicationBackendRuntimeAddRemoveReAdd 30m ./cmd/baha \
       BASEHARBOR_BACKEND_LIFECYCLE_ACCEPTANCE=1
     run_exact_test TestApplicationCapabilityLifecycleExistingCore 30m ./cmd/baha \
+      BASEHARBOR_CORELESS_ACCEPTANCE=1
+    run_exact_test TestApplicationCapabilityLifecycleFootprintShowDigestConsent 30m ./cmd/baha \
       BASEHARBOR_CORELESS_ACCEPTANCE=1
     run_exact_test TestSelectiveHTTPSRuntimeAddRemoveReAdd 30m ./cmd/baha \
       BASEHARBOR_HTTPS_LIFECYCLE_ACCEPTANCE=1
