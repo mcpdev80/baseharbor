@@ -32,12 +32,17 @@ class ReleaseCheckPlanTests(unittest.TestCase):
 
     def test_v0428_adds_only_fast_check_and_moves_no_other_gate(self):
         # card 0428-208 / #1746 (Owner authorization 2026-11-23): the ci-fast-check
-        # requirement moves to v0.4.28 and no other gate is tagged v0.4.28. Every other
-        # gate stays at v0.4.27, so v0.4.28 carries forward exactly one gate.
+        # requirement moves to v0.4.28 and no other gate is newly ADDED by this PR to
+        # v0.4.28. Every other gate stays at v0.4.27, so v0.4.28 carries forward exactly one gate.
+        # Carry note (fix 2026-11-23): the atomic/static/mcp gate already carries into every
+        # later release from the v0.4.27 base (pre_release_requirements.load carries
+        # required_for forward), so the v0.4.28 expectation is the SET {ci-fast-check, atomic,
+        # static, mcp}. The v0.4.28-requirement itself stays; the executor decision
+        # (how the static gates dispatch) is settled separately in the suite workflow.
         self.assertIn('v0.4.28', self.inventory['releases'])
         v0427 = {g['id'] for g in self.inventory['gates'] if 'v0.4.27' in g.get('required_for', [])}
         v0428 = {g['id'] for g in self.inventory['gates'] if 'v0.4.28' in g.get('required_for', [])}
-        self.assertEqual(v0428, {'atomic/static/ci-fast-check'})
+        self.assertEqual(v0428, {'atomic/static/ci-fast-check', 'atomic/static/mcp'})
         self.assertTrue({'atomic/docker/failure'} & v0427)
         selected = plan.select(self.inventory, 'v0.4.28', 'atomic/static/ci-fast-check')
         self.assertEqual(['ci-fast-check'], selected['static'])
