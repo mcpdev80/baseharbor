@@ -672,13 +672,6 @@
       ]
     },
     {
-      "id": "source.internal.application.shared.backends.state.version.test.go",
-      "path": "internal/application/shared_backends_state_version_test.go",
-      "surfaces": [
-        "source.gate.atomic.podman.data.capabilities"
-      ]
-    },
-    {
       "id": "source.internal.application.shared.backends.test.go",
       "path": "internal/application/shared_backends_test.go",
       "surfaces": [
