@@ -14,26 +14,24 @@ CORELESS_LIFECYCLE_GATES = {
     "integration/docker/coreless-lifecycle",
     "integration/podman/coreless-lifecycle",
 }
-# Release-only STATIC gate under the atomic tier whose executable check runs at
-# release/qualify time, NOT inside the PR. The stage boundary classifies it as a
-# DEFERRED release-only gate (like CROSS_REPO_STATIC): it is selected, never
-# emitted as PR-executed, and pulled out of the PR-executed list so failure
-# injection keeps rejecting invented gates. Every other atomic/static-shaped
-# name stays unclassified. No PR-executed class exists for it and none is
-# created: its only executor is the release/qualify native runtime
-# (pre-release.yml:663 static_gates, see the comment in
-# pr-required-final.py for the matching deferred allow-list).
-ATOMIC_STATIC_DEFERRED_RELEASE_ONLY = ("atomic/static/mcp",)
-# Release-only STATIC gates under the atomic tier (e.g.
-# atomic/static/shell-ux, atomic/static/ci-fast-check) run their executable
-# check inside the PR itself. The stage boundary must classify them as
-# PR-executed static gates: they are selected, never deferred. Only the exact
-# gate ids listed here are PR-executed; every other atomic/static-shaped name
-# stays unclassified so failure injection keeps rejecting invented gates.
-ATOMIC_STATIC_PR_EXECUTED_GATES = (
+
+ATOMIC_STATIC_DEFERRED_RELEASE_ONLY = (
     "atomic/static/shell-ux",
     "atomic/static/ci-fast-check",
+    "atomic/static/mcp",
 )
+# Release-only STATIC gates under the atomic tier (e.g.
+# atomic/static/shell-ux, atomic/static/ci-fast-check) run their executable
+# check at release/qualify time, NOT inside the PR. The stage boundary classifies
+# them as DEFERRED release-only gates (like CROSS_REPO_STATIC and mcp): they are
+# selected, never emitted as PR-executed, and pulled out of the PR-executed
+# list so failure injection keeps rejecting invented gates. Every other
+# atomic/static-shaped name stays unclassified. No PR-executed class exists for
+# them and none is created: their only executor is the release/qualify native
+# runtime (pre-release.yml:663 static_gates -> pre-release-runtime-suite.yml:267,
+# GATE=shell-ux runs tests/shell-ux/run.sh, GATE=ci-fast-check runs
+# scripts/ci-fast-check.sh), see the matching allow-list in pr-required-final.py.
+ATOMIC_STATIC_PR_EXECUTED_GATES = ()
 
 
 def stage(plan):
