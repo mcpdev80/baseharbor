@@ -149,6 +149,13 @@ func (c *applicationStatusCollection) componentsStopped(ctx context.Context) boo
 }
 
 func (c *applicationStatusCollection) collectManagedServiceChecks(ctx context.Context) {
+	// Card 0428-152: the single honest consumer of the Perses alert-evaluator
+	// verifier contract. It is manifest-derived, so it reports the evaluator
+	// state in every applied face (not only when the management-UI probe loop
+	// reaches its Perses entry).
+	if c.manifest.Services.ObservabilityManagementUI || c.manifest.Services.Perses {
+		c.collectPersesAlertEvaluatorObservation()
+	}
 	c.collectObjectStorageCheck(ctx)
 	c.collectTelemetryCheck(ctx)
 	c.collectIdentityCheck(ctx)
@@ -399,12 +406,6 @@ func (c *applicationStatusCollection) collectManagementUICheck(ctx context.Conte
 		// never reports the contract-forbidden "ready"/"verified" state.
 		if result.Name == "perses" {
 			c.result.AddObservation("management-ui/perses", "unverified", "Perses management surface is configured_unverified: no Perses health probe exists, reachability cannot be asserted")
-			// Single honest consumer of the alert-evaluator verifier contract
-			// (card 0428-152): this surface IS the evaluator of the selected
-			// Perses management UI, so its truth belongs on this observation.
-			// The verdict comes from exactly one verifier call, never from a
-			// parallel CLI-side logic.
-			c.collectPersesAlertEvaluatorObservation()
 			continue
 		}
 		record(result.Name, result.Err, detail)
