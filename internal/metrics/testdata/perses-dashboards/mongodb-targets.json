@@ -1,0 +1,7 @@
+{
+  "kind": "DashboardUnavailable",
+  "key": "mongodb-targets",
+  "backend": "mongodb",
+  "unavailable": true,
+  "reason": "MongoDB has no metrics signal in BaseHarbor (no collector metrics signal in the pinned reference catalog); the dashboard is explicitly unavailable and no exporter is installed"
+}

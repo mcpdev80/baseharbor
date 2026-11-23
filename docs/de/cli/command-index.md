@@ -27,6 +27,7 @@ Exakte Optionen stehen in `baha COMMAND --help`. [Globale Optionen](global-optio
 | `baha app env` | Show the standard environment contract for an application | `baha app env [NAME] [--format dotenv\|shell\|json\|yaml] [--reveal] [--path]` | [↗](applications.md) |
 | `baha app evidence` | Export secret-safe application lifecycle and verification evidence | `baha app evidence [NAME] [-e ENV\|--environment ENV] [-o json\|--output json]` | [↗](applications.md) |
 | `baha app exec` | Execute a command in an application workload service | `baha app exec SERVICE COMMAND [ARG...] [--app NAME]` | [↗](applications.md) |
+| `baha app export` | Export selected local application credentials into an encrypted file | `baha app export [NAME] [--include STATE]... --password-file FILE [--output FILE]` | [↗](applications.md) |
 | `baha app footprint` | Read the current application footprint | `baha app footprint show [NAME] [-o json\|--output json] [--details]` | [↗](applications.md) |
 | `baha app footprint show` | Display the authoritative Target footprint without mutation | `baha app footprint show [NAME] [-o json\|--output json] [--details]` | [↗](applications.md) |
 | `baha app init` | Create the application contract or initialize deployment settings | `baha app init --agents [--json] \| baha app init [--quick] [--json] \| baha app init [--input NAME=VALUE]... [--hostname HOST] [--tls acme\|existing\|local] [--cert-dir DIR] [--yes] \| baha app init [NAME] [-e ENV\|--environment ENV] [--sql\|--sql-instance NAME] [--cache\|--cache-instance NAME] [--key-value\|--key-value-instance NAME] [--document-db\|--document-db-instance NAME] [--messaging-queue\|--messaging-queue-instance NAME] [--messaging-pubsub\|--messaging-pubsub-instance NAME] [--messaging-stream\|--messaging-stream-instance NAME] [--s3\|--s3-bucket NAME] [--secrets\|--require-secret NAME] [--workload-component NAME]... [--workload-source KIND:PATH]` | [↗](applications.md) |
@@ -34,6 +35,11 @@ Exakte Optionen stehen in `baha COMMAND --help`. [Globale Optionen](global-optio
 | `baha app list` | List registered deployments for the effective target | `baha app list [--all-targets]` | [↗](applications.md) |
 | `baha app logs` | Show logs for the current application workload | `baha app logs [SERVICE] [--follow] [--app NAME]` | [↗](applications.md) |
 | `baha app new` | Create a new ecosystem-native application from a BaseHarbor contract | `baha app new [NAME] [--directory PARENT] [--stack go\|nextjs\|python\|quarkus \| --stack-profile NAME] [--emit-backstage --backstage-owner OWNER [--backstage-lifecycle LIFECYCLE]] [-e ENV\|--environment ENV] [--http] [--sql] [--cache] [--key-value] [--document-db] [--queue] [--pubsub] [--stream] [--s3] [--secrets] [--require-secret NAME]... [--telemetry] [--all] [-o json\|--output json]` | [↗](applications.md) |
+| `baha app perses` | Guide enable/status/disable and ownership-safe removal of the optional Perses surface | `baha app perses <command> [NAME] [--json]` | [↗](applications.md) |
+| `baha app perses disable` | Deselect the optional Perses management-ui surface | `baha app perses disable [NAME] [--json]` | [↗](applications.md) |
+| `baha app perses enable` | Select the optional Perses management-ui surface | `baha app perses enable [NAME] [--json]` | [↗](applications.md) |
+| `baha app perses remove` | Ownership-safe retirement of the owned Perses surface | `baha app perses remove [NAME] [--json]` | [↗](applications.md) |
+| `baha app perses status` | Report the Perses three-state contract | `baha app perses status [NAME] [--json]` | [↗](applications.md) |
 | `baha app plan` | Show desired resources without changing anything | `baha app plan [NAME] [-o json\|--output json]` | [↗](applications.md) |
 | `baha app preflight` | Validate an application before mutation | `baha app preflight [NAME]` | [↗](applications.md) |
 | `baha app prune` | Remove a dangling deployment record whose source repository is gone | `baha app prune <name>` | [↗](applications.md) |
@@ -57,8 +63,8 @@ Exakte Optionen stehen in `baha COMMAND --help`. [Globale Optionen](global-optio
 | `baha app tls update` | Check for or install a newer existing TLS certificate | `baha app tls update [--check]` | [↗](applications.md) |
 | `baha app up` | Start an existing application runtime and verify readiness | `baha app up [NAME] [--yes\|-y] [--skip-memory-preflight]` | [↗](applications.md) |
 | `baha app update` | Safely inspect or update a Git-backed application | `baha app update [--check] [--backup-password-file FILE \| --no-backup]` | [↗](applications.md) |
-| `baha app version` | Show separated wanted/applied/observed release and component versions | `baha app version [NAME] [-c COMPONENT[,COMPONENT]] [-o json\|--output json]` | [↗](applications.md) |
-| `baha app versions` | Show readable wanted/applied/observed versions for recorded deployments | `baha app versions [--all-targets] [-c COMPONENT[,COMPONENT]] [-o json\|--output json]` | [↗](applications.md) |
+| `baha app version` | Show separated wanted/applied/observed release and component versions | `baha app version [NAME] [-o json\|--output json]` | [↗](applications.md) |
+| `baha app versions` | Show readable wanted/applied/observed versions for recorded deployments | `baha app versions [--all-targets] [-o json\|--output json]` | [↗](applications.md) |
 | `baha app workspace` | Manage local multi-repository workspace mappings | `baha app workspace [<init\|map\|show\|resolve\|status\|update\|path\|source\|component> [options]]` | [↗](applications.md) |
 | `baha app workspace component` | Inspect and maintain unique component-to-source mappings | `baha app workspace component <list\|add\|remove> [options]` | [↗](applications.md) |
 | `baha app workspace component add` | Add or retarget the unique mapping of one component without inventing it implicitly | `baha app workspace component add COMPONENT SOURCE[@SUBPATH] [--manifest PATH] [-o json]` | [↗](applications.md) |
@@ -86,6 +92,10 @@ Exakte Optionen stehen in `baha COMMAND --help`. [Globale Optionen](global-optio
 | `baha config prompt` | Configure the optional BaseHarbor shell prompt segment | `baha config prompt [--enable\|--disable] [--preset minimal\|compact\|accessible\|detailed\|none] [--position before-path\|after-path\|right] [--environment never\|critical-only\|always] [--show-application\|--hide-application] [--text-only\|--color-output] [--prod-indicator TEXT] [--label TARGET=LABEL] [--color KEY=VALUE]` | [↗](organization-policy.md) |
 | `baha connect` | Allow one explicit application service to reach another | `baha connect SOURCE TARGET` | [↗](security-trust.md) |
 | `baha connections` | List explicit cross-application connectivity policy | `baha connections` | [↗](security-trust.md) |
+| `baha context` | Select the per-terminal BaseHarbor context (Bash, Zsh or Fish) | `baha context use [--shell bash\|zsh\|fish] TARGET \| clear \| show` | [↗](applications.md) |
+| `baha context clear` | Clear the per-terminal selection in the current process | `baha context clear [--shell bash\|zsh\|fish]` | [↗](applications.md) |
+| `baha context show` | Report the effective per-terminal selection and winning precedence level | `baha context show` | [↗](applications.md) |
+| `baha context use` | Emit the per-terminal activation snippet for TARGET | `baha context use [--shell bash\|zsh\|fish] TARGET` | [↗](applications.md) |
 | `baha destroy` | Remove the complete BaseHarbor installation with explicit consequence consent | `baha destroy [--yes]` | [↗](core.md) |
 | `baha dev` | Manage local development conveniences | `baha dev <credentials\|domain\|hosts\|cleanup>` | [↗](development.md) |
 | `baha dev cleanup` | Remove this Target's owned workstation hosts and CA trust | `baha dev cleanup --yes` | [↗](development.md) |
@@ -95,6 +105,8 @@ Exakte Optionen stehen in `baha COMMAND --help`. [Globale Optionen](global-optio
 | `baha disconnect` | Remove one explicit cross-application connectivity exception | `baha disconnect SOURCE TARGET` | [↗](security-trust.md) |
 | `baha doctor` | Diagnose the current application repository, otherwise the control plane | `baha doctor [--fix --yes] [-o json\|--output json]` | [↗](core.md) |
 | `baha down` | Stop the current application, or the local control plane outside a repository | `baha down [options]` | [↗](core.md) |
+| `baha env` | Inspect and manage deployment-target environments | `baha env [show\|destroy <NAME>] [-o json\|--output json\|--json]` | [↗](applications.md) |
+| `baha env destroy` | Destroy an environment and its environment-scoped deployments | `baha env destroy [NAME] [--keep-data \| --delete-data [--confirm-delete-data]] [--yes \| --no-input] [-o json\|--output json\|--json]` | [↗](applications.md) |
 | `baha init` | Initialize or adopt the application in the current repository | `baha init --agents [--json] \| baha init [--quick] [--json] [--input NAME=VALUE]... [--yes]` | [↗](applications.md) |
 | `baha inspect` | Inspect the current repository and its application requirements | `baha inspect [options]` | [↗](applications.md) |
 | `baha list` | List managed applications on the selected Target | `baha list [--all-targets]` | [↗](applications.md) |

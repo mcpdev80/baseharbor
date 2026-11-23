@@ -96,7 +96,7 @@ func TestAppProviderChoiceMultipleNamesHaveIndependentPreferences(t *testing.T) 
 	}
 }
 
-func TestAppProviderChoiceExistingBindingWinsAndConflictsFail(t *testing.T) {
+func TestAppProviderChoiceExistingBindingDefaultsButExplicitSwitchIsAllowed(t *testing.T) {
 	m := providerChoiceManifest("dev", "primary")
 	s := providerChoiceSnapshot("dev", providerChoiceShared("a", "alpha"), providerChoiceShared("b", "beta"))
 	resource, err := capability.Resolve(m.Name, capability.Requirement{Kind: capability.SQL, Name: "primary"}, capability.PostgreSQL)
@@ -117,11 +117,15 @@ func TestAppProviderChoiceExistingBindingWinsAndConflictsFail(t *testing.T) {
 	if err != nil || choices[0].ProposedInstanceID != "b" {
 		t.Fatalf("binding not retained: %+v %v", choices, err)
 	}
-	if _, err := choices[0].Select("a"); err == nil {
-		t.Fatal("binding conflict accepted")
+	switched, err := choices[0].Select("a")
+	if err != nil {
+		t.Fatalf("explicit eligible provider switch rejected: %v", err)
 	}
-	if chosen, err := choices[0].Effective(); err != nil || chosen.ID != "b" {
-		t.Fatalf("effective=%+v err=%v", chosen, err)
+	if chosen, err := switched.Effective(); err != nil || chosen.ID != "a" {
+		t.Fatalf("explicit target effective=%+v err=%v", chosen, err)
+	}
+	if _, err := choices[0].Select("unavailable"); err == nil {
+		t.Fatal("unavailable provider accepted")
 	}
 }
 

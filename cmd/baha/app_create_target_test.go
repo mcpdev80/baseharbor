@@ -14,9 +14,10 @@ import (
 
 func TestCreateTargetManagedApplicationRegistersResolvableDeployment(t *testing.T) {
 	target := configureTestTarget(t)
+	ctx := testOperatorContext(context.Background())
 	manifest := application.New("managed-demo", "dev", true, false, false)
 
-	path, err := createTargetManagedApplication(context.Background(), manifest)
+	path, err := createTargetManagedApplication(ctx, manifest)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,7 +64,7 @@ func TestCreateTargetManagedApplicationRegistersResolvableDeployment(t *testing.
 		t.Fatalf("Core-assigned application identity not retained in source Store: %+v", stored)
 	}
 
-	resolved, err := resolveApplication(context.Background(), application.Store{}, []string{manifest.Name}, "show")
+	resolved, err := resolveApplication(ctx, application.Store{}, []string{manifest.Name}, "show")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,7 +78,7 @@ func TestCreateTargetManagedApplicationRegistersResolvableDeployment(t *testing.
 		t.Fatalf("resolved manifest = %s/%s, want %s/%s", resolved.Manifest.Name, resolved.Manifest.Environment, manifest.Name, manifest.Environment)
 	}
 
-	if _, err := createTargetManagedApplication(context.Background(), manifest); !errors.Is(err, application.ErrExists) {
+	if _, err := createTargetManagedApplication(ctx, manifest); !errors.Is(err, application.ErrExists) {
 		t.Fatalf("second create error = %v, want ErrExists", err)
 	}
 }
@@ -93,7 +94,7 @@ func TestCreateTargetManagedApplicationPersistsImmutableGitSourceSelection(t *te
 		}},
 		Components: []development.ComponentSource{{Component: "app", Source: "app"}},
 	}
-	path, err := createTargetManagedApplication(context.Background(), manifest, &model)
+	path, err := createTargetManagedApplication(testOperatorContext(context.Background()), manifest, &model)
 	if err != nil {
 		t.Fatalf("persist immutable remote Git selection: %v", err)
 	}

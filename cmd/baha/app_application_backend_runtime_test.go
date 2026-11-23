@@ -51,7 +51,7 @@ func TestSelectiveApplicationBackendIntentInitializesFromActualCLI(t *testing.T)
 			for _, enabled := range []bool{true, false, true} {
 				writeApplicationBackendIntent(t, service, enabled)
 				var output bytes.Buffer
-				if err := runWithIO(machineNoninteractiveContext(context.Background()), []string{"app", "init", "--quick", "--json"}, &output, &output); err != nil {
+				if err := runWithIOAsTestOperator(machineNoninteractiveContext(context.Background()), []string{"app", "init", "--quick", "--json"}, &output, &output); err != nil {
 					t.Fatalf("actual CLI initialization for backend=%s enabled=%t: %v\n%s", service, enabled, err, output.String())
 				}
 			}
@@ -63,7 +63,7 @@ func qualifyApplicationBackendLifecycle(t *testing.T, service string) {
 	ctx, cancel := context.WithTimeout(machineNoninteractiveContext(context.Background()), 10*time.Minute)
 	defer cancel()
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
-	target := configureTestTarget(t)
+	target := configureTestTargetEmpty(t)
 	if os.Getenv("BASEHARBOR_TEST_RUNTIME") == "podman" {
 		cfg, err := deployment.LoadConfig()
 		if err != nil {
@@ -85,16 +85,26 @@ func qualifyApplicationBackendLifecycle(t *testing.T, service string) {
 		t.Fatal(err)
 	}
 	assertCorelessHost(t, ctx, provider, target)
+	baselineContainers, err := provider.ListRuntimeContainers(ctx)
+	if err != nil {
+		t.Fatal("inventory Coreless application runtime baseline", err)
+	}
+	baselineIDs := runtimeContainerIDSet(baselineContainers)
+	baselineSnapshot := runtimeContainerSnapshotSet(baselineContainers)
 	t.Chdir(t.TempDir())
 	if err := os.WriteFile("compose.yaml", []byte(corelessHTTPWorkload), 0600); err != nil {
 		t.Fatal(err)
 	}
 	writeApplicationBackendIntent(t, service, true)
-	if err := runWithIO(ctx, []string{"app", "init", "--quick", "--json"}, &bytes.Buffer{}, &bytes.Buffer{}); err != nil {
+	// Fresh app adoption allocates its canonical ID during initialization, so
+	// there is no application UID yet to bind the local runtime grant to. Use
+	// the explicit test operator only for this bootstrap boundary; subsequent
+	// lifecycle operations retain the Coreless local-runtime grant path.
+	if err := runWithIOAsTestOperator(ctx, []string{"app", "init", "--quick", "--json"}, &bytes.Buffer{}, &bytes.Buffer{}); err != nil {
 		t.Fatalf("initialize application backend: %v", err)
 	}
 	t.Cleanup(func() {
-		cleanupCtx, cleanupCancel := context.WithTimeout(machineNoninteractiveContext(context.Background()), 2*time.Minute)
+		cleanupCtx, cleanupCancel := context.WithTimeout(testOperatorContext(machineNoninteractiveContext(context.Background())), 2*time.Minute)
 		defer cleanupCancel()
 		current, err := resolveApplication(cleanupCtx, application.Store{}, nil, "status")
 		if err != nil {
@@ -110,8 +120,10 @@ func qualifyApplicationBackendLifecycle(t *testing.T, service string) {
 				t.Errorf("isolated application backend native cleanup: %v", err)
 			}
 		}
-		if containers, err := provider.ListRuntimeContainers(cleanupCtx); err != nil || len(containers) != 0 {
-			t.Errorf("application backend cleanup leaves containers=%d inspection=%v", len(containers), err)
+		if containers, err := provider.ListRuntimeContainers(cleanupCtx); err != nil {
+			t.Errorf("inspect Coreless application runtime cleanup: %v", err)
+		} else if created, changed := runtimeContainerBaselineDiff(containers, baselineSnapshot); len(created) != 0 || len(changed) != 0 {
+			t.Errorf("application backend cleanup did not preserve the Coreless runtime baseline: test-created=%v baseline-changed-or-removed=%v", created, changed)
 		}
 	})
 	var selected []bhruntime.ProjectResource
@@ -119,7 +131,7 @@ func qualifyApplicationBackendLifecycle(t *testing.T, service string) {
 	var appID string
 	for phase, enabled := range []bool{true, false, true} {
 		writeApplicationBackendIntent(t, service, enabled)
-		applySelectiveIdentityIntent(t, ctx)
+		applySelectiveBackendIntentWithLocalGrant(t, ctx)
 		current, err := resolveApplication(ctx, application.Store{}, nil, "status")
 		if err != nil {
 			t.Fatal(err)
@@ -154,7 +166,11 @@ func qualifyApplicationBackendLifecycle(t *testing.T, service string) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		for _, container := range live {
+		_, changed := runtimeContainerBaselineDiff(live, baselineSnapshot)
+		if len(changed) != 0 {
+			t.Fatalf("pre-existing runtime containers changed during application backend phase %d: %v", phase, changed)
+		}
+		for _, container := range runtimeContainersNotInBaseline(live, baselineIDs) {
 			workload := bhruntime.ProjectResource{Kind: "container", Name: files.Project + "-api-1"}
 			matched := bhruntime.ContainerMatchesProjectResource(provider.Kind(), container, files.Project, workload)
 			for _, resource := range selected {
@@ -200,11 +216,68 @@ func qualifyApplicationBackendLifecycle(t *testing.T, service string) {
 						t.Fatal("application stop lost observed owned persistent volume")
 					}
 				}
-				applySelectiveIdentityIntent(t, ctx)
+				applySelectiveBackendIntentWithLocalGrant(t, ctx)
 				qualifyApplicationBackendRetainedData(t, ctx, files, service, retainedDataIntermediatePhase, &originalIdentity)
 				t.Logf("application backend=%s acknowledged stop/resume: selected runtime withdrawn, observed data volumes preserved, original authenticated data and credentials work after resume", service)
 			}
 		}
 		t.Logf("application backend=%s phase=%d needed=%t selected containers=%d retained volumes=%d", service, phase, enabled, containers, volumes)
+	}
+}
+
+func applySelectiveBackendIntentWithLocalGrant(t *testing.T, ctx context.Context) {
+	t.Helper()
+	resolved, plan := waitForCompleteApplicationBackendPlan(t, ctx)
+	applyCtx, candidateDigest := withConfirmCandidateDigestForResolved(ctx, resolved)
+	if resolved.FromRepository && candidateDigest == "" {
+		t.Fatal("repository candidate has no verifiable confirmation digest")
+	}
+	if impact := plan.ProviderPlan.Impact; impact != nil {
+		applyCtx = withProviderChangeConsent(applyCtx, &application.ProviderChangeConsent{PlanID: impact.PlanID, First: true, Second: true})
+	}
+	var output bytes.Buffer
+	if err := runWithIO(applyCtx, []string{"app", "apply", "--skip-memory-preflight"}, &output, &output); err != nil {
+		t.Logf("Coreless local grant failed application backend plan: complete=%t changes=%+v", plan.ProviderPlan.Complete, plan.ProviderPlan.Changes)
+		t.Fatalf("apply application backend with local runtime grant: %v\n%s", err, output.String())
+	}
+}
+
+// A just-resumed native backend can briefly report a transitional health
+// state even after its authenticated data probe succeeds. Do not mint typed
+// provider consent from that transient, incomplete snapshot; wait for the
+// canonical owner observation to settle, then bind consent to that plan.
+func waitForCompleteApplicationBackendPlan(t *testing.T, ctx context.Context) (resolvedApplication, applicationLifecyclePlan) {
+	t.Helper()
+	deadline := time.Now().Add(45 * time.Second)
+	previousPlanID, previousComplete := "", false
+	for {
+		resolved, err := resolveApplication(ctx, application.Store{}, nil, "apply")
+		if err != nil {
+			t.Fatal(err)
+		}
+		plan, err := buildResolvedApplicationPlan(ctx, resolved)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if plan.ProviderPlan.Complete {
+			planID := ""
+			if plan.ProviderPlan.Impact != nil {
+				planID = plan.ProviderPlan.Impact.PlanID
+			}
+			if previousComplete && previousPlanID == planID {
+				return resolved, plan
+			}
+			previousPlanID, previousComplete = planID, true
+		} else {
+			previousPlanID, previousComplete = "", false
+		}
+		if !time.Now().Before(deadline) {
+			t.Fatalf("application backend provider plan did not reach a complete owner observation within 45s: changes=%+v", plan.ProviderPlan.Changes)
+		}
+		select {
+		case <-ctx.Done():
+			t.Fatal(ctx.Err())
+		case <-time.After(time.Second):
+		}
 	}
 }

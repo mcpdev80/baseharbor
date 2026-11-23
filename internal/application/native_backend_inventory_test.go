@@ -77,7 +77,7 @@ func TestNativeBackendInventoryChecksRetainedOrDesiredCanonicalDefinition(t *tes
 	desired := m
 	desired.Services.DocumentDatabase, desired.Services.DocumentDatabaseInstances = false, nil
 	for _, intent := range []Manifest{m, desired} {
-		canonical, err := RuntimeComposeYAMLForProject(intent, files.ResourceProject)
+		canonical, err := RuntimeComposeYAMLForProject(intent, files)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -98,7 +98,7 @@ func TestNativeBackendInventoryChecksRetainedOrDesiredCanonicalDefinition(t *tes
 		t.Fatal(err)
 	}
 	foreign := filepath.Join(t.TempDir(), "foreign.yaml")
-	canonical, _ := RuntimeComposeYAMLForProject(m, files.ResourceProject)
+	canonical, _ := RuntimeComposeYAMLForProject(m, files)
 	if err := os.WriteFile(foreign, []byte(canonical), 0600); err != nil {
 		t.Fatal(err)
 	}

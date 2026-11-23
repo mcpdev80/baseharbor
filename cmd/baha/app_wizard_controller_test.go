@@ -219,6 +219,101 @@ func TestAppWizardControllerStaleAndWrongTargetPreview(t *testing.T) {
 	}
 }
 
+func TestAppWizardControllerObservationRefreshDoesNotInvalidatePreview(t *testing.T) {
+	input := appWizardTestInput(t)
+	calls := 0
+	original := input.Refresh
+	input.Refresh = func(ctx context.Context, d appWizardDecision) (*GuidedReadContext, *application.ProviderImpactPlan, error) {
+		calls++
+		fp, impact, err := original(ctx, d)
+		if err != nil {
+			return nil, nil, err
+		}
+		fact := application.ProviderFact{Target: d.Target, State: application.ProviderRunning, Core: application.CoreNotRequired, Dependencies: []string{}, MemoryBytes: application.Quantity{Classification: "unknown"}}
+		if calls > 1 {
+			n := int64(2048)
+			fact.MemoryBytes = application.Quantity{Value: &n, Classification: "measured", Source: "runtime sample"}
+		}
+		countdown := int64(30 - calls)
+		impact.Impacts = append(impact.Impacts, application.ProviderImpact{Materials: []application.MaterialConsequence{{Meaning: "within observed time window", Before: application.ProviderMaterial{ID: "certificate", ExpiresAt: "2036-11-13T05:39:05Z"}, RemainingValiditySeconds: &countdown}}})
+		fp.Footprint.Existing = []application.ProviderFootprint{{InstanceID: "sql-a", MemoryBytes: fact.MemoryBytes}}
+		fp.SnapshotRevision, err = guidedRevision(guidedRevisionSnapshot(application.ResolutionSnapshot{Target: d.Target, Facts: map[string]application.ProviderFact{"sql-a": fact}}))
+		if err != nil {
+			return nil, nil, err
+		}
+		return fp, impact, nil
+	}
+	w, err := newAppWizardController(context.Background(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w = appWizardAdvance(t, w, appWizardNext)
+	w = appWizardAdvance(t, w, appWizardYes)
+	if _, ok := w.Decision(); !ok {
+		t.Fatal("observation-only refresh prevented decision")
+	}
+}
+
+func TestAppWizardControllerValidityAuthorityChangesInvalidatePreview(t *testing.T) {
+	for _, field := range []string{"expires-at", "meaning"} {
+		t.Run(field, func(t *testing.T) {
+			input := appWizardTestInput(t)
+			calls := 0
+			original := input.Refresh
+			input.Refresh = func(ctx context.Context, d appWizardDecision) (*GuidedReadContext, *application.ProviderImpactPlan, error) {
+				calls++
+				fp, impact, err := original(ctx, d)
+				if err != nil {
+					return nil, nil, err
+				}
+				impact.Impacts = append(impact.Impacts, application.ProviderImpact{Materials: []application.MaterialConsequence{{Meaning: "within observed time window", Before: application.ProviderMaterial{ID: "certificate", ExpiresAt: "2036-11-13T05:39:05Z"}}}})
+				materialImpact := len(impact.Impacts) - 1
+				if calls > 1 {
+					if field == "expires-at" {
+						impact.Impacts[materialImpact].Materials[0].Before.ExpiresAt = "2036-11-12T05:39:05Z"
+					} else {
+						impact.Impacts[materialImpact].Materials[0].Meaning = "actual material validity has expired"
+					}
+				}
+				return fp, impact, nil
+			}
+			w, err := newAppWizardController(context.Background(), input)
+			if err != nil {
+				t.Fatal(err)
+			}
+			w = appWizardAdvance(t, w, appWizardNext)
+			if _, err := w.Step(context.Background(), appWizardYes); err == nil {
+				t.Fatal("accepted changed absolute validity or expiry outcome")
+			}
+		})
+	}
+}
+
+func TestAppWizardControllerProviderPreferenceChangeInvalidatesPreview(t *testing.T) {
+	input := appWizardTestInput(t)
+	calls := 0
+	original := input.Refresh
+	input.Refresh = func(ctx context.Context, d appWizardDecision) (*GuidedReadContext, *application.ProviderImpactPlan, error) {
+		calls++
+		fp, impact, err := original(ctx, d)
+		if err != nil {
+			return nil, nil, err
+		}
+		if calls > 1 {
+			fp.Preferences = []application.ProviderPreference{{Requirement: capability.Requirement{Kind: capability.SQL, Name: "analytics"}, InstanceID: "sql-b", ProviderKind: capability.ProviderPostgreSQL}}
+		}
+		return fp, impact, nil
+	}
+	w, err := newAppWizardController(context.Background(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w = appWizardAdvance(t, w, appWizardNext)
+	if _, err := w.Step(context.Background(), appWizardYes); err == nil {
+		t.Fatal("accepted changed provider preference")
+	}
+}
+
 func TestAppWizardControllerProviderChangeRefreshesConsequences(t *testing.T) {
 	w, err := newAppWizardController(context.Background(), appWizardTestInput(t))
 	if err != nil {

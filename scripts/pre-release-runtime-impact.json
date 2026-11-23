@@ -1,6 +1,9 @@
 {
   "schema": "baseharbor.pre-release-runtime-impact/v1",
   "safe_core_paths": [
+    "baseharbor-plan/evidence/**",
+    "evidence-r27/**",
+    "evidence/**",
     "CHANGELOG.md",
     "README.md",
     "CONTRIBUTING.md",
@@ -8,6 +11,10 @@
     ".github/workflows/ci.yml",
     "scripts/pre-release-runtime-impact.json",
     "scripts/pre-release-runtime-reuse.py",
+    "scripts/pre-release-integration.py",
+    "scripts/test_pre_release_integration.py",
+    "scripts/test_pr_selected_runtime_matrix.py",
+    "scripts/test_pr_gate_coverage.py",
     "scripts/test_ci_docker_runtime_doctor.py",
     "scripts/test_ecosystem_release_pins.py",
     "scripts/test_pr_unit_database_route.py",
@@ -22,6 +29,17 @@
   "core": {
     "cmd/baha/app_machine_adapters.go": ["atomic/docker/data-capabilities", "atomic/podman/data-capabilities"],
     "cmd/baha/app_machine_adapters_test.go": ["atomic/docker/data-capabilities", "atomic/podman/data-capabilities"],
+    "cmd/baha/ci_integration_operator_enabled.go": ["atomic/docker/data-capabilities", "atomic/podman/data-capabilities"],
+    "cmd/baha/ci_integration_operator_disabled.go": ["atomic/docker/data-capabilities", "atomic/podman/data-capabilities"],
+    "cmd/baha/ci_integration_operator_enabled_test.go": ["atomic/docker/data-capabilities", "atomic/podman/data-capabilities"],
+    "cmd/baha/test_operator_context_test.go": ["atomic/docker/data-capabilities", "atomic/podman/data-capabilities"],
+    "cmd/baha/application_lifecycle_lock_test.go": ["atomic/docker/data-capabilities", "atomic/podman/data-capabilities"],
+    "cmd/baha/app_init_source_neutral_test.go": ["atomic/docker/data-capabilities", "atomic/podman/data-capabilities", "atomic/docker/guided", "atomic/podman/guided"],
+    "cmd/baha/app_init_wizard_test.go": ["atomic/docker/data-capabilities", "atomic/podman/data-capabilities", "atomic/docker/guided", "atomic/podman/guided"],
+    "cmd/baha/app_perses_host_containers_cli_test.go": ["atomic/docker/data-capabilities", "atomic/podman/data-capabilities", "atomic/docker/guided", "atomic/podman/guided"],
+    "cmd/baha/app_perses_infra_dashboards_cli_test.go": ["atomic/docker/data-capabilities", "atomic/podman/data-capabilities", "atomic/docker/guided", "atomic/podman/guided"],
+    "cmd/baha/repository_up_init_test.go": ["atomic/docker/data-capabilities", "atomic/podman/data-capabilities", "atomic/docker/guided", "atomic/podman/guided"],
+    "cmd/baha/runtime_integration_test_support_test.go": ["atomic/docker/data-capabilities", "atomic/podman/data-capabilities", "atomic/docker/guided", "atomic/podman/guided", "integration/docker/coreless-lifecycle", "integration/podman/coreless-lifecycle"],
     "cmd/baha/app_core_requirement.go": [
       "atomic/docker/guided", "atomic/podman/guided",
       "atomic/docker/data-capabilities", "atomic/podman/data-capabilities"
@@ -34,6 +52,27 @@
     "cmd/baha/app_coreless_runtime_test.go": [
       "integration/docker/coreless-lifecycle", "integration/podman/coreless-lifecycle"
     ],
+    "cmd/baha/app_identity_selective_runtime_test.go": [
+      "integration/docker/coreless-lifecycle", "integration/podman/coreless-lifecycle"
+    ],
+    "cmd/baha/app_backend_selective_runtime_test.go": [
+      "integration/docker/coreless-lifecycle", "integration/podman/coreless-lifecycle"
+    ],
+    "cmd/baha/app_backend_shared_runtime_test.go": [
+      "integration/docker/coreless-lifecycle", "integration/podman/coreless-lifecycle"
+    ],
+    "cmd/baha/app_application_backend_runtime_test.go": [
+      "integration/docker/coreless-lifecycle", "integration/podman/coreless-lifecycle"
+    ],
+    "cmd/baha/app_capability_runtime_test.go": [
+      "integration/docker/coreless-lifecycle", "integration/podman/coreless-lifecycle"
+    ],
+    "cmd/baha/app_https_selective_runtime_test.go": [
+      "integration/docker/coreless-lifecycle", "integration/podman/coreless-lifecycle"
+    ],
+    "cmd/baha/application_otlp_handoff_runtime_test.go": [
+      "integration/docker/coreless-lifecycle", "integration/podman/coreless-lifecycle"
+    ],
     "cmd/baha/core_installation_runtime_test.go": [],
     "cmd/baha/target_test_helpers_test.go": [],
     "cmd/baha/guided_application_read_context.go": [
@@ -41,6 +80,8 @@
       "atomic/docker/data-capabilities", "atomic/podman/data-capabilities"
     ],
     "internal/identityprovider/keycloak_ha_runtime_integration_test.go": [],
+    "internal/openbao/bootstrap_auth.go": ["atomic/docker/control-plane-recovery", "atomic/podman/control-plane-recovery"],
+    "internal/openbao/bootstrap_auth_test.go": ["atomic/docker/control-plane-recovery", "atomic/podman/control-plane-recovery"],
     "internal/openbao/service_issuer.go": ["atomic/docker/control-plane-recovery", "atomic/podman/control-plane-recovery"],
     "internal/openbao/service_pki_test.go": ["atomic/docker/control-plane-recovery", "atomic/podman/control-plane-recovery"]
   },

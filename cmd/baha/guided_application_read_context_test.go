@@ -208,6 +208,39 @@ func TestGuidedReadRevisionChangesWithApplicationIntent(t *testing.T) {
 	}
 }
 
+func TestGuidedRevisionSnapshotIgnoresOnlyFootprintSamples(t *testing.T) {
+	value := int64(512)
+	snapshot := application.ResolutionSnapshot{
+		Target: "dev",
+		Facts: map[string]application.ProviderFact{
+			"sql-a": {Target: "dev", State: application.ProviderRunning, Core: application.CoreNotRequired, Dependencies: []string{}, MemoryBytes: application.Quantity{Value: &value, Classification: "measured", Source: "runtime"}},
+		},
+	}
+	first, err := guidedRevision(guidedRevisionSnapshot(snapshot))
+	if err != nil {
+		t.Fatal(err)
+	}
+	newValue := int64(2048)
+	snapshot.Facts["sql-a"] = application.ProviderFact{Target: "dev", State: application.ProviderRunning, Core: application.CoreNotRequired, Dependencies: []string{}, MemoryBytes: application.Quantity{Value: &newValue, Classification: "measured", Source: "runtime"}}
+	second, err := guidedRevision(guidedRevisionSnapshot(snapshot))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first != second {
+		t.Fatal("observation-only memory sample changed snapshot revision")
+	}
+	fact := snapshot.Facts["sql-a"]
+	fact.State = application.ProviderStoppedOwned
+	snapshot.Facts["sql-a"] = fact
+	changed, err := guidedRevision(guidedRevisionSnapshot(snapshot))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changed == second {
+		t.Fatal("provider state change retained snapshot revision")
+	}
+}
+
 func TestGuidedReadProjectsCapabilityFootprintAndAuthorityPlan(t *testing.T) {
 	r := corelessResolvedFixture(t)
 	r.Manifest = application.WithHTTPExposure(r.Manifest, "public", "api", 8080, "http")

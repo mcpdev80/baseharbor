@@ -908,6 +908,140 @@ func TestAppEditDesiredIntentDoesNotInheritRemovedProviderPreference(t *testing.
 	}
 }
 
+func TestAppEditReplacementSnapshotUsesDesiredProviderSelectionWithoutMutatingOldBinding(t *testing.T) {
+	t.Setenv("BASEHARBOR_STATE_DIR", filepath.Join(t.TempDir(), "state"))
+	target := configureTestTarget(t)
+	stateRoot, err := deployment.TargetStateRoot(target.Name)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	manifest := application.WithSQLInstances(application.New("edit-sql-replacement", "dev", true, false, false), "default")
+	manifest.ApplicationID = application.MustNewApplicationID()
+	manifest.Workload = application.WorkloadConfig{Components: []string{"api"}}
+	parent := t.TempDir()
+	t.Chdir(parent)
+	mustWriteWizardTestFile(t, filepath.Join(parent, "compose.yaml"), "services:\n  api:\n    image: alpine:3.22\n")
+	manifestPath := filepath.Join(parent, application.RepositoryManifestName)
+	mustWriteInitializedAuthoredManifest(t, manifestPath, manifest)
+	registerTestDeployment(t, target, manifest, parent, manifestPath)
+
+	requirement := capability.Requirement{Kind: capability.SQL, Name: "default"}
+	resource, err := capability.Resolve(manifest.Name, requirement, capability.PostgreSQL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldManifest, err := application.WithBackendPlacementProjection(manifest, map[capability.ProviderKind]capability.ProviderPlacement{
+		capability.ProviderPostgreSQL: {Scope: capability.ScopeShared, SharingBoundary: "team:edit-replacement", Ownership: capability.OwnershipBaseHarbor},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldProvider, err := application.ReferenceProviderInstance(oldManifest, resource)
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry := capability.NewRegistry()
+	if err := registry.Register(oldProvider); err != nil {
+		t.Fatal(err)
+	}
+	if err := registry.BindDeployment(resource, manifest.ApplicationID, manifest.Environment, oldProvider.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	newManifest, err := application.WithBackendPlacementProjection(manifest, map[capability.ProviderKind]capability.ProviderPlacement{
+		capability.ProviderPostgreSQL: {Scope: capability.ScopeApplication, Ownership: capability.OwnershipBaseHarbor},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	newProvider, err := application.ReferenceProviderInstance(newManifest, resource)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if newProvider.ID == oldProvider.ID {
+		t.Fatal("replacement provider must have a distinct application-scoped identity")
+	}
+	if err := registry.Register(newProvider); err != nil {
+		t.Fatal(err)
+	}
+	registryPath := filepath.Join(stateRoot, "provider-registry.json")
+	if err := (capability.RegistryStore{Path: registryPath}).Save(registry); err != nil {
+		t.Fatal(err)
+	}
+
+	desired, err := appEditProjectDesiredIntent(newManifest, []capability.Requirement{requirement}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolved, err := resolveApplication(context.Background(), application.DefaultStore(), []string{manifest.Name}, "edit")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolved.Manifest = desired
+	snapshot, snapshotPreferences, err := applicationLifecycleSnapshotContext(context.Background(), resolved, nil)
+	if err != nil {
+		t.Fatalf("desired replacement snapshot: %v", err)
+	}
+	if len(snapshotPreferences) != 1 || snapshotPreferences[0].InstanceID != newProvider.ID {
+		t.Fatalf("automatic provider preview did not select its projected provider: %+v", snapshotPreferences)
+	}
+	for _, binding := range snapshot.Registry.Bindings {
+		if binding.ApplicationID == manifest.ApplicationID && binding.Resource == resource {
+			t.Fatalf("stale same-owner binding remained in desired SQL projection: %+v", binding)
+		}
+	}
+	oldStillPresent := false
+	for _, instance := range snapshot.Registry.Instances {
+		oldStillPresent = oldStillPresent || instance.ID == oldProvider.ID
+	}
+	if !oldStillPresent {
+		t.Fatal("old provider inventory disappeared from the replacement impact snapshot")
+	}
+	automaticPreferences, err := mergeAppEditProviderPreferences(snapshotPreferences, nil)
+	if err != nil || len(automaticPreferences) != 1 || automaticPreferences[0].InstanceID != newProvider.ID {
+		t.Fatalf("automatic proposal lost the projected provider choice: %+v %v", automaticPreferences, err)
+	}
+	plan, err := resolveApplicationProviderPlanFromSnapshot(resolved, snapshot, automaticPreferences)
+	if err != nil {
+		t.Fatalf("desired provider union rejected automatic replacement: %v", err)
+	}
+	oldPreserved := false
+	for _, change := range plan.Changes {
+		if change.InstanceID == oldProvider.ID {
+			oldPreserved = change.Action == "preserve"
+		}
+	}
+	if !oldPreserved {
+		t.Fatalf("old provider was not retained conservatively in proposal: %+v", plan.Changes)
+	}
+	proposalChoice := application.ProviderPreference{Requirement: requirement, InstanceID: oldProvider.ID, ProviderKind: oldProvider.Provider.Kind}
+	overriddenPreferences, err := mergeAppEditProviderPreferences(snapshotPreferences, []application.ProviderPreference{proposalChoice})
+	if err != nil || len(overriddenPreferences) != 1 || overriddenPreferences[0].InstanceID != oldProvider.ID {
+		t.Fatalf("explicit proposal provider did not override automatic preview: %+v %v", overriddenPreferences, err)
+	}
+	explicitPlan, err := resolveApplicationProviderPlanFromSnapshot(resolved, snapshot, overriddenPreferences)
+	if err != nil {
+		t.Fatalf("explicit provider override was rejected: %v", err)
+	}
+	selectedID := ""
+	for _, requirementResult := range explicitPlan.Consumers["application/"+manifest.ApplicationID+"/"+manifest.Environment].Requirements {
+		if requirementResult.Requirement == requirement {
+			selectedID = requirementResult.InstanceID
+		}
+	}
+	if selectedID != oldProvider.ID {
+		t.Fatalf("explicit proposal selected %q, want %q", selectedID, oldProvider.ID)
+	}
+	after, err := (capability.RegistryStore{Path: registryPath}).Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(after.Bindings) != 1 || after.Bindings[0].ProviderInstanceID != oldProvider.ID {
+		t.Fatalf("read-only proposal mutated the applied owner binding: %+v", after.Bindings)
+	}
+}
+
 func TestAppEditRemovingAutomaticProviderPreferenceRequiresPersistence(t *testing.T) {
 	loaded := []application.ProviderPreference{{
 		Requirement: capability.Requirement{Kind: capability.SQL, Name: "primary"},
@@ -1063,7 +1197,7 @@ func TestAppEditCommandCompleteProviderEditRunsRealLifecycle(t *testing.T) {
 	} else {
 		t.Setenv("DOCKER_HOST", "unix:///var/run/docker.sock")
 	}
-	target := configureTestTarget(t)
+	target := configureIsolatedTestTarget(t)
 	cfg, err := deployment.LoadConfig()
 	if err != nil {
 		t.Fatal(err)
@@ -1103,11 +1237,12 @@ func TestAppEditCommandCompleteProviderEditRunsRealLifecycle(t *testing.T) {
 	// Establish the real previous workload-only deployment. Its retained
 	// canonical native definition and exact runtime inventory must prove
 	// absence of a SQL provider before the confirmed Edit creates one.
-	setupCtx, setupCancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	setupCtx, setupCancel := context.WithTimeout(testOperatorContext(context.Background()), 3*time.Minute)
 	defer setupCancel()
 	// The repository apply binds the candidate on explicit operator confirmation:
 	// show the canonical confirm hash and require --confirm-candidate with it.
-	confirmCtx := withConfirmCandidateForSetup(setupCtx, target, m.Name, root)
+	confirmCtx := withMemoryPreflightOverride(setupCtx, true)
+	confirmCtx = withConfirmCandidateForSetup(confirmCtx, target, m.Name, root)
 	if err := executeApplicationApplyLifecycle(confirmCtx, application.DefaultStore(), []string{m.Name}, io.Discard, io.Discard); err != nil {
 		t.Fatalf("baseline workload-only lifecycle failed: %v", err)
 	}
@@ -1201,7 +1336,9 @@ func TestAppEditCommandCompleteProviderEditRunsRealLifecycle(t *testing.T) {
 	// the Edit lifecycle reuses the same apply choke point, so carry the canonical
 	// confirm digest for the repository candidate this Edit will bind. Without it
 	// the confirmed Edit fails closed at the candidate consent choke point.
-	editConfirmCtx := withConfirmCandidateForSetup(context.Background(), target, m.Name, root)
+	editConfirmCtx := testOperatorContext(context.Background())
+	editConfirmCtx = withMemoryPreflightOverride(editConfirmCtx, true)
+	editConfirmCtx = withConfirmCandidateForSetup(editConfirmCtx, target, m.Name, root)
 	ctx, cancel := context.WithTimeout(editConfirmCtx, 4*time.Minute)
 	defer cancel()
 	// The confirmed Edit binds the repository candidate on explicit operator

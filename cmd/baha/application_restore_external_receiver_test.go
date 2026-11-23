@@ -33,7 +33,7 @@ func TestRestoreBindsCurrentExternalReceiverAndAuthorization(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			ctx := machineNoninteractiveContext(t.Context())
+			ctx := machineNoninteractiveContext(testOperatorContext(t.Context()))
 			data := applicationRestoreData{manifest: r.Manifest, archiveRevision: strings.Repeat("a", 64)}
 			planned, err := buildApplicationRestorePlan(ctx, r, data)
 			if err != nil {

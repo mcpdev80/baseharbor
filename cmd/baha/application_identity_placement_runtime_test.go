@@ -56,7 +56,7 @@ func TestManagedIdentityNativePlacementHandoff(t *testing.T) {
 		t.Fatal(err)
 	}
 	var output bytes.Buffer
-	if err := runWithIO(ctx, []string{"app", "init", "--input", "tls_mode=local", "--yes", "--json"}, &output, &output); err != nil {
+	if err := runWithIOAsTestOperator(ctx, []string{"app", "init", "--input", "tls_mode=local", "--yes", "--json"}, &output, &output); err != nil {
 		t.Fatal("Identity fixture initialization failed", err)
 	}
 	t.Cleanup(func() {
@@ -90,7 +90,7 @@ func TestManagedIdentityNativePlacementHandoff(t *testing.T) {
 		}
 		applyContext := ctx
 		impact := plan.ProviderPlan.Impact
-		if phase > 0 && (impact == nil || impact.Attention != "Achtung" || impact.ConfirmationsRequired != 2) {
+		if phase > 0 && (impact == nil || impact.Attention != "Warning" || impact.ConfirmationsRequired != 2) {
 			t.Fatal("native replacement lacks current unknown-consequence acknowledgements")
 		}
 		// Initialization may retain pending owners before first realization.
@@ -99,7 +99,7 @@ func TestManagedIdentityNativePlacementHandoff(t *testing.T) {
 			applyContext = withProviderChangeConsent(ctx, &application.ProviderChangeConsent{PlanID: impact.PlanID, First: true, Second: true})
 		}
 		output.Reset()
-		if err := runWithIO(applyContext, []string{"app", "apply", "--skip-memory-preflight"}, &output, &output); err != nil {
+		if err := runWithIOAsTestOperator(applyContext, []string{"app", "apply", "--skip-memory-preflight"}, &output, &output); err != nil {
 			t.Fatalf("native Identity placement phase %d failed: %v\n%s", phase, err, output.String())
 		}
 		resolved, err = resolveApplication(ctx, application.Store{}, nil, "status")

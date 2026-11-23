@@ -40,9 +40,9 @@ type sourceMutationResult struct {
 	ComponentCount     int                   `json:"component_count"`
 }
 
-// loadWorkspaceSourceModelForCLI authorizes through the read-side workspace
-// operation; the incremental source-model writes stay domain-validated and the
-// typed MCP write operations reuse the same development package.
+// loadWorkspaceSourceModel reads the workspace model. Callers authorize the
+// operation they are about to perform separately so reads cannot grant write
+// access to the returned mutable model.
 func loadWorkspaceSourceModel(ctx context.Context, manifestArg string) (string, sourceModelContext, error) {
 	manifestPath, manifest, err := resolveWorkspaceManifest(manifestArg)
 	if err != nil {
@@ -59,6 +59,10 @@ func loadWorkspaceSourceModel(ctx context.Context, manifestArg string) (string, 
 		return "", sourceModelContext{}, err
 	}
 	return manifestPath, sourceModelContext{Manifest: manifest, Model: model, ModelPath: modelPath}, nil
+}
+
+func authorizeWorkspaceSourceModel(ctx context.Context, operation string, manifestPath string, manifest application.Manifest) error {
+	return authorizeMCPOperation(ctx, operation, "", manifest.Environment, manifest.ApplicationID, manifestPath)
 }
 
 type sourceModelContext struct {
@@ -141,8 +145,12 @@ func appWorkspaceSourceAddCommand() *cli.Command {
 					}
 					format = outputJSON
 				case "--source", "--local", "--oci":
+					option := args[i]
+					if i+1 >= len(args) {
+						return usageError(option+" requires a value", "Run 'baha app workspace source add --help'.")
+					}
 					i++
-					definition, err := sourceDefinitionFromFlags("source add", args[i], args[i-1])
+					definition, err := sourceDefinitionFromFlags("source add", args[i], option)
 					if err != nil {
 						return err
 					}
@@ -156,6 +164,9 @@ func appWorkspaceSourceAddCommand() *cli.Command {
 			}
 			manifestPath, state, err := loadWorkspaceSourceModel(ctx, manifestArg)
 			if err != nil {
+				return err
+			}
+			if err := authorizeWorkspaceSourceModel(ctx, "workspace.init", manifestPath, state.Manifest); err != nil {
 				return err
 			}
 			model := state.Model
@@ -232,6 +243,9 @@ func appWorkspaceSourceRemoveCommand() *cli.Command {
 			if err != nil {
 				return err
 			}
+			if err := authorizeWorkspaceSourceModel(ctx, "workspace.init", manifestPath, state.Manifest); err != nil {
+				return err
+			}
 			model := state.Model
 			var referenced []string
 			for _, component := range model.Components {
@@ -298,8 +312,11 @@ func appWorkspaceComponentListCommand() *cli.Command {
 			if len(positional) > 1 {
 				return usageError("component list accepts at most one optional component filter", "Example: baha app workspace component list [COMPONENT]")
 			}
-			_, state, err := loadWorkspaceSourceModel(ctx, manifestArg)
+			manifestPath, state, err := loadWorkspaceSourceModel(ctx, manifestArg)
 			if err != nil {
+				return err
+			}
+			if err := authorizeWorkspaceSourceModel(ctx, "workspace.show", manifestPath, state.Manifest); err != nil {
 				return err
 			}
 			model := state.Model
@@ -400,6 +417,9 @@ func appWorkspaceComponentAddCommand() *cli.Command {
 			if err != nil {
 				return err
 			}
+			if err := authorizeWorkspaceSourceModel(ctx, "workspace.init", manifestPath, state.Manifest); err != nil {
+				return err
+			}
 			model := state.Model
 			if err := development.UpsertComponentMapping(&model, mapping); err != nil {
 				return err
@@ -465,6 +485,9 @@ func appWorkspaceComponentRemoveCommand() *cli.Command {
 			}
 			manifestPath, state, err := loadWorkspaceSourceModel(ctx, manifestArg)
 			if err != nil {
+				return err
+			}
+			if err := authorizeWorkspaceSourceModel(ctx, "workspace.init", manifestPath, state.Manifest); err != nil {
 				return err
 			}
 			model := state.Model
@@ -581,6 +604,17 @@ func appWorkspacePathCommand() *cli.Command {
 			}
 			if !found {
 				return usageError("unknown source "+sourceID, "Run 'baha app workspace show' to inspect source identities.")
+			}
+			authorizationOperation := "workspace.show"
+			if len(positional) == 2 && !showCurrent {
+				if definition.Type == development.SourceRepository {
+					authorizationOperation = "workspace.map"
+				} else if definition.Type == development.SourceLocal {
+					authorizationOperation = "workspace.init"
+				}
+			}
+			if err := authorizeWorkspaceSourceModel(ctx, authorizationOperation, manifestPath, state.Manifest); err != nil {
+				return err
 			}
 			// Local source paths are persisted verbatim in the portable model;
 			// normalize them here the same way the init parser does.

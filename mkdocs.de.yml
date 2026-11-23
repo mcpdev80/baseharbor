@@ -99,12 +99,16 @@ nav:
   - Extension artifact trust: spec/extension-artifact-trust-v1.md
 - Betrieb:
   - Fehlerbehebung: troubleshooting/index.md
+  - Core-Bediene-API-Runbook: how-to/operator-api.md
   - Fehler: reference/errors.md
 - Automation und Agents:
   - Automation-Befehle: cli/automation-agents.md
   - MCP- und Agent-Schnittstelle: reference/mcp.md
   - CLI-/Maschinen-Abdeckung: reference/cli-machine-coverage.md
   - Maschinenoperationen: how-to/machine-operations.md
+  - CI-Konsumption einer Release: how-to/ci-consumption.md
+  - GitHub-Actions-Beispiel: example/github-actions/README.md
+  - GitLab-CI-Beispiel: example/gitlab-ci/README.md
   - Machine Interface v1: spec/machine-interface-v1.md
   - Protected Machine HTTP v1: spec/machine-http-v1.md
   - Runtime Explorer v1: spec/runtime-explorer-v1.md

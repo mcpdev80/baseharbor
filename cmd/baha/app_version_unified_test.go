@@ -69,7 +69,7 @@ func TestAppVersionUnifiedRowsAndSelectorCallable(t *testing.T) {
 
 	t.Chdir(repo)
 	var out, errOut bytes.Buffer
-	if err := runWithIO(context.Background(), []string{"app", "version", "-o", "json"}, &out, &errOut); err != nil {
+	if err := runWithIOAsTestOperator(context.Background(), []string{"app", "version", "-o", "json"}, &out, &errOut); err != nil {
 		t.Fatalf("app version must stay callable: %v\n%s", err, errOut.String())
 	}
 	var payload struct {
@@ -107,7 +107,7 @@ func TestAppVersionUnifiedRowsAndSelectorCallable(t *testing.T) {
 	// -c narrows to the selected component rows only.
 	out.Reset()
 	errOut.Reset()
-	if err := runWithIO(context.Background(), []string{"app", "version", "-c", "api", "-o", "json"}, &out, &errOut); err != nil {
+	if err := runWithIOAsTestOperator(context.Background(), []string{"app", "version", "-c", "api", "-o", "json"}, &out, &errOut); err != nil {
 		t.Fatalf("-c must stay callable: %v\n%s", err, errOut.String())
 	}
 	if err := json.Unmarshal(out.Bytes(), &payload); err != nil {
@@ -120,7 +120,7 @@ func TestAppVersionUnifiedRowsAndSelectorCallable(t *testing.T) {
 	// An unknown -c selection fails closed on the version face too.
 	out.Reset()
 	errOut.Reset()
-	if err := runWithIO(context.Background(), []string{"app", "version", "-c", "ghost"}, &out, &errOut); err == nil {
+	if err := runWithIOAsTestOperator(context.Background(), []string{"app", "version", "-c", "ghost"}, &out, &errOut); err == nil {
 		t.Fatalf("an unknown -c selection must fail closed:\n%s", out.String())
 	}
 }

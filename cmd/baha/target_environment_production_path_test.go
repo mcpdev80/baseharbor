@@ -54,7 +54,7 @@ func TestAppStatusHonorsEnvironmentTargetThroughProductionCLI(t *testing.T) {
 	}
 	t.Setenv("BASEHARBOR_TARGET", "iso-b")
 	var out, errOut bytes.Buffer
-	statusErr := runWithIO(context.Background(), []string{"app", "status", "--json"}, &out, &errOut)
+	statusErr := runWithIOAsTestOperator(context.Background(), []string{"app", "status", "--json"}, &out, &errOut)
 	if statusErr != nil && !strings.Contains(statusErr.Error(), "no application deployment could be resolved") {
 		t.Fatalf("app status failed outside target selection: %v\n%s", statusErr, out.String())
 	}
@@ -74,7 +74,7 @@ func TestGlobalTargetOverrideWinsOverEnvironmentThroughProductionCLI(t *testing.
 	configureTwoTestTargets(t)
 	t.Setenv("BASEHARBOR_TARGET", "iso-b")
 	var out bytes.Buffer
-	if err := runWithIO(context.Background(), []string{"--target", "iso-a", "status", "--json"}, &out, &out); err != nil {
+	if err := runWithIOAsTestOperator(context.Background(), []string{"--target", "iso-a", "status", "--json"}, &out, &out); err != nil {
 		t.Fatalf("status --json failed: %v\n%s", err, out.String())
 	}
 	var report map[string]any

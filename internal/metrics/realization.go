@@ -15,6 +15,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/observability"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
 
@@ -176,7 +177,18 @@ func (r *runtimePrometheusRealization) RegisterTarget(_ context.Context, target 
 		_ = os.Remove(tmp)
 		return fmt.Errorf("replace Prometheus target: %w", err)
 	}
-	return nil
+	return observability.Update(observability.MetricsSource{
+		ID:               observability.ApplicationMetricsSourceID(target.Application, target.Environment, target.Source),
+		Provider:         capability.ProviderPrometheus,
+		Class:            observability.SourceApplication,
+		Scope:            capability.ScopeApplication,
+		OwnerApplication: target.Application,
+		Network:          application.MetricsProviderNetworkNameForNamespace(r.app, r.namespace),
+		Target:           net.JoinHostPort(application.MetricsTargetAliasFor(target.Application, target.Environment, target.Service), strconv.Itoa(target.Port)),
+		Path:             target.Path,
+		Scheme:           target.Scheme,
+		Verification:     capability.ObservabilityVerifyBackend,
+	})
 }
 
 func (r *runtimePrometheusRealization) Destroy(ctx context.Context) error {

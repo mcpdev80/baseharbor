@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"reflect"
 
@@ -51,10 +52,55 @@ func authorizeApplicationProviderChanges(ctx context.Context, resolved resolvedA
 	if err != nil {
 		return err
 	}
-	if current.ProviderPlan.Impact == nil || current.ProviderPlan.Impact.PlanID != plan.ProviderPlan.Impact.PlanID {
+	if current.ProviderPlan.Impact == nil {
+		if out != nil {
+			fmt.Fprintln(out, "authorization mismatch: provider-plan-id-after-revalidation")
+		}
 		return providerImpactConsentError(*plan.ProviderPlan.Impact, &application.ProviderChangeError{Code: "stale-impact-consent"})
 	}
+	// Hunt 916 (A-F1/B2/C3): the plan id is the digest of the CONSENT
+	// AUTHORITY (provider_change_plan.go, provider_consent_authority.go), so
+	// the raw post-consent comparison recognizes an unchanged plan even when
+	// a transient observation artifact (unverifiable classification flip of
+	// unchanged material, re-derived revision, clock sample) churned the old
+	// raw digest. As the second gate, the frozen authority surfaces decide
+	// before staleness fires: only display-path differences that never reach
+	// the digest stabilize; every genuine authority change keeps the
+	// fail-closed stale-impact-consent path.
+	if current.ProviderPlan.Impact.PlanID != plan.ProviderPlan.Impact.PlanID {
+		if err := application.ValidateProviderImpactRevalidation(*current.ProviderPlan.Impact, *plan.ProviderPlan.Impact); err != nil {
+			if out != nil {
+				fmt.Fprintln(out, "authorization mismatch: provider-plan-id-after-revalidation")
+			}
+			return providerImpactConsentError(*plan.ProviderPlan.Impact, err)
+		}
+	}
 	return validateApplicationProviderExecution(resolved, current.ProviderPlan.Impact)
+}
+
+// manifestIntentEqual compares two manifests for identical deployment intent,
+// ignoring the deployment-only, never-serialized providerPreferences projection.
+// Nil (inherit) and an explicit empty selection are semantically identical
+// (both mean "automatic"); a strict reflect.DeepEqual would distinguish a nil
+// pointer from an empty non-nil one and reject an unchanged manifest as stale.
+func manifestIntentEqual(a, b application.Manifest) bool {
+	if reflect.DeepEqual(a, b) {
+		return true
+	}
+	// The deployment-only, never-serialized providerPreferences projection
+	// distinguishes a nil (inherit) pointer from an explicit empty selection
+	// under reflect.DeepEqual, though both mean "automatic". Normalise both
+	// sides so revalidation compares deployment intent, not that projection.
+	if reflect.DeepEqual(a, b.CanonicalizeProviderPreferences()) {
+		return true
+	}
+	if reflect.DeepEqual(a.CanonicalizeProviderPreferences(), b) {
+		return true
+	}
+	if reflect.DeepEqual(a.CanonicalizeProviderPreferences(), b.CanonicalizeProviderPreferences()) {
+		return true
+	}
+	return false
 }
 
 // The source transfer proves exact bytes, not application ownership. The
@@ -108,7 +154,7 @@ func revalidateApplicationProviderIntent(ctx context.Context, resolved resolvedA
 	if err != nil {
 		return err
 	}
-	if selection.ManifestPath != resolved.ManifestPath || !reflect.DeepEqual(selection.Manifest, resolved.Manifest) {
+	if selection.ManifestPath != resolved.ManifestPath || !manifestIntentEqual(selection.Manifest, resolved.Manifest) {
 		return classifyProviderChangeConsent(&application.ProviderChangeError{Code: "stale-impact-consent"})
 	}
 	return nil

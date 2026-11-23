@@ -28,7 +28,7 @@ func TestFreshRestoreStableConsentAndCanonicalIdentityRecovery(t *testing.T) {
 	if err := os.WriteFile(sourcePath, source, 0600); err != nil {
 		t.Fatal(err)
 	}
-	ctx := machineNoninteractiveContext(context.Background())
+	ctx := testOperatorContext(machineNoninteractiveContext(context.Background()))
 	data := applicationRestoreData{manifest: archived, archiveRevision: strings.Repeat("a", 64)}
 	var planID string
 	var prior deployment.DeploymentIdentity
@@ -51,7 +51,7 @@ func TestFreshRestoreStableConsentAndCanonicalIdentityRecovery(t *testing.T) {
 		} else if p.Scope.PlanID != planID {
 			t.Fatal("unchanged recovery proposals invalidated consent")
 		}
-		if p.Scope.Attention != "Achtung" || p.Scope.ConfirmationsRequired != 2 || !p.Scope.Destructive {
+		if p.Scope.Attention != "Warning" || p.Scope.ConfirmationsRequired != 2 || !p.Scope.Destructive {
 			t.Fatal("missing current recovery consequences")
 		}
 		for _, ack := range []*application.ProviderChangeConsent{nil, {PlanID: planID, First: true}, {PlanID: planID, First: true, Second: true}} {
@@ -124,7 +124,7 @@ func TestRestoreRequiresCurrentConsentBeforeAdmittingSupportedIdentityPlacement(
 	}
 	t.Setenv(application.ProviderScopeEnv(capability.ProviderKeycloak), "application")
 	data := applicationRestoreData{manifest: r.Manifest, archiveRevision: strings.Repeat("a", 64)}
-	ctx := machineNoninteractiveContext(t.Context())
+	ctx := testOperatorContext(machineNoninteractiveContext(t.Context()))
 	plan, err := buildApplicationRestorePlan(ctx, r, data)
 	if err != nil {
 		t.Fatal("technical admission hid recovery consequences", err)
@@ -175,7 +175,7 @@ func TestFreshRestoreRejectsNewSourceAndOwnerBeforeMutation(t *testing.T) {
 			if err := os.WriteFile(sourcePath, []byte(m.AuthoredYAML()), 0600); err != nil {
 				t.Fatal(err)
 			}
-			ctx := machineNoninteractiveContext(context.Background())
+			ctx := testOperatorContext(machineNoninteractiveContext(context.Background()))
 			r, err := resolveRestoreTarget(ctx, application.Store{}, m)
 			if err != nil {
 				t.Fatal(err)

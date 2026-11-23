@@ -24,7 +24,7 @@ func collectOperatorAuthObservation(ctx context.Context, target, environment str
 	return collectOperatorAuthObservationWithLocalAuthority(ctx, target, environment, verifiedLocalWorkloadAuthority)
 }
 
-func collectOperatorAuthObservationWithLocalAuthority(ctx context.Context, target, environment string, observe func(context.Context, string, string) (operatorauth.LocalRuntimeAuthority, bool, error)) operatorAuthObservation {
+func collectOperatorAuthObservationWithLocalAuthority(ctx context.Context, target, environment string, observe func(context.Context, string, string) (operatorauth.LocalOperationGrant, bool, error)) operatorAuthObservation {
 	if !operatorauth.ManagedEnvironment(environment) {
 		return operatorAuthObservation{
 			Mode: "trusted-local", Status: "READY", Session: "trusted-local",

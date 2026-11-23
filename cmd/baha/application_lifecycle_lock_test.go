@@ -61,20 +61,20 @@ func TestStaleDestructionConsentRequiresRepreview(t *testing.T) {
 	m := application.WithWorkloadComponents(application.New("lock-stale-consent", "dev", false, false, false), "lock-stale-app")
 	mustWriteInitializedAuthoredManifest(t, repoManifest, m)
 	t.Chdir(repo)
-	resolved, err := resolveApplication(context.Background(), application.DefaultStore(), nil, "destroy")
+	resolved, err := resolveApplication(testOperatorContext(context.Background()), application.DefaultStore(), nil, "destroy")
 	if err != nil {
 		t.Fatalf("resolve destroy candidate: %v", err)
 	}
-	if _, err := recordPendingDeployment(context.Background(), resolved); err != nil {
+	if _, err := recordPendingDeployment(testOperatorContext(context.Background()), resolved); err != nil {
 		t.Fatalf("record initial deployment state: %v", err)
 	}
-	resolved, err = resolveApplication(context.Background(), application.DefaultStore(), nil, "destroy")
+	resolved, err = resolveApplication(testOperatorContext(context.Background()), application.DefaultStore(), nil, "destroy")
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Preview: the consequence plan the operator acknowledges.
-	plan, err := buildApplicationDestructionPlan(context.Background(), resolved, true)
+	plan, err := buildApplicationDestructionPlan(testOperatorContext(context.Background()), resolved, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,7 +92,7 @@ func TestStaleDestructionConsentRequiresRepreview(t *testing.T) {
 
 	// The production authorization path must refuse the outdated consent and
 	// must NOT fall back to prompting (non-interactive: fail closed).
-	ctx := withProviderChangeConsent(nonInteractiveContext(context.Background()), &application.ProviderChangeConsent{PlanID: plan.Scope.PlanID})
+	ctx := withProviderChangeConsent(nonInteractiveContext(testOperatorContext(context.Background())), &application.ProviderChangeConsent{PlanID: plan.Scope.PlanID})
 	current, authErr := authorizeApplicationDestruction(ctx, resolved, true, &bytes.Buffer{})
 	if authErr == nil {
 		t.Fatal("stale destruction consent admitted; production path must require re-preview")
@@ -106,7 +106,7 @@ func TestStaleDestructionConsentRequiresRepreview(t *testing.T) {
 
 	// Acknowledging with the FRESH plan id must pass the consent gate (the
 	// refusal above proved staleness binding, not a policy veto).
-	okCtx := withProviderChangeConsent(nonInteractiveContext(context.Background()), &application.ProviderChangeConsent{PlanID: current.Scope.PlanID})
+	okCtx := withProviderChangeConsent(nonInteractiveContext(testOperatorContext(context.Background())), &application.ProviderChangeConsent{PlanID: current.Scope.PlanID})
 	if _, err := authorizeApplicationDestruction(okCtx, resolved, true, &bytes.Buffer{}); err != nil && strings.Contains(err.Error(), "stale-impact-consent") {
 		t.Fatalf("current-plan consent refused as stale: %v", err)
 	}
@@ -117,6 +117,11 @@ func TestStaleDestructionConsentRequiresRepreview(t *testing.T) {
 // a second separate process entering the production reconcile path must be
 // rejected fail-closed with the explicit contention message.
 func TestSharedBackendReconcileRejectsSecondProcess(t *testing.T) {
+	// The selection lives in the environment the child inherits: neutralise a
+	// leaked activation or a host-persisted organization selection for this
+	// process AND the self-executed child (envWithoutLeakedTargetSelection)
+	// before either enters the production reconcile path.
+	testIsolatedSelectionContext(t)
 	if os.Getenv("BAHA_TEST_SHARED_CHILD") == "reconcile" {
 		m := application.New("shared-a", "dev", true, false, false)
 		m.ApplicationID = application.MustNewApplicationID()
@@ -126,7 +131,7 @@ func TestSharedBackendReconcileRejectsSecondProcess(t *testing.T) {
 			fmt.Fprintln(os.Stderr, "child mkdir failed")
 			os.Exit(4)
 		}
-		_, err := application.ReconcileSharedBackends(context.Background(), nil, nil, os.Getenv("BAHA_TEST_SHARED_DIR"), "shared-a", m, application.RuntimeFiles{})
+		_, err := application.ReconcileSharedBackends(testOperatorContext(context.Background()), nil, nil, os.Getenv("BAHA_TEST_SHARED_DIR"), "shared-a", m, application.RuntimeFiles{})
 		if err != nil && strings.Contains(err.Error(), "shared provider lifecycle is already active") {
 			// Expected fail-closed rejection of the concurrent shared writer.
 			os.Exit(3)
@@ -149,7 +154,8 @@ func TestSharedBackendReconcileRejectsSecondProcess(t *testing.T) {
 	}
 	t.Cleanup(parentUnlock)
 	child := exec.Command(os.Args[0], "-test.run=^TestSharedBackendReconcileRejectsSecondProcess$")
-	child.Env = append(os.Environ(), "BAHA_TEST_SHARED_CHILD=reconcile", "BAHA_TEST_SHARED_DIR="+dir)
+	child.Env = append(envWithoutLeakedTargetSelection(os.Environ()),
+		"BAHA_TEST_SHARED_CHILD=reconcile", "BAHA_TEST_SHARED_DIR="+dir)
 	out, err := child.CombinedOutput()
 	if ee, ok := err.(*exec.ExitError); !ok || ee.ExitCode() != 3 {
 		t.Fatalf("second process was not rejected fail-closed on the shared provider owner; exit=%v output:\n%s", err, out)

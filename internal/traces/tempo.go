@@ -508,6 +508,30 @@ func DestroyAllSharedProvidersAt(ctx context.Context, runtime Runtime, dataDir, 
 
 func NetworkEndpoint(p Placement) string { return "http://tempo:4318" }
 
+// ManagedAccessAliases returns the backend-network service addresses of one
+// managed service-access gateway, given its compose service name. The first
+// entry is the bare service name — the identity every consumer that shares
+// the gateway's networks resolves through the compose project's DNS; the
+// second is the stable fully-qualified BaseHarbor access alias, the form
+// peers address it by when they reach the gateway over a shared managed
+// network. The gateway is the only component that terminates the enforced TLS
+// (and, where the policy demands it, verifies client certificates), so these
+// identities are what every TLS-verifying client — the host read path
+// (tempoHTTPClient) and any datasource endpoint rendered for a container-side
+// consumer (internal/metrics) — must name, and they are the names the gateway
+// certificate carries. The qualified alias additionally survives the
+// gateway's network_mode consumers, where the project-local name is not
+// resolvable on its own. Both are service addresses, never loopback
+// addresses: a consumer in another network namespace (for example the pinned
+// Perses instance) reaches the gateway through them.
+func ManagedAccessAliases(gatewayServiceName string) []string {
+	name := strings.TrimSpace(gatewayServiceName)
+	if name == "" {
+		return nil
+	}
+	return []string{name, name + ".access.baseharbor.internal"}
+}
+
 func ProviderEndpoint(files ProviderFiles) (string, error) {
 	data, err := os.ReadFile(files.Env)
 	if err != nil {
@@ -525,10 +549,30 @@ func ProviderEndpoint(files ProviderFiles) (string, error) {
 	return "", errors.New("Tempo port is missing")
 }
 
+// TempoAccessSpecForTests exposes the production tempo-access gateway spec
+// (the runtime's own rendering input, compose and PKI reconciliation alike) to
+// the datasource tests' gateway fixture, so a fixture can never drift from the
+// boundary the deployment composes.
+func TempoAccessSpecForTests() serviceaccess.HTTPGatewaySpec {
+	return tempoAccessSpec()
+}
+
 func tempoAccessSpec() serviceaccess.HTTPGatewaySpec {
 	return serviceaccess.HTTPGatewaySpec{
-		ServiceName:      "tempo-access",
-		Upstream:         "http://tempo:3200",
+		ServiceName: "tempo-access",
+		Upstream:    "http://tempo:3200",
+		// The gateway's server certificate carries the backend-network
+		// aliases ManagedAccessAliases names (0428-091 P1) beside the
+		// loopback identity, so a consumer that addresses the boundary by a
+		// service address — Perses' datasource proxy and every
+		// TLS-verifying client — completes verification against the managed
+		// runtime CA. The aliases are service addresses, never routable
+		// literals.
+		CertificateNames: ManagedAccessAliases("tempo-access"),
+		// The compose service definition registers the aliases on the
+		// gateway's network membership, so the names the certificate and the
+		// datasource URL carry actually resolve to the gateway container.
+		NetworkAliases:   ManagedAccessAliases("tempo-access"),
 		PublishedPortEnv: "BASEHARBOR_TEMPO_PORT",
 		ContainerPort:    8443,
 		Networks:         []string{"traces"},

@@ -1,6 +1,7 @@
 package development
 
 import (
+	"bytes"
 	"errors"
 	"os"
 	"path/filepath"
@@ -139,6 +140,47 @@ func TestResolveWorkspaceLocalDirectoryWithSubPaths(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "does not exist") {
 		t.Fatalf("unexpected local source error: %v", err)
+	}
+}
+
+func TestResolveWorkspaceRejectsSubpathSymlinkEscapes(t *testing.T) {
+	for _, sourceType := range []SourceKind{SourceLocal, SourceRepository} {
+		t.Run(string(sourceType), func(t *testing.T) {
+			base := t.TempDir()
+			manifest := writeTestManifest(t, base)
+			root := filepath.Join(base, "source")
+			if err := os.MkdirAll(filepath.Join(root, "services"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			outside := filepath.Join(base, "outside")
+			if err := os.MkdirAll(outside, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink(outside, filepath.Join(root, "services", "api")); err != nil {
+				t.Skipf("symlink not supported: %v", err)
+			}
+			source := SourceDefinition{ID: "backend", Type: sourceType}
+			if sourceType == SourceLocal {
+				source.Path = root
+			} else {
+				source.Repository = "https://git.example/backend.git"
+			}
+			model := SourceModel{
+				SchemaVersion: SourceModelVersion,
+				Application:   "shop",
+				Sources:       []SourceDefinition{source},
+				Components:    []ComponentSource{{Component: "api", Source: source.ID, SubPath: "services/api"}},
+			}
+			mapping := WorkspaceMapping{
+				SchemaVersion: WorkspaceMappingVersion,
+				Application:   "shop",
+				Manifest:      manifest,
+				Sources:       map[string]string{source.ID: root},
+			}
+			if _, err := ResolveWorkspace(manifest, model, mapping); err == nil || !strings.Contains(err.Error(), "symbolic link") {
+				t.Fatalf("subpath symlink escape accepted: %v", err)
+			}
+		})
 	}
 }
 
@@ -334,5 +376,105 @@ func TestSaveRemovableSourceDetachesMappingOnly(t *testing.T) {
 	final, _, err := LoadSourceModel(manifest)
 	if err != nil || len(final.Sources) != 1 {
 		t.Fatalf("failed detach mutated persisted state: %#v %v", final, err)
+	}
+}
+
+func TestSaveRemovableSourceDoesNotChangeModelWhenMappingCannotBeLoaded(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	root := t.TempDir()
+	manifest := writeTestManifest(t, root)
+	model := SourceModel{
+		SchemaVersion: SourceModelVersion,
+		Application:   "shop",
+		Sources: []SourceDefinition{
+			{ID: "keep", Type: SourceRepository, Repository: "https://git.example/keep.git"},
+			{ID: "drop", Type: SourceRepository, Repository: "https://git.example/drop.git"},
+		},
+		Components: []ComponentSource{{Component: "api", Source: "drop"}},
+	}
+	if _, err := WriteSourceModel(manifest, model); err != nil {
+		t.Fatal(err)
+	}
+	mappingPath, err := WorkspaceMappingPath(manifest, "shop")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(mappingPath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(mappingPath, []byte("not-json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, _, _, err := SaveRemovableSource(manifest, "shop", model, "drop"); err == nil {
+		t.Fatal("removal succeeded with an invalid workspace mapping")
+	}
+	stored, _, err := LoadSourceModel(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(stored.Sources) != 2 || len(stored.Components) != 1 || stored.Components[0].Source != "drop" {
+		t.Fatalf("failed removal partially changed the source model: %#v", stored)
+	}
+}
+
+func TestSaveRemovableSourceRollsBackWhenMappingSaveFails(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	root := t.TempDir()
+	manifest := writeTestManifest(t, root)
+	model := SourceModel{
+		SchemaVersion: SourceModelVersion,
+		Application:   "shop",
+		Sources: []SourceDefinition{
+			{ID: "keep", Type: SourceRepository, Repository: "https://git.example/keep.git"},
+			{ID: "drop", Type: SourceRepository, Repository: "https://git.example/drop.git"},
+		},
+		Components: []ComponentSource{{Component: "api", Source: "keep"}, {Component: "job", Source: "drop"}},
+	}
+	sourcePath, err := WriteSourceModel(manifest, model)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mappingPath, err := SaveWorkspaceMapping(manifest, WorkspaceMapping{
+		SchemaVersion: WorkspaceMappingVersion,
+		Application:   "shop",
+		Sources:       map[string]string{"keep": filepath.Join(root, "keep"), "drop": filepath.Join(root, "drop")},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	originalModel, err := os.ReadFile(sourcePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	originalMapping, err := os.ReadFile(mappingPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	injectedFailure := errors.New("injected mapping persistence failure")
+	_, _, _, _, err = saveRemovableSource(manifest, "shop", model, "drop", func(manifestPath string, mapping WorkspaceMapping) (string, error) {
+		// Simulate a saver that persisted the new mapping and then returned an
+		// error, so the rollback path must restore both files.
+		path, saveErr := SaveWorkspaceMapping(manifestPath, mapping)
+		if saveErr != nil {
+			return path, saveErr
+		}
+		return path, injectedFailure
+	})
+	if !errors.Is(err, injectedFailure) {
+		t.Fatalf("removal error = %v, want injected failure", err)
+	}
+	modelAfter, err := os.ReadFile(sourcePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mappingAfter, err := os.ReadFile(mappingPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(modelAfter, originalModel) {
+		t.Fatal("source model was not restored after mapping save failure")
+	}
+	if !bytes.Equal(mappingAfter, originalMapping) {
+		t.Fatal("workspace mapping was not restored after mapping save failure")
 	}
 }

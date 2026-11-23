@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -112,6 +113,21 @@ func runRuntimeIntegrationTestMain(m *testing.M) (code int) {
 			return 1
 		}
 	}
+	// The cmd/baha package runs one process for every package invocation, and
+	// the deployment/org selection path (active-target + org active.json under
+	// XDG_CONFIG_HOME, state under XDG_DATA_HOME) is process-wide. A prior test
+	// that persisted a deployment target (or an org selection) without a
+	// private config root leaks that state into every later test that reads the
+	// selection without isolating its own HOME/XDG_CONFIG_HOME/XDG_DATA_HOME —
+	// e.g. the do-not-persist init tests, which then fail with
+	// "activated target \"ghost\" no longer exists". Isolate the whole package
+	// run behind one private data/config root so no test observes state written
+	// by another test in this package. The marker/teardown below then owns
+	// exactly that root.
+	if err := ensurePackageConfigIsolation(); err != nil {
+		fmt.Fprintf(os.Stderr, "cmd/baha package config isolation: %v\n", err)
+		return 1
+	}
 	if os.Getenv("BASEHARBOR_CI_RUNTIME_INTEGRATION") == "1" &&
 		strings.TrimSpace(os.Getenv("BASEHARBOR_STATE_DIR")) == "" &&
 		strings.TrimSpace(os.Getenv("XDG_DATA_HOME")) == "" {
@@ -166,6 +182,65 @@ func runRuntimeIntegrationTestMain(m *testing.M) (code int) {
 		}()
 	}
 	return m.Run()
+}
+
+// ensurePackageConfigIsolation gives the whole cmd/baha package run one private
+// data + config root so a deployment target or org selection persisted by one
+// test can never leak into another test that reads the selection without
+// isolating its own HOME/XDG_CONFIG_HOME/XDG_DATA_HOME (the "activated target
+// \"ghost\" no longer exists" regression). It only applies when the host has
+// not already isolated those roots for this run (a caller or the CI
+// native-integration path may set BASEHARBOR_STATE_DIR/XDG_DATA_HOME/XDG_CONFIG_HOME
+// explicitly); in that case the existing isolation is honoured.
+func ensurePackageConfigIsolation() error {
+	home, homeErr := os.UserHomeDir()
+	if homeErr != nil || strings.TrimSpace(home) == "" {
+		homeErr = nil
+	}
+	// HOME: use a private temp home unless a caller already pinned one.
+	if os.Getenv("HOME") == "" {
+		if homeErr != nil {
+			return fmt.Errorf("cannot determine user home for package config isolation: %w", homeErr)
+		}
+		tmpHome, err := os.MkdirTemp("", "baseharbor-cmd-baha-home-")
+		if err != nil {
+			return fmt.Errorf("create package home for config isolation: %w", err)
+		}
+		if err := os.Setenv("HOME", tmpHome); err != nil {
+			return fmt.Errorf("set package home for config isolation: %w", err)
+		}
+	}
+	// XDG_CONFIG_HOME: a private config root unless already pinned by the caller.
+	if strings.TrimSpace(os.Getenv("XDG_CONFIG_HOME")) == "" {
+		if homeErr == nil {
+			if err := os.MkdirAll(filepath.Join(home, ".config"), 0o700); err != nil {
+				return fmt.Errorf("create package config root: %w", err)
+			}
+		}
+		tmpCfg, err := os.MkdirTemp("", "baseharbor-cmd-baha-cfg-")
+		if err != nil {
+			return fmt.Errorf("create package config root: %w", err)
+		}
+		if err := os.Setenv("XDG_CONFIG_HOME", tmpCfg); err != nil {
+			return fmt.Errorf("set package config root: %w", err)
+		}
+	}
+	// XDG_DATA_HOME: a private data root unless already pinned by the caller.
+	if strings.TrimSpace(os.Getenv("XDG_DATA_HOME")) == "" {
+		if homeErr == nil {
+			if err := os.MkdirAll(filepath.Join(home, ".local", "share"), 0o700); err != nil {
+				return fmt.Errorf("create package data root: %w", err)
+			}
+		}
+		tmpData, err := os.MkdirTemp("", "baseharbor-cmd-baha-data-")
+		if err != nil {
+			return fmt.Errorf("create package data root: %w", err)
+		}
+		if err := os.Setenv("XDG_DATA_HOME", tmpData); err != nil {
+			return fmt.Errorf("set package data root: %w", err)
+		}
+	}
+	return nil
 }
 
 // bootstrapLeftoverMarkerPath returns the package-scoped marker file inside
@@ -648,6 +723,24 @@ func isUnbeginningTeardownError(err error) bool {
 func ensureRuntimeIntegrationTrustPlane(t *testing.T, ctx context.Context) {
 	t.Helper()
 	runtimeIntegrationTrustPlaneOnce.Do(func() {
+		// The validate cell's integration step reaches the production ORAS
+		// gate at runtimeUpGuided (cmd/baha/runtime.go) through the shared
+		// runWithIOAsTestOperator path, before any of the cell's own up
+		// commands run. That gate is intentionally fail-closed without a
+		// terminal (cmd/baha/oras_setup.go: ensureORASForCoreUp), and the
+		// validate job has no ORAS install step — only the native-gate jobs
+		// provision scripts/ci-install-oras.sh (.github/** is Owner scope) —
+		// so every selected runtime test fails with `ORAS is required before
+		// Core setup` before its first assertion. Provision the SAME pinned
+		// release here, through the production installer (installORAS:
+		// official orasSetupVersion download, checksum-verified, ~/.local/bin,
+		// PATH extended for this process). A no-op when oras is already
+		// findable; the refuse-to-overwrite guard keeps any operator or
+		// workflow provisioning untouched.
+		if err := provisionORASForIntegrationCell(ctx); err != nil {
+			runtimeIntegrationTrustPlaneErr = err
+			return
+		}
 		// Capture the data root BEFORE any XDG_DATA_HOME switch below. TestMain
 		// claims the durable provisioning marker under the initial data root; if
 		// this helper unconditionally pointed XDG_DATA_HOME at a fresh temp
@@ -744,10 +837,18 @@ func ensureRuntimeIntegrationTrustPlane(t *testing.T, ctx context.Context) {
 			runtimeIntegrationTrustPlaneErr = err
 			return
 		}
-		if err := os.Setenv("BASEHARBOR_TARGET", bootstrapTarget); err != nil {
+		// The shared rootless daemon is the integration endpoint. An active
+		// CLI context (the prepare step's setuptool registers "rootless")
+		// takes precedence over DOCKER_HOST inside the engine resolver, so
+		// make the endpoint authoritative and neutralize the context.
+		_ = os.Unsetenv("DOCKER_CONTEXT")
+
+		var out bytes.Buffer
+		if err := createRuntimeIntegrationBootstrapTarget(ctx, bootstrapTarget, os.Getenv("BASEHARBOR_TEST_RUNTIME"), &out); err != nil {
 			runtimeIntegrationTrustPlaneErr = err
 			return
 		}
+		out.Reset()
 		// Always restore the selection, including when OpenBao was already
 		// initialized or when bootstrap fails. Otherwise a later lifecycle
 		// test silently inherits this bootstrap target.
@@ -759,31 +860,7 @@ func ensureRuntimeIntegrationTrustPlane(t *testing.T, ctx context.Context) {
 				runtimeIntegrationTrustPlaneErr = mutatePersistedTarget("", true)
 			}
 		}()
-		// The shared rootless daemon is the integration endpoint. An active
-		// CLI context (the prepare step's setuptool registers "rootless")
-		// takes precedence over DOCKER_HOST inside the engine resolver, so
-		// make the endpoint authoritative and neutralize the context.
-		_ = os.Unsetenv("DOCKER_CONTEXT")
-
-		var out bytes.Buffer
-		if os.Getenv("BASEHARBOR_TEST_RUNTIME") == "podman" {
-			if err := runWithIO(ctx, []string{"target", "create", bootstrapTarget, "--runtime-provider", "podman", "--access", "local", "--access-provider", "local", "--reference", "local", "--default"}, &out, &out); err != nil {
-				runtimeIntegrationTrustPlaneErr = err
-				return
-			}
-			out.Reset()
-		} else {
-			// Docker (the default test runtime) needs its own bootstrap target
-			// configured before the single shared `up` below; this target has
-			// its own `<name>-default` native network and management Core, so
-			// the gate never sees the ambient `local` Core.
-			if err := runWithIO(ctx, []string{"target", "create", bootstrapTarget, "--runtime-provider", "docker", "--access", "local", "--access-provider", "local", "--reference", "local", "--default"}, &out, &out); err != nil {
-				runtimeIntegrationTrustPlaneErr = err
-				return
-			}
-			out.Reset()
-		}
-		if err := runWithIO(ctx, []string{"up", "--control-plane-only", "--yes"}, &out, &out); err != nil {
+		if err := runWithIOAsTestOperator(ctx, []string{"up", "--control-plane-only", "--yes"}, &out, &out); err != nil {
 			runtimeIntegrationTrustPlaneErr = err
 			return
 		}
@@ -834,7 +911,7 @@ func ensureRuntimeIntegrationTrustPlane(t *testing.T, ctx context.Context) {
 		}
 		recoveryPath := filepath.Join(dir, "recovery.json")
 		out.Reset()
-		runtimeIntegrationTrustPlaneErr = runWithIO(ctx, []string{"openbao", "bootstrap", "--recovery-file", recoveryPath}, &out, &out)
+		runtimeIntegrationTrustPlaneErr = runWithIOAsTestOperator(ctx, []string{"openbao", "bootstrap", "--recovery-file", recoveryPath}, &out, &out)
 	})
 	if runtimeIntegrationTrustPlaneErr != nil {
 		t.Fatalf("prepare BaseHarbor integration trust plane: %v", runtimeIntegrationTrustPlaneErr)
@@ -858,6 +935,47 @@ func ensureRuntimeIntegrationTrustPlane(t *testing.T, ctx context.Context) {
 	// owned by TestMain and runs exactly once after the whole package, not at
 	// the end of the first helper caller. Setup failures (t.Fatalf above) are
 	// covered because the provisioning marker already guarantees teardown.
+}
+
+// createRuntimeIntegrationBootstrapTarget registers the Target against the
+// current configured selection, then selects it for the following runtime
+// operation. The operator seam matches the package fixture's authenticated
+// setup path. Selecting the new name first makes target.create authorization
+// resolve a Target that does not exist yet.
+func createRuntimeIntegrationBootstrapTarget(ctx context.Context, name, runtime string, out *bytes.Buffer) error {
+	runtime = strings.ToLower(strings.TrimSpace(runtime))
+	if runtime != "docker" && runtime != "podman" {
+		return fmt.Errorf("bootstrap Target requires docker or podman runtime, got %q", runtime)
+	}
+	// The caller may already have placed the fresh name in the environment.
+	// Clear it while target.create resolves its authorization preflight against
+	// the currently configured selection, then select the new target below.
+	if err := os.Unsetenv("BASEHARBOR_TARGET"); err != nil {
+		return err
+	}
+	args := []string{"target", "create", name, "--runtime-provider", runtime, "--access", "local", "--access-provider", "local", "--reference", "local", "--default"}
+	if err := runWithIOAsTestOperator(ctx, args, out, out); err != nil {
+		return err
+	}
+	return os.Setenv("BASEHARBOR_TARGET", name)
+}
+
+func TestRuntimeIntegrationBootstrapTargetSelectsAfterCreate(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	target := "w169-ci-bootstrap-ordering"
+	t.Setenv("BASEHARBOR_TARGET", target)
+	var out bytes.Buffer
+	if err := createRuntimeIntegrationBootstrapTarget(context.Background(), target, "docker", &out); err != nil {
+		t.Fatalf("create bootstrap Target before selecting it: %v\n%s", err, out.String())
+	}
+	resolved, err := effectiveTarget(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolved.Name != target || resolved.RuntimeProvider != "docker" {
+		t.Fatalf("bootstrap selection = %#v, want docker Target %q", resolved, target)
+	}
 }
 
 // ensureBootstrapLeftoverMarker makes teardown guarantee explicit: the marker
@@ -1324,4 +1442,24 @@ func TestMissingRuntimeIsolationCannotFallBackToBootstrap(t *testing.T) {
 	if _, err := cfg.ResolveTarget(selected, ""); err == nil {
 		t.Fatal("unconfigured isolation guard resolved to the bootstrap target")
 	}
+}
+
+// provisionORASForIntegrationCell gives this package process the pinned ORAS
+// the production Core bootstrap requires, using the same release the product
+// installer would fetch (orasSetupVersion, official checksum). It is a
+// no-op when exec.LookPath finds oras already (the native-gate provisioning
+// step or the operator did it) or when the user-local install is present and
+// can be put on PATH; only a truly missing installation triggers the
+// production download. Failures are real failures: the caller must not reach
+// the trust plane without the tool.
+func provisionORASForIntegrationCell(ctx context.Context) error {
+	if _, err := exec.LookPath("oras"); err == nil {
+		return nil
+	}
+	if err := includeInstalledORASOnPath(); err == nil {
+		if _, err := exec.LookPath("oras"); err == nil {
+			return nil
+		}
+	}
+	return installORAS(ctx)
 }

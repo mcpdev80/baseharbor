@@ -130,6 +130,13 @@ func Classify(err error) *Error {
 			return Wrap(ErrorPolicyDenied, err, "Review permissions or policy and retry.", false)
 		}
 	}
+	// A configured BaseHarbor config root whose authoritative config.yaml is
+	// missing or empty is a concrete, actionable misconfiguration the user must
+	// fix — never the generic internal_error fallthrough. Route it to
+	// ErrorSourceMissing while keeping the human-readable message.
+	if errors.Is(err, apierror.ErrConfigMissing) || errors.Is(err, apierror.ErrConfigEmpty) {
+		return Wrap(ErrorSourceMissing, err, "Configure or repair the BaseHarbor config.yaml at the populated config root and retry.", false)
+	}
 	var actionable interface{ NextAction() string }
 	if errors.As(err, &actionable) {
 		return Wrap(ErrorInternal, err, actionable.NextAction(), false)
@@ -195,10 +202,15 @@ func Operations() []Operation {
 		{ID: "trust.uninstall", MCPTool: "baseharbor.trust.uninstall", Description: "Remove only matching BaseHarbor-owned host trust anchors after explicit approval.", Safety: SafetyMutating, ConfirmationRequired: true, ContractVersion: ContractVersion},
 		{ID: "app.stop", MCPTool: "baseharbor.app.stop", Description: "Stop owned application runtime while preserving persistent data.", Safety: SafetyMutating, ConfirmationRequired: true, ContractVersion: ContractVersion},
 		{ID: "app.preflight", MCPTool: "baseharbor.app.preflight", Description: "Validate application preflight without mutation.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
+		{ID: "app.perses.status", MCPTool: "baseharbor.app.perses.status", Description: "Report the optional Perses management surface three-state contract without mutation or a health probe.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
+		{ID: "app.perses.enable", MCPTool: "baseharbor.app.perses.enable", Description: "Select the optional Perses realization of the observability management-ui surface in the repository manifest.", Safety: SafetyMutating, ConfirmationRequired: true, ContractVersion: ContractVersion},
+		{ID: "app.perses.disable", MCPTool: "baseharbor.app.perses.disable", Description: "Deselect the optional Perses management surface, preserving the backend observability owner.", Safety: SafetyMutating, ConfirmationRequired: true, ContractVersion: ContractVersion},
+		{ID: "app.perses.remove", MCPTool: "baseharbor.app.perses.remove", Description: "Retire only BaseHarbor-owned Perses runtime resources and disable the surface; backends are never removed.", Safety: SafetyDestructive, ConfirmationRequired: true, ContractVersion: ContractVersion},
 		{ID: "secret.list", MCPTool: "baseharbor.secret.list", Description: "List configured secret names without values.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
 		{ID: "secret.set", MCPTool: "baseharbor.secret.set", Description: "Set one application secret from protected input.", Safety: SafetyMutating, ContractVersion: ContractVersion},
 		{ID: "secret.delete", MCPTool: "baseharbor.secret.delete", Description: "Permanently delete one application secret and all managed versions.", Safety: SafetyDestructive, ConfirmationRequired: true, ContractVersion: ContractVersion},
 		{ID: "secret.tls-set", MCPTool: "baseharbor.secret.tls-set", Description: "Validate and store application TLS secret material.", Safety: SafetyMutating, ContractVersion: ContractVersion},
+		{ID: "secret.reveal", MCPTool: "", Description: "Human-only authorization seam for managed-secret reveal via a verified operator. Workload/runtime identity never satisfies this; the CLI --reveal paths (app env/creds) route through it and it is excluded from the MCP tool boundary by design.", Safety: SafetyReadOnly, PolicyRequired: true, ContractVersion: ContractVersion},
 		{ID: "node.add", MCPTool: "baseharbor.node.add", Description: "Create a remote node Target and write a protected one-use enrollment bundle without returning credential material.", Safety: SafetyMutating, ContractVersion: ContractVersion},
 		{ID: "node.connect", MCPTool: "baseharbor.node.connect", Description: "Consume a protected local enrollment bundle and install the rootless Node Connector service.", Safety: SafetyMutating, ConfirmationRequired: true, ContractVersion: ContractVersion},
 		{ID: "node.list", MCPTool: "baseharbor.node.list", Description: "List configured remote connector nodes without credential material.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},

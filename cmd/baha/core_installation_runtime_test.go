@@ -319,8 +319,33 @@ func TestCoreBootstrapFixtureCleanupContextIsBoundToItsLocalTarget(t *testing.T)
 	if err != nil || resolved.Name != target.Name || resolved.RuntimeProvider != target.RuntimeProvider || resolved.AccessProvider != "local" {
 		t.Fatalf("fixture cleanup selected an unexpected Target: %+v %v", resolved, err)
 	}
+	// Assert through the production boundary the cleanup path really takes.
+	// The fixture stamp here (WithVerifiedPrincipal -> WithMembershipProvider)
+	// turned the green on at the previous err==nil check, but a verified
+	// principal in a managed environment resolves claim membership before the
+	// fail-closed branch at internal/operatorauth/authorization.go:285 is ever
+	// reachable, so the green demonstrated the stamp, not production authority.
+	// Run the same boundary the production cleanup path runs
+	// (operator_auth_boundary.go:55) and name the authority mode that admitted
+	// the operation; an unproven mode (e.g. an unstamped synthetic principal)
+	// is rejected.
+	if err := ensureOperatorAuthForBoundary(ctx, target.Name, "prod"); err != nil {
+		t.Fatalf("fixture cleanup operator could not pass the operator-auth boundary for the managed teardown scope: %v", err)
+	}
 	if err := authorizeMCPOperation(ctx, "installation.destroy", target.Name, "prod", "", ""); err != nil {
 		t.Fatalf("fixture cleanup operator could not authorize the managed teardown scope: %v", err)
+	}
+	if decision, ok := operatorauth.AuthorizationDecisionFromContext(ctx); ok {
+		t.Logf("fixture cleanup admitted installation.destroy by operatorauth mode=%s subject=%s issuer=%s methods=%v",
+			decision.Actor.Mode, decision.Actor.Subject, decision.Actor.Issuer, decision.Actor.Methods)
+		if !decision.Allowed || decision.Operation != "installation.destroy" {
+			t.Fatalf("fixture cleanup admitted an unexpected authorization decision: allowed=%t operation=%q", decision.Allowed, decision.Operation)
+		}
+		if decision.Actor.Mode != "authenticated" && decision.Actor.Mode != "local-runtime" {
+			t.Fatalf("fixture cleanup admitted the managed teardown by an unproven operatorauth mode %q", decision.Actor.Mode)
+		}
+	} else {
+		t.Fatal("fixture cleanup recorded no operatorauth authorization decision for installation.destroy")
 	}
 	remote := target
 	remote.AccessProvider = "ssh"
@@ -331,6 +356,57 @@ func TestCoreBootstrapFixtureCleanupContextIsBoundToItsLocalTarget(t *testing.T)
 	if _, err := coreBootstrapFixtureCleanupContext(withPrincipal, target); err == nil {
 		t.Fatal("fixture cleanup reused an unrelated verified principal")
 	}
+}
+
+// Core bootstrap teardown proves its managed `installation.destroy` scope
+// through the production destruction-planner authority seam (the same seam the
+// real destroy path takes): the `installationApplicationScope` proof minted by
+// `withInstallationApplicationScopes` (`cmd/baha/installation_application_scopes.go:20-45`)
+// is what sets `operation = "installation.destroy"` in
+// `buildApplicationDestructionPlan` (`cmd/baha/application_destroy_authorization.go:32-37`),
+// NOT the operator-auth boundary. This proves reachability in both directions
+// without touching the synthetic teardown stamp above: a confirmed destructive
+// scope admits, and the same scope without consent fails closed with
+// `impact-confirmation-required` before any runtime access.
+func TestCoreBootstrapFixtureDestroyRunsThroughInstallationApplicationScope(t *testing.T) {
+	r := retainedNativeBackendFixture(t)
+	operatorCtx := machineNoninteractiveContext(testOperatorContext(t.Context()))
+	plan, err := buildRuntimeDestroyImpact(operatorCtx, []targetDestroyInventory{{Target: r.Target}}, nil, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.Applications) != 1 || plan.Applications[0].Scope.Owner.Owner != "application-deployment" ||
+		!plan.Applications[0].Scope.Destructive {
+		t.Fatal("aggregate destruction plan did not carry a destructive application-deployment child scope")
+	}
+	confirmed := &application.ProviderChangeConsent{PlanID: plan.Scope.PlanID, First: true, Second: true, DeleteData: true}
+	ctx, err := withInstallationApplicationScopes(withProviderChangeConsent(operatorCtx, confirmed), plan)
+	if err != nil {
+		t.Fatalf("confirmed destructive installation.destroy scope refused: %v", err)
+	}
+	if _, err := authorizeApplicationDestruction(ctx, r, true, io.Discard); err != nil {
+		t.Fatalf("confirmed installation.destroy child refused: %v", err)
+	}
+	t.Log("confirmed installation.destroy scope admitted through the destruction-planner seam")
+
+	// A fresh fixture for the negative so the positive path's shared test state
+	// (same XDG_CONFIG_HOME) cannot change which branch the missing-consent
+	// call takes.
+	negative := retainedNativeBackendFixture(t)
+	negativePlan, negBuildErr := buildRuntimeDestroyImpact(operatorCtx, []targetDestroyInventory{{Target: negative.Target}}, nil, true)
+	if negBuildErr != nil {
+		t.Fatal(negBuildErr)
+	}
+	negCtx, negErr := withInstallationApplicationScopes(withProviderChangeConsent(operatorCtx, nil), negativePlan)
+	if negErr == nil {
+		t.Fatal("installation.destroy scope admitted without consent")
+	}
+	_ = negCtx
+	var failure *machine.Error
+	if !errors.As(negErr, &failure) || failure.CauseCode != "impact-confirmation-required" {
+		t.Fatalf("missing consent did not fail closed with impact-confirmation-required: %v", negErr)
+	}
+	t.Log("missing consent rejected with impact-confirmation-required")
 }
 
 // Observe only this fixture's resources before deferred cleanup removes them.
@@ -389,7 +465,7 @@ func runManagedProviderOnlyReadinessRegression(t *testing.T, ctx context.Context
 		resetCoreBootstrapFixtureApplication(t, cleanup)
 	}()
 	var output runtimeAcceptanceOutput
-	if err := runWithIO(coreBootstrapFixtureConsent(t, ctx), []string{"app", "apply"}, &output, &output); err != nil {
+	if err := runWithIOAsTestOperator(coreBootstrapFixtureConsent(t, ctx), []string{"app", "apply"}, &output, &output); err != nil {
 		t.Fatalf("provider-only apply: %v\n%s", err, output.String())
 	}
 	resolved, err := resolveApplication(ctx, application.DefaultStore(), nil, "readiness regression")
@@ -415,7 +491,7 @@ func runManagedProviderOnlyReadinessRegression(t *testing.T, ctx context.Context
 		t.Fatalf("provider-only status: %+v %v", status, err)
 	}
 	output.Reset()
-	if err := runWithIO(ctx, []string{"app", "show", "--output", "json"}, &output, &output); err != nil {
+	if err := runWithIOAsTestOperator(ctx, []string{"app", "show", "--output", "json"}, &output, &output); err != nil {
 		t.Fatal(err)
 	}
 	var overview applicationOverview
@@ -423,7 +499,7 @@ func runManagedProviderOnlyReadinessRegression(t *testing.T, ctx context.Context
 		t.Fatalf("provider-only app show disagrees with READY: %+v %v", overview, err)
 	}
 	output.Reset()
-	if err := runWithIO(ctx, []string{"app", "doctor"}, &output, &output); err != nil {
+	if err := runWithIOAsTestOperator(ctx, []string{"app", "doctor"}, &output, &output); err != nil {
 		t.Fatalf("provider-only doctor: %v\n%s", err, output.String())
 	}
 	t.Log("Provider-only shared SQL: app show/status/doctor agree without any application-project container")
@@ -463,7 +539,7 @@ func runManagedReadinessAndBackupRegression(t *testing.T, ctx context.Context) {
 		resetCoreBootstrapFixtureApplication(t, cleanup)
 	}()
 	var output runtimeAcceptanceOutput
-	if err := runWithIO(coreBootstrapFixtureConsent(t, ctx), []string{"app", "apply"}, &output, &output); err != nil {
+	if err := runWithIOAsTestOperator(coreBootstrapFixtureConsent(t, ctx), []string{"app", "apply"}, &output, &output); err != nil {
 		runtime, runtimeErr := detectRuntimeForTarget(ctx, mustEffectiveTestTarget(t, ctx))
 		if runtimeErr == nil {
 			containers, _ := runtime.ListRuntimeContainers(ctx)
@@ -512,7 +588,7 @@ func runManagedReadinessAndBackupRegression(t *testing.T, ctx context.Context) {
 			t.Fatalf("overview disagrees with READY: %+v %v", overview, err)
 		}
 		var doctor runtimeAcceptanceOutput
-		if err := runWithIO(ctx, []string{"app", "doctor"}, &doctor, &doctor); err != nil {
+		if err := runWithIOAsTestOperator(ctx, []string{"app", "doctor"}, &doctor, &doctor); err != nil {
 			t.Fatalf("doctor after backup: %v\n%s", err, doctor.String())
 		}
 	}
@@ -524,7 +600,7 @@ func runManagedReadinessAndBackupRegression(t *testing.T, ctx context.Context) {
 	for _, name := range []string{"first", "second"} {
 		archive := filepath.Join(t.TempDir(), name+".bhbackup")
 		output.Reset()
-		if err := runWithIO(ctx, []string{"app", "backup", "--password-file", password, "--output", archive}, &output, &output); err != nil {
+		if err := runWithIOAsTestOperator(ctx, []string{"app", "backup", "--password-file", password, "--output", archive}, &output, &output); err != nil {
 			t.Fatalf("backup: %v\n%s", err, output.String())
 		}
 		info, err := os.Stat(archive)
@@ -566,7 +642,7 @@ func runGeneratedSecretDeliveryRegression(t *testing.T, ctx context.Context) {
 		resetCoreBootstrapFixtureApplication(t, cleanup)
 	}()
 	var output runtimeAcceptanceOutput
-	err = runWithIO(generatedCoreBootstrapFixtureConsent(t, ctx), []string{"up", "--yes"}, &output, &output)
+	err = runWithIOAsTestOperator(generatedCoreBootstrapFixtureConsent(t, ctx), []string{"up", "--yes"}, &output, &output)
 	var missing *machine.Error
 	if !errors.As(err, &missing) || missing.Code != machine.ErrorRequiredSecretMissing {
 		t.Fatalf("non-TTY first up must fail closed for missing secret: %v\n%s", err, output.String())
@@ -576,10 +652,10 @@ func runGeneratedSecretDeliveryRegression(t *testing.T, ctx context.Context) {
 	if err := os.WriteFile(secretPath, payload, 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := runWithIO(ctx, []string{"app", "secret", "set", "API_TOKEN", "--file", secretPath}, &output, &output); err != nil {
+	if err := runWithIOAsTestOperator(ctx, []string{"app", "secret", "set", "API_TOKEN", "--file", secretPath}, &output, &output); err != nil {
 		t.Fatalf("supply required managed secret: %v\n%s", err, output.String())
 	}
-	if err := runWithIO(coreBootstrapFixtureConsent(t, ctx), []string{"up", "--yes"}, &output, &output); err != nil {
+	if err := runWithIOAsTestOperator(coreBootstrapFixtureConsent(t, ctx), []string{"up", "--yes"}, &output, &output); err != nil {
 		t.Fatalf("resume generated application: %v\n%s", err, output.String())
 	}
 	status, err := collectApplicationStatus(ctx, application.DefaultStore(), nil)
@@ -671,7 +747,7 @@ func TestGeneratedBootstrapConsentRetainsCurrentIntent(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Chdir(root)
-	ctx := machineNoninteractiveContext(t.Context())
+	ctx := machineNoninteractiveContext(testOperatorContext(t.Context()))
 	beforeInitialization := coreBootstrapFixtureConsent(t, ctx)
 	consent := generatedCoreBootstrapFixtureConsent(t, ctx)
 	resolved, err := resolveApplication(ctx, application.Store{}, nil, "apply")
@@ -721,7 +797,7 @@ func resetCoreBootstrapFixtureApplication(t *testing.T, ctx context.Context) {
 	}
 	ack := &application.ProviderChangeConsent{PlanID: plan.Scope.PlanID, First: true, Second: true, DeleteData: true}
 	var out runtimeAcceptanceOutput
-	if err := runWithIO(withProviderChangeConsent(ctx, ack), []string{"app", "destroy", "--yes", "--full-reset"}, &out, &out); err != nil {
+	if err := runWithIOAsTestOperator(withProviderChangeConsent(ctx, ack), []string{"app", "destroy", "--yes", "--full-reset"}, &out, &out); err != nil {
 		t.Errorf("fixture reset failed; owner/source retained: %v\n%s", err, out.String())
 	}
 }

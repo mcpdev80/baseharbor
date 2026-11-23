@@ -195,13 +195,50 @@ func TestManagedReferenceIntegrationsAuditEveryObservabilitySignal(t *testing.T)
 	}
 }
 
-func TestObservabilityRequiresAdapterIsAuditedButNotCollectable(t *testing.T) {
-	signal := PostgreSQLIntegration.Observability.Signals[0]
-	if signal.Status != ObservabilityRequiresAdapter || signal.Mode != ObservabilityAdapter {
-		t.Fatalf("postgres metrics coverage = %#v", signal)
+// TestPostgreSQLAndValkeyMetricsAreNotRequiresAdapter documents the 0428-182 fix:
+// postgres and valkey declare NO collectable metrics signal because there is no
+// exporter, no compose service and no runtime metrics producer. Declaring them as
+// ObservabilityRequiresAdapter would promise an adapter realization that does not
+// exist (integration_contract.go:249 forces adapter realization for that status),
+// so the metrics signal is ObservabilityUnsupported and therefore not collectable.
+func TestPostgreSQLAndValkeyMetricsAreNotRequiresAdapter(t *testing.T) {
+	for _, descriptor := range []IntegrationDescriptor{PostgreSQLIntegration, ValkeyIntegration} {
+		var metricsSignal ProviderObservabilitySignal
+		for _, signal := range descriptor.Observability.Signals {
+			if signal.Kind == ObservabilityMetrics {
+				metricsSignal = signal
+			}
+		}
+		if metricsSignal.Status != ObservabilityUnsupported {
+			t.Fatalf("%s metrics status = %s, want ObservabilityUnsupported", descriptor.Provider.Kind, metricsSignal.Status)
+		}
+		if metricsSignal.Mode != "" {
+			t.Fatalf("%s metrics must carry no realization mode for status unsupported, got %q", descriptor.Provider.Kind, metricsSignal.Mode)
+		}
+		if metricsSignal.Protocol != "" {
+			t.Fatalf("%s metrics must carry no protocol for status unsupported, got %q", descriptor.Provider.Kind, metricsSignal.Protocol)
+		}
+		if metricsSignal.Verification != ObservabilityVerifyNone {
+			t.Fatalf("%s metrics must skip verification for status unsupported", descriptor.Provider.Kind)
+		}
+		if metricsSignal.Collectable() {
+			t.Fatalf("%s metrics must not be collectable", descriptor.Provider.Kind)
+		}
 	}
-	if signal.Collectable() {
-		t.Fatal("adapter-required provider signal was treated as collectable")
+}
+
+// TestPostgreSQLAndValkeyMetricsWithoutProducerFailCatalog is the 0428-182
+// regression: these two reference integrations have no metrics producer, so a
+// RequiresAdapter declaration would promise a producer that does not exist. Keep
+// the assertion scoped to those affected integrations; future adapter-backed
+// metrics may legitimately use RequiresAdapter once they have a real producer.
+func TestPostgreSQLAndValkeyMetricsWithoutProducerFailCatalog(t *testing.T) {
+	for _, descriptor := range []IntegrationDescriptor{PostgreSQLIntegration, ValkeyIntegration} {
+		for _, signal := range descriptor.Observability.Signals {
+			if signal.Kind == ObservabilityMetrics && signal.Status == ObservabilityRequiresAdapter {
+				t.Fatalf("%s metrics declares %s but has no metrics producer", descriptor.Provider.Kind, signal.Status)
+			}
+		}
 	}
 }
 

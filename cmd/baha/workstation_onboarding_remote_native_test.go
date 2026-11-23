@@ -36,12 +36,12 @@ func TestWorkstationOnboardingRemoteNativeInCI(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
 	defer cancel()
+	ctx = testOperatorContext(ctx)
 	ensureRuntimeIntegrationTrustPlane(t, ctx)
 	name := runtimeIntegrationTrustPlaneTargetName
 	if name == "" || !strings.HasPrefix(name, "w169-ci-bootstrap-") {
 		t.Fatalf("isolated Core fixture unavailable: %q", name)
 	}
-
 	t.Run("CoreReady", func(t *testing.T) {
 		provider, err := testruntime.Resolve(ctx)
 		if err != nil {
@@ -92,6 +92,15 @@ func TestWorkstationOnboardingRemoteNativeInCI(t *testing.T) {
 		if b.RuntimeProvider != kind || b.CoreURL == "" || b.CoreInstallationID == "" {
 			t.Fatalf("invitation does not identify the native Core and runtime")
 		}
+		// The remote Core runs app doctor for the later deployment, so its own
+		// local Target configuration must describe the operator-auth boundary.
+		// Configure this only after service readiness and invitation issuance:
+		// the isolated placeholder issuer is not available during Core startup.
+		if err := deployment.SetOperatorAuthForTargetEnvironment(name, "dev", deployment.OperatorAuthEnvironmentConfig{
+			Provider: "external-oidc", Issuer: "https://issuer.test", ClientID: "cli-test",
+		}); err != nil {
+			t.Fatalf("configure isolated operator-auth boundary on Core Target: %v", err)
+		}
 	})
 
 	// Switch to a fresh workstation state root; no Docker installation or
@@ -113,7 +122,7 @@ func TestWorkstationOnboardingRemoteNativeInCI(t *testing.T) {
 		t.Setenv("BASEHARBOR_STATE_DIR", workstationRoot)
 		t.Setenv("BASEHARBOR_TARGET", "")
 		var output bytes.Buffer
-		if err := runOnboardImport(ctx, []string{invitation}, &output); err != nil {
+		if err := runOnboardImport(testOperatorContext(ctx), []string{invitation}, &output); err != nil {
 			t.Fatalf("fresh workstation cannot enroll against the live Core: %v", err)
 		}
 		cfg, err := deployment.LoadConfig()
@@ -162,7 +171,7 @@ func TestWorkstationOnboardingRemoteNativeInCI(t *testing.T) {
 				// The server supplies the hash of its exact verified source, which
 				// is then explicitly confirmed by this CI automation.
 				var output, errorsOut bytes.Buffer
-				attempt := runWithIO(ctx, append([]string{"--no-input"}, args...), &output, &errorsOut)
+				attempt := runWithIOAsTestOperator(ctx, append([]string{"--no-input"}, args...), &output, &errorsOut)
 				var denied *machine.Error
 				if !errors.As(attempt, &denied) || denied.CauseCode != "candidate_confirmation_required" {
 					t.Fatalf("unconfirmed remote candidate was not refused with a typed consent challenge: %v", attempt)
@@ -174,8 +183,8 @@ func TestWorkstationOnboardingRemoteNativeInCI(t *testing.T) {
 				args = append(args, "--confirm-candidate", match[1])
 			}
 			var stdout, stderr bytes.Buffer
-			if err := runWithIO(ctx, append([]string{"--no-input"}, args...), &stdout, &stderr); err != nil {
-				t.Fatalf("remote CLI operation %v failed over the enrolled device: %v", args, err)
+			if err := runWithIOAsTestOperator(ctx, append([]string{"--no-input"}, args...), &stdout, &stderr); err != nil {
+				t.Fatalf("remote CLI operation %v failed over the enrolled device: %v\nstdout:\n%s\nstderr:\n%s", args, err, stdout.String(), stderr.String())
 			}
 			if len(args) > 1 && args[1] == "status" {
 				var observed application.StatusResult
@@ -225,7 +234,7 @@ func TestWorkstationOnboardingRemoteNativeInCI(t *testing.T) {
 		t.Chdir(workloadDir)
 		var stdout, stderr bytes.Buffer
 		destroyCtx := withApplicationInput(ctx, strings.NewReader("y\ny\n"))
-		if err := runWithIO(destroyCtx, []string{"app", "destroy", "onboard-native", "--yes"}, &stdout, &stderr); err != nil {
+		if err := runWithIOAsTestOperator(destroyCtx, []string{"app", "destroy", "onboard-native", "--yes"}, &stdout, &stderr); err != nil {
 			t.Fatalf("remote application destroy failed: %v\nstdout:\n%s\nstderr:\n%s", err, stdout.String(), stderr.String())
 		}
 		if _, err := deployment.LoadConfig(); err != nil {

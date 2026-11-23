@@ -10,12 +10,38 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/mcpdev80/baseharbor/internal/apierror"
 	"github.com/mcpdev80/baseharbor/internal/coreinstallation"
 	"github.com/mcpdev80/baseharbor/internal/targetaccess"
 	"go.yaml.in/yaml/v3"
 )
 
 const ConfigVersion = 1
+
+// Config sentinels. Re-exported from internal/apierror so callers that already
+// match them via errors.Is against the apierror package keep working; the
+// classify layer (internal/machine) recognizes the family from internal/apierror
+// without importing this higher-level package. The values are identical to the
+// apierror sentinels.
+var (
+	// ErrConfigMissing is returned when the configured BaseHarbor config root is
+	// populated (other BaseHarbor state files are present) but the authoritative
+	// config.yaml is absent. This is a misconfiguration the user must fix, never
+	// a silent empty default — a missing config under an active config root would
+	// otherwise make the daemon fall through to its implicit defaults. It belongs
+	// to the same "configured but unusable" family as ErrConfigEmpty (an existing
+	// but empty file).
+	ErrConfigMissing = apierror.ErrConfigMissing
+
+	// ErrConfigEmpty is returned when an existing config.yaml resolves but carries
+	// no loadable content (zero bytes or whitespace only). An existing file is a
+	// malformed configuration, never a clean absent-config default: the user
+	// pointed BaseHarbor at this path on purpose, so an emptied or untouched file
+	// must surface as an actionable error rather than silently falling through to
+	// the implicit defaults. It belongs to the ErrConfigMissing family so callers
+	// can treat "configured but unusable" the same way.
+	ErrConfigEmpty = apierror.ErrConfigEmpty
+)
 
 var targetTenantID = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
 
@@ -102,8 +128,25 @@ type ResolvedTarget struct {
 	DeploymentPolicy *TargetDeploymentPolicy `json:"deployment_policy,omitempty"`
 }
 
+// stateRootOverride returns the trimmed BASEHARBOR_STATE_DIR value: the
+// authoritative isolated state root that owns all selection and registration
+// state for the invocation.
+func stateRootOverride() string {
+	return strings.TrimSpace(os.Getenv("BASEHARBOR_STATE_DIR"))
+}
+
+// StateRootSelected reports whether BASEHARBOR_STATE_DIR selects a dedicated
+// isolated installation root for this invocation. An isolated installation
+// cannot discover or rewrite the normal user's Target selection, and the
+// selection layers it owns — the persisted activation and its own
+// organization state — live exclusively below that root (BF-01, h-d28 akte;
+// docs/explanation/targets.md).
+func StateRootSelected() bool {
+	return stateRootOverride() != ""
+}
+
 func ConfigPath() (string, error) {
-	if root := strings.TrimSpace(os.Getenv("BASEHARBOR_STATE_DIR")); root != "" {
+	if root := stateRootOverride(); root != "" {
 		return filepath.Join(root, "config", "config.yaml"), nil
 	}
 	if root := strings.TrimSpace(os.Getenv("XDG_CONFIG_HOME")); root != "" {
@@ -116,8 +159,32 @@ func ConfigPath() (string, error) {
 	return filepath.Join(home, ".config", "baseharbor", "config.yaml"), nil
 }
 
+// TargetSelectionRoot returns the directory that owns the persisted Target
+// selection (the `active-target` file). BASEHARBOR_STATE_DIR is the
+// authoritative isolated installation root: with it set, the selection
+// resolves below that root — beside the Target configuration it chooses
+// between — and the selection state of any other installation is never read
+// or written (BF-01, h-d28 akte; docs/explanation/targets.md: an isolated
+// installation cannot discover or rewrite the normal user's Target
+// selection). Without the override the selection is the user-wide activation
+// it has always been, resolving through the same XDG/user precedence as the
+// configuration file.
+func TargetSelectionRoot() (string, error) {
+	if root := stateRootOverride(); root != "" {
+		return filepath.Join(root, "config"), nil
+	}
+	if root := strings.TrimSpace(os.Getenv("XDG_CONFIG_HOME")); root != "" {
+		return filepath.Join(root, "baseharbor"), nil
+	}
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return "", errors.New("cannot determine BaseHarbor config directory")
+	}
+	return filepath.Join(home, ".config", "baseharbor"), nil
+}
+
 func DataRoot() (string, error) {
-	if root := strings.TrimSpace(os.Getenv("BASEHARBOR_STATE_DIR")); root != "" {
+	if root := stateRootOverride(); root != "" {
 		return filepath.Clean(root), nil
 	}
 	if root := strings.TrimSpace(os.Getenv("XDG_DATA_HOME")); root != "" {
@@ -155,25 +222,34 @@ func LoadConfig() (Config, error) {
 		return Config{}, err
 	}
 	data, err := os.ReadFile(path)
-	if errors.Is(err, os.ErrNotExist) {
-		return Config{Version: ConfigVersion, Access: map[string]AccessDefinition{}, Targets: map[string]TargetDefinition{}}, nil
-	}
 	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			// A config the user believes exists but that this process cannot
+			// resolve is not a clean empty default: it is a configuration that
+			// is being silently ignored (BF-05). When the resolved config
+			// directory is populated by other BaseHarbor state files, the user
+			// clearly intends this to be their BaseHarbor config root, so a
+			// missing config.yaml here is a misconfiguration worth a loud,
+			// actionable error rather than a silent fall-through to the
+			// implicit default. An absent directory is still a clean no-config.
+			if dirExistsAndHasBaseharborState(filepath.Dir(path)) {
+				return Config{}, fmt.Errorf("%w: %s", ErrConfigMissing, path)
+			}
+			return Config{Version: ConfigVersion, Access: map[string]AccessDefinition{}, Targets: map[string]TargetDefinition{}}, nil
+		}
 		return Config{}, fmt.Errorf("read BaseHarbor config: %w", err)
+	}
+	if len(bytes.TrimSpace(data)) == 0 {
+		return Config{}, fmt.Errorf("%w: %s", ErrConfigEmpty, path)
 	}
 	cfg, err := decodeConfig(data)
 	if err != nil {
 		return Config{}, err
 	}
 	// Stable target identity migration: fill the missing TargetUID for any
-	// legacy Target and persist it exactly once. The write is idempotent — a
-	// second read finds no empty UID and performs no write — and it never moves
-	// Target data directories; only the missing config field is filled. A
-	// collision among the generated UIDs fails closed and persists nothing.
-	// Legacy Targets have no Core installation, so this uses a direct CAS
-	// read-modify-write on the protected configuration owner (no installation
-	// lock required) rather than SaveExpected's mutation framing.
-	return migrateAndPersistTargetUIDs(path, cfg, data)
+	// legacy Target and persist it exactly once using the protected config
+	// owner. The migration is idempotent and preserves target data locations.
+	return migrateAndPersistTargetUIDs(cfg, data)
 }
 
 // migrateAndPersistTargetUIDs fills the missing stable Target UID for any
@@ -184,7 +260,7 @@ func LoadConfig() (Config, error) {
 // untouched: target names, data directories and the ownership TenantID are not
 // modified. The write is a single CAS; a subsequent call with an already
 // migrated configuration performs no write at all.
-func migrateAndPersistTargetUIDs(path string, cfg Config, expected []byte) (Config, error) {
+func migrateAndPersistTargetUIDs(cfg Config, expected []byte) (Config, error) {
 	migrated, changed, err := MigrateLegacyTargetUIDs(cfg)
 	if err != nil {
 		return Config{}, err
@@ -192,64 +268,59 @@ func migrateAndPersistTargetUIDs(path string, cfg Config, expected []byte) (Conf
 	if len(changed) == 0 {
 		return cfg, nil
 	}
-	// Persist the migrated configuration exactly once via a direct CAS
-	// read-modify-write. Legacy Targets have no Core installation lock, so this
-	// bypasses SaveExpected's mutation framing and instead re-reads the file,
-	// re-applies the migration, and only writes if the on-disk content still
-	// matches what we read; a concurrent change fails closed and persists
-	// nothing. The write is idempotent: a second read finds no empty UID and
-	// performs no write at all.
-	return writeMigratedTargetUIDs(path, expected, migrated)
-}
-
-// writeMigratedTargetUIDs atomically persists the migrated configuration at
-// path. path is the protected configuration owner; expected is the exact raw
-// owner bytes already read, used for the compare-and-swap. It never moves Target
-// data directories; only the missing config fields are filled. An empty changed
-// set is a no-op.
-func writeMigratedTargetUIDs(path string, expected []byte, migrated Config) (Config, error) {
-	data, err := yaml.Marshal(migrated)
-	if err != nil {
-		return Config{}, fmt.Errorf("encode BaseHarbor config: %w", err)
-	}
-	if len(data) > 8<<20 {
-		return Config{}, errors.New("Target configuration exceeds the supported owner size")
-	}
-	// CAS guard: refuse if the file changed between our read and our write.
-	if expected != nil {
-		current, rerr := os.ReadFile(path)
-		if rerr != nil {
-			return Config{}, fmt.Errorf("read BaseHarbor config for UID migration: %w", rerr)
-		}
-		if !bytes.Equal(current, expected) {
-			return Config{}, ErrConfigurationChanged
-		}
-	}
-	tmp, err := os.CreateTemp(filepath.Dir(path), ".config-*")
-	if err != nil {
+	// Use the same protected owner, lifecycle lock, and byte-level CAS as every
+	// other configuration mutation. This prevents a read-time migration from
+	// replacing a concurrent user save with stale configuration.
+	if err := migrated.SaveExpected(expected); err != nil {
 		return Config{}, err
-	}
-	tmpName := tmp.Name()
-	defer os.Remove(tmpName)
-	if err := tmp.Chmod(0600); err != nil {
-		tmp.Close()
-		return Config{}, err
-	}
-	if _, err := tmp.Write(data); err != nil {
-		tmp.Close()
-		return Config{}, fmt.Errorf("write BaseHarbor config: %w", err)
-	}
-	if err := tmp.Sync(); err != nil {
-		tmp.Close()
-		return Config{}, err
-	}
-	if err := tmp.Close(); err != nil {
-		return Config{}, err
-	}
-	if err := os.Rename(tmpName, path); err != nil {
-		return Config{}, fmt.Errorf("replace BaseHarbor config: %w", err)
 	}
 	return migrated, nil
+}
+
+// dirExistsAndHasBaseharborState reports whether the user's BaseHarbor config
+// root is populated but the authoritative config.yaml is missing, so
+// LoadConfig can fail loud (BF-05) instead of silently falling through to the
+// implicit default. Two precise signals, no speculative climbing:
+//
+//  1. A config.yaml sits exactly one level up from where ConfigPath() looks.
+//     This is the XDG double-append that made the H-D28 repro fall silently
+//     through: XDG_CONFIG_HOME already targets the baseharbor config root, so
+//     ConfigPath() appends a second "/baseharbor" and never reads the user's
+//     file.
+//  2. The resolved config directory exists and already carries the deployment
+//     target marker (active-target) or the installation lock: the user's root
+//     is active for deployment, so a missing config.yaml is a misconfiguration.
+//
+// Only deployment markers count. active.json / an organization/ subtree is the
+// separate org-config system and must not, by itself, mark the deployment
+// config root as populated. Anything else (unrelated subdirs, sibling temp
+// directories) is ignored so a clean empty root stays a clean no-config.
+func dirExistsAndHasBaseharborState(dir string) bool {
+	// Signal 1: a config.yaml exactly one level up (XDG double-append).
+	parent := filepath.Dir(dir)
+	if parent != dir {
+		if info, err := os.Stat(parent); err == nil && info.IsDir() {
+			if entries, rerr := os.ReadDir(parent); rerr == nil {
+				for _, entry := range entries {
+					if entry.Name() == "config.yaml" {
+						return true
+					}
+				}
+			}
+		}
+	}
+	// Signal 2: the resolved config directory carries deployment-target state.
+	if info, err := os.Stat(dir); err == nil && info.IsDir() {
+		if entries, rerr := os.ReadDir(dir); rerr == nil {
+			for _, entry := range entries {
+				switch entry.Name() {
+				case "active-target", ".installation.lock":
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 func decodeConfig(data []byte) (Config, error) {

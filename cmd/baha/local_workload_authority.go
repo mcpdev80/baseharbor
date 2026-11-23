@@ -16,6 +16,7 @@ import (
 )
 
 type localInvocationKey struct{}
+type localApplicationIDKey struct{}
 type localWorkloadOperationKey struct{}
 
 func withLocalInvocation(ctx context.Context, transport string) context.Context {
@@ -23,7 +24,15 @@ func withLocalInvocation(ctx context.Context, transport string) context.Context 
 }
 
 func withoutLocalInvocation(ctx context.Context) context.Context {
-	return operatorauth.WithoutLocalRuntimeAuthority(withLocalInvocation(ctx, ""))
+	return withLocalInvocation(ctx, "")
+}
+
+// isLocalRuntimeAccessProvider reports a host-local Target access provider
+// form: the bare "local" alias or the runtime-specific "local-<runtime>"
+// name. The grant path still verifies the local engine below before it
+// trusts the invocation.
+func isLocalRuntimeAccessProvider(provider string) bool {
+	return provider == "local" || strings.HasPrefix(provider, "local-")
 }
 
 func localWorkloadScope(ctx context.Context, operation string) context.Context {
@@ -33,15 +42,16 @@ func localWorkloadScope(ctx context.Context, operation string) context.Context {
 	return context.WithValue(ctx, localWorkloadOperationKey{}, operation)
 }
 
-// This proof is read-only and invocation-local. Portable test/prod labels are
-// not authentication policy. A remote/HTTP/tenant/management boundary or an
-// explicit OIDC policy continues to require its existing verified principal.
-func verifiedLocalWorkloadAuthority(ctx context.Context, target, environment string) (operatorauth.LocalRuntimeAuthority, bool, error) {
+// The opaque grant is invocation-local and binds the runtime check to typed
+// operation and UID values. It protects against accidental internal misuse;
+// the local OS user remains the security boundary. Portable labels never
+// replace the existing remote/tenant/management/OIDC checks.
+func verifiedLocalWorkloadAuthority(ctx context.Context, target, environment string) (operatorauth.LocalOperationGrant, bool, error) {
 	return verifiedLocalWorkloadAuthorityWithRuntime(ctx, target, environment, detectRuntimeForTarget)
 }
 
-func verifiedLocalWorkloadAuthorityWithRuntime(ctx context.Context, target, environment string, resolve func(context.Context, deployment.ResolvedTarget) (bhruntime.RuntimeProvider, error)) (operatorauth.LocalRuntimeAuthority, bool, error) {
-	authority := operatorauth.LocalRuntimeAuthority{}
+func verifiedLocalWorkloadAuthorityWithRuntime(ctx context.Context, target, environment string, resolve func(context.Context, deployment.ResolvedTarget) (bhruntime.RuntimeProvider, error)) (operatorauth.LocalOperationGrant, bool, error) {
+	var authority operatorauth.LocalOperationGrant
 	transport, _ := ctx.Value(localInvocationKey{}).(string)
 	operation, _ := ctx.Value(localWorkloadOperationKey{}).(string)
 	if (transport != "cli" && transport != "stdio") || !operatorauth.LocalWorkloadOperation(operation) {
@@ -57,7 +67,18 @@ func verifiedLocalWorkloadAuthorityWithRuntime(ctx context.Context, target, envi
 	if err != nil {
 		return authority, false, err
 	}
-	if selected.Name != strings.TrimSpace(target) || (selected.AccessProvider != "" && selected.AccessProvider != "local") || selected.TenantID != "" {
+	if selected.Name != strings.TrimSpace(target) || selected.TenantID != "" {
+		return authority, false, nil
+	}
+	// Host-local Target access arrives in two shapes: the bare alias "local"
+	// and the runtime-specific "local-<runtime>" provider name the fixtures and
+	// registration commands record for "--access local-docker" (and its Podman
+	// sibling) when the local reference defaults the provider. Both stay
+	// host-local: the runtime probe below still decides whether this
+	// invocation actually owns the local engine, so accepting the name never
+	// widens the trust boundary. Remote and connector providers keep failing
+	// closed.
+	if selected.AccessProvider != "" && !isLocalRuntimeAccessProvider(selected.AccessProvider) {
 		return authority, false, nil
 	}
 	if _, found, err := deployment.OperatorAuthForTargetEnvironment(target, environment); err != nil {
@@ -108,20 +129,37 @@ func verifiedLocalWorkloadAuthorityWithRuntime(ctx context.Context, target, envi
 	if !localRuntimeEngine(provider) {
 		return authority, false, nil
 	}
-	if err := validateTargetDockerBinding(ctx, selected, provider, false); err != nil {
-		return authority, false, localRuntimeAuthorityUnavailable(err)
+	operationContract, ok := machine.OperationByID(operation)
+	if !ok {
+		return nil, false, nil
 	}
-	if provider.Kind() == bhruntime.ProviderPodman {
-		local, ok := provider.(interface{ VerifyLocalRuntimeAuthority(context.Context) error })
-		if !ok {
-			return authority, false, localRuntimeAuthorityUnavailable(errors.New("native local runtime observation is unavailable"))
-		}
-		if err := local.VerifyLocalRuntimeAuthority(ctx); err != nil {
-			return authority, false, localRuntimeAuthorityUnavailable(err)
-		}
+	environmentID, err := deployment.EnvironmentID(target, environment)
+	if err != nil {
+		return nil, false, err
 	}
-	authority = operatorauth.LocalRuntimeAuthority{Operation: operation, Target: target, Environment: environment, Runtime: string(provider.Kind())}
-	return authority, true, nil
+	applicationID, _ := ctx.Value(localApplicationIDKey{}).(string)
+	if applicationID == "" {
+		// Observation callers can report the runtime check but cannot issue a
+		// grant without a canonical application UID.
+		return nil, true, nil
+	}
+	grant, err := operatorauth.CheckLocalRuntimeGrant(operationContract, environmentID, applicationID, func() error {
+		if err := validateTargetDockerBinding(ctx, selected, provider, false); err != nil {
+			return err
+		}
+		if provider.Kind() == bhruntime.ProviderPodman {
+			local, ok := provider.(interface{ VerifyLocalRuntimeAuthority(context.Context) error })
+			if !ok {
+				return errors.New("native local runtime observation is unavailable")
+			}
+			return local.VerifyLocalRuntimeAuthority(ctx)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, false, localRuntimeAuthorityUnavailable(err)
+	}
+	return grant, true, nil
 }
 
 func localRuntimeEngine(provider bhruntime.RuntimeProvider) bool {

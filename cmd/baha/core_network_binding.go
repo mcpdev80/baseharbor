@@ -53,10 +53,24 @@ func inspectCoreDefaultNetworkBinding(ctx context.Context, target deployment.Res
 		// Existing Core-owned default networks remain unchanged. A matching
 		// native label without that protected owner must never be adopted.
 		if _, err := bhruntime.ExistingControlPlaneRuntimeInventory(filepath.Join(dataRoot, "runtime"), files.Project); err != nil {
-			return false, errors.New("existing native network lacks a protected Core or shared backend owner")
+			return false, coreDefaultNetworkBindingMissingOwnerMessage(err)
 		}
 	}
 	return false, nil
+}
+
+// coreDefaultNetworkBindingMissingOwnerMessage renders the guard's refusal when
+// an existing native default network has no verifiable protected Core runtime
+// inventory nor shared backend owner. It names BOTH halves of the missing
+// precondition, the check that verifies it (canonical protected owner shape),
+// and the user's next step, instead of only stating a precondition name. The
+// fail-closed refusal (a matching native label without a protected owner must
+// never be adopted) is unchanged; only the message is actionable.
+func coreDefaultNetworkBindingMissingOwnerMessage(err error) error {
+	if errors.Is(err, os.ErrNotExist) {
+		return errors.New("existing native network has no verifiable protected Core or shared backend owner: the Core's runtime inventory is missing at <target-state-root>/<project>/runtime (compose.yaml + .env matching the canonical protected owner shape) and no shared backend owner is recorded for this Target. Materialize the isolated Core with 'baha app start' (or the Core owner's apply) so its canonical control-plane inventory and shared backend owner exist, then retry the App Edit")
+	}
+	return errors.New("existing native network has no verifiable protected Core or shared backend owner: the native control-plane definition differs from its canonical protected owner shape (or the shared backend owner is absent). Reconcile the Core's compose.yaml/.env to the canonical protected owner via 'baha app start', then retry the App Edit")
 }
 
 func prepareCoreDefaultNetworkBinding(ctx context.Context, target deployment.ResolvedTarget, files bhruntime.Files) (bhruntime.Files, error) {

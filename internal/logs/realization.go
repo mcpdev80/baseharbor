@@ -163,18 +163,23 @@ func (r *runtimeLokiRealization) Existing(context.Context) (LokiInstance, error)
 }
 
 func (r *runtimeLokiRealization) RegisterSource(_ context.Context, source LogSource) error {
-	if strings.TrimSpace(source.Application) == "" || strings.TrimSpace(source.Environment) == "" ||
-		strings.TrimSpace(source.Service) == "" || source.Class == "" {
-		return errors.New("log source identity is incomplete")
+	if err := validateApplicationLogSource(r.app, source); err != nil {
+		return err
 	}
-	if source.Application != r.app.Name || source.Environment != r.app.Environment {
-		return errors.New("log source does not belong to realization application")
+	registration, err := r.applicationRegistration()
+	if err != nil {
+		return err
 	}
-	if source.Class != application.LogsSourceApplication {
-		return fmt.Errorf("runtime Loki application registration does not support source class %q", source.Class)
-	}
-	_, err := r.applicationRegistration()
-	return err
+	// The registry identity carries the same project the collector labels this
+	// workload's stream with: the renderers derive it from the persisted
+	// registration (render.go WorkloadProjectNameForNamespace over
+	// application/environment/namespace), never from the driver's namespace
+	// argument.
+	project := application.WorkloadProjectNameForNamespace(
+		application.New(registration.Application, registration.Environment, false, false, false),
+		registration.Namespace,
+	)
+	return ReconcileWorkloadLogSource(r.app, project, source.Service)
 }
 
 func (r *runtimeLokiRealization) VerifySource(ctx context.Context, source LogSource) error {
