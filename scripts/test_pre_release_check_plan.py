@@ -37,7 +37,13 @@ class ReleaseCheckPlanTests(unittest.TestCase):
         self.assertIn('v0.4.28', self.inventory['releases'])
         v0427 = {g['id'] for g in self.inventory['gates'] if 'v0.4.27' in g.get('required_for', [])}
         v0428 = {g['id'] for g in self.inventory['gates'] if 'v0.4.28' in g.get('required_for', [])}
-        self.assertEqual(v0428, {'atomic/static/ci-fast-check'})
+        # Carry note (fix 2026-11-23, coord precedent-gesichert): the v0.4.28 SET is
+        # {ci-fast-check, atomic/static/mcp}. atomic/static/mcp carries forward into every
+        # later release from the v0.4.27 base via the release loader's required_for carry;
+        # this PR moves no other gate and changes no other requirement. The v0.4.28
+        # requirement itself remains; the executor decision (how static gates dispatch)
+        # is settled separately in the suite workflow and asserted on its line below.
+        self.assertEqual(v0428, {'atomic/static/ci-fast-check', 'atomic/static/mcp'})
         self.assertTrue({'atomic/docker/failure'} & v0427)
         selected = plan.select(self.inventory, 'v0.4.28', 'atomic/static/ci-fast-check')
         self.assertEqual(['ci-fast-check'], selected['static'])
