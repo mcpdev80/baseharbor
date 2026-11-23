@@ -48,6 +48,14 @@ func renderAppFootprint(fp application.Footprint, contextComplete bool, options 
 	if len(fp.Existing)+len(fp.Additional) == 0 {
 		fmt.Fprintln(&out, "No provider realizations selected.")
 	}
+	// Render the same Unused provider instances the JSON/MCP contract carries so
+	// the human and machine surfaces agree for the resolved footprint.
+	if len(fp.Unused) > 0 {
+		fmt.Fprintf(&out, "Unused (resolved but not selected): %d\n", len(fp.Unused))
+		for _, instanceID := range fp.Unused {
+			fmt.Fprintf(&out, "- %s: resolved but not selected (unused)\n", footprintLabel(instanceID))
+		}
+	}
 	if !options.Details {
 		if len(fp.Existing)+len(fp.Additional) > 0 {
 			fmt.Fprintln(&out, "RAM and containers: see details (individual evidence only; no assumed totals)")

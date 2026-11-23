@@ -16,7 +16,6 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/coreinstallation"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
-	"github.com/mcpdev80/baseharbor/internal/identity"
 	"github.com/mcpdev80/baseharbor/internal/identityprovider"
 	"github.com/mcpdev80/baseharbor/internal/operatorauth"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
@@ -36,15 +35,8 @@ func TestInstallationDestroyCurrentChildrenInterruptedVolumeAndRetry(t *testing.
 	}
 	t.Cleanup(func() { cleanupInstallationDestroyNativeFixture(t, kind) })
 	var out bytes.Buffer
-	operator := &identity.Principal{
-		Issuer:         "https://issuer.example",
-		Subject:        "installation-destroy-operator",
-		IssuerVerified: true,
-		Groups:         []string{"editor"},
-	}
-	ctx = operatorauth.WithEnforcement(ctx)
-	ctx = operatorauth.WithVerifiedPrincipal(ctx, operator)
-	ctx = operatorauth.WithMembershipProvider(ctx, &readGrantingMembershipProvider{})
+	operator := operatorauth.TestPrincipal("https://issuer.example", "installation-destroy-operator")
+	ctx = operatorauth.WithVerifiedTestOperatorPrincipalIfAbsent(ctx, operator)
 	// Register this fresh local target as an authenticated operator. The local
 	// runtime authority used by later workload operations does not authorize
 	// target.create, which remains an operator-only management operation.

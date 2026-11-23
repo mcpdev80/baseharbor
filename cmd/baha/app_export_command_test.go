@@ -15,7 +15,6 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/applicationsecret"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/devaccess"
-	"github.com/mcpdev80/baseharbor/internal/identity"
 	"github.com/mcpdev80/baseharbor/internal/operatorauth"
 )
 
@@ -367,14 +366,8 @@ func (f *appExportSecretReaderFake) GetMany(_ context.Context, _ string, keys []
 }
 
 func appExportAuthorizedTestContext() context.Context {
-	ctx := operatorauth.WithEnforcement(context.Background())
-	ctx = operatorauth.WithVerifiedPrincipal(ctx, &identity.Principal{
-		Issuer:         "https://issuer.example",
-		Subject:        "export-operator",
-		Groups:         []string{"editor"},
-		IssuerVerified: true,
-	})
-	return operatorauth.WithMembershipProvider(ctx, readGrantingMembershipProvider{})
+	return operatorauth.WithVerifiedTestOperatorPrincipalForced(context.Background(),
+		operatorauth.TestPrincipal("https://issuer.example", "export-operator"))
 }
 
 // appExportFixtureContext composes the operator-authentication fixture that
@@ -390,14 +383,8 @@ func appExportAuthorizedTestContext() context.Context {
 // operator for the managed-secret source, so a non-human verified principal
 // fails closed there with the operator-authentication denial.
 func appExportFixtureContext(transport string) context.Context {
-	ctx := operatorauth.WithEnforcement(context.Background())
-	ctx = operatorauth.WithVerifiedPrincipal(ctx, &identity.Principal{
-		Issuer:         "https://export-fixture.invalid",
-		Subject:        "export-fixture-operator",
-		Groups:         []string{"editor"},
-		IssuerVerified: true,
-	})
-	ctx = operatorauth.WithMembershipProvider(ctx, &readGrantingMembershipProvider{})
+	ctx := operatorauth.WithVerifiedTestOperatorPrincipalForced(context.Background(),
+		operatorauth.TestPrincipal("https://export-fixture.invalid", "export-fixture-operator"))
 	return localWorkloadScope(
 		withLocalInvocation(ctx, transport),
 		applicationBoundaryOperation("export"))
