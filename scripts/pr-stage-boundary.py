@@ -14,14 +14,22 @@ CORELESS_LIFECYCLE_GATES = {
     "integration/docker/coreless-lifecycle",
     "integration/podman/coreless-lifecycle",
 }
+# Release-only STATIC gate under the atomic tier whose executable check runs at
+# release/qualify time, NOT inside the PR. The stage boundary classifies it as a
+# DEFERRED release-only gate (like CROSS_REPO_STATIC): it is selected, never
+# emitted as PR-executed, and pulled out of the PR-executed list so failure
+# injection keeps rejecting invented gates. Every other atomic/static-shaped
+# name stays unclassified. No PR-executed class exists for it and none is
+# created: its only executor is the release/qualify native runtime
+# (pre-release.yml:663 static_gates, see the comment in
+# pr-required-final.py for the matching deferred allow-list).
+ATOMIC_STATIC_DEFERRED_RELEASE_ONLY = ("atomic/static/mcp",)
 # Release-only STATIC gates under the atomic tier (e.g.
 # atomic/static/shell-ux, atomic/static/ci-fast-check) run their executable
 # check inside the PR itself. The stage boundary must classify them as
 # PR-executed static gates: they are selected, never deferred. Only the exact
 # gate ids listed here are PR-executed; every other atomic/static-shaped name
 # stays unclassified so failure injection keeps rejecting invented gates.
-# This changes nothing for native/runtime acceptance or for the deferred
-# cross-repo static integration.
 ATOMIC_STATIC_PR_EXECUTED_GATES = (
     "atomic/static/shell-ux",
     "atomic/static/ci-fast-check",
@@ -46,7 +54,8 @@ def stage(plan):
     for gate in gates:
         parts = gate.split("/")
         if gate not in (CROSS_REPO_STATIC, *CORELESS_LIFECYCLE_GATES,
-                        *ATOMIC_STATIC_PR_EXECUTED_GATES) and not (
+                        *ATOMIC_STATIC_PR_EXECUTED_GATES,
+                        *ATOMIC_STATIC_DEFERRED_RELEASE_ONLY) and not (
             len(parts) == 3 and parts[0] == "atomic" and parts[1] in ("docker", "podman")
         ):
             raise ValueError("unclassified gate cannot be deferred: " + gate)
@@ -55,9 +64,18 @@ def stage(plan):
         raise ValueError("invalid consumer dependency graph")
     # Atomic runtime and Coreless gates have real PR executors. Deferring them
     # would conceal successful native evidence and contradict the final verifier.
-    # Only the cross-repository static integration remains deferred.
-    selected = [gate for gate in gates if gate != CROSS_REPO_STATIC]
-    deferred = [gate for gate in gates if gate == CROSS_REPO_STATIC]
+    # The release-only atomic/static gates (mcp) and the cross-repository static
+    # integration are deferred: recorded, never reported as passed, and fulfilled
+    # by develop/release acceptance. mcp has no PR-executed class; its only
+    # executor is the release/qualify native runtime
+    # (pre-release.yml:663 -> pre-release-runtime-suite.yml:267,
+    # GATE=mcp runs tests/mcp/run.sh), so it stays out of the PR-executed
+    # list exactly like the cross-repo gate below.
+    deferred = [
+        gate for gate in gates
+        if gate == CROSS_REPO_STATIC or gate in ATOMIC_STATIC_DEFERRED_RELEASE_ONLY
+    ]
+    selected = [gate for gate in gates if gate not in deferred]
     output = dict(plan)
     output["deferred_integration_gates"] = deferred
     output["deferred_consumer_dependencies"] = list(deps)
