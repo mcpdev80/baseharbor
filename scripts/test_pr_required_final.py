@@ -92,6 +92,28 @@ class FinalChecks(unittest.TestCase):
         self.plan['deferred_integration_gates'].append('integration/unknown')
         self.assertTrue(final.verify(self.plan, self.needs))
 
+    def test_shell_ux_static_gate_executes_through_focused_job(self):
+        # card 0428-208/#1746 (INGRESS base policy): atomic/static/* focused gates
+        # (e.g. atomic/static/shell-ux) execute through the PR · Focused Python job.
+        self.plan['selected_gates'] = ['atomic/static/shell-ux']
+        # Without pr_focused succeeding it blocks; with it it passes.
+        self.needs['pr_focused'] = {'result': 'failure'}
+        self.assertTrue(final.verify(self.plan, self.needs))
+        self.needs['pr_focused'] = {'result': 'success'}
+        self.assertEqual([], final.verify(self.plan, self.needs))
+        self.needs['pr_focused'] = {'result': 'skipped'}
+        self.assertTrue(final.verify(self.plan, self.needs))
+
+    def test_generic_static_class_gate_executes_through_focused_job(self):
+        # The static-class mapping is general, not shell-ux-specific: any
+        # atomic/static/* focused gate (e.g. atomic/static/ci-fast-check) runs in
+        # the focused job. This mirrors the atomic/{docker,podman} mapping precedent.
+        self.plan['selected_gates'] = ['atomic/static/ci-fast-check']
+        self.needs['pr_focused'] = {'result': 'failure'}
+        self.assertTrue(final.verify(self.plan, self.needs))
+        self.needs['pr_focused'] = {'result': 'success'}
+        self.assertEqual([], final.verify(self.plan, self.needs))
+
     def test_unknown_empty_unresolved_and_stale_are_not_success(self):
         for change in ({'selected_gates': ['ha/docker/data']},
                        {'required_validation_checks': []},

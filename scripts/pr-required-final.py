@@ -16,6 +16,17 @@ CORELESS_LIFECYCLE_GATES = {
     'integration/docker/coreless-lifecycle',
     'integration/podman/coreless-lifecycle',
 }
+# card 0428-208/#1746 (INGRESS base policy): the atomic/static/* focused gates
+# (e.g. atomic/static/shell-ux, atomic/static/ci-fast-check) run their executable
+# check inside the PR itself. See the classification at
+# pr-stage-boundary.py:ATOMIC_STATIC_PR_EXECUTED_GATES -- the stage boundary marks
+# these as PR-executed, never deferred. This maps them to the focused validation
+# job so the required-checks pass. Every other atomic/static-shaped name stays
+# unclassified, so failure injection keeps rejecting invented gates.
+ATOMIC_STATIC_FOCUSED_GATES = frozenset({
+    'atomic/static/shell-ux',
+    'atomic/static/ci-fast-check',
+})
 
 
 def verify(base_plan, needs, *, head=None, integration=None):
@@ -65,6 +76,11 @@ def verify(base_plan, needs, *, head=None, integration=None):
             required.add('pr_public_contracts')
         elif gate in CORELESS_LIFECYCLE_GATES:
             pass
+        elif gate in ATOMIC_STATIC_FOCUSED_GATES:
+            # static focused gates run inside the PR via the Focused Python job
+            # (mirrors the atomic/{docker,podman} mapping above and the
+            # stage-boundary PR-executed classification).
+            required.add('pr_focused')
         else:
             errors.append('selected gate has no workflow executor: ' + gate)
     if 'pr_runtime_selected' in required or 'pr_public_contracts' in required:
