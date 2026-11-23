@@ -262,8 +262,9 @@ func TestPersesLokiAndTempoQueriesUseEmittedAttributes(t *testing.T) {
 // assertValidPromQL asserts the Prometheus selector is syntactically valid: it
 // must be closed with '}' and carry only name="value" matchers, which is exactly
 // what a real Prometheus parser rejects otherwise (the r1 trailing-token and
-// r2 missing-brace findings). The real Prometheus PromQL parser witness lives in
-// perses_dashboards_promql_test.go (build-tagged `promqlparser`).
+// r2 missing-brace findings). The removed build-tagged real Prometheus parser
+// witness (the promqlparser tag was never wired into go.mod) is gone; Route b
+// covers r1/r2 here with the default-build assertValidPromQL heuristic instead.
 func assertValidPromQL(t *testing.T, key, query string) {
 	t.Helper()
 	if err := checkClosedPromQLSelector(query); err != nil {
@@ -318,10 +319,10 @@ func assertDashboardDefinesVariables(t *testing.T, key string) {
 
 // TestPersesInvalidTrailingMatcherIsRejected is the negative witness for the
 // r1 and r2 findings. The closed-brace / name="value"-matcher heuristic in
-// assertValidPromQL must reject both the missing-brace and the trailing-token
-// shapes, proving the regression is covered without the parser dependency. Under
-// the `promqlparser` build tag, perses_dashboards_promql_test.go adds a real
-// Prometheus parser witness for the same two shapes.
+// assertValidPromQL rejects both the missing-brace and the trailing-token
+// shapes, proving the regression is covered without the parser dependency. The
+// removed build-tagged real Prometheus parser witness (the promqlparser tag was
+// never wired into go.mod) stands in for the same two shapes.
 func TestPersesInvalidTrailingMatcherIsRejected(t *testing.T) {
 	t.Helper()
 	missingBrace := `up{job="baseharbor-applications",baseharbor_application="$application",baseharbor_environment="$env"`

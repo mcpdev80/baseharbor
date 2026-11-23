@@ -1470,12 +1470,6 @@
       "runtime_specific": true
     },
     {
-      "id": "source.internal.metrics.perses.dashboards.promql.test.go",
-      "path": "internal/metrics/perses_dashboards_promql_test.go",
-      "surfaces": ["source.gate.atomic.docker.observability", "source.gate.atomic.podman.observability"],
-      "runtime_specific": true
-    },
-    {
       "id": "source.internal.metrics.perses.dashboards.0428-076.native.test.go",
       "path": "internal/metrics/perses_dashboards_0428-076_native_test.go",
       "surfaces": ["source.gate.atomic.docker.observability", "source.gate.atomic.podman.observability"],
