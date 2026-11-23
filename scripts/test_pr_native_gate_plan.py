@@ -150,7 +150,6 @@ class NativeGatePlanTests(unittest.TestCase):
             'internal/metrics/perses_dashboards.go',
             'internal/metrics/perses_dashboards_helpers.go',
             'internal/metrics/perses_dashboards_test.go',
-            'internal/metrics/perses_dashboards_promql_test.go',
             'internal/metrics/perses_dashboards_0428-076_native_test.go',
         )
         surfaces = {'source.gate.atomic.docker.observability',
