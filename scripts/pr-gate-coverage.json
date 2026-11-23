@@ -1834,8 +1834,26 @@
       ]
     },
     {
-      "id": "internal.operatorauth.local.runtime.go",
+      "id": "internal.operatorauth.local_runtime.go",
       "path": "internal/operatorauth/local_runtime.go",
+      "runtime_specific": true,
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
+      "id": "internal.operatorauth.local_runtime_test.go",
+      "path": "internal/operatorauth/local_runtime_test.go",
+      "runtime_specific": true,
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
+      "id": "cmd.baha.control_plane_single_native_ci_test.go",
+      "path": "cmd/baha/control_plane_single_native_ci_test.go",
       "runtime_specific": true,
       "surfaces": [
         "source.gate.atomic.docker.data.capabilities",
