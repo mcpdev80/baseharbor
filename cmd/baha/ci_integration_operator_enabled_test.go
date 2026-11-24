@@ -545,3 +545,157 @@ func TestCIIntegrationOperatorAllowsOnlyObservabilityLogProbe(t *testing.T) {
 		t.Fatal("observability log probe received an operator in another selected gate")
 	}
 }
+
+func TestCIIntegrationOperatorAdmitsFiveCoreFixtureFormsOnlyOnConsumerGate(t *testing.T) {
+	// Card 0428-250: five exact, managed/inspection command forms stamp the
+	// synthetic operator ONLY on the single consumer gate that invokes them, and
+	// stay fail-closed everywhere else. Each form is gate-scoped, so the same
+	// exact form on any other gate must NOT reach the operator.
+	type formCase struct {
+		name string
+		gate string
+		args []string
+	}
+	cases := []formCase{
+		{"config organization set", "policy", []string{"config", "organization", "set", "--source", "local", "--location", "$ARTIFACT_DIR/policy-organization", "--environment", "dev", "-o", "json"}},
+		{"policy explain", "policy", []string{"policy", "explain"}},
+		{"policy explain -e dev", "policy", []string{"policy", "explain", "-e", "dev"}},
+		{"app inspect .", "connectivity", []string{"app", "inspect", "."}},
+		{"app inspect . -o json", "connectivity", []string{"app", "inspect", ".", "-o", "json"}},
+		{"target -o json", "reconciliation", []string{"target", "-o", "json"}},
+		{"target --output json", "reconciliation", []string{"target", "--output", "json"}},
+		{"app list --all-targets", "full-destroy", []string{"app", "list", "--all-targets"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("DEMO_ATOMIC_GATE", "1")
+			t.Setenv("BASEHARBOR_TEST_RUNTIME", "docker")
+			t.Setenv("GATE", tc.gate)
+			t.Setenv("BASEHARBOR_DEMO_OPERATOR_GATE", tc.gate)
+			artifacts := t.TempDir()
+			t.Setenv("ARTIFACT_DIR", artifacts)
+			args := tc.args
+			// The config organization set form passes the exact, disposable
+			// artifact config root as its --location. The real shell expands
+			// $ARTIFACT_DIR before Go sees the args, so resolve it here against
+			// the test's ARTIFACT_DIR instead of a literal shell variable.
+			if tc.name == "config organization set" {
+				args = []string{"config", "organization", "set", "--source", "local", "--location", filepath.Join(artifacts, "policy-organization"), "--environment", "dev", "-o", "json"}
+			}
+			target := configureIsolatedEmptyRuntimeTarget(t, "atomic-docker-"+tc.gate, "docker")
+			t.Setenv("BASEHARBOR_TARGET", target.Name)
+			if err := registerInstallationForTarget(t, target.Name); err != nil {
+				t.Fatalf("register %s Core fixture: %v", tc.gate, err)
+			}
+			if !ciIntegrationManagedLocalGate(args, target) {
+				t.Fatalf("canonical %v was not admitted on its consumer gate %q", args, tc.gate)
+			}
+			if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), args)); !ok {
+				t.Fatalf("canonical %v did not receive its scoped operator on gate %q", args, tc.gate)
+			}
+		})
+	}
+
+	// Negative: each admitted exact form on the WRONG consumer gate must not be
+	// admitted and must not reach the operator (fail-closed preserved).
+	wrongGateForms := []struct {
+		name  string
+		args  []string
+		wrong string
+	}{
+		{"config organization set on connectivity", []string{"config", "organization", "set", "--source", "local", "--location", "$ARTIFACT_DIR/policy-organization", "--environment", "dev", "-o", "json"}, "connectivity"},
+		{"policy explain on full-destroy", []string{"policy", "explain"}, "full-destroy"},
+		{"app inspect . on policy", []string{"app", "inspect", "."}, "policy"},
+		{"target -o json on policy", []string{"target", "-o", "json"}, "policy"},
+		{"app list --all-targets on connectivity", []string{"app", "list", "--all-targets"}, "connectivity"},
+	}
+	for _, tc := range wrongGateForms {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("DEMO_ATOMIC_GATE", "1")
+			t.Setenv("BASEHARBOR_TEST_RUNTIME", "docker")
+			t.Setenv("GATE", tc.wrong)
+			t.Setenv("BASEHARBOR_DEMO_OPERATOR_GATE", tc.wrong)
+			artifacts := t.TempDir()
+			t.Setenv("ARTIFACT_DIR", artifacts)
+			args := tc.args
+			// Resolve the artifact config root so this negative is meaningful:
+			// a broken (gate-independent) matcher would admit the exact form.
+			if tc.name == "config organization set on connectivity" {
+				args = []string{"config", "organization", "set", "--source", "local", "--location", filepath.Join(artifacts, "policy-organization"), "--environment", "dev", "-o", "json"}
+			}
+			target := configureIsolatedEmptyRuntimeTarget(t, "atomic-docker-"+tc.wrong, "docker")
+			t.Setenv("BASEHARBOR_TARGET", target.Name)
+			if err := registerInstallationForTarget(t, target.Name); err != nil {
+				t.Fatalf("register %s Core fixture: %v", tc.wrong, err)
+			}
+			if ciIntegrationManagedLocalGate(args, target) {
+				t.Errorf("form %v was admitted on the wrong gate %q (gate-scoping broken)", args, tc.wrong)
+			}
+			if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), args)); ok {
+				t.Errorf("form %v reached a scoped operator on the wrong gate %q", args, tc.wrong)
+			}
+		})
+	}
+
+	// Negative: mutating / noncanonical / non-artifact forms stay fail-closed on
+	// their consumer gate, preserving the unchanged OIDC default. Each config
+	// organization set variant here is a MUTATION variant that must be refused:
+	// location outside the isolated ARTIFACT_DIR/policy-organization root, or a
+	// source other than local, or an extra positional argument.
+	artifacts := t.TempDir()
+	t.Setenv("ARTIFACT_DIR", artifacts)
+	for _, args := range [][]string{
+		{"config", "organization", "set", "--source", "local", "--location", "/home/real/policy-organization", "--environment", "dev", "-o", "json"},
+		{"config", "organization", "set", "--source", "git", "--location", filepath.Join(artifacts, "policy-organization"), "--environment", "dev", "-o", "json"},
+		{"config", "organization", "set", "--source", "local", "--location", filepath.Join(artifacts, "policy-organization"), "--environment", "dev", "-o", "json", "--yes"},
+		{"config", "organization", "show", "--environment", "dev"},
+		{"policy", "check", "-e", "dev"},
+		{"app", "inspect", ".."},
+		{"app", "inspect", ".", "--verbose"},
+		{"app", "inspect", ".", "-o", "text"},
+		{"target", "--json"},
+		{"target", "list"},
+		{"app", "list"},
+		{"app", "list", "--all-targets", "--json"},
+	} {
+		t.Setenv("DEMO_ATOMIC_GATE", "1")
+		t.Setenv("BASEHARBOR_TEST_RUNTIME", "docker")
+		t.Setenv("GATE", "policy")
+		t.Setenv("BASEHARBOR_DEMO_OPERATOR_GATE", "policy")
+		target := configureIsolatedEmptyRuntimeTarget(t, "atomic-docker-policy", "docker")
+		t.Setenv("BASEHARBOR_TARGET", target.Name)
+		if err := registerInstallationForTarget(t, target.Name); err != nil {
+			t.Fatalf("register policy Core fixture: %v", err)
+		}
+		if ciIntegrationManagedLocalGate(args, target) {
+			t.Errorf("form %v was admitted on the policy gate (fail-closed broken)", args)
+		}
+		if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), args)); ok {
+			t.Errorf("form %v reached a scoped operator on the policy gate (fail-closed broken)", args)
+		}
+	}
+
+	// Wrong-gate negative: a form ADMITTED on its consumer gate (policy explain
+	// on the policy gate) must NOT be admitted on a different gate. This
+	// exercises gate-scoping directly, complementing the wrong-gate table above.
+	t.Run("policy explain rejected on connectivity", func(t *testing.T) {
+		t.Setenv("DEMO_ATOMIC_GATE", "1")
+		t.Setenv("BASEHARBOR_TEST_RUNTIME", "docker")
+		t.Setenv("GATE", "connectivity")
+		t.Setenv("BASEHARBOR_DEMO_OPERATOR_GATE", "connectivity")
+		t.Setenv("ARTIFACT_DIR", t.TempDir())
+		target := configureIsolatedEmptyRuntimeTarget(t, "atomic-docker-connectivity", "docker")
+		t.Setenv("BASEHARBOR_TARGET", target.Name)
+		if err := registerInstallationForTarget(t, target.Name); err != nil {
+			t.Fatalf("register connectivity Core fixture: %v", err)
+		}
+		for _, args := range [][]string{{"policy", "explain"}, {"policy", "explain", "-e", "dev"}} {
+			if ciIntegrationManagedLocalGate(args, target) {
+				t.Errorf("policy explain admitted on the connectivity gate (gate-scoping broken): %v", args)
+			}
+			if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), args)); ok {
+				t.Errorf("policy explain reached a scoped operator on the connectivity gate: %v", args)
+			}
+		}
+	})
+}

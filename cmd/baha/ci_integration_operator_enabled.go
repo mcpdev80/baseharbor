@@ -178,6 +178,38 @@ func ciIntegrationManagedLocalGateReason(args []string, target deployment.Resolv
 	if !managedWorkload && gate == "observability" && ciIntegrationObservabilityLogProbe(args) {
 		managedWorkload = true
 	}
+	// The identity and security acceptance gates drive the canonical read-only
+	// fixture probe `baha app exec demo-app <shell>` inside the managed demo
+	// workload to verify its OIDC service bindings. `app exec` is a registered
+	// (mutating-class) machine operation, so without this admission it falls
+	// through to the interactive OIDC operator-auth boundary and the tagged CI
+	// binary never reaches the readiness probe. Admit only the exact canonical
+	// `app exec demo-app` prefix on the two consumer gates, and never any other
+	// command, flag, or fixture application: the fail-closed operator-auth
+	// boundary for every other form stays untouched.
+	if !managedWorkload && (gate == "identity" || gate == "security") && ciIntegrationAppExecFixtureDemoApp(args) {
+		managedWorkload = true
+	}
+	// The acceptance gates exercise a handful of additional CLI forms that the
+	// synthetic operator must stamp instead of falling through to interactive
+	// OIDC. Admit each form ONLY on the single consumer gate that invokes it,
+	// via exact command match AND gate-scope, so the blast radius stays minimal
+	// and every other command keeps the unchanged OIDC fail-closed path.
+	if !managedWorkload && gate == "policy" && ciIntegrationConfigOrganizationSet(args) {
+		managedWorkload = true
+	}
+	if !managedWorkload && gate == "policy" && ciIntegrationPolicyExplain(args) {
+		managedWorkload = true
+	}
+	if !managedWorkload && gate == "connectivity" && ciIntegrationAppInspectDot(args) {
+		managedWorkload = true
+	}
+	if !managedWorkload && gate == "reconciliation" && ciIntegrationTargetOutputJSON(args) {
+		managedWorkload = true
+	}
+	if !managedWorkload && gate == "full-destroy" && ciIntegrationAppListAllTargets(args) {
+		managedWorkload = true
+	}
 	// Root doctor inspects the control plane and is authorized as
 	// control-plane.doctor, not as an app-bound local workload operation. The
 	// disposable acceptance gate may use its synthetic operator only for the
@@ -301,6 +333,112 @@ func ciIntegrationConfigureStatusOperatorBoundary(target string) error {
 
 func ciIntegrationObservabilityLogProbe(args []string) bool {
 	return len(args) == 3 && args[0] == "app" && args[1] == "logs" && args[2] == "demo-app"
+}
+
+// ciIntegrationAppExecFixtureDemoApp admits the exact, canonical read-only
+// fixture probe `baha app exec demo-app <shell>` used by the identity and
+// security acceptance gates to verify the managed workload's OIDC service
+// bindings. `app exec` is a registered (mutating-class) machine operation, so
+// this admission lets the tagged CI operator stamp it on the two consumer
+// gates instead of falling through to the interactive OIDC boundary.
+// Matching is deliberately strict: only the `app exec demo-app` prefix with the
+// fixture application name and a following shell/command token is admitted; any
+// empty form, leading baha-level flag, different application, or second
+// component selection stays outside the synthetic operator and fails closed.
+func ciIntegrationAppExecFixtureDemoApp(args []string) bool {
+	if len(args) < 4 || args[0] != "app" || args[1] != "exec" || args[2] != "demo-app" {
+		return false
+	}
+	// The 4th token is the workload shell/command; a baha-level flag here (a
+	// different component selector, --cmd, --json, ...) must stay fail-closed.
+	if strings.HasPrefix(args[3], "-") {
+		return false
+	}
+	return true
+}
+
+// ciIntegrationConfigOrganizationSet admits `baha config organization set` on
+// the policy gate ONLY when its --location points at the disposable, per-run
+// artifact config root ($ARTIFACT_DIR/policy-organization). That exact location
+// is provably throwaway (a temp fixture directory that never persists real
+// organization configuration), so the operator stamping this command here
+// cannot mutate the developer's real org config. `config organization set`
+// genuinely mutates the organization configuration it loads, so admitting it
+// anywhere else - including without an exact, isolated --location - would widen
+// the managed-operator blast radius and is refused. Any other --source,
+// --location, --environment, extra flag, or missing ARTIFACT_DIR base stays
+// fail-closed on the OIDC path.
+func ciIntegrationConfigOrganizationSet(args []string) bool {
+	const locationPrefix = "policy-organization"
+	// config organization set --source LOCAL --location LOCATION --environment ENV [-o json|--output json]
+	switch {
+	case len(args) == 9 &&
+		args[0] == "config" && args[1] == "organization" && args[2] == "set" &&
+		args[3] == "--source" && args[4] == "local" && args[5] == "--location" &&
+		args[7] == "--environment" && args[8] == "json":
+	case len(args) == 11 &&
+		args[0] == "config" && args[1] == "organization" && args[2] == "set" &&
+		args[3] == "--source" && args[4] == "local" && args[5] == "--location" &&
+		args[7] == "--environment" &&
+		(args[9] == "-o" || args[9] == "--output") && args[10] == "json":
+	default:
+		return false
+	}
+	artifacts := strings.TrimSpace(os.Getenv("ARTIFACT_DIR"))
+	if artifacts == "" {
+		return false
+	}
+	return strings.HasSuffix(args[6], filepath.Join(artifacts, locationPrefix))
+}
+
+// ciIntegrationPolicyExplain admits the exact, read-only `baha policy explain`
+// form on the policy gate, with or without a single `-e <env>` deployment
+// context selector. It only explains effective policy, defaults and bounded
+// overrides. `policy check` stays outside the synthetic operator.
+func ciIntegrationPolicyExplain(args []string) bool {
+	switch {
+	case len(args) == 2 && args[0] == "policy" && args[1] == "explain":
+		return true
+	case len(args) == 4 && args[0] == "policy" && args[1] == "explain" && args[2] == "-e":
+		return true
+	default:
+		return false
+	}
+}
+
+// ciIntegrationAppInspectDot admits the exact read-only `baha app inspect .`
+// repository-inspection form on the connectivity gate, with or without a single
+// `-o json` output flag. Any other PATH, `--verbose`, `-o text`, or extra
+// argument stays fail-closed on the OIDC path.
+func ciIntegrationAppInspectDot(args []string) bool {
+	switch {
+	case len(args) == 3 && args[0] == "app" && args[1] == "inspect" && args[2] == ".":
+		return true
+	case len(args) == 5 &&
+		args[0] == "app" && args[1] == "inspect" && args[2] == "." &&
+		args[3] == "-o" && args[4] == "json":
+		return true
+	default:
+		return false
+	}
+}
+
+// ciIntegrationTargetOutputJSON admits the exact read-only `baha target`
+// inspection with a JSON output flag (`-o json` or `--output json`). Matched
+// only on the reconciliation gate; any other target subcommand or flag
+// combination stays fail-closed on the OIDC path.
+func ciIntegrationTargetOutputJSON(args []string) bool {
+	if len(args) != 3 || args[0] != "target" {
+		return false
+	}
+	return (args[1] == "-o" && args[2] == "json") || (args[1] == "--output" && args[2] == "json")
+}
+
+// ciIntegrationAppListAllTargets admits the exact read-only `baha list
+// --all-targets` inventory. Any other list flag or positional argument stays
+// outside the synthetic operator and fails closed.
+func ciIntegrationAppListAllTargets(args []string) bool {
+	return len(args) == 3 && args[0] == "app" && args[1] == "list" && args[2] == "--all-targets"
 }
 
 func ciIntegrationRootInit(args []string) bool {
