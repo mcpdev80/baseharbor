@@ -106,10 +106,23 @@ func persesDashboardProvisionForLifecycle(m application.Manifest, runtimeDir, na
 	// here and stay ineligible on the per-backend gate — only keycloak-identity
 	// can still export, and only when the identity witness is non-forgeably
 	// available.
+	//
+	// The identity backend signal is DERIVED from the witness: the witness
+	// MetricPresent flag is true only when a real Keycloak native metrics signal
+	// is registered for this deployment (keycloakMetricsSignalPresent), so a
+	// non-forgeable witness (all four evidence flags) attests that the identity
+	// backend actually produces the signal keycloak-identity queries. That is the
+	// same per-backend gate the catalog applies in
+	// capability.EligibleFor, so the identity dashboard is eligible here exactly
+	// when the catalog deems it eligible — the producer never exports an
+	// unvalidated dashboard.
+	witness := identitySelectionWitness(m)
 	backendSignals := map[capability.DashboardBackend]bool{
 		capability.DashboardBackendPrometheus: true,
 	}
-	witness := identitySelectionWitness(m)
+	if witness.NonForgeableAvailable() {
+		backendSignals[capability.DashboardBackendIdentity] = true
+	}
 	eligible, err := capability.FilterEligibleDashboards(capability.DefaultDashboardCatalog(), witness, backendSignals)
 	if err != nil {
 		// A gate error means the selection catalog itself is inconsistent;
