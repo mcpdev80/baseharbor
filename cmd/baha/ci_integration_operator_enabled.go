@@ -201,18 +201,6 @@ func ciIntegrationManagedLocalGateReason(args []string, target deployment.Resolv
 	if !managedWorkload && gate == "policy" && ciIntegrationPolicyExplain(args) {
 		managedWorkload = true
 	}
-	// The policy acceptance gate evaluates the effective policy with
-	// `baha policy check`, the exact read-only command the guided fixture
-	// asserts. `policy check` is a registered machine operation that reads the
-	// effective policy for the selected environment; without this admission it
-	// falls through to the interactive OIDC operator-auth boundary and the
-	// tagged CI binary never returns the concrete PASS/FAIL assertion the gate
-	// reports. Admit only the exact canonical `policy check` forms on the single
-	// policy gate, and never any other command, flag, or gate: the fail-closed
-	// operator-auth boundary for every other form stays untouched.
-	if !managedWorkload && gate == "policy" && ciIntegrationPolicyCheck(args) {
-		managedWorkload = true
-	}
 	if !managedWorkload && gate == "connectivity" && ciIntegrationAppInspectDot(args) {
 		managedWorkload = true
 	}
@@ -406,8 +394,7 @@ func ciIntegrationConfigOrganizationSet(args []string) bool {
 // ciIntegrationPolicyExplain admits the exact, read-only `baha policy explain`
 // form on the policy gate, with or without a single `-e <env>` deployment
 // context selector. It only explains effective policy, defaults and bounded
-// overrides. `policy check` has its own admission (ciIntegrationPolicyCheck)
-// because it is the command the acceptance gate asserts against.
+// overrides. `policy check` stays outside the synthetic operator.
 func ciIntegrationPolicyExplain(args []string) bool {
 	switch {
 	case len(args) == 2 && args[0] == "policy" && args[1] == "explain":
@@ -417,56 +404,6 @@ func ciIntegrationPolicyExplain(args []string) bool {
 	default:
 		return false
 	}
-}
-
-// ciIntegrationPolicyCheck admits the exact, read-only `baha policy check`
-// forms on the policy gate: bare `policy check`, `policy check -e <env>`,
-// `policy check -o json` and `policy check -e <env> -o json`. `policy check`
-// is a registered machine operation that reads the effective policy for the
-// selected environment; the acceptance gate asserts this concrete result. Any
-// other NAME, flag, extra argument, or form on another gate stays
-// fail-closed on the OIDC path.
-func ciIntegrationPolicyCheck(args []string) bool {
-	if len(args) < 2 || args[0] != "policy" || args[1] != "check" {
-		return false
-	}
-	rest := args[2:]
-	// zero, one `-e <env>` selector, and at most one output flag are allowed
-	// in any order; a second selector or a second output flag stays rejected.
-	hasEnv := false
-	outputFlags := 0
-	for i := 0; i < len(rest); i++ {
-		switch {
-		case rest[i] == "-e" || rest[i] == "--environment":
-			if hasEnv {
-				return false
-			}
-			hasEnv = true
-			i++ // skip the environment value
-		case strings.HasPrefix(rest[i], "--environment="):
-			if hasEnv {
-				return false
-			}
-			hasEnv = true
-		case rest[i] == "-o" || rest[i] == "--output":
-			outputFlags++
-			if outputFlags > 1 {
-				return false
-			}
-			i++ // skip the output value
-		case strings.HasPrefix(rest[i], "--output=") ||
-			strings.HasPrefix(rest[i], "-o=") ||
-			strings.HasPrefix(rest[i], "--output="):
-			outputFlags++
-			if outputFlags > 1 {
-				return false
-			}
-		default:
-			// A positional NAME or any unexpected token stays fail-closed.
-			return false
-		}
-	}
-	return true
 }
 
 // ciIntegrationAppInspectDot admits the exact read-only `baha app inspect .`
