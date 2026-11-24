@@ -533,25 +533,19 @@ func marshalIndentNoEscape(v any) ([]byte, error) {
 // unproven, which is the correct answer whenever no authoritative input is
 // supplied.
 //
-// This is the per-backend correction for the CODEX-REVIEW defect on PR #1602
-// (act 1602-0428-077.md): the one-argument face PersesHostDashboardAvailability
-// answers the PROMETHEUS backend from the resolved host/provider-metrics
-// status and keeps Loki and Tempo unavailable — a Prometheus verdict can
-// never color them. A deployment that proves the Loki/Tempo signals passes a
-// witness with the corresponding fields set. Wiring that witness from the
-// runtime registry is NOT done in this candidate: cmd/baha/app_status_result.go
-// is outside the current write-set (blocked by 0428-084 and the develop
-// 0428-121/0428-125 moves), so the CLI face stays fail-closed for Loki/Tempo
-// until that wiring lands in a follow-up.
+// Each field is set only after the CLI's source-specific query path observes
+// its own backend answer: Prometheus metrics, a matching Loki stream, or a
+// matching Tempo trace. A missing witness remains fail-closed; one backend's
+// answer never colors another backend's verdict.
 type PersesBackendSignalWitness struct {
-	// PrometheusProven is true only when a provider-scoped Prometheus metric
-	// source is registered (job="baseharbor-providers" target files).
+	// PrometheusProven is true only when the selected Prometheus metrics query
+	// returns a live answer.
 	PrometheusProven bool
-	// LokiProven is true only when an Alloy pipeline labels provider log
-	// streams with baseharbor_provider (internal/logs/render.go:145,163,296).
+	// LokiProven is true only when an authorized Loki query returns a matching
+	// stream for the declared source.
 	LokiProven bool
-	// TempoProven is true only when an OTLP trace source carrying the
-	// baseharbor.provider span attribute is registered.
+	// TempoProven is true only when an authorized TraceQL query returns a
+	// matching trace for the declared source.
 	TempoProven bool
 }
 

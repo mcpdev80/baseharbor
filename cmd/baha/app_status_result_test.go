@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -106,6 +107,83 @@ func persesWitnessProbeApp(t *testing.T, ctx context.Context, name string, confi
 		t.Fatalf("resolve probe application: %v", err)
 	}
 	return resolved
+}
+
+func TestPersesStatusWitnessUsesIndependentBackendAnswers(t *testing.T) {
+	ctx := t.Context()
+	noMatch := errors.New("no matching source")
+	transportFailure := errors.New("backend transport failed: do-not-print-this")
+	cases := []struct {
+		name       string
+		prometheus error
+		loki       error
+		tempo      error
+		want       map[string]persesBackendSignal
+		secret     string
+	}{
+		{
+			name: "all-answer",
+			want: map[string]persesBackendSignal{
+				"prometheus": persesBackendConfigured,
+				"loki":       persesBackendConfigured,
+				"tempo":      persesBackendConfigured,
+			},
+		},
+		{
+			name: "loki-silent",
+			loki: noMatch,
+			want: map[string]persesBackendSignal{"prometheus": persesBackendConfigured, "loki": persesBackendUnreachable, "tempo": persesBackendConfigured},
+		},
+		{
+			name:       "backend-errors-fail-closed",
+			prometheus: transportFailure,
+			loki:       transportFailure,
+			tempo:      transportFailure,
+			secret:     "do-not-print-this",
+			want:       map[string]persesBackendSignal{"prometheus": persesBackendUnreachable, "loki": persesBackendUnreachable, "tempo": persesBackendUnreachable},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			appName := persesWitnessAppName(t)
+			resolved := persesWitnessProbeApp(t, ctx, appName, func(m application.Manifest) application.Manifest {
+				m = application.WithLogsCollection(m, "application")
+				return application.WithOTLPTelemetry(m, "traces")
+			})
+			probe := func(err error) func(context.Context, application.Manifest) error {
+				return func(context.Context, application.Manifest) error { return err }
+			}
+			probes := persesBackendSignalProbeSet{
+				prometheus: probe(tc.prometheus),
+				loki:       probe(tc.loki),
+				tempo:      probe(tc.tempo),
+			}
+			command := persesStatusCommandWithProbes(resolved.Store, probes)
+			var out, errOut bytes.Buffer
+			if err := command.Run(testOperatorContext(ctx), []string{appName, "--json"}, &out, &errOut); err != nil {
+				t.Fatalf("baha app perses status --json failed: %v\nstdout: %s\nstderr: %s", err, out.String(), errOut.String())
+			}
+			var result persesStatusResult
+			if err := json.Unmarshal(out.Bytes(), &result); err != nil {
+				t.Fatalf("status JSON decode: %v\n%s", err, out.String())
+			}
+			got := make(map[string]persesBackendSignal, len(result.BackendWitness))
+			for _, verdict := range result.BackendWitness {
+				got[verdict.Backend] = verdict.State
+			}
+			if len(got) != len(tc.want) {
+				t.Fatalf("backend witness count = %d, want %d: %+v", len(got), len(tc.want), result.BackendWitness)
+			}
+			for backend, want := range tc.want {
+				if got[backend] != want {
+					t.Errorf("%s state = %q, want %q; output: %s", backend, got[backend], want, out.String())
+				}
+			}
+			if tc.secret != "" && strings.Contains(out.String(), tc.secret) {
+				t.Fatalf("backend error detail leaked to status output: %s", out.String())
+			}
+		})
+	}
 }
 
 // persesWitnessProbeAppReport authors an initialized repository whose

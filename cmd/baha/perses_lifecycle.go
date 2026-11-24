@@ -11,6 +11,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/cli"
+	logsprovider "github.com/mcpdev80/baseharbor/internal/logs"
 	metricsprovider "github.com/mcpdev80/baseharbor/internal/metrics"
 )
 
@@ -24,7 +25,8 @@ import (
 //     shared apply lifecycle immediately; the direct human CLI defers the
 //     convergence to a later 'baha app apply' and prints the actionable
 //     deferred-apply notice (the repository manifest is the source of truth).
-//   - status reports the public three-state contract without a health probe.
+//   - status reports the public three-state contract and probes each selected
+//     observability backend through its existing authorized query path.
 //   - remove disables the surface and retires only the owned Perses runtime
 //     resources; Prometheus, Loki, Tempo and foreign data are preserved.
 //
@@ -72,17 +74,21 @@ func persesDisableCommand(store application.Store) *cli.Command {
 }
 
 func persesStatusCommand(store application.Store) *cli.Command {
+	return persesStatusCommandWithProbes(store, persesBackendSignalProbes())
+}
+
+func persesStatusCommandWithProbes(store application.Store, probes persesBackendSignalProbeSet) *cli.Command {
 	return &cli.Command{
 		Name:    "status",
 		Summary: "Report the Perses three-state contract",
 		Usage:   "baha app perses status [NAME] [--json]",
-		Long:    "Reports the public three-state contract for the optional Perses surface (not_configured | configured_unverified). It never reports verified: this Core ships no Perses health path.",
+		Long:    "Reports the public Perses lifecycle state plus a fail-closed per-backend source witness. The lifecycle state remains not_configured or configured_unverified; backend source answers are observed independently through authorized Prometheus, Loki and Tempo query paths.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 			filtered, format, err := parseReadOutputArgs(args, "perses status")
 			if err != nil {
 				return err
 			}
-			result, err := reportPersesSurfaceStatus(ctx, store, filtered)
+			result, err := reportPersesSurfaceStatusWithProbes(ctx, store, filtered, probes)
 			if err != nil {
 				return err
 			}
@@ -94,6 +100,56 @@ func persesStatusCommand(store application.Store) *cli.Command {
 			return nil
 		},
 	}
+}
+
+type persesBackendSignalProbeSet struct {
+	prometheus func(context.Context, application.Manifest) error
+	loki       func(context.Context, application.Manifest) error
+	tempo      func(context.Context, application.Manifest) error
+}
+
+func persesBackendSignalProbes() persesBackendSignalProbeSet {
+	return persesBackendSignalProbeSet{
+		prometheus: func(ctx context.Context, manifest application.Manifest) error {
+			status := metricsprovider.PersesBackendAnswersStatusNow(ctx, manifest)
+			if status == nil || *status != capability.PersesStatusVerified {
+				return errors.New("Prometheus provider-metric query did not produce a live answer")
+			}
+			return nil
+		},
+		loki:  logsprovider.VerifyPersesLokiDatasourceHealth,
+		tempo: metricsprovider.VerifyPersesTempoDatasourceHealth,
+	}
+}
+
+func persesBackendSignalProbesWithPrometheusStatus(status *capability.PersesStatus) persesBackendSignalProbeSet {
+	return persesBackendSignalProbeSet{
+		prometheus: func(context.Context, application.Manifest) error {
+			if status == nil || *status != capability.PersesStatusVerified {
+				return errors.New("Prometheus provider-metric query did not produce a live answer")
+			}
+			return nil
+		},
+		loki:  logsprovider.VerifyPersesLokiDatasourceHealth,
+		tempo: metricsprovider.VerifyPersesTempoDatasourceHealth,
+	}
+}
+
+func observePersesBackendSignalWitness(ctx context.Context, manifest application.Manifest, probes persesBackendSignalProbeSet) metricsprovider.PersesBackendSignalWitness {
+	var witness metricsprovider.PersesBackendSignalWitness
+	if !manifest.Services.ObservabilityManagementUI || !manifest.Services.Perses {
+		return witness
+	}
+	if application.HasMetricsSources(manifest) {
+		witness.PrometheusProven = probes.prometheus != nil && probes.prometheus(ctx, manifest) == nil
+	}
+	if application.HasLogsCollection(manifest) {
+		witness.LokiProven = probes.loki != nil && probes.loki(ctx, manifest) == nil
+	}
+	if application.HasOTLPTelemetry(manifest) {
+		witness.TempoProven = probes.tempo != nil && probes.tempo(ctx, manifest) == nil
+	}
+	return witness
 }
 
 func persesRemoveCommand(store application.Store) *cli.Command {
@@ -128,11 +184,9 @@ type persesStatusResult struct {
 	State   string `json:"state"`
 	Enabled bool   `json:"enabled"`
 	Version string `json:"version"`
-	// BackendWitness names, per observability backend, the manifest-only
-	// three-state witness (configured / not-configured) with its source-id, so
-	// the operator sees which source is declared rather than a blanket
-	// "unavailable". Shared with app_status_result.go (persesBackendSignalWitness
-	// / persesBackendSignalWitnessFromManifest). Never asserts a verified backend.
+	// BackendWitness names each declared backend and its independent source
+	// observation. A configured verdict requires that backend's authorized
+	// query to return a match; it does not claim general service health.
 	BackendWitness []persesBackendSignalVerdict `json:"backend_witness,omitempty"`
 	// AlertEvaluator is the single honest consumer of the Perses alert-
 	// evaluator verifier contract on this command face (card 0428-152): the
@@ -290,7 +344,7 @@ func persesAlertEvaluatorObservation(m application.Manifest) application.StatusC
 }
 
 // persesAlertEvaluatorObservationWithApplication is the perses status face of
-// the same single consumer, plus the one truth the manifest-only verifier
+// the same single consumer, plus the one truth the manifest verifier
 // cannot see: whether any deployment was ever applied. The state machine is
 // three distinct states:
 //
@@ -346,9 +400,13 @@ func deploymentApplied(resolved resolvedApplication) bool {
 }
 
 // reportPersesSurfaceStatus is the shared read seam behind 'baha app perses
-// status' and the typed MCP operation: the public three-state contract from
-// manifest and applied-runtime truth, never a health probe.
+// status' and the typed MCP operation. Authorization succeeds before the
+// backend-specific read probes run; every probe fails closed independently.
 func reportPersesSurfaceStatus(ctx context.Context, store application.Store, args []string) (persesStatusResult, error) {
+	return reportPersesSurfaceStatusWithProbes(ctx, store, args, persesBackendSignalProbes())
+}
+
+func reportPersesSurfaceStatusWithProbes(ctx context.Context, store application.Store, args []string, probes persesBackendSignalProbeSet) (persesStatusResult, error) {
 	resolved, err := resolveApplication(ctx, store, args, "perses status")
 	if err != nil {
 		return persesStatusResult{}, err
@@ -359,11 +417,12 @@ func reportPersesSurfaceStatus(ctx context.Context, store application.Store, arg
 	resolvedHostSignalStatus := capability.ResolveHostDashboardSignalStatus(
 		resolved.Manifest.Services.ObservabilityManagementUI, resolved.Manifest.Services.Perses)
 	alertEvaluator := persesAlertEvaluatorObservationWithApplication(resolved.Manifest, deploymentApplied(resolved))
+	backendWitness := observePersesBackendSignalWitness(ctx, resolved.Manifest, probes)
 	return persesStatusResult{
 		State:          application.PersesLifecycleStatus(resolved.Manifest),
 		Enabled:        application.PersesLifecycleEnabled(resolved.Manifest),
 		Version:        capability.PersesDefaultRelease.Version,
-		BackendWitness: persesBackendSignalWitnessFromManifest(resolved.Manifest, resolvedHostSignalStatus, metricsprovider.PersesBackendSignalWitness{}),
+		BackendWitness: persesBackendSignalWitnessFromManifest(resolved.Manifest, resolvedHostSignalStatus, backendWitness),
 		AlertEvaluator: &alertEvaluator,
 	}, nil
 }
@@ -439,9 +498,9 @@ func cliInvocationTransport(ctx context.Context) string {
 
 // renderPersesBackendWitness prints the per-observability-signal three-state
 // backend-witness the card mandates for `perses status` (configured /
-// unreachable / not-configured), each line carrying its source-id. It never
-// asserts a "healthy"/"verified" backend from a manifest flag; a real probe is
-// card 0428-143. The machine `app status` host-containers JSON renders the
+// unreachable / not-configured), each line carrying its source-id. A configured
+// verdict comes from that backend's own authorized query; it does not claim
+// general service health. The machine `app status` JSON renders the
 // identical witness through the shared persesBackendSignalWitnessFromManifest
 // helper, so the two faces never drift.
 func renderPersesBackendWitness(out io.Writer, witness []persesBackendSignalVerdict) {
