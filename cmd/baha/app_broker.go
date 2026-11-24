@@ -663,11 +663,16 @@ func verifyRuntimeBrokerBuildIdentity(actualVersion, actualCommit string) error 
 			return fmt.Errorf("%w: runtime version %s incompatible with CLI version %s", errRuntimeBrokerIncompatible, actualVersion, expectedVersion)
 		}
 	}
-	// Commit SHAs are build provenance, not a runtime compatibility contract.
-	// Patch-only/docs-only CLI rebuilds may legitimately differ from the
-	// published runtime image while still speaking the same versioned API.
-	_ = expectedCommit
-	_ = actualCommit
+	// Commit SHAs are build provenance. A development CLI (the `dev`/`edge`
+	// build pair) may legitimately run a runtime image built from a different
+	// commit, so a single empty commit never fails the probe. Outside that
+	// pair, the readiness path fails closed when both sides report a concrete
+	// commit and they disagree: a wrong-commit broker must not pass readiness
+	// on a matching semver alone. See verifyRuntimeBrokerBuildIdentity.
+	if expectedCommit != "" && actualCommit != "" && expectedCommit != actualCommit {
+		return fmt.Errorf("%w: runtime build commit %s incompatible with CLI commit %s",
+			errRuntimeBrokerIncompatible, actualCommit, expectedCommit)
+	}
 	return nil
 }
 
