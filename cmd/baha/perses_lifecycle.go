@@ -6,11 +6,14 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/cli"
+	"github.com/mcpdev80/baseharbor/internal/deployment"
 	metricsprovider "github.com/mcpdev80/baseharbor/internal/metrics"
 )
 
@@ -24,7 +27,8 @@ import (
 //     shared apply lifecycle immediately; the direct human CLI defers the
 //     convergence to a later 'baha app apply' and prints the actionable
 //     deferred-apply notice (the repository manifest is the source of truth).
-//   - status reports the public three-state contract without a health probe.
+//   - status reports the Perses surface and the applied alert evaluator's live
+//     rule-health verdict.
 //   - remove disables the surface and retires only the owned Perses runtime
 //     resources; Prometheus, Loki, Tempo and foreign data are preserved.
 //
@@ -52,7 +56,7 @@ func persesEnableCommand(store application.Store) *cli.Command {
 		Name:    "enable",
 		Summary: "Select the optional Perses management-ui surface",
 		Usage:   "baha app perses enable [NAME] [--json]",
-		Long:    "Selects the optional Perses realization of the observability management-ui surface by setting services.perses in the repository manifest. Machine transports converge runtime through the shared apply lifecycle; the direct human CLI defers it to 'baha app apply' and reports the deferred action. Fail-closed: requires a verified application owner; requires the observability management-ui surface and managed metrics sources (Prometheus). Reports configured_unverified — no Perses health path exists in this Core.",
+		Long:    "Selects the optional Perses realization of the observability management-ui surface by setting services.perses in the repository manifest. Machine transports converge runtime through the shared apply lifecycle; the direct human CLI defers it to 'baha app apply' and reports the deferred action. Fail-closed: requires a verified application owner and the observability management-ui surface with managed Prometheus metrics sources.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 			return runPersesLifecycleCommand(ctx, store, args, out, errOut, application.PersesLifecycleEnable, true)
 		},
@@ -74,9 +78,9 @@ func persesDisableCommand(store application.Store) *cli.Command {
 func persesStatusCommand(store application.Store) *cli.Command {
 	return &cli.Command{
 		Name:    "status",
-		Summary: "Report the Perses three-state contract",
+		Summary: "Report Perses state and live alert-rule health",
 		Usage:   "baha app perses status [NAME] [--json]",
-		Long:    "Reports the public three-state contract for the optional Perses surface (not_configured | configured_unverified). It never reports verified: this Core ships no Perses health path.",
+		Long:    "Reports the optional Perses surface state and probes the applied Prometheus alert rule through the Target-scoped health verifier.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 			filtered, format, err := parseReadOutputArgs(args, "perses status")
 			if err != nil {
@@ -91,6 +95,12 @@ func persesStatusCommand(store application.Store) *cli.Command {
 			}
 			fmt.Fprintf(out, "Perses state: %s\n", result.State)
 			renderPersesBackendWitness(out, result.BackendWitness)
+			if result.AlertEvaluator != nil {
+				fmt.Fprintf(out, "  Alert evaluator: %s\n", result.AlertEvaluator.State)
+				if result.AlertEvaluator.Detail != "" {
+					fmt.Fprintf(out, "    %s\n", result.AlertEvaluator.Detail)
+				}
+			}
 			return nil
 		},
 	}
@@ -134,13 +144,8 @@ type persesStatusResult struct {
 	// "unavailable". Shared with app_status_result.go (persesBackendSignalWitness
 	// / persesBackendSignalWitnessFromManifest). Never asserts a verified backend.
 	BackendWitness []persesBackendSignalVerdict `json:"backend_witness,omitempty"`
-	// AlertEvaluator is the single honest consumer of the Perses alert-
-	// evaluator verifier contract on this command face (card 0428-152): the
-	// state is derived from exactly one BuildPersesAlertEvaluator call and is
-	// one of "not configured", "unavailable (owner-gated evaluator contract)"
-	// or the verifier's reachability shown verbatim ("configured_unverified"
-	// in this Core). It never reports healthy/verified without the
-	// Owner-approved real contract. See persesAlertEvaluatorObservation.
+	// AlertEvaluator carries the Target-scoped live rule-health result,
+	// separately from the backend signal witness.
 	AlertEvaluator *application.StatusCheck `json:"alert_evaluator,omitempty"`
 }
 
@@ -232,117 +237,74 @@ func executePersesLifecycle(ctx context.Context, store application.Store, args [
 // internal/metrics and can never be produced here.
 const (
 	persesAlertEvaluatorStateNotConfigured = "not configured"
-	persesAlertEvaluatorStateUnavailable   = "unavailable (owner-gated evaluator contract)"
+	persesAlertEvaluatorStateUnavailable   = "unavailable"
 	persesAlertEvaluatorObservationName    = "management-ui/perses/alert-evaluator"
 )
 
-// persesAlertEvaluatorReachabilityVerified is the verifier's own marker for a
-// contract that has been actually verified by internal/metrics. No producer in
-// this Core sets it (persesAlertRealEvaluatorContractPresent keeps the
-// verifier fail-closed), and as long as no verifier result carries it, the
-// consumer can never report "healthy"/"verified".
+// persesAlertEvaluatorReachabilityVerified is emitted only when the live
+// Prometheus rule-health verifier succeeds.
 const persesAlertEvaluatorReachabilityVerified = "verified"
 
-// persesAlertEvaluatorObservation is the single honest consumer of the Perses
-// alert-evaluator verifier contract in internal/metrics
-// (perses_prometheus_alerts.go), shared by every status face ('baha app
-// perses status' and 'baha app status'). The decision comes from exactly one
-// verifier call, BuildPersesAlertEvaluator, never from a second parallel
-// logic in the CLI:
-//
-//   - The verifier fails closed with "Perses is not selected" => "not
-//     configured" (the manifest does not select it).
-//   - The verifier fails closed for any other reason (no metric inputs,
-//     missing evaluator contract, invalid pinned release) => "unavailable
-//     (owner-gated evaluator contract)" (selected, contract missing).
-//   - The verifier succeeds => its reachability string is shown verbatim
-//     ("configured_unverified" in this Core). A hypothetical "verified"
-//     reachability maps to the unavailable state instead of being echoed, so
-//     "healthy"/"verified" can never fall out at the consumer (fail-closed
-//     here, not only in the verifier).
-//
-// The state string is never "ready"/"verified", so the observation never
-// folds into readiness, and no new state holder or manifest field exists:
-// the decision derives from the existing manifest bindings the verifier
-// itself reads.
-func persesAlertEvaluatorObservation(m application.Manifest) application.StatusCheck {
-	result, err := metricsprovider.BuildPersesAlertEvaluator(m)
-	if err != nil {
+// persesAlertEvaluatorObservationWithVerifier maps the live evaluator probe to
+// the one status observation shared by CLI and MCP. Missing deployment is not
+// configured; a live healthy rule is verified; every other probe outcome is
+// unavailable with the verifier's concrete fail-closed reason.
+func persesAlertEvaluatorObservationWithVerifier(ctx context.Context, m application.Manifest, applied bool, notAppliedReason string, verify func(context.Context, application.Manifest) error) application.StatusCheck {
+	if !applied {
+		if notAppliedReason == "" {
+			notAppliedReason = "this deployment was never applied"
+		}
+		return application.StatusCheck{
+			Name: persesAlertEvaluatorObservationName, State: persesAlertEvaluatorStateNotConfigured,
+			Detail: "Perses alert evaluator is " + persesAlertEvaluatorStateNotConfigured + ": " + notAppliedReason +
+				"; no evaluator is wired on this surface",
+		}
+	}
+	if err := verify(ctx, m); err != nil {
 		state := persesAlertEvaluatorStateUnavailable
 		if strings.Contains(err.Error(), "Perses is not selected") {
 			state = persesAlertEvaluatorStateNotConfigured
 		}
 		return application.StatusCheck{
-			Name:   persesAlertEvaluatorObservationName,
-			State:  state,
-			Detail: "Perses alert evaluator is " + state + " (fail-closed reason from the metrics verifier: " + err.Error() + "); this Core never reports the evaluator healthy or verified",
-		}
-	}
-	state := result.Reachability
-	if state == persesAlertEvaluatorReachabilityVerified {
-		state = persesAlertEvaluatorStateUnavailable
-	}
-	return application.StatusCheck{
-		Name:   persesAlertEvaluatorObservationName,
-		State:  state,
-		Detail: fmt.Sprintf("Perses alert evaluator: kind %s, owner %s, verifier reachability %q shown verbatim; no live rule evaluation is claimed", result.Evaluator.Kind, result.Evaluator.Owner, result.Reachability),
-	}
-}
-
-// persesAlertEvaluatorObservationWithApplication is the perses status face of
-// the same single consumer, plus the one truth the manifest-only verifier
-// cannot see: whether any deployment was ever applied. The state machine is
-// three distinct states:
-//
-//   - the runtime was never applied (no deployment wires an evaluator) =>
-//     "not configured", whatever the manifest selects;
-//   - applied but the Owner-gated real contract is missing => "unavailable
-//     (owner-gated evaluator contract)";
-//   - applied with the wiring the verifier can show => its reachability
-//     verbatim ("configured_unverified" in this Core).
-//
-// The decision still comes from exactly one BuildPersesAlertEvaluator call;
-// the applied flag only suppresses any "configured" claim for wiring that does
-// not exist yet (fail-closed), and adds no state holder or manifest field.
-//
-// When the runtime was never applied, no evaluator is wired: the state is
-// "not configured" and the detail says so plainly. The unselected manifest's
-// verifier reason ("Perses is not selected") is pinned by the manifest-only
-// contract cases, which call persesAlertEvaluatorObservation directly; the
-// not-applied face makes no manifest or verifier claim at all.
-func persesAlertEvaluatorObservationWithApplication(m application.Manifest, applied bool) application.StatusCheck {
-	if applied {
-		return persesAlertEvaluatorObservation(m)
-	}
-	// Even on the not-applied face, the verifier's own fail-closed reason is
-	// honest when the manifest does not select Perses at all. Preserve it
-	// verbatim; the "never applied" wording is for the selected case only.
-	if _, err := metricsprovider.BuildPersesAlertEvaluator(m); err != nil && strings.Contains(err.Error(), "Perses is not selected") {
-		return application.StatusCheck{
-			Name:  persesAlertEvaluatorObservationName,
-			State: persesAlertEvaluatorStateNotConfigured,
-			Detail: "Perses alert evaluator is " + persesAlertEvaluatorStateNotConfigured +
-				" (fail-closed reason from the metrics verifier: " + err.Error() + "); no deployment was applied, so this surface is not configured",
+			Name: persesAlertEvaluatorObservationName, State: state,
+			Detail: "Perses alert evaluator is " + state + " (live metrics verifier: " + err.Error() + ")",
 		}
 	}
 	return application.StatusCheck{
-		Name:  persesAlertEvaluatorObservationName,
-		State: persesAlertEvaluatorStateNotConfigured,
-		Detail: "Perses alert evaluator is " + persesAlertEvaluatorStateNotConfigured +
-			": this deployment was never applied, so no evaluator is wired on this surface; no manifest or verifier claim is made",
+		Name: persesAlertEvaluatorObservationName, State: persesAlertEvaluatorReachabilityVerified,
+		Detail: "Perses alert evaluator is verified by the live Prometheus rule-health probe",
 	}
 }
 
-// deploymentApplied reports whether the resolved application's runtime has
-// ever been applied: the production collection path treats the absence of
-// materialized runtime files (application.ErrRuntimeNotApplied from
-// ExistingRuntimeFiles) as the not-applied face, so this seam asks exactly
-// the same question, on the same store the runtime writer uses. A missing,
-// unreadable or absent runtime tree is honest "not applied" (fail-closed):
-// only materialized, applied runtime may claim a wired evaluator.
-func deploymentApplied(resolved resolvedApplication) bool {
-	_, err := application.ExistingRuntimeFiles(resolved.Store, resolved.Manifest)
-	return err == nil
+func persesAlertEvaluatorObservation(ctx context.Context, m application.Manifest, applied bool, notAppliedReason string) application.StatusCheck {
+	checkCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	return persesAlertEvaluatorObservationWithVerifier(checkCtx, m, applied, notAppliedReason, metricsprovider.VerifyPersesAlertEvaluatorHealth)
+}
+
+// deploymentApplied confirms both the materialized runtime files and the
+// resolved deployment record's identity/runtime stamp before a live probe can
+// run. Missing, unreadable, or mismatched state fails closed with a reason.
+func deploymentApplied(resolved resolvedApplication) (bool, string) {
+	files, err := application.ExistingRuntimeFiles(resolved.Store, resolved.Manifest)
+	if err != nil {
+		return false, "the application runtime files are unavailable: " + err.Error()
+	}
+	if resolved.DeploymentIdentity.DeploymentID == "" {
+		return false, "the resolved deployment identity is missing"
+	}
+	record, err := deployment.LoadDeploymentRecord(resolved.DeploymentIdentity)
+	if err != nil {
+		return false, "the resolved deployment record is unavailable: " + err.Error()
+	}
+	if record.Identity != resolved.DeploymentIdentity {
+		return false, "the deployment record identity does not match the resolved deployment"
+	}
+	recordedRuntime := record.Applied.GeneratedState["runtime"]
+	if recordedRuntime == "" || filepath.Clean(recordedRuntime) != filepath.Clean(files.Dir) {
+		return false, "the runtime files are not stamped for the resolved deployment identity"
+	}
+	return true, ""
 }
 
 // reportPersesSurfaceStatus is the shared read seam behind 'baha app perses
@@ -358,7 +320,8 @@ func reportPersesSurfaceStatus(ctx context.Context, store application.Store, arg
 	}
 	resolvedHostSignalStatus := capability.ResolveHostDashboardSignalStatus(
 		resolved.Manifest.Services.ObservabilityManagementUI, resolved.Manifest.Services.Perses)
-	alertEvaluator := persesAlertEvaluatorObservationWithApplication(resolved.Manifest, deploymentApplied(resolved))
+	applied, notAppliedReason := deploymentApplied(resolved)
+	alertEvaluator := persesAlertEvaluatorObservation(ctx, resolved.Manifest, applied, notAppliedReason)
 	return persesStatusResult{
 		State:          application.PersesLifecycleStatus(resolved.Manifest),
 		Enabled:        application.PersesLifecycleEnabled(resolved.Manifest),
