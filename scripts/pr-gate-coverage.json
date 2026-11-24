@@ -632,6 +632,30 @@
       ]
     },
     {
+      "id": "source.internal.application.manifest.validation.go",
+      "path": "internal/application/manifest_validation.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
+      "id": "source.internal.application.workload.go",
+      "path": "internal/application/workload.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
+      "id": "source.internal.application.workload.test.go",
+      "path": "internal/application/workload_test.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
       "id": "source.internal.application.runtime.multi.integration.test.go",
       "path": "internal/application/runtime_multi_integration_test.go",
       "surfaces": [
