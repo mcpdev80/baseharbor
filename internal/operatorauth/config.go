@@ -104,7 +104,9 @@ func TrustedLocalForEnvironment(environment string) bool {
 // true the environment is operator-trusted and therefore not managed; when
 // false it is managed for every environment name (dev/development/prod/arbitrary)
 // — the explicit policy fails closed and the environment name is kept out of the
-// authorization decision.
+// authorization decision. No production machine-authorization caller supplies
+// trustedLocal; host-local access flows through the verified local-workload
+// grant (local_runtime.go) and the explicit serviceaccess policy.
 func ManagedEnvironmentWithPolicy(environment string, trustedLocal bool) bool {
 	return !trustedLocal
 }

@@ -273,12 +273,14 @@ func authorizeMachineOperation(ctx context.Context, request AuthorizationRequest
 		setAuthorizationDecision(ctx, decision)
 		return decision, nil
 	}
-	if !ManagedEnvironment(decision.Context.Environment) && !ok {
-		decision.Allowed = true
-		decision.Actor = MachineActorRef{Mode: "trusted-local", Subject: "trusted-local"}
-		setAuthorizationDecision(ctx, decision)
-		return decision, nil
-	}
+	// No trusted-local fail-open here, by design. This decision has exactly
+	// three live outcomes: an authenticated operator (with a tenant scope or a
+	// claim-resolved membership), the opaque single-use local-runtime grant
+	// above, or a fail-closed denial. There is no policy source in the decision
+	// context that establishes host-local trust, so an unauthenticated request
+	// without a valid grant is denied below regardless of the environment name.
+	// The environment name is never a trust signal; do not reintroduce an
+	// `!ManagedEnvironment(...)` arm here.
 
 	if !ok {
 		decision.ReasonCode = "operator_authentication_required"
