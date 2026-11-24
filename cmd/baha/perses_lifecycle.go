@@ -305,26 +305,32 @@ func persesAlertEvaluatorObservation(m application.Manifest) application.StatusC
 // the applied flag only suppresses any "configured" claim for wiring that does
 // not exist yet (fail-closed), and adds no state holder or manifest field.
 //
-// When the runtime was never applied, the state is "not configured". If the
-// manifest also does not select Perses, the verifier's fail-closed reason
-// ("Perses is not selected") is preserved verbatim so the consumer still
-// shows why it is not configured. If the manifest selects Perses but no
-// deployment exists, the detail states that no evaluator is wired.
+// When the runtime was never applied, no evaluator is wired: the state is
+// "not configured" and the detail says so plainly. The unselected manifest's
+// verifier reason ("Perses is not selected") is pinned by the manifest-only
+// contract cases, which call persesAlertEvaluatorObservation directly; the
+// not-applied face makes no manifest or verifier claim at all.
 func persesAlertEvaluatorObservationWithApplication(m application.Manifest, applied bool) application.StatusCheck {
 	if applied {
 		return persesAlertEvaluatorObservation(m)
 	}
-	check := application.StatusCheck{
+	// Even on the not-applied face, the verifier's own fail-closed reason is
+	// honest when the manifest does not select Perses at all. Preserve it
+	// verbatim; the "never applied" wording is for the selected case only.
+	if _, err := metricsprovider.BuildPersesAlertEvaluator(m); err != nil && strings.Contains(err.Error(), "Perses is not selected") {
+		return application.StatusCheck{
+			Name:  persesAlertEvaluatorObservationName,
+			State: persesAlertEvaluatorStateNotConfigured,
+			Detail: "Perses alert evaluator is " + persesAlertEvaluatorStateNotConfigured +
+				" (fail-closed reason from the metrics verifier: " + err.Error() + "); no deployment was applied, so this surface is not configured",
+		}
+	}
+	return application.StatusCheck{
 		Name:  persesAlertEvaluatorObservationName,
 		State: persesAlertEvaluatorStateNotConfigured,
 		Detail: "Perses alert evaluator is " + persesAlertEvaluatorStateNotConfigured +
 			": this deployment was never applied, so no evaluator is wired on this surface; no manifest or verifier claim is made",
 	}
-	if _, err := metricsprovider.BuildPersesAlertEvaluator(m); err != nil && strings.Contains(err.Error(), "Perses is not selected") {
-		check.Detail = "Perses alert evaluator is " + persesAlertEvaluatorStateNotConfigured +
-			" (fail-closed reason from the metrics verifier: " + err.Error() + "); this deployment was never applied, so no evaluator is wired on this surface"
-	}
-	return check
 }
 
 // deploymentApplied reports whether the resolved application's runtime has
