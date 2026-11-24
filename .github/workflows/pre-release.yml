@@ -496,6 +496,15 @@ jobs:
         mkdir -p "$RUNNER_TEMP/pre-release-candidate"
         CGO_ENABLED=0 go build -trimpath             -ldflags="-s -w -X main.version=${{ needs.source_prepare.outputs.tag }} -X main.commit=${{ needs.source_prepare.outputs.candidate_sha }} -X main.date=unknown"             -o "$RUNNER_TEMP/pre-release-candidate/baha" ./cmd/baha
         "$RUNNER_TEMP/pre-release-candidate/baha" version | grep -F "${{ needs.source_prepare.outputs.candidate_sha }}"
+    - name: Produce baha-ci-operator-testonly candidate binary
+      id: operator_testonly
+      shell: bash
+      run: |
+        set -euo pipefail
+        mkdir -p "$RUNNER_TEMP/pre-release-candidate"
+        CGO_ENABLED=0 go build -trimpath             -ldflags="-s -w -X main.version=${{ needs.source_prepare.outputs.tag }} -X main.commit=${{ needs.source_prepare.outputs.candidate_sha }} -X main.date=unknown"             -o "$RUNNER_TEMP/pre-release-candidate/baha-ci-operator-testonly" ./cmd/baha
+        chmod +x "$RUNNER_TEMP/pre-release-candidate/baha-ci-operator-testonly"
+        test -s "$RUNNER_TEMP/pre-release-candidate/baha-ci-operator-testonly"
     - name: Upload source candidate
       id: source_candidate
       uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
