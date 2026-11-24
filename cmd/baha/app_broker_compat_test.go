@@ -67,6 +67,6 @@ func TestVerifyRuntimeBrokerBuildIdentity(t *testing.T) {
 		t.Fatalf("dev CLI should accept an edge broker at the same commit: %v", err)
 	}
 	if err := verifyRuntimeBrokerBuildIdentity("edge", "some-edge-commit"); err == nil {
-		t.Fatal("dev CLI must reject an edge broker at a different commit: %v", err)
+		t.Fatal("dev CLI must reject an edge broker at a different commit")
 	}
 }
