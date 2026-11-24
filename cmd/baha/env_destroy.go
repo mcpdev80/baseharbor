@@ -13,6 +13,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/evidence"
 	"github.com/mcpdev80/baseharbor/internal/machine"
+	"github.com/mcpdev80/baseharbor/internal/operatorauth"
 )
 
 // The env-destroy leaf is a new top-level command group `baha env` (owner
@@ -104,6 +105,7 @@ func envDestroyCommandRun(ctx context.Context, args []string, out, errOut io.Wri
 		failErr := machine.NewError(machine.ErrorOwnershipAmbiguous,
 			"environment cannot be destroyed: ownership or impact is unknown",
 			strings.Join(scope.FailClosed, "; "), false)
+		recordEnvDestroyAudit(ctx, target.Name, envName, "ownership or impact unknown: "+strings.Join(scope.FailClosed, "; "), "denial")
 		if format == outputJSON {
 			_ = writeJSON(out, envDestroyResult{
 				ContractVersion: machine.ContractVersion, Target: target.Name, Environment: envName,
@@ -179,9 +181,7 @@ func envDestroyCommandRun(ctx context.Context, args []string, out, errOut io.Wri
 	if dataChoice == deployment.EnvironmentDestroyDeleteData {
 		detail = "environment-scoped deployments and owned data destroyed; environment identity removed"
 	}
-	if auditErr := recordEnvDestroyAudit(target.Name, envName, detail); auditErr != nil {
-		fmt.Fprintf(errOut, "Warning: could not record destroy audit: %v\n", auditErr)
-	}
+	recordEnvDestroyAudit(ctx, target.Name, envName, detail, "success")
 
 	if format == outputJSON {
 		return writeJSON(out, envDestroyResult{
@@ -329,18 +329,49 @@ func confirmedDataDeletion(ctx context.Context, out io.Writer, explicitFlag bool
 	return strings.EqualFold(strings.TrimSpace(answer), "DELETE")
 }
 
-// recordEnvDestroyAudit records an environment-level audit event. It is
-// best-effort: a failure to write the audit must not fail the destroy itself,
-// but is surfaced to stderr.
-func recordEnvDestroyAudit(target, envName, detail string) error {
-	root, rootErr := deployment.TargetStateRoot(target)
+// recordEnvDestroyAudit records an environment-level audit event for the
+// env.destroy seam. It is best-effort: a failure to write the audit must not
+// fail the destroy itself, but is surfaced to stderr. The outcome (success /
+// denial / failure), exact environment and target, and the human vs runtime
+// actor are recorded without any environment-scoped data values.
+func recordEnvDestroyAudit(ctx context.Context, target, envName, detail, outcome string) {
+	root, rootErr := targetStateRoot(target)
 	if rootErr != nil {
-		return rootErr
+		fmt.Fprintln(os.Stderr, "Warning: could not resolve target state root for env destroy audit:", rootErr)
+		return
 	}
-	event := evidence.NewAuditEvent(context.Background(), target, "", envName, "env.destroy", "success")
+	event := evidence.NewAuditEvent(ctx, target, "", envName, "env.destroy", outcome)
 	event.Environment = envName
+	event.Resource = envName
+	event.Application = envName
 	event.Detail = detail
-	return evidence.Append(root, event)
+	if decision, ok := operatorauth.AuthorizationDecisionFromContext(ctx); ok {
+		// A present AuthorizationDecision takes precedence over any principal:
+		// a verified principal can coexist with a policy denial, so a present
+		// decision must never fall back to principal-allow.
+		if decision.Allowed {
+			event.AuthorizationResult = "allow"
+		} else {
+			event.AuthorizationResult = "deny"
+		}
+	} else if _, ok := operatorauth.PrincipalFromContext(ctx); ok {
+		event.AuthorizationResult = "allow"
+	} else {
+		// No verified operator on the enforcement seam. A succeeded local
+		// runtime env-destroy attributes the runtime actor (trusted-local, not
+		// the cli/local-operator person default) and records
+		// AuthorizationResult=allow to match the success outcome; only a
+		// denied/failed outcome without a decision is correctly a deny.
+		event.Actor.Identity = "trusted-local"
+		if strings.EqualFold(outcome, "success") {
+			event.AuthorizationResult = "allow"
+		} else {
+			event.AuthorizationResult = "deny"
+		}
+	}
+	if err := evidence.Append(root, event); err != nil {
+		fmt.Fprintln(os.Stderr, "Warning: could not record env destroy audit:", err)
+	}
 }
 
 // resolveEnvSelection resolves the effective Target and the currently selected

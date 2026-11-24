@@ -97,6 +97,16 @@ func WithVerifiedPrincipal(ctx context.Context, principal *identity.Principal) c
 	return ctx
 }
 
+// WithAuthorizationDecision installs a stored AuthorizationDecision in the
+// enforcement context. It is used by tests to model a verified principal that
+// also carries a machine authorization decision, and by callers that have
+// resolved an explicit decision.
+func WithAuthorizationDecision(ctx context.Context, decision AuthorizationDecision) context.Context {
+	ctx = WithEnforcement(ctx)
+	setAuthorizationDecision(ctx, decision)
+	return ctx
+}
+
 type membershipProviderKey struct{}
 
 // WithMembershipProvider installs the bounded MembershipProvider that maps a
