@@ -427,6 +427,31 @@ func validateWorkloadComponentName(name string) error {
 	return nil
 }
 
+// canonicalComposeServiceID maps a service identifier to its canonical logical
+// form so a manifest component ID (which stores hyphen-presentation identifiers
+// such as "vector-db") matches the raw Compose service key it names (such as
+// "vector_db"). It normalizes neither the Compose key nor the manifest ID in
+// place: callers keep passing the original identifiers; this only drives the
+// membership comparison. Underscores and other separators collapse to a single
+// dash and the result is lower-cased, mirroring the presentation/logical
+// separation already used when workload components are detected.
+func canonicalComposeServiceID(service string) string {
+	value := strings.ToLower(strings.ReplaceAll(strings.TrimSpace(service), "_", "-"))
+	var b strings.Builder
+	lastDash := false
+	for _, r := range value {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
+			b.WriteRune(r)
+			lastDash = false
+		case b.Len() > 0 && !lastDash:
+			b.WriteByte('-')
+			lastDash = true
+		}
+	}
+	return strings.Trim(b.String(), "-")
+}
+
 func validateComposeServiceName(name string) error {
 	if name == "" || len(name) > 128 {
 		return fmt.Errorf("invalid workload component name %q", name)
