@@ -211,18 +211,45 @@ func composeServiceNames(path string) ([]string, error) {
 	return services, nil
 }
 
+// canonicalComposeServiceID maps a service identifier to its canonical logical
+// form so a manifest component ID (which stores hyphen-presentation identifiers
+// such as "vector-db") matches the raw Compose service key it names (such as
+// "vector_db"). It normalizes neither the Compose key nor the manifest ID in
+// place: callers keep passing the original identifiers, this only drives the
+// membership comparison. Underscores, dots and other separators collapse to a
+// single dash and the result is lower-cased, mirroring the presentation/logical
+// separation already used when workload components are detected.
+func canonicalComposeServiceID(service string) string {
+	value := strings.ToLower(strings.TrimSpace(service))
+	value = strings.ReplaceAll(value, "_", "-")
+	var b strings.Builder
+	lastDash := false
+	for _, r := range value {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			b.WriteRune(r)
+			lastDash = false
+			continue
+		}
+		if !lastDash && b.Len() > 0 {
+			b.WriteByte('-')
+			lastDash = true
+		}
+	}
+	return strings.Trim(b.String(), "-")
+}
+
 func selectWorkloadServices(m Manifest, available, requested []string) ([]string, error) {
 	availableSet := make(map[string]struct{}, len(available))
 	for _, service := range available {
 		if strings.HasPrefix(service, "baseharbor-internal-") {
 			return nil, fmt.Errorf("application Compose service %q uses the reserved BaseHarbor internal service namespace", service)
 		}
-		availableSet[service] = struct{}{}
+		availableSet[canonicalComposeServiceID(service)] = struct{}{}
 	}
 	if len(requested) > 0 {
 		selected := append([]string(nil), requested...)
 		for _, service := range selected {
-			if _, ok := availableSet[service]; !ok {
+			if _, ok := availableSet[canonicalComposeServiceID(service)]; !ok {
 				return nil, fmt.Errorf("workload service %q is not present in the application Compose file", service)
 			}
 		}

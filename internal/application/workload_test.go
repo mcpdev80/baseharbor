@@ -85,6 +85,57 @@ func TestExplicitWorkloadServicesOverrideAutomaticShadowing(t *testing.T) {
 	}
 }
 
+// TestSelectWorkloadServicesMatchesUnderscoreComposeKeysToHyphenComponents
+// is the red-first regression for the v0.4.28 compose-service-ID mismatch:
+// detection persists the hyphen-presentation manifest component id
+// ("vector-db"), but the raw Compose key is "vector_db". The manifest id must
+// resolve against the compose key without either side being mutated. This test
+// fails on the broken baseline (exact-match comparison) and passes once the
+// comparison normalizes both identifiers to their canonical logical form.
+func TestSelectWorkloadServicesMatchesUnderscoreComposeKeysToHyphenComponents(t *testing.T) {
+	m := New("vectorstore", "dev", true, true, false)
+	m = WithWorkloadComponents(m, "vector-db", "web")
+	available := []string{"vector_db", "web"}
+	selected, err := selectWorkloadServices(m, available, WorkloadComponentNames(m))
+	if err != nil {
+		t.Fatalf("manifest component id must resolve against the underscore compose key: %v", err)
+	}
+	if strings.Join(selected, ",") != "vector-db,web" {
+		t.Fatalf("unexpected selected services %q", selected)
+	}
+}
+
+func TestSelectWorkloadServicesMixedGraphPreservesRequestedIds(t *testing.T) {
+	m := New("mixedgraph", "dev", true, true, false)
+	m = WithWorkloadComponents(m, "vector-db", "api_service")
+	// Mixed underscore/dash compose keys must match the requested hyphen ids and
+	// the returned selected ids must stay exactly the requested identifiers
+	// (no silent unsafe aliasing that rewrites the manifest contract).
+	available := []string{"vector_db", "api_service"}
+	selected, err := selectWorkloadServices(m, available, WorkloadComponentNames(m))
+	if err != nil {
+		t.Fatalf("mixed graph must resolve: %v", err)
+	}
+	if strings.Join(selected, ",") != "api_service,vector-db" {
+		t.Fatalf("selected ids were rewritten: %#v", selected)
+	}
+}
+
+func TestSelectWorkloadServicesStillRejectsAbsentService(t *testing.T) {
+	m := New("absent", "dev", true, true, false)
+	m = WithWorkloadComponents(m, "vector-db", "worker")
+	// A requested id whose canonical form matches nothing must still fail closed.
+	available := []string{"vector_db", "web"}
+	if _, err := selectWorkloadServices(m, available, WorkloadComponentNames(m)); err == nil {
+		t.Fatal("expected error for missing workload service worker")
+	}
+	// And an unrelated compose id must not be silently aliased to a requested id.
+	available2 := []string{"search_db"}
+	if _, err := selectWorkloadServices(m, available2, []string{"vector-db"}); err == nil {
+		t.Fatal("expected error when requested id has no matching compose key")
+	}
+}
+
 func TestMaterializeWorkloadUsesContainerDNSAndPreservesHostContract(t *testing.T) {
 	useApplicationScopedDataProviders(t)
 	root := t.TempDir()
