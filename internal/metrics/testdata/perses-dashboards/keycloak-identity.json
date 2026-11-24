@@ -7,7 +7,7 @@
   "spec": {
     "display": {
       "name": "BaseHarbor Keycloak identity",
-      "description": "Keycloak HTTP request metrics from the native openmetrics endpoint."
+      "description": "Keycloak identity provider HTTP requests scraped by BaseHarbor Prometheus."
     },
     "datasources": {
       "keycloak": {
@@ -88,7 +88,7 @@
               "x": 0,
               "y": 0,
               "width": 24,
-              "height": 12,
+              "height": 6,
               "content": {
                 "$ref": "#/spec/panels/keycloak-requests"
               }
@@ -128,6 +128,7 @@
           }
         }
       }
-    ]
+    ],
+    "duration": "5m"
   }
 }
