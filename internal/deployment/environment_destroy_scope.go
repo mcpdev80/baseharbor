@@ -72,7 +72,13 @@ type EnvironmentDestroyDeployment struct {
 	ApplicationID string `json:"application_id"`
 	Environment   string `json:"environment"`
 	Scope         string `json:"scope"` // "scoped" or "global-preserved"
-	OwnerVerified bool   `json:"owner_verified"`
+	// OwnerVerified is the per-deployment marker: it is true only when the
+	// one-installation-owner check (VerifyDeploymentOwner) re-ran genuinely
+	// for this exact deployment while the scope was collected (card
+	// 0428-276). It is never a hardcoded value: a construction that skipped
+	// the re-check leaves it false, and the CLI's applyEnvironmentDestroyScope
+	// guard refuses such a deployment fail-closed.
+	OwnerVerified bool `json:"owner_verified"`
 }
 
 // EnvironmentDestroyScope is the authoritative, read-only impact report for one
@@ -181,12 +187,17 @@ func CollectEnvironmentDestroyScope(target, environmentName string, dataChoice E
 			Application:   record.Identity.Application,
 			ApplicationID: record.Identity.ApplicationID,
 			Environment:   record.Identity.Environment,
-			OwnerVerified: true,
+			Scope:         environmentDestroyScopeScoped,
+			// OwnerVerified reflects a genuine per-deployment owner re-check
+			// (card 0428-276), not the shared ListDeployments pass. A failed
+			// re-check is recorded on the scope's FailClosed list and the
+			// marker stays false so the CLI apply guard refuses the
+			// deployment fail-closed.
+			OwnerVerified: verifyEnvironmentDestroyDeploymentOwner(target, record.Identity.DeploymentID, &scope),
 		}
 		// A deployment belongs to exactly one environment. Even when the same
 		// application is deployed elsewhere, this environment's deployment
 		// must be processed; only sibling deployment records are preserved.
-		dep.Scope = environmentDestroyScopeScoped
 		scope.Scoped = append(scope.Scoped, dep)
 	}
 	for _, record := range allRecords {
@@ -199,12 +210,41 @@ func CollectEnvironmentDestroyScope(target, environmentName string, dataChoice E
 			ApplicationID: record.Identity.ApplicationID,
 			Environment:   record.Identity.Environment,
 			Scope:         environmentDestroyScopePreserved,
-			OwnerVerified: true,
+			// Preserved deployments never pass through the apply guard, but
+			// the marker must still reflect a genuine re-check rather than
+			// a nominal true (card 0428-276).
+			OwnerVerified: verifyEnvironmentDestroyDeploymentOwner(target, record.Identity.DeploymentID, &scope),
 		}
 		scope.Preserved = append(scope.Preserved, dep)
 	}
 
 	return scope, nil
+}
+
+// verifyEnvironmentDestroyDeploymentOwner runs the genuine per-deployment
+// one-installation-owner re-check for one deployment of an environment destroy
+// scope (card 0428-276). It delegates to the same storage-seam verification
+// verifyDeploymentOwnerAtSeam that the shared ListDeployments pass runs, so
+// the OwnerVerified marker reflects a real verification of THIS deployment
+// identity instead of a nominal always-true value. A failing re-check is
+// recorded on the scope's FailClosed list (the scope keeps its fail-closed
+// reporting shape) and returns false so the CLI apply guard refuses the
+// deployment.
+//
+// TestOnlyDeploymentOwnerSeamHook lets a regression observe that this seam
+// really ran for a deployment identity; the production path is unchanged (the
+// hook only records) and it is nil outside tests.
+var TestOnlyDeploymentOwnerSeamHook func(targetName, deploymentID string)
+
+func verifyEnvironmentDestroyDeploymentOwner(target, deploymentID string, scope *EnvironmentDestroyScope) bool {
+	if TestOnlyDeploymentOwnerSeamHook != nil {
+		TestOnlyDeploymentOwnerSeamHook(target, deploymentID)
+	}
+	if err := verifyDeploymentOwnerAtSeam(target, deploymentID); err != nil {
+		scope.FailClosed = append(scope.FailClosed, fmt.Sprintf("deployment %s owner re-check failed: %v", deploymentID, err))
+		return false
+	}
+	return true
 }
 
 // listScopedEnvironmentDeployments returns the deployment records whose
