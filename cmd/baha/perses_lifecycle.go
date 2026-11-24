@@ -304,16 +304,27 @@ func persesAlertEvaluatorObservation(m application.Manifest) application.StatusC
 // The decision still comes from exactly one BuildPersesAlertEvaluator call;
 // the applied flag only suppresses any "configured" claim for wiring that does
 // not exist yet (fail-closed), and adds no state holder or manifest field.
+//
+// When the runtime was never applied, the state is "not configured". If the
+// manifest also does not select Perses, the verifier's fail-closed reason
+// ("Perses is not selected") is preserved verbatim so the consumer still
+// shows why it is not configured. If the manifest selects Perses but no
+// deployment exists, the detail states that no evaluator is wired.
 func persesAlertEvaluatorObservationWithApplication(m application.Manifest, applied bool) application.StatusCheck {
-	if !applied {
-		return application.StatusCheck{
-			Name:  persesAlertEvaluatorObservationName,
-			State: persesAlertEvaluatorStateNotConfigured,
-			Detail: "Perses alert evaluator is " + persesAlertEvaluatorStateNotConfigured +
-				": this deployment was never applied, so no evaluator is wired on this surface; no manifest or verifier claim is made",
-		}
+	if applied {
+		return persesAlertEvaluatorObservation(m)
 	}
-	return persesAlertEvaluatorObservation(m)
+	check := application.StatusCheck{
+		Name:  persesAlertEvaluatorObservationName,
+		State: persesAlertEvaluatorStateNotConfigured,
+		Detail: "Perses alert evaluator is " + persesAlertEvaluatorStateNotConfigured +
+			": this deployment was never applied, so no evaluator is wired on this surface; no manifest or verifier claim is made",
+	}
+	if _, err := metricsprovider.BuildPersesAlertEvaluator(m); err != nil && strings.Contains(err.Error(), "Perses is not selected") {
+		check.Detail = "Perses alert evaluator is " + persesAlertEvaluatorStateNotConfigured +
+			" (fail-closed reason from the metrics verifier: " + err.Error() + "); this deployment was never applied, so no evaluator is wired on this surface"
+	}
+	return check
 }
 
 // deploymentApplied reports whether the resolved application's runtime has
