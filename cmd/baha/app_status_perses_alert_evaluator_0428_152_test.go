@@ -198,8 +198,14 @@ func TestPersesAlertEvaluatorObservationPersesStatusSurface(t *testing.T) {
 			}
 
 			// The seam function itself: observation on the OUTPUT of
-			// reportPersesSurfaceStatus.
-			seam, err := reportPersesSurfaceStatus(ctx, resolved.Store, []string{appName})
+			// reportPersesSurfaceStatus. The bare ctx := t.Context() carries no
+			// operator, so the seam would short-circuit with the managed-
+			// environment authentication error. Wrap it with the same verified
+			// test-operator principal the command face installs through
+			// runWithIOAsTestOperator -> testOperatorContext (mirroring the
+			// sibling command-face assertions below); the production
+			// authorization boundary inside the seam still runs unchanged.
+			seam, err := reportPersesSurfaceStatus(testOperatorContext(ctx), resolved.Store, []string{appName})
 			if err != nil {
 				t.Fatalf("reportPersesSurfaceStatus: %v", err)
 			}
@@ -231,7 +237,9 @@ func TestPersesAlertEvaluatorObservationPersesStatusSurface(t *testing.T) {
 
 // TestPersesAlertEvaluatorObservationAppStatusCollectionFace asserts the
 // consumer also runs on the app-status collection path (the face where
-// collectManagedServiceChecks executes) without claiming health.
+// collectManagedServiceChecks executes) without claiming health. On the
+// not-applied face the collection reports the same three-state machine: no
+// deployment wired an evaluator, so "not configured" is honest there too.
 func TestPersesAlertEvaluatorObservationAppStatusCollectionFace(t *testing.T) {
 	t.Setenv("BASEHARBOR_TARGET", "")
 	t.Setenv("BASEHARBOR_STATE_DIR", "")
@@ -259,6 +267,17 @@ func TestPersesAlertEvaluatorObservationAppStatusCollectionFace(t *testing.T) {
 	}
 	if status.State != "not_applied" && status.State != "stopped" && check == nil {
 		t.Fatalf("the app status collection emitted no %q observation: %+v", alertEvaluatorObservationName, status.Checks)
+	}
+	if check != nil && (status.State == "not_applied" || status.State == "stopped") {
+		// No applied deployment wired an evaluator: the honest three-state
+		// machine says "not configured" on this face, never "configured".
+		if check.State != "not configured" {
+			t.Fatalf("not-applied collection face must state %q, got %q", "not configured", check.State)
+		}
+		if check.OK {
+			t.Fatal("the alert evaluator observation must never fold into readiness")
+		}
+		return
 	}
 	if check != nil {
 		if check.State == "healthy" || check.State == "verified" || check.State == "ready" {

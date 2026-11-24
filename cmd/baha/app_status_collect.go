@@ -496,9 +496,11 @@ func (c *applicationStatusCollection) collectManagementUICheck(ctx context.Conte
 // collectPersesAlertEvaluatorObservation is the single honest consumer of the
 // Perses alert-evaluator verifier contract in internal/metrics
 // (perses_prometheus_alerts.go). The decision comes from exactly one verifier
-// call, BuildPersesAlertEvaluator, never from a second parallel logic in the
-// CLI:
+// call, BuildPersesAlertEvaluator (through persesAlertEvaluatorObservationWith-
+// Application), never from a second parallel logic in the CLI:
 //
+//   - The runtime was never applied (no deployment wires an evaluator) =>
+//     "not configured", whatever the manifest selects.
 //   - The verifier fails closed with "Perses is not selected" => the alert
 //     evaluator is "not configured" (the manifest does not select it).
 //   - The verifier fails closed for any other reason (no metric inputs,
@@ -517,7 +519,12 @@ func (c *applicationStatusCollection) collectManagementUICheck(ctx context.Conte
 // state holder or manifest field is introduced: the decision derives from the
 // existing manifest bindings the verifier itself reads.
 func (c *applicationStatusCollection) collectPersesAlertEvaluatorObservation() {
-	check := persesAlertEvaluatorObservation(c.manifest)
+	// The same three-state machine the 'baha app perses status' seam applies:
+	// an evaluator is wired only by an applied deployment, so the applied
+	// flag comes from the runtime state this collection already resolved
+	// (c.files is the existing runtime tree; an empty one means the runtime
+	// was never applied on this face).
+	check := persesAlertEvaluatorObservationWithApplication(c.manifest, c.files.Dir != "")
 	c.result.AddObservation(check.Name, check.State, check.Detail)
 }
 

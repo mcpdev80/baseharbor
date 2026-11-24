@@ -289,9 +289,48 @@ func persesAlertEvaluatorObservation(m application.Manifest) application.StatusC
 	}
 }
 
+// persesAlertEvaluatorObservationWithApplication is the perses status face of
+// the same single consumer, plus the one truth the manifest-only verifier
+// cannot see: whether any deployment was ever applied. The state machine is
+// three distinct states:
+//
+//   - the runtime was never applied (no deployment wires an evaluator) =>
+//     "not configured", whatever the manifest selects;
+//   - applied but the Owner-gated real contract is missing => "unavailable
+//     (owner-gated evaluator contract)";
+//   - applied with the wiring the verifier can show => its reachability
+//     verbatim ("configured_unverified" in this Core).
+//
+// The decision still comes from exactly one BuildPersesAlertEvaluator call;
+// the applied flag only suppresses any "configured" claim for wiring that does
+// not exist yet (fail-closed), and adds no state holder or manifest field.
+func persesAlertEvaluatorObservationWithApplication(m application.Manifest, applied bool) application.StatusCheck {
+	if !applied {
+		return application.StatusCheck{
+			Name:  persesAlertEvaluatorObservationName,
+			State: persesAlertEvaluatorStateNotConfigured,
+			Detail: "Perses alert evaluator is " + persesAlertEvaluatorStateNotConfigured +
+				": this deployment was never applied, so no evaluator is wired on this surface; no manifest or verifier claim is made",
+		}
+	}
+	return persesAlertEvaluatorObservation(m)
+}
+
+// deploymentApplied reports whether the resolved application's runtime has
+// ever been applied: the production collection path treats the absence of
+// materialized runtime files (application.ErrRuntimeNotApplied from
+// ExistingRuntimeFiles) as the not-applied face, so this seam asks exactly
+// the same question, on the same store the runtime writer uses. A missing,
+// unreadable or absent runtime tree is honest "not applied" (fail-closed):
+// only materialized, applied runtime may claim a wired evaluator.
+func deploymentApplied(resolved resolvedApplication) bool {
+	_, err := application.ExistingRuntimeFiles(resolved.Store, resolved.Manifest)
+	return err == nil
+}
+
 // reportPersesSurfaceStatus is the shared read seam behind 'baha app perses
 // status' and the typed MCP operation: the public three-state contract from
-// manifest truth, never a health probe.
+// manifest and applied-runtime truth, never a health probe.
 func reportPersesSurfaceStatus(ctx context.Context, store application.Store, args []string) (persesStatusResult, error) {
 	resolved, err := resolveApplication(ctx, store, args, "perses status")
 	if err != nil {
@@ -302,7 +341,7 @@ func reportPersesSurfaceStatus(ctx context.Context, store application.Store, arg
 	}
 	resolvedHostSignalStatus := capability.ResolveHostDashboardSignalStatus(
 		resolved.Manifest.Services.ObservabilityManagementUI, resolved.Manifest.Services.Perses)
-	alertEvaluator := persesAlertEvaluatorObservation(resolved.Manifest)
+	alertEvaluator := persesAlertEvaluatorObservationWithApplication(resolved.Manifest, deploymentApplied(resolved))
 	return persesStatusResult{
 		State:          application.PersesLifecycleStatus(resolved.Manifest),
 		Enabled:        application.PersesLifecycleEnabled(resolved.Manifest),
