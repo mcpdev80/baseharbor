@@ -315,8 +315,10 @@ func TestBahaStatusPersesCLIEntrypointResolvesWithoutContainer(t *testing.T) {
 		t.Fatalf("the two public status entries disagree about the seam: app=%v root=%v", appSurface, surface)
 	}
 	// Positive is-equality: the explicit `app status --json` field must itself be
-	// configured_unverified for the selected + no-health case — direct coverage
-	// of the app-status JSON field, not only via the root status surface.
+	// configured_unverified for the selected + no-probe case — direct coverage of
+	// the app-status JSON field, not only via the root status surface. "verified"
+	// is a reserved per-target probe result and never a static true
+	// (0428-186, CODEX-REVIEW fail-closed correction).
 	assertPersesConfiguredUnverified(t, appReport)
 }
 
@@ -439,11 +441,15 @@ func TestBahaStatusPersesReportsUnsupportedAuthThroughCLI(t *testing.T) {
 }
 
 // TestBahaStatusPersesConfiguredUnverifiedPositive drives the genuine
-// `baha status --json` for a selected, validly pinned Perses surface WITHOUT a
-// running health probe and asserts the machine-readable perses field is EXACTLY
-// "configured_unverified" (is-equality), while the public surface is still not
-// ready. Pin validation alone must never map into "verified"; a real health
-// path is required for that, and this Core ships none.
+// `baha status --json` for a selected, validly pinned Perses surface and asserts
+// the machine-readable perses field is EXACTLY "configured_unverified"
+// (is-equality), while the public surface is still not ready. "verified" is a
+// real per-target health-probe result and Core ships no such probe, so a
+// selected, pinned surface with a silent/not-probed target must NOT report
+// "verified" (CODEX-REVIEW 0428-186 correction: verified is no longer derived
+// from the static reference-catalog scan). The fail-closed variant
+// (PersesConfiguredStatusNow) still ANDs operator authorization so no status
+// path can report a configured surface that is not actually protected.
 func TestBahaStatusPersesConfiguredUnverifiedPositive(t *testing.T) {
 	t.Setenv("BASEHARBOR_TARGET", "")
 	t.Setenv("BASEHARBOR_STATE_DIR", "")

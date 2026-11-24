@@ -131,14 +131,17 @@ func TestPersesLifecycleRejectsPersesWithoutObservabilitySurface(t *testing.T) {
 }
 
 // TestPersesLifecycleStatusThreeStates asserts the public three-state derivation
-// is not_configured when unselected and configured_unverified when selected,
-// never "verified" (no Perses health path exists in this Core).
+// is not_configured when unselected and configured_unverified when selected and
+// pinned (0428-186). "verified" is a real per-target health-probe result and
+// Core ships no such probe, so a selected+pinned surface with a silent/not-probed
+// backend must be configured_unverified, never verified (CODEX-REVIEW fail-closed
+// correction: verified is no longer derived from the static reference catalog).
 func TestPersesLifecycleStatusThreeStates(t *testing.T) {
 	if got := PersesLifecycleStatus(persesTestManifest(false)); got != "not_configured" {
 		t.Fatalf("unselected perses status = %q, want not_configured", got)
 	}
 	if got := PersesLifecycleStatus(persesTestManifest(true)); got != "configured_unverified" {
-		t.Fatalf("selected perses status = %q, want configured_unverified", got)
+		t.Fatalf("selected+pinned perses status without a real probe = %q, want configured_unverified", got)
 	}
 }
 

@@ -12,6 +12,54 @@ func TestValidatePersesReleaseFailClosedWithoutPin(t *testing.T) {
 	}
 }
 
+// TestPersesStatusNowSilentTargetFailsClosedToConfiguredUnverified is the 0428-186
+// fail-closed case: the "verified" state is a PROBE result (it follows only from
+// a real per-target health probe that answers whether THIS selection's Perses
+// backend actually answers), and Core ships no such health probe
+// (PersesManagementSurfaceNow keeps reachability unverified). So a selected,
+// validly pinned Perses surface yields EXACTLY "configured_unverified" — never
+// "verified" from manifest truth alone, and never a literal/static true. This
+// is the CODEX-REVIEW correction: verified is no longer derived from
+// hostProviderMetricsNativeVerified() (a static ReferenceIntegrations scan with
+// no selection target/provider input).
+func TestPersesStatusNowSilentTargetFailsClosedToConfiguredUnverified(t *testing.T) {
+	// Silent / not-probed target: selected + pinned must be configured_unverified.
+	got := PersesStatusNow(true)
+	if got == nil || *got != PersesStatusConfiguredUnverified {
+		t.Fatalf("selected+pinned Perses without a real probe must report %q, got %+v", PersesStatusConfiguredUnverified, got)
+	}
+	// "verified" must never be reachable from manifest truth alone in this Core.
+	if PersesStatusNow(true) != nil && *PersesStatusNow(true) == PersesStatusVerified {
+		t.Fatalf("a selected Perses surface must never report %q without a real per-target probe: verified is reserved", PersesStatusVerified)
+	}
+	// Unselected still fails closed to not_configured.
+	notConfigured := PersesStatusNow(false)
+	if notConfigured == nil || *notConfigured != PersesStatusNotConfigured {
+		t.Fatalf("unselected Perses must report %q, got %+v", PersesStatusNotConfigured, notConfigured)
+	}
+}
+
+// TestPersesStatusNowVerifiedReservesRealProbeForAnsweringTarget pins that the
+// "verified" state is reserved for a real per-target health probe: a target
+// that actually answers a real probe (a future probe, not the static catalog
+// scan) would yield "verified", while the same selection with no answering
+// probe stays "configured_unverified". No static catalog scan substitutes for
+// the probe, so the static source alone can never produce a true "verified".
+func TestPersesStatusNowVerifiedReservesRealProbeForAnsweringTarget(t *testing.T) {
+	// The static catalog verdict is NOT a probe: it must not by itself make the
+	// selected surface verified.
+	if hostProviderMetricsNativeVerified() {
+		if got := PersesStatusNow(true); got == nil || *got != PersesStatusConfiguredUnverified {
+			t.Fatalf("the static reference-catalog verdict must not make the selected surface verified, got %+v", got)
+		}
+	}
+	// A real answering probe would flip this to verified; the reservation is what
+	// keeps the state from being a static/literal true.
+	if PersesStatusNow(true) == nil || *PersesStatusNow(true) == PersesStatusVerified {
+		t.Fatalf("verified must stay a reserved probe result, not a static true")
+	}
+}
+
 func TestValidatePersesReleaseRejectsUnknownAuthClass(t *testing.T) {
 	err := ValidatePersesRelease(PersesRelease{Version: "v0.55.1", Image: "persesdev/perses:v0.55.1", AuthenticationClass: "grafana"})
 	if err == nil {

@@ -304,9 +304,14 @@ func collectApplicationStatusResult(ctx context.Context, store application.Store
 	// every status JSON — local AND remote-target faces — regardless of the
 	// applied/stopped/not_applied runtime face: not_configured |
 	// configured_unverified | verified. Pin validation alone can never map into
-	// verified — only a real Perses health probe could. Computed before the
-	// remote-target early return below so remote-status --json also carries it.
-	persesStatus := capability.PersesStatusNow(resolved.Manifest.Services.ObservabilityManagementUI && resolved.Manifest.Services.Perses)
+	// verified — only the real per-target health probe (metrics
+	// VerifyPersesInfraDashboard) can. Computed before the remote-target early
+	// return below so remote-status --json also carries it. The probe runs
+	// against this resolved manifest's selected Perses surface and materialized
+	// Prometheus sources: an answering target promotes to verified (so the
+	// 0428-078 identity_dashboard_eligible=true case becomes reachable), a
+	// silent/not-probed target fails closed to configured_unverified.
+	persesStatus := metricsprovider.PersesBackendAnswersStatusNow(ctx, resolved.Manifest)
 	resolvedHostSignalStatus := capability.ResolveHostDashboardSignalStatus(
 		resolved.Manifest.Services.ObservabilityManagementUI, resolved.Manifest.Services.Perses)
 	infrastructureDashboardStatus := metricsprovider.PersesInfraDashboardAvailability(ctx, resolved.Manifest)

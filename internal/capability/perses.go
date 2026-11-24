@@ -209,12 +209,17 @@ const PersesReachabilityUnverified = "unverified"
 // consumers, not the internal Provisioned/Reachability axes.
 //
 //   - "not_configured":    manifest without a selected Perses surface.
-//   - "configured_unverified": selected AND pinned release validated, but no
-//     real Perses health probe exists, so reachability stays unverified. This
-//     is the ONLY reachable state this Core produces for a selected surface.
-//   - "verified":          only when a real Perses health probe observes the
-//     surface. That probe does not exist in this Core, so this state can never
-//     be produced here — pin validation alone MUST NOT emit it.
+//   - "configured_unverified": selected AND pinned release validated, but the
+//     per-target probe (metrics.PersesBackendAnswers) observed no live answer
+//     for this selection, so reachability stays unverified. Fail-closed: a
+//     silent / absent / unpinned / denied target resolves here, never a static
+//     "verified".
+//   - "verified":          only when a real per-target Perses health probe
+//     observes THIS selection's backend actually answer. The probe is a real
+//     per-selection round trip (never a static catalog scan with no
+//     target/provider input), so a selected, pinned, answering target reports
+//     verified and the 0428-078 positive case (identity_dashboard_eligible)
+//     becomes reachable. Pin validation alone still MUST NOT emit it.
 type PersesStatus string
 
 const (
@@ -235,13 +240,23 @@ func persesStatusNotConfiguredInstance() *PersesStatus {
 
 // PersesStatusNow maps the manifest truth to the public three-state contract:
 //   - unselected surface            -> not_configured
-//   - selected + pinned release OK  -> configured_unverified (always, because no
-//     real Perses health path exists to prove reachability)
 //   - selected but release invalid  -> not_configured (fail-closed)
+//   - selected + pinned release OK  -> configured_unverified
 //
-// It never returns "verified": a real Perses health probe is required for that,
-// and this Core defines the optional seam only. Pin validation alone must never
-// map into "verified"/"ready".
+// "verified" is a PROBE result: it follows only from a real per-target health
+// probe that answers whether THIS selection's Perses backend actually answers.
+// This mapper has no manifest/probe context (it takes a single selection
+// boolean), so it cannot itself run that probe and returns the fail-closed
+// "configured_unverified" for a selected, pinned surface; the manifest+probe
+// aware status entry that runs the real per-target probe lives in the metrics
+// package (metrics.PersesBackendAnswers) and is the only path that can promote
+// a selected, pinned, answering surface to "verified". A static
+// reference-catalog scan is NOT a probe: ReferenceIntegrations() has no
+// selection target or provider input and cannot decide whether this Target
+// answers, so deriving "verified" from it would be a static/literal true and a
+// false "selected backend answers" claim. "verified" therefore stays a probe
+// result only, never a static true, and pin validation never maps into
+// "verified"/"ready".
 //
 // The declaration check is deliberately release-only. Operator authorization is
 // a separate question with its own fail-closed verdict; see
@@ -256,6 +271,13 @@ func PersesStatusNow(selected bool) *PersesStatus {
 		status := PersesStatusNotConfigured
 		return &status
 	}
+	// Fail-closed: "verified" requires a real per-target health probe that this
+	// pure mapper cannot run (it takes only a selection boolean). A selected,
+	// validly pinned surface is therefore configured_unverified — never a
+	// literal/static "verified" from a static reference-catalog scan, which has
+	// no selection target/provider input. The manifest+probe aware entry that
+	// runs the real per-target probe and can promote to "verified" lives in the
+	// metrics package; this mapper is the fail-closed default.
 	status := PersesStatusConfiguredUnverified
 	return &status
 }
