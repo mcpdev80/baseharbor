@@ -502,9 +502,13 @@ jobs:
       run: |
         set -euo pipefail
         mkdir -p "$RUNNER_TEMP/pre-release-candidate"
-        CGO_ENABLED=0 go build -trimpath             -ldflags="-s -w -X main.version=${{ needs.source_prepare.outputs.tag }} -X main.commit=${{ needs.source_prepare.outputs.candidate_sha }} -X main.date=unknown"             -o "$RUNNER_TEMP/pre-release-candidate/baha-ci-operator-testonly" ./cmd/baha
+        CGO_ENABLED=0 go build -trimpath -tags=baseharbor_ci_operator_testonly             -ldflags="-s -w -X main.version=${{ needs.source_prepare.outputs.tag }} -X main.commit=${{ needs.source_prepare.outputs.candidate_sha }} -X main.date=unknown"             -o "$RUNNER_TEMP/pre-release-candidate/baha-ci-operator-testonly" ./cmd/baha
         chmod +x "$RUNNER_TEMP/pre-release-candidate/baha-ci-operator-testonly"
         test -s "$RUNNER_TEMP/pre-release-candidate/baha-ci-operator-testonly"
+        # Build-info proof: the artifact must demonstrably carry the test-only tag.
+        go version -m "$RUNNER_TEMP/pre-release-candidate/baha-ci-operator-testonly"
+        go tool nm "$RUNNER_TEMP/pre-release-candidate/baha-ci-operator-testonly" \
+          | grep -m1 -F main.withCIIntegrationOperator
     - name: Upload source candidate
       id: source_candidate
       uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
