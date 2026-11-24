@@ -10,6 +10,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
+
 	"github.com/mcpdev80/baseharbor/internal/machine"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
@@ -382,6 +383,34 @@ func checkRetainedApplicationProviderOwnership(ctx context.Context, resolved res
 			continue
 		}
 		if len(registry.BindingsForProviderInstance(instance.ID)) == 0 {
+			if resolvedRuntimeProjectionAbsent(resolved) {
+				absent, err := retainedProviderOwnershipVerifiedAbsent(ctx, resolved, instance)
+				if err != nil {
+					var ambiguous *machine.Error
+					if errors.As(err, &ambiguous) && ambiguous.CauseCode == "retained_provider_ownership_unverified" {
+						return err
+					}
+					continue
+				}
+				if absent {
+					// Verified never-realized owner of an interrupted first
+					// apply (0428-286): the application runtime projection was
+					// never materialized and the retained intent names no
+					// canonical realization resource for this owner, so the
+					// registry entry is a retained intention, not
+					// infrastructure. This application's unbound,
+					// BaseHarbor-owned owner is reclaimed; bound, shared,
+					// foreign or realizable resources keep the refusal below.
+					if err := reclaimUnboundRetainedProviderOwner(resolved, instance.ID); err != nil {
+						return err
+					}
+					registry, err = (capability.RegistryStore{Path: filepath.Join(resolved.TargetStateRoot, "provider-registry.json")}).Load()
+					if err != nil {
+						return err
+					}
+					continue
+				}
+			}
 			fact, verified := facts[instance.ID]
 			if !verified || (fact.State != application.ProviderRunning && fact.State != application.ProviderStoppedOwned) || fact.Containers.Value == nil {
 				return &machine.Error{Code: machine.ErrorOwnershipAmbiguous, CauseCode: "retained_provider_ownership_unverified", Resource: instance.ID, Message: "Retained provider ownership could not be verified through its canonical deployment and native renderer.", Next: "Inspect the existing owner and retry; runtime and data ownership remain available."}
@@ -389,6 +418,97 @@ func checkRetainedApplicationProviderOwnership(ctx context.Context, resolved res
 		}
 	}
 	return nil
+}
+
+// resolvedRuntimeProjectionAbsent reports that the application runtime
+// projection was never materialized (the distinct ErrRuntimeNotApplied state,
+// not a damaged projection). It is the deployment-side half of the
+// never-realized proof in checkRetainedApplicationProviderOwnership.
+func resolvedRuntimeProjectionAbsent(resolved resolvedApplication) bool {
+	_, err := application.ExistingRuntimeFiles(resolved.Store, resolved.Manifest)
+	return errors.Is(err, application.ErrRuntimeNotApplied)
+}
+
+// retainedProviderOwnershipVerifiedAbsent decides whether one retained,
+// unbound application owner is a VERIFIED never-realized intention. A
+// provider whose realization would be detectable through the native renderer
+// is never absent here: detection failure is ambiguous and the caller keeps
+// the fail-closed refusal, so an owner that ever ran can never be reclaimed
+// by this seam.
+func retainedProviderOwnershipVerifiedAbsent(ctx context.Context, resolved resolvedApplication, instance capability.ProviderInstance) (bool, error) {
+	switch {
+	case instance.Provider.Kind == capability.ProviderRuntimeBroker:
+		// The Target-wide secure broker runtime lives inside the application
+		// runtime projection; its absence was proven above.
+		return true, nil
+	case applicationNativeBackendInstance(instance, resolved.Manifest):
+		resources, err := application.NativeBackendResources(resolved.Manifest, application.RuntimeFilesFor(resolved.Store, resolved.Manifest))
+		if err != nil {
+			return false, err
+		}
+		for _, resource := range resources {
+			if resource.Kind == "container" && strings.Contains(resource.Name, string(instance.Provider.Kind)) {
+				return false, nil
+			}
+		}
+		return true, nil
+	default:
+		provider, err := detectRuntimeForApplication(ctx, resolved, bhruntime.CapabilityResourceOwnership)
+		if err != nil {
+			return false, err
+		}
+		registry, err := (capability.RegistryStore{Path: filepath.Join(resolved.TargetStateRoot, "provider-registry.json")}).Load()
+		if err != nil {
+			return false, err
+		}
+		inventory, err := existingStandaloneProviderInventory(resolved, provider, instance, registry)
+		if err != nil {
+			return false, err
+		}
+		found, err := provider.InspectProjectResources(ctx, inventory.project, inventory.resources)
+		if err != nil {
+			return false, err
+		}
+		if len(found) != 0 {
+			return false, nil
+		}
+		return true, nil
+	}
+}
+
+// reclaimUnboundRetainedProviderOwner removes one verified never-realized,
+// unbound, BaseHarbor-owned application provider instance under the registry
+// lock. The live entry is re-verified inside the mutation: any drift (a
+// binding appeared, ownership or scope changed) refuses instead of deleting.
+func reclaimUnboundRetainedProviderOwner(resolved resolvedApplication, instanceID string) error {
+	store := capability.RegistryStore{Path: filepath.Join(resolved.TargetStateRoot, "provider-registry.json")}
+	return store.Update(func(current *capability.Registry) error {
+		found := false
+		for _, live := range current.Instances {
+			if live.ID != instanceID {
+				continue
+			}
+			found = true
+			if live.Scope != capability.ScopeApplication || live.Ownership != capability.OwnershipBaseHarbor ||
+				live.OwnerApplicationID != resolved.Manifest.ApplicationID || (live.OwnerEnvironment != "" && live.OwnerEnvironment != resolved.Manifest.Environment) ||
+				len(current.BindingsForProviderInstance(live.ID)) != 0 {
+				return &machine.Error{Code: machine.ErrorOwnershipAmbiguous, CauseCode: "retained_provider_ownership_unverified", Resource: live.ID, Message: "Retained provider ownership changed during verification.", Next: "Inspect the existing owner and retry; runtime and data ownership remain available."}
+			}
+			break
+		}
+		if !found {
+			return nil
+		}
+		kept := make([]capability.ProviderInstance, 0, len(current.Instances))
+		for _, live := range current.Instances {
+			if live.ID == instanceID {
+				continue
+			}
+			kept = append(kept, live)
+		}
+		current.Instances = kept
+		return nil
+	})
 }
 
 // Observe existing native owners even after their capability leaves desired

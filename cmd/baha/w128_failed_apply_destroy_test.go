@@ -50,17 +50,16 @@ func TestW128DestroyAfterInterruptedFirstApplyReconcilesRetainedOwners(t *testin
 	configureTestTarget(t)
 	root := httpsAdoptionFixture(t, false)
 	t.Chdir(root)
-	m := application.WithWorkloadComponents(application.New("demo", "dev", true, false, false), "demo-app")
+	// The wizard-selected SQL/cache defaults never materialize in this
+	// interrupted first apply; the broker (runtime PKI) and workload owners
+	// are the application-scoped retained owners this card names.
+	m := application.WithWorkloadComponents(withoutSharedBackends(application.New("demo", "dev", false, false, true)), "demo-app")
 	mustWriteInitializedAuthoredManifest(t, application.RepositoryManifestName, m)
 
 	resolved, err := resolveApplication(context.Background(), application.DefaultStore(), nil, "apply")
 	if err != nil {
 		t.Fatalf("resolve for apply: %v", err)
 	}
-	// The SQL/cache defaults the wizard selects materialize shared-module
-	// bindings; drop them so this fixture isolates the application-scoped
-	// retention seam and touches no shared provider ownership.
-	withdrawSharedBackends(t, resolved.TargetStateRoot, resolved.Manifest)
 
 	// (1) Reconstruct the interrupted-first-apply state exactly as the real
 	// apply sequence leaves it:
@@ -192,6 +191,65 @@ func TestW128DestroyAfterInterruptedFirstApplyReconcilesRetainedOwners(t *testin
 	}
 }
 
+// TestW128SharedOnlyFailedApplyDestroyNeedsNoRuntime (negative guard, part of
+// the same regression file): an application whose only retained owner is the
+// shared SQL module has NOTHING application-scoped to reclaim, and the shared
+// provider infrastructure must survive a failed-apply destroy untouched.
+func TestW128SharedOnlyFailedApplyDestroyNeedsNoRuntime(t *testing.T) {
+	configureTestTarget(t)
+	root := t.TempDir()
+	t.Chdir(root)
+	m := application.WithWorkloadComponents(application.New("demo", "dev", true, false, false), "demo-app")
+	mustWriteInitializedAuthoredManifest(t, application.RepositoryManifestName, m)
+
+	resolved, err := resolveApplication(context.Background(), application.DefaultStore(), nil, "apply")
+	if err != nil {
+		t.Fatalf("resolve for apply: %v", err)
+	}
+	if _, err := recordDeploymentBeforeMutation(context.Background(), resolved, "applying", ""); err != nil {
+		t.Fatalf("record applying state: %v", err)
+	}
+	if err := application.RetainPendingProviderOwnersAt(resolved.TargetStateRoot, resolved.Manifest); err != nil {
+		t.Fatalf("retain pending provider owners: %v", err)
+	}
+	registry, err := (capability.RegistryStore{Path: filepath.Join(resolved.TargetStateRoot, "provider-registry.json")}).Load()
+	if err != nil {
+		t.Fatalf("load provider registry: %v", err)
+	}
+	for _, instance := range registry.Instances {
+		if instance.Scope == capability.ScopeApplication && instance.OwnerApplicationID == resolved.Manifest.ApplicationID {
+			t.Fatalf("precondition: shared-only application retained an application-scoped owner %s", instance.ID)
+		}
+	}
+
+	// The shared-module owner must never be reclaimed by the ownership seam.
+	if err := checkRetainedApplicationProviderOwnership(context.Background(), resolved); err != nil {
+		t.Fatalf("shared-only failed apply must not hit the retained-ownership refusal: %v", err)
+	}
+	after, err := (capability.RegistryStore{Path: filepath.Join(resolved.TargetStateRoot, "provider-registry.json")}).Load()
+	if err != nil {
+		t.Fatalf("reload provider registry: %v", err)
+	}
+	shared := false
+	for _, instance := range after.Instances {
+		if instance.Scope == capability.ScopeShared {
+			shared = true
+		}
+	}
+	if !shared {
+		t.Fatal("ownership reconciliation removed the shared provider infrastructure owner")
+	}
+
+	// The real CLI destroy still succeeds without any engine (nothing exists).
+	var out, errOut bytes.Buffer
+	if err := executeApplicationDestroyLifecycle(machineNoninteractiveContext(context.Background()), application.DefaultStore(), []string{"--yes"}, &out, &errOut); err != nil {
+		t.Fatalf("destroy of the shared-only failed apply must return rc=0, got: %v\noutput:\n%s%s", err, out.String(), errOut.String())
+	}
+	if _, err := deployment.LoadDeploymentRecord(resolved.DeploymentIdentity); !isMissingDeploymentRecord(err) {
+		t.Fatalf("destroy left the failed deployment record in place: err=%v", err)
+	}
+}
+
 func isMissingDeploymentRecord(err error) bool {
 	if err == nil {
 		return false
@@ -211,6 +269,17 @@ func appDirExists(resolved resolvedApplication) bool {
 // withdrawSharedBackends removes this application's bindings from the Target
 // provider registry and reclaims the shared-module references it alone
 // carried, so the fixture isolates the application-scoped retention seam.
+// withoutSharedBackends deselects the shared SQL/cache modules an interrupted
+// first apply never realized, so this fixture isolates the application-scoped
+// retention seam (the broker and workload owners stay application-scoped).
+func withoutSharedBackends(m application.Manifest) application.Manifest {
+	m.Services.SQL = false
+	m.Services.Cache = false
+	m.Services.SQLInstances = nil
+	m.Services.CacheInstances = nil
+	return m
+}
+
 func withdrawSharedBackends(t *testing.T, targetStateRoot string, m application.Manifest) {
 	t.Helper()
 	store := capability.RegistryStore{Path: filepath.Join(targetStateRoot, "provider-registry.json")}
