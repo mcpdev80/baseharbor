@@ -334,7 +334,12 @@ func TestAuthorizeHumanRevealFailedRecordsRevealAudit(t *testing.T) {
 		Allowed:         true,
 		Operation:       "secret.reveal",
 		Safety:          machine.SafetyDestructive,
-		Actor:           operatorauth.MachineActorRef{Mode: "local-runtime", Subject: "trusted-local"},
+		Actor: operatorauth.MachineActorRef{
+			Mode:      "local-runtime",
+			Subject:   "trusted-local",
+			Assurance: "loa2",
+			Methods:   []string{"password", "webauthn"},
+		},
 	})
 
 	cause := errors.New("policy denied")
@@ -366,6 +371,14 @@ func TestAuthorizeHumanRevealFailedRecordsRevealAudit(t *testing.T) {
 	// reverted to a builder that drops the decision's actor.
 	if event.Actor.Subject != "trusted-local" {
 		t.Fatalf("failed reveal must preserve authenticated actor Subject, got %q", event.Actor.Subject)
+	}
+	// RC: the upstream decision's Assurance and Methods must be preserved too,
+	// not only Subject — a future builder that drops either field must go RED.
+	if event.Actor.Assurance != "loa2" {
+		t.Fatalf("failed reveal must preserve actor Assurance=loa2, got %q", event.Actor.Assurance)
+	}
+	if len(event.Actor.Methods) != 2 || event.Actor.Methods[0] != "password" || event.Actor.Methods[1] != "webauthn" {
+		t.Fatalf("failed reveal must preserve the exact actor Methods [password webauthn], got %#v", event.Actor.Methods)
 	}
 }
 
