@@ -276,6 +276,26 @@ func assertValidPromQL(t *testing.T, key, query string) {
 	if err := checkClosedPromQLSelector(query); err != nil {
 		t.Fatalf("%s: %v", key, err)
 	}
+	// Keycloak is a PROVIDER, not an application: its provider-class target
+	// (internal/metrics/prometheus_files.go targetGroupPayload) emits
+	// job="baseharbor-providers", baseharbor_provider="keycloak" with NO
+	// baseharbor_application/environment label. The identity dashboard selector
+	// therefore keys on the real provider-class contract, never the
+	// application-class labels (which only application-class sources carry).
+	if key == "keycloak-identity" {
+		if !strings.Contains(query, `job="baseharbor-providers"`) {
+			t.Fatalf("%s: Keycloak provider-class selector must select job=\"baseharbor-providers\": %q", key, query)
+		}
+		if !strings.Contains(query, `baseharbor_provider="keycloak"`) {
+			t.Fatalf("%s: Keycloak provider-class selector must select baseharbor_provider=\"keycloak\": %q", key, query)
+		}
+		if strings.Contains(query, "baseharbor_application=") || strings.Contains(query, "baseharbor_environment=") {
+			t.Fatalf("%s: Keycloak provider-class selector must NOT select application/environment labels: %q", key, query)
+		}
+		return
+	}
+	// Application-class backends (prometheus-targets) key on the
+	// application/environment labels their own sources actually carry.
 	if strings.Contains(query, "baseharbor_application=\"$application\"") == false {
 		t.Fatalf("%s: Prometheus selector missing baseharbor_application matcher: %q", key, query)
 	}
@@ -726,5 +746,86 @@ func TestIdentityAvailabilityRequiresVerifiedPerses(t *testing.T) {
 	// identity-dashboard state.
 	if *capability.PersesStatusNow(true) == capability.PersesStatusNotConfigured {
 		t.Fatal("a selected Perses surface must not map into not_configured")
+	}
+}
+
+// TestPersesKeycloakDashboardQueriesSelectRealProviderLabels is the Hosted CI
+// regression for 0428-078: the Keycloak identity dashboard is a PROVIDER
+// dashboard, so its panel queries must select the real provider-class Prometheus
+// labels the production target emits (internal/metrics/prometheus_files.go
+// targetGroupPayload: job="baseharbor-providers", baseharbor_provider="keycloak",
+// baseharbor_source, baseharbor_source_class, baseharbor_metrics_path). Those
+// selectors are exactly the labels a real Keycloak openmetrics target carries, so
+// a Perses instance pointed at production returns the Keycloak http_server_*
+// series. A query keying on job="keycloak" or on baseharbor_application/
+// baseharbor_environment (application-class labels, never present on a
+// provider-class target) can therefore never match real series and must not ship.
+//
+// This drives the real dashboard-producing function (persesDashboardCatalog), so
+// the unit witness cannot diverge from the shipped panel query bytes.
+func TestPersesKeycloakDashboardQueriesSelectRealProviderLabels(t *testing.T) {
+	catalog := persesDashboardCatalog()
+	entry, ok := catalog["keycloak-identity"]
+	if !ok {
+		t.Fatalf("catalog must contain the keycloak-identity dashboard")
+	}
+	if entry.Unavailable {
+		t.Fatalf("keycloak-identity must ship a real dashboard, got unavailable")
+	}
+	if entry.Backend != "keycloak" {
+		t.Fatalf("keycloak-identity backend = %q, want \"keycloak\" (DashboardBackendIdentity)", entry.Backend)
+	}
+	raw, err := persesPanelJSON(entry)
+	if err != nil {
+		t.Fatalf("marshal keycloak dashboard: %v", err)
+	}
+	var dashboard PersesDashboard
+	if err := json.Unmarshal(raw, &dashboard); err != nil {
+		t.Fatalf("decode keycloak dashboard: %v", err)
+	}
+	if len(dashboard.Spec.Panels) == 0 {
+		t.Fatalf("keycloak dashboard must ship at least one panel")
+	}
+	seen := 0
+	for _, panel := range dashboard.Spec.Panels {
+		for _, q := range panel.Spec.Queries {
+			var pluginSpec map[string]any
+			if err := json.Unmarshal(q.Spec.Plugin.Spec, &pluginSpec); err != nil {
+				t.Fatalf("decode keycloak query: %v", err)
+			}
+			qs, _ := pluginSpec["query"].(string)
+			if strings.TrimSpace(qs) == "" {
+				t.Fatalf("keycloak panel query must carry a non-empty query")
+			}
+			// The three documented HTTP-server metrics Keycloak's native
+			// openmetrics endpoint exposes.
+			if !strings.HasPrefix(qs, "http_server_requests_seconds_count{") &&
+				!strings.HasPrefix(qs, "http_server_requests_seconds_sum{") &&
+				!strings.HasPrefix(qs, "http_server_active_requests{") {
+				t.Fatalf("keycloak panel query must key on a documented http_server_* metric: %q", qs)
+			}
+			// The real provider-class contract: the provider scrape job and the
+			// keycloak provider label.
+			if !strings.Contains(qs, `job="baseharbor-providers"`) {
+				t.Fatalf("keycloak panel query %q must select the real provider job job=\"baseharbor-providers\" (prometheus_files.go:175); a provider-class target never carries job=\"keycloak\"", qs)
+			}
+			if !strings.Contains(qs, `baseharbor_provider="keycloak"`) {
+				t.Fatalf("keycloak panel query %q must select baseharbor_provider=\"keycloak\" (prometheus_files.go:176); Keycloak is a provider, not an application", qs)
+			}
+			// The non-existent selectors that never match real series.
+			if strings.Contains(qs, `job="keycloak"`) {
+				t.Fatalf("keycloak panel query %q must NOT select job=\"keycloak\": no production target carries that job label (provider-class job is baseharbor-providers)", qs)
+			}
+			if strings.Contains(qs, "baseharbor_application=") {
+				t.Fatalf("keycloak panel query %q must NOT select baseharbor_application: a provider-class target never carries an application label", qs)
+			}
+			if strings.Contains(qs, "baseharbor_environment=") {
+				t.Fatalf("keycloak panel query %q must NOT select baseharbor_environment: a provider-class target never carries an environment label", qs)
+			}
+			seen++
+		}
+	}
+	if seen == 0 {
+		t.Fatalf("keycloak dashboard must emit at least one query")
 	}
 }
