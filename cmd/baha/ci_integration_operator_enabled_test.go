@@ -560,6 +560,13 @@ func TestCIIntegrationOperatorAdmitsFiveCoreFixtureFormsOnlyOnConsumerGate(t *te
 		{"config organization set", "policy", []string{"config", "organization", "set", "--source", "local", "--location", "$ARTIFACT_DIR/policy-organization", "--environment", "dev", "-o", "json"}},
 		{"policy explain", "policy", []string{"policy", "explain"}},
 		{"policy explain -e dev", "policy", []string{"policy", "explain", "-e", "dev"}},
+		// Root `up` is an existing managed-local `apply` operation. Cover both
+		// consent forms on multiple matching gates; it is not a one-off,
+		// gate-specific command-form admission.
+		{"up --yes", "policy", []string{"up", "--yes"}},
+		{"up --yes --confirm-candidate", "policy", []string{"up", "--yes", "--confirm-candidate", "d6d633d0a68fd231d3fccfcd7d88994cd7834db748a80544d12dc7a288f6256e"}},
+		{"up --yes on connectivity", "connectivity", []string{"up", "--yes"}},
+		{"up --yes --confirm-candidate on connectivity", "connectivity", []string{"up", "--yes", "--confirm-candidate", "d6d633d0a68fd231d3fccfcd7d88994cd7834db748a80544d12dc7a288f6256e"}},
 		{"app inspect .", "connectivity", []string{"app", "inspect", "."}},
 		{"app inspect . -o json", "connectivity", []string{"app", "inspect", ".", "-o", "json"}},
 		{"target -o json", "reconciliation", []string{"target", "-o", "json"}},
