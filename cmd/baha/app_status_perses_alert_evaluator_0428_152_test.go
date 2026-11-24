@@ -26,25 +26,6 @@ import (
 
 const alertEvaluatorObservationName = "management-ui/perses/alert-evaluator"
 
-func persesAlertEvaluatorStatusObservation(t *testing.T, m application.Manifest) application.StatusCheck {
-	t.Helper()
-	collection := &applicationStatusCollection{
-		manifest: m,
-		result:   application.StatusResult{Ready: true, Checks: []application.StatusCheck{}},
-	}
-	collection.collectPersesAlertEvaluatorObservation()
-	var found *application.StatusCheck
-	for i := range collection.result.Checks {
-		if collection.result.Checks[i].Name == alertEvaluatorObservationName {
-			found = &collection.result.Checks[i]
-		}
-	}
-	if found == nil {
-		t.Fatalf("the consumer emitted no %q observation: %+v", alertEvaluatorObservationName, collection.result.Checks)
-	}
-	return *found
-}
-
 func persesAlertEvaluatorManifestSelection(selected bool) application.Manifest {
 	m := application.New("perses-alert-evaluator-0428-152", "dev", false, false, false)
 	m = application.WithWorkloadComponents(m, "api")
@@ -55,7 +36,7 @@ func persesAlertEvaluatorManifestSelection(selected bool) application.Manifest {
 }
 
 func TestPersesAlertEvaluatorObservationNotConfiguredWhenUnselected(t *testing.T) {
-	check := persesAlertEvaluatorStatusObservation(t, persesAlertEvaluatorManifestSelection(false))
+	check := persesAlertEvaluatorObservationWithApplication(persesAlertEvaluatorManifestSelection(false), true)
 	// The exact wording is the contract (0428-073 failed on a paraphrase).
 	if check.State != "not configured" {
 		t.Fatalf("unselected manifest must state %q, got %q (detail: %s)", "not configured", check.State, check.Detail)
@@ -76,7 +57,7 @@ func TestPersesAlertEvaluatorObservationUnavailableWhenSelectedWithoutContract(t
 	if _, err := metricsprovider.BuildPersesAlertEvaluator(m); err == nil {
 		t.Fatal("the verifier must fail closed without Prometheus metric inputs")
 	}
-	check := persesAlertEvaluatorStatusObservation(t, m)
+	check := persesAlertEvaluatorObservationWithApplication(m, true)
 	if check.State != "unavailable (owner-gated evaluator contract)" {
 		t.Fatalf("selected manifest without the evaluator contract must state %q, got %q (detail: %s)",
 			"unavailable (owner-gated evaluator contract)", check.State, check.Detail)
@@ -95,7 +76,7 @@ func TestPersesAlertEvaluatorObservationSelectedWithContractStaysUnverified(t *t
 	if result.Reachability != metricsprovider.PersesAlertReachabilityConfiguredUnverified {
 		t.Fatalf("the verifier reachability changed under the consumer: %q", result.Reachability)
 	}
-	check := persesAlertEvaluatorStatusObservation(t, m)
+	check := persesAlertEvaluatorObservationWithApplication(m, true)
 	// The consumer shows the verifier's reachability verbatim: declared, but
 	// never live-verified.
 	if check.State != string(metricsprovider.PersesAlertReachabilityConfiguredUnverified) {
@@ -130,7 +111,7 @@ func TestPersesAlertEvaluatorObservationNeverReportsHealthyOrVerified(t *testing
 		string(metricsprovider.PersesAlertReachabilityConfiguredUnverified): true,
 	}
 	for name, m := range manifests {
-		check := persesAlertEvaluatorStatusObservation(t, m)
+		check := persesAlertEvaluatorObservationWithApplication(m, true)
 		if check.State == "healthy" || check.State == "verified" || check.State == "ready" {
 			t.Fatalf("%s: the consumer reported %q while the real evaluator contract is not Owner-approved", name, check.State)
 		}
