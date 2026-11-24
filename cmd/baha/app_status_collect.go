@@ -149,6 +149,13 @@ func (c *applicationStatusCollection) componentsStopped(ctx context.Context) boo
 }
 
 func (c *applicationStatusCollection) collectManagedServiceChecks(ctx context.Context) {
+	// Card 0428-152: the single honest consumer of the Perses alert-evaluator
+	// verifier contract. It is manifest-derived, so it reports the evaluator
+	// state in every applied face (not only when the management-UI probe loop
+	// reaches its Perses entry).
+	if c.manifest.Services.ObservabilityManagementUI || c.manifest.Services.Perses {
+		c.collectPersesAlertEvaluatorObservation()
+	}
 	c.collectObjectStorageCheck(ctx)
 	c.collectTelemetryCheck(ctx)
 	c.collectIdentityCheck(ctx)
@@ -478,6 +485,47 @@ func (c *applicationStatusCollection) collectManagementUICheck(ctx context.Conte
 	}
 
 	c.result.AddCheck("management-ui", ready == selected, fmt.Sprintf("%d/%d selected management UI surface(s) reachable", ready, selected))
+}
+
+// persesAlertEvaluatorStateNotConfigured, persesAlertEvaluatorStateUnavailable,
+// persesAlertEvaluatorReachabilityVerified, persesAlertEvaluatorObservationName
+// and the consumer itself (persesAlertEvaluatorObservation) live in
+// perses_lifecycle.go, where the 'baha app perses status' seam produces its
+// result; app_status_collect.go and the tests share those constants.
+
+// collectPersesAlertEvaluatorObservation is the single honest consumer of the
+// Perses alert-evaluator verifier contract in internal/metrics
+// (perses_prometheus_alerts.go). The decision comes from exactly one verifier
+// call, BuildPersesAlertEvaluator (through persesAlertEvaluatorObservationWith-
+// Application), never from a second parallel logic in the CLI:
+//
+//   - The runtime was never applied (no deployment wires an evaluator) =>
+//     "not configured", whatever the manifest selects.
+//   - The verifier fails closed with "Perses is not selected" => the alert
+//     evaluator is "not configured" (the manifest does not select it).
+//   - The verifier fails closed for any other reason (no metric inputs,
+//     missing evaluator contract, invalid pinned release) => "unavailable
+//     (owner-gated evaluator contract)" (selected, contract missing).
+//   - The verifier succeeds => its reachability string is shown verbatim. In
+//     this Core that is "configured_unverified": the evaluator is declared but
+//     never live-verified. The consumer maps a hypothetical "verified"
+//     reachability to the unavailable state instead of echoing it, so a
+//     "healthy"/"verified" claim can never fall out of a verifier error or an
+//     un-gated result at the consumer either (fail-closed here, not only in
+//     the verifier).
+//
+// The observation is added through AddObservation with a state that is never
+// "ready"/"verified", so it never folds into overall readiness, and no new
+// state holder or manifest field is introduced: the decision derives from the
+// existing manifest bindings the verifier itself reads.
+func (c *applicationStatusCollection) collectPersesAlertEvaluatorObservation() {
+	// The same three-state machine the 'baha app perses status' seam applies:
+	// an evaluator is wired only by an applied deployment, so the applied
+	// flag comes from the runtime state this collection already resolved
+	// (c.files is the existing runtime tree; an empty one means the runtime
+	// was never applied on this face).
+	check := persesAlertEvaluatorObservationWithApplication(c.manifest, c.files.Dir != "")
+	c.result.AddObservation(check.Name, check.State, check.Detail)
 }
 
 func (c *applicationStatusCollection) collectSecretsAndBrokerChecks(ctx context.Context) {
