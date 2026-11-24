@@ -25,6 +25,9 @@ func withCIIntegrationOperator(ctx context.Context, args []string) context.Conte
 	if os.Getenv("DEMO_ATOMIC_GATE") != "1" {
 		return ctx
 	}
+	staticMCP := strings.TrimSpace(os.Getenv("BASEHARBOR_TEST_RUNTIME")) == "static" &&
+		strings.TrimSpace(os.Getenv("GATE")) == "mcp" &&
+		strings.TrimSpace(os.Getenv("BASEHARBOR_DEMO_OPERATOR_GATE")) == "mcp"
 	// Local Docker/Podman acceptance must exercise the real in-process runtime
 	// grant. Inject the CI operator for an enrolled remote Core Target, or for
 	// the initial target create in the isolated gate before that Target exists.
@@ -35,6 +38,9 @@ func withCIIntegrationOperator(ctx context.Context, args []string) context.Conte
 		if !ciIntegrationTargetCreate(args) {
 			return ctx
 		}
+		if staticMCP && !ciIntegrationStaticMCPTargetCreate(args) {
+			return ctx
+		}
 		ciIntegrationOperatorTrace("target-create-bootstrap", args, deployment.ResolvedTarget{}, nil)
 		return ciIntegrationOperatorContext(ctx)
 	}
@@ -43,6 +49,9 @@ func withCIIntegrationOperator(ctx context.Context, args []string) context.Conte
 	// exists, resolve that fresh gate target directly so the exact bootstrap
 	// still gets the test-only operator without authorizing existing targets.
 	if ciIntegrationTargetCreate(args) {
+		if staticMCP && !ciIntegrationStaticMCPTargetCreate(args) {
+			return ctx
+		}
 		if _, targetErr := cfg.ResolveTarget(strings.TrimSpace(args[2]), ""); targetErr != nil {
 			ciIntegrationOperatorTrace("target-create-bootstrap", args, deployment.ResolvedTarget{}, nil)
 			return ciIntegrationOperatorContext(ctx)
@@ -99,6 +108,14 @@ func ciIntegrationManagedLocalGateReason(args []string, target deployment.Resolv
 	}
 	gate := strings.TrimSpace(os.Getenv("BASEHARBOR_DEMO_OPERATOR_GATE"))
 	runtime := strings.TrimSpace(os.Getenv("BASEHARBOR_TEST_RUNTIME"))
+	if runtime == "static" && gate == "mcp" && gate == strings.TrimSpace(os.Getenv("GATE")) &&
+		target.Name == "mcp-static" && target.Name == strings.TrimSpace(os.Getenv("BASEHARBOR_TARGET")) &&
+		target.AccessProvider == "local" && target.TenantID == "" && target.RuntimeProvider == "docker" {
+		if ciIntegrationStaticMCPCommand(args) {
+			return ""
+		}
+		return "static-mcp-command-not-admitted: " + strings.Join(args, " ")
+	}
 	if gate == "" || gate != strings.TrimSpace(os.Getenv("GATE")) ||
 		(runtime != "docker" && runtime != "podman") || target.Name != "atomic-"+runtime+"-"+gate ||
 		target.Name != strings.TrimSpace(os.Getenv("BASEHARBOR_TARGET")) || target.AccessProvider != "local" ||
@@ -257,6 +274,33 @@ func ciIntegrationManagedLocalGateReason(args []string, target deployment.Resolv
 		return "core-installation-not-loadable: " + err.Error()
 	}
 	return ""
+}
+
+// ciIntegrationStaticMCPCommand admits only the source-only MCP fixture's
+// bootstrap, read-only CLI parity probe, and MCP server. It is available only
+// in the test-only tagged binary and only after the exact static mcp Target and
+// gate have been validated above.
+func ciIntegrationStaticMCPCommand(args []string) bool {
+	return equalArgs(args, []string{"init", "--quick", "--json"}) ||
+		equalArgs(args, []string{"app", "footprint", "show", "-o", "json"}) ||
+		equalArgs(args, []string{"mcp", "serve"})
+}
+
+func ciIntegrationStaticMCPTargetCreate(args []string) bool {
+	return equalArgs(args, []string{"target", "create", "mcp-static", "--provider", "docker",
+		"--access", "local-docker", "--reference", "local", "--scope", "default", "--default"})
+}
+
+func equalArgs(args, expected []string) bool {
+	if len(args) != len(expected) {
+		return false
+	}
+	for i := range expected {
+		if args[i] != expected[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func ciIntegrationReadOnlyDoctor(args []string) bool {
