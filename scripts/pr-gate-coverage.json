@@ -1521,6 +1521,36 @@
       "runtime_specific": true
     },
     {
+      "id": "source.internal_application_runtime_postgres_go",
+      "path": "internal/application/runtime_postgres.go",
+      "surfaces": ["source.gate.atomic.docker.data.capabilities", "source.gate.atomic.podman.data.capabilities"]
+    },
+    {
+      "id": "source.internal_metrics_perses_dashboard_provision_go",
+      "path": "internal/metrics/perses_dashboard_provision.go",
+      "surfaces": ["source.gate.atomic.docker.data.capabilities", "source.gate.atomic.podman.data.capabilities"]
+    },
+    {
+      "id": "source.internal_metrics_perses_dashboard_provision_test_go",
+      "path": "internal/metrics/perses_dashboard_provision_test.go",
+      "surfaces": ["source.gate.atomic.docker.data.capabilities", "source.gate.atomic.podman.data.capabilities"]
+    },
+    {
+      "id": "source.cmd_baha_app_broker_compat_test_go",
+      "path": "cmd/baha/app_broker_compat_test.go",
+      "surfaces": ["source.gate.atomic.docker.data.capabilities", "source.gate.atomic.podman.data.capabilities"]
+    },
+    {
+      "id": "source.internal_operatorauth_authorization_go",
+      "path": "internal/operatorauth/authorization.go",
+      "surfaces": ["source.gate.atomic.docker.data.capabilities", "source.gate.atomic.podman.data.capabilities"]
+    },
+    {
+      "id": "source.internal_operatorauth_config_go",
+      "path": "internal/operatorauth/config.go",
+      "surfaces": ["source.gate.atomic.docker.data.capabilities", "source.gate.atomic.podman.data.capabilities"]
+    },
+    {
       "id": "source.cmd.baha.local.workload.authority.go",
       "path": "cmd/baha/local_workload_authority.go",
       "surfaces": ["source.gate.atomic.docker.data.capabilities", "source.gate.atomic.podman.data.capabilities"],
