@@ -3,17 +3,16 @@ permissions:
   contents: read
 jobs:
   gate:
-    name: ${{ (inputs.reuse_from != '' && !(inputs.runtime == 'static' && inputs.gate == 'mcp')) && 'Reused' || 'Executed' }} ${{ inputs.runtime }} · ${{ inputs.gate }}
+    name: ${{ inputs.reuse_from != '' && 'Reused' || 'Executed' }} ${{ inputs.runtime }} · ${{ inputs.gate }}
     runs-on: ${{ inputs.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
     timeout-minutes: 60
     env:
       BASEHARBOR_TEST_RUNTIME: ${{ inputs.runtime }}
       BASEHARBOR_RUNTIME_IMAGE: localhost/baseharbor-runtime:pre-release
       ARTIFACT_DIR: /tmp/baseharbor-atomic-${{ inputs.runtime }}-${{ inputs.gate }}
-      RUN_GATE: ${{ inputs.reuse_from == '' || (inputs.runtime == 'static' && inputs.gate == 'mcp') }}
     steps:
     - name: Download prior gate evidence before reuse
-      if: inputs.evidence_reuse && env.RUN_GATE != 'true'
+      if: inputs.evidence_reuse && inputs.reuse_from != ''
       uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53
       with:
         artifact-ids: ${{ inputs.evidence_artifact_id }}
@@ -22,7 +21,7 @@ jobs:
         repository: ${{ github.repository }}
         path: ${{ runner.temp }}/pre-release-reused-evidence
     - name: Validate prior gate evidence manifest
-      if: inputs.evidence_reuse && env.RUN_GATE != 'true'
+      if: inputs.evidence_reuse && inputs.reuse_from != ''
       env:
         EVIDENCE_DIR: ${{ runner.temp }}/pre-release-reused-evidence
         EXPECTED_RUN_ID: ${{ inputs.reuse_from }}
@@ -70,7 +69,7 @@ jobs:
         print('Validated prior gate evidence for run ' + os.environ['EXPECTED_RUN_ID'])
         PY
     - name: Report previously qualified run without executing native runtime
-      if: env.RUN_GATE != 'true'
+      if: inputs.reuse_from != ''
       env:
         REUSED_RUN: ${{ inputs.reuse_from }}
         GATE_NAME: ${{ inputs.runtime }}/${{ inputs.gate }}
@@ -80,7 +79,7 @@ jobs:
         [[ "$REUSED_RUN" =~ ^[0-9]+$ ]]
         echo "Reused native gate $GATE_NAME from previously successful pre-release run $REUSED_RUN. The trusted planner checked gate evidence, source ancestry, input fingerprints, workflow/catalog versions, and the 7-day TTL." >> "$GITHUB_STEP_SUMMARY"
     - name: Validate candidate ref before checkout
-      if: env.RUN_GATE == 'true'
+      if: inputs.reuse_from == ''
       shell: bash
       env:
         CANDIDATE_REF: ${{ inputs.ref }}
@@ -107,7 +106,7 @@ jobs:
           fail_fast
         fi
     - name: Checkout BaseHarbor candidate
-      if: env.RUN_GATE == 'true'
+      if: inputs.reuse_from == ''
       id: checkout
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       with:
@@ -115,18 +114,18 @@ jobs:
         persist-credentials: false
         fetch-depth: 0
     - name: Prepare verified rootless runtime
-      if: env.RUN_GATE == 'true' && inputs.runtime != 'static'
+      if: inputs.reuse_from == '' && inputs.runtime != 'static'
       run: bash scripts/ci-core-rootless-runtime.sh
     - name: Install verified ORAS for Core bootstrap
-      if: env.RUN_GATE == 'true' && inputs.runtime != 'static'
+      if: inputs.reuse_from == '' && inputs.runtime != 'static'
       run: bash scripts/ci-install-oras.sh
     - name: Resolve candidate SHA
-      if: env.RUN_GATE == 'true'
+      if: inputs.reuse_from == ''
       id: candidate
       shell: bash
       run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
     - name: Set up Go
-      if: env.RUN_GATE == 'true' && (inputs.candidate_artifact == '' || inputs.gate == 'backup-restore' || inputs.gate == 'observability' || inputs.gate == 'lifecycle' || inputs.gate
+      if: inputs.reuse_from == '' && (inputs.candidate_artifact == '' || inputs.gate == 'backup-restore' || inputs.gate == 'observability' || inputs.gate == 'lifecycle' || inputs.gate
         == 'rabbitmq-runtime' || inputs.gate == 'mongodb-runtime' || inputs.gate == 'durable-key-value' || inputs.gate
         == 'control-plane-recovery' || inputs.gate == 'loki-runtime' || inputs.gate == 'tempo-runtime' || inputs.gate == 'ci-fast-check')
       uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
@@ -135,13 +134,13 @@ jobs:
         cache: false
     - name: Reset runtime state
       id: reset
-      if: env.RUN_GATE == 'true' && (inputs.runtime != 'static')
+      if: inputs.reuse_from == '' && (inputs.runtime != 'static')
       shell: bash
       timeout-minutes: 3
       run: bash scripts/ci-runtime-reset.sh "${{ inputs.runtime }}"
     - name: Verify Podman Quadlet runtime
       id: quadlet
-      if: env.RUN_GATE == 'true' && (inputs.runtime == 'podman')
+      if: inputs.reuse_from == '' && (inputs.runtime == 'podman')
       shell: bash
       run: |
         set -euo pipefail
@@ -168,7 +167,7 @@ jobs:
         echo "PODMAN_COMPOSE_PROVIDER=$RUNNER_TEMP/baseharbor-no-compose" >> "$GITHUB_ENV"
     - name: Download prebuilt candidate
       id: candidate_artifact
-      if: env.RUN_GATE == 'true' && (inputs.candidate_artifact != '' && inputs.gate != 'rabbitmq-runtime' && inputs.gate != 'mongodb-runtime'
+      if: inputs.reuse_from == '' && (inputs.candidate_artifact != '' && inputs.gate != 'rabbitmq-runtime' && inputs.gate != 'mongodb-runtime'
         && inputs.gate != 'durable-key-value' && inputs.gate != 'control-plane-recovery' && inputs.gate != 'loki-runtime'
         && inputs.gate != 'tempo-runtime')
       uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53
@@ -177,7 +176,7 @@ jobs:
         path: ${{ runner.temp }}/pre-release-candidate
     - name: Load prebuilt runtime image
       id: load_image
-      if: env.RUN_GATE == 'true' && (inputs.candidate_artifact != '' && inputs.runtime != 'static' && inputs.gate != 'rabbitmq-runtime' &&
+      if: inputs.reuse_from == '' && (inputs.candidate_artifact != '' && inputs.runtime != 'static' && inputs.gate != 'rabbitmq-runtime' &&
         inputs.gate != 'mongodb-runtime' && inputs.gate != 'durable-key-value' && inputs.gate != 'control-plane-recovery'
         && inputs.gate != 'loki-runtime' && inputs.gate != 'tempo-runtime')
       shell: bash
@@ -197,11 +196,11 @@ jobs:
           docker image inspect "$BASEHARBOR_RUNTIME_IMAGE" >/dev/null
         fi
     - name: Publish exact candidate image for ORAS verification
-      if: env.RUN_GATE == 'true' && inputs.candidate_artifact != '' && inputs.runtime != 'static' && inputs.gate != 'rabbitmq-runtime' && inputs.gate != 'mongodb-runtime' && inputs.gate != 'durable-key-value' && inputs.gate != 'control-plane-recovery' && inputs.gate != 'loki-runtime' && inputs.gate != 'tempo-runtime'
+      if: inputs.reuse_from == '' && inputs.candidate_artifact != '' && inputs.runtime != 'static' && inputs.gate != 'rabbitmq-runtime' && inputs.gate != 'mongodb-runtime' && inputs.gate != 'durable-key-value' && inputs.gate != 'control-plane-recovery' && inputs.gate != 'loki-runtime' && inputs.gate != 'tempo-runtime'
       shell: bash
       run: bash scripts/ci-local-oci-registry.sh publish "$BASEHARBOR_RUNTIME_IMAGE" localhost:5000/baseharbor-runtime:pre-release
     - name: Checkout exact demo revision
-      if: env.RUN_GATE == 'true'
+      if: inputs.reuse_from == ''
       id: demo
       shell: bash
       env:
@@ -217,7 +216,7 @@ jobs:
         test "$(git -C "$workdir" rev-parse HEAD)" = "$DEMO_REF"
         echo "workdir=$workdir" >> "$GITHUB_OUTPUT"
     - name: Validate gate resource declaration
-      if: env.RUN_GATE == 'true'
+      if: inputs.reuse_from == ''
       id: resource_profile
       shell: bash
       env:
@@ -257,7 +256,7 @@ jobs:
         echo "capabilities=$capabilities" >> "$GITHUB_OUTPUT"
     - name: Run static gate
       id: static_gate
-      if: env.RUN_GATE == 'true' && (inputs.runtime == 'static')
+      if: inputs.reuse_from == '' && (inputs.runtime == 'static')
       shell: bash
       env:
         GATE: ${{ inputs.gate }}
@@ -270,6 +269,9 @@ jobs:
         export DEMO_ROOT="$workdir"
         export ARTIFACT_DIR
         mkdir -p "$ARTIFACT_DIR"
+        if [ "$GATE" = "mcp" ]; then
+          test "$GOFLAGS" = "-tags=baseharbor_ci_operator_testonly"
+        fi
         if [ -n "${{ inputs.candidate_artifact }}" ]; then
           if [ "$GATE" = "mcp" ]; then
             testonly="$RUNNER_TEMP/pre-release-candidate/baha-ci-operator-testonly"
@@ -297,7 +299,7 @@ jobs:
         esac
     - name: Run runtime gate
       id: runtime_gate
-      if: env.RUN_GATE == 'true' && (inputs.runtime != 'static' && steps.resource_profile.outputs.class == 'runtime')
+      if: inputs.reuse_from == '' && (inputs.runtime != 'static' && steps.resource_profile.outputs.class == 'runtime')
       timeout-minutes: ${{ inputs.gate == 'backup-restore' && 55 || inputs.gate == 'observability' && 25 || inputs.gate
         == 'lifecycle' && 35 || steps.resource_profile.outputs.profile == 'recovery' && 20 || inputs.gate == 'data-capabilities'
         && 50 || steps.resource_profile.outputs.profile == 'data' && 20 || inputs.gate == 'security' && 12 || inputs.runtime == 'podman'
@@ -483,7 +485,7 @@ jobs:
           fi
         fi
     - name: Preserve demo runtime diagnostics
-      if: env.RUN_GATE == 'true' && failure() && inputs.runtime != 'static'
+      if: inputs.reuse_from == '' && failure() && inputs.runtime != 'static'
       shell: bash
       run: |
         out="$RUNNER_TEMP/demo-runtime-diagnostics"
@@ -510,7 +512,7 @@ jobs:
         echo "::endgroup::"
     - name: Run provider integration gate
       id: integration_gate
-      if: env.RUN_GATE == 'true' && (inputs.runtime != 'static' && steps.resource_profile.outputs.class == 'integration')
+      if: inputs.reuse_from == '' && (inputs.runtime != 'static' && steps.resource_profile.outputs.class == 'integration')
       shell: bash
       env:
         BASEHARBOR_TEST_RUNTIME: ${{ inputs.runtime }}
@@ -560,7 +562,7 @@ jobs:
             ;;
         esac
     - name: Collect failure diagnostics
-      if: env.RUN_GATE == 'true' && failure() && inputs.runtime != 'static'
+      if: inputs.reuse_from == '' && failure() && inputs.runtime != 'static'
       shell: bash
       run: |
         export XDG_CONFIG_HOME="$RUNNER_TEMP/baseharbor-demo-xdg/config"
@@ -580,18 +582,18 @@ jobs:
         mkdir -p "$ARTIFACT_DIR/runtime-diagnostics"
         cp -a "$diag/." "$ARTIFACT_DIR/runtime-diagnostics/" 2>/dev/null || true
     - name: Show original assertion before cleanup
-      if: env.RUN_GATE == 'true' && failure()
+      if: inputs.reuse_from == '' && failure()
       shell: bash
       run: python scripts/ci-assertion-summary.py "$RUNNER_TEMP/gate-output.log" "$RUNNER_TEMP/assertion-summary.json"
         | tee -a "$GITHUB_STEP_SUMMARY"
     - name: Cleanup runtime state
       id: cleanup
-      if: env.RUN_GATE == 'true' && (always() && inputs.runtime != 'static')
+      if: inputs.reuse_from == '' && (always() && inputs.runtime != 'static')
       shell: bash
       timeout-minutes: 3
       run: bash scripts/ci-runtime-reset.sh "${{ inputs.runtime }}"
     - name: Create passed gate evidence manifest
-      if: ${{ success() && inputs.evidence_reuse && env.RUN_GATE == 'true' }}
+      if: ${{ success() && inputs.evidence_reuse && inputs.reuse_from == '' }}
       env:
         TAG: ${{ inputs.tag }}
         RUNTIME: ${{ inputs.runtime }}
@@ -638,7 +640,7 @@ jobs:
             stream.write('\n')
         PY
     - name: Upload passed gate evidence
-      if: ${{ success() && inputs.evidence_reuse && env.RUN_GATE == 'true' }}
+      if: ${{ success() && inputs.evidence_reuse && inputs.reuse_from == '' }}
       uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
       with:
         name: pre-release-runtime-evidence-${{ inputs.runtime }}-${{ inputs.gate }}
@@ -647,7 +649,7 @@ jobs:
         retention-days: 7
         compression-level: 0
     - name: Upload propagated gate evidence after reuse
-      if: ${{ success() && inputs.evidence_reuse && env.RUN_GATE != 'true' }}
+      if: ${{ success() && inputs.evidence_reuse && inputs.reuse_from != '' }}
       uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
       with:
         name: pre-release-runtime-evidence-${{ inputs.runtime }}-${{ inputs.gate }}
