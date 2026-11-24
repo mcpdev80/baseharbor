@@ -82,6 +82,11 @@ func TestW128DestroyAfterInterruptedFirstApplyReconcilesRetainedOwners(t *testin
 	if record.Observed.State != "applying" || record.Source.Kind != "incomplete" {
 		t.Fatalf("precondition: interrupted first-apply record state=%q kind=%q", record.Observed.State, record.Source.Kind)
 	}
+	// The first-apply record carries no last-applied reference: a healthy
+	// retry must first bind one, and the interrupted state never had one.
+	if dimension := record.References[deployment.ReferenceApplied]; dimension != nil && strings.TrimSpace(dimension.Release) != "" {
+		t.Fatalf("precondition: first-apply record already carries an applied reference %q", dimension.Release)
+	}
 	rtDir := application.RuntimeFilesFor(resolved.Store, resolved.Manifest).Dir
 	if _, statErr := os.Lstat(rtDir); !errors.Is(statErr, os.ErrNotExist) {
 		t.Fatalf("precondition: runtime dir must be unmaterialized, statErr=%v", statErr)
@@ -130,6 +135,17 @@ func TestW128DestroyAfterInterruptedFirstApplyReconcilesRetainedOwners(t *testin
 			len(instance.Provider.Capabilities) == 0 {
 			t.Fatalf("ownership reconciliation left %s unbindable", instance.ID)
 		}
+	}
+
+	// (4) The interrupted FIRST apply left no last-applied reference, so the
+	// stale-applied guard must not refuse the recovery destroy (a record that
+	// never applied cannot be "stale").
+	if err := record.Stale(); err != nil {
+		var stateErr *deployment.DeploymentRecordStateError
+		if errors.As(err, &stateErr) && stateErr.Kind == "stale" {
+			t.Fatalf("baseline reproduction: first-apply state misread as stale: %v", err)
+		}
+		t.Fatalf("the interrupted first-apply record must not block recovery destroy: %v", err)
 	}
 
 	// (4) The real CLI destroy must succeed. On baseline this is the exact
