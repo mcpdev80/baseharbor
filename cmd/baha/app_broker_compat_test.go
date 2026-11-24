@@ -59,7 +59,14 @@ func TestVerifyRuntimeBrokerBuildIdentity(t *testing.T) {
 
 	version = "dev"
 	commit = "none"
-	if err := verifyRuntimeBrokerBuildIdentity("edge", "some-edge-commit"); err != nil {
-		t.Fatalf("development CLI should accept edge runtime identity: %v", err)
+	// A development CLI still reports a concrete commit ("none"); with the
+	// fail-closed commit check that means it must only accept a broker at the
+	// same commit, not an arbitrary one. The truly-empty commit is the
+	// dev/edge-style leniency, not this "none" case.
+	if err := verifyRuntimeBrokerBuildIdentity("edge", "none"); err != nil {
+		t.Fatalf("dev CLI should accept an edge broker at the same commit: %v", err)
+	}
+	if err := verifyRuntimeBrokerBuildIdentity("edge", "some-edge-commit"); err == nil {
+		t.Fatal("dev CLI must reject an edge broker at a different commit: %v", err)
 	}
 }
