@@ -154,6 +154,62 @@ func TestEnvironmentDestroyNativeLifecycle(t *testing.T) {
 	t.Log("native env destroy retired the prod workload and removed its environment identity while retaining its deployment owner, recovery state and authored source")
 }
 
+// TestApplyEnvironmentDestroyScopeRejectsUnverifiedDeployment proves the CLI
+// apply guard really gates on the per-deployment OwnerVerified marker
+// (card 0428-276): a scoped deployment whose marker is false must be refused
+// fail-closed BEFORE any lifecycle callback runs, so an unverified deployment
+// can never be destroyed or stopped through the environment path. The same
+// scope with the marker set passes the guard, so the refusal is caused by the
+// marker alone, never by an always-true bypass.
+func TestApplyEnvironmentDestroyScopeRejectsUnverifiedDeployment(t *testing.T) {
+	scope := deployment.EnvironmentDestroyScope{
+		Target:      "docker-dev",
+		Environment: "prod",
+		DataChoice:  string(deployment.EnvironmentDestroyKeepData),
+		Scoped: []deployment.EnvironmentDestroyDeployment{{
+			DeploymentID:  "11111111-1111-4111-8111-111111111111",
+			Application:   "unverified-app",
+			ApplicationID: "22222222-2222-4222-8222-222222222222",
+			Environment:   "prod",
+			Scope:         "scoped",
+			OwnerVerified: false,
+		}},
+	}
+	invoked := 0
+	err := applyEnvironmentDestroyScope(context.Background(), scope, func(context.Context, deployment.EnvironmentDestroyDeployment, deployment.EnvironmentDestroyDataChoice) error {
+		invoked++
+		return nil
+	})
+	if err == nil {
+		t.Fatal("an unverified scoped deployment must be refused fail-closed")
+	}
+	if invoked != 0 {
+		t.Fatalf("the lifecycle must never run for an unverified deployment, ran %d times", invoked)
+	}
+	if !strings.Contains(err.Error(), "ownership is not verified") {
+		t.Fatalf("refusal must name the ownership guard, got: %v", err)
+	}
+
+	// The identical scope with the genuine marker passes the guard.
+	scope.Scoped[0].OwnerVerified = true
+	err = applyEnvironmentDestroyScope(context.Background(), scope, func(context.Context, deployment.EnvironmentDestroyDeployment, deployment.EnvironmentDestroyDataChoice) error {
+		invoked++
+		return nil
+	})
+	if err == nil {
+		// The retained-owner verification after the callback is environment
+		// state; reaching it at all proves the guard let the verified
+		// deployment through.
+		t.Fatal("the verified deployment path must differ from the refused one (no state here): expected the post-apply verification to surface, not the guard")
+	}
+	if strings.Contains(err.Error(), "ownership is not verified") {
+		t.Fatalf("a verified deployment must not trip the ownership guard: %v", err)
+	}
+	if invoked != 1 {
+		t.Fatalf("the lifecycle must run exactly once for a verified deployment before the next check, ran %d times", invoked)
+	}
+}
+
 // TestCLIEnvDestroyFailsClosedWhenAppliedIntentIsMissing seeds scoped and
 // shared deployments without the durable intent required by the application
 // lifecycle. The CLI must retain the environment identity for repair/retry and
