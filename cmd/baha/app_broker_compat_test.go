@@ -69,4 +69,15 @@ func TestVerifyRuntimeBrokerBuildIdentity(t *testing.T) {
 	if err := verifyRuntimeBrokerBuildIdentity("edge", "some-edge-commit"); err == nil {
 		t.Fatal("dev CLI must reject an edge broker at a different commit")
 	}
+
+	// Acceptance criterion 2 for 0428-271: the `dev`/`edge` development-pair
+	// with an empty CLI commit and an empty runtime commit must stay green.
+	// The combined dev/edge + empty-commit pair was not asserted by the cases
+	// above (that pair used the sentinel commit "none"); this asserts the truly
+	// empty commit together with dev/edge.
+	version = "dev"
+	commit = ""
+	if err := verifyRuntimeBrokerBuildIdentity("edge", ""); err != nil {
+		t.Fatalf("dev CLI with an empty commit must accept an edge runtime at an empty commit: %v", err)
+	}
 }
