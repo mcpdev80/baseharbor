@@ -279,6 +279,84 @@ func TestCIIntegrationOperatorIsExplicitlyScopedToManagedLocalGate(t *testing.T)
 	}
 }
 
+// TestCIIntegrationOperatorAdmitsPolicyCheckAndConfirmCandidate verifies the
+// two command forms the Light policy/connectivity/reconciliation gates
+// exercise on the tagged CI binary: the read-only `baha policy check` forms
+// (which the acceptance gate asserts) and the consented `up --confirm-candidate`
+// apply forms. Both must stamp the scoped test-only operator on the selected
+// policy gate, and neither may escape to another gate or a non-canonical form.
+func TestCIIntegrationOperatorAdmitsPolicyCheckAndConfirmCandidate(t *testing.T) {
+	t.Setenv("DEMO_ATOMIC_GATE", "1")
+	t.Setenv("BASEHARBOR_TEST_RUNTIME", "docker")
+	t.Setenv("GATE", "policy")
+	target := configureIsolatedEmptyRuntimeTarget(t, "atomic-docker-policy", "docker")
+	t.Setenv("BASEHARBOR_TARGET", target.Name)
+	t.Setenv("BASEHARBOR_DEMO_OPERATOR_GATE", "policy")
+	if err := registerInstallationForTarget(t, target.Name); err != nil {
+		t.Fatalf("register local Core fixture: %v", err)
+	}
+
+	// The read-only `policy check` forms the gate asserts must all stamp the
+	// scoped operator on the policy gate.
+	for _, args := range [][]string{
+		{"policy", "check"},
+		{"policy", "check", "-e", "dev"},
+		{"policy", "check", "-o", "json"},
+		{"policy", "check", "-e", "dev", "-o", "json"},
+		{"policy", "check", "--environment", "dev"},
+	} {
+		if !ciIntegrationPolicyCheck(args) {
+			t.Errorf("policy check form %v was not admitted to the policy gate", args)
+		}
+		if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), args)); !ok {
+			t.Errorf("policy check form %v did not receive the scoped test-only operator", args)
+		}
+	}
+
+	// Non-canonical or wrong-gate `policy check` forms stay fail-closed.
+	for _, args := range [][]string{
+		{"policy", "check", "demo-app"},
+		{"policy", "check", "-e", "dev", "-o", "json", "--verbose"},
+		{"policy", "check", "-e", "dev", "-e", "prod"},
+		{"policy", "check", "-o", "json", "-o", "text"},
+		{"policy", "check", "--environment", "dev", "--environment", "prod"},
+	} {
+		if ciIntegrationPolicyCheck(args) {
+			t.Errorf("non-canonical policy check form %v was wrongly admitted", args)
+		}
+		if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), args)); ok {
+			t.Errorf("non-canonical policy check form %v unexpectedly received a synthetic CI operator", args)
+		}
+	}
+
+	// The consented `up --confirm-candidate` apply forms (with and without the
+	// digest) stamp the operator on the policy gate; the plain `up` does too.
+	for _, args := range [][]string{
+		{"up", "--yes"},
+		{"up", "--yes", "--json"},
+		{"up", "--yes", "--confirm-candidate"},
+		{"up", "--yes", "--confirm-candidate", "d6d633d0a68fd231d3fccfcd7d88994cd7834db748a80544d12dc7a288f6256e"},
+		{"app", "apply", "--json"},
+		{"app", "apply", "--json", "--confirm-candidate", "d6d633d0a68fd231d3fccfcd7d88994cd7834db748a80544d12dc7a288f6256e"},
+	} {
+		if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), args)); !ok {
+			t.Errorf("consented up/apply form %v did not receive the scoped test-only operator", args)
+		}
+	}
+
+	// The operator must not escape the policy gate: a different gate gate
+	// setting rejects every one of these forms.
+	t.Setenv("BASEHARBOR_DEMO_OPERATOR_GATE", "connectivity")
+	for _, args := range [][]string{
+		{"policy", "check", "-e", "dev"},
+		{"up", "--yes", "--confirm-candidate", "d6d633d0a68fd231d3fccfcd7d88994cd7834db748a80544d12dc7a288f6256e"},
+	} {
+		if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), args)); ok {
+			t.Errorf("%v unexpectedly received a synthetic operator when the gate is %q", args, "connectivity")
+		}
+	}
+}
+
 func TestCIIntegrationOperatorAllowsRootDestroyOnlyForGuidedGate(t *testing.T) {
 	t.Setenv("DEMO_ATOMIC_GATE", "1")
 	t.Setenv("BASEHARBOR_TEST_RUNTIME", "docker")
@@ -560,6 +638,9 @@ func TestCIIntegrationOperatorAdmitsFiveCoreFixtureFormsOnlyOnConsumerGate(t *te
 		{"config organization set", "policy", []string{"config", "organization", "set", "--source", "local", "--location", "$ARTIFACT_DIR/policy-organization", "--environment", "dev", "-o", "json"}},
 		{"policy explain", "policy", []string{"policy", "explain"}},
 		{"policy explain -e dev", "policy", []string{"policy", "explain", "-e", "dev"}},
+		{"policy check", "policy", []string{"policy", "check"}},
+		{"policy check -e dev", "policy", []string{"policy", "check", "-e", "dev"}},
+		{"policy check -o json", "policy", []string{"policy", "check", "-o", "json"}},
 		{"app inspect .", "connectivity", []string{"app", "inspect", "."}},
 		{"app inspect . -o json", "connectivity", []string{"app", "inspect", ".", "-o", "json"}},
 		{"target -o json", "reconciliation", []string{"target", "-o", "json"}},
@@ -649,7 +730,6 @@ func TestCIIntegrationOperatorAdmitsFiveCoreFixtureFormsOnlyOnConsumerGate(t *te
 		{"config", "organization", "set", "--source", "git", "--location", filepath.Join(artifacts, "policy-organization"), "--environment", "dev", "-o", "json"},
 		{"config", "organization", "set", "--source", "local", "--location", filepath.Join(artifacts, "policy-organization"), "--environment", "dev", "-o", "json", "--yes"},
 		{"config", "organization", "show", "--environment", "dev"},
-		{"policy", "check", "-e", "dev"},
 		{"app", "inspect", ".."},
 		{"app", "inspect", ".", "--verbose"},
 		{"app", "inspect", ".", "-o", "text"},
@@ -695,6 +775,49 @@ func TestCIIntegrationOperatorAdmitsFiveCoreFixtureFormsOnlyOnConsumerGate(t *te
 			}
 			if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), args)); ok {
 				t.Errorf("policy explain reached a scoped operator on the connectivity gate: %v", args)
+			}
+		}
+	})
+
+	// policy check on its consumer gate must be scoped: the exact canonical
+	// form is admitted on the policy gate but must stay fail-closed on every
+	// other gate, exactly like the other policy-gate admissions.
+	t.Run("policy check scoped to the policy gate", func(t *testing.T) {
+		candidateArgs := [][]string{
+			{"policy", "check"},
+			{"policy", "check", "-e", "dev"},
+			{"policy", "check", "-o", "json"},
+			{"policy", "check", "-e", "dev", "-o", "json"},
+		}
+		for _, gate := range []string{"policy", "connectivity", "reconciliation", "full-destroy", "guided"} {
+			t.Setenv("DEMO_ATOMIC_GATE", "1")
+			t.Setenv("BASEHARBOR_TEST_RUNTIME", "docker")
+			t.Setenv("GATE", gate)
+			t.Setenv("BASEHARBOR_DEMO_OPERATOR_GATE", gate)
+			t.Setenv("ARTIFACT_DIR", t.TempDir())
+			target := configureIsolatedEmptyRuntimeTarget(t, "atomic-docker-"+gate, "docker")
+			t.Setenv("BASEHARBOR_TARGET", target.Name)
+			if err := registerInstallationForTarget(t, target.Name); err != nil {
+				t.Fatalf("register %s Core fixture: %v", gate, err)
+			}
+			for _, args := range candidateArgs {
+				admitted := ciIntegrationManagedLocalGate(args, target)
+				_, stamped := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), args))
+				if gate == "policy" {
+					if !admitted {
+						t.Errorf("canonical %v was not admitted on the policy gate", args)
+					}
+					if !stamped {
+						t.Errorf("canonical %v did not receive the scoped operator on the policy gate", args)
+					}
+				} else {
+					if admitted {
+						t.Errorf("policy check %v was admitted on the %q gate (gate-scoping broken)", args, gate)
+					}
+					if stamped {
+						t.Errorf("policy check %v reached a scoped operator on the %q gate", args, gate)
+					}
+				}
 			}
 		}
 	})
