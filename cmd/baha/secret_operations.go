@@ -137,7 +137,7 @@ func recordRevealAuthorized(ctx context.Context, target, environment, appName st
 	recordRevealForTarget(ctx, target, resolvedApplication{
 		Target:   deployment.ResolvedTarget{Name: target},
 		Manifest: application.Manifest{Environment: environment, Name: appName},
-	}, "authorized", "")
+	}, "authorized", "", "")
 }
 
 // recordRevealDenied records a denied human reveal (failed human-operator
@@ -146,11 +146,20 @@ func recordRevealDenied(ctx context.Context, target, environment, appName string
 	recordRevealForTarget(ctx, target, resolvedApplication{
 		Target:   deployment.ResolvedTarget{Name: target},
 		Manifest: application.Manifest{Environment: environment, Name: appName},
-	}, "denied", "")
+	}, "denied", "", "")
 }
 
 // recordRevealFailed records a failed human reveal (post-operator failure) with
 // a failure reason in the event detail.
+//
+// Fail-closed audit precision (0428-277): a failed reveal must never pair
+// outcome=failed with a spurious AuthorizationResult=allow. The upstream
+// recordRevealAuthorized records that the human was authorized to reveal, but
+// no material was released when the read/parse failed, so reusing that
+// upstream "authorized/allow" decision alongside a failed release would
+// produce an inconsistent audit event. recordRevealFailed passes "deny" as a
+// narrow override to the shared builder (recordRevealForTarget), which still
+// applies the authenticated actor attribution below.
 func recordRevealFailed(ctx context.Context, target, environment, appName string, cause error) {
 	reason := "reveal failed"
 	if cause != nil {
@@ -159,7 +168,7 @@ func recordRevealFailed(ctx context.Context, target, environment, appName string
 	recordRevealForTarget(ctx, target, resolvedApplication{
 		Target:   deployment.ResolvedTarget{Name: target},
 		Manifest: application.Manifest{Environment: environment, Name: appName},
-	}, "failed", reason)
+	}, "failed", reason, "deny")
 }
 
 // recordRevealSuccess records a successful human reveal.
@@ -167,13 +176,17 @@ func recordRevealSuccess(ctx context.Context, target, environment, appName strin
 	recordRevealForTarget(ctx, target, resolvedApplication{
 		Target:   deployment.ResolvedTarget{Name: target},
 		Manifest: application.Manifest{Environment: environment, Name: appName},
-	}, "success", "")
+	}, "success", "", "")
 }
 
 // recordRevealForTarget resolves the target state root and records a reveal
 // audit with the given outcome. detail is recorded on failed outcomes so the
 // failure reason is captured; it is ignored for the denied/success outcomes.
-func recordRevealForTarget(ctx context.Context, target string, resolved resolvedApplication, outcome, detail string) {
+// authorizationResultOverride, when non-empty, forces the recorded
+// AuthorizationResult — recordRevealFailed passes "deny" here so a failed
+// reveal never carries a spurious allow, while the actor attribution below
+// still records the authenticated actor.
+func recordRevealForTarget(ctx context.Context, target string, resolved resolvedApplication, outcome, detail, authorizationResultOverride string) {
 	root, rootErr := targetStateRoot(resolved.Target.Name)
 	if rootErr != nil {
 		fmt.Fprintln(os.Stderr, "Warning: could not resolve target state root for reveal audit:", rootErr)
@@ -186,29 +199,39 @@ func recordRevealForTarget(ctx context.Context, target string, resolved resolved
 	if detail != "" {
 		event.Detail = detail
 	}
+	// Authenticated actor attribution always runs first, so a failed reveal
+	// keeps the verified actor instead of falling back to cli/local-operator.
 	if decision, ok := operatorauth.AuthorizationDecisionFromContext(ctx); ok {
 		event.Actor.Subject = decision.Actor.Subject
 		event.Actor.Assurance = decision.Actor.Assurance
 		event.Actor.Methods = append([]string(nil), decision.Actor.Methods...)
-		if decision.Allowed {
-			event.AuthorizationResult = "allow"
-		} else {
-			event.AuthorizationResult = "deny"
-		}
 	} else if principal, ok := operatorauth.PrincipalFromContext(ctx); ok {
 		event.Actor.Identity = principal.Subject
 		event.Actor.Issuer = principal.Issuer
 		event.Actor.Subject = principal.Subject
 		event.Actor.Assurance = principal.Assurance
 		event.Actor.Methods = append([]string(nil), principal.Methods...)
-		event.AuthorizationResult = "allow"
 	} else {
 		event.Actor.Identity = "trusted-local"
-		if strings.EqualFold(outcome, "success") {
+	}
+	// Fail-closed override (0428-277): recordRevealFailed passes "deny" so a
+	// failed reveal never carries a spurious allow. Absent the override the AR
+	// is derived from the upstream authorization decision, falling back to the
+	// principal (allowed) or a deny on a failed outcome.
+	if authorizationResultOverride != "" {
+		event.AuthorizationResult = authorizationResultOverride
+	} else if decision, ok := operatorauth.AuthorizationDecisionFromContext(ctx); ok {
+		if decision.Allowed {
 			event.AuthorizationResult = "allow"
 		} else {
 			event.AuthorizationResult = "deny"
 		}
+	} else if _, ok := operatorauth.PrincipalFromContext(ctx); ok {
+		event.AuthorizationResult = "allow"
+	} else if strings.EqualFold(outcome, "success") {
+		event.AuthorizationResult = "allow"
+	} else {
+		event.AuthorizationResult = "deny"
 	}
 	if err := evidence.Append(root, event); err != nil {
 		fmt.Fprintln(os.Stderr, "Warning: could not record reveal audit:", err)
