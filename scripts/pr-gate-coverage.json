@@ -2586,6 +2586,22 @@
         "source.gate.atomic.docker.data.capabilities",
         "source.gate.atomic.podman.data.capabilities"
       ]
+    },
+    {
+      "id": "source.cmd_baha_application_destroy_authorization_go",
+      "path": "cmd/baha/application_destroy_authorization.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
+      "id": "source.cmd_baha_w287_destroy_after_failed_apply_test_go",
+      "path": "cmd/baha/w287_destroy_after_failed_apply_test.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
     }
   ],
   "gates": [
