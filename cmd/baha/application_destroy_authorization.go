@@ -50,6 +50,18 @@ func buildApplicationDestructionPlanForOperation(ctx context.Context, resolved r
 	if err != nil || record.Identity != resolved.DeploymentIdentity {
 		return p, runtimeMutationOwnerError()
 	}
+	// A deployment that persisted a record but never materialized its runtime
+	// (an interrupted/failed apply) has no canonical owner to verify through:
+	// the retained application-scoped provider instances were registered but
+	// never realized. A complete completion would route the shared/foreign
+	// provider retirement authority, so this falls back to the incomplete
+	// inventory recovery, which preserves shared, foreign and ambiguous
+	// resources and completes only the verified app-owned cleanup.
+	if reset {
+		if _, runtimeErr := application.ExistingRuntimeFiles(resolved.Store, resolved.Manifest); errors.Is(runtimeErr, application.ErrRuntimeNotApplied) {
+			return buildIncompleteInventoryDestructionPlan(resolved, record, operation)
+		}
+	}
 	_, p.Providers, err = buildApplicationRuntimeRetirementPlan(ctx, resolved)
 	if err != nil {
 		if !reset || !isProviderConsumerInventoryError(err) {
