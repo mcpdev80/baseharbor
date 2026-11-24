@@ -261,6 +261,7 @@ jobs:
       env:
         GATE: ${{ inputs.gate }}
         CANDIDATE_SHA: ${{ steps.candidate.outputs.sha }}
+        GOFLAGS: ${{ inputs.gate == 'mcp' && '-tags=baseharbor_ci_operator_testonly' || '' }}
       run: |
         set -euo pipefail
         exec > >(tee "$RUNNER_TEMP/gate-output.log") 2>&1
@@ -269,8 +270,16 @@ jobs:
         export ARTIFACT_DIR
         mkdir -p "$ARTIFACT_DIR"
         if [ -n "${{ inputs.candidate_artifact }}" ]; then
-          chmod 0755 "$RUNNER_TEMP/pre-release-candidate/baha"
-          export BAHA="$RUNNER_TEMP/pre-release-candidate/baha"
+          if [ "$GATE" = "mcp" ]; then
+            testonly="$RUNNER_TEMP/pre-release-candidate/baha-ci-operator-testonly"
+            test -s "$testonly"
+            chmod 0755 "$testonly"
+            "$testonly" version | grep -F "$CANDIDATE_SHA"
+            export BAHA="$testonly"
+          else
+            chmod 0755 "$RUNNER_TEMP/pre-release-candidate/baha"
+            export BAHA="$RUNNER_TEMP/pre-release-candidate/baha"
+          fi
         else
           mkdir -p "$RUNNER_TEMP/atomic-bin"
           go build -trimpath -o "$RUNNER_TEMP/atomic-bin/baha" ./cmd/baha

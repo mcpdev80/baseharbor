@@ -262,7 +262,7 @@ func TestAuthorizeHumanRevealSuccessRecordsRevealAudit(t *testing.T) {
 	recordRevealForTarget(ctx, "local", resolvedApplication{
 		Target:   deployment.ResolvedTarget{Name: "local"},
 		Manifest: application.Manifest{Name: "demo", Environment: "dev"},
-	}, "success", "")
+	}, "success", "", "")
 
 	events, err := evidence.Load(root)
 	if err != nil {
@@ -315,13 +315,32 @@ func TestAuthorizeHumanRevealDeniedRecordsRevealAudit(t *testing.T) {
 // TestAuthorizeHumanRevealFailedRecordsRevealAudit proves the failed-reveal
 // helper records a reveal audit event with operation "secret.reveal", the
 // failed outcome, a failure reason in the detail, and AuthorizationResult=deny,
-// so the audit captures failed reveals (not only denied or successful ones).
+// so the audit captures failed reveals (not only denied or successful ones) and
+// never records a spurious allow for a failed release (0428-277).
+//
+// Fail-closed proof: an ALLOWED operatorauth.AuthorizationDecision is installed
+// in the context (WithAuthorizationDecision, the same upstream state a
+// successful authorizeHumanReveal leaves behind). Under the original bug the
+// recorder reused that stored "allow" decision and paired it with
+// outcome=failed; this test fails in that case. It must go RED if recordRevealFailed
+// reverts to recordRevealForTarget while the upstream decision stays allowed.
 func TestAuthorizeHumanRevealFailedRecordsRevealAudit(t *testing.T) {
 	root := t.TempDir()
 	targetStateRoot = func(string) (string, error) { return root, nil }
 	defer func() { targetStateRoot = deployment.TargetStateRoot }()
 
-	ctx := context.Background()
+	ctx := operatorauth.WithAuthorizationDecision(context.Background(), operatorauth.AuthorizationDecision{
+		ContractVersion: "2026-08-01",
+		Allowed:         true,
+		Operation:       "secret.reveal",
+		Safety:          machine.SafetyDestructive,
+		Actor: operatorauth.MachineActorRef{
+			Mode:      "local-runtime",
+			Subject:   "trusted-local",
+			Assurance: "loa2",
+			Methods:   []string{"password", "webauthn"},
+		},
+	})
 
 	cause := errors.New("policy denied")
 	recordRevealFailed(ctx, "local", "dev", "demo", cause)
@@ -341,7 +360,25 @@ func TestAuthorizeHumanRevealFailedRecordsRevealAudit(t *testing.T) {
 		t.Fatalf("failed reveal must record the failure reason in detail, got %q", event.Detail)
 	}
 	if event.AuthorizationResult != "deny" {
-		t.Fatalf("failed reveal must record AuthorizationResult=deny, got %q", event.AuthorizationResult)
+		t.Fatalf("failed reveal must record AuthorizationResult=deny (fail-closed even under an upstream allow), got %q", event.AuthorizationResult)
+	}
+	if strings.EqualFold(event.AuthorizationResult, "allow") {
+		t.Fatalf("failed reveal must never record a spurious AuthorizationResult=allow, got %q", event.AuthorizationResult)
+	}
+	// RC2: the authenticated actor from the seeded upstream decision is still
+	// attributed on a failed reveal — a failed release must not fall back to
+	// cli/local-operator. This assertion is what goes RED if the fix is
+	// reverted to a builder that drops the decision's actor.
+	if event.Actor.Subject != "trusted-local" {
+		t.Fatalf("failed reveal must preserve authenticated actor Subject, got %q", event.Actor.Subject)
+	}
+	// RC: the upstream decision's Assurance and Methods must be preserved too,
+	// not only Subject — a future builder that drops either field must go RED.
+	if event.Actor.Assurance != "loa2" {
+		t.Fatalf("failed reveal must preserve actor Assurance=loa2, got %q", event.Actor.Assurance)
+	}
+	if len(event.Actor.Methods) != 2 || event.Actor.Methods[0] != "password" || event.Actor.Methods[1] != "webauthn" {
+		t.Fatalf("failed reveal must preserve the exact actor Methods [password webauthn], got %#v", event.Actor.Methods)
 	}
 }
 
