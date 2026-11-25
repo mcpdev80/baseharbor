@@ -2636,6 +2636,15 @@
         "source.gate.atomic.podman.data.capabilities"
       ],
       "runtime_specific": true
+    },
+    {
+      "id": "source.internal_applicationbackup_identity_regression_test_go",
+      "path": "internal/applicationbackup/identity_regression_test.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ],
+      "runtime_specific": true
     }
   ],
   "gates": [
