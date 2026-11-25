@@ -2580,6 +2580,23 @@
       ]
     },
     {
+      "id": "source.cmd_baha_app_init_metrics_boundary_test_go",
+      "path": "cmd/baha/app_init_metrics_boundary_test.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
+      "id": "source.internal_repositoryinspect_metrics_endpoint_boundary_test_go",
+      "path": "internal/repositoryinspect/metrics_endpoint_boundary_test.go",
+      "runtime_specific": true,
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
       "id": "source.internal_application_provider_registry_pending_go",
       "path": "internal/application/provider_registry_pending.go",
       "surfaces": [
