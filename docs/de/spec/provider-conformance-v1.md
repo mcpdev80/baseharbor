@@ -4,7 +4,7 @@ Status: Implementationskandidat für v0.4.22 (#772).
 
 Das[Provider Contract v1](provider-contract-v1.md)hat einen öffentlichen Eingangsort für Go-Konformität:`github.com/mcpdev80/baseharbor/conformance/provider/v1`. Er delegiert den bestehenden ausführbaren Provider Integration Contract Harness.
 
-Profil-Identität ist `provider-contract/v1`; die Identität des Berichts ist ` baseharbor.provider-conformance/v1`; das getestete Protokoll ist ` baseharbor.provider/v1`. Ein Implementer kann seinen Treiber und seine Befestigungen aus einem separaten Go-Modul liefern, ohne Core-Internals zu importieren.
+Profil-Identität ist `provider-contract/v1`; die Identität des Berichts ist ` baseharbor.provider-conformance/v1`; das getestete Protokoll ist ` baseharbor.provider/v1`. Das sind Vertrags-Identifikatoren, keine Repository-Pfade: die Profil-Metadaten liegen in `contracts/conformance/provider/v1/profile.json`, der Harness in `conformance/provider/v1`. Ein Implementer kann seinen Treiber und seine Befestigungen aus einem separaten Go-Modul liefern, ohne Core-Internals zu importieren.
 
 Erforderliche Vorrichtungen, Mutationsumfang, deterministische Invokation, JSON/Exit Semantik und ein Probenläufer sind dokumentiert in `conformance/provider/v1/README.md` im Quell-Repository. Pin das getestete Modul Commit; das öffentliche Paket wird Teil des v0.4.22 Quell-Artefaktes, wenn diese Veröffentlichung veröffentlicht wird.
 

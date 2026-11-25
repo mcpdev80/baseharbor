@@ -185,14 +185,19 @@ func anySelected(values []bool) bool {
 	return false
 }
 
-func promptMetricsTarget(reader *bufio.Reader, out io.Writer, workloadServices []string) (string, int, error) {
+// promptMetricsTarget drives the interactive metrics target selection and
+// returns the proven tuple (source, service, port, path). detectedPath is the
+// proven exact HTTP path from detection; when the user picks a target the
+// caller falls back to it unless overridden, so an interactive confirmation
+// never silently loses a proven endpoint path.
+func promptMetricsTarget(reader *bufio.Reader, out io.Writer, workloadServices []string, detectedPath string) (string, int, string, error) {
 	if len(workloadServices) == 0 {
-		return "", 0, errors.New("metrics collection requires an application workload service")
+		return "", 0, "", errors.New("metrics collection requires an application workload service")
 	}
 	defaultService := workloadServices[0]
 	service, err := promptLine(reader, out, "Metrics workload service", defaultService)
 	if err != nil {
-		return "", 0, err
+		return "", 0, "", err
 	}
 	found := false
 	for _, candidate := range workloadServices {
@@ -202,17 +207,33 @@ func promptMetricsTarget(reader *bufio.Reader, out io.Writer, workloadServices [
 		}
 	}
 	if !found {
-		return "", 0, fmt.Errorf("metrics service %q is not a selected workload service", service)
+		return "", 0, "", fmt.Errorf("metrics service %q is not a selected workload service", service)
 	}
 	value, err := promptLine(reader, out, "Metrics container port", "")
 	if err != nil {
-		return "", 0, err
+		return "", 0, "", err
 	}
 	port, err := strconv.Atoi(strings.TrimSpace(value))
 	if err != nil || port < 1 || port > 65535 {
-		return "", 0, fmt.Errorf("invalid metrics container port %q", value)
+		return "", 0, "", fmt.Errorf("invalid metrics container port %q", value)
 	}
-	return service, port, nil
+	proven := metricsProvenEndpoint(detectedPath)
+	if !proven {
+		// Never carry an arbitrary detected path into the manifest: the user
+		// must confirm the conventional endpoint explicitly.
+		detectedPath = ""
+	}
+	path, err := promptLine(reader, out, "Metrics HTTP path", detectedPath)
+	if err != nil {
+		return "", 0, "", err
+	}
+	if path == "" {
+		path = "/metrics"
+	}
+	if !metricsProvenEndpoint(path) {
+		return "", 0, "", fmt.Errorf("metrics path %q is not a proven metrics endpoint (expected /metrics, /q/metrics or /actuator/prometheus)", path)
+	}
+	return service, port, path, nil
 }
 
 func promptAmbiguousComposeServices(reader *bufio.Reader, out io.Writer, services []string) ([]string, error) {

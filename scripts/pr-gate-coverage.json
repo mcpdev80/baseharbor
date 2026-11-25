@@ -476,6 +476,14 @@
       ]
     },
     {
+      "id": "source.cmd_baha_installation_reset_preservation_test_go",
+      "path": "cmd/baha/installation_reset_preservation_test.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
       "id": "source.cmd.baha.app.provider.choice.test.go",
       "path": "cmd/baha/app_provider_choice_test.go",
       "surfaces": [
@@ -2580,6 +2588,23 @@
       ]
     },
     {
+      "id": "source.cmd_baha_app_init_metrics_boundary_test_go",
+      "path": "cmd/baha/app_init_metrics_boundary_test.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
+      "id": "source.internal_repositoryinspect_metrics_endpoint_boundary_test_go",
+      "path": "internal/repositoryinspect/metrics_endpoint_boundary_test.go",
+      "runtime_specific": true,
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
       "id": "source.internal_application_provider_registry_pending_go",
       "path": "internal/application/provider_registry_pending.go",
       "surfaces": [
@@ -2602,6 +2627,24 @@
         "source.gate.atomic.docker.data.capabilities",
         "source.gate.atomic.podman.data.capabilities"
       ]
+    },
+    {
+      "id": "source.internal_metrics_identity_dashboard_witness_go",
+      "path": "internal/metrics/identity_dashboard_witness.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ],
+      "runtime_specific": true
+    },
+    {
+      "id": "source.internal_applicationbackup_identity_regression_test_go",
+      "path": "internal/applicationbackup/identity_regression_test.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ],
+      "runtime_specific": true
     }
   ],
   "gates": [

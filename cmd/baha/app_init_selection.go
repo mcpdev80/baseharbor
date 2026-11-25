@@ -413,15 +413,15 @@ func addGuidedDetectedExposures(m application.Manifest, selection guidedInitSele
 
 func addGuidedObservability(reader *bufio.Reader, out io.Writer, d appProjectDetection, selection guidedInitSelection, m application.Manifest) (application.Manifest, error) {
 	if selection.selected[guidedCapabilityMetrics] {
-		service, port, ok := detectedMetricsTarget(d, selection.workloadServices)
+		source, service, port, path, ok := detectedMetricsTarget(d, selection.workloadServices)
 		if !ok {
 			var err error
-			service, port, err = promptMetricsTarget(reader, out, selection.workloadServices)
+			service, port, path, err = promptMetricsTarget(reader, out, selection.workloadServices, d.MetricsPath)
 			if err != nil {
 				return application.Manifest{}, err
 			}
 		}
-		m = application.WithMetricsSource(m, "application", service, port, "/metrics")
+		m = application.WithMetricsSource(m, source, service, port, path)
 	}
 	if selection.selected[guidedCapabilityOTLP] {
 		signals, err := promptOTLPSignals(reader, out, d.OTLPSignals)
