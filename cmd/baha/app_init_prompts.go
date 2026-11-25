@@ -217,9 +217,21 @@ func promptMetricsTarget(reader *bufio.Reader, out io.Writer, workloadServices [
 	if err != nil || port < 1 || port > 65535 {
 		return "", 0, "", fmt.Errorf("invalid metrics container port %q", value)
 	}
-	path := detectedPath
+	proven := metricsProvenEndpoint(detectedPath)
+	if !proven {
+		// Never carry an arbitrary detected path into the manifest: the user
+		// must confirm the conventional endpoint explicitly.
+		detectedPath = ""
+	}
+	path, err := promptLine(reader, out, "Metrics HTTP path", detectedPath)
+	if err != nil {
+		return "", 0, "", err
+	}
 	if path == "" {
 		path = "/metrics"
+	}
+	if !metricsProvenEndpoint(path) {
+		return "", 0, "", fmt.Errorf("metrics path %q is not a proven metrics endpoint (expected /metrics, /q/metrics or /actuator/prometheus)", path)
 	}
 	return service, port, path, nil
 }

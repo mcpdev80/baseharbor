@@ -15,8 +15,11 @@ import (
 // an unrelated token such as "api-old".
 var metricsPathPattern = regexp.MustCompile(`(?i)(^|/|["'=.\s])(/[A-Za-z0-9_./-]+)`)
 
-// metricsPathClass labels a proven endpoint path so callers can assert exact
+// metricsPathClass labels a PROVEN endpoint path so callers can assert exact
 // paths (Quarkus, Spring, conventional) and fail closed on the unexpected.
+// The switch below is the canonical registry: ONLY these exact paths are
+// proven metrics endpoints. metricsPathProven reports membership in the same
+// registry; the two must stay in lockstep.
 func metricsPathClass(path string) string {
 	switch path {
 	case "/q/metrics":
@@ -30,30 +33,77 @@ func metricsPathClass(path string) string {
 	}
 }
 
+// metricsPathProven reports whether path is a proven metrics endpoint, i.e.
+// an exact match against the canonical registry in metricsPathClass.
+// Arbitrary candidate paths such as "/health" or "/api/users" are NOT proven
+// metrics endpoints, so the detector must not emit endpoint evidence for them.
+// Comparison is exact equality: no prefix or substring matching.
+func metricsPathProven(path string) bool {
+	return metricsPathClass(path) != "other"
+}
+
 // metricsEndpoint is a proven HTTP endpoint path plus its classification.
 type metricsEndpoint struct {
 	Path  string
 	Class string
 }
 
-// metricsEndpointFromText extracts the first proven metrics HTTP endpoint path
-// from lower-cased source text. The boundary-aware regex captures the exact
-// path (for example /q/metrics, /actuator/prometheus, or /metrics); callers
-// classify it with metricsPathClass. ok is false when no concrete path is
-// present, so a bare "/metrics" mention without a usable token is not treated
-// as a proven endpoint.
+// metricsEndpointFromText extracts the first PROVEN metrics HTTP endpoint
+// path from lower-cased source text. The boundary-aware regex captures path
+// candidates (starting after delimiters such as quotes, equals, whitespace,
+// dots or a slash, which lets it reach the second slash of "/q/metrics").
+// ok is true only when a candidate, re-extended by its own trailing
+// separators so a truncated prefix like "/actuator" can complete to
+// "/actuator/prometheus", is an exact match against the proven registry
+// (metricsPathProven). Arbitrary paths such as "/health" or "/api/users" are
+// never proven, and a bare "metrics" mention without a path token yields
+// nothing.
 func metricsEndpointFromText(lower string) (metricsEndpoint, bool) {
-	matches := metricsPathPattern.FindStringSubmatch(lower)
-	if len(matches) < 3 {
-		return metricsEndpoint{}, false
+	for _, loc := range metricsPathPattern.FindAllStringSubmatchIndex(lower, -1) {
+		// The pattern has TWO capture groups: loc is [matchStart, matchEnd,
+		// delimStart, delimEnd, pathStart, pathEnd]. The path candidate is
+		// loc[4]:loc[5].
+		path := lower[loc[4]:loc[5]]
+		if path == "" {
+			continue
+		}
+		if metricsPathProven(path) {
+			return metricsEndpoint{Path: path, Class: metricsPathClass(path)}, true
+		}
+		// The path capture ends at the first "/" inside a registry path
+		// ("/q/metrics" yields "/q", "/actuator/prometheus" yields
+		// "/actuator"). Re-extend the candidate over following "/segment"
+		// runs and test the registry; the segments are exactly what the
+		// next delimiter-aware matches would capture at this position.
+		candidate := path
+		for end := loc[5]; end+1 < len(lower) && lower[end] == '/'; {
+			tail := end + 1
+			for tail < len(lower) && isMetricsPathByte(lower[tail]) && lower[tail] != '/' {
+				tail++
+			}
+			if tail == end+1 {
+				break
+			}
+			candidate += "/" + lower[end+1:tail]
+			end = tail
+			if metricsPathProven(candidate) {
+				return metricsEndpoint{Path: candidate, Class: metricsPathClass(candidate)}, true
+			}
+		}
 	}
-	// matches[2] is the captured path; matches[1] is the preceding delimiter
-	// ("" when the path starts the string).
-	path := matches[2]
-	if path == "" {
-		return metricsEndpoint{}, false
+	return metricsEndpoint{}, false
+}
+
+// isMetricsPathByte reports whether b is a byte the endpoint pattern accepts
+// inside a path token.
+func isMetricsPathByte(b byte) bool {
+	switch {
+	case b >= 'a' && b <= 'z', b >= 'A' && b <= 'Z', b >= '0' && b <= '9':
+		return true
+	case b == '_' || b == '.' || b == '-':
+		return true
 	}
-	return metricsEndpoint{Path: path, Class: metricsPathClass(path)}, true
+	return false
 }
 
 type objectStorageDetector struct{}

@@ -305,28 +305,53 @@ func uniquePortEvidence(input []repositoryinspect.PortEvidence) []repositoryinsp
 	return out
 }
 
-// metricsProvenPath extracts the proven exact HTTP metrics path from a detector
-// source string (which is "<path> <detail>"). The detail carries the classed
-// path, for example "repository exposes a metrics endpoint /q/metrics
-// (quarkus)", so this recovers "/q/metrics", "/actuator/prometheus", or
-// "/metrics". ok is false when no concrete path token is present, so the
-// caller leaves MetricsPath empty and falls back to the conventional /metrics.
+// metricsProvenPath extracts the proven exact HTTP metrics path from a
+// detector source string ("<evidence path> <detail>"). The detail carries the
+// classed path, for example "repository exposes a metrics endpoint /q/metrics
+// (quarkus)". metricsProvenPathPattern provides the boundary-aware path
+// tokenization; the token is then accepted ONLY by exact equality against the
+// canonical registry of proven metrics endpoints (metricsProvenEndpoint).
+// Arbitrary candidate paths such as "/health" or "/api/users" and
+// prefix/substring variants are never proven here.
 func metricsProvenPath(source string) (string, bool) {
-	matches := metricsProvenPathPattern.FindStringSubmatch(source)
-	if len(matches) < 2 {
-		return "", false
+	for _, matches := range metricsProvenPathPattern.FindAllStringSubmatch(source, -1) {
+		if len(matches) < 2 {
+			continue
+		}
+		path := matches[1]
+		if metricsProvenEndpoint(path) {
+			return path, true
+		}
 	}
-	path := matches[1]
-	if path == "" {
-		return "", false
+	return "", false
+}
+
+// metricsProvenRegistry is the canonical registry of PROVEN metrics endpoint
+// paths, mirroring the exact-match list maintained by the repositoryinspect
+// detector (Quarkus /q/metrics, Spring /actuator/prometheus, conventional
+// /metrics). Only these paths count as proven; everything else fails closed.
+var metricsProvenRegistry = []string{"/q/metrics", "/actuator/prometheus", "/metrics"}
+
+// metricsProvenEndpoint reports whether path is an exact match against the
+// proven registry. Comparison is exact equality only: no prefix, substring or
+// case-insensitive matching, so "/health", "/metrics-old" and "/api/users"
+// are never proven.
+func metricsProvenEndpoint(path string) bool {
+	for _, proven := range metricsProvenRegistry {
+		if path == proven {
+			return true
+		}
 	}
-	return path, true
+	return false
 }
 
 // metricsProvenPathPattern captures an HTTP endpoint path preceded by a quote,
-// equals, whitespace, or the start of the string, so it extracts the exact
-// path (for example /q/metrics) without matching a bare substring inside an
-// unrelated token such as "api-old".
+// equals, whitespace, or the start of the string. The CLI uses it to pull the
+// first path-shaped token out of a detector evidence string. Endpoint
+// provenance itself is decided ONLY by the registry comparison in
+// metricsProvenEndpoint (exact equality), never by this pattern alone: the
+// pattern is the boundary reference for well-formed tokens such as
+// "/q/metrics" and must not match a bare substring inside unrelated text.
 var metricsProvenPathPattern = regexp.MustCompile(`(?i)(?:["'=\s]|^)(/[A-Za-z0-9_./-]+)`)
 
 // detectedMetricsTarget resolves the proven metrics endpoint tuple
@@ -367,12 +392,19 @@ func detectedMetricsTarget(d appProjectDetection, workloadServices []string) (st
 	if !metricsModuleAttributableToWorkload(selectedService, workloadServices, d.MetricsSourceModule) {
 		return "", "", 0, "", false
 	}
-	// Carry the proven exact HTTP path (fall back to the conventional
-	// /metrics) so the caller binds the detected endpoint tuple, not a
-	// hardcoded path.
+	// Carry the proven exact HTTP path. Only registry paths are ever stored
+	// in MetricsPath, and the endpoint evidence itself is proven only by the
+	// registry (the detector emits no endpoint evidence for arbitrary
+	// paths). Dependency or import evidence without any path token keeps
+	// MetricsPath empty: the conventional /metrics endpoint is the documented
+	// default there, never an arbitrary match.
 	path := d.MetricsPath
 	if path == "" {
 		path = "/metrics"
+	}
+	if !metricsProvenEndpoint(path) {
+		// Fail closed: never bind an unproven candidate path.
+		return "", "", 0, "", false
 	}
 	return selectedService, selectedService, targets[0].port, path, true
 }
