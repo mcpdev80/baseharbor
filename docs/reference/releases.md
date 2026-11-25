@@ -28,7 +28,7 @@ Manifest v1 remains the supported v0.4 compatibility surface. v0.4 adds provider
 
 ### Optional observability management surface
 
-Observability backends (Prometheus, Loki, Tempo) are optional, opt-in data owners, not required Core bundles. For v0.4.28 the visualization surface is optional **Perses** (pinned at v0.55.1, image `persesdev/perses:v0.55.1`; the provider pin is separate from BaseHarbor's own release version). Perses is a provider-owned, dashboard-as-code surface, not an application capability and not part of the required Core bundle. The Perses visualization surface is optional; its state may be `not_configured`, `configured_unverified` or `verified`. The normative state definition lives in docs/spec/management-access-v1.md. The Prometheus, Loki and Tempo data backends remain available regardless of whether a visualization surface is selected.
+Observability backends (Prometheus, Loki, Tempo) are optional, opt-in data owners, not required Core bundles. For v0.4.28 the visualization surface is optional **Perses** (pinned at v0.55.1, image `persesdev/perses:v0.55.1`; the provider pin is separate from BaseHarbor's own release version). Perses is a provider-owned, dashboard-as-code surface, not an application capability and not part of the required Core bundle. The Perses visualization surface is optional; its state may be `not_configured`, `configured_unverified` or `verified`. The normative state definition lives in [Management access v1](../spec/management-access-v1.md). The Prometheus, Loki and Tempo data backends remain available regardless of whether a visualization surface is selected.
 
 ## Development versus releases
 
