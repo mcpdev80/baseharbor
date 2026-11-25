@@ -380,22 +380,49 @@ def validate_pins_data(check, repository):
     return validated
 
 
+def _current_release(repository):
+    """Return the active release tag from the trusted release-requirements.json.
+
+    The demo source pin is release-scoped, so the validator must read the pin
+    for whatever release the candidate actually targets, not a hard-coded
+    v0.4.27. A missing or malformed requirements file is a hard failure: the
+    validator must never silently guess a path.
+    """
+    try:
+        requirements = json.loads(
+            (Path(repository) / 'scripts' / 'release-requirements.json').read_text())
+    except (OSError, ValueError, TypeError):
+        raise RuntimeError('release-requirements.json unreadable or malformed')
+    release = requirements.get('release')
+    if not release or not isinstance(release, str):
+        raise RuntimeError('release-requirements.json missing a release tag')
+    return release
+
+
 def validate_demo_source_pin(check, repository):
-    """Require the v0.4.27 Demo pin to be one existing immutable commit."""
+    """Require the active-release Demo pin to be one existing immutable commit.
+
+    The Demo source pin is release-scoped: the pinned SHA lives at
+    ``docs/releases/<release>.demo-ref`` where ``<release>`` is read from the
+    trusted ``scripts/release-requirements.json``. Previously this only knew a
+    hard-coded ``v0.4.27`` path, so a v0.4.28 pin (or any other active release)
+    fell through unvalidated. The path is now resolved per the candidate release.
+    """
     if check != 'demo-source-pin-validation':
         raise ValueError('unsupported Demo pin validation')
-    pin = Path(repository) / 'docs/releases/v0.4.27.demo-ref'
+    release = _current_release(repository)
+    pin = Path(repository) / 'docs' / 'releases' / '{}.demo-ref'.format(release)
     if pin.is_symlink() or not pin.is_file():
-        raise RuntimeError('v0.4.27 Demo source pin is missing or unsafe')
+        raise RuntimeError('{} Demo source pin is missing or unsafe'.format(release))
     raw = pin.read_text()
     if not re.fullmatch(r'[0-9a-f]{40}\n?', raw):
-        raise RuntimeError('v0.4.27 Demo source pin must contain exactly one full lowercase commit SHA')
+        raise RuntimeError('{} Demo source pin must contain exactly one full lowercase commit SHA'.format(release))
     sha = raw.strip()
     resolved = subprocess.run(
         ['gh', 'api', 'repos/mcpdev80/baseharbor-demo/commits/' + sha, '--jq', '.sha'],
         text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     if resolved.returncode or resolved.stdout.strip() != sha:
-        raise RuntimeError('v0.4.27 Demo source commit does not resolve in the pinned repository')
+        raise RuntimeError('{} Demo source commit does not resolve in the pinned repository'.format(release))
     return [sha]
 
 

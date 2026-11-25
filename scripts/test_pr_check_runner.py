@@ -1,5 +1,6 @@
 """Check the trusted dynamic validation interface without running native gates."""
 import importlib.util
+import json
 import os
 import subprocess
 import sys
@@ -20,6 +21,11 @@ class RunnerTests(unittest.TestCase):
     def test_demo_pin_validation_requires_exact_sha_and_existing_remote_commit(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
+            # The validator reads the active release from the trusted
+            # release-requirements.json, so the fixture must carry it.
+            requirements = root / 'scripts' / 'release-requirements.json'
+            requirements.parent.mkdir(parents=True)
+            requirements.write_text(json.dumps({'release': 'v0.4.27'}))
             pin = root / 'docs/releases/v0.4.27.demo-ref'
             pin.parent.mkdir(parents=True)
             sha = 'a' * 40

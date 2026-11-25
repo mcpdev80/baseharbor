@@ -1179,7 +1179,7 @@ def targeted_plan(diff, requirements, mapping, repository='.',
                 'reasons': ['Trusted target record: exact repository, branch, head, full '
                             'inventory, raw SHA-256 blobs and clean integration verified.']}
     for path in paths:
-        if re.fullmatch(r'docs/releases/v0\.4\.2[78]\.demo-ref', path):
+        if path == 'docs/releases/{}.demo-ref'.format(release):
             area = 'release-demo-source-pin'
             require(DEMO_SOURCE_PIN_VALIDATION)
             if len(paths) != 1 or path_status.get(path) != 'modified':
