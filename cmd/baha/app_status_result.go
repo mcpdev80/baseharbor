@@ -25,19 +25,23 @@ type runtimeArtifactObservation struct {
 
 type applicationStatusResult struct {
 	application.StatusResult
-	ApplicationID            string                                                          `json:"application_id"`
-	DeploymentID             string                                                          `json:"deployment_id"`
-	TLS                      *applicationTLSObservation                                      `json:"tls,omitempty"`
-	ServiceTLS               []application.BackendTLSLifecycleObservation                    `json:"service_tls,omitempty"`
-	RuntimeArtifact          *runtimeArtifactObservation                                     `json:"runtime_artifact,omitempty"`
-	RuntimeDocsURL           string                                                          `json:"runtime_docs_url,omitempty"`
-	ApplicationURLs          []string                                                        `json:"application_urls,omitempty"`
-	ManagementUI             []application.ManagementUISurface                               `json:"management_ui,omitempty"`
-	OperatorAuth             operatorAuthObservation                                         `json:"operator_auth"`
-	Availability             []availability.NegotiationResult                                `json:"availability,omitempty"`
-	Perses                   *capability.PersesStatus                                        `json:"perses,omitempty"`
-	DatabaseDashboards       map[string]metricsprovider.PersesDashboardAvailabilityEntry     `json:"database_dashboards,omitempty"`
-	HostContainersDashboards map[string]metricsprovider.PersesHostDashboardAvailabilityEntry `json:"host_containers_dashboards,omitempty"`
+	ApplicationID   string                                       `json:"application_id"`
+	DeploymentID    string                                       `json:"deployment_id"`
+	TLS             *applicationTLSObservation                   `json:"tls,omitempty"`
+	ServiceTLS      []application.BackendTLSLifecycleObservation `json:"service_tls,omitempty"`
+	RuntimeArtifact *runtimeArtifactObservation                  `json:"runtime_artifact,omitempty"`
+	RuntimeDocsURL  string                                       `json:"runtime_docs_url,omitempty"`
+	ApplicationURLs []string                                     `json:"application_urls,omitempty"`
+	ManagementUI    []application.ManagementUISurface            `json:"management_ui,omitempty"`
+	OperatorAuth    operatorAuthObservation                      `json:"operator_auth"`
+	Availability    []availability.NegotiationResult             `json:"availability,omitempty"`
+	Perses          *capability.PersesStatus                     `json:"perses,omitempty"`
+	// IdentityDashboardEligible is derived from a verified Perses surface and
+	// the real, target-bound Keycloak metrics witness. Missing or unverified
+	// evidence always leaves the identity dashboard unavailable.
+	IdentityDashboardEligible bool                                                            `json:"identity_dashboard_eligible"`
+	DatabaseDashboards        map[string]metricsprovider.PersesDashboardAvailabilityEntry     `json:"database_dashboards,omitempty"`
+	HostContainersDashboards  map[string]metricsprovider.PersesHostDashboardAvailabilityEntry `json:"host_containers_dashboards,omitempty"`
 	// PersesBackendWitness carries, per observability backend, the manifest-only
 	// three-state backend-witness (configured / not-configured / unreachable) so
 	// the operator sees which source is green or red instead of a blanket
@@ -317,8 +321,20 @@ func collectApplicationStatusResult(ctx context.Context, store application.Store
 	infrastructureDashboardStatus := metricsprovider.PersesInfraDashboardAvailability(ctx, resolved.Manifest)
 	databaseDashboards := metricsprovider.PersesDashboardAvailability(resolved.Manifest)
 	earlyVersions, earlyVersionWarnings := collectAppStatusVersions(resolved)
+	// The identity-keycloak dashboard is derived from the SAME verified Perses
+	// three-state surface the probe above resolved: eligible ONLY when Perses is
+	// verified AND the real, target-bound Keycloak metric signal is non-forgeably
+	// available. A caller-supplied status or a signal for another Target cannot
+	// make it eligible (fail-closed). Wired into both the remote and local faces
+	// below so remote-status --json and the host face never drift.
+	identityDashboardEligible := identityDashboardBackendEligible(
+		persesStatus,
+		resolved.Manifest,
+		resolved.TargetStateRoot,
+		resolved.Target.Name,
+	)
 	if hasRemoteApplicationTarget(resolved) {
-		return applicationStatusResult{StatusResult: result, ApplicationID: resolved.Manifest.ApplicationID,
+		return withIdentityDashboardStatus(applicationStatusResult{StatusResult: result, ApplicationID: resolved.Manifest.ApplicationID,
 			DeploymentID:       resolved.DeploymentIdentity.DeploymentID,
 			OperatorAuth:       collectOperatorAuthObservation(ctx, resolved.Target.Name, resolved.Manifest.Environment),
 			Perses:             persesStatus,
@@ -328,7 +344,7 @@ func collectApplicationStatusResult(ctx context.Context, store application.Store
 			PersesBackendWitness:     persesBackendSignalWitnessFromManifest(resolved.Manifest, resolvedHostSignalStatus, metricsprovider.PersesBackendSignalWitness{}),
 			InfrastructureDashboards: infrastructureDashboardStatus,
 			Versions:                 earlyVersions,
-			VersionWarnings:          earlyVersionWarnings}, nil
+			VersionWarnings:          earlyVersionWarnings}, persesStatus, identityDashboardEligible), nil
 	}
 	tlsStatus, tlsObservation, tlsErr := collectApplicationTLSObservation(resolved)
 	if tlsErr != nil || (tlsObservation != nil && !tlsObservation.Healthy) {
@@ -418,27 +434,57 @@ func collectApplicationStatusResult(ctx context.Context, store application.Store
 		}
 	}
 	versions, versionWarnings := collectAppStatusVersions(resolved)
-	return applicationStatusResult{
-		StatusResult:             result,
-		ApplicationID:            resolved.Manifest.ApplicationID,
-		DeploymentID:             resolved.DeploymentIdentity.DeploymentID,
-		OperatorAuth:             collectOperatorAuthObservation(ctx, resolved.Target.Name, resolved.Manifest.Environment),
-		Availability:             availabilityResults,
-		TLS:                      tlsObservation,
-		ServiceTLS:               serviceTLS,
-		RuntimeArtifact:          runtimeArtifact,
-		RuntimeDocsURL:           runtimeDocsURL,
-		ApplicationURLs:          applicationAccessURLs(resolved, result.Ready),
-		ManagementUI:             managementUI,
-		Perses:                   persesStatus,
-		DatabaseDashboards:       databaseDashboards,
-		HostContainersDashboards: metricsprovider.PersesHostDashboardAvailability(resolvedHostSignalStatus),
-		PersesBackendWitness:     persesBackendSignalWitnessFromManifest(resolved.Manifest, resolvedHostSignalStatus, metricsprovider.PersesBackendSignalWitness{}),
-		InfrastructureDashboards: infrastructureDashboardStatus,
-		Versions:                 versions,
-		VersionWarnings:          versionWarnings,
-		tlsStatus:                tlsStatus,
-		tlsErr:                   tlsErr,
-		serviceTLSErr:            serviceTLSErr,
-	}, nil
+	return withIdentityDashboardStatus(applicationStatusResult{
+		StatusResult:              result,
+		ApplicationID:             resolved.Manifest.ApplicationID,
+		DeploymentID:              resolved.DeploymentIdentity.DeploymentID,
+		OperatorAuth:              collectOperatorAuthObservation(ctx, resolved.Target.Name, resolved.Manifest.Environment),
+		Availability:              availabilityResults,
+		TLS:                       tlsObservation,
+		ServiceTLS:                serviceTLS,
+		RuntimeArtifact:           runtimeArtifact,
+		RuntimeDocsURL:            runtimeDocsURL,
+		ApplicationURLs:           applicationAccessURLs(resolved, result.Ready),
+		ManagementUI:              managementUI,
+		Perses:                    persesStatus,
+		DatabaseDashboards:        databaseDashboards,
+		HostContainersDashboards:  metricsprovider.PersesHostDashboardAvailability(resolvedHostSignalStatus),
+		PersesBackendWitness:      persesBackendSignalWitnessFromManifest(resolved.Manifest, resolvedHostSignalStatus, metricsprovider.PersesBackendSignalWitness{}),
+		InfrastructureDashboards:  infrastructureDashboardStatus,
+		Versions:                  versions,
+		VersionWarnings:           versionWarnings,
+		IdentityDashboardEligible: identityDashboardEligible,
+		tlsStatus:                 tlsStatus,
+		tlsErr:                    tlsErr,
+		serviceTLSErr:             serviceTLSErr,
+	}, persesStatus, identityDashboardEligible), nil
+}
+
+// withIdentityDashboardStatus sets the derived identity-keycloak dashboard
+// eligibility on an applicationStatusResult. Eligible is the fail-closed
+// predicate produced by identityDashboardBackendEligible: it is true only when
+// the manifest declares a verified Perses management UI and the real, target-
+// bound Keycloak metric signal is non-forgeably available. A caller-supplied
+// status or a signal for another Target leaves it false.
+func withIdentityDashboardStatus(result applicationStatusResult, persesStatus *capability.PersesStatus, eligible bool) applicationStatusResult {
+	result.IdentityDashboardEligible = eligible
+	return result
+}
+
+// identityDashboardBackendEligible is the verified-only, non-forgeable gate for
+// the identity-keycloak dashboard surface. It derives eligibility from the SAME
+// verified Perses three-state surface the status probe resolved: eligible ONLY
+// when Perses is verified AND the real, target-bound Keycloak metric signal is
+// non-forgeably available at the resolved placement. A caller-supplied status or
+// a signal for another Target cannot make it eligible (fail-closed).
+func identityDashboardBackendEligible(persesStatus *capability.PersesStatus, manifest application.Manifest, targetStateRoot, targetName string) bool {
+	if !manifest.Services.ObservabilityManagementUI || !manifest.Services.Perses || persesStatus == nil || *persesStatus != capability.PersesStatusVerified {
+		return false
+	}
+	placement, err := application.ResolveProviderPlacement(manifest, capability.ProviderKeycloak)
+	if err != nil {
+		return false
+	}
+	witness := metricsprovider.IdentityDashboardWitnessAt(manifest, placement, targetStateRoot, targetName)
+	return witness.NonForgeableAvailable()
 }
