@@ -28,7 +28,7 @@ func TestRuntimeIdentityWorkloadOverrideIsOptionalWithoutConsumers(t *testing.T)
 }
 
 func TestRuntimeIdentityWorkloadOverrideDefaultsSecureAPIURLForConsumer(t *testing.T) {
-	m := New("demo", "dev", true, false, true)
+	m := WithRuntimePermission(New("demo", "dev", true, false, true), "object-storage.s3/v1", []string{"api"}, "runtime.create")
 	files := RuntimeFiles{Dir: filepath.Join(t.TempDir(), "runtime")}
 	files.Bindings = filepath.Join(files.Dir, "bindings")
 	workload := WorkloadFiles{Services: []string{"api"}}
@@ -58,7 +58,7 @@ func TestRuntimeIdentityWorkloadOverrideDefaultsSecureAPIURLForConsumer(t *testi
 }
 
 func TestRuntimeIdentityWorkloadOverrideScopesTokenAndFileSecrets(t *testing.T) {
-	m := WithRequiredSecrets(New("demo", "dev", true, false, true), "TLS_KEY_FILE")
+	m := WithRequiredSecrets(WithRuntimePermission(New("demo", "dev", false, false, true), "object-storage.s3/v1", []string{"api"}, "runtime.create"), "TLS_KEY_FILE")
 	files := RuntimeFiles{Dir: filepath.Join(t.TempDir(), "runtime")}
 	files.Bindings = filepath.Join(files.Dir, "bindings")
 	if err := os.MkdirAll(SecretFileHostDir(files), 0o700); err != nil {
@@ -100,7 +100,6 @@ func TestRuntimeIdentityWorkloadOverrideScopesTokenAndFileSecrets(t *testing.T) 
 		"TLS_KEY_FILE: \"/run/secrets/baseharbor-tls-key\"",
 		"baseharbor-tls-cert:",
 		"baseharbor-tls-key:",
-		"baseharbor-runtime-token:",
 		"baseharbor-runtime-client-key:",
 		":/run/baseharbor/bindings/secrets/TLS_KEY_FILE:ro",
 	} {
@@ -108,17 +107,32 @@ func TestRuntimeIdentityWorkloadOverrideScopesTokenAndFileSecrets(t *testing.T) 
 			t.Fatalf("override missing %q:\n%s", want, text)
 		}
 	}
+	// With an explicit runtime permission the authorized service uses its own
+	// service-scoped token secret, never the shared legacy app token.
+	serviceSecret := runtimeServiceIdentitySecretName("api")
+	if !strings.Contains(text, serviceSecret+":") {
+		t.Fatalf("service-scoped token secret definition missing:\n%s", text)
+	}
+	if strings.Contains(text, "baseharbor-runtime-token:\n") {
+		t.Fatalf("explicit permission unexpectedly used the shared legacy app token:\n%s", text)
+	}
 	for _, unwanted := range []string{"web:", "worker:"} {
 		if strings.Contains(text, unwanted) {
 			t.Fatalf("non-consuming service received protected binding %q:\n%s", unwanted, text)
 		}
 	}
-	info, err := os.Stat(RuntimeIdentityTokenPath(files))
+	// With an explicit runtime permission the service-scoped identity token is
+	// materialized (owner-only); the shared legacy app token is not.
+	serviceTokenPath := RuntimeServiceIdentityTokenPath(files, "api")
+	info, err := os.Stat(serviceTokenPath)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("service-scoped runtime identity token must be materialized: %v", err)
 	}
 	if info.Mode().Perm() != 0o600 {
-		t.Fatalf("token mode = %o, want 600", info.Mode().Perm())
+		t.Fatalf("service token mode = %o, want 600", info.Mode().Perm())
+	}
+	if _, err := os.Stat(RuntimeIdentityTokenPath(files)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("shared legacy app token must not be materialized with an explicit permission: %v", err)
 	}
 	canonicalSecretInfo, err := os.Stat(SecretFileHostPath(files, "TLS_KEY_FILE"))
 	if err != nil {
@@ -142,8 +156,10 @@ func TestRuntimeIdentityWorkloadOverrideScopesTokenAndFileSecrets(t *testing.T) 
 	if got := projectionDirInfo.Mode().Perm(); got != 0o700 {
 		t.Fatalf("runtime workload projection directory mode = %o, want 700", got)
 	}
+	// The authorized service uses its own service-scoped token projection; the
+	// shared legacy app token is never projected.
 	for _, name := range []string{
-		"baseharbor-runtime-token",
+		serviceSecret,
 		"baseharbor-runtime-ca",
 		"baseharbor-runtime-client-cert",
 		"baseharbor-runtime-client-key",
@@ -152,11 +168,14 @@ func TestRuntimeIdentityWorkloadOverrideScopesTokenAndFileSecrets(t *testing.T) 
 	} {
 		projectedInfo, err := os.Stat(filepath.Join(projectionDir, name))
 		if err != nil {
-			t.Fatal(err)
+			t.Fatalf("runtime workload projection %s must exist: %v", name, err)
 		}
 		if got := projectedInfo.Mode().Perm(); got != 0o644 {
 			t.Fatalf("runtime workload projection %s mode = %o, want 644", name, got)
 		}
+	}
+	if _, err := os.Stat(filepath.Join(projectionDir, "baseharbor-runtime-token")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("shared legacy app token must never be projected with an explicit permission")
 	}
 	overrideInfo, err := os.Stat(path)
 	if err != nil {

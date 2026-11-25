@@ -25,6 +25,13 @@ const (
 
 var ErrRuntimeAPIURL = errors.New("application runtime API URL is invalid")
 
+// ErrRuntimeIdentityRequiresExplicitPermission is returned when a workload
+// service consumes the application runtime broker but is not named in an
+// explicit runtime permission. BaseHarbor fails closed here: it never falls
+// back to the shared legacy application token, because doing so would scope the
+// identity to the whole application instead of a single authorized service.
+var ErrRuntimeIdentityRequiresExplicitPermission = errors.New("application runtime identity is missing an explicit runtime permission")
+
 type WorkloadBindingPlan struct {
 	RuntimeIdentityServices []string
 	FileSecretsByService    map[string][]string
@@ -228,7 +235,6 @@ func MaterializeRuntimeIdentityWorkloadOverride(m Manifest, workload WorkloadFil
 		if err != nil {
 			return "", false, err
 		}
-		legacyTokenPath := ""
 		identityDir := RuntimeMTLSHostDir(files)
 		sources := map[string]string{
 			"baseharbor-runtime-ca":          filepath.Join(identityDir, "ca.pem"),
@@ -249,17 +255,7 @@ func MaterializeRuntimeIdentityWorkloadOverride(m Manifest, workload WorkloadFil
 			hostPath, explicitlyAuthorized := serviceIdentities[service]
 			name := runtimeServiceIdentitySecretName(service)
 			if !explicitlyAuthorized {
-				if legacyTokenPath == "" {
-					legacyTokenPath, err = EnsureRuntimeIdentity(m, files)
-					if err != nil {
-						return "", false, err
-					}
-					if strings.TrimSpace(legacyTokenPath) == "" {
-						return "", false, errors.New("legacy runtime identity token is unavailable")
-					}
-				}
-				hostPath = legacyTokenPath
-				name = "baseharbor-runtime-token"
+				return "", false, fmt.Errorf("%w: %s", ErrRuntimeIdentityRequiresExplicitPermission, service)
 			}
 			if _, exists := runtimeTokenSecretFiles[name]; !exists {
 				projected, err := projectRuntimeIdentityWorkloadFile(files, hostPath, name)
