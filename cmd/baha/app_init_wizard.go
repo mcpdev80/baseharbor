@@ -40,6 +40,8 @@ type appProjectDetection struct {
 	Metrics                  bool
 	MetricsSuggested         bool
 	MetricsSource            string
+	MetricsSourceModule      string
+	MetricsPath              string
 	OTLP                     bool
 	OTLPSuggested            bool
 	OTLPSignals              []string
@@ -262,11 +264,11 @@ func manifestFromDetectedProject(d appProjectDetection, quick bool) (application
 		}
 	}
 	if quick && d.Metrics {
-		service, port, ok := detectedMetricsTarget(d, d.WorkloadServices)
+		source, service, port, path, ok := detectedMetricsTarget(d, d.WorkloadServices)
 		if !ok {
-			return application.Manifest{}, usageError("metrics endpoint was detected but its workload service/port is ambiguous", "Run 'baha app init' interactively to confirm the metrics target.")
+			return application.Manifest{}, usageError("metrics endpoint was detected but its workload service/port/path is ambiguous", "Run 'baha app init' interactively to confirm the metrics target.")
 		}
-		m = application.WithMetricsSource(m, "application", service, port, "/metrics")
+		m = application.WithMetricsSource(m, source, service, port, path)
 	}
 	if quick && d.OTLP {
 		if len(d.OTLPSignals) == 0 {
