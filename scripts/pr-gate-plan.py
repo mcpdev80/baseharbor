@@ -1538,6 +1538,19 @@ def targeted_plan(diff, requirements, mapping, repository='.',
             require(CODE_CHECKS)
             if path_status.get(path) not in ('added', 'modified'):
                 unresolved.append('workload-security policy source/test removal or rename needs review: ' + path)
+        elif path == 'internal/application/runtime_identity_workload.go' or \
+                path == 'internal/application/runtime_identity_workload_fallback_test.go':
+            # The runtime-identity workload override is applied during the
+            # workload-binding/compose lifecycle. Card 0428-307 made the missing
+            # per-service runtime permission fail closed instead of falling back
+            # to the shared legacy app token; the exact package regression plus
+            # the existing Docker and rootless Podman/Quadlet lifecycle gates
+            # (which run TestMultiInstanceComposeLifecycleInCI) cover this path.
+            # Bound to those EXISTING gates only (no new gate, no widening).
+            area = 'application-runtime-identity-fail-closed'
+            require(CODE_CHECKS)
+            selected.add('atomic/docker/lifecycle')
+            selected.add('atomic/podman/lifecycle')
         elif path.startswith('internal/application/'):
             area = 'application-implementation-unresolved'
             require(CODE_CHECKS)
