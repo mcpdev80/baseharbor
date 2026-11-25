@@ -141,6 +141,22 @@ func EnsureRuntime(ctx context.Context, issuer serviceaccess.Issuer, store Store
 		return RuntimeFiles{}, err
 	}
 
+	// The 0428-181 apply-boundary call site: the selected, verified Perses
+	// identity dashboard is PROVISIONED through the registered dashboard
+	// provisioner BEFORE the compose render, into this deployment's dashboard
+	// projection root <deploymentRoot>/applications/<resourceProject>/
+	// providers/management-ui/perses/provisioning/dashboards — the same sibling
+	// of the runtime dir the datasource materializer writes beside. A selected
+	// surface that the REAL per-target probe (metrics.PersesBackendAnswersNow)
+	// reports verified exports its eligible dashboard JSON; a deselected, silent,
+	// unverified or failed surface exports nothing and cleans any stale
+	// dashboards (fail closed, 0428-181). The render mounts the whole
+	// provisioning tree, so the loader loads the dashboards recursively with NO
+	// config.yaml change.
+	if err := ensurePersesDashboardRuntime(ctx, issuer, files, m, store); err != nil {
+		return RuntimeFiles{}, err
+	}
+
 	compose, err := RuntimeComposeYAMLForProject(m, files)
 	if err != nil {
 		return RuntimeFiles{}, err
@@ -362,6 +378,42 @@ var persesDatasourceMaterializer atomic.Pointer[persesDatasourceMaterializeFunc]
 // -> error.
 type persesDatasourceMaterializeFunc func(m Manifest, runtimeDir, namespace string) error
 
+// RegisterPersesDashboardProvisioner registers the metrics-side dashboard
+// provisioner with the application lifecycle seam (card 0428-181). It is called
+// once from the metrics package init; the seam exists because internal/metrics
+// imports internal/application, so the lifecycle cannot carry a static edge in
+// the other direction without an import cycle.
+func RegisterPersesDashboardProvisioner(fn func(m Manifest, runtimeDir, namespace string) error) {
+	provisioner := persesDashboardProvisionerFunc(fn)
+	persesDashboardProvisioner.Store(&provisioner)
+}
+
+// persesDashboardProvisioner is the lifecycle seam to the dashboard
+// provisioner of the metrics package. The provisioner root is the dashboard
+// projection of an application deployment: the providers/management-ui/perses
+// sibling of its runtime dir. The lifecycle passes the APPLICATION RUNTIME DIR
+// (RuntimeFiles.Dir, computed by RuntimeFilesFor — the one layout formula of
+// this Core), so the dashboards land beside the runtime dir the compose render
+// mounts from, and no second layout derivation exists on this route (0428-181
+// F1).
+var persesDashboardProvisioner atomic.Pointer[persesDashboardProvisionerFunc]
+
+// persesDashboardProvisionerFunc is the lifecycle-visible signature of the
+// dashboard provisioner: (manifest, application runtime dir, namespace) ->
+// error.
+type persesDashboardProvisionerFunc func(m Manifest, runtimeDir, namespace string) error
+
+// PersesDashboardRuntimeRoot resolves the dashboard projection root of a
+// deployment addressed by its runtime dir: the
+// providers/management-ui/perses sibling of the runtime dir, the SAME root the
+// datasource materializer writes beside (0428-083 F1). It is the application-
+// side single source of truth for the dashboard projection; the metrics
+// provisioner (internal/metrics) mirrors the derivation so the render mounts
+// the paths the provisioner writes.
+func PersesDashboardRuntimeRoot(runtimeDir string) string {
+	return PersesDatasourceRuntimeRoot(runtimeDir)
+}
+
 // ensurePersesDatasourceRuntime is the apply-boundary call site of card
 // 0428-083: the validated Prometheus datasource reaches the RUNNING Perses
 // through the registered materializer BEFORE the compose render starts it,
@@ -395,6 +447,63 @@ func ensurePersesDatasourceRuntime(ctx context.Context, issuer serviceaccess.Iss
 	// address the same sibling-of-runtime datasource root, so the lifecycle
 	// never carries a second layout derivation (0428-083 F1).
 	return (*materialize)(m, files.Dir, strings.TrimSpace(store.Namespace))
+}
+
+// ensurePersesDashboardRuntime is the apply-boundary call site of card
+// 0428-181: the selected, verified Perses dashboard reaches the RUNNING Perses
+// through the registered dashboard provisioner BEFORE the compose render starts
+// it, and the render mounts exactly the paths the provisioner wrote. Fail
+// closed: without a registered provisioner a selected surface starts with an
+// empty dashboards folder (the metrics entry point fills it); a deselected,
+// silent, unverified or failed surface exports nothing and cleans any stale
+// dashboards. The metrics-side provisioner holds the REAL per-target probe
+// (perses_backend_status.go) and the capability filter gate, so a static edge
+// from internal/application would be an import cycle — this seam is the only
+// application-side edge (0428-181).
+func ensurePersesDashboardRuntime(ctx context.Context, issuer serviceaccess.Issuer, files RuntimeFiles, m Manifest, store Store) error {
+	provisioner := persesDashboardProvisioner.Load()
+	if provisioner == nil {
+		// No seam registered in this binary (a build without the metrics
+		// package, e.g. the application package's own test binary). The
+		// lifecycle keeps its fail-closed contract through the local layout
+		// convention: a deselected surface always removes its dashboards
+		// folder; a selected surface gets the empty dashboards folder the
+		// render mounts, so a Perses start never fails on a missing source.
+		if !PersesUITLSRequired(m) {
+			return RemovePersesDashboardProjection(files, m)
+		}
+		return ensurePersesDashboardFallbackLayout(PersesDashboardRuntimeRoot(files.Dir))
+	}
+	return (*provisioner)(m, files.Dir, strings.TrimSpace(store.Namespace))
+}
+
+// RemovePersesDashboardProjection tears down the dashboards folder of a
+// deselected Perses surface (the no-seam fallback for the application package's
+// own test binary). Fail closed: a deselected surface must not leave a stale
+// dashboard a re-selected Perses would load.
+func RemovePersesDashboardProjection(files RuntimeFiles, m Manifest) error {
+	if !m.Services.ObservabilityManagementUI || !m.Services.Perses {
+		return nil
+	}
+	root := PersesDashboardRuntimeRoot(files.Dir)
+	dir := filepath.Join(root, "provisioning", "dashboards")
+	if err := os.RemoveAll(dir); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("remove perses dashboard projection: %w", err)
+	}
+	return nil
+}
+
+// ensurePersesDashboardFallbackLayout writes the dashboards DIRECTORY layout of
+// a deployment that runs without the metrics-side dashboard provisioner seam:
+// the empty provisioning/dashboards folder the render mounts, so a Perses start
+// never fails on a missing source and never loads an unvalidated dashboard. The
+// full provisioned content is the metrics-side contract of the CLI build.
+func ensurePersesDashboardFallbackLayout(root string) error {
+	root = filepath.Clean(root)
+	if err := os.MkdirAll(filepath.Join(root, "provisioning", "dashboards"), 0o755); err != nil {
+		return fmt.Errorf("perses dashboard fallback provisioning folder: %w", err)
+	}
+	return nil
 }
 
 // ensurePersesDatasourceFallbackLayout writes the datasource projection
