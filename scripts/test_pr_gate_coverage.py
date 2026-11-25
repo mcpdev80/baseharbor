@@ -667,5 +667,44 @@ class CoverageCatalogTests(unittest.TestCase):
         self.assertIn("atomic.docker.data.capabilities", message)
 
 
+class ReleaseDemoPinSelectionTests(unittest.TestCase):
+    """v0.4.28 demo-ref must select the exact pin validator (regression guard).
+
+    Regression: pr-gate-plan.py used to match only docs/releases/v0.4.27.demo-ref,
+    so a v0.4.28 demo-ref change fell through to the broad Go fallback and never
+    scheduled the exact immutable Demo SHA validator. Changed demo pins of ANY
+    active release must select the pin-specific validator.
+    """
+
+    def _release_diff(self, path):
+        requirements = json.loads((ROOT / "release-requirements.json").read_text())
+        mapping = json.loads((ROOT / "pr-gate-map-v1.json").read_text())
+        return planner.plan({
+            "target_base_sha": "a" * 40, "head_sha": "b" * 40,
+            "merge_base_sha": "c" * 40, "integration_sha": "d" * 40,
+            "broad_required": False, "reasons": [],
+            "changes": [{"status": "modified", "path": path}],
+        }, requirements, mapping)
+
+    def test_v0428_demo_ref_selects_exact_pin_validator(self):
+        # Regression: v0.4.28 fell through the old v0.4.27-only match and got
+        # the broad Go fallback instead of the pin validator.
+        result = self._release_diff("docs/releases/v0.4.28.demo-ref")
+        self.assertEqual("resolved", result["coverage_status"])
+        self.assertEqual([], result["unresolved_coverage"])
+        selected_ids = [c.get("id") for c in result["required_validation_checks"]]
+        self.assertIn("demo-source-pin-validation", selected_ids)
+        # A data-only release pin must NOT fall back to the broad Go matrix.
+        self.assertFalse(result["broad_required"])
+        self.assertEqual([], result["selected_gates"])
+
+    def test_v0427_demo_ref_still_selects_exact_pin_validator(self):
+        result = self._release_diff("docs/releases/v0.4.27.demo-ref")
+        self.assertEqual("resolved", result["coverage_status"])
+        selected_ids = [c.get("id") for c in result["required_validation_checks"]]
+        self.assertIn("demo-source-pin-validation", selected_ids)
+        self.assertFalse(result["broad_required"])
+
+
 if __name__ == "__main__":
     unittest.main()
