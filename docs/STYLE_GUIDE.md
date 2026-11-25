@@ -74,6 +74,6 @@ Public documentation uses one canonical location per purpose:
 
 Do not add compatibility redirect pages at the `docs/` root. Update links to the canonical page instead.
 
-German documentation maintains human-facing `tutorials/`, `explanation/`, `cli/` and `how-to/` guidance with the same task/domain navigation as English. Untranslated reference, specs, ADRs and release-engineering pages link explicitly to their canonical English source and are marked `EN`. Command names, flags and machine contracts remain unchanged. English remains authoritative for normative behavior.
+German documentation maintains human-facing `tutorials/`, `explanation/`, `cli/` and `how-to/` guidance with the same task/domain navigation as English. EN/DE parity is measured on mkdocs nav pages only. Untranslated reference, specs, ADRs and release-engineering pages link explicitly to their canonical English source and are marked `EN`. Command names, flags and machine contracts remain unchanged. English remains authoritative for normative behavior.
 
-Release audits are internal evidence and belong under `docs/internal/release-audits/`.
+Release audits are internal evidence and belong under `docs/internal/release-audits/`. The internal audits tree is English-only by design: it is maintainer-facing, not part of the nav parity scope, and needs no German counterpart. German pages that cite an internal audit link to the canonical English source directly.
