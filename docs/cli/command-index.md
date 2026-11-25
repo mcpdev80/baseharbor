@@ -39,7 +39,7 @@ Find exact options with `baha COMMAND --help`. [Global options](global-options.m
 | `baha app perses disable` | Deselect the optional Perses management-ui surface | `baha app perses disable [NAME] [--json]` | [↗](applications.md) |
 | `baha app perses enable` | Select the optional Perses management-ui surface | `baha app perses enable [NAME] [--json]` | [↗](applications.md) |
 | `baha app perses remove` | Ownership-safe retirement of the owned Perses surface | `baha app perses remove [NAME] [--json]` | [↗](applications.md) |
-| `baha app perses status` | Report the Perses three-state contract | `baha app perses status [NAME] [--json]` | [↗](applications.md) |
+| `baha app perses status` | Report Perses state and live alert-rule health | `baha app perses status [NAME] [--json]` | [↗](applications.md) |
 | `baha app plan` | Show desired resources without changing anything | `baha app plan [NAME] [-o json\|--output json]` | [↗](applications.md) |
 | `baha app preflight` | Validate an application before mutation | `baha app preflight [NAME]` | [↗](applications.md) |
 | `baha app prune` | Remove a dangling deployment record whose source repository is gone | `baha app prune <name>` | [↗](applications.md) |

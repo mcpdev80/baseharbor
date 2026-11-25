@@ -57,6 +57,53 @@ func TestCIIntegrationOperatorTraceKeepsMachineErrorStreamClean(t *testing.T) {
 	}
 }
 
+func TestCIIntegrationStaticMCPAdmissionIsFixtureAndCommandScoped(t *testing.T) {
+	t.Setenv("DEMO_ATOMIC_GATE", "1")
+	t.Setenv("BASEHARBOR_TEST_RUNTIME", "static")
+	t.Setenv("GATE", "mcp")
+	t.Setenv("BASEHARBOR_DEMO_OPERATOR_GATE", "mcp")
+	target := configureIsolatedEmptyRuntimeTarget(t, "mcp-static", "docker")
+	t.Setenv("BASEHARBOR_TARGET", target.Name)
+	for _, args := range [][]string{
+		{"init", "--quick", "--json"},
+		{"app", "footprint", "show", "-o", "json"},
+		{"mcp", "serve"},
+	} {
+		if !ciIntegrationManagedLocalGate(args, target) {
+			t.Errorf("static MCP fixture command %q was not admitted", args)
+		}
+		if _, ok := operatorauth.PrincipalFromContext(withCIIntegrationOperator(context.Background(), args)); !ok {
+			t.Errorf("static MCP fixture command %q did not receive the test-only operator", args)
+		}
+	}
+	for _, args := range [][]string{
+		{"init"},
+		{"init", "--quick", "--json", "--force"},
+		{"app", "apply", "--yes"},
+		{"mcp", "serve", "--listen", "0.0.0.0"},
+	} {
+		if ciIntegrationManagedLocalGate(args, target) {
+			t.Errorf("noncanonical static MCP command %q was admitted", args)
+		}
+	}
+	if ciIntegrationManagedLocalGate([]string{"init", "--quick", "--json"}, deployment.ResolvedTarget{
+		Name: "other", RuntimeProvider: "docker", AccessProvider: "local",
+	}) {
+		t.Fatal("static MCP admission escaped its exact fixture Target")
+	}
+	t.Setenv("BASEHARBOR_TEST_RUNTIME", "docker")
+	if ciIntegrationManagedLocalGate([]string{"init", "--quick", "--json"}, target) {
+		t.Fatal("static MCP admission escaped the static runtime")
+	}
+	if !ciIntegrationStaticMCPTargetCreate([]string{"target", "create", "mcp-static", "--provider", "docker",
+		"--access", "local-docker", "--reference", "local", "--scope", "default", "--default"}) {
+		t.Fatal("canonical static MCP fixture Target bootstrap was not recognized")
+	}
+	if ciIntegrationStaticMCPTargetCreate([]string{"target", "create", "other", "--provider", "docker"}) {
+		t.Fatal("static MCP fixture bootstrap admitted another Target")
+	}
+}
+
 func TestCIIntegrationOperatorIsLimitedToRemoteCoreAndTargetBootstrap(t *testing.T) {
 	t.Setenv("DEMO_ATOMIC_GATE", "1")
 	t.Setenv("BASEHARBOR_TEST_RUNTIME", "docker")
@@ -560,6 +607,13 @@ func TestCIIntegrationOperatorAdmitsFiveCoreFixtureFormsOnlyOnConsumerGate(t *te
 		{"config organization set", "policy", []string{"config", "organization", "set", "--source", "local", "--location", "$ARTIFACT_DIR/policy-organization", "--environment", "dev", "-o", "json"}},
 		{"policy explain", "policy", []string{"policy", "explain"}},
 		{"policy explain -e dev", "policy", []string{"policy", "explain", "-e", "dev"}},
+		// Root `up` is an existing managed-local `apply` operation. Cover both
+		// consent forms on multiple matching gates; it is not a one-off,
+		// gate-specific command-form admission.
+		{"up --yes", "policy", []string{"up", "--yes"}},
+		{"up --yes --confirm-candidate", "policy", []string{"up", "--yes", "--confirm-candidate", "d6d633d0a68fd231d3fccfcd7d88994cd7834db748a80544d12dc7a288f6256e"}},
+		{"up --yes on connectivity", "connectivity", []string{"up", "--yes"}},
+		{"up --yes --confirm-candidate on connectivity", "connectivity", []string{"up", "--yes", "--confirm-candidate", "d6d633d0a68fd231d3fccfcd7d88994cd7834db748a80544d12dc7a288f6256e"}},
 		{"app inspect .", "connectivity", []string{"app", "inspect", "."}},
 		{"app inspect . -o json", "connectivity", []string{"app", "inspect", ".", "-o", "json"}},
 		{"target -o json", "reconciliation", []string{"target", "-o", "json"}},

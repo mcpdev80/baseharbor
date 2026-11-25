@@ -4,22 +4,23 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/deployment"
 	metricsprovider "github.com/mcpdev80/baseharbor/internal/metrics"
 )
 
 // These tests pin card 0428-152: the 'baha app perses status' observation is
-// the ONE honest consumer of the Perses alert-evaluator verifier in
-// internal/metrics/perses_prometheus_alerts.go. The consumer must show exactly
-// the fail-closed state the verifier delivered — "not configured" when the
-// manifest does not select the surface, "unavailable (owner-gated evaluator
-// contract)" when it is selected but the Owner-gated real evaluator contract
-// is missing — and it must NEVER fall through to "healthy"/"verified".
+// the one consumer of the Perses alert-evaluator verifier in
+// internal/metrics/perses_prometheus_alerts.go. It reports "not configured"
+// when absent, "unavailable" when the live rule probe fails, and "verified"
+// only when the probe succeeds.
 //
 // They run in the Hosted PR · Go unit shard through the plain
 // `go test ./cmd/baha` invocation in scripts/pr-unit-database.sh.
@@ -36,10 +37,9 @@ func persesAlertEvaluatorManifestSelection(selected bool) application.Manifest {
 }
 
 func TestPersesAlertEvaluatorObservationNotConfiguredWhenUnselected(t *testing.T) {
-	// The manifest-only contract face (applied=true): the consumer must show
-	// the verifier's fail-closed reason verbatim. The task's cli-0 case is the
-	// UNAPPLIED command face, which ...UnappliedReportsNotConfigured pins.
-	check := persesAlertEvaluatorObservationWithApplication(persesAlertEvaluatorManifestSelection(false), true)
+	check := persesAlertEvaluatorObservationWithVerifier(t.Context(), persesAlertEvaluatorManifestSelection(false), true, "", func(context.Context, application.Manifest) error {
+		return errors.New("Perses is not selected")
+	})
 	if check.State != "not configured" {
 		t.Fatalf("unselected manifest must state %q, got %q (detail: %s)", "not configured", check.State, check.Detail)
 	}
@@ -59,46 +59,96 @@ func TestPersesAlertEvaluatorObservationUnavailableWhenSelectedWithoutContract(t
 	if _, err := metricsprovider.BuildPersesAlertEvaluator(m); err == nil {
 		t.Fatal("the verifier must fail closed without Prometheus metric inputs")
 	}
-	check := persesAlertEvaluatorObservationWithApplication(m, true)
-	if check.State != "unavailable (owner-gated evaluator contract)" {
+	check := persesAlertEvaluatorObservationWithVerifier(t.Context(), m, true, "", func(context.Context, application.Manifest) error {
+		return errors.New("no Prometheus metric inputs are configured")
+	})
+	if check.State != "unavailable" {
 		t.Fatalf("selected manifest without the evaluator contract must state %q, got %q (detail: %s)",
-			"unavailable (owner-gated evaluator contract)", check.State, check.Detail)
+			"unavailable", check.State, check.Detail)
 	}
 	if check.OK {
 		t.Fatal("an unavailable alert evaluator must never fold into readiness")
 	}
 }
 
-func TestPersesAlertEvaluatorObservationSelectedWithContractStaysUnverified(t *testing.T) {
+func TestPersesAlertEvaluatorObservationReflectsLiveHealth(t *testing.T) {
 	m := persesAlertEvaluatorManifestSelection(true)
-	result, err := metricsprovider.BuildPersesAlertEvaluator(m)
-	if err != nil {
-		t.Fatalf("selected manifest with metric inputs must build the contract: %v", err)
-	}
-	if result.Reachability != metricsprovider.PersesAlertReachabilityConfiguredUnverified {
-		t.Fatalf("the verifier reachability changed under the consumer: %q", result.Reachability)
-	}
-	check := persesAlertEvaluatorObservationWithApplication(m, true)
-	// The consumer shows the verifier's reachability verbatim: declared, but
-	// never live-verified.
-	if check.State != string(metricsprovider.PersesAlertReachabilityConfiguredUnverified) {
-		t.Fatalf("built contract must state the verifier reachability %q verbatim, got %q",
-			metricsprovider.PersesAlertReachabilityConfiguredUnverified, check.State)
-	}
-	if check.OK {
-		t.Fatal("a configured_unverified alert evaluator must never fold into readiness")
+	for _, tc := range []struct {
+		name  string
+		err   error
+		state string
+	}{
+		{name: "healthy", state: "verified"},
+		{name: "failing-rule", err: errors.New("Prometheus has not loaded the configured alert rule"), state: "unavailable"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			called := false
+			check := persesAlertEvaluatorObservationWithVerifier(t.Context(), m, true, "", func(context.Context, application.Manifest) error {
+				called = true
+				return tc.err
+			})
+			if !called || check.State != tc.state {
+				t.Fatalf("live probe called=%t, state=%q; want called=true state=%q", called, check.State, tc.state)
+			}
+			if check.OK {
+				t.Fatal("alert evaluator health must not fold into application readiness")
+			}
+		})
 	}
 }
 
-// TestPersesAlertEvaluatorObservationNeverReportsHealthyOrVerified is the
-// fail-closed-at-the-consumer proof the contract demands: for every manifest
-// the consumer can face (selected/unselected, with/without metric inputs), the
-// observation may only carry one of the three allowed states, and the
-// detail must not claim health. If the verifier ever reported a "verified"
-// reachability while the Owner-gated contract predicate
-// (persesAlertRealEvaluatorContractPresent in internal/metrics) is false, the
-// consumer must downweight it to the unavailable state instead of echoing it.
-func TestPersesAlertEvaluatorObservationNeverReportsHealthyOrVerified(t *testing.T) {
+func TestDeploymentAppliedRejectsRuntimeStampedForDifferentDeployment(t *testing.T) {
+	t.Setenv("BASEHARBOR_TARGET", "")
+	t.Setenv("BASEHARBOR_STATE_DIR", "")
+	ctx := t.Context()
+	configureTestTarget(t)
+	resolved := persesWitnessProbeApp(t, ctx, persesWitnessAppName(t), func(m application.Manifest) application.Manifest {
+		m.Services.ObservabilityManagementUI = true
+		m.Services.Perses = true
+		return m
+	})
+	files := application.RuntimeFilesFor(resolved.Store, resolved.Manifest)
+	if err := os.MkdirAll(files.Dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	compose, err := application.RuntimeComposeYAMLForProject(resolved.Manifest, files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(files.Compose, []byte(compose), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(files.Env, []byte("preserved=protected\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := recordAppliedDeployment(ctx, resolved, files); err != nil {
+		t.Fatalf("record applied deployment: %v", err)
+	}
+	record, err := deployment.LoadDeploymentRecord(resolved.DeploymentIdentity)
+	if err != nil {
+		t.Fatal(err)
+	}
+	record.Identity.DeploymentID = "77777777-7777-4777-8777-777777777777"
+	data, err := json.Marshal(record)
+	if err != nil {
+		t.Fatal(err)
+	}
+	recordRoot, err := deployment.DeploymentRoot(resolved.DeploymentIdentity)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(recordRoot, "deployment.json"), data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	applied, reason := deploymentApplied(resolved)
+	if applied || reason == "" {
+		t.Fatalf("mismatched deployment stamp must fail closed with a reason, applied=%t reason=%q", applied, reason)
+	}
+}
+
+// TestPersesAlertEvaluatorObservationFailsClosedOnLiveProbeError ensures
+// failed live probes never produce a positive health state.
+func TestPersesAlertEvaluatorObservationFailsClosedOnLiveProbeError(t *testing.T) {
 	noSources := persesAlertEvaluatorManifestSelection(true)
 	noSources.Metrics.Sources = nil
 	manifests := map[string]application.Manifest{
@@ -107,25 +157,23 @@ func TestPersesAlertEvaluatorObservationNeverReportsHealthyOrVerified(t *testing
 		"selected":            persesAlertEvaluatorManifestSelection(true),
 	}
 
-	allowed := map[string]bool{
-		"not configured": true,
-		"unavailable (owner-gated evaluator contract)":                      true,
-		string(metricsprovider.PersesAlertReachabilityConfiguredUnverified): true,
-	}
 	for name, m := range manifests {
-		check := persesAlertEvaluatorObservationWithApplication(m, true)
-		if check.State == "healthy" || check.State == "verified" || check.State == "ready" {
-			t.Fatalf("%s: the consumer reported %q while the real evaluator contract is not Owner-approved", name, check.State)
+		check := persesAlertEvaluatorObservationWithVerifier(t.Context(), m, true, "", func(context.Context, application.Manifest) error {
+			if !m.Services.Perses {
+				return errors.New("Perses is not selected")
+			}
+			return errors.New("rule health unavailable")
+		})
+		want := persesAlertEvaluatorStateUnavailable
+		if !m.Services.Perses {
+			want = persesAlertEvaluatorStateNotConfigured
 		}
-		if !allowed[check.State] {
-			t.Fatalf("%s: state %q is outside the three-state fail-closed contract", name, check.State)
+		if check.State != want {
+			t.Fatalf("%s: failed live probe state = %q, want %q", name, check.State, want)
 		}
 	}
 
-	// The consumer-side gate itself: a "verified" reachability (which no
-	// producer may emit until the Owner approves the real contract) maps to
-	// the unavailable state. This is persesAlertEvaluatorReachabilityVerified
-	// in app_status_collect.go; pin the constant so a change there is loud.
+	// Pin the state used when the live verifier succeeds.
 	if persesAlertEvaluatorReachabilityVerified != "verified" {
 		t.Fatalf("the consumer verified-marker changed: %q", persesAlertEvaluatorReachabilityVerified)
 	}
@@ -271,8 +319,8 @@ func TestPersesAlertEvaluatorObservationAppStatusCollectionFace(t *testing.T) {
 		}
 		// The selected-but-contract-missing manifest carries the exact
 		// contract wording on the production face.
-		if check.State != "unavailable (owner-gated evaluator contract)" && check.State != "configured_unverified" && check.State != "not configured" {
-			t.Fatalf("state %q is outside the three-state fail-closed contract", check.State)
+		if check.State != "unavailable" && check.State != "not configured" {
+			t.Fatalf("failed live probe state %q is outside the fail-closed contract", check.State)
 		}
 	}
 }
@@ -308,10 +356,7 @@ func TestPersesAlertEvaluatorObservationUnappliedReportsNotConfigured(t *testing
 
 // assertPersesAlertEvaluatorObservation pins the contract on the
 // persesStatusResult emitted by reportPersesSurfaceStatus: the observation is
-// present, its name is fixed, its state is one of the three allowed
-// fail-closed states (and for a selected manifest with metric inputs, the
-// exact configured_unverified reachability; for an unselected manifest, the
-// exact "not configured" wording), and it never claims OK/healthy/verified.
+// present, its name is fixed, and its state reflects the live verifier result.
 func assertPersesAlertEvaluatorObservation(t *testing.T, check *application.StatusCheck, selected bool) {
 	t.Helper()
 	if check == nil {
@@ -321,17 +366,15 @@ func assertPersesAlertEvaluatorObservation(t *testing.T, check *application.Stat
 		t.Fatalf("alert-evaluator observation name = %q, want %q", check.Name, alertEvaluatorObservationName)
 	}
 	switch check.State {
-	case "healthy", "verified", "ready":
-		t.Fatalf("the perses status face reported %q for the alert evaluator: it must stay fail-closed while the contract is Owner-gated", check.State)
-	case "not configured", "unavailable (owner-gated evaluator contract)", "configured_unverified":
+	case "not configured", "unavailable", "verified":
 	default:
 		t.Fatalf("state %q is outside the three-state fail-closed contract", check.State)
 	}
 	if check.OK {
 		t.Fatal("the alert-evaluator observation must never fold into readiness")
 	}
-	if selected && check.State != "configured_unverified" {
-		t.Fatalf("selected manifest with metric inputs must show the verifier reachability configured_unverified verbatim, got %q", check.State)
+	if selected && check.State != "verified" && check.State != "unavailable" {
+		t.Fatalf("selected manifest must show the live verifier result, got %q", check.State)
 	}
 	if !selected && check.State != "not configured" {
 		t.Fatalf("unselected manifest must state %q, got %q", "not configured", check.State)
@@ -342,9 +385,7 @@ func assertPersesAlertEvaluatorObservation(t *testing.T, check *application.Stat
 // `baha app status --json` production entry on the applied face (the face
 // where the managed-service checks run) and asserts the alert-evaluator
 // consumer is present and honest: an unselected manifest states exactly
-// "not configured"; a selected manifest states configured_unverified (the
-// verifier's own reachability) or the unavailable state, and NEVER
-// healthy/verified/ready.
+// "not configured"; a selected manifest reflects the live verifier result.
 func TestPersesAlertEvaluatorObservationOnAppStatusCommandFace(t *testing.T) {
 	t.Setenv("BASEHARBOR_TARGET", "")
 	t.Setenv("BASEHARBOR_STATE_DIR", "")
@@ -366,9 +407,9 @@ func TestPersesAlertEvaluatorObservationOnAppStatusCommandFace(t *testing.T) {
 			t.Skipf("the applied command face did not materialize here (state %q): the managed-service checks, where the consumer runs, are skipped on this face; the unit cases in this file cover the contract", report.State)
 		}
 		switch check.State {
-		case "configured_unverified", "unavailable (owner-gated evaluator contract)":
+		case "verified", "unavailable":
 		default:
-			t.Fatalf("selected alert evaluator must state configured_unverified or unavailable, got %q", check.State)
+			t.Fatalf("selected alert evaluator must be verified or unavailable, got %q", check.State)
 		}
 		if check.OK {
 			t.Fatal("the alert evaluator observation must never fold into readiness while the contract is Owner-gated")

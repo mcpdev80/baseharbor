@@ -126,7 +126,7 @@ A future incompatible reassignment of ownership semantics requires an explicit n
 
 ## Management surface access profiles
 
-This section is the normative folding point for the portable management-access contract previously documented in `docs/spec/management-access-profiles-v1.md`. It classifies what a non-secret management profile, a sensitive one-use device enrollment, and an encrypted local credential export carry, and what importing them may not do. It declares no provider implementation and carries no secrets.
+This section is the normative folding point for the portable management-access contract previously documented under the retired path `docs/spec/management-access-profiles-v1.md`; that path never existed in this repository and its content now lives in [management-access-v1](management-access-v1.md). It classifies what a non-secret management profile, a sensitive one-use device enrollment, and an encrypted local credential export carry, and what importing them may not do. It declares no provider implementation and carries no secrets.
 
 `ManagementAccessKind` is the portable management-access kind marker:
 
