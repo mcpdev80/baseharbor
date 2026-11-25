@@ -223,6 +223,17 @@ func mustWriteWizardTestFile(t *testing.T, path, content string) {
 	}
 }
 
+// mustWriteWizardTestFileWithParent writes a fixture file, creating parent
+// directories as needed. The production helper used to do this; nested
+// fixtures (for example a backend module's source files) still require it.
+func mustWriteWizardTestFileWithParent(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	mustWriteWizardTestFile(t, path, content)
+}
+
 func withWizardTestDir(t *testing.T, dir string) {
 	t.Helper()
 	// Same reason as withWorkingDirectory: the Target selection is process
@@ -352,6 +363,174 @@ const metricsPath = "/metrics"
 	err := appGuidedInitCommand().Run(testOperatorContext(context.Background()), []string{"--quick"}, &bytes.Buffer{}, &bytes.Buffer{})
 	if err == nil || !strings.Contains(err.Error(), "metrics endpoint was detected") {
 		t.Fatalf("expected fail-closed metrics ambiguity, got %v", err)
+	}
+}
+
+// Regression for ExporterToWorkloadAssociation: a proven metrics endpoint living
+// in a dedicated repository module (backend) must not be bound to a lone
+// workload (a Caddy sidecar) that only happens to expose a port.
+func TestQuickInitDoesNotBindExporterToUnrelatedWorkload(t *testing.T) {
+	root := t.TempDir()
+	mustWriteWizardTestFileWithParent(t, filepath.Join(root, "compose.yaml"), `services:
+  caddy:
+    image: caddy:2
+    ports:
+      - "8080:8080"
+`)
+	mustWriteWizardTestFileWithParent(t, filepath.Join(root, "backend", "Main.java"), `package backend;
+// GET /metrics public class Backend {}
+`)
+	withWizardTestDir(t, root)
+
+	var out bytes.Buffer
+	err := appGuidedInitCommand().Run(testOperatorContext(context.Background()), []string{"--quick"}, &out, &bytes.Buffer{})
+	if err == nil {
+		data, _ := os.ReadFile(filepath.Join(root, application.RepositoryManifestName))
+		t.Fatalf("Caddy workload was bound to an unrelated backend metrics exporter:\n%s", string(data))
+	}
+	if !strings.Contains(err.Error(), "metrics") {
+		t.Fatalf("unproven exporter to wrong module must fail closed, got: %v", err)
+	}
+}
+
+// A proven metrics endpoint at the repository root is the sole workload's own
+// code and must bind successfully.
+func TestQuickInitBindsOwnRootMetrics(t *testing.T) {
+	root := t.TempDir()
+	mustWriteWizardTestFile(t, filepath.Join(root, "compose.yaml"), `services:
+  api:
+    image: example/api
+    ports:
+      - "8080:8080"
+`)
+	mustWriteWizardTestFile(t, filepath.Join(root, "main.go"), `package main
+func routes() { router.GET("/metrics", metricsHandler) }
+`)
+	withWizardTestDir(t, root)
+
+	var out bytes.Buffer
+	if err := appGuidedInitCommand().Run(testOperatorContext(context.Background()), []string{"--quick"}, &out, &bytes.Buffer{}); err != nil {
+		t.Fatalf("own-root metrics must bind, got: %v", err)
+	}
+	data, _ := os.ReadFile(filepath.Join(root, application.RepositoryManifestName))
+	if !strings.Contains(string(data), "metrics:") {
+		t.Fatalf("expected metrics bound to api, manifest:\n%s", string(data))
+	}
+}
+
+// Exact-path regression: a Quarkus app's /q/metrics endpoint must bind to the
+// detected proven path, not a hardcoded /metrics.
+func TestQuickInitBindsQuarkusMetricsPath(t *testing.T) {
+	root := t.TempDir()
+	mustWriteWizardTestFile(t, filepath.Join(root, "compose.yaml"), `services:
+  api:
+    image: example/api
+    ports:
+      - "8080:8080"
+`)
+	mustWriteWizardTestFileWithParent(t, filepath.Join(root, "api", "application.properties"),
+		"quarkus.micrometer.export.prometheus.path=/q/metrics\n")
+	withWizardTestDir(t, root)
+
+	var out bytes.Buffer
+	if err := appGuidedInitCommand().Run(testOperatorContext(context.Background()), []string{"--quick"}, &out, &bytes.Buffer{}); err != nil {
+		t.Fatalf("quarkus metrics must bind, got: %v", err)
+	}
+	m, err := application.LoadManifestFile(filepath.Join(root, application.RepositoryManifestName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(m.Metrics.Sources) != 1 {
+		t.Fatalf("expected 1 metrics source, got %#v", m.Metrics.Sources)
+	}
+	if m.Metrics.Sources[0].Path != "/q/metrics" {
+		t.Fatalf("expected exact path /q/metrics, got %q in %#v", m.Metrics.Sources[0].Path, m.Metrics.Sources)
+	}
+}
+
+// Exact-path regression: a Spring Boot app's /actuator/prometheus endpoint must
+// bind to the detected proven path, not a hardcoded /metrics.
+func TestQuickInitBindsSpringMetricsPath(t *testing.T) {
+	root := t.TempDir()
+	mustWriteWizardTestFile(t, filepath.Join(root, "compose.yaml"), `services:
+  api:
+    image: example/api
+    ports:
+      - "8080:8080"
+`)
+	mustWriteWizardTestFileWithParent(t, filepath.Join(root, "api", "application.properties"),
+		"management.endpoints.web.base-path=/actuator/prometheus\n")
+	withWizardTestDir(t, root)
+
+	var out bytes.Buffer
+	if err := appGuidedInitCommand().Run(testOperatorContext(context.Background()), []string{"--quick"}, &out, &bytes.Buffer{}); err != nil {
+		t.Fatalf("spring metrics must bind, got: %v", err)
+	}
+	m, err := application.LoadManifestFile(filepath.Join(root, application.RepositoryManifestName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(m.Metrics.Sources) != 1 || m.Metrics.Sources[0].Path != "/actuator/prometheus" {
+		t.Fatalf("expected exact path /actuator/prometheus, got %#v", m.Metrics.Sources)
+	}
+}
+
+// Exact-path regression: the conventional /metrics endpoint binds when a single
+// workload exposes exactly one port, but the endpoint tuple carries the proven
+// path rather than a hardcoded one.
+func TestQuickInitBindsConventionalMetricsPath(t *testing.T) {
+	root := t.TempDir()
+	mustWriteWizardTestFile(t, filepath.Join(root, "compose.yaml"), `services:
+  api:
+    image: example/api
+    ports:
+      - "8080:8080"
+`)
+	mustWriteWizardTestFile(t, filepath.Join(root, "main.go"), `package main
+func routes() { router.GET("/metrics", metricsHandler) }
+`)
+	withWizardTestDir(t, root)
+
+	var out bytes.Buffer
+	if err := appGuidedInitCommand().Run(testOperatorContext(context.Background()), []string{"--quick"}, &out, &bytes.Buffer{}); err != nil {
+		t.Fatalf("conventional metrics must bind, got: %v", err)
+	}
+	m, err := application.LoadManifestFile(filepath.Join(root, application.RepositoryManifestName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(m.Metrics.Sources) != 1 || m.Metrics.Sources[0].Path != "/metrics" {
+		t.Fatalf("expected exact path /metrics, got %#v", m.Metrics.Sources)
+	}
+}
+
+// Module-service attribution boundary regression: a metrics proven in an
+// unrelated "api-old" workload must not be bound onto the "api" workload, even
+// though "api" is a substring of "api-old".
+func TestQuickInitDoesNotBindMetricsToSubstringMatchedWorkload(t *testing.T) {
+	root := t.TempDir()
+	mustWriteWizardTestFile(t, filepath.Join(root, "compose.yaml"), `services:
+  api:
+    image: example/api
+    ports:
+      - "8080:8080"
+  api-old:
+    image: example/api-old
+    ports:
+      - "9090:9090"
+`)
+	// The proven endpoint lives in the api-old workload, whose compose service
+	// name is a superset of the api service name.
+	mustWriteWizardTestFileWithParent(t, filepath.Join(root, "api-old", "Main.java"), `package api_old;
+// GET /metrics public class ApiOld {}
+`)
+	withWizardTestDir(t, root)
+
+	var out bytes.Buffer
+	// Two workload services expose ports -> ambiguous -> fail closed.
+	err := appGuidedInitCommand().Run(testOperatorContext(context.Background()), []string{"--quick"}, &out, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "metrics endpoint was detected") {
+		t.Fatalf("expected fail-closed on metrics ambiguity (api vs api-old), got %v", err)
 	}
 }
 

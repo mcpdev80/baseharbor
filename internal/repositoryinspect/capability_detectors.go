@@ -4,8 +4,57 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
+
+// metricsPathPattern captures an HTTP endpoint path from metrics source text.
+// The path must be preceded by a delimiter (quote, equals, whitespace, or a
+// slash) so it extracts the exact endpoint (for example /q/metrics,
+// /actuator/prometheus, or /metrics) without matching a bare substring inside
+// an unrelated token such as "api-old".
+var metricsPathPattern = regexp.MustCompile(`(?i)(^|/|["'=.\s])(/[A-Za-z0-9_./-]+)`)
+
+// metricsPathClass labels a proven endpoint path so callers can assert exact
+// paths (Quarkus, Spring, conventional) and fail closed on the unexpected.
+func metricsPathClass(path string) string {
+	switch path {
+	case "/q/metrics":
+		return "quarkus"
+	case "/actuator/prometheus":
+		return "spring"
+	case "/metrics":
+		return "conventional"
+	default:
+		return "other"
+	}
+}
+
+// metricsEndpoint is a proven HTTP endpoint path plus its classification.
+type metricsEndpoint struct {
+	Path  string
+	Class string
+}
+
+// metricsEndpointFromText extracts the first proven metrics HTTP endpoint path
+// from lower-cased source text. The boundary-aware regex captures the exact
+// path (for example /q/metrics, /actuator/prometheus, or /metrics); callers
+// classify it with metricsPathClass. ok is false when no concrete path is
+// present, so a bare "/metrics" mention without a usable token is not treated
+// as a proven endpoint.
+func metricsEndpointFromText(lower string) (metricsEndpoint, bool) {
+	matches := metricsPathPattern.FindStringSubmatch(lower)
+	if len(matches) < 3 {
+		return metricsEndpoint{}, false
+	}
+	// matches[2] is the captured path; matches[1] is the preceding delimiter
+	// ("" when the path starts the string).
+	path := matches[2]
+	if path == "" {
+		return metricsEndpoint{}, false
+	}
+	return metricsEndpoint{Path: path, Class: metricsPathClass(path)}, true
+}
 
 type objectStorageDetector struct{}
 
@@ -115,11 +164,16 @@ func (openMetricsDetector) Detect(ctx context.Context, snapshot Snapshot) ([]Fin
 		}
 		base := strings.ToLower(filepath.Base(path))
 		lower := strings.ToLower(string(data))
-		if isSourceFile(base) || strings.HasSuffix(base, ".yaml") || strings.HasSuffix(base, ".yml") || strings.HasSuffix(base, ".toml") {
-			if strings.Contains(lower, "/metrics") {
+		if isSourceFile(base) || strings.HasSuffix(base, ".yaml") || strings.HasSuffix(base, ".yml") || strings.HasSuffix(base, ".toml") || strings.HasSuffix(base, ".properties") {
+			if endpoint, ok := metricsEndpointFromText(lower); ok {
+				// Attach the exact, classed path to the evidence detail so the
+				// CLI can carry the proven endpoint tuple (source, service,
+				// internal port, HTTP path) into the manifest and assert exact
+				// paths. The path token itself is carried verbatim; only the
+				// descriptive suffix is lower-cased for readability.
 				detected = append(detected, Evidence{
 					Kind: EvidenceEndpoint, Path: path,
-					Detail: "repository exposes or references the conventional /metrics endpoint",
+					Detail: "repository exposes a metrics endpoint " + endpoint.Path + " (" + endpoint.Class + ")",
 				})
 			}
 		}

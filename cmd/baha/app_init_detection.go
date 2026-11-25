@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
 	repositoryinspect "github.com/mcpdev80/baseharbor/internal/repositoryinspect"
 	"io"
 	"os"
@@ -148,6 +149,19 @@ func detectAppProject(root string) (appProjectDetection, error) {
 			d.MetricsSuggested = d.MetricsSuggested || suggested
 			if d.MetricsSource == "" {
 				d.MetricsSource = source
+				// Record the repository module the proven metrics endpoint
+				// lives in (the first space-delimited token of the source),
+				// so the exporter can be tied to the workload that serves it.
+				if mod := strings.Fields(source); len(mod) > 0 {
+					d.MetricsSourceModule = mod[0]
+				}
+				// Carry the proven exact HTTP path (for example /q/metrics,
+				// /actuator/prometheus, /metrics) so the quick/guided paths can
+				// bind the detected endpoint tuple (source, service, internal
+				// port, path) instead of hardcoding /metrics.
+				if p, ok := metricsProvenPath(source); ok {
+					d.MetricsPath = p
+				}
 			}
 		case "telemetry.otlp":
 			d.OTLP = d.OTLP || detected
@@ -291,7 +305,37 @@ func uniquePortEvidence(input []repositoryinspect.PortEvidence) []repositoryinsp
 	return out
 }
 
-func detectedMetricsTarget(d appProjectDetection, workloadServices []string) (string, int, bool) {
+// metricsProvenPath extracts the proven exact HTTP metrics path from a detector
+// source string (which is "<path> <detail>"). The detail carries the classed
+// path, for example "repository exposes a metrics endpoint /q/metrics
+// (quarkus)", so this recovers "/q/metrics", "/actuator/prometheus", or
+// "/metrics". ok is false when no concrete path token is present, so the
+// caller leaves MetricsPath empty and falls back to the conventional /metrics.
+func metricsProvenPath(source string) (string, bool) {
+	matches := metricsProvenPathPattern.FindStringSubmatch(source)
+	if len(matches) < 2 {
+		return "", false
+	}
+	path := matches[1]
+	if path == "" {
+		return "", false
+	}
+	return path, true
+}
+
+// metricsProvenPathPattern captures an HTTP endpoint path preceded by a quote,
+// equals, whitespace, or the start of the string, so it extracts the exact
+// path (for example /q/metrics) without matching a bare substring inside an
+// unrelated token such as "api-old".
+var metricsProvenPathPattern = regexp.MustCompile(`(?i)(?:["'=\s]|^)(/[A-Za-z0-9_./-]+)`)
+
+// detectedMetricsTarget resolves the proven metrics endpoint tuple
+// (source, service, internal port, HTTP path) for the sole selected workload.
+// ok is false when detection is ambiguous (no single workload service, no
+// workload exposing exactly one port, or the exporter's repository module is
+// not attributable to that sole workload), so callers fail closed or ask
+// instead of silently defaulting.
+func detectedMetricsTarget(d appProjectDetection, workloadServices []string) (string, string, int, string, bool) {
 	allowed := map[string]struct{}{}
 	for _, service := range workloadServices {
 		allowed[service] = struct{}{}
@@ -312,9 +356,72 @@ func detectedMetricsTarget(d appProjectDetection, workloadServices []string) (st
 		targets = append(targets, target{service: item.Service, port: port})
 	}
 	if len(targets) != 1 {
-		return "", 0, false
+		return "", "", 0, "", false
 	}
-	return targets[0].service, targets[0].port, true
+	selectedService := targets[0].service
+	// Tie the proven metrics endpoint to the sole workload. A proven exporter
+	// (for example a Quarkus/Spring module detected in an unrelated module)
+	// must not be mapped onto a lone workload (for example a Caddy sidecar)
+	// that only happens to expose a port. Fail closed unless the exporter's
+	// repository module can be attributed to that sole workload service.
+	if !metricsModuleAttributableToWorkload(selectedService, workloadServices, d.MetricsSourceModule) {
+		return "", "", 0, "", false
+	}
+	// Carry the proven exact HTTP path (fall back to the conventional
+	// /metrics) so the caller binds the detected endpoint tuple, not a
+	// hardcoded path.
+	path := d.MetricsPath
+	if path == "" {
+		path = "/metrics"
+	}
+	return selectedService, selectedService, targets[0].port, path, true
+}
+
+// metricsModuleAttributableToWorkload reports whether the proven metrics
+// endpoint (living in module `metricsModule`) can be unambiguously attributed
+// to the sole selected workload service. It returns false unless exactly one
+// workload service is selected, so a lone sidecar workload can never inherit
+// an exporter path proven in an unrelated module.
+func metricsModuleAttributableToWorkload(selectedService string, workloadServices []string, metricsModule string) bool {
+	if len(workloadServices) != 1 {
+		return false
+	}
+	if selectedService != workloadServices[0] {
+		return false
+	}
+	if metricsModule == "" {
+		// No proven exporter path: the conventional /metrics endpoint is
+		// repository-global, so it is attributable to the sole workload.
+		return true
+	}
+	// A proven exporter in a dedicated repository module (a path containing a
+	// separator, for example "shared/metrics.go" or "backend/Main.java") that
+	// is not the selected workload's own source must not be mapped onto a lone
+	// workload (for example a Caddy sidecar) that only happens to expose a
+	// port. A module living at the repository root (no separator) is the sole
+	// workload's own code and is attributable. This is the exporter-to-
+	// workload association guard: fail closed unless the exporter's module can
+	// be tied to the sole selected workload service.
+	if strings.ContainsRune(metricsModule, '/') {
+		// Path-boundary match, not a substring match: "api" must match the
+		// compose service "api" exactly, not "api-old" or any service that
+		// merely contains the selected name as a prefix. Trim a single
+		// trailing ".go" before comparing so a service-named module is
+		// attributed correctly.
+		module := strings.TrimSuffix(metricsModule, ".go")
+		if module == selectedService {
+			return true
+		}
+		// The module's compose-key component (its top directory, or the path
+		// itself when unqualified) must equal the service so that "api" does
+		// not leak onto "api-old".
+		head := module
+		if i := strings.IndexByte(module, '/'); i >= 0 {
+			head = module[:i]
+		}
+		return head == selectedService
+	}
+	return true
 }
 
 func composeTargetPort(value string) (int, bool) {
