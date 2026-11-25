@@ -746,9 +746,12 @@ RECEIPT_CONTROL_PLANE_TEST_SCRIPTS = frozenset({
 RECEIPT_CONTROL_PLANE_WORKFLOWS = frozenset({'.github/workflows/receipt-post-run.yml'})
 
 CI_CHECKS = [
+    # card 0428-253: test_pr_ci_fallback.py carries the deleted-source
+    # advisory regressions; it runs with this check AND in ci-executor-tests.
     {'id': 'pr-planner-tests', 'owner': 'scripts/test_pr_gate_plan.py',
      'command': ('python3 -m unittest scripts/test_pr_gate_plan.py '
                  'scripts/test_pr_gate_coverage.py '
+                 'scripts/test_pr_ci_fallback.py '
                  'scripts/test_pre_release_runtime_reuse.py')},
     {'id': 'ci-policy', 'owner': 'scripts/ci-workflow-policy.sh',
      'command': 'bash scripts/ci-workflow-policy.sh'},
@@ -1826,6 +1829,59 @@ def narrow_reviewed_sudo_tty_plan(diff, result, repository='.'):
     return result
 
 
+def _catalog_roots(document):
+    rows = set()
+    for section in ('components', 'packages'):
+        rows.update(row['path'] for row in document.get(section, [])
+                    if isinstance(row, dict) and isinstance(row.get('path'), str))
+    return rows
+
+
+def _covered_by_catalog(candidate, roots):
+    return any(candidate == root.rstrip('/') or
+               candidate.startswith(root.rstrip('/') + '/') for root in roots)
+
+
+def deletion_exemption(diff, coverage):
+    """Classify plain source deletions against the checkout catalog.
+
+    Card 0428-253 (precedent #1789): a source file the PR DELETES is
+    resolved-by-deletion, not an uncataloged change, when the catalog this
+    planner runs with still owns the path (an exact row or a package root).
+    Without the status, the candidate-added advisory job aborts the candidate
+    planner on a dead file that no longer needs an owner. The required base
+    plan is unaffected: trusted CI computes it from the target checkout only,
+    never from candidate planner code. Only plain deletions (status exactly
+    'deleted') qualify; renames and copies keep their old_path demand for an
+    owner. Deleted paths the checkout catalog no longer lists need the
+    trusted base-catalog check in plan() (the row-removed-in-same-PR case).
+    """
+    statuses = {change['path']: change.get('status')
+                for change in diff.get('changes', [])
+                if isinstance(change.get('path'), str)
+                and change.get('status') == 'deleted'}
+    if not statuses:
+        return {}
+    roots = _catalog_roots(coverage)
+    return {p: 'deleted' for p in statuses if _covered_by_catalog(p, roots)}
+
+
+def _base_catalog_document(target_base, repository):
+    """The coverage catalog as of the verified diff base, or an empty one.
+
+    Trusted-runner read only: a missing object or unparseable file yields an
+    empty catalog, so no deletion is ever exempted on a failed lookup.
+    """
+    try:
+        text = subprocess.check_output(
+            ['git', '-C', str(repository), 'show',
+             target_base + ':scripts/pr-gate-coverage.json'],
+            stderr=subprocess.DEVNULL, text=True)
+        return json.loads(text)
+    except (OSError, subprocess.CalledProcessError, ValueError):
+        return {}
+
+
 def plan(diff, requirements, mapping, repository='.', context_repository=None,
          context_target_branch=None, *, conservative_fallback=False):
     """Try targeted selection; production CI tests valid unknown impact broadly."""
@@ -1837,7 +1893,42 @@ def plan(diff, requirements, mapping, repository='.', context_repository=None,
         if coverage.get('release') == result['release']:
             paths = [change[key] for change in diff.get('changes', [])
                      for key in ('path', 'old_path', 'new_path') if key in change]
-            covered, unowned = _coverage_module().resolve_covered_gates(paths, coverage)
+            statuses = deletion_exemption(diff, coverage)
+            # Rule (b) of the exemption contract: a deleted source no longer
+            # in the checkout catalog qualifies only when the verified diff's
+            # base catalog owns it (the row was removed in the same PR). That
+            # read uses the trusted base checkout and the pr-diff-base-verified
+            # target_base_sha, never candidate content.
+            deleted = {change['path'] for change in diff.get('changes', [])
+                       if isinstance(change.get('path'), str)
+                       and change.get('status') == 'deleted'}
+            pending = deleted - set(statuses)
+            if pending:
+                target_base = diff.get('target_base_sha')
+                trusted_context = (context_repository == 'mcpdev80/baseharbor' and
+                                   supported_pr_target_branch(context_target_branch))
+                if trusted_context and isinstance(target_base, str) and len(target_base) == 40:
+                    base_roots = _catalog_roots(
+                        _base_catalog_document(target_base, repository))
+                    statuses.update((p, 'deleted') for p in pending
+                                    if _covered_by_catalog(p, base_roots))
+            covered, unowned = _coverage_module().resolve_covered_gates(
+                paths, coverage, statuses)
+            # A source deletion resolved by deletion (rule (a): the catalog
+            # still owns the path but the PR removed its coverage) drops the
+            # now-stale 'unknown impact' marker from the legacy classification
+            # of the same path, so the exempted row cannot force the broad
+            # fallback. Paths no catalog view ever owned keep their markers.
+            if statuses:
+                kept = [reason for reason in result['unresolved_coverage']
+                        if not (reason.startswith('unknown impact for ') and
+                                reason[len('unknown impact for '):] in statuses)]
+                if len(kept) != len(result['unresolved_coverage']):
+                    result = dict(result)
+                    result['unresolved_coverage'] = kept
+                    if not kept:
+                        result['coverage_status'] = 'resolved'
+                        result['broad_required'] = False
             # Fail-loud: a changed SOURCE component (cmd/ or internal/) with no
             # declared catalog owner must never resolve to an empty/gray matrix
             # that passes the gate. Surface the precise next action and abort

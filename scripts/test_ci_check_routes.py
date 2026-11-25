@@ -183,6 +183,45 @@ class CheckRoutingTests(unittest.TestCase):
         self.assertIn('pr-planner-tests)', self.script)
         self.assertIn('scripts/test_pre_release_runtime_reuse.py', self.script)
 
+    def test_planner_validation_route_includes_planner_and_coverage_suites(self):
+        # card 0428-253 registration proof: the planner's own pr-planner-tests
+        # command executes the suites that carry the deleted-source advisory
+        # regressions, the ci.yml pr-planner-tests route command matches the
+        # planner check exactly (job 14144947258 precedent: an unregistered
+        # suite silently never runs), and the ci-executor-tests roster
+        # registers the coverage-guardian suite.
+        spec = importlib.util.spec_from_file_location(
+            'planner_routes', ROOT / 'scripts/pr-gate-plan.py')
+        routes = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(routes)
+        command = next(row['command'] for row in routes.CI_CHECKS
+                       if row['id'] == 'pr-planner-tests')
+        self.assertIn('scripts/test_pr_ci_fallback.py', command)
+        self.assertIn('scripts/test_pr_gate_coverage.py', command)
+        # The ci.yml route for the same check id executes exactly the
+        # planner's command, so a registered suite can never silently miss
+        # its route again (job 14144947258 precedent).
+        route_lines = [line.strip() for line in self.script.splitlines()
+                       if line.strip().startswith('pr-planner-tests)')]
+        self.assertEqual(1, len(route_lines))
+        route_command = route_lines[0][len('pr-planner-tests)'):].strip()
+        if not route_command:
+            index = self.script.splitlines().index(next(
+                line for line in self.script.splitlines()
+                if line.strip().startswith('pr-planner-tests)')))
+            route_command = self.script.splitlines()[index + 1].strip()
+        self.assertTrue(route_command.endswith(';;'))
+        route_command = route_command.removesuffix(';;').strip()
+        self.assertTrue(route_command.startswith('python3 -m unittest'))
+        self.assertEqual(sorted(shlex.split(route_command)[3:]),
+                         sorted(shlex.split(command)[3:]))
+        executor = importlib.util.spec_from_file_location(
+            'pr_check_runner', ROOT / 'scripts/pr-check-runner.py')
+        runner = importlib.util.module_from_spec(executor)
+        executor.loader.exec_module(runner)
+        self.assertIn('test_pr_gate_coverage', runner.CI_EXECUTION_SUITES)
+        self.assertIn('test_pr_ci_fallback', runner.CI_EXECUTION_SUITES)
+
     def test_named_go_profiles_match_real_test_functions(self):
         names = test_functions('./cmd/baha')
         for check, patterns in self.runner.WIZARD_TEST_FAMILIES.items():
