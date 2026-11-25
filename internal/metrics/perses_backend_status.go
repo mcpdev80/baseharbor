@@ -46,9 +46,13 @@ func PersesBackendAnswersStatusNow(ctx context.Context, m application.Manifest) 
 	if capability.ValidatePersesRelease(capability.PersesDefaultRelease) != nil {
 		return persesStatusNotConfigured()
 	}
-	// The real per-target probe. A materialized-endpoint or transport error
-	// here is only a silent/not-probed target for a selected, pinned surface,
-	// so it fails closed to configured_unverified.
+	// The one verifier for this surface: BuildPersesInfraDashboardWithProbe
+	// answers every panel's own series query over the materialized Prometheus
+	// endpoint and fails closed on any missing datasource, endpoint or
+	// authorization — the same VerifyPersesInfraDashboard contract that
+	// app_status_result.go names (cmd/baha/app_status_result.go:307). There is
+	// no separate "real probe" definition for the three-state status: this is
+	// the one.
 	files, _, err := persesPrometheusDatasourceEndpoint(m)
 	if err != nil {
 		return persesStatusConfiguredUnverified()
@@ -72,12 +76,12 @@ func persesBackendAnswersStatusWithProbe(ctx context.Context, m application.Mani
 	if capability.ValidatePersesRelease(capability.PersesDefaultRelease) != nil {
 		return persesStatusNotConfigured()
 	}
-	// The real per-target probe. Any fail-closed signal — unpinned surface,
-	// missing/denied datasource, no materialized endpoint, an HTTP/transport
-	// error, or an all-panels-missing (silent) backend — is a silent/not-probed
-	// target and resolves to configured_unverified. Only when the backend
-	// genuinely answers (every panel's own series returned rows, i.e. zero
-	// missing signals) does the probe succeed and this surface report verified.
+	// The one verifier for this surface: BuildPersesInfraDashboardWithProbe
+	// answers every panel's own series query over the materialized Prometheus
+	// endpoint and fails closed on any missing datasource, endpoint or
+	// authorization — the same VerifyPersesInfraDashboard contract named in
+	// cmd/baha/app_status_result.go. No third "real probe" definition stays in
+	// the codebase for this surface.
 	result, err := BuildPersesInfraDashboardWithProbe(m, probe)
 	if err != nil {
 		return persesStatusConfiguredUnverified()
