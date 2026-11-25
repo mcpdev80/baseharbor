@@ -476,6 +476,14 @@
       ]
     },
     {
+      "id": "source.cmd_baha_installation_reset_preservation_test_go",
+      "path": "cmd/baha/installation_reset_preservation_test.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
       "id": "source.cmd.baha.app.provider.choice.test.go",
       "path": "cmd/baha/app_provider_choice_test.go",
       "surfaces": [
