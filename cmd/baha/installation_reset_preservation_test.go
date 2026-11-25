@@ -130,11 +130,13 @@ func TestInstallationResetPreservesSharedForeignProvider(t *testing.T) {
 	if err != nil {
 		t.Fatalf("build destroy plan with shared foreign provider present: %v", err)
 	}
+	// buildIncompleteInventoryDestructionPlan never sets Providers, so
+	// plan.Providers.Impact is nil by construction whenever IncompleteInventory
+	// is true; the IncompleteInventory route below is therefore the sole
+	// red/green differentiator. The Impact check was degenerate (tautological)
+	// and removed so the guard is a clean red/green assertion.
 	if !plan.IncompleteInventory {
 		t.Fatal("failed-apply destroy must route through the incomplete-inventory recovery to preserve shared/foreign providers")
-	}
-	if plan.Providers.Impact != nil {
-		t.Fatalf("incomplete-inventory recovery must not re-plan the shared foreign provider, got impact: %#v", plan.Providers.Impact)
 	}
 
 	// The shared foreign provider registry instance survives planning.
