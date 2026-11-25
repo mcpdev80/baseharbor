@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -50,17 +51,18 @@ func buildApplicationDestructionPlanForOperation(ctx context.Context, resolved r
 	if err != nil || record.Identity != resolved.DeploymentIdentity {
 		return p, runtimeMutationOwnerError()
 	}
-	// A deployment that persisted a record but never materialized its runtime
-	// (an interrupted/failed apply) has no canonical owner to verify through:
-	// the retained application-scoped provider instances were registered but
-	// never realized. A complete completion would route the shared/foreign
-	// provider retirement authority, so this falls back to the incomplete
-	// inventory recovery, which preserves shared, foreign and ambiguous
-	// resources and completes only the verified app-owned cleanup.
-	if reset {
-		if _, runtimeErr := application.ExistingRuntimeFiles(resolved.Store, resolved.Manifest); errors.Is(runtimeErr, application.ErrRuntimeNotApplied) {
-			return buildIncompleteInventoryDestructionPlan(resolved, record, operation)
-		}
+	// A deployment that persisted a record, was observed as an unfinished apply
+	// (state recorded but not ready) and never materialized its runtime has no
+	// canonical owner to verify through: the retained application-scoped provider
+	// instances were registered but never realized. A converged completion would
+	// route the shared/foreign provider retirement authority, so a stuck/failed
+	// apply (observed unready with missing runtime) falls back to the incomplete
+	// inventory recovery, which preserves shared, foreign and ambiguous resources
+	// and completes only the verified app-owned cleanup. A clean deployed record
+	// (no unfinished-apply observation) retires through the normal union plan even
+	// when its runtime is temporarily absent, so it is never misrouted here.
+	if reset && isStuckUnmaterializedApply(resolved, record) {
+		return buildIncompleteInventoryDestructionPlan(resolved, record, operation)
 	}
 	_, p.Providers, err = buildApplicationRuntimeRetirementPlan(ctx, resolved)
 	if err != nil {
@@ -154,6 +156,22 @@ func buildIncompleteInventoryDestructionPlan(resolved resolvedApplication, recor
 func isProviderConsumerInventoryError(err error) bool {
 	var classified *machine.Error
 	return errors.As(err, &classified) && classified.CauseCode == "provider_consumer_inventory_invalid"
+}
+
+// isStuckUnmaterializedApply reports a failed/stuck apply: the deployment record
+// carries an unfinished-apply observation (a state was recorded but the apply was
+// never marked ready) while no runtime directory was ever materialized. A clean
+// deployed record has no unfinished-apply observation; its runtime may be
+// temporarily absent yet it retires through the normal union plan, so it must not
+// be misrouted through the incomplete-inventory recovery here.
+func isStuckUnmaterializedApply(resolved resolvedApplication, record deployment.DeploymentRecord) bool {
+	if record.Observed.State == "" || record.Observed.Ready {
+		return false
+	}
+	rtFiles := application.RuntimeFilesFor(resolved.Store, resolved.Manifest)
+	_, composeErr := os.Stat(rtFiles.Compose)
+	_, envErr := os.Stat(rtFiles.Env)
+	return errors.Is(composeErr, os.ErrNotExist) || errors.Is(envErr, os.ErrNotExist)
 }
 
 func authorizeApplicationDestruction(ctx context.Context, resolved resolvedApplication, reset bool, out io.Writer) (applicationDestructionPlan, error) {
