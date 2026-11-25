@@ -4,8 +4,107 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
+
+// metricsPathPattern captures an HTTP endpoint path from metrics source text.
+// The path must be preceded by a delimiter (quote, equals, whitespace, or a
+// slash) so it extracts the exact endpoint (for example /q/metrics,
+// /actuator/prometheus, or /metrics) without matching a bare substring inside
+// an unrelated token such as "api-old".
+var metricsPathPattern = regexp.MustCompile(`(?i)(^|/|["'=.\s])(/[A-Za-z0-9_./-]+)`)
+
+// metricsPathClass labels a PROVEN endpoint path so callers can assert exact
+// paths (Quarkus, Spring, conventional) and fail closed on the unexpected.
+// The switch below is the canonical registry: ONLY these exact paths are
+// proven metrics endpoints. metricsPathProven reports membership in the same
+// registry; the two must stay in lockstep.
+func metricsPathClass(path string) string {
+	switch path {
+	case "/q/metrics":
+		return "quarkus"
+	case "/actuator/prometheus":
+		return "spring"
+	case "/metrics":
+		return "conventional"
+	default:
+		return "other"
+	}
+}
+
+// metricsPathProven reports whether path is a proven metrics endpoint, i.e.
+// an exact match against the canonical registry in metricsPathClass.
+// Arbitrary candidate paths such as "/health" or "/api/users" are NOT proven
+// metrics endpoints, so the detector must not emit endpoint evidence for them.
+// Comparison is exact equality: no prefix or substring matching.
+func metricsPathProven(path string) bool {
+	return metricsPathClass(path) != "other"
+}
+
+// metricsEndpoint is a proven HTTP endpoint path plus its classification.
+type metricsEndpoint struct {
+	Path  string
+	Class string
+}
+
+// metricsEndpointFromText extracts the first PROVEN metrics HTTP endpoint
+// path from lower-cased source text. The boundary-aware regex captures path
+// candidates (starting after delimiters such as quotes, equals, whitespace,
+// dots or a slash, which lets it reach the second slash of "/q/metrics").
+// ok is true only when a candidate, re-extended by its own trailing
+// separators so a truncated prefix like "/actuator" can complete to
+// "/actuator/prometheus", is an exact match against the proven registry
+// (metricsPathProven). Arbitrary paths such as "/health" or "/api/users" are
+// never proven, and a bare "metrics" mention without a path token yields
+// nothing.
+func metricsEndpointFromText(lower string) (metricsEndpoint, bool) {
+	for _, loc := range metricsPathPattern.FindAllStringSubmatchIndex(lower, -1) {
+		// The pattern has TWO capture groups: loc is [matchStart, matchEnd,
+		// delimStart, delimEnd, pathStart, pathEnd]. The path candidate is
+		// loc[4]:loc[5].
+		path := lower[loc[4]:loc[5]]
+		if path == "" {
+			continue
+		}
+		if metricsPathProven(path) {
+			return metricsEndpoint{Path: path, Class: metricsPathClass(path)}, true
+		}
+		// The path capture ends at the first "/" inside a registry path
+		// ("/q/metrics" yields "/q", "/actuator/prometheus" yields
+		// "/actuator"). Re-extend the candidate over following "/segment"
+		// runs and test the registry; the segments are exactly what the
+		// next delimiter-aware matches would capture at this position.
+		candidate := path
+		for end := loc[5]; end+1 < len(lower) && lower[end] == '/'; {
+			tail := end + 1
+			for tail < len(lower) && isMetricsPathByte(lower[tail]) && lower[tail] != '/' {
+				tail++
+			}
+			if tail == end+1 {
+				break
+			}
+			candidate += "/" + lower[end+1:tail]
+			end = tail
+			if metricsPathProven(candidate) {
+				return metricsEndpoint{Path: candidate, Class: metricsPathClass(candidate)}, true
+			}
+		}
+	}
+	return metricsEndpoint{}, false
+}
+
+// isMetricsPathByte reports whether b is a byte the endpoint pattern accepts
+// inside a path token.
+func isMetricsPathByte(b byte) bool {
+	switch {
+	case b >= 'a' && b <= 'z', b >= 'A' && b <= 'Z', b >= '0' && b <= '9':
+		return true
+	case b == '_' || b == '.' || b == '-':
+		return true
+	}
+	return false
+}
 
 type objectStorageDetector struct{}
 
@@ -115,11 +214,16 @@ func (openMetricsDetector) Detect(ctx context.Context, snapshot Snapshot) ([]Fin
 		}
 		base := strings.ToLower(filepath.Base(path))
 		lower := strings.ToLower(string(data))
-		if isSourceFile(base) || strings.HasSuffix(base, ".yaml") || strings.HasSuffix(base, ".yml") || strings.HasSuffix(base, ".toml") {
-			if strings.Contains(lower, "/metrics") {
+		if isSourceFile(base) || strings.HasSuffix(base, ".yaml") || strings.HasSuffix(base, ".yml") || strings.HasSuffix(base, ".toml") || strings.HasSuffix(base, ".properties") {
+			if endpoint, ok := metricsEndpointFromText(lower); ok {
+				// Attach the exact, classed path to the evidence detail so the
+				// CLI can carry the proven endpoint tuple (source, service,
+				// internal port, HTTP path) into the manifest and assert exact
+				// paths. The path token itself is carried verbatim; only the
+				// descriptive suffix is lower-cased for readability.
 				detected = append(detected, Evidence{
 					Kind: EvidenceEndpoint, Path: path,
-					Detail: "repository exposes or references the conventional /metrics endpoint",
+					Detail: "repository exposes a metrics endpoint " + endpoint.Path + " (" + endpoint.Class + ")",
 				})
 			}
 		}
