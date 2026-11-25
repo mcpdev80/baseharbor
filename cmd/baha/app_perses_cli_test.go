@@ -140,7 +140,7 @@ func assertPersesConfiguredUnverified(t *testing.T, report persesStatusReport) {
 // fail-closed not_configured default).
 func persesProbeAppReport(t *testing.T, ctx context.Context, perses bool) persesStatusReport {
 	t.Setenv("BASEHARBOR_TARGET", "")
-	t.Setenv("BASEHARBOR_STATE_DIR", "")
+	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
 	t.Helper()
 	root := t.TempDir()
 	m := application.New("perses-cli", "dev", false, false, false)
@@ -545,7 +545,7 @@ func TestBahaStatusDatabaseDashboardsExposesUnavailableDatabases(t *testing.T) {
 // an empty-witness inference (0428-142 class).
 func TestBahaStatusDatabaseDashboardsUnverifiedTargetFailsClosed(t *testing.T) {
 	t.Setenv("BASEHARBOR_TARGET", "")
-	t.Setenv("BASEHARBOR_STATE_DIR", "")
+	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
 	ctx := t.Context()
 	root := t.TempDir()
 	m := application.New("perses-cli", "dev", false, false, false)
