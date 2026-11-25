@@ -481,8 +481,7 @@
       "surfaces": [
         "source.gate.atomic.docker.data.capabilities",
         "source.gate.atomic.podman.data.capabilities"
-      ],
-      "runtime_specific": true
+      ]
     },
     {
       "id": "source.cmd.baha.app.provider.choice.test.go",
@@ -4030,8 +4029,7 @@
         "source.cmd.baha.app.broker.diagnostics.test.go",
         "source.cmd.baha.app.workload.ports.go",
         "source.cmd.baha.workload.port.local.regression.test.go",
-        "source.cmd.baha.core.installation.runtime.test.go",
-        "source.cmd_baha_installation_reset_preservation_test_go"
+        "source.cmd.baha.core.installation.runtime.test.go"
       ],
       "selection_scope": "focused"
     },
@@ -4061,8 +4059,7 @@
         "source.cmd.baha.app.broker.diagnostics.test.go",
         "source.cmd.baha.app.workload.ports.go",
         "source.cmd.baha.workload.port.local.regression.test.go",
-        "source.cmd.baha.core.installation.runtime.test.go",
-        "source.cmd_baha_installation_reset_preservation_test_go"
+        "source.cmd.baha.core.installation.runtime.test.go"
       ],
       "selection_scope": "focused"
     },
