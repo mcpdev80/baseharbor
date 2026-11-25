@@ -14,13 +14,23 @@ SURFACE_RE = re.compile(r"^[a-z][a-z0-9_.-]*$")
 TEST_NAME_RE = re.compile(r"^Test[A-Za-z0-9_]+$")
 
 
-def resolve_covered_gates(changed_paths: list[str], coverage: dict) -> tuple[list[str], list[str]]:
+def resolve_covered_gates(changed_paths: list[str], coverage: dict,
+                          statuses: dict[str, str] | None = None) -> tuple[list[str], list[str]]:
     """Resolve changed repository paths to owning runtime gates.
 
     Paths inherit coverage from their declared package/component root. Any path
     without a declared owner is returned as unresolved for the caller's
     conservative fallback; it is never silently treated as covered.
+
+    When a path->status map is given, a path whose change status is 'deleted'
+    is resolved by its deletion alone: it neither demands a catalog owner nor
+    selects gates (card 0428-253, precedent #1789, where the candidate-added
+    advisory job aborted the candidate planner on a dead file whose catalog
+    row had already been removed). Callers decide when a deletion counts as
+    deliberate and pre-filter the map; every other status keeps the original
+    fail-loud behavior.
     """
+    statuses = statuses or {}
     packages = coverage.get("packages", [])
     components = coverage.get("components", [])
     gates = coverage.get("gates", [])
@@ -33,6 +43,10 @@ def resolve_covered_gates(changed_paths: list[str], coverage: dict) -> tuple[lis
             owners = [row for row in packages if isinstance(row, dict)
                       and isinstance(row.get("path"), str)
                       and (changed == row["path"] or changed.startswith(row["path"].rstrip("/") + "/"))]
+        # A deleted path is resolved by its deletion alone: it never
+        # contributes selected gates, whether or not a row still covers it.
+        if statuses.get(changed) == "deleted":
+            continue
         if not owners:
             unresolved.append(changed)
             continue
