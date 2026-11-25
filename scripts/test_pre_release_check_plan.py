@@ -32,12 +32,19 @@ class ReleaseCheckPlanTests(unittest.TestCase):
 
     def test_v0428_adds_only_fast_check_and_moves_no_other_gate(self):
         # card 0428-208 / #1746 (Owner authorization 2026-11-23): the ci-fast-check
-        # requirement moves to v0.4.28 and no other gate is tagged v0.4.28. Every other
-        # gate stays at v0.4.27, so v0.4.28 carries forward exactly one gate.
+        # requirement moves to v0.4.28. Card 0428-249 (Owner authorization
+        # recorded in coordinator PROTOCOL, 2026-11-25) additionally marks the
+        # fourteen atomic docker/podman lifecycle gates required for v0.4.28
+        # only; nothing else gains the tag and no v0.4.27 entry changes.
         self.assertIn('v0.4.28', self.inventory['releases'])
         v0427 = {g['id'] for g in self.inventory['gates'] if 'v0.4.27' in g.get('required_for', [])}
         v0428 = {g['id'] for g in self.inventory['gates'] if 'v0.4.28' in g.get('required_for', [])}
-        self.assertEqual(v0428, {'atomic/static/ci-fast-check', 'atomic/static/mcp'})
+        expected_atomic = set()
+        for runtime in ('docker', 'podman'):
+            for kind in ('guided', 'lifecycle', 'policy', 'connectivity', 'reconciliation', 'failure', 'full-destroy'):
+                expected_atomic.add('atomic/%s/%s' % (runtime, kind))
+        self.assertEqual(len(expected_atomic), 14)
+        self.assertEqual(v0428, {'atomic/static/ci-fast-check', 'atomic/static/mcp'} | expected_atomic)
         self.assertTrue({'atomic/docker/failure'} & v0427)
         selected = plan.select(self.inventory, 'v0.4.28', 'atomic/static/ci-fast-check')
         self.assertEqual(['ci-fast-check'], selected['static'])
