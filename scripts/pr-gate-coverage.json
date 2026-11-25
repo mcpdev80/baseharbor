@@ -2632,8 +2632,8 @@
       "id": "source.internal_metrics_identity_dashboard_witness_go",
       "path": "internal/metrics/identity_dashboard_witness.go",
       "surfaces": [
-        "source.gate.atomic.docker.observability",
-        "source.gate.atomic.podman.observability"
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
       ],
       "runtime_specific": true
     }
