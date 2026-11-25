@@ -502,9 +502,16 @@ jobs:
       run: |
         set -euo pipefail
         mkdir -p "$RUNNER_TEMP/pre-release-candidate"
-        CGO_ENABLED=0 go build -trimpath             -ldflags="-s -w -X main.version=${{ needs.source_prepare.outputs.tag }} -X main.commit=${{ needs.source_prepare.outputs.candidate_sha }} -X main.date=unknown"             -o "$RUNNER_TEMP/pre-release-candidate/baha-ci-operator-testonly" ./cmd/baha
+        CGO_ENABLED=0 go build -trimpath -tags=baseharbor_ci_operator_testonly             -ldflags="-s -w -X main.version=${{ needs.source_prepare.outputs.tag }} -X main.commit=${{ needs.source_prepare.outputs.candidate_sha }} -X main.date=unknown"             -o "$RUNNER_TEMP/pre-release-candidate/baha-ci-operator-testonly" ./cmd/baha
         chmod +x "$RUNNER_TEMP/pre-release-candidate/baha-ci-operator-testonly"
         test -s "$RUNNER_TEMP/pre-release-candidate/baha-ci-operator-testonly"
+        # Build-info proof: the artifact's build settings must carry the test-only tag.
+        # The release build strips the symbol table (-s), so 'go tool nm' cannot be used here;
+        # 'go version -m' embeds build settings (including -tags) regardless of -s -w.
+        # The proof must fail closed, so it filters only the build-settings line.
+        go version -m "$RUNNER_TEMP/pre-release-candidate/baha-ci-operator-testonly" | tee "$RUNNER_TEMP/baha-ci-operator-testonly-buildinfo.txt"
+        grep -E '^[[:space:]]*build[[:space:]]' "$RUNNER_TEMP/baha-ci-operator-testonly-buildinfo.txt" \
+          | grep -q -- '-tags=baseharbor_ci_operator_testonly'
     - name: Upload source candidate
       id: source_candidate
       uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f

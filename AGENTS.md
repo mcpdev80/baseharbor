@@ -56,10 +56,11 @@ Keep runtime, capability and delivery separate. Mutations follow
 plan → preflight → apply → verify; CLI, JSON and MCP share domain semantics.
 Preserve ownership, concrete consequence/consent checks and secret protection.
 
-Start with targeted local tests. Broaden checks as the change requires:
+Run formatting, vet-style, build and other non-test prechecks locally where useful.
+Execute test suites in Hosted CI; use VMs only for brief smoke checks. Broaden
+checks in CI as the change requires:
 
 ```bash
-go test ./...
 go vet ./...
 go build -o /tmp/baha ./cmd/baha
 ```
@@ -86,7 +87,7 @@ its selected checks. Bundle local commits into coherent pushes. Merging into
 Explicit validation branches and manual validation remain available.
 
 - Batch related implementation, test and formatting changes into one coherent
-  verification candidate. Run available focused local or isolated prechecks
+  verification candidate. Run available focused non-test prechecks
   before pushing; do not use one-file pushes as a CI debugging loop.
 - For the same PR, inspect the current candidate's CI result before pushing
   another candidate. An urgent correctness fix or an intentionally superseded
