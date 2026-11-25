@@ -2627,6 +2627,24 @@
         "source.gate.atomic.docker.data.capabilities",
         "source.gate.atomic.podman.data.capabilities"
       ]
+    },
+    {
+      "id": "source.internal_metrics_identity_dashboard_witness_go",
+      "path": "internal/metrics/identity_dashboard_witness.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ],
+      "runtime_specific": true
+    },
+    {
+      "id": "source.internal_applicationbackup_identity_regression_test_go",
+      "path": "internal/applicationbackup/identity_regression_test.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ],
+      "runtime_specific": true
     }
   ],
   "gates": [
