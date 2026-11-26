@@ -126,7 +126,7 @@ Eine künftige inkompatible Neuzuteilung von Eigentumssemantik erfordert eine ex
 
 ## Management-Zugriffs-Profile
 
-Dieser Abschnitt ist der normative Faltungspunkt für den portablen Management-Zugriffs-Vertrag, der zuvor in `docs/spec/management-access-profiles-v1.md` dokumentiert war. Er deklariert, was ein nicht-geheimes Management-Profil, eine sensible Einmal-Geräte-Registrierung und ein explizit verschlüsseltes Zugangsdaten-Export-Payload mitführt, und was das Importieren dieser Objekte nicht darf. Er deklariert keine Anbieterrealisation und führt keine Geheimnisse mit.
+Dieser Abschnitt ist der normative Faltungspunkt für den portablen Management-Zugriffs-Vertrag, der zuvor unter der nicht mehr vorhandenen Pfadangabe `docs/spec/management-access-profiles-v1.md` dokumentiert war; dieser Pfad existierte nie in diesem Repository, der Inhalt liegt jetzt in [management-access-v1](management-access-v1.md). Er deklariert, was ein nicht-geheimes Management-Profil, eine sensible Einmal-Geräte-Registrierung und ein explizit verschlüsseltes Zugangsdaten-Export-Payload mitführt, und was das Importieren dieser Objekte nicht darf. Er deklariert keine Anbieterrealisation und führt keine Geheimnisse mit.
 
 `ManagementAccessKind` ist der portable Management-Zugriffs-Typ-Marker:
 
