@@ -241,3 +241,24 @@ grep -Fq -- "--bh-font-code" docs/brand/brand-tokens.css
 grep -Fq "baseharbor-master-lockup.png" docs/brand/README.md
 
 echo "Brand identity      PASS"
+
+# Exit-code taxonomy contract (0428-321): the documented set must match what
+# the implementation can produce. The documented set is the stable contract:
+# 0 success, 1 runtime failure, 2 usage error, 130 SIGINT, 143 SIGTERM, plus
+# the child-status passthrough range 1-255.
+test -f docs/reference/cli.md
+test -f docs/reference/errors.md
+
+if ! grep -Fq "130" docs/reference/cli.md || ! grep -Fq "143" docs/reference/cli.md; then
+  echo "documentation audit: cli.md must document signal exit codes 130 (SIGINT) and 143 (SIGTERM)" >&2
+  exit 1
+fi
+
+# Exit-code taxonomy contract (0428-321): the documented set must match what
+# the implementation can produce. The stable documented set is exactly
+# 0/1/2/130/143 plus the documented child-status passthrough range 1-255. Any
+# page listing a specific undocumented code (3-129, 131-142, 144-255) as a
+# named CLI exit code is a contract breach.
+python3 scripts/exit_code_taxonomy_audit.py || exit 1
+
+echo "Exit-code taxonomy  PASS"

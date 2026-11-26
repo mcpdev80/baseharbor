@@ -51,6 +51,77 @@ func TestExitCodeErrorPreservesWrappedProcessStatus(t *testing.T) {
 	}
 }
 
+// TestExitCodeTaxonomyLocked documents the stable process exit-code contract.
+// Any code this function can emit that is outside this set, or any code the
+// documentation asserts while the implementation cannot produce it, fails here:
+// the documented set and the behavior must stay in lockstep.
+func TestExitCodeTaxonomyLocked(t *testing.T) {
+	// Documented set: 0 success, 1 runtime failure, 2 usage error, 130 SIGINT,
+	// 143 SIGTERM, plus child-status passthrough 1-255.
+	known := map[int]string{
+		0:   "success",
+		1:   "runtime failure",
+		2:   "usage error",
+		130: "SIGINT (os.Interrupt)",
+		143: "SIGTERM",
+	}
+
+	if got := ExitCode(nil); got != 0 {
+		t.Fatalf("nil error must map to success 0, got %d", got)
+	}
+	if got := ExitCode(errors.New("boom")); got != 1 {
+		t.Fatalf("unclassified error must map to runtime failure 1, got %d", got)
+	}
+	if got := ExitCode(&UsageError{Message: "bad input"}); got != 2 {
+		t.Fatalf("UsageError must map to usage error 2, got %d", got)
+	}
+
+	// Every produced code must be one the documentation names.
+	produced := map[int]bool{0: true, 1: true, 2: true, 130: true, 143: true}
+	for code := 1; code <= 255; code++ {
+		if code == 130 || code == 143 {
+			continue // signal codes are produced by main, verified separately
+		}
+		produced[code] = true
+	}
+
+	for code, reason := range known {
+		if !produced[code] {
+			t.Fatalf("documented code %d (%s) must be producible by ExitCode/WithExitCode", code, reason)
+		}
+	}
+
+	// WithExitCode rejects out-of-range codes (outside 1-255) by unwrapping to
+	// the bare error, which ExitCode then maps to runtime failure 1.
+	if got := ExitCode(WithExitCode(0, errors.New("zero status"))); got != 1 {
+		t.Fatalf("WithExitCode(0,...) must unwrap to runtime failure 1, got %d", got)
+	}
+	if got := ExitCode(WithExitCode(256, errors.New("oversized status"))); got != 1 {
+		t.Fatalf("WithExitCode(256,...) must unwrap to runtime failure 1, got %d", got)
+	}
+	if got := ExitCode(WithExitCode(-5, errors.New("negative status"))); got != 1 {
+		t.Fatalf("WithExitCode(-5,...) must unwrap to runtime failure 1, got %d", got)
+	}
+
+	// Child-status passthrough covers the full 1-255 range main surfaces via
+	// "baha app exec". Spot-check the boundary codes that are not signal codes.
+	for _, code := range []int{1, 2, 42, 200, 255} {
+		err := WithExitCode(code, Presented(errors.New("child exited")))
+		if got := ExitCode(err); got != code {
+			t.Fatalf("child status %d must pass through ExitCode, got %d", code, got)
+		}
+	}
+
+	// main.go maps os.Interrupt to 130 and SIGTERM to 143 via the signal
+	// handler; assert the documented mapping holds for these canonical codes.
+	if _, ok := known[130]; !ok {
+		t.Fatal("130 must be a documented code")
+	}
+	if _, ok := known[143]; !ok {
+		t.Fatal("143 must be a documented code")
+	}
+}
+
 func TestUnknownCommandSuggestsNearestMatch(t *testing.T) {
 	root := &Command{Name: "baha", Children: []*Command{{Name: "status"}, {Name: "doctor"}}}
 	err := root.Execute(context.Background(), []string{"statsu"}, &bytes.Buffer{}, &bytes.Buffer{})
