@@ -34,18 +34,65 @@ class RunnerTests(unittest.TestCase):
             pin.parent.mkdir(parents=True)
             sha = 'a' * 40
             pin.write_text(sha + '\n')
-            resolved = subprocess.CompletedProcess(['gh'], 0, stdout=sha + '\n', stderr='')
-            with patch.object(runner.subprocess, 'run', return_value=resolved) as lookup:
+
+            _KNOWN = {'init', 'remote', 'cat-file', 'rev-parse', 'fetch'}
+            def _fake_git(args, **kwargs):
+                # The anonymous transport runs: init, remote add, fetch,
+                # cat-file -t, rev-parse. A public repository resolves every
+                # step for the real SHA; a wrong/unknown SHA fails the fetch.
+                # Find the first git subcommand, skipping the `git -C <repo>`
+                # pair and short flags.
+                sub = ''
+                skip_next = False
+                for tok in args:
+                    if skip_next:
+                        skip_next = False
+                        continue
+                    if tok in ('-C', '-t', '-q'):
+                        skip_next = tok == '-C'
+                        continue
+                    if tok in _KNOWN:
+                        sub = tok
+                        break
+                if sub == 'init':
+                    return subprocess.CompletedProcess(args, 0, '', '')
+                if sub == 'remote':
+                    return subprocess.CompletedProcess(args, 0, '', '')
+                if sub == 'cat-file':
+                    return subprocess.CompletedProcess(args, 0, 'commit\n', '')
+                if sub == 'rev-parse':
+                    return subprocess.CompletedProcess(args, 0, sha + '\n', '')
+                if sub == 'fetch':
+                    if args[-1] == sha:
+                        return subprocess.CompletedProcess(args, 0, '', '')
+                    return subprocess.CompletedProcess(
+                        args, 128, '', 'No commit found for SHA')
+                return subprocess.CompletedProcess(args, 0, '', '')
+
+            with patch.object(runner.subprocess, 'run', side_effect=_fake_git):
                 self.assertEqual([sha], runner.validate_demo_source_pin('demo-source-pin-validation', root))
-                self.assertIn('repos/mcpdev80/baseharbor-demo/commits/' + sha,
-                              lookup.call_args.args[0])
             pin.write_text('not-a-commit\n')
             with self.assertRaisesRegex(RuntimeError, 'exactly one full lowercase'):
                 runner.validate_demo_source_pin('demo-source-pin-validation', root)
             pin.write_text(sha + '\n')
-            with patch.object(runner.subprocess, 'run', return_value=subprocess.CompletedProcess(
-                    ['gh'], 1, stdout='', stderr='not found')):
-                with self.assertRaisesRegex(RuntimeError, 'does not resolve'):
+            # A fetch failure (unreadable/missing cross-repo commit) stays
+            # fail-closed and surfaces the transport stderr, not a generic
+            # message.
+            def _fail_fetch(args, **kwargs):
+                for tok in args:
+                    if tok in ('-C', '-t', '-q'):
+                        if tok == '-C':
+                            continue
+                        continue
+                    if tok not in _KNOWN:
+                        continue
+                    if tok == 'fetch':
+                        return subprocess.CompletedProcess(
+                            args, 128, '', 'HTTP 422 No commit found for SHA')
+                    break
+                return _fake_git(args, **kwargs)
+            with patch.object(runner.subprocess, 'run', side_effect=_fail_fetch):
+                with self.assertRaisesRegex(RuntimeError, 'not readable in .*baseharbor-demo'):
                     runner.validate_demo_source_pin('demo-source-pin-validation', root)
 
     def test_current_release_derives_highest_semver_from_releases(self):

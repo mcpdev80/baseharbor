@@ -390,6 +390,23 @@ def validate_pins_data(check, repository):
     return validated
 
 
+def _first_line(stderr):
+    """Return the first non-empty line of a subprocess transcript, or ''.
+
+    Surfaces a transport's real error (e.g. GitHub's "No commit found for
+    SHA" / HTTP 422 for an unreadable cross-repo public repository) inside a
+    RuntimeError so a fail-closed pin-resolution failure is diagnosable instead
+    of collapsing into one generic message. Never includes tokens, headers or
+    secrets - only the status line or first text line.
+    """
+    if not stderr:
+        return ''
+    for line in stderr.splitlines():
+        if line.strip():
+            return line.strip()
+    return ''
+
+
 def _semantic_version(tag):
     """Parse a dotted ``vX.Y.Z`` release tag into a comparable tuple.
 
@@ -465,11 +482,64 @@ def validate_demo_source_pin(check, repository, release=None):
     if not re.fullmatch(r'[0-9a-f]{40}\n?', raw):
         raise RuntimeError('{} Demo source pin must contain exactly one full lowercase commit SHA'.format(release))
     sha = raw.strip()
+    # Resolve the pin against the pinned Demo repository. The CI job runs this
+    # with GH_TOKEN=${{ github.token }}, which cannot read a cross-repo public
+    # repository, and GitHub answers 422/404 "No commit found for SHA" for a
+    # repo a token cannot see - indistinguishable from a missing commit. Resolve
+    # anonymously over https so the check works for a public repository without
+    # cross-repo token rights. Fail-closed: any non-zero exit, non-commit object
+    # or SHA mismatch raises, and the transport stderr / HTTP status is surfaced
+    # in the message (no secrets: only the status code and first line) so the
+    # failure is diagnosable instead of collapsing into one generic RuntimeError.
     resolved = subprocess.run(
-        ['gh', 'api', 'repos/mcpdev80/baseharbor-demo/commits/' + sha, '--jq', '.sha'],
-        text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    if resolved.returncode or resolved.stdout.strip() != sha:
-        raise RuntimeError('{} Demo source commit does not resolve in the pinned repository'.format(release))
+        ['git', 'init', '-q', '_demo_repo'],
+        cwd=str(repository), text=True,
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    if resolved.returncode:
+        raise RuntimeError(
+            '{} Demo source pin verification failed: git init error {}'
+            .format(release, _first_line(resolved.stderr)))
+    try:
+        repo = str(Path(repository) / '_demo_repo')
+        fetch = subprocess.run(
+            ['git', '-C', repo, 'remote', 'add', 'origin',
+             'https://github.com/mcpdev80/baseharbor-demo'],
+            text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if fetch.returncode:
+            raise RuntimeError(
+                '{} Demo source pin verification failed: git remote add error {}'
+                .format(release, _first_line(fetch.stderr)))
+        fetched = subprocess.run(
+            ['git', '-C', repo, 'fetch', '--depth=1', 'origin', sha],
+            text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if fetched.returncode:
+            raise RuntimeError(
+                '{} Demo source pin {} not readable in '
+                'mcpdev80/baseharbor-demo: {}'
+                .format(release, sha, _first_line(fetched.stderr)))
+        obj_type = subprocess.run(
+            ['git', '-C', repo, 'cat-file', '-t', 'FETCH_HEAD'],
+            text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if obj_type.returncode or obj_type.stdout.strip() != 'commit':
+            raise RuntimeError(
+                '{} Demo source pin {} is not a commit in '
+                'mcpdev80/baseharbor-demo: {}'
+                .format(release, sha, _first_line(obj_type.stderr)))
+        # Require the fetched object SHA to equal the pinned SHA exactly.
+        sha_only = subprocess.run(
+            ['git', '-C', repo, 'rev-parse', 'FETCH_HEAD'],
+            text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if sha_only.returncode or sha_only.stdout.strip() != sha:
+            raise RuntimeError(
+                '{} Demo source pin does not resolve to the pinned '
+                'SHA {}'.format(release, sha))
+    finally:
+        subprocess.run(['git', '-C', repo, 'clean', '-fdx'],
+                       text=True, stdout=subprocess.DEVNULL,
+                       stderr=subprocess.DEVNULL)
+        subprocess.run(['rm', '-rf', repo],
+                       text=True, stdout=subprocess.DEVNULL,
+                       stderr=subprocess.DEVNULL)
     return [sha]
 
 
