@@ -113,7 +113,17 @@
     "source.package.atomic.podman.identity",
     "source.package.atomic.podman.lifecycle",
     "source.package.integration.static.public.contracts",
-    "workstation.onboarding"
+    "workstation.onboarding",
+    "source.gate.atomic.docker.connectivity",
+    "source.gate.atomic.docker.failure",
+    "source.gate.atomic.docker.full.destroy",
+    "source.gate.atomic.docker.policy",
+    "source.gate.atomic.docker.reconciliation",
+    "source.gate.atomic.podman.connectivity",
+    "source.gate.atomic.podman.failure",
+    "source.gate.atomic.podman.full.destroy",
+    "source.gate.atomic.podman.policy",
+    "source.gate.atomic.podman.reconciliation"
   ],
   "packages": [
     {
@@ -1871,6 +1881,27 @@
       "runtime_specific": true
     },
     {
+      "id": "source.workflow.pre.release.runtime.suite",
+      "path": ".github/workflows/pre-release-runtime-suite.yml",
+      "surfaces": [
+        "source.gate.atomic.docker.connectivity",
+        "source.gate.atomic.docker.failure",
+        "source.gate.atomic.docker.full.destroy",
+        "source.gate.atomic.docker.guided",
+        "source.gate.atomic.docker.lifecycle",
+        "source.gate.atomic.docker.policy",
+        "source.gate.atomic.docker.reconciliation",
+        "source.gate.atomic.podman.connectivity",
+        "source.gate.atomic.podman.failure",
+        "source.gate.atomic.podman.full.destroy",
+        "source.gate.atomic.podman.guided",
+        "source.gate.atomic.podman.lifecycle",
+        "source.gate.atomic.podman.policy",
+        "source.gate.atomic.podman.reconciliation"
+      ],
+      "runtime_specific": true
+    },
+    {
       "id": "source.cmd.baha.oras.setup.go",
       "path": "cmd/baha/oras_setup.go",
       "surfaces": [
@@ -2842,7 +2873,8 @@
         "capability.development-gateway",
         "capability.profile.workload-only",
         "capability.workload",
-        "gate.policy"
+        "gate.policy",
+        "source.gate.atomic.docker.policy"
       ],
       "kind": "runtime",
       "demo_contract": {
@@ -2865,7 +2897,8 @@
         "capability.development-gateway",
         "capability.profile.workload-only",
         "capability.workload",
-        "gate.connectivity"
+        "gate.connectivity",
+        "source.gate.atomic.docker.connectivity"
       ],
       "kind": "runtime",
       "demo_contract": {
@@ -2888,7 +2921,8 @@
         "capability.database.sql",
         "capability.profile.sql-reconcile",
         "capability.workload",
-        "gate.reconciliation"
+        "gate.reconciliation",
+        "source.gate.atomic.docker.reconciliation"
       ],
       "kind": "runtime",
       "demo_contract": {
@@ -2911,7 +2945,8 @@
         "capability.metrics.openmetrics",
         "capability.profile.metrics-failure",
         "capability.workload",
-        "gate.failure"
+        "gate.failure",
+        "source.gate.atomic.docker.failure"
       ],
       "kind": "runtime",
       "demo_contract": {
@@ -2934,7 +2969,8 @@
         "capability.development-gateway",
         "capability.profile.workload-only",
         "capability.workload",
-        "gate.full-destroy"
+        "gate.full-destroy",
+        "source.gate.atomic.docker.full.destroy"
       ],
       "kind": "runtime",
       "demo_contract": {
@@ -3285,7 +3321,8 @@
         "capability.development-gateway",
         "capability.profile.workload-only",
         "capability.workload",
-        "gate.policy"
+        "gate.policy",
+        "source.gate.atomic.podman.policy"
       ],
       "kind": "runtime",
       "demo_contract": {
@@ -3308,7 +3345,8 @@
         "capability.development-gateway",
         "capability.profile.workload-only",
         "capability.workload",
-        "gate.connectivity"
+        "gate.connectivity",
+        "source.gate.atomic.podman.connectivity"
       ],
       "kind": "runtime",
       "demo_contract": {
@@ -3331,7 +3369,8 @@
         "capability.database.sql",
         "capability.profile.sql-reconcile",
         "capability.workload",
-        "gate.reconciliation"
+        "gate.reconciliation",
+        "source.gate.atomic.podman.reconciliation"
       ],
       "kind": "runtime",
       "demo_contract": {
@@ -3354,7 +3393,8 @@
         "capability.metrics.openmetrics",
         "capability.profile.metrics-failure",
         "capability.workload",
-        "gate.failure"
+        "gate.failure",
+        "source.gate.atomic.podman.failure"
       ],
       "kind": "runtime",
       "demo_contract": {
@@ -3377,7 +3417,8 @@
         "capability.development-gateway",
         "capability.profile.workload-only",
         "capability.workload",
-        "gate.full-destroy"
+        "gate.full-destroy",
+        "source.gate.atomic.podman.full.destroy"
       ],
       "kind": "runtime",
       "demo_contract": {
