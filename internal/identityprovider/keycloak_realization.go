@@ -12,6 +12,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/devaccess"
 	"github.com/mcpdev80/baseharbor/internal/devgateway"
 	"github.com/mcpdev80/baseharbor/internal/observability"
@@ -134,6 +135,29 @@ func (r *localKeycloakRealization) registerKeycloakSignals() error {
 	// Keep each Keycloak project's source distinct in the shared registry.
 	// Other providers include their compose project in the registration ID too.
 	registrationID := "keycloak:" + r.files.Project
+	// w267 CHANGES 7196719214 (PR #1855): the signal's Target carries the
+	// observability registry's canonical attribution grammar
+	// runtime://<project>/<service> (observability.RuntimeTarget — the same
+	// grammar the environment resolver keys on and every application provider
+	// registration already writes, internal/application
+	// runtime_observability.go, internal/logs application_source.go), instead
+	// of the bare endpoint literal "keycloak:9000" that attributed the
+	// record to NO Target. The project half is this installation's OWN
+	// registration project (r.files.Project — the exact value the ID
+	// carries, so the environment resolver's ID-anchored environment
+	// derivation is untouched). The service half is
+	// "keycloak@<uri-encoded state root>:9000": the endpoint service plus
+	// the Target's state-root path identity (keycloakSignalTargetRoot;
+	// deployment.TargetStateRoot keys the directory on the exact validated
+	// name). The network and project tokens normalize dots to hyphens
+	// (identity_network.go, project_names.go projectToken) and are
+	// therefore NOT injective for the valid names "a.b" and "a-b"; the root
+	// path is, so it is the attribution component the witness
+	// (internal/metrics identity_dashboard_witness.go) binds on, alongside
+	// the unchanged real-network and state-root pin checks. A foreign
+	// Target's record names its own root and never matches; pre-correction
+	// plain-endpoint records ("keycloak:9000") and unattributed shapes fail
+	// closed.
 	placement, err := application.ResolveProviderPlacement(r.app, capability.ProviderKeycloak)
 	if err != nil {
 		return err
@@ -152,11 +176,19 @@ func (r *localKeycloakRealization) registerKeycloakSignals() error {
 	} else {
 		metricsEnabled = metricsEnabled && metricsPolicy.Collect[application.MetricsSourcePlatformProvider]
 	}
+	targetRoot, err := keycloakSignalTargetRoot(r.dataDir)
+	if err != nil {
+		return err
+	}
+	attribution, err := keycloakSignalAttributedService(targetRoot)
+	if err != nil {
+		return err
+	}
 	signals := map[string]observability.ProviderSignalRuntime{}
 	if metricsEnabled {
 		signals["keycloak-metrics"] = observability.ProviderSignalRuntime{
 			Network: r.files.ConsumerNetwork,
-			Target:  "keycloak:9000",
+			Target:  observability.RuntimeTarget(r.files.Project, attribution),
 		}
 	}
 
@@ -203,6 +235,64 @@ func (r *localKeycloakRealization) registerKeycloakSignals() error {
 		OwnerProjects:     ownerMaps,
 	}
 	return observability.RegisterProviderSignals(registration)
+}
+
+// keycloakSignalTargetRoot resolves the state-root DIRECTORY identity the
+// metrics attribution is keyed on: the realization's dataDir, which is the
+// caller's resolved Target state root at every production call site
+// (cmd/baha/app_identity.go passes resolved.TargetStateRoot), falling back
+// to the process data root resolution only when the realization carries no
+// explicit dir (the deployment-local default). The witness re-derives the
+// SAME token from deployment.TargetStateRoot(targetName) (internal/metrics
+// identity_dashboard_witness.go keycloakRecordTargetRoot), so a realization
+// that cannot resolve ANY root fails closed here — never by writing an
+// unattributable record.
+func keycloakSignalTargetRoot(dataDir string) (string, error) {
+	root := strings.TrimSpace(dataDir)
+	if root == "" {
+		dir, err := bhruntime.DataDir("")
+		if err != nil {
+			return "", errors.New("keycloak metrics registration requires a resolvable target state root")
+		}
+		root = dir
+	}
+	cleaned := filepath.Clean(root)
+	// The canonical runtime Target grammar cannot carry slashes in its
+	// service component (observability.ParseRuntimeTarget cuts at the
+	// first slash), so the attribution identifies the Target by its state-
+	// root DIRECTORY NAME — the exact validated Target name
+	// deployment.TargetStateRoot keyed the directory on. Anything that is
+	// not a target-state-root-shaped path fails closed; the witness
+	// re-derives the same root from deployment.TargetStateRoot(targetName).
+	if filepath.Base(cleaned) == cleaned || filepath.Dir(cleaned) == cleaned {
+		return "", errors.New("keycloak metrics registration requires a resolvable target state root")
+	}
+	if err := deployment.ValidateTargetName(filepath.Base(cleaned)); err != nil {
+		return "", err
+	}
+	return cleaned, nil
+}
+
+// keycloakSignalAttributedService composes the service half of the
+// producer's canonical runtime Target attribution: the descriptor endpoint
+// service "keycloak" (port 9000) joined with the Target's state-root
+// DIRECTORY NAME, "keycloak@<target>:9000" (keycloakSignalTargetRoot
+// validates that name against the Target grammar). The '@' separator is
+// deliberate: a bare colon would add a second ':' segment, which
+// observability.trailingProjectEnvironment reads as the provider-ID
+// grammar's project segment (environment.go's documented "<provider>:
+// <project>[:<service>]" tolerance) — a lossy re-entry into the very
+// normalization the attribution must avoid. The state-root name is
+// injective in the Target because deployment.TargetStateRoot keys the
+// directory on the EXACT validated name — unlike the projectToken
+// normalization (dots to hyphens) the ID project and the consumer network
+// run their names through (w267 CHANGES 7196719214).
+func keycloakSignalAttributedService(targetRoot string) (string, error) {
+	name := filepath.Base(targetRoot)
+	if err := deployment.ValidateTargetName(name); err != nil {
+		return "", err
+	}
+	return "keycloak@" + name + ":9000", nil
 }
 
 // ownerProjectMaps lists the owner->project maps the migration consults. The

@@ -38,6 +38,17 @@ func ApplicationProjectName(namespace, application, environment string) string {
 	return "bh-" + target + "-" + app + "-" + env
 }
 
+// TargetInstallationProject is the shared identity installation project the
+// identityprovider producer registers its observability signal under for one
+// concrete Target: SharedProjectName("<target>-core"). The Target attribute
+// travels in the canonical runtime Target's SERVICE component
+// (internal/identityprovider keycloakSignalTargetAttribution), never here:
+// projectToken maps dots to hyphens, so the valid names "a.b" and "a-b"
+// produce the SAME value and this grammar is NOT injective in the Target.
+func TargetInstallationProject(target string) string {
+	return SharedProjectName(strings.TrimSpace(target) + "-core")
+}
+
 func projectToken(value, fallback string) string {
 	value = strings.ToLower(strings.TrimSpace(value))
 	value = strings.ReplaceAll(value, ".", "-")

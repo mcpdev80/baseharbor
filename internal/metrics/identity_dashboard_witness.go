@@ -122,27 +122,71 @@ func keycloakMetricSignals(m application.Manifest, placement capability.Provider
 		return false, false
 	}
 
-	policy, policyErr := application.MetricsPolicy(m)
-	if policyErr != nil {
-		return false, false
-	}
-	sources, err := observability.List(
-		observability.SignalMetrics,
-		placement,
-		[]string{m.Name},
-		false,
-		policy.Collect[application.MetricsSourceApplicationProvider],
-		policy.Collect[application.MetricsSourcePlatformProvider],
-		m.Environment,
-	)
-	if err != nil || len(sources) == 0 {
-		return false, false
+	// Registry access and the placement axes (w267 CHANGES 7196719214 item 1,
+	// generalised): a SHARED placement's identity record is target-wide — the
+	// producer writes OwnerApplication "core" and SharingBoundary "core"
+	// regardless of which consumer app is witnessed, and the central List()
+	// environment filter would drop that record for every non-"prod" caller
+	// (the installation pins environment "prod", keycloak_files.go) — so the
+	// shared witness reads the registry directly and asserts the placement
+	// axes (Scope, SharingBoundary) explicitly below. An APPLICATION
+	// placement's record is owned by the application itself: the witness
+	// keeps the PRODUCTION list seam (observability.List with the owning
+	// application and the caller's environment, the same route the
+	// Prometheus composition and verification use), so the environment
+	// isolation card 0428-121 established stays exactly in force here.
+	var sources []observability.SignalSource
+	if placement.Scope == capability.ScopeShared {
+		all, allErr := observability.ListAll()
+		if allErr != nil {
+			return false, false
+		}
+		for _, source := range all {
+			if source.Kind == observability.SignalMetrics {
+				sources = append(sources, source)
+			}
+		}
+	} else {
+		policy, policyErr := application.MetricsPolicy(m)
+		if policyErr != nil {
+			return false, false
+		}
+		listed, listErr := observability.List(
+			observability.SignalMetrics,
+			placement,
+			[]string{m.Name},
+			false,
+			policy.Collect[application.MetricsSourceApplicationProvider],
+			policy.Collect[application.MetricsSourcePlatformProvider],
+			m.Environment,
+		)
+		if listErr != nil {
+			return false, false
+		}
+		sources = listed
 	}
 	for _, source := range sources {
+		if source.Kind != observability.SignalMetrics {
+			continue
+		}
+		// Registration-identity axis: the witness expects exactly the id the
+		// production producer writes for this placement and Target (see
+		// keycloakMetricsRegistrationIDAt; w267 CHANGES 7196719214 item 1).
+		// The per-Target binding itself is asserted on the injective state-
+		// root attribution below, never on this field alone.
 		if source.Provider != capability.ProviderKeycloak || source.ID != expectedID {
 			continue
 		}
-		if source.OwnerApplication != m.Name || source.Scope != placement.Scope {
+		// The producer writes OwnerApplication verbatim (identityprovider
+		// registerKeycloakSignals: r.app.Name). The shared placement's
+		// installation pins app.Name to "core" only on the FILES path
+		// (keycloak_files.go overrides a local copy for the network
+		// grammar); the REGISTRATION carries the caller's owning
+		// application (r.app.Name), so the witness pins exactly that —
+		// the same identity RegisterProviderSignals persists (w267
+		// CHANGES 7196719214 item 1: the guard must hold for actual
+		// production records; the seed mirrors this registration).
+		if source.Scope != placement.Scope || source.OwnerApplication != m.Name {
 			continue
 		}
 		if placement.Scope == capability.ScopeShared && source.SharingBoundary != placement.SharingBoundary {
@@ -170,21 +214,24 @@ func keycloakMetricSignals(m application.Manifest, placement capability.Provider
 		if strings.TrimSpace(source.Network) != expectedNetwork || expectedNetwork == "" {
 			continue
 		}
-		// Target attribution check (w267 CHANGES 7194027071 collision
-		// class): besides the Network equality above, the record must be
-		// attributed — in the observability registry's canonical
-		// runtime://<project>/<service> grammar (the same grammar the
-		// environment resolver keys on, internal/observability/
-		// environment.go; keycloakRecordTargetRoot) — to exactly THIS
-		// witness's installation project, composed from the Target's state
-		// ROOT DIRECTORY name. The root directory is unique per validated
-		// Target name (deployment.TargetStateRoot), so the attribution is
-		// injective even for the names "a.b" and "a-b" whose projectToken
-		// and consumer-network forms normalize identically (dots to
-		// hyphens, identity_network.go:40): a foreign Target's signal can
-		// never satisfy this witness, while the matching Target's own
-		// attributed signal keeps it eligible. Unattributed or
-		// foreign-attributed records fail closed.
+		// Target attribution check (w267 CHANGES 7194027071, collision class
+		// of 7196719214): besides the Network equality above, the record
+		// must carry the production attribution token — in the observability
+		// registry's canonical runtime://<project>/<service> grammar (the
+		// same grammar the environment resolver keys on, internal/
+		// observability/environment.go), the service half naming
+		// "keycloak@<state-root directory>:9000" exactly as the CURRENT
+		// producer registers it (internal/identityprovider
+		// keycloakSignalTargetAttribution). The state-root DIRECTORY is
+		// unique per validated Target name (deployment.TargetStateRoot keys
+		// the directory on the exact name), so the attribution is injective
+		// even for the names "a.b" and "a-b" whose projectToken and
+		// consumer-network forms normalize identically (dots to hyphens,
+		// identity_network.go:40, project_names.go:41-48): a foreign
+		// Target's signal can never satisfy this witness, while the
+		// matching Target's own attributed record stays eligible.
+		// Unattributed (plain endpoint, incl. stamped-legacy) or foreign-
+		// attributed records fail closed.
 		if recordRoot := keycloakRecordTargetRoot(source, expectedRoot, targetName); recordRoot == "" || filepath.Clean(recordRoot) != filepath.Clean(expectedRoot) {
 			continue
 		}
@@ -194,51 +241,46 @@ func keycloakMetricSignals(m application.Manifest, placement capability.Provider
 	return metricPresent, metricCurrent
 }
 
-// keycloakMetricsRegistrationIDAt returns the per-Target registry identity the
-// native keycloak-metrics signal is registered under. Per the 0428-1707
-// scoping the registration id is "<provider>:<project>" (disjoint from the
-// legacy literal "keycloak-metrics"), so a foreign Target's signal on the same
-// sharing boundary cannot forge this witness. A missing or unresolvable binding
-// returns empty, which makes keycloakMetricSignals fail closed (see the
-// expectedID == "" guard above). The per-Target binding the witness asserts on
-// top of this id lives in keycloakMetricSignals: the matching record must also
-// carry the state root that resolves to THIS concrete Target (see
-// TargetStateRoot(targetName) below) and the production Keycloak descriptor, so
-// the registration id combined with the state-root check is genuinely
-// target-scoped, not just project-scoped.
 // keycloakMetricsRegistrationIDAt returns the registry identity the witness
 // expects the native keycloak-metrics signal under. Per the 0428-1707
 // scoping the registration id is "<provider>:<project>" (disjoint from the
 // legacy literal "keycloak-metrics"): the producer's id is "keycloak:" +
-// files.Project. The project the witness expects is the CONSUMER-side
-// canonical project for this Target and manifest — for the shared placement
-// the producer's Core installation path passes app.Name "core" (identity-
-// provider/core.go), but the app-scoped consumer registers under the app's
-// OWN canonical project (keycloakStateIdentity's application branch:
-// runtime.ApplicationProjectName(namespace, <app>-identity, env)); the
-// manifest-name form survives as the conservative local-face fallback. The
-// id itself is project-scoped and NOT the per-Target binding: Target
-// attribution is asserted in keycloakMetricSignals on BOTH the record's
-// Network (target-scoped lookup scope) AND the record's root attribution
-// (w267 HOLD 7192567805, CHANGES 7194027071: the collision class "a.b" vs
-// "a-b" separates on the root halves, which are directory-unique). A missing
-// or unresolvable binding returns empty, which makes keycloakMetricSignals
-// fail closed (see the expectedID == "" guard above).
+// files.Project — the Target's shared identity installation project
+// (identityprovider keycloakStateIdentity → runtime
+// TargetInstallationProject(namespace), i.e. SharedProjectName("<target>-
+// core")) for the shared placement, and the application canonical project
+// for the application placement. The witness derives the same grammar from
+// the validated Target name; a name or root that does not resolve yields ""
+// and keycloakMetricSignals fails closed (see the expectedID == "" guard
+// above). The id itself is project-scoped and NOT the per-Target binding:
+// Target attribution is asserted in keycloakMetricSignals on the record's
+// Network (target-scoped lookup scope) AND the injective state-root
+// attribution token in the record's canonical runtime Target (w267 HOLD
+// 7192567805, CHANGES 7194027071 / 7196719214).
 func keycloakMetricsRegistrationIDAt(m application.Manifest, placement capability.ProviderPlacement, targetStateRoot, targetName string) string {
-	if strings.TrimSpace(targetName) == "" {
+	if err := deployment.ValidateTargetName(targetName); err != nil {
 		return ""
 	}
-	// The registration id grammar stays the production project form
-	// "<provider>:<project>" (0428-1707 scoping, disjoint from the legacy
-	// literal "keycloak-metrics"): for the shared placement the producer's
-	// project is the Target's installation project (identityprovider
-	// keycloakStateIdentity → runtime.SharedProjectName(namespace+"-core")),
-	// and the manifest name is the conservative face-compatible fallback.
-	// The id itself is project-scoped and NOT the per-Target binding; the
-	// Target attribution is asserted in keycloakMetricSignals on the record's
-	// Network (target-scoped lookup scope) AND the record's root attribution
-	// (w267 HOLD 7192567805, CHANGES 7194027071).
-	return string(capability.ProviderKeycloak) + ":" + strings.TrimSpace(m.Name)
+	switch placement.Scope {
+	case capability.ScopeShared:
+		// The producer registers under the Target's installation project
+		// (identityprovider keycloakStateIdentity's shared branch).
+		return string(capability.ProviderKeycloak) + ":" + bhruntime.TargetInstallationProject(targetName)
+	case capability.ScopeApplication:
+		// The app-scoped Keycloak installation registers under the OWNING
+		// application's canonical project whose Target token is the
+		// producer's resolved Target namespace (identityprovider
+		// keycloakStateIdentity's application branch: runtime
+		// ApplicationProjectName(namespace, <app>-identity, env)). The
+		// witness derives the identical grammar from the Target IT is asked
+		// about — targetName IS the producer's namespace on the production
+		// status face (cmd/baha/app_status_result.go passes
+		// resolved.Target.Name), which is where this placement's producer
+		// runs.
+		return string(capability.ProviderKeycloak) + ":" + bhruntime.ApplicationProjectName(targetName, m.Name+"-identity", m.Environment)
+	default:
+		return ""
+	}
 }
 
 // keycloakTargetConsumerNetwork derives the identity consumer network the
@@ -314,17 +356,21 @@ func keycloakTargetConsumerNetwork(m application.Manifest, placement capability.
 // observability registry's canonical compose-project grammar,
 // runtime://<project>/<service> (ParseRuntimeTarget — the grammar the
 // environment resolver keys on, internal/observability/environment.go),
-// with BOTH halves pinned to the witnessed Target: the service must equal
-// the signal's realization endpoint (keycloakSignalRuntimeService) and the
-// project must equal the witnessed root's installation project
-// (keycloakInstallationProject, composed from the state root's DIRECTORY
-// name, which is unique per Target — deployment.TargetStateRoot keys the
-// directory on the exact validated name). The project-scoped ID, the plain
-// endpoint literal and the consumer network all carry no root identity and
-// are NOT accepted as attribution (w267 HOLD 7192567805 / CHANGES
-// 7194027071: the normalization-colliding names "a.b" and "a-b" share one
-// network token yet attribute to distinct roots here). An unattributed or
-// foreign-attributed record returns "" and the witness fails closed.
+// with the service half carrying the production attribution token this
+// runtime's Keycloak producer writes (internal/identityprovider
+// keycloakSignalAttributedService): "keycloak@<state-root name>:9000",
+// where the token is the Target's state-root DIRECTORY NAME — the exact
+// validated Target name deployment.TargetStateRoot keyed the directory on.
+// That name is the INJECTIVE component: the ID project and the consumer
+// network run their names through projectToken normalization (dots mapped
+// to hyphens), so the valid names "a.b" and "a-b" collide on those fields
+// yet attribute to distinct roots here (w267 CHANGES 7194027071,
+// 7196719214). The token must equal the witnessed root's directory name,
+// and the project half must name an installation consistent with that
+// root. Pre-correction plain-endpoint records ("keycloak:9000", no
+// attribution token), foreign-attributed records, and cross-grammar
+// fabrications (root and project that no production installation can
+// write together) resolve NO root and fail closed.
 func keycloakRecordTargetRoot(source observability.SignalSource, witnessedRoot, witnessName string) string {
 	project, service, ok := observability.ParseRuntimeTarget(source.Target)
 	if !ok {
@@ -336,49 +382,73 @@ func keycloakRecordTargetRoot(source observability.SignalSource, witnessedRoot, 
 	if witnessName = strings.TrimSpace(witnessName); witnessName == "" || witnessName != filepath.Base(witnessed) {
 		return ""
 	}
-	// Canonical attribution: the runtime://<project>/<service> grammar (the
-	// observability registry's own project-identity form, internal/
-	// observability registry.go RuntimeTarget / environment.go), with the
-	// service equal to this signal's realization endpoint and the project
-	// equal to the TARGET-ATTRIBUTED installation project —
-	// keycloakInstallationProject, composed from the witnessed state root's
-	// DIRECTORY name, which is unique per Target (deployment.TargetStateRoot
-	// keys the directory on the exact validated name). The plain project
-	// literal "identity-provider" and the raw-name token form
-	// SharedProjectName("a.b-core") == SharedProjectName("a-b-core") carry no
-	// root identity and fail closed: attribution is injective because it is
-	// rooted at the directory, never at the normalization-lossy token.
-	if service != keycloakSignalRuntimeService {
+	// The attribution grammar of the CURRENT production producer
+	// (keycloakSignalAttributedService): keycloak@<state-root name>:9000,
+	// where the name is the validated Target name. The witness's network
+	// lookup scope embeds the same raw Target name as its last segment
+	// (identity_network.go appends the namespace verbatim), so real
+	// production records agree on both axes by construction; a fabricated
+	// mismatch fails closed in the network guard below (w267 HOLD
+	// 7192567805).
+	const marker = "keycloak@"
+	if !strings.HasPrefix(service, marker) || !strings.HasSuffix(service, ":9000") {
 		return ""
 	}
-	if project == keycloakInstallationProject(witnessed) {
-		return witnessed
+	token := strings.TrimSuffix(strings.TrimPrefix(service, marker), ":9000")
+	if err := deployment.ValidateTargetName(token); err != nil {
+		return ""
 	}
-	return ""
+	if token != witnessName || token != filepath.Base(witnessed) {
+		return ""
+	}
+	// Structural project check: the producer writes its OWN registration
+	// project (identityprovider sharedKeycloakProject / keycloakStateIdentity
+	// grammar). The record's project must be the installation project of the
+	// SAME Target; a root/token mix no production installation can write
+	// fails closed. The injective binding itself is the equality above.
+	if !keycloakProjectNamesTarget(project, token) {
+		return ""
+	}
+	return witnessed
 }
 
-const keycloakSignalRuntimeService = "keycloak:9000"
-
-// keycloakInstallationProject is the single attribution grammar of the
-// witness: the Target's shared identity installation project — the shape
-// runtime.SharedProjectName("<target>-core") produces ("bh-<token>-core-
-// shared", internal/runtime project_names.go; the project
-// internal/identityprovider keycloakStateIdentity computes for a Target's
-// Core installation) — composed with the WITNESSED ROOT'S DIRECTORY name
-// kept VERBATIM in the token position. The projectToken normalization maps
-// dots to hyphens, so the names "a.b" and "a-b" would share one token;
-// their state-root DIRECTORIES differ (deployment.TargetStateRoot keys the
-// directory on the exact validated name), so retaining the directory name
-// makes the attribution INJECTIVE in the Target: "bh-a.b-core-shared" vs
-// "bh-a-b-core-shared". A foreign Target's record can never name this
-// witness's project, and the matching Target's attributed record always
-// does. No product consent/auth behavior changes.
-func keycloakInstallationProject(witnessedRoot string) string {
-	name := filepath.Base(filepath.Clean(witnessedRoot))
-	if name == "" || name == "." || name == string(filepath.Separator) {
-		return ""
+// keycloakProjectNamesTarget reports whether a registry project is the
+// production identity installation project of the Target whose state-root
+// directory name is targetName. It accepts exactly the two project
+// grammars identityprovider keycloakStateIdentity writes: the shared
+// installation project runtime.TargetInstallationProject(name)
+// ("bh-<projectToken(name-core)>-shared") and the application-scope project
+// runtime.ApplicationProjectName(name, <app>-identity, <env>) — for the
+// witness's Target-scoped check only the leading Target token of the
+// application grammar is identity-relevant, so the app/env segments are
+// structurally free. projectToken normalizes dots to hyphens, so this
+// grammar is by construction NOT the collision separator
+// (SharedProjectName("a.b-core") == SharedProjectName("a-b-core") — review
+// 7196719214 item 2): the injective binding lives in the attribution token
+// (keycloakRecordTargetRoot). An exact grammar match is required —
+// anything else fails closed.
+func keycloakProjectNamesTarget(project, targetName string) bool {
+	project = strings.TrimSpace(project)
+	if err := deployment.ValidateTargetName(targetName); err != nil {
+		return false
 	}
-	return "bh-" + name + "-core-shared"
+	if project == "" {
+		return false
+	}
+	if project == bhruntime.TargetInstallationProject(targetName) {
+		return true
+	}
+	// Application-scope installation project "bh-<token(target)>-<app>-<env>":
+	// the Target token is the first segment after the "bh-" prefix.
+	const prefix = "bh-"
+	if !strings.HasPrefix(project, prefix) {
+		return false
+	}
+	token := strings.TrimPrefix(project, prefix)
+	if idx := strings.IndexByte(token, '-'); idx >= 0 {
+		token = token[:idx]
+	}
+	return token != "" && token == projectTokenFor(targetName)
 }
 
 // projectTokenFor mirrors internal/runtime.projectToken (unexported):
@@ -394,17 +464,28 @@ func projectTokenFor(value string) string {
 	return value
 }
 
-// keycloakRecordEndpoint accepts the two production forms of the Keycloak
+// keycloakRecordEndpoint accepts the production forms of the Keycloak
 // signal's runtime endpoint in the record's Target field: the plain service
-// endpoint "keycloak:9000" (the form the compose realization writes) and the
-// runtime://<project>/keycloak:9000 attribution grammar the observability
-// registry exposes for target-attributed registrations. Both express the
-// same endpoint identity; attribution decides per Target.
+// endpoint "keycloak:9000" (the pre-attribution form older deployed records
+// carry), the canonical attribution grammar the CURRENT producer writes
+// (runtime://<project>/keycloak@<root>:9000), and the stamped legacy
+// runtime://<project>/keycloak form the registry migration produces
+// (internal/observability migration.go stampLegacyTarget strips the port).
+// All three express the same endpoint identity; the per-Target attribution
+// check (keycloakRecordTargetRoot) decides eligibility — the plain form
+// resolves NO root and fails closed.
 func keycloakRecordEndpoint(target string) bool {
 	value := strings.TrimSpace(target)
 	if value == "keycloak:9000" {
 		return true
 	}
-	project, service, ok := observability.ParseRuntimeTarget(value)
-	return ok && strings.TrimSpace(project) != "" && service == "keycloak:9000"
+	_, service, ok := observability.ParseRuntimeTarget(value)
+	if !ok {
+		return false
+	}
+	service = strings.TrimSpace(service)
+	if service == "keycloak" || service == "keycloak:9000" {
+		return true
+	}
+	return strings.HasPrefix(service, "keycloak@") && strings.HasSuffix(service, ":9000")
 }
