@@ -33,6 +33,7 @@ type composeService struct {
 	HealthCheck             bool
 	DatabaseBootstrap       bool
 	WorkloadProtocol        string
+	Scraper                 bool
 }
 
 type composeDocument struct {
@@ -77,6 +78,23 @@ func detectComposeServices(data []byte) ([]composeService, error) {
 		item.MongoDB = strings.Contains(lowerName, "mongodb") || lowerName == "mongo" || strings.HasPrefix(lowerName, "mongo-")
 		item.RabbitMQ = strings.Contains(lowerName, "rabbitmq")
 		item.ObjectStorage = composeObjectStorageMarker(lowerName)
+		item.Scraper = strings.HasSuffix(lowerName, "-scraper") || strings.HasSuffix(lowerName, "scraper")
+		// Env-var evidence classifies a provider even when the service name and
+		// image carry no literal keyword. J-Commerce's product_db (Mongo), vector_db
+		// (pgvector Postgres) and floci (local S3-compatible emulator) use generic
+		// images; only the env var names (MONGO_URL, PG_URL, AWS_ENDPOINT) reveal the
+		// provider, so the wizard otherwise proposes Postgres for everything.
+		for _, ref := range envVarNames(definition) {
+			lower := strings.ToLower(ref)
+			switch {
+			case strings.Contains(lower, "mongodb") || lower == "mongo_url":
+				item.MongoDB = true
+			case strings.Contains(lower, "postgres") || strings.Contains(lower, "postgresql") || strings.Contains(lower, "pg_url") || lower == "postgres_url" || lower == "database_url":
+				item.Postgres = true
+			case strings.Contains(lower, "aws_endpoint") || strings.Contains(lower, "s3_endpoint") || strings.Contains(lower, "aws_access_key_id") || strings.Contains(lower, "aws_secret_access_key"):
+				item.ObjectStorage = true
+			}
+		}
 		item.AmbiguousInfrastructure = !item.Postgres && !item.Redis && !item.MongoDB && !item.RabbitMQ && !item.ObjectStorage &&
 			(composeAmbiguousInfrastructureMarker(lowerName) || composeUnsupportedDatabaseMarker(lowerName))
 
@@ -349,6 +367,24 @@ func composeReferenceKeys(raw any) []string {
 	default:
 		return composeReferenceValues(raw)
 	}
+}
+
+// envVarNames extracts the environment variable names referenced by a Compose
+// service. Compose allows inline env as a list of "NAME=value" strings or
+// maps, and env_file as a list of file references. Only the variable names are
+// inspected (never their values); the service name alone cannot reveal the
+// provider when a non-keyword image is used, so the names are the evidence.
+func envVarNames(definition map[string]any) []string {
+	var names []string
+	if raw, ok := definition["env"]; ok {
+		for _, entry := range composeReferenceValues(raw) {
+			if name, _, ok := strings.Cut(entry, "="); ok && strings.TrimSpace(name) != "" {
+				names = append(names, strings.TrimSpace(name))
+			}
+		}
+	}
+	names = append(names, composeReferenceValues(definition["env_file"])...)
+	return uniqueSorted(names)
 }
 
 type ReclaimableComposeVolume struct {
