@@ -309,7 +309,8 @@ func collectApplicationStatusResult(ctx context.Context, store application.Store
 	// applied/stopped/not_applied runtime face: not_configured |
 	// configured_unverified | verified. Pin validation alone can never map into
 	// verified — only the real per-target health probe (metrics
-	// VerifyPersesInfraDashboard) can. Computed before the remote-target early
+	// VerifyPersesInfraDashboard, the one verifier behind
+	// PersesBackendAnswersStatusNow) can. Computed before the remote-target early
 	// return below so remote-status --json also carries it. The probe runs
 	// against this resolved manifest's selected Perses surface and materialized
 	// Prometheus sources: an answering target promotes to verified (so the

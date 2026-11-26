@@ -1122,6 +1122,56 @@ class MappingTests(unittest.TestCase):
                 self.assertIn('scripts/test_pre_release_runtime_reuse.py',
                               planner_check['command'])
 
+    def test_deleted_source_with_removed_catalog_row_resolves_planner_green(self):
+        # card 0428-253 (precedent #1789): the verified diff of a PR that
+        # deletes a dead source file whose catalog row the same PR removed
+        # resolves through the candidate planner - the advisory job replans
+        # green instead of aborting on the uncataloged-source demand.
+        # Fixture: the checkout catalog keeps the cataloged sibling only (the
+        # #1789 shape after its row removal), so the legacy metrics catch-all
+        # cannot mask the claim; the deleted promql path comes only from the
+        # base catalog at target_base_sha (rule (b)), read from the trusted
+        # base checkout in authenticated runner context.
+        fixture = copy.deepcopy(json.loads((ROOT / 'pr-gate-coverage.json').read_text()))
+        fixture['components'] = [row for row in fixture['components']
+                                 if row.get('path') !=
+                                 'internal/metrics/perses_dashboards_promql_test.go']
+        changes = [{'status': 'deleted',
+                    'path': 'internal/metrics/perses_dashboards_promql_test.go'},
+                   {'status': 'modified',
+                    'path': 'internal/metrics/perses_dashboards_test.go'}]
+        # Rule (b) in unit form: the checkout-catalog view alone exempts
+        # nothing once the row the same PR removed is gone from this view.
+        self.assertEqual({}, planner.deletion_exemption(diff(changes[:1]), fixture))
+        # End-to-end with the trusted base catalog: resolves, using the exact
+        # #1789 base SHA as the verified diff base (rule (b) fires through
+        # the real base-catalog read from the trusted checkout).
+        base_sha = subprocess.run(
+            ['git', '-C', str(ROOT.parent), 'rev-parse', 'e8acf7405^'],
+            capture_output=True, text=True).stdout.strip()
+        if len(base_sha) != 40:
+            self.skipTest('the #1789 base commit is not in this checkout')
+        live = json.loads((ROOT / 'release-requirements.json').read_text())
+        result = planner.plan({**diff(changes), 'target_base_sha': base_sha},
+                              live, MAP, repository=str(ROOT.parent),
+                              context_repository='mcpdev80/baseharbor',
+                              context_target_branch='develop',
+                              conservative_fallback=True)
+        self.assertEqual('resolved', result['coverage_status'])
+        self.assertEqual([], result['unresolved_coverage'])
+        self.assertFalse(result['broad_required'])
+        # A deleted source neither catalog view ever owned is never exempted
+        # and the 0428-242 fail-loud guard aborts - not a deletion blanket.
+        never = [{'status': 'deleted', 'path': 'internal/newarea/a.go'}]
+        self.assertEqual({}, planner.deletion_exemption(diff(never), fixture))
+        with self.assertRaises(ValueError) as ctx:
+            planner.plan(diff(never), live, MAP,
+                         repository=str(ROOT.parent),
+                         context_repository='mcpdev80/baseharbor',
+                         context_target_branch='develop',
+                         conservative_fallback=True)
+        self.assertIn('uncataloged source change', str(ctx.exception))
+
     def test_unknown_never_auto_selects_full_release_catalog(self):
         for name in ['Dockerfile', 'internal/operatorauth/policy.go',
                      'config/deleted.yaml', 'spec/generated.pb.go']:

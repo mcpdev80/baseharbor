@@ -211,6 +211,93 @@ class ConservativeFallbackTests(unittest.TestCase):
             self.assertIn('internal/newarea/a.go', result.stderr)
             self.assertIn('scripts/pr-gate-coverage.json', result.stderr)
 
+    def test_deleted_source_with_base_cataloged_sibling_resolves_planner_green(self):
+        # card 0428-253 (precedent #1789, advisory job 137410039120): replaying
+        # the #1789-shaped candidate diff as the trusted pr-diff-base.py emits
+        # it. The two #1789 scripts/ edits are identical-to-base file removals
+        # (catalog row + native-gate tuple): git diff --name-status reports
+        # nothing for them, so they are NOT diff entries. What IS there is the
+        # dead build-tagged test file, DELETED, plus the modified cataloged
+        # sibling. Deletion classification must resolve it by deletion - the
+        # base catalog at target_base_sha still owned the row (3939aa5ea), and
+        # the sibling's catalog membership proves the change set is a real
+        # source edit - so the candidate-added advisory job replans green
+        # while the required base plan stays untouched.
+        deleted_source = 'internal/metrics/perses_dashboards_promql_test.go'
+        sibling = 'internal/metrics/perses_dashboards_test.go'
+        diff = {'target_base_sha': 'a'*40, 'head_sha': 'b'*40, 'merge_base_sha': 'c'*40,
+                'integration_sha': 'd'*40, 'broad_required': False, 'reasons': [],
+                'changes': [{'status': 'deleted', 'path': deleted_source},
+                            {'status': 'modified', 'path': sibling}]}
+        # Candidate catalog (current checkout): the #1789 removal already
+        # landed, so the deleted row is gone and the sibling is cataloged.
+        current = json.loads((ROOT / 'pr-gate-coverage.json').read_text())
+        self.assertIsNone(next((row for row in current['components']
+                                if row.get('path') == deleted_source), None))
+        self.assertTrue(any(row.get('path') == sibling for row in current['components']))
+        # The removed row existed in the base catalog, at the exact #1789
+        # merge commit on develop (e8acf7405).
+        base_text = subprocess.run(
+            ['git', '-C', str(ROOT.parent), 'show',
+             'e8acf7405^:scripts/pr-gate-coverage.json'],
+            capture_output=True, text=True).stdout
+        if not base_text:
+            self.skipTest('the #1789 base commit is not in this checkout')
+        base = json.loads(base_text)
+        self.assertTrue(any(row.get('path') == deleted_source
+                            for row in base['components']))
+        base_sha = subprocess.run(
+            ['git', '-C', str(ROOT.parent), 'rev-parse', 'e8acf7405^'],
+            capture_output=True, text=True).stdout.strip()
+        # Trusted runner context, exact #1789 base SHA: plan() resolves the
+        # exemption through the base catalog at target_base_sha (rule (b)),
+        # exactly as the trusted advisory job computes it.
+        result = planner.plan(
+            {**diff, 'target_base_sha': base_sha},
+            CATALOG, GATE_MAPPING, repository=str(ROOT.parent),
+            context_repository='mcpdev80/baseharbor',
+            context_target_branch='develop', conservative_fallback=True)
+        self.assertEqual('resolved', result['coverage_status'])
+        self.assertEqual([], result['unresolved_coverage'])
+        self.assertFalse(result['broad_required'])
+        # The deletion itself selects no gates; the cataloged sibling path
+        # still selects its observability gates.
+        self.assertEqual(['atomic/docker/observability', 'atomic/podman/observability'],
+                         result['selected_gates'])
+        # Unknown runner context (no authenticated repository/target branch):
+        # rule (b) never fires and the deletion stays uncataloged, so the
+        # fail-loud guard aborts - the fixture SHA is never consulted.
+        with self.assertRaises(ValueError) as ctx:
+            planner.plan(diff, CATALOG, GATE_MAPPING,
+                         repository=str(ROOT.parent))
+        self.assertIn('uncataloged source change', str(ctx.exception))
+
+    def test_lone_deleted_uncataloged_source_still_fails_loud(self):
+        # The deletion exemption is never a deletion blanket: a change set
+        # whose ONLY entry is a DELETED uncataloged source (here the dead
+        # #1789 file, but with nothing else that proves a deliberate source
+        # edit) is still an uncataloged source change. It must abort the
+        # planner - fail-closed behavior (card 0428-242) survives this
+        # card's fix.
+        candidate_diff = {'target_base_sha': 'a'*40, 'head_sha': 'b'*40,
+                          'merge_base_sha': 'c'*40, 'integration_sha': 'd'*40,
+                          'broad_required': False, 'reasons': [],
+                          'changes': [{'status': 'deleted',
+                                       'path': 'internal/metrics/perses_dashboards_promql_test.go'}]}
+        with self.assertRaises(ValueError) as ctx:
+            planner.plan(candidate_diff, CATALOG, GATE_MAPPING,
+                         conservative_fallback=True)
+        self.assertIn('internal/metrics/perses_dashboards_promql_test.go',
+                      str(ctx.exception))
+        self.assertIn('scripts/pr-gate-coverage.json', str(ctx.exception))
+        # Same for a source that never had a catalog row at all.
+        never_cataloged = {**candidate_diff, 'changes': [
+            {'status': 'deleted', 'path': 'internal/newarea/a.go'}]}
+        with self.assertRaises(ValueError) as ctx:
+            planner.plan(never_cataloged, CATALOG, GATE_MAPPING,
+                         conservative_fallback=True)
+        self.assertIn('internal/newarea/a.go', str(ctx.exception))
+
     def test_format_checks_changed_files_without_blocking_on_unchanged_debt(self):
         if shutil.which('gofmt') is None:
             self.skipTest('gofmt is not installed in this environment')

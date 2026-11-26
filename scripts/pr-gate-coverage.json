@@ -674,6 +674,33 @@
       ]
     },
     {
+      "id": "source.internal_application_runtime_identity_workload_go",
+      "path": "internal/application/runtime_identity_workload.go",
+      "runtime_specific": true,
+      "surfaces": [
+        "source.gate.atomic.docker.lifecycle",
+        "source.gate.atomic.podman.lifecycle"
+      ]
+    },
+    {
+      "id": "source.internal_application_runtime_identity_workload_fallback_test_go",
+      "path": "internal/application/runtime_identity_workload_fallback_test.go",
+      "runtime_specific": true,
+      "surfaces": [
+        "source.gate.atomic.docker.lifecycle",
+        "source.gate.atomic.podman.lifecycle"
+      ]
+    },
+    {
+      "id": "source.internal_application_runtime_identity_workload_test_go",
+      "path": "internal/application/runtime_identity_workload_test.go",
+      "runtime_specific": true,
+      "surfaces": [
+        "source.gate.atomic.docker.lifecycle",
+        "source.gate.atomic.podman.lifecycle"
+      ]
+    },
+    {
       "id": "source.internal.application.runtime.multi.integration.test.go",
       "path": "internal/application/runtime_multi_integration_test.go",
       "surfaces": [
@@ -2631,6 +2658,15 @@
     {
       "id": "source.internal_metrics_identity_dashboard_witness_go",
       "path": "internal/metrics/identity_dashboard_witness.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ],
+      "runtime_specific": true
+    },
+    {
+      "id": "source.internal_applicationbackup_identity_regression_test_go",
+      "path": "internal/applicationbackup/identity_regression_test.go",
       "surfaces": [
         "source.gate.atomic.docker.data.capabilities",
         "source.gate.atomic.podman.data.capabilities"
