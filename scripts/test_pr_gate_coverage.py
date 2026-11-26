@@ -299,6 +299,41 @@ class CoverageCatalogTests(unittest.TestCase):
                 self.assertEqual(expected, selected)
                 self.assertEqual([], unresolved)
 
+    def test_runtime_suite_workflow_selects_both_docker_and_podman_gates(self):
+        # Card 0428-352 (PR #1812 run 45771862723): a candidate that modifies
+        # ONLY the reusable runtime suite fell through the planner's workflow
+        # catch-all with selected_gates=[], so the PR Selected Runtime matrix
+        # was [not-required] and the Docker/Podman Light gates never executed.
+        # The catalog is the sole runtime-gate authority: the planner replaces
+        # selected_gates with the resolve_covered_gates output (pr-gate-plan.py
+        # plan(): "The catalog is the sole authority for runtime gate
+        # selection."), so this row - and no planner change - arms the route.
+        current = json.loads((ROOT / "pr-gate-coverage.json").read_text())
+        requirements = json.loads((ROOT / "release-requirements.json").read_text())
+        mapping = json.loads((ROOT / "pr-gate-map-v1.json").read_text())
+        expected = ["atomic/docker/data-capabilities", "atomic/docker/guided",
+                    "atomic/docker/lifecycle", "atomic/podman/data-capabilities",
+                    "atomic/podman/guided", "atomic/podman/lifecycle"]
+        path = ".github/workflows/pre-release-runtime-suite.yml"
+        selected, unresolved = coverage_module.resolve_covered_gates([path], current)
+        self.assertEqual(expected, selected)
+        self.assertEqual([], unresolved)
+        # The release catalog must keep every selected gate executable.
+        self.assertTrue(set(expected) <= {gate["id"] for gate in requirements["gates"]
+                                         if "v0.4.27" in gate["required_for"]})
+        # The full trusted planner (real mapping, same inputs CI uses) resolves
+        # the exact single-workflow-file diff shape to those six gates.
+        diff = {
+            "target_base_sha": "a" * 40, "head_sha": "b" * 40,
+            "merge_base_sha": "c" * 40, "integration_sha": "d" * 40,
+            "broad_required": False, "reasons": [],
+            "changes": [{"status": "modified", "path": path}],
+        }
+        result = planner.plan(diff, requirements, mapping)
+        self.assertEqual("resolved", result["coverage_status"])
+        self.assertEqual([], result["unresolved_coverage"])
+        self.assertEqual(expected, result["selected_gates"])
+
     def test_coreless_fixture_acceptance_files_are_anchored_to_both_integration_gates(self):
         current = json.loads((ROOT / "pr-gate-coverage.json").read_text())
         expected = ["integration/docker/coreless-lifecycle",

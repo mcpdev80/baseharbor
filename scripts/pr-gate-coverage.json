@@ -1871,6 +1871,19 @@
       "runtime_specific": true
     },
     {
+      "id": "source.workflow.pre.release.runtime.suite",
+      "path": ".github/workflows/pre-release-runtime-suite.yml",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.docker.guided",
+        "source.gate.atomic.docker.lifecycle",
+        "source.gate.atomic.podman.data.capabilities",
+        "source.gate.atomic.podman.guided",
+        "source.gate.atomic.podman.lifecycle"
+      ],
+      "runtime_specific": true
+    },
+    {
       "id": "source.cmd.baha.oras.setup.go",
       "path": "cmd/baha/oras_setup.go",
       "surfaces": [
