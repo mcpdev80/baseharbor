@@ -115,6 +115,7 @@ CI_EXECUTION_SUITES = (
     'test_pre_release_integration', 'test_consumer_source_pins',
     'test_frozen_candidate_promotion', 'test_ci_check_routes',
     'test_pr_runtime_source', 'test_pr_runner_isolation', 'test_pr_ci_fallback',
+    'test_pr_gate_coverage',
 )
 
 

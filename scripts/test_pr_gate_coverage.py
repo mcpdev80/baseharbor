@@ -162,6 +162,72 @@ class CoverageCatalogTests(unittest.TestCase):
         self.assertEqual([], selected)
         self.assertEqual(["internal/application/provider_union.go"], unresolved)
 
+    def test_deleted_source_without_catalog_row_resolves_by_deletion(self):
+        # card 0428-253 (precedent #1789): dead source whose deletion the
+        # planner exempted (statuses map) must not come back as an uncataloged
+        # change; without the exemption the fail-loud contract stands.
+        current = json.loads((ROOT / "pr-gate-coverage.json").read_text())
+        path = "internal/metrics/perses_dashboards_promql_test.go"
+        self.assertTrue(all(row.get("path") != path for row in current["components"]))
+        selected, unresolved = coverage_module.resolve_covered_gates([path], current)
+        self.assertEqual([], selected)
+        self.assertEqual([path], unresolved)
+        selected, unresolved = coverage_module.resolve_covered_gates(
+            [path], current, {path: "deleted"})
+        self.assertEqual([], selected)
+        self.assertEqual([], unresolved)
+
+    def test_deleted_source_selects_nothing_even_with_remaining_catalog_row(self):
+        current = json.loads((ROOT / "pr-gate-coverage.json").read_text())
+        path = "internal/metrics/perses_dashboards_test.go"
+        selected, unresolved = coverage_module.resolve_covered_gates(
+            [path], current, {path: "deleted"})
+        self.assertEqual([], selected)
+        self.assertEqual([], unresolved)
+
+    def test_status_map_never_exempts_non_deletion_statuses(self):
+        current = json.loads((ROOT / "pr-gate-coverage.json").read_text())
+        path = "internal/newarea/feature.go"
+        for status in ("modified", "added", "renamed", "copied", "type_changed"):
+            with self.subTest(status=status):
+                selected, unresolved = coverage_module.resolve_covered_gates(
+                    [path], current, {path: status})
+                self.assertEqual([], selected)
+                self.assertEqual([path], unresolved)
+        # Without a status map the resolver behaves exactly as before.
+        selected, unresolved = coverage_module.resolve_covered_gates([path], current)
+        self.assertEqual([], selected)
+        self.assertEqual([path], unresolved)
+
+    def test_planner_deletion_exemption_contract(self):
+        # card 0428-253: unit coverage of the exemption contract (the
+        # end-to-end replay lives in scripts/test_pr_ci_fallback.py against
+        # the real #1789 commits). A deleted path the checkout catalog owns -
+        # exact row or package root - is exempted; a path it no longer lists
+        # is NOT exempted by this function (plan() resolves that case through
+        # the trusted base-catalog read). Other statuses never exempt.
+        current = json.loads((ROOT / "pr-gate-coverage.json").read_text())
+        sibling = "internal/metrics/perses_dashboards_test.go"
+
+        def diff(changes):
+            return {'target_base_sha': 'a' * 40, 'head_sha': 'b' * 40,
+                    'merge_base_sha': 'c' * 40, 'integration_sha': 'd' * 40,
+                    'broad_required': False, 'reasons': [], 'changes': changes}
+
+        self.assertEqual({sibling: "deleted"}, planner.deletion_exemption(
+            diff([{'status': 'deleted', 'path': sibling}]), current))
+        package_root = next(row["path"].rstrip("/") for row in current["packages"])
+        inside = package_root + "/exemption_probe_test.go"
+        self.assertEqual({inside: "deleted"}, planner.deletion_exemption(
+            diff([{'status': 'deleted', 'path': inside}]), current))
+        dead = "internal/metrics/perses_dashboards_promql_test.go"
+        self.assertEqual({}, planner.deletion_exemption(
+            diff([{'status': 'deleted', 'path': dead}]), current))
+        for status in ("modified", "added", "renamed", "type_changed"):
+            with self.subTest(status=status):
+                self.assertEqual({}, planner.deletion_exemption(
+                    diff([{'status': status, 'path': sibling}]), current))
+
     def test_coreless_backend_baseline_has_both_integration_gate_owners_and_test_anchor(self):
         current = json.loads((ROOT / "pr-gate-coverage.json").read_text())
         path = "cmd/baha/app_backend_selective_runtime_test.go"
