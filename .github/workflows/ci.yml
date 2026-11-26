@@ -1077,7 +1077,7 @@ jobs:
     needs: pr_plan
     outputs:
       demo_ref: ${{ steps.verify.outputs.demo_ref }}
-    if: github.event_name == 'pull_request' && (github.base_ref == 'develop' || startsWith(github.base_ref, 'lane-') || startsWith(github.base_ref, 'cli2-') || startsWith(github.base_ref, 'w0')) && github.event.pull_request.draft == false && (needs.pr_plan.outputs.runtime_required == 'true' || needs.pr_plan.outputs.integration_required == 'true' || needs.pr_plan.outputs.public_contracts_required == 'true')
+    if: github.event_name == 'pull_request' && (github.base_ref == 'develop' || startsWith(github.base_ref, 'lane-') || startsWith(github.base_ref, 'cli2-') || startsWith(github.base_ref, 'w0')) && github.event.pull_request.draft == false && (needs.pr_plan.outputs.runtime_required == 'true' || needs.pr_plan.outputs.integration_required == 'true' || needs.pr_plan.outputs.public_contracts_required == 'true' || contains(needs.pr_plan.outputs.matrix, 'demo-source-pin-validation'))
     runs-on: ubuntu-latest
     timeout-minutes: 8
     permissions:
