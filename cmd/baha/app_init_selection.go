@@ -363,12 +363,16 @@ func buildGuidedInitManifest(reader *bufio.Reader, out io.Writer, d appProjectDe
 		return application.Manifest{}, err
 	}
 	if len(d.RuntimePermissions) > 0 {
-		services, err := runtimePermissionServices(reader, out, selection.workloadServices)
+		var operations []string
+		for _, ops := range d.RuntimePermissions {
+			operations = append(operations, ops...)
+		}
+		services, err := runtimePermissionServices(reader, out, selection.workloadServices, operations)
 		if err != nil {
 			return application.Manifest{}, err
 		}
-		for capabilityID, operations := range d.RuntimePermissions {
-			m = application.WithRuntimePermission(m, capabilityID, services, operations...)
+		for capabilityID, ops := range d.RuntimePermissions {
+			m = application.WithRuntimePermission(m, capabilityID, services, ops...)
 		}
 	}
 	return m, nil

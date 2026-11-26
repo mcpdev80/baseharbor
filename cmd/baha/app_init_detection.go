@@ -472,12 +472,24 @@ func composeTargetPort(value string) (int, bool) {
 	return port, true
 }
 
-func runtimePermissionServices(reader *bufio.Reader, out io.Writer, workloadServices []string) ([]string, error) {
+func runtimePermissionServices(reader *bufio.Reader, out io.Writer, workloadServices []string, operations []string) ([]string, error) {
 	if len(workloadServices) == 0 {
 		return nil, errors.New("runtime capability permissions require an application workload service")
 	}
 	if len(workloadServices) == 1 {
 		return append([]string(nil), workloadServices...), nil
+	}
+	// runtime.create is a least-privilege, attribution-bound operation: it must
+	// land ONLY on the workload service(s) that actually observed the runtime
+	// API. When more than one workload service exists, defaulting the prompt to
+	// all of them would grant runtime.create to every service by accident. Fail
+	// closed and ask the developer to confirm the authorized consumer instead of
+	// broadcasting the grant across the workload (see 0428-291).
+	if runtimePermissionRequiresAttribution(operations) {
+		return nil, usageError(
+			"runtime.create was detected but more than one workload service is selected",
+			"Confirm which workload service observed the S3 Runtime API, or run 'baha app init' and select it interactively.",
+		)
 	}
 	value, err := promptLine(reader, out, "Workload services allowed to use detected Runtime API operations (comma-separated)", strings.Join(workloadServices, ","))
 	if err != nil {
@@ -494,6 +506,20 @@ func runtimePermissionServices(reader *bufio.Reader, out io.Writer, workloadServ
 		}
 	}
 	return selected, nil
+}
+
+// runtimePermissionRequiresAttribution reports whether any of the runtime
+// operations requires least-privilege, observed-consumer attribution. Only
+// runtime.create is attribution-bound today: it must land on the single
+// workload service that actually observed the runtime API, never default to all
+// selected workload services.
+func runtimePermissionRequiresAttribution(operations []string) bool {
+	for _, operation := range operations {
+		if operation == "runtime.create" {
+			return true
+		}
+	}
+	return false
 }
 
 func quickNamedInstances(detected []string) []string {
