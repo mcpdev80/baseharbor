@@ -1,6 +1,6 @@
 {
   "schema": "baseharbor.pr-gate-map/v1",
-  "release": "v0.4.27",
+  "release": "v0.4.28",
   "policy": "explicit-path-and-package",
-  "notes": "Executable mappings live in pr-gate-plan.py. Valid unknown paths select conservative Go unit/vet/build checks and applicable runtime lifecycles. Invalid source or catalog data still fails; PRs never launch the full release catalog automatically."
+  "notes": "Release relocated from v0.4.27 to v0.4.28: the demo-source-pin-validation requirement previously named v0.4.27 moves to v0.4.28 (no criteria removed). Executable mappings live in pr-gate-plan.py. Valid unknown paths select conservative Go unit/vet/build checks and applicable runtime lifecycles. Invalid source or catalog data still fails; PRs never launch the full release catalog automatically."
 }

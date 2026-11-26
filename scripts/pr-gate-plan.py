@@ -793,7 +793,7 @@ PINNED_PINS_VALIDATION = [
 # application or runtime suites.
 DEMO_SOURCE_PIN_VALIDATION = [
     {'id': 'demo-source-pin-validation', 'owner': 'exact immutable Demo source pin',
-     'command': ('python3 scripts/pr-check-runner.py execute --check '
+      'command': ('python3 scripts/pr-check-runner.py execute --check '
                  'demo-source-pin-validation --repository .')},
 ]
 def openbao_retry_checks(diff, repository='.', context_repository=None,
@@ -1181,28 +1181,23 @@ def targeted_plan(diff, requirements, mapping, repository='.',
                 'validation_contract': 'All authenticated current-integration CI checks must execute and pass.',
                 'reasons': ['Trusted target record: exact repository, branch, head, full '
                             'inventory, raw SHA-256 blobs and clean integration verified.']}
-    # The demo source pin is release-scoped. Read the active release from the
-    # trusted release-requirements.json so a v0.4.28 pin is matched against the
-    # same selector the trusted runner schedules, not a hard-coded v0.4.27.
-    active_release = None
-    try:
-        import importlib.util
-        _spec = importlib.util.spec_from_file_location(
-            'pr_check_runner', Path(__file__).with_name('pr-check-runner.py'))
-        _runner = importlib.util.module_from_spec(_spec)
-        _spec.loader.exec_module(_runner)
-        active_release = _runner._current_release(repository)
-    except Exception:
-        active_release = None
+    # The demo source pin is release-scoped. The pin path carries the validated
+    # mapping release (already taken from the mapping at the top of this
+    # function, line 840) and must be matched against that mapping release, not
+    # the maximum tag in the release catalog. A pin for v0.4.27 must resolve on
+    # a v0.4.27 mapping and a pin for v0.4.28 on a v0.4.28 mapping; a pin whose
+    # release is not in the trusted catalog or differs from the mapping release
+    # stays unresolved. Never substitute the catalog maximum here.
+    if release not in requirements.get('releases', []):
+        unresolved.append(
+            '{} demo source pin release absent from trusted release catalog'.format(release))
     for path in paths:
-        if path == 'docs/releases/{}.demo-ref'.format(
-                active_release or release):
+        if path == 'docs/releases/{}.demo-ref'.format(release):
             area = 'release-demo-source-pin'
             require(DEMO_SOURCE_PIN_VALIDATION)
             if len(paths) != 1 or path_status.get(path) != 'modified':
                 unresolved.append(
-                    '{} Demo source pin must be a standalone modified file'.format(
-                        active_release or release))
+                    '{} Demo source pin must be a standalone modified file'.format(release))
         elif re.fullmatch(r'docs/releases/v0\.4\.(?:23|24|25|26)\.consumer-pins\.json', path):
             area = 'pins-data'
             require(PINNED_PINS_VALIDATION)
@@ -1744,6 +1739,14 @@ def targeted_plan(diff, requirements, mapping, repository='.',
                           ', '.join(absent))
         selected.difference_update(absent)
     status = 'unresolved' if unresolved else 'resolved'
+    # Carry the selected mapping release on the demo-source-pin-validation row so
+    # the trusted runner validates that release explicitly (the catalog maximum
+    # is only a fallback for callers without an explicit release).
+    pin_row = validations.get('demo-source-pin-validation')
+    if isinstance(pin_row, dict) and 'release' not in pin_row:
+        pin_row = dict(pin_row)
+        pin_row['release'] = release
+        validations['demo-source-pin-validation'] = pin_row
     return {'schema': 'baseharbor.pr-gate-plan/v1', **identifiers,
             'mapping_schema': mapping['schema'], 'release': release,
             'coverage_status': status, 'unresolved_coverage': unresolved,

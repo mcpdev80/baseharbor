@@ -299,8 +299,17 @@ def matrix(plan):
     ids = [row['id'] for row in checks]
     if len(ids) != len(set(ids)) or any(i not in VALIDATIONS for i in ids):
         raise ValueError('unsupported validation check')
-    # Matrix cannot be empty; an explicit inert marker is NOT a PASS.
-    return {'include': [{'check': i} for i in ids] or [{'check': 'not-required'}]}
+    # Matrix cannot be empty; an explicit inert marker is NOT a PASS. Carry the
+    # mapping release on the demo-source-pin-validation row so the trusted runner
+    # validates that release explicitly instead of recomputing the catalog
+    # maximum. Every other row stays release-agnostic.
+    include = []
+    for row in checks:
+        entry = {'check': row['id']}
+        if row['id'] == 'demo-source-pin-validation' and 'release' in row:
+            entry['release'] = row['release']
+        include.append(entry)
+    return {'include': include or [{'check': 'not-required'}]}
 
 
 def validate_pins_data(check, repository):
@@ -433,18 +442,22 @@ def _current_release(repository):
     return release
 
 
-def validate_demo_source_pin(check, repository):
+def validate_demo_source_pin(check, repository, release=None):
     """Require the active-release Demo pin to be one existing immutable commit.
 
     The Demo source pin is release-scoped: the pinned SHA lives at
-    ``docs/releases/<release>.demo-ref`` where ``<release>`` is read from the
-    trusted ``scripts/release-requirements.json``. Previously this only knew a
-    hard-coded ``v0.4.27`` path, so a v0.4.28 pin (or any other active release)
-    fell through unvalidated. The path is now resolved per the candidate release.
+    ``docs/releases/<release>.demo-ref`` where ``<release>`` defaults to the
+    highest supported tag in the trusted ``release-requirements.json`` catalog.
+    The trusted planner carries an explicit release on the matrix row for this
+    one check; that mapping release wins and the catalog maximum is only a
+    fallback for callers without an explicit release. A missing or malformed
+    requirements file is a hard failure: the validator must never silently guess
+    a path.
     """
     if check != 'demo-source-pin-validation':
         raise ValueError('unsupported Demo pin validation')
-    release = _current_release(repository)
+    if release is None:
+        release = _current_release(repository)
     pin = Path(repository) / 'docs' / 'releases' / '{}.demo-ref'.format(release)
     if pin.is_symlink() or not pin.is_file():
         raise RuntimeError('{} Demo source pin is missing or unsafe'.format(release))
@@ -465,6 +478,7 @@ def main():
     parser.add_argument('mode', choices=['matrix', 'execute'])
     parser.add_argument('--plan', type=Path)
     parser.add_argument('--check')
+    parser.add_argument('--release', default=None)
     parser.add_argument('--repository', default='.')
     args = parser.parse_args()
     if args.mode == 'execute':
@@ -475,7 +489,7 @@ def main():
             print(json.dumps({'check': args.check, 'matched_tests': matched}, sort_keys=True))
             return
         if args.check == 'demo-source-pin-validation':
-            matched = validate_demo_source_pin(args.check, args.repository)
+            matched = validate_demo_source_pin(args.check, args.repository, args.release)
             print(json.dumps({'check': args.check, 'matched_tests': matched}, sort_keys=True))
             return
         matches = execute_validation(args.check, args.repository)
