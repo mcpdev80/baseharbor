@@ -70,29 +70,12 @@ func main() {
 	os.Exit(cli.ExitCode(err))
 }
 
-// signalExitCode maps the two signals interruptibleProcessContext handles to the
-// documented process exit codes: os.Interrupt -> 130, syscall.SIGTERM -> 143.
-// This is the single source of the mapping the docs name in cli.md; the handler
-// calls it rather than inlining the literals, so a test can drive the actual
-// code path main uses.
-func signalExitCode(sig os.Signal) int {
-	if sig == syscall.SIGTERM {
-		return 143
-	}
-	return 130
-}
-
-// ResolveSignalExitCode is the main-level contract entry main() uses to turn a
-// signal delivered to the running process into the documented process exit code.
-// interruptibleProcessContext's goroutine routes every registered signal
-// (os.Interrupt, syscall.SIGTERM) through this function; a context.Canceled from
-// the interrupt handler also resolves here. It is the single source of the
-// documented 130/143 mapping, so the contract test drives the real path main
-// uses rather than a local key lookup.
-func ResolveSignalExitCode(sig os.Signal) int {
-	return signalExitCode(sig)
-}
-
+// interruptibleProcessContext routes every registered signal (os.Interrupt,
+// syscall.SIGTERM) through cli.ResolveSignalExitCode on its exit path; a
+// context.Canceled from the interrupt handler's first cancel resolves via
+// main.go's context.Canceled -> 130 shortcut. The 130/143 mapping lives in
+// internal/cli (already catalogued); this goroutine calls it rather than
+// inlining the literals, so the documented mapping has one source.
 func interruptibleProcessContext() (context.Context, func()) {
 	ctx, cancel := context.WithCancel(context.Background())
 	signals := make(chan os.Signal, 2)
@@ -103,7 +86,7 @@ func interruptibleProcessContext() (context.Context, func()) {
 	go func() {
 		seen := false
 		for sig := range signals {
-			exitCode := ResolveSignalExitCode(sig)
+			exitCode := cli.ResolveSignalExitCode(sig)
 			if !seen {
 				seen = true
 				cancel()

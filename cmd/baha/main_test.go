@@ -157,11 +157,12 @@ func TestBrokenPipeErrorIsSilent(t *testing.T) {
 func TestSignalMapsToDocumentedExitCode(t *testing.T) {
 	// Real main-level contract: assert the documented signal->exit mapping
 	// (SIGINT -> 130, SIGTERM -> 143) that docs/reference/cli.md names, driven
-	// through the main-level contract entry main() uses. ResolveSignalExitCode is
-	// what interruptibleProcessContext's goroutine routes every registered signal
-	// (os.Interrupt, syscall.SIGTERM) through; if main's mapping is swapped,
-	// widened, or renamed away from the documented 130/143 this fails - it
-	// exercises the actual code path main uses, not a local key lookup.
+	// through the helper cmd/baha/main.go's interruptibleProcessContext goroutine
+	// actually calls on its exit path: cli.SignalExitCode / cli.ResolveSignalExitCode
+	// (moved into the already-catalogued internal/cli per w267 route (a)). If
+	// the mapping is swapped, widened, or renamed away from the documented
+	// 130/143 this fails - it exercises the exact code path main uses, not a
+	// local key lookup.
 	tests := []struct {
 		sig  os.Signal
 		want int
@@ -170,15 +171,15 @@ func TestSignalMapsToDocumentedExitCode(t *testing.T) {
 		{syscall.SIGTERM, 143},
 	}
 	for _, tc := range tests {
-		if got := ResolveSignalExitCode(tc.sig); got != tc.want {
-			t.Fatalf("ResolveSignalExitCode(%v) must map to documented exit code %d, got %d", tc.sig, tc.want, got)
+		if got := cli.ResolveSignalExitCode(tc.sig); got != tc.want {
+			t.Fatalf("cli.ResolveSignalExitCode(%v) must map to documented exit code %d, got %d", tc.sig, tc.want, got)
 		}
 	}
 
 	// The handler registers exactly these two signals and routes them through
-	// ResolveSignalExitCode; the documented set {130,143} must therefore be
+	// cli.ResolveSignalExitCode; the documented set {130,143} must therefore be
 	// exactly the two signal-code values main emits, no more.
-	got := map[int]bool{ResolveSignalExitCode(os.Interrupt): true, ResolveSignalExitCode(syscall.SIGTERM): true}
+	got := map[int]bool{cli.ResolveSignalExitCode(os.Interrupt): true, cli.ResolveSignalExitCode(syscall.SIGTERM): true}
 	if len(got) != 2 {
 		t.Fatal("main must emit exactly two distinct documented signal exit codes")
 	}

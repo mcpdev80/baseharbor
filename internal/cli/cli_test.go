@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"os"
 	"strings"
+	"syscall"
 	"testing"
 )
 
@@ -89,6 +91,48 @@ func TestExitCodeTaxonomyLocked(t *testing.T) {
 	}
 	if got := ExitCode(WithExitCode(-5, errors.New("negative status"))); got != 1 {
 		t.Fatalf("WithExitCode(-5,...) must unwrap to runtime failure 1, got %d", got)
+	}
+}
+
+// TestSignalExitCodeMapsToDocumentedContracts drives the exact helper
+// cmd/baha/main.go's interruptibleProcessContext goroutine calls on its signal
+// exit path (cli.SignalExitCode / cli.ResolveSignalExitCode, moved here into the
+// already-catalogued package per w267 route (a)) and asserts the documented
+// mapping docs/reference/cli.md names: os.Interrupt -> 130, syscall.SIGTERM ->
+// 143. It exercises the real code path main uses, not a local key lookup, so a
+// hypothetical swap of the mapping (e.g. SIGTERM -> 130) FAILS this test.
+//
+// Note (w267 finding): main.go maps context.Canceled -> 130 directly on the
+// interrupt's first cancel; the 143 SIGTERM contract is the documented mapping
+// for the handler's own exit path, which this test verifies through the helper
+// main wires. Covering 143 truthfully requires NO change to main.go's
+// context.Canceled shortcut, so this stays within the zero-behavior boundary.
+func TestSignalExitCodeMapsToDocumentedContracts(t *testing.T) {
+	tests := []struct {
+		sig  os.Signal
+		want int
+	}{
+		{os.Interrupt, 130},
+		{syscall.SIGTERM, 143},
+	}
+	for _, tc := range tests {
+		if got := SignalExitCode(tc.sig); got != tc.want {
+			t.Fatalf("SignalExitCode(%v) must map to documented exit code %d, got %d", tc.sig, tc.want, got)
+		}
+		if got := ResolveSignalExitCode(tc.sig); got != tc.want {
+			t.Fatalf("ResolveSignalExitCode(%v) must map to documented exit code %d, got %d", tc.sig, tc.want, got)
+		}
+	}
+
+	// The handler registers exactly these two signals and routes them through
+	// SignalExitCode; the documented set {130,143} must be exactly the two
+	// mapped values, no more, no fewer.
+	got := map[int]bool{SignalExitCode(os.Interrupt): true, SignalExitCode(syscall.SIGTERM): true}
+	if len(got) != 2 {
+		t.Fatal("SignalExitCode must produce exactly two distinct documented signal exit codes")
+	}
+	if !got[130] || !got[143] {
+		t.Fatal("SignalExitCode must map to the documented codes 130 (SIGINT) and 143 (SIGTERM)")
 	}
 }
 
