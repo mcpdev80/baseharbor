@@ -165,29 +165,26 @@ func keycloakMetricSignals(m application.Manifest, placement capability.Provider
 			source.Verification != expectedSignal.Verification {
 			continue
 		}
-		// Per-Target attribution (the HOLD binding): the record must have been
-		// registered on THIS Target's identity network, derived from the
-		// Target's validated state root. This is what neither the
-		// project-scoped ID nor the constant endpoint can express. An empty
-		// expectation fails closed.
-		// Real-network check (kept): the record's Network must equal this
-		// Target's installation consumer network.
+		// Real-network check (kept from the HOLD round): the record's Network
+		// must equal this Target's installation consumer network.
 		if strings.TrimSpace(source.Network) != expectedNetwork || expectedNetwork == "" {
 			continue
 		}
-		// Root-attribution check (w267 CHANGES 7194027071 collision class):
-		// besides the Network equality above, the record must be attributed
-		// — in the observability registry's native runtime:// compose-project
-		// grammar (the grammar the environment resolver keys on,
-		// internal/observability/environment.go:112+) — to a Target root that
-		// resolves, via deployment.TargetStateRoot and the Keycloak state
-		// layout under it, to EXACTLY the state root this witness is bound to
-		// (expectedRoot). Roots are directory-unique per validated Target
-		// name, so this equality separates even the names "a.b" and "a-b"
-		// whose consumer-network tokens normalize identically: a foreign
-		// Target's signal can never satisfy a.b's witness, while a.b's own
-		// attributed signal stays eligible. Unattributed or unresolvable
-		// records fail closed.
+		// Target attribution check (w267 CHANGES 7194027071 collision
+		// class): besides the Network equality above, the record must be
+		// attributed — in the observability registry's canonical
+		// runtime://<project>/<service> grammar (the same grammar the
+		// environment resolver keys on, internal/observability/
+		// environment.go; keycloakRecordTargetRoot) — to exactly THIS
+		// witness's installation project, composed from the Target's state
+		// ROOT DIRECTORY name. The root directory is unique per validated
+		// Target name (deployment.TargetStateRoot), so the attribution is
+		// injective even for the names "a.b" and "a-b" whose projectToken
+		// and consumer-network forms normalize identically (dots to
+		// hyphens, identity_network.go:40): a foreign Target's signal can
+		// never satisfy this witness, while the matching Target's own
+		// attributed signal keeps it eligible. Unattributed or
+		// foreign-attributed records fail closed.
 		if recordRoot := keycloakRecordTargetRoot(source, expectedRoot, targetName); recordRoot == "" || filepath.Clean(recordRoot) != filepath.Clean(expectedRoot) {
 			continue
 		}

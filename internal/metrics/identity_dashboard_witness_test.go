@@ -60,17 +60,16 @@ func keycloakRecordTargetAttribution(stateRoot, targetName string) string {
 	return keycloakInstallationProject(stateRoot)
 }
 
-// witnessTargetNetwork is the TARGET-SCOPED registration lookup scope the
-// witness accepts for a registry record (see keycloakTargetConsumerNetwork):
+// witnessTargetNetwork is the registration NETWORK the seed writes into a
+// record, mirroring the production producer (KeycloakFiles.ConsumerNetwork):
 // the identity consumer network of the Target's Core resource project
-// ("baseharbor-identity-core-baseharbor-<target>-core") PAIRED with the
-// Target's resolved state root ("|" separated). The network half is the
-// producer's real installation network (its namespace, normalized like
-// identity_network.go:40 does, with dots mapped to hyphens — the field that
-// "a.b" and "a-b" collide on); the root half is injective because distinct
-// Targets have distinct state-root directories. The seed registers records
-// with the network half in the record's Network field, exactly the way the
-// production producer (KeycloakFiles.ConsumerNetwork) does.
+// ("baseharbor-identity-core-baseharbor-<token>-core"), the same grammar
+// keycloakTargetConsumerNetwork looks the record up under. The token form
+// maps dots to hyphens (identity_network.go:40), so the seeds for the valid
+// names "a.b" and "a-b" carry ONE network — the collision w267 CHANGES
+// (comment 7194027071) exercises; the per-Target separation comes from the
+// record's runtime:// attribution (keycloakRecordTargetAttribution), not
+// from this field.
 func witnessTargetNetwork(t *testing.T, owner, stateRoot, targetName string) string {
 	t.Helper()
 	if got := filepath.Base(filepath.Clean(stateRoot)); got != targetName {
