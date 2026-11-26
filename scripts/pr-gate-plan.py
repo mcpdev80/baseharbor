@@ -174,6 +174,8 @@ NATIVE_TEST_GATE_COMPONENTS = {
         DATA_CAPABILITY_GATES + GUIDED_GATES,
     'cmd/baha/runtime_integration_test_support_test.go':
         DATA_CAPABILITY_GATES + GUIDED_GATES + CORELESS_LIFECYCLE_GATES,
+    'cmd/baha/app_identity_dashboard_status_test.go': DATA_CAPABILITY_GATES,
+    'internal/metrics/identity_dashboard_witness_test.go': DATA_CAPABILITY_GATES,
 }
 
 # Finite component inventory from core-911..core-921. This is an exact path

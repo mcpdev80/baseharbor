@@ -2672,6 +2672,22 @@
         "source.gate.atomic.podman.data.capabilities"
       ],
       "runtime_specific": true
+    },
+    {
+      "id": "source.cmd.baha.app.identity.dashboard.status.test.go",
+      "path": "cmd/baha/app_identity_dashboard_status_test.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
+      "id": "source.internal_metrics.identity.dashboard.witness.test.go",
+      "path": "internal/metrics/identity_dashboard_witness_test.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
     }
   ],
   "gates": [
