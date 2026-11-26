@@ -39,6 +39,51 @@ func TestRuntimeErrorExitCode(t *testing.T) {
 	}
 }
 
+// TestResolveProcessExitCodeRoutesContextCanceled verifies that the main-level
+// contract entry cli.ResolveProcessExitCode (the helper cmd/baha/main.go calls
+// on its error path) maps a context.Canceled error to the documented interrupt
+// exit code 130 AND that this mapping actually BYPASSES ExitCode: a bare
+// context.Canceled is unclassified there and would map to the runtime-failure
+// code 1. It also locks the two registered-signal exit codes 130 (os.Interrupt)
+// and 143 (syscall.SIGTERM) that main.go's handler resolves through the same
+// internal/cli source. The test fails if the context.Canceled mapping is
+// swapped to any other code, because it asserts the exact 130 main surfaces.
+func TestResolveProcessExitCodeRoutesContextCanceled(t *testing.T) {
+	canceled := context.Canceled
+
+	// context.Canceled must NOT fall through to the ordinary ExitCode mapping
+	// (which would return 1 for an unclassified error); it must resolve to 130.
+	if got := ResolveProcessExitCode(canceled); got != 130 {
+		t.Fatalf("context.Canceled must bypass ExitCode and resolve to 130, got %d", got)
+	}
+	// Sanity: ExitCode itself really would map it to 1, so the bypass is real,
+	// not vacuously satisfied by ExitCode already returning 130.
+	if got := ExitCode(canceled); got == 130 {
+		t.Fatalf("test invariant broken: ExitCode(context.Canceled) must not already be 130 (got %d)", got)
+	}
+
+	// os.Interrupt / SIGTERM stay 130/143 via the same internal/cli source.
+	if got := ResolveSignalExitCode(os.Interrupt); got != 130 {
+		t.Fatalf("os.Interrupt must resolve to 130, got %d", got)
+	}
+	if got := ResolveSignalExitCode(syscall.SIGTERM); got != 143 {
+		t.Fatalf("syscall.SIGTERM must resolve to 143, got %d", got)
+	}
+
+	// The non-interrupt contract still holds through the helper: a *UsageError
+	// becomes 2, a WithExitCode-tagged status passes through, an unclassified
+	// error falls back to 1.
+	if got := ResolveProcessExitCode(&UsageError{Message: "bad input"}); got != 2 {
+		t.Fatalf("UsageError must resolve to 2, got %d", got)
+	}
+	if got := ResolveProcessExitCode(WithExitCode(7, errors.New("child exited"))); got != 7 {
+		t.Fatalf("WithExitCode status must pass through, got %d", got)
+	}
+	if got := ResolveProcessExitCode(errors.New("boom")); got != 1 {
+		t.Fatalf("unclassified error must resolve to 1, got %d", got)
+	}
+}
+
 func TestExitCodeErrorPreservesWrappedProcessStatus(t *testing.T) {
 	err := WithExitCode(7, Presented(errors.New("workload command exited with status 7")))
 	if got := ExitCode(err); got != 7 {

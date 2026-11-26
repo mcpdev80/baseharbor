@@ -58,10 +58,7 @@ func main() {
 	if err == nil {
 		return
 	}
-	if errors.Is(err, context.Canceled) {
-		fmt.Fprintln(os.Stderr, "Interrupted.")
-		os.Exit(130)
-	}
+	os.Exit(cli.ResolveProcessExitCode(err))
 	if requestsJSONOutput(os.Args[1:]) && !cli.IsPresented(err) {
 		_ = writeJSON(os.Stderr, machine.ResultError(classifyMachineCLIError(err)))
 		os.Exit(cli.ExitCode(err))
@@ -73,9 +70,10 @@ func main() {
 // interruptibleProcessContext routes every registered signal (os.Interrupt,
 // syscall.SIGTERM) through cli.ResolveSignalExitCode on its exit path; a
 // context.Canceled from the interrupt handler's first cancel resolves via
-// main.go's context.Canceled -> 130 shortcut. The 130/143 mapping lives in
-// internal/cli (already catalogued); this goroutine calls it rather than
-// inlining the literals, so the documented mapping has one source.
+// cli.ResolveProcessExitCode, which maps it to 130 and otherwise delegates to
+// cli.ExitCode. The 130/143 signal mapping and the process-exit mapping both
+// live in internal/cli (already catalogued); this goroutine calls the helpers
+// rather than inlining the literals, so the documented mapping has one source.
 func interruptibleProcessContext() (context.Context, func()) {
 	ctx, cancel := context.WithCancel(context.Background())
 	signals := make(chan os.Signal, 2)

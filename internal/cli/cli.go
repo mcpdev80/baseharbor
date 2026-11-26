@@ -152,6 +152,24 @@ func ResolveSignalExitCode(sig os.Signal) int {
 	return SignalExitCode(sig)
 }
 
+// ResolveProcessExitCode is the main-level contract entry cmd/baha/main.go uses
+// to turn the error returned by the command tree into the documented process
+// exit code. main runs the command tree and, on error, routes the returned
+// error through this helper instead of inlining the mapping: a context.Canceled
+// error from an interrupt becomes 130 (it BYPASSES ExitCode, which would map a
+// bare context.Canceled to the runtime-failure code 1), a *UsageError becomes 2,
+// a WithExitCode-tagged error becomes its carried status, and everything else
+// falls through to ExitCode(err), which returns 1 for an unclassified error. The
+// two signals the handler registers (os.Interrupt, syscall.SIGTERM) stay 130/143
+// via ResolveSignalExitCode on the running-process exit path; this helper is the
+// single source for the interrupt's own process exit.
+func ResolveProcessExitCode(err error) int {
+	if errors.Is(err, context.Canceled) {
+		return 130
+	}
+	return ExitCode(err)
+}
+
 // Execute routes args through the command tree and handles help consistently.
 func (c *Command) Execute(ctx context.Context, args []string, out, errOut io.Writer) error {
 	if len(args) == 0 {
