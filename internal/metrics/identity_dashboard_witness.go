@@ -1,6 +1,7 @@
 package metrics
 
 import (
+	"errors"
 	"path/filepath"
 	"strings"
 
@@ -74,13 +75,25 @@ func keycloakMetricSignals(m application.Manifest, placement capability.Provider
 		return false, false
 	}
 	expectedID := keycloakMetricsRegistrationIDAt(m, placement, targetStateRoot, targetName)
-	// The registration ID folds the concrete Target (see
-	// keycloakMetricsRegistrationIDAt), so the loop guard
-	// source.ID == expectedID below is a per-Target match: a foreign Target
-	// cannot present this Target's signal, and a shared-boundary neighbour
-	// cannot present a signal it shares on that boundary. The state root is
-	// already pinned to this Target above, so a mismatched targetName fails
-	// closed here (no cross-Target forgery on the shared boundary).
+	// w267 HOLD correction (comment 7192567805): the registration ID is only
+	// project-scoped ("<provider>:<manifest name>", per 0428-1707) and the
+	// endpoint keycloak:9000 is a shared service name, so NEITHER attributes
+	// the record to the concrete Target being witnessed. The binding is
+	// asserted on the record's Network field: the producer registers the
+	// signal with the Target-resolved identity consumer network
+	// (KeycloakFiles.ConsumerNetwork, internal/identityprovider, whose
+	// namespace token is the resolved Target name,
+	// cmd/baha/app_status_result.go:489). keycloakTargetConsumerNetwork
+	// composes that exact network for THIS Target and asserts the supplied
+	// state root belongs to it; the loop guard requires the record's Network
+	// to match. A foreign Target's signal carries ITS OWN Target's consumer
+	// network and can never make this witness available; the matching
+	// Target's signal stays eligible. No product consent/auth behavior
+	// changes: this is a read-side registry attribution check.
+	expectedNetwork, networkErr := keycloakTargetConsumerNetwork(m, placement, targetStateRoot, targetName)
+	if networkErr != nil || expectedNetwork == "" {
+		return false, false
+	}
 
 	reference, refErr := capability.ReferenceIntegration(capability.ProviderKeycloak)
 	if refErr != nil || expectedID == "" {
@@ -142,6 +155,14 @@ func keycloakMetricSignals(m application.Manifest, placement capability.Provider
 			source.Verification != expectedSignal.Verification {
 			continue
 		}
+		// Per-Target attribution (the HOLD binding): the record must have been
+		// registered on THIS Target's identity network, derived from the
+		// Target's validated state root. This is what neither the
+		// project-scoped ID nor the constant endpoint can express. An empty
+		// expectation fails closed.
+		if strings.TrimSpace(source.Network) != expectedNetwork || expectedNetwork == "" {
+			continue
+		}
 		metricPresent = true
 		metricCurrent = true
 	}
@@ -170,4 +191,51 @@ func keycloakMetricsRegistrationIDAt(m application.Manifest, placement capabilit
 	// missing binding returns empty, which makes keycloakMetricSignals fail
 	// closed (see the expectedID == "" guard above).
 	return string(capability.ProviderKeycloak) + ":" + strings.TrimSpace(m.Name)
+}
+
+// keycloakTargetConsumerNetwork derives the identity consumer network the
+// production Keycloak realization registers the native metrics signal on for
+// THIS concrete Target — the per-Target attribution the w267 HOLD requires
+// and that the project-scoped ID plus the constant endpoint cannot express.
+//
+// Producer truth: the realization's namespace is the RESOLVED TARGET NAME it
+// was constructed with (the status face passes resolved.Target.Name,
+// cmd/baha/app_status_result.go:489 via identityDashboardBackendEligible;
+// the shared placement overrides app.Name to "core" but never the namespace,
+// internal/identityprovider/keycloak_files.go:133-137). The consumer network
+// the producer writes into the registry record's Network field therefore
+// carries the TARGET name as its namespace token:
+//
+//   - shared placement:       "baseharbor-identity-core-<target>"
+//   - application placement:  "baseharbor-identity-<app>-<env>-<target>"
+//
+// (application.IdentityProviderNetworkNameForPlacement, identity_network.go,
+// which normalizes dots in the namespace to hyphens.)
+//
+// The witness composes the SAME grammar from targetName directly, after the
+// caller pinned the supplied state root to deployment.TargetStateRoot
+// (targetName): a foreign Target's signal — same project-scoped ID, same
+// endpoint, registered under ITS OWN Target's network — can never match, and
+// a forged "foreign root + real name" pair is rejected by the state-root pin
+// and by the root-token equality asserted here. Unresolvable input fails
+// closed with an error. No product consent/auth behavior changes: this is a
+// read-side registry attribution check.
+func keycloakTargetConsumerNetwork(m application.Manifest, placement capability.ProviderPlacement, targetStateRoot, targetName string) (string, error) {
+	if err := deployment.ValidateTargetName(targetName); err != nil {
+		return "", err
+	}
+	// The producer's namespace is the resolved Target name itself (see the
+	// doc comment above): the network is composed from targetName. The state
+	// root is still validated by the caller against
+	// deployment.TargetStateRoot(targetName), so a foreign root fails closed
+	// before this point; here the root's last token must equal the target
+	// name's directory form as a second pin against name/path confusion.
+	if got := filepath.Base(filepath.Clean(strings.TrimSpace(targetStateRoot))); got != strings.TrimSpace(targetName) {
+		return "", errors.New("keycloak witness: target state root does not belong to the witnessed target name")
+	}
+	network, err := application.IdentityProviderNetworkNameForPlacement(m, targetName, placement)
+	if err != nil {
+		return "", err
+	}
+	return network, nil
 }

@@ -19,25 +19,59 @@ import (
 // OwnerApplication (the witness asserts per-Target binding on the state root and
 // the endpoint, not on a shared-boundary), so the seed matches the same way the
 // shared production placement does.
-func seedKeycloakMetricsSourceForTarget(t *testing.T, owner string, project string, stateRoot string) {
+func seedKeycloakMetricsSourceForTarget(t *testing.T, owner string, project string, stateRoot string, targetName string) observability.SignalSource {
 	t.Helper()
-	if err := observability.UpdateSignal(observability.SignalSource{
+	network := identityTestConsumerNetwork(t, owner, stateRoot, targetName)
+	source := observability.SignalSource{
 		ID:               "keycloak:" + project,
 		Kind:             observability.SignalMetrics,
 		Provider:         capability.ProviderKeycloak,
 		Class:            observability.SourceApplicationProvider,
 		Scope:            capability.ScopeShared,
 		OwnerApplication: owner,
-		Network:          "baseharbor-dev-workload-" + owner + "-dev",
+		Network:          network,
 		Target:           "keycloak:9000",
 		Protocol:         "openmetrics",
 		Path:             "/metrics",
 		Mode:             capability.ObservabilityNative,
 		Verification:     capability.ObservabilityVerifyBackend,
-	}); err != nil {
+	}
+	if err := observability.UpdateSignal(source); err != nil {
 		t.Fatalf("seed keycloak metrics source: %v", err)
 	}
-	_ = stateRoot
+	return source
+}
+
+// identityTestConsumerNetwork mirrors the production registration surface: the
+// consumer network (KeycloakFiles.ConsumerNetwork) that the realization writes
+// into the registry record's Network field, derived through
+// IdentityProviderNetworkNameForPlacement with the Target name = the last path
+// token of the Target's state root (deployment.TargetStateRoot,
+// "<dataRoot>/targets/<name>"). Witness seeds must carry it so the per-Target
+// attribution guard matches exactly the way the production producer's record
+// does.
+func identityTestConsumerNetwork(t *testing.T, owner string, stateRoot string, targetName string) string {
+	t.Helper()
+	// The production producer registers with the resolved TARGET NAME as
+	// namespace (cmd/baha/app_status_result.go passes resolved.Target.Name
+	// through the realization); the seed mirrors that grammar. The state root
+	// is cross-checked to belong to targetName, fail-closed on a mismatch.
+	if got := filepath.Base(filepath.Clean(stateRoot)); got != targetName {
+		t.Fatalf("seed state root %q does not belong to target %q", stateRoot, targetName)
+	}
+	token := targetName
+	if token == "." || token == string(filepath.Separator) || token == "" {
+		t.Fatalf("seed state root %q has no target token", stateRoot)
+	}
+	network, err := application.IdentityProviderNetworkNameForPlacement(
+		application.New(owner, "dev", false, false, false),
+		token,
+		capability.ProviderPlacement{Scope: capability.ScopeShared, Ownership: capability.OwnershipBaseHarbor},
+	)
+	if err != nil {
+		t.Fatalf("identity consumer network: %v", err)
+	}
+	return network
 }
 
 // manifestForIdentityDashboardWitness is the minimal manifest the witness needs:
@@ -69,7 +103,7 @@ func TestIdentityDashboardWitnessPositiveMatchesConcreteTarget(t *testing.T) {
 	}
 
 	owner := "identity-provider"
-	seedKeycloakMetricsSourceForTarget(t, owner, owner, stateRoot)
+	seedKeycloakMetricsSourceForTarget(t, owner, owner, stateRoot, target.Name)
 	m := manifestForIdentityDashboardWitness(owner, owner)
 
 	placement := capability.ProviderPlacement{
@@ -79,6 +113,63 @@ func TestIdentityDashboardWitnessPositiveMatchesConcreteTarget(t *testing.T) {
 	witness := IdentityDashboardWitnessAt(m, placement, stateRoot, target.Name)
 	if !witness.NonForgeableAvailable() {
 		t.Fatalf("the witness must be non-forgeably available for the concrete matching Target, got %+v", witness)
+	}
+}
+
+// TestIdentityDashboardWitnessTwoValidTargetsIsolation is the two-valid-Target
+// regression the w267 HOLD (comment 7192567805, requirement 2) demands: TWO
+// real, resolvable Target roots in one shared registry, each carrying the
+// production registration shape (same project-scoped ID, same endpoint
+// keycloak:9000, same descriptor fields) but attributed to its own Target
+// through the identity consumer network the producer registers
+// (baseharbor-identity-core-<target> for the shared placement,
+// internal/identityprovider). The FOREIGN Target's registered signal must NOT
+// make this Target eligible, while the MATCHING Target's signal must keep it
+// eligible even with the foreign record present. Unlike the state-root
+// mismatch probe, this exercises two VALID roots: only a genuine per-Target
+// attribution binding passes.
+func TestIdentityDashboardWitnessTwoValidTargetsIsolation(t *testing.T) {
+	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
+	t.Setenv("BASEHARBOR_TARGET", "")
+
+	owner := "identity-provider"
+	realRoot, err := deployment.TargetStateRoot("docker-dev")
+	if err != nil || realRoot == "" {
+		t.Fatalf("resolve this target state root: %v", err)
+	}
+	foreignRoot, err := deployment.TargetStateRoot("other-dev")
+	if err != nil || foreignRoot == "" {
+		t.Fatalf("resolve foreign target state root: %v", err)
+	}
+	if filepath.Clean(foreignRoot) == filepath.Clean(realRoot) {
+		t.Fatal("the two valid Target roots must be distinct")
+	}
+	m := manifestForIdentityDashboardWitness(owner, owner)
+	placement := capability.ProviderPlacement{
+		Scope:     capability.ScopeShared,
+		Ownership: capability.OwnershipBaseHarbor,
+	}
+
+	// Phase 1 — ONLY the foreign Target's signal exists in the registry.
+	// Same project-scoped ID, same endpoint, a valid foreign root: the
+	// foreign Target's registered signal must NOT make THIS Target eligible.
+	seedKeycloakMetricsSourceForTarget(t, owner, owner, foreignRoot, "other-dev")
+	if w := IdentityDashboardWitnessAt(m, placement, realRoot, "docker-dev"); w.NonForgeableAvailable() {
+		t.Fatalf("the foreign Target's registered signal must not make this Target eligible, got %+v", w)
+	}
+
+	// Phase 2 — THIS Target's own signal is registered as well. The matching
+	// Target must be eligible; the witness must not flip back to ineligible
+	// because a foreign record also exists.
+	seedKeycloakMetricsSourceForTarget(t, owner, owner, realRoot, "docker-dev")
+	if w := IdentityDashboardWitnessAt(m, placement, realRoot, "docker-dev"); !w.NonForgeableAvailable() {
+		t.Fatalf("the matching Target's own signal must keep it eligible alongside the foreign record, got %+v", w)
+	}
+
+	// A witness whose state root resolves to a DIFFERENT target name than the
+	// one it is asked about stays fail-closed (pin + attribution both bound).
+	if w := IdentityDashboardWitnessAt(m, placement, foreignRoot, "docker-dev"); w.NonForgeableAvailable() {
+		t.Fatalf("a state root that resolves to a different target name must fail closed, got %+v", w)
 	}
 }
 
@@ -98,7 +189,7 @@ func TestIdentityDashboardWitnessForeignTargetFailsClosed(t *testing.T) {
 	if err != nil || realRoot == "" {
 		t.Fatalf("resolve real target state root: %v", err)
 	}
-	seedKeycloakMetricsSourceForTarget(t, owner, owner, realRoot)
+	seedKeycloakMetricsSourceForTarget(t, owner, owner, realRoot, "docker-dev")
 	m := manifestForIdentityDashboardWitness(owner, owner)
 	placement := capability.ProviderPlacement{
 		Scope:     capability.ScopeShared,
@@ -133,7 +224,7 @@ func TestIdentityDashboardWitnessRequiresTargetStateRoot(t *testing.T) {
 	if err != nil || realRoot == "" {
 		t.Fatalf("resolve real target state root: %v", err)
 	}
-	seedKeycloakMetricsSourceForTarget(t, owner, owner, realRoot)
+	seedKeycloakMetricsSourceForTarget(t, owner, owner, realRoot, "docker-dev")
 	m := manifestForIdentityDashboardWitness(owner, owner)
 	placement := capability.ProviderPlacement{
 		Scope:     capability.ScopeShared,
@@ -163,7 +254,7 @@ func TestIdentityDashboardWitnessExternalPlacementFailsClosed(t *testing.T) {
 	if err != nil || realRoot == "" {
 		t.Fatalf("resolve real target state root: %v", err)
 	}
-	seedKeycloakMetricsSourceForTarget(t, owner, owner, realRoot)
+	seedKeycloakMetricsSourceForTarget(t, owner, owner, realRoot, "docker-dev")
 	m := manifestForIdentityDashboardWitness(owner, owner)
 	placement := capability.ProviderPlacement{
 		Scope:             capability.ScopeExternal,
