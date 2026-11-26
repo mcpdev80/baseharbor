@@ -1515,6 +1515,15 @@
       ]
     },
     {
+      "id": "source.internal_runtime_project_names_go",
+      "path": "internal/runtime/project_names.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ],
+      "runtime_specific": true
+    },
+    {
       "id": "runtime.container-identity-tests",
       "path": "internal/runtime/container_identity_test.go",
       "surfaces": [
