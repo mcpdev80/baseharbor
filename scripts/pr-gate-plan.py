@@ -1181,12 +1181,24 @@ def targeted_plan(diff, requirements, mapping, repository='.',
                 'validation_contract': 'All authenticated current-integration CI checks must execute and pass.',
                 'reasons': ['Trusted target record: exact repository, branch, head, full '
                             'inventory, raw SHA-256 blobs and clean integration verified.']}
+    # The demo source pin is release-scoped. A changed demo-ref of any active
+    # release must select the exact immutable Demo SHA validator rather than the
+    # broad Go fallback. The mapping release is the validated target, but a
+    # v0.4.28 demo-ref pin (the current active release in the catalog) is the
+    # live pin that must resolve here too. Recognise every active-release
+    # demo-ref; a release that has no demo-ref path (v0.4.24-v0.4.26 carry only
+    # .md/.evidence-runs/.selected-gates.json on develop) is a legitimate no-pin
+    # release and is not fabricated here. Never substitute the catalog maximum
+    # for a mapping release the catalog does not name.
     for path in paths:
-        if path == 'docs/releases/v0.4.27.demo-ref':
+        tag = path[len('docs/releases/'):-len('.demo-ref')] if path.startswith('docs/releases/') \
+            and path.endswith('.demo-ref') else None
+        if tag is not None and tag in requirements.get('releases', []):
             area = 'release-demo-source-pin'
             require(DEMO_SOURCE_PIN_VALIDATION)
             if len(paths) != 1 or path_status.get(path) != 'modified':
-                unresolved.append('v0.4.27 Demo source pin must be a standalone modified file')
+                unresolved.append(
+                    '{} Demo source pin must be a standalone modified file'.format(tag))
         elif re.fullmatch(r'docs/releases/v0\.4\.(?:23|24|25|26)\.consumer-pins\.json', path):
             area = 'pins-data'
             require(PINNED_PINS_VALIDATION)

@@ -299,8 +299,17 @@ def matrix(plan):
     ids = [row['id'] for row in checks]
     if len(ids) != len(set(ids)) or any(i not in VALIDATIONS for i in ids):
         raise ValueError('unsupported validation check')
-    # Matrix cannot be empty; an explicit inert marker is NOT a PASS.
-    return {'include': [{'check': i} for i in ids] or [{'check': 'not-required'}]}
+    # Matrix cannot be empty; an explicit inert marker is NOT a PASS. Carry the
+    # mapping release on the demo-source-pin-validation row so the trusted runner
+    # validates that release explicitly instead of recomputing the catalog
+    # maximum. Every other row stays release-agnostic.
+    include = []
+    for row in checks:
+        entry = {'check': row['id']}
+        if row['id'] == 'demo-source-pin-validation' and 'release' in row:
+            entry['release'] = row['release']
+        include.append(entry)
+    return {'include': include or [{'check': 'not-required'}]}
 
 
 def validate_pins_data(check, repository):
@@ -381,22 +390,86 @@ def validate_pins_data(check, repository):
     return validated
 
 
-def validate_demo_source_pin(check, repository):
-    """Require the v0.4.27 Demo pin to be one existing immutable commit."""
+def _semantic_version(tag):
+    """Parse a dotted ``vX.Y.Z`` release tag into a comparable tuple.
+
+    The parser tolerates an optional leading ``v`` and any number of trailing
+    components, and treats a missing component as zero, so ``v0.4.28`` sorts
+    above ``v0.4.27`` while ``v0.4`` sorts above ``v0.3.99``. Anything that is
+    not a dotted numeric tag is rejected rather than silently compared as a
+    string, so an unexpected release label fails the gate loudly.
+    """
+    if not isinstance(tag, str):
+        raise ValueError('release tag must be a string: ' + repr(tag))
+    body = tag[1:] if tag.startswith('v') else tag
+    parts = body.split('.')
+    if not parts or any(not chunk.isdigit() for chunk in parts):
+        raise ValueError('release tag must be dotted numeric: ' + repr(tag))
+    return tuple(int(chunk) for chunk in parts)
+
+
+def _current_release(repository):
+    """Return the active release tag from the trusted release-requirements.json.
+
+    The demo source pin is release-scoped, so the validator must read the pin
+    for whatever release the candidate actually targets, not a hard-coded
+    v0.4.27. The supported release set lives in ``releases[]``; the active tag
+    is the highest tag in that list by semantic version, derived
+    deterministically so a v0.4.28 catalog always selects v0.4.28. A missing or
+    malformed requirements file is a hard failure: the validator must never
+    silently guess a path, and a catalog with no selectable tag is a hard
+    failure.
+    """
+    try:
+        requirements = json.loads(
+            (Path(repository) / 'scripts' / 'release-requirements.json').read_text())
+    except (OSError, ValueError, TypeError):
+        raise RuntimeError('release-requirements.json unreadable or malformed')
+    releases = requirements.get('releases')
+    if not isinstance(releases, list) or not releases:
+        raise RuntimeError('release-requirements.json has no release set')
+    valid_tags = [tag for tag in releases if isinstance(tag, str)]
+    if not valid_tags:
+        raise RuntimeError('release-requirements.json has no release tag')
+    try:
+        release = max(valid_tags, key=_semantic_version)
+    except ValueError as error:
+        raise RuntimeError('release-requirements.json has an unreadable '
+                           'release tag: ' + str(error))
+    if release not in releases:
+        raise RuntimeError('release-requirements.json active tag missing from '
+                           'release set: ' + repr(release))
+    return release
+
+
+def validate_demo_source_pin(check, repository, release=None):
+    """Require the active-release Demo pin to be one existing immutable commit.
+
+    The Demo source pin is release-scoped: the pinned SHA lives at
+    ``docs/releases/<release>.demo-ref`` where ``<release>`` defaults to the
+    highest supported tag in the trusted ``release-requirements.json`` catalog.
+    The trusted planner carries an explicit release on the matrix row for this
+    one check; that mapping release wins and the catalog maximum is only a
+    fallback for callers without an explicit release. A missing or malformed
+    requirements file is a hard failure: the validator must never silently guess
+    a path.
+    """
     if check != 'demo-source-pin-validation':
         raise ValueError('unsupported Demo pin validation')
-    pin = Path(repository) / 'docs/releases/v0.4.27.demo-ref'
+    if release is None:
+        release = _current_release(repository)
+    pin = Path(repository) / 'docs' / 'releases' / '{}.demo-ref'.format(release)
     if pin.is_symlink() or not pin.is_file():
-        raise RuntimeError('v0.4.27 Demo source pin is missing or unsafe')
+        raise RuntimeError('{} Demo source pin is missing or unsafe'.format(release))
     raw = pin.read_text()
     if not re.fullmatch(r'[0-9a-f]{40}\n?', raw):
-        raise RuntimeError('v0.4.27 Demo source pin must contain exactly one full lowercase commit SHA')
+        raise RuntimeError('{} Demo source pin must contain exactly one full lowercase commit SHA'.format(release))
     sha = raw.strip()
     resolved = subprocess.run(
         ['gh', 'api', 'repos/mcpdev80/baseharbor-demo/commits/' + sha, '--jq', '.sha'],
         text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     if resolved.returncode or resolved.stdout.strip() != sha:
-        raise RuntimeError('v0.4.27 Demo source commit does not resolve in the pinned repository')
+        raise RuntimeError('{} Demo source commit does not resolve in the pinned repository'.format(release))
     return [sha]
 
 
@@ -405,6 +478,7 @@ def main():
     parser.add_argument('mode', choices=['matrix', 'execute'])
     parser.add_argument('--plan', type=Path)
     parser.add_argument('--check')
+    parser.add_argument('--release', default=None)
     parser.add_argument('--repository', default='.')
     args = parser.parse_args()
     if args.mode == 'execute':
@@ -415,7 +489,7 @@ def main():
             print(json.dumps({'check': args.check, 'matched_tests': matched}, sort_keys=True))
             return
         if args.check == 'demo-source-pin-validation':
-            matched = validate_demo_source_pin(args.check, args.repository)
+            matched = validate_demo_source_pin(args.check, args.repository, args.release)
             print(json.dumps({'check': args.check, 'matched_tests': matched}, sort_keys=True))
             return
         matches = execute_validation(args.check, args.repository)

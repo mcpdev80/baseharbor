@@ -1,5 +1,6 @@
 """Check the trusted dynamic validation interface without running native gates."""
 import importlib.util
+import json
 import os
 import subprocess
 import sys
@@ -20,7 +21,16 @@ class RunnerTests(unittest.TestCase):
     def test_demo_pin_validation_requires_exact_sha_and_existing_remote_commit(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
-            pin = root / 'docs/releases/v0.4.27.demo-ref'
+            # The validator reads the active release from the trusted
+            # release-requirements.json, whose authoritative supported-release
+            # set is the ``releases`` array (no top-level ``release`` key), so
+            # the fixture must carry the real catalog shape with the current
+            # v0.4.28 entry. The validator must select the v0.4.28 pin, not a
+            # fabricated v0.4.27.
+            requirements = root / 'scripts' / 'release-requirements.json'
+            requirements.parent.mkdir(parents=True)
+            requirements.write_text(json.dumps({'releases': ['v0.4.27', 'v0.4.28']}))
+            pin = root / 'docs/releases/v0.4.28.demo-ref'
             pin.parent.mkdir(parents=True)
             sha = 'a' * 40
             pin.write_text(sha + '\n')
@@ -37,6 +47,32 @@ class RunnerTests(unittest.TestCase):
                     ['gh'], 1, stdout='', stderr='not found')):
                 with self.assertRaisesRegex(RuntimeError, 'does not resolve'):
                     runner.validate_demo_source_pin('demo-source-pin-validation', root)
+
+    def test_current_release_derives_highest_semver_from_releases(self):
+        # Regression: _current_release() used to read a nonexistent
+        # top-level ``release`` key and raised on the real catalog. The
+        # authoritative supported-release set is ``releases``; the active tag
+        # is the highest by semantic version.
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / 'scripts').mkdir(parents=True)
+            (root / 'scripts' / 'release-requirements.json').write_text(
+                json.dumps({'releases': ['v0.4.22', 'v0.4.27', 'v0.4.28']}))
+            self.assertEqual('v0.4.28', runner._current_release(str(root)))
+
+    def test_current_release_rejects_missing_or_empty_releases(self):
+        # Negative case: a catalog without a selectable release set is a hard
+        # failure, never a silent guess.
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / 'scripts').mkdir(parents=True)
+            (root / 'scripts' / 'release-requirements.json').write_text(json.dumps({}))
+            with self.assertRaisesRegex(RuntimeError, 'no release set'):
+                runner._current_release(str(root))
+            (root / 'scripts' / 'release-requirements.json').write_text(
+                json.dumps({'releases': []}))
+            with self.assertRaisesRegex(RuntimeError, 'no release set'):
+                runner._current_release(str(root))
 
     def test_demo_pin_check_uses_trusted_runner_route(self):
         workflow = (Path(__file__).parent.parent / '.github' / 'workflows' / 'ci.yml').read_text()
