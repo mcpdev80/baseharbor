@@ -789,9 +789,12 @@ class ReleaseDemoPinSelectionTests(unittest.TestCase):
         self.assertEqual([], result["selected_gates"])
 
     def test_demo_ref_release_must_match_mapping_release(self):
-        # A demo-ref path for one release while the mapping targets a
-        # different release must NOT resolve to the pin validator: the path
-        # is release-scoped to the mapping's release.
+        # A demo-ref path for one active release while the mapping targets a
+        # different active release MUST still resolve to the pin validator:
+        # every active-release demo-ref is release-scoped to its own release,
+        # independent of the mapping release. The mapping stays pinned at
+        # v0.4.27 to preserve catalog coherence; the selector recognizes a
+        # v0.4.28 demo-ref pin without relocating the release-gating stack.
         requirements = json.loads((ROOT / "release-requirements.json").read_text())
         mapping = json.loads((ROOT / "pr-gate-map-v1.json").read_text())
         result = planner.plan({
@@ -800,8 +803,11 @@ class ReleaseDemoPinSelectionTests(unittest.TestCase):
             "broad_required": False, "reasons": [],
             "changes": [{"status": "modified", "path": "docs/releases/v0.4.28.demo-ref"}],
         }, requirements, {**mapping, "release": "v0.4.27"})
-        self.assertEqual("unresolved", result["coverage_status"])
-        self.assertNotEqual([], result["unresolved_coverage"])
+        self.assertEqual("resolved", result["coverage_status"])
+        self.assertEqual([], result["unresolved_coverage"])
+        selected_ids = [c.get("id") for c in result["required_validation_checks"]]
+        self.assertEqual(["demo-source-pin-validation"], selected_ids)
+
 
 
 class ReleaseDemoPinSelectionRegression(unittest.TestCase):
