@@ -105,3 +105,36 @@ func deploymentsNamespaceForTest(t *testing.T, target string) string {
 	}
 	return dir
 }
+
+// TestDamagedDeploymentNamespaceSkipsReservedNeverDeliveredNamespace verifies
+// that the reserved never-delivered subdirectory is skipped by the namespace
+// scan even when it carries a protected-state file directly (no deployment.json).
+// This is the positive regression for the reservation skip: placing runtime.env
+// directly under never-delivered/ must NOT flag the Target as having damaged
+// deployment state.
+func TestDamagedDeploymentNamespaceSkipsReservedNeverDeliveredNamespace(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+
+	target := "local"
+	depDir := deploymentsNamespaceForTest(t, target)
+
+	// A protected-state file directly under the reserved never-delivered
+	// namespace, with no deployment.json.
+	neverDeliveredDir := filepath.Join(depDir, "never-delivered")
+	if err := os.MkdirAll(neverDeliveredDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(neverDeliveredDir, "runtime.env"), []byte("X=Y\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	damaged, _, err := DamagedDeploymentNamespace(target, "app-reserved", "dev")
+	if err != nil {
+		t.Fatalf("reserved-namespace scan: %v", err)
+	}
+	if damaged {
+		t.Fatal("a protected-state file under the reserved never-delivered namespace must not flag the Target as damaged deployment state")
+	}
+}
