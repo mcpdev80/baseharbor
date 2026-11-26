@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/mcpdev80/baseharbor/internal/apierror"
 	"github.com/mcpdev80/baseharbor/internal/identity"
 	"github.com/mcpdev80/baseharbor/internal/machine"
 	"github.com/mcpdev80/baseharbor/internal/operatorauth"
@@ -76,6 +77,11 @@ func (h *Handler) handleSourceTransferCurrent(w http.ResponseWriter, r *http.Req
 		sourceTransferError(w, err)
 		return
 	}
+	params, invalid := apierror.ParsePageParams(q)
+	if invalid != nil {
+		sourceTransferError(w, invalid)
+		return
+	}
 	current, _, err := h.sourceTransfers.Current(m.Target, m.Application, m.Environment)
 	if errors.Is(err, os.ErrNotExist) {
 		w.WriteHeader(http.StatusNotFound)
@@ -85,9 +91,20 @@ func (h *Handler) handleSourceTransferCurrent(w http.ResponseWriter, r *http.Req
 		sourceTransferError(w, err)
 		return
 	}
+	pending, err := h.sourceTransfers.PendingPaths(m.Target, m.Application, m.Environment)
+	if err != nil {
+		sourceTransferError(w, err)
+		return
+	}
+	if pending == nil {
+		pending = []string{}
+	}
+	window, meta := apierror.Paginate(pending, params)
 	writeJSON(w, http.StatusOK, struct {
-		Digest string `json:"digest"`
-	}{current.Digest})
+		Digest     string              `json:"digest"`
+		Missing    []string            `json:"missing"`
+		Pagination apierror.Pagination `json:"pagination"`
+	}{Digest: current.Digest, Missing: window, Pagination: meta})
 }
 func (h *Handler) sourceTransferFromRequest(w http.ResponseWriter, r *http.Request) (string, bool) {
 	if h.sourceTransfers == nil {

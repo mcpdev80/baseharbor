@@ -118,20 +118,28 @@ func (h *Handler) capabilities(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
+	params, invalid := apierror.ParsePageRequest(r)
+	if invalid != nil {
+		writeError(w, invalid)
+		return
+	}
 	noStore(w)
-	writeJSON(w, http.StatusOK, map[string]any{
-		"capabilities": []map[string]any{
-			{
-				"capability": "secrets/v1",
-				"operations": []string{
-					"runtime.create",
-					"runtime.get",
-					"runtime.rotate",
-					"runtime.delete",
-				},
+	capabilities := []map[string]any{
+		{
+			"capability": "secrets/v1",
+			"operations": []string{
+				"runtime.create",
+				"runtime.get",
+				"runtime.rotate",
+				"runtime.delete",
 			},
 		},
-	})
+	}
+	window, meta := apierror.Paginate(capabilities, params)
+	writeJSON(w, http.StatusOK, struct {
+		Capabilities []map[string]any    `json:"capabilities"`
+		Pagination   apierror.Pagination `json:"pagination"`
+	}{Capabilities: window, Pagination: meta})
 }
 
 func (h *Handler) create(w http.ResponseWriter, r *http.Request) {

@@ -61,6 +61,37 @@
             "array"
           ]
         },
+        "pagination": {
+          "additionalProperties": false,
+          "properties": {
+            "next_page": {
+              "type": [
+                "null",
+                "integer"
+              ]
+            },
+            "page": {
+              "type": "integer"
+            },
+            "page_size": {
+              "type": "integer"
+            },
+            "total": {
+              "type": "integer"
+            },
+            "total_pages": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "page",
+            "page_size",
+            "total",
+            "total_pages",
+            "next_page"
+          ],
+          "type": "object"
+        },
         "warnings": {
           "items": {
             "type": "string"
@@ -72,6 +103,7 @@
         }
       },
       "required": [
+        "pagination",
         "contract_version",
         "deployments"
       ],
@@ -377,8 +409,40 @@
       "type": "object"
     },
     "runtime.list": {
-      "anyOf": [
-        {
+      "additionalProperties": false,
+      "properties": {
+        "pagination": {
+          "additionalProperties": false,
+          "properties": {
+            "next_page": {
+              "type": [
+                "null",
+                "integer"
+              ]
+            },
+            "page": {
+              "type": "integer"
+            },
+            "page_size": {
+              "type": "integer"
+            },
+            "total": {
+              "type": "integer"
+            },
+            "total_pages": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "page",
+            "page_size",
+            "total",
+            "total_pages",
+            "next_page"
+          ],
+          "type": "object"
+        },
+        "resources": {
           "items": {
             "additionalProperties": false,
             "properties": {
@@ -519,11 +583,13 @@
             "null",
             "array"
           ]
-        },
-        {
-          "type": "null"
         }
-      ]
+      },
+      "required": [
+        "pagination",
+        "resources"
+      ],
+      "type": "object"
     },
     "stream.descriptor": {
       "additionalProperties": false,
@@ -616,6 +682,37 @@
         "contract_version": {
           "type": "string"
         },
+        "pagination": {
+          "additionalProperties": false,
+          "properties": {
+            "next_page": {
+              "type": [
+                "null",
+                "integer"
+              ]
+            },
+            "page": {
+              "type": "integer"
+            },
+            "page_size": {
+              "type": "integer"
+            },
+            "total": {
+              "type": "integer"
+            },
+            "total_pages": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "page",
+            "page_size",
+            "total",
+            "total_pages",
+            "next_page"
+          ],
+          "type": "object"
+        },
         "targets": {
           "items": {
             "additionalProperties": false,
@@ -663,6 +760,7 @@
         }
       },
       "required": [
+        "pagination",
         "contract_version",
         "targets"
       ],
@@ -744,6 +842,37 @@
         "contract_version": {
           "type": "string"
         },
+        "pagination": {
+          "additionalProperties": false,
+          "properties": {
+            "next_page": {
+              "type": [
+                "null",
+                "integer"
+              ]
+            },
+            "page": {
+              "type": "integer"
+            },
+            "page_size": {
+              "type": "integer"
+            },
+            "total": {
+              "type": "integer"
+            },
+            "total_pages": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "page",
+            "page_size",
+            "total",
+            "total_pages",
+            "next_page"
+          ],
+          "type": "object"
+        },
         "warnings": {
           "items": {
             "type": "string"
@@ -791,6 +920,7 @@
         }
       },
       "required": [
+        "pagination",
         "contract_version",
         "workspaces"
       ],
