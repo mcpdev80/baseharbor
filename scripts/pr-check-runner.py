@@ -493,32 +493,46 @@ def validate_demo_source_pin(check, repository, release=None):
     # repository, and GitHub answers 422/404 "No commit found for SHA" for a
     # repo a token cannot see - indistinguishable from a missing commit. Resolve
     # anonymously over https so the check works for a public repository without
-    # cross-repo token rights. Fail-closed: any non-zero exit, non-commit object
-    # or SHA mismatch raises, and the transport stderr / HTTP status is surfaced
-    # in the message (no secrets: only the status code and first line) so the
-    # failure is diagnosable instead of collapsing into one generic RuntimeError.
+    # cross-repo token rights.
+    #
+    # Fail-closed against an immutable pin: fetch the EXACT pinned SHA at depth 1
+    # and require that FETCH_HEAD resolves to a commit object whose SHA equals
+    # the pin string. A plain `origin/HEAD` comparison only ever passes on the
+    # day the pin equals main's current tip, so it can never verify a fixed
+    # release source. Any non-zero exit, non-commit object or SHA mismatch
+    # raises, and the transport stderr / HTTP status is surfaced in the message
+    # (no secrets: only the status code and first line) so the failure is
+    # diagnosable instead of collapsing into one generic RuntimeError.
     scratch = tempfile.mkdtemp(prefix='baseharbor-demo-pin-')
     try:
-        fetched = subprocess.run(
+        clone = subprocess.run(
             ['git', 'clone', '--depth=1', '--filter=blob:none',
              '--no-checkout',
              'https://github.com/mcpdev80/baseharbor-demo', scratch],
             text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        if fetched.returncode:
+        if clone.returncode:
             raise RuntimeError(
                 '{} Demo source pin verification failed: git clone error {}'
-                .format(release, _first_line(fetched.stderr)))
+                .format(release, _first_line(clone.stderr)))
+        fetch = subprocess.run(
+            ['git', '-C', scratch, 'fetch', '--depth=1', 'origin', sha],
+            text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if fetch.returncode:
+            raise RuntimeError(
+                '{} Demo source pin {} not readable in '
+                'mcpdev80/baseharbor-demo: {}'
+                .format(release, sha, _first_line(fetch.stderr)))
+        # Require the fetched object to be the pinned commit exactly.
         obj_type = subprocess.run(
-            ['git', '-C', scratch, 'cat-file', '-t', 'origin/HEAD'],
+            ['git', '-C', scratch, 'cat-file', '-t', 'FETCH_HEAD'],
             text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         if obj_type.returncode or obj_type.stdout.strip() != 'commit':
             raise RuntimeError(
-                '{} Demo source pin is not a commit in '
+                '{} Demo source pin {} is not a commit in '
                 'mcpdev80/baseharbor-demo: {}'
-                .format(release, _first_line(obj_type.stderr)))
-        # Require the fetched object SHA to equal the pinned SHA exactly.
+                .format(release, sha, _first_line(obj_type.stderr)))
         sha_only = subprocess.run(
-            ['git', '-C', scratch, 'rev-parse', 'origin/HEAD'],
+            ['git', '-C', scratch, 'rev-parse', 'FETCH_HEAD'],
             text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         if sha_only.returncode or sha_only.stdout.strip() != sha:
             raise RuntimeError(

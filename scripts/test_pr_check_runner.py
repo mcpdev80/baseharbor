@@ -35,15 +35,15 @@ class RunnerTests(unittest.TestCase):
             sha = 'a' * 40
             pin.write_text(sha + '\n')
 
-            _KNOWN = {'clone', 'cat-file', 'rev-parse'}
+            _KNOWN = {'clone', 'fetch', 'cat-file', 'rev-parse'}
             def _fake_git(args, **kwargs):
                 # The anonymous transport runs: git clone --depth=1 --filter=
                 # blob:none into a unique temp dir OUTSIDE the checkout, then
-                # cat-file -t origin/HEAD and rev-parse origin/HEAD. A public
-                # repository resolves every step for the real SHA; a wrong/
-                # unknown main fails to resolve the pinned SHA.
-                # Find the first git subcommand, skipping the `git -C <repo>`
-                # pair and short flags.
+                # fetch --depth=1 origin <pin-sha>, cat-file -t FETCH_HEAD and
+                # rev-parse FETCH_HEAD. A public repository resolves every step
+                # for the real SHA; a wrong/unknown pin fails the fetch. Find
+                # the first git subcommand, skipping the `git -C <repo>` pair
+                # and short flags.
                 sub = ''
                 skip_next = False
                 for tok in args:
@@ -58,6 +58,8 @@ class RunnerTests(unittest.TestCase):
                         break
                 if sub == 'clone':
                     return subprocess.CompletedProcess(args, 0, '', '')
+                if sub == 'fetch':
+                    return subprocess.CompletedProcess(args, 0, '', '')
                 if sub == 'cat-file':
                     return subprocess.CompletedProcess(args, 0, 'commit\n', '')
                 if sub == 'rev-parse':
@@ -70,10 +72,10 @@ class RunnerTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, 'exactly one full lowercase'):
                 runner.validate_demo_source_pin('demo-source-pin-validation', root)
             pin.write_text(sha + '\n')
-            # A main failure (unreadable/missing cross-repo repository) stays
+            # A fetch failure (unreadable/missing cross-repo commit) stays
             # fail-closed and surfaces the transport stderr, not a generic
-            # message. The clone cannot resolve origin/HEAD.
-            def _fail_clone(args, **kwargs):
+            # message.
+            def _fail_fetch(args, **kwargs):
                 sub = ''
                 skip_next = False
                 for tok in args:
@@ -86,12 +88,12 @@ class RunnerTests(unittest.TestCase):
                     if tok in _KNOWN:
                         sub = tok
                         break
-                if sub == 'clone':
+                if sub == 'fetch':
                     return subprocess.CompletedProcess(
                         args, 128, '', 'HTTP 422 No commit found for SHA')
                 return _fake_git(args, **kwargs)
-            with patch.object(runner.subprocess, 'run', side_effect=_fail_clone):
-                with self.assertRaisesRegex(RuntimeError, 'git clone error'):
+            with patch.object(runner.subprocess, 'run', side_effect=_fail_fetch):
+                with self.assertRaisesRegex(RuntimeError, 'not readable in .*baseharbor-demo'):
                     runner.validate_demo_source_pin('demo-source-pin-validation', root)
 
     def test_demo_pin_leaves_checkout_untouched_sentinel_survives(self):
@@ -113,7 +115,7 @@ class RunnerTests(unittest.TestCase):
             sentinel = root / 'SENTINEL.txt'
             sentinel.write_text('KEEP')
 
-            _KNOWN = {'clone', 'cat-file', 'rev-parse'}
+            _KNOWN = {'clone', 'fetch', 'cat-file', 'rev-parse'}
 
             def _fake_git(args, **kwargs):
                 sub = ''
@@ -129,6 +131,8 @@ class RunnerTests(unittest.TestCase):
                         sub = tok
                         break
                 if sub == 'clone':
+                    return subprocess.CompletedProcess(args, 0, '', '')
+                if sub == 'fetch':
                     return subprocess.CompletedProcess(args, 0, '', '')
                 if sub == 'cat-file':
                     return subprocess.CompletedProcess(args, 0, 'commit\n', '')
