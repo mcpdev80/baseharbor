@@ -151,6 +151,63 @@ class RunnerTests(unittest.TestCase):
             self.assertEqual(
                 sorted(p.name for p in root.iterdir()), ['SENTINEL.txt', 'docs', 'scripts'])
 
+    def test_demo_pin_leaves_preexisting_checkout_demo_repo_untouched(self):
+        # Regression against the unsafe cleanup class the original validator
+        # carried: `git init -q _demo_repo` with cwd=<checkout> created the
+        # scratch repo INSIDE the checkout, where workflow-side `git clean -fdx`
+        # can destroy it or a lane's scratch can delete unrelated checkout
+        # content. The fixed validator clones into a UNIQUE temp dir OUTSIDE the
+        # checkout, so a pre-existing _demo_repo (with its own sentinel) must be
+        # left byte-for-byte unchanged, never reused or removed.
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / 'docs' / 'releases').mkdir(parents=True)
+            (root / 'scripts').mkdir(parents=True)
+            (root / 'scripts' / 'release-requirements.json').write_text(
+                json.dumps({'releases': ['v0.4.27', 'v0.4.28']}))
+            (root / 'docs' / 'releases' / 'v0.4.28.demo-ref').write_text('a' * 40 + '\n')
+            preexisting = root / '_demo_repo'
+            (preexisting / 'inner').mkdir(parents=True)
+            inner = preexisting / 'inner' / 'KEEP.txt'
+            inner.write_text('SENTINEL')
+
+            _KNOWN = {'clone', 'fetch', 'cat-file', 'rev-parse'}
+
+            def _fake_git(args, **kwargs):
+                sub = ''
+                skip_next = False
+                for tok in args:
+                    if skip_next:
+                        skip_next = False
+                        continue
+                    if tok in ('-C', '-t', '-q', 'git'):
+                        skip_next = tok == '-C'
+                        continue
+                    if tok in _KNOWN:
+                        sub = tok
+                        break
+                if sub == 'clone':
+                    return subprocess.CompletedProcess(args, 0, '', '')
+                if sub == 'fetch':
+                    return subprocess.CompletedProcess(args, 0, '', '')
+                if sub == 'cat-file':
+                    return subprocess.CompletedProcess(args, 0, 'commit\n', '')
+                if sub == 'rev-parse':
+                    return subprocess.CompletedProcess(args, 0, 'a' * 40 + '\n', '')
+                return subprocess.CompletedProcess(args, 0, '', '')
+
+            with patch.object(runner.subprocess, 'run', side_effect=_fake_git):
+                self.assertEqual(
+                    ['a' * 40],
+                    runner.validate_demo_source_pin('demo-source-pin-validation', str(root)))
+            self.assertEqual('SENTINEL', inner.read_text())
+            self.assertFalse(
+                (root / 'SENTINEL.txt').exists(),
+                'no stray sentinel file may be written into the checkout')
+            self.assertEqual(
+                sorted(p.name for p in root.iterdir()),
+                ['_demo_repo', 'docs', 'scripts'])
+
     def test_current_release_derives_highest_semver_from_releases(self):
         # Regression: _current_release() used to read a nonexistent
         # top-level ``release`` key and raised on the real catalog. The
