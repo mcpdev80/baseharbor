@@ -2552,6 +2552,7 @@
     {
       "id": "source.internal_application_manifest_validation_go",
       "path": "internal/application/manifest_validation.go",
+      "runtime_specific": true,
       "surfaces": [
         "source.gate.atomic.docker.data.capabilities",
         "source.gate.atomic.podman.data.capabilities"
@@ -2560,6 +2561,7 @@
     {
       "id": "source.internal_application_workload_go",
       "path": "internal/application/workload.go",
+      "runtime_specific": true,
       "surfaces": [
         "source.gate.atomic.docker.data.capabilities",
         "source.gate.atomic.podman.data.capabilities"
@@ -2568,6 +2570,7 @@
     {
       "id": "source.internal_application_workload_test_go",
       "path": "internal/application/workload_test.go",
+      "runtime_specific": true,
       "surfaces": [
         "source.gate.atomic.docker.data.capabilities",
         "source.gate.atomic.podman.data.capabilities"
