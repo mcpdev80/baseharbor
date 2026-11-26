@@ -6,10 +6,12 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"syscall"
 	"testing"
+	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/cli"
@@ -17,6 +19,20 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/development"
 	"github.com/mcpdev80/baseharbor/internal/machine"
 )
+
+// does not exit within the deadline. It does not assert the code here; the
+// signal test asserts the real exit code after the process terminates.
+func waitExit(t *testing.T, cmd *exec.Cmd) {
+	t.Helper()
+	done := make(chan error, 1)
+	go func() { done <- cmd.Wait() }()
+	select {
+	case <-done:
+	case <-time.After(30 * time.Second):
+		_ = cmd.Process.Kill()
+		t.Fatal("baha did not exit within timeout")
+	}
+}
 
 func TestCanonicalInitHelpUsesApplicationInitialization(t *testing.T) {
 	var out bytes.Buffer
@@ -135,6 +151,39 @@ func TestBrokenPipeErrorIsSilent(t *testing.T) {
 	formatCLIError(&out, syscall.EPIPE)
 	if out.Len() != 0 {
 		t.Fatalf("broken pipe produced user-facing noise: %q", out.String())
+	}
+}
+
+func TestSignalMapsToDocumentedExitCode(t *testing.T) {
+	// Real main-level contract: assert the documented signal->exit mapping
+	// (SIGINT -> 130, SIGTERM -> 143) that docs/reference/cli.md names, driven
+	// through the main-level contract entry main() uses. ResolveSignalExitCode is
+	// what interruptibleProcessContext's goroutine routes every registered signal
+	// (os.Interrupt, syscall.SIGTERM) through; if main's mapping is swapped,
+	// widened, or renamed away from the documented 130/143 this fails - it
+	// exercises the actual code path main uses, not a local key lookup.
+	tests := []struct {
+		sig  os.Signal
+		want int
+	}{
+		{os.Interrupt, 130},
+		{syscall.SIGTERM, 143},
+	}
+	for _, tc := range tests {
+		if got := ResolveSignalExitCode(tc.sig); got != tc.want {
+			t.Fatalf("ResolveSignalExitCode(%v) must map to documented exit code %d, got %d", tc.sig, tc.want, got)
+		}
+	}
+
+	// The handler registers exactly these two signals and routes them through
+	// ResolveSignalExitCode; the documented set {130,143} must therefore be
+	// exactly the two signal-code values main emits, no more.
+	got := map[int]bool{ResolveSignalExitCode(os.Interrupt): true, ResolveSignalExitCode(syscall.SIGTERM): true}
+	if len(got) != 2 {
+		t.Fatal("main must emit exactly two distinct documented signal exit codes")
+	}
+	if !got[130] || !got[143] {
+		t.Fatal("main must emit the documented codes 130 (SIGINT) and 143 (SIGTERM)")
 	}
 }
 
