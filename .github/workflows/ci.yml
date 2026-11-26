@@ -780,6 +780,8 @@ jobs:
       trusted_base_sha: ${{ steps.plan.outputs.trusted_base_sha }}
       controller_sha: ${{ steps.plan.outputs.controller_sha }}
       candidate_advisory_required: ${{ steps.plan.outputs.candidate_advisory_required }}
+      source_pin_validation: ${{ steps.source_pin.outputs.source_pin_validation }}
+      source_pin_release: ${{ steps.source_pin.outputs.source_pin_release }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -904,6 +906,44 @@ jobs:
           echo "public_contracts_required=false" >> "$GITHUB_OUTPUT"
       - name: Preserve exact verified diff for advisory candidate checks
         run: cp "$RUNNER_TEMP/pr-diff.json" pr-diff.json
+      - name: Detect a changed active-release Demo source pin (source route)
+        id: source_pin
+        run: |
+          set -euo pipefail
+          # The demo-source-pin-validation matrix row only runs when the trusted
+          # planner (base/develop) carries it; a docs/scripts-only candidate like
+          # this one sets none of runtime/integration/public-contracts required,
+          # so derive the requirement directly from the verified pr-diff.json:
+          # a changed docs/releases/<tag>.demo-ref whose <tag> is a trusted
+          # release tag. Pure bash + python3 stdlib; no candidate-code dependency.
+          python3 - <<'PY' > "$GITHUB_OUTPUT"
+          import json, re, sys
+          from pathlib import Path
+          diff = json.loads(Path("pr-diff.json").read_text())
+          try:
+              releases = json.loads(
+                  Path("scripts/release-requirements.json").read_text())["releases"]
+          except Exception:
+              releases = []
+          tags = []
+          for change in diff.get("changes", []):
+              path = change.get("path")
+              status = change.get("status")
+              if not isinstance(path, str) or status not in ("added", "modified"):
+                  continue
+              m = re.fullmatch(r"docs/releases/(v0\.4\.\d+)\.demo-ref", path)
+              if m and m.group(1) in releases:
+                  tags.append(m.group(1))
+          tags = sorted(set(tags))
+          if tags:
+              # Any changed active-release demo-ref requires the validator.
+              print("source_pin_validation=true")
+              # Surface the highest changed release for release-scoped plumbing.
+              print("source_pin_release=" + tags[-1])
+          else:
+              print("source_pin_validation=false")
+              print("source_pin_release=")
+          PY
       - name: Pin immutable Demo source for safe native result reuse
         id: demo_source
         env:
@@ -919,7 +959,16 @@ jobs:
           if [ -n "$EXPLICIT_PR_DEMO_SHA" ]; then
             demo_sha="$EXPLICIT_PR_DEMO_SHA"
           else
-            demo_sha="$(gh api repos/mcpdev80/baseharbor-demo/git/ref/heads/main --jq '.object.sha')"
+            # Resolve main ONCE over anonymous https (the CI job's
+            # GH_TOKEN=${{ github.token }} cannot read the cross-repo public
+            # baseharbor-demo, and gh api would hide HTTP 422 as a missing ref).
+            # Fail-closed if the transport cannot resolve a 40-hex commit.
+            main_sha="$(git ls-remote -h https://github.com/mcpdev80/baseharbor-demo.git refs/heads/main | awk '{print $1}')"
+            if ! [[ "$main_sha" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "could not resolve baseharbor-demo main over anonymous git" >&2
+              exit 1
+            fi
+            demo_sha="$main_sha"
           fi
           [[ "$demo_sha" =~ ^[0-9a-f]{40}$ ]]
           echo "sha=$demo_sha" >> "$GITHUB_OUTPUT"
@@ -1077,7 +1126,7 @@ jobs:
     needs: pr_plan
     outputs:
       demo_ref: ${{ steps.verify.outputs.demo_ref }}
-    if: github.event_name == 'pull_request' && (github.base_ref == 'develop' || startsWith(github.base_ref, 'lane-') || startsWith(github.base_ref, 'cli2-') || startsWith(github.base_ref, 'w0')) && github.event.pull_request.draft == false && (needs.pr_plan.outputs.runtime_required == 'true' || needs.pr_plan.outputs.integration_required == 'true' || needs.pr_plan.outputs.public_contracts_required == 'true')
+    if: github.event_name == 'pull_request' && (github.base_ref == 'develop' || startsWith(github.base_ref, 'lane-') || startsWith(github.base_ref, 'cli2-') || startsWith(github.base_ref, 'w0')) && github.event.pull_request.draft == false && (needs.pr_plan.outputs.runtime_required == 'true' || needs.pr_plan.outputs.integration_required == 'true' || needs.pr_plan.outputs.public_contracts_required == 'true' || needs.pr_plan.outputs.source_pin_validation == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 8
     permissions:
@@ -1095,8 +1144,14 @@ jobs:
           # PR qualification chooses an immutable Demo *source*; it never
           # rewrites or validates the Demo release-candidate Core pin.
           # A trusted repository variable can select a reviewed Demo SHA.
-          # Otherwise resolve main ONCE, then verify that exact commit.
-          demo_sha="${{ needs.pr_plan.outputs.demo_ref }}"
+          # Otherwise resolve main ONCE over anonymous https (the CI job's
+          # github.token cannot read the cross-repo public baseharbor-demo, and
+          # gh api would hide HTTP 422 as a missing ref), then verify that exact
+          # commit. Fail-closed: every existing check below is kept.
+          demo_sha="${{ vars.BASEHARBOR_PR_DEMO_SOURCE_SHA }}"
+          if [ -z "$demo_sha" ]; then
+            demo_sha="$(git ls-remote -h https://github.com/mcpdev80/baseharbor-demo.git refs/heads/main | awk '{print $1}')"
+          fi
           [[ "$demo_sha" =~ ^[0-9a-f]{40}$ ]]
           [[ "$EXPECTED_CORE_SHA" =~ ^[0-9a-f]{40}$ ]]
           git clone --filter=blob:none --no-checkout https://github.com/mcpdev80/baseharbor-demo.git "$RUNNER_TEMP/pr-demo"
