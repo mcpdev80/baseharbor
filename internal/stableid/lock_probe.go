@@ -28,6 +28,7 @@ var lockProbeFunc = lockProbeRunDefault
 
 var runEmbeddedBinaryProbeFunc = runEmbeddedBinaryProbe
 var runToolchainProbeFunc = runToolchainProbe
+var runToolchainBuildFunc = runToolchainBuild
 
 // LockProbeFunc is the exported boundary seam for the cross-process probe so
 // that callers in other packages (notably the cmd/baha command-path regression
@@ -43,6 +44,13 @@ var LockProbeFunc = lockProbeRunDefault
 // the other lifecycle acquirers) fail closed rather than trust an unverifiable
 // advisory lock.
 var errProbeUnavailable = errors.New("cross-process lock probe cannot run on this platform")
+
+// errGoToolchainMissing is returned by runToolchainProbe when the Go toolchain
+// is not resolvable on the host. It documents the Go toolchain as a runtime
+// prerequisite for this platform's cross-process lock probe so a missing `go`
+// fails closed with a actionable message instead of a raw "executable file not
+// found in $PATH" that leaves the caller guessing which binary it needs.
+var errGoToolchainMissing = errors.New("Go toolchain is required to run the cross-process lock probe on this platform: install a Go 1.25+ toolchain on PATH or use a Linux/AMD64 Target (the embedded probe binary needs no toolchain)")
 
 // lockProbeRun invokes the embedded cross-process lock probe as a short-lived
 // separate OS process and reports whether the lock file at lockPath was found
@@ -128,6 +136,15 @@ func probeEnv() []string {
 	return envpin.PinnedEnv("PATH=" + strings.Join(parts, ":"))
 }
 
+// runToolchainBuild runs the `go build` step for the toolchain probe. It is
+// wrapped by the runToolchainBuildFunc package var so the missing-toolchain
+// detection can be unit-tested without a real (or absent) Go binary.
+// Production code never touches the var, so production runs this real helper.
+func runToolchainBuild(build *exec.Cmd) (err error) {
+	_, err = build.CombinedOutput()
+	return err
+}
+
 // runToolchainProbe is the cross-platform fallback: it writes the stdlib-only
 // probe source to a temp dir and builds + runs it with the Go toolchain. It
 // needs a working GOCACHE/GOPATH, which CI's setup-go normally provides on the
@@ -145,8 +162,15 @@ func runToolchainProbe(lockPath string) (free bool, err error) {
 	bin := filepath.Join(dir, "probe")
 	build := exec.Command("go", "build", "-o", bin, helper)
 	build.Env = probeEnv()
-	if out, err := build.CombinedOutput(); err != nil {
-		return false, fmt.Errorf("build lock probe: %w: %s", err, bytes.TrimSpace(out))
+	if err := runToolchainBuildFunc(build); err != nil {
+		// The Go toolchain is a hard prerequisite for this platform's probe.
+		// Surface it as an actionable fail-closed error rather than leaking a
+		// generic "executable file not found in $PATH", which does not tell the
+		// caller that the Go toolchain is the missing piece.
+		if execErr, ok := err.(*exec.Error); ok && execErr.Err == exec.ErrNotFound {
+			return false, errGoToolchainMissing
+		}
+		return false, fmt.Errorf("build lock probe: %w", err)
 	}
 	out, runErr := exec.Command(bin, lockPath).CombinedOutput()
 	if runErr != nil {
