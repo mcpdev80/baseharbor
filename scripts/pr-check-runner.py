@@ -381,22 +381,55 @@ def validate_pins_data(check, repository):
     return validated
 
 
+def _semantic_version(tag):
+    """Parse a dotted ``vX.Y.Z`` release tag into a comparable tuple.
+
+    The parser tolerates an optional leading ``v`` and any number of trailing
+    components, and treats a missing component as zero, so ``v0.4.28`` sorts
+    above ``v0.4.27`` while ``v0.4`` sorts above ``v0.3.99``. Anything that is
+    not a dotted numeric tag is rejected rather than silently compared as a
+    string, so an unexpected release label fails the gate loudly.
+    """
+    if not isinstance(tag, str):
+        raise ValueError('release tag must be a string: ' + repr(tag))
+    body = tag[1:] if tag.startswith('v') else tag
+    parts = body.split('.')
+    if not parts or any(not chunk.isdigit() for chunk in parts):
+        raise ValueError('release tag must be dotted numeric: ' + repr(tag))
+    return tuple(int(chunk) for chunk in parts)
+
+
 def _current_release(repository):
     """Return the active release tag from the trusted release-requirements.json.
 
     The demo source pin is release-scoped, so the validator must read the pin
     for whatever release the candidate actually targets, not a hard-coded
-    v0.4.27. A missing or malformed requirements file is a hard failure: the
-    validator must never silently guess a path.
+    v0.4.27. The supported release set lives in ``releases[]``; the active tag
+    is the highest tag in that list by semantic version, derived
+    deterministically so a v0.4.28 catalog always selects v0.4.28. A missing or
+    malformed requirements file is a hard failure: the validator must never
+    silently guess a path, and a catalog with no selectable tag is a hard
+    failure.
     """
     try:
         requirements = json.loads(
             (Path(repository) / 'scripts' / 'release-requirements.json').read_text())
     except (OSError, ValueError, TypeError):
         raise RuntimeError('release-requirements.json unreadable or malformed')
-    release = requirements.get('release')
-    if not release or not isinstance(release, str):
-        raise RuntimeError('release-requirements.json missing a release tag')
+    releases = requirements.get('releases')
+    if not isinstance(releases, list) or not releases:
+        raise RuntimeError('release-requirements.json has no release set')
+    valid_tags = [tag for tag in releases if isinstance(tag, str)]
+    if not valid_tags:
+        raise RuntimeError('release-requirements.json has no release tag')
+    try:
+        release = max(valid_tags, key=_semantic_version)
+    except ValueError as error:
+        raise RuntimeError('release-requirements.json has an unreadable '
+                           'release tag: ' + str(error))
+    if release not in releases:
+        raise RuntimeError('release-requirements.json active tag missing from '
+                           'release set: ' + repr(release))
     return release
 
 

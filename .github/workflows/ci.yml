@@ -1360,7 +1360,11 @@ jobs:
             resolver-vet) go vet ./internal/runtime/resolver/ ;;
             resolver-consumer-build) go build -o "$RUNNER_TEMP/baha-resolver" ./cmd/baha ;;
             pr-planner-tests)
+<<<<<<< Updated upstream
               python3 -m unittest scripts/test_pr_gate_plan.py scripts/test_pr_gate_coverage.py scripts/test_pr_ci_fallback.py scripts/test_pre_release_runtime_reuse.py ;;
+=======
+              python3 -m unittest scripts/test_pr_gate_plan.py scripts/test_pre_release_runtime_reuse.py scripts/test_pr_gate_coverage.py scripts/test_pr_ci_fallback.py ;;
+>>>>>>> Stashed changes
             ci-policy) bash scripts/ci-workflow-policy.sh ;;
             ci-actionlint) go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -shellcheck= ;;
             ci-executor-tests|authority-package-tests|delivery-package-tests|deployment-package-tests|broker-package-tests|cli-package-tests|identity-provider-package-tests)
