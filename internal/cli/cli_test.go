@@ -92,7 +92,6 @@ func TestExitCodeTaxonomyLocked(t *testing.T) {
 	}
 }
 
-
 func TestUnknownCommandSuggestsNearestMatch(t *testing.T) {
 	root := &Command{Name: "baha", Children: []*Command{{Name: "status"}, {Name: "doctor"}}}
 	err := root.Execute(context.Background(), []string{"statsu"}, &bytes.Buffer{}, &bytes.Buffer{})
