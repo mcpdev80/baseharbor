@@ -317,7 +317,7 @@ class CoverageCatalogTests(unittest.TestCase):
         mapping = json.loads((ROOT / "pr-gate-map-v1.json").read_text())
         expected = sorted(gate["id"] for gate in requirements["gates"]
                          if any("light" in job for job in gate.get("jobs", []))
-                         and "v0.4.27" in gate["required_for"])
+                         and "v0.4.27" in gate.get("required_for", []))
         self.assertEqual(14, len(expected))
         path = ".github/workflows/pre-release-runtime-suite.yml"
         selected, unresolved = coverage_module.resolve_covered_gates([path], current)
@@ -325,7 +325,7 @@ class CoverageCatalogTests(unittest.TestCase):
         self.assertEqual([], unresolved)
         # The release catalog must keep every selected gate executable.
         self.assertTrue(set(expected) <= {gate["id"] for gate in requirements["gates"]
-                                         if "v0.4.27" in gate["required_for"]})
+                                         if "v0.4.27" in gate.get("required_for", [])})
         # The full trusted planner (real mapping, same inputs CI uses) resolves
         # the exact single-workflow-file diff shape to those fourteen gates.
         diff = {
