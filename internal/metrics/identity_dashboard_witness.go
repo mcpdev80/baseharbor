@@ -2,8 +2,6 @@ package metrics
 
 import (
 	"errors"
-	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 
@@ -246,42 +244,6 @@ func keycloakMetricsRegistrationIDAt(m application.Manifest, placement capabilit
 	return string(capability.ProviderKeycloak) + ":" + strings.TrimSpace(m.Name)
 }
 
-// keycloakCanonicalProject resolves the canonical compose project the
-// producer registers the native keycloak-metrics signal under, rooted at the
-// TARGET identity: the installation state directory (deployment.
-// TargetStateRoot(targetName), which the caller pins to targetStateRoot)
-// composed with the producer's own state layout (keycloakStateIdentity:
-// "<root>/providers/keycloak/applications/<app>/<env>" for the application
-// placement, "<root>/providers/keycloak/shared/core" for the shared
-// placement, internal/identityprovider). It is INJECTIVE in the Target:
-// distinct Targets own distinct roots, and a foreign Target's signal is
-// registered under ITS root, never this one's. Unresolvable identity returns
-// an error and the witness fails closed.
-func keycloakCanonicalProject(m application.Manifest, placement capability.ProviderPlacement, targetStateRoot, targetName string) (string, error) {
-	if err := deployment.ValidateTargetName(targetName); err != nil {
-		return "", err
-	}
-	root := filepath.Clean(strings.TrimSpace(targetStateRoot))
-	if base := filepath.Base(root); base != strings.TrimSpace(targetName) {
-		return "", errors.New("keycloak witness: target state root does not belong to the witnessed target name")
-	}
-	switch placement.Scope {
-	case capability.ScopeShared:
-		if _, err := os.Stat(filepath.Join(root, "providers", "keycloak", "shared", "core")); err != nil {
-			return "", fmt.Errorf("keycloak witness: shared identity installation state for Target %q is unresolvable: %w", targetName, err)
-		}
-		return bhruntime.SharedProjectName(targetName + "-core"), nil
-	case capability.ScopeApplication:
-		envDir := filepath.Join(root, "providers", "keycloak", "applications", strings.TrimSpace(m.Name), strings.TrimSpace(m.Environment))
-		if _, err := os.Stat(envDir); err != nil {
-			return "", fmt.Errorf("keycloak witness: application identity state for Target %q is unresolvable: %w", targetName, err)
-		}
-		return bhruntime.ApplicationProjectName(targetName, strings.TrimSpace(m.Name)+"-identity", m.Environment), nil
-	default:
-		return "", errors.New("keycloak witness: managed identity provider requires shared or application placement")
-	}
-}
-
 // keycloakTargetConsumerNetwork derives the identity consumer network the
 // production Keycloak realization registers the native metrics signal on for
 // THIS concrete Target — the per-Target attribution the w267 HOLD requires
@@ -435,16 +397,6 @@ func projectTokenFor(value string) string {
 	return value
 }
 
-// keycloakRootIsResolvable reports whether the witnessed state root exists
-// as this installation's Target state (the producer's Keycloak state layout
-// below it). An unresolvable root fails the attribution check closed.
-func keycloakRootIsResolvable(root string) bool {
-	if _, err := os.Stat(filepath.Join(root, "providers", "keycloak")); err != nil {
-		return false
-	}
-	return true
-}
-
 // keycloakRecordEndpoint accepts the two production forms of the Keycloak
 // signal's runtime endpoint in the record's Target field: the plain service
 // endpoint "keycloak:9000" (the form the compose realization writes) and the
@@ -458,30 +410,4 @@ func keycloakRecordEndpoint(target string) bool {
 	}
 	project, service, ok := observability.ParseRuntimeTarget(value)
 	return ok && strings.TrimSpace(project) != "" && service == "keycloak:9000"
-}
-
-// keycloakTargetInstallationProject is the canonical compose project of THIS
-// Target's shared identity installation — the project the Keycloak producer
-// registers its signal under (internal/identityprovider
-// keycloak_realization.go: "keycloak:" + files.Project, files.Project from
-// keycloakStateIdentity's shared branch, runtime.SharedProjectName(target +
-// "-core")). It is injective per Target root: two distinct roots (the
-// collision class: "a.b" vs "a-b") produce distinct projects even when
-// their consumer networks normalize to one token.
-func keycloakTargetInstallationProject(targetRoot string) string {
-	token := filepath.Base(filepath.Clean(targetRoot))
-	return bhruntime.SharedProjectName(token + "-core")
-}
-
-// recordAttributedToScope reports whether a registry record carries the
-// Target root attribution the witness's installation scope demands: its
-// Target field must name the canonical compose project of the Target being
-// witnessed (the runtime://<project>/<service> grammar the observability
-// environment resolver keys on, internal/observability/environment.go:112+).
-// A record without that attribution — no runtime:// grammar, or a project
-// that is not this installation's — supplies no evidence for the collision
-// class and fails closed (w267 CHANGES 7194027071).
-func recordAttributedToScope(source observability.SignalSource, installationProject string) bool {
-	project, _, ok := observability.ParseRuntimeTarget(source.Target)
-	return ok && strings.TrimSpace(project) == strings.TrimSpace(installationProject)
 }
