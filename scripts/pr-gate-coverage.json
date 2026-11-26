@@ -1515,6 +1515,15 @@
       ]
     },
     {
+      "id": "source.internal_runtime_project_names_go",
+      "path": "internal/runtime/project_names.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ],
+      "runtime_specific": true
+    },
+    {
       "id": "runtime.container-identity-tests",
       "path": "internal/runtime/container_identity_test.go",
       "surfaces": [
@@ -2718,6 +2727,14 @@
     {
       "id": "source.internal_metrics_identity_dashboard_witness_test_go",
       "path": "internal/metrics/identity_dashboard_witness_test.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
+      "id": "source.cmd_baha_app_init_runtime_permission_scope_test_go",
+      "path": "cmd/baha/app_init_runtime_permission_scope_test.go",
       "surfaces": [
         "source.gate.atomic.docker.data.capabilities",
         "source.gate.atomic.podman.data.capabilities"
