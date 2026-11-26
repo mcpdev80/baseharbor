@@ -1,8 +1,11 @@
 package metrics
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
+
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
@@ -21,7 +24,14 @@ import (
 // shared production placement does.
 func seedKeycloakMetricsSourceForTarget(t *testing.T, owner string, project string, stateRoot string, targetName string) observability.SignalSource {
 	t.Helper()
-	network := identityTestConsumerNetwork(t, owner, stateRoot, targetName)
+	network := witnessTargetNetwork(t, owner, stateRoot, targetName)
+	// The production registration is Target-attributed: the observability
+	// registry's runtime://<project>/<service> grammar carries the Target's
+	// canonical compose project (internal/identityprovider
+	// keycloakStateIdentity), which the witness resolves back to the exact
+	// root. The project-scoped literal ID "keycloak:<owner project>" stays
+	// production-shaped (0428-1707 scoping): attribution lives in the
+	// record's Target field, not in a registry schema change.
 	source := observability.SignalSource{
 		ID:               "keycloak:" + project,
 		Kind:             observability.SignalMetrics,
@@ -30,7 +40,7 @@ func seedKeycloakMetricsSourceForTarget(t *testing.T, owner string, project stri
 		Scope:            capability.ScopeShared,
 		OwnerApplication: owner,
 		Network:          network,
-		Target:           "keycloak:9000",
+		Target:           observability.RuntimeTarget(keycloakRecordTargetAttribution(stateRoot, targetName), "keycloak:9000"),
 		Protocol:         "openmetrics",
 		Path:             "/metrics",
 		Mode:             capability.ObservabilityNative,
@@ -42,30 +52,33 @@ func seedKeycloakMetricsSourceForTarget(t *testing.T, owner string, project stri
 	return source
 }
 
-// identityTestConsumerNetwork mirrors the production registration surface: the
-// consumer network (KeycloakFiles.ConsumerNetwork) that the realization writes
-// into the registry record's Network field, derived through
-// IdentityProviderNetworkNameForPlacement with the Target name = the last path
-// token of the Target's state root (deployment.TargetStateRoot,
-// "<dataRoot>/targets/<name>"). Witness seeds must carry it so the per-Target
-// attribution guard matches exactly the way the production producer's record
-// does.
-func identityTestConsumerNetwork(t *testing.T, owner string, stateRoot string, targetName string) string {
+// keycloakRecordTargetAttribution is the test-side twin of the witness
+// attribution grammar (keycloakRecordTargetRoot's expected project): the
+// Target's shared identity installation project.
+func keycloakRecordTargetAttribution(stateRoot, targetName string) string {
+	_ = targetName
+	return keycloakInstallationProject(stateRoot)
+}
+
+// witnessTargetNetwork is the TARGET-SCOPED registration lookup scope the
+// witness accepts for a registry record (see keycloakTargetConsumerNetwork):
+// the identity consumer network of the Target's Core resource project
+// ("baseharbor-identity-core-baseharbor-<target>-core") PAIRED with the
+// Target's resolved state root ("|" separated). The network half is the
+// producer's real installation network (its namespace, normalized like
+// identity_network.go:40 does, with dots mapped to hyphens — the field that
+// "a.b" and "a-b" collide on); the root half is injective because distinct
+// Targets have distinct state-root directories. The seed registers records
+// with the network half in the record's Network field, exactly the way the
+// production producer (KeycloakFiles.ConsumerNetwork) does.
+func witnessTargetNetwork(t *testing.T, owner, stateRoot, targetName string) string {
 	t.Helper()
-	// The production producer registers with the resolved TARGET NAME as
-	// namespace (cmd/baha/app_status_result.go passes resolved.Target.Name
-	// through the realization); the seed mirrors that grammar. The state root
-	// is cross-checked to belong to targetName, fail-closed on a mismatch.
 	if got := filepath.Base(filepath.Clean(stateRoot)); got != targetName {
 		t.Fatalf("seed state root %q does not belong to target %q", stateRoot, targetName)
 	}
-	token := targetName
-	if token == "." || token == string(filepath.Separator) || token == "" {
-		t.Fatalf("seed state root %q has no target token", stateRoot)
-	}
 	network, err := application.IdentityProviderNetworkNameForPlacement(
 		application.New(owner, "dev", false, false, false),
-		token,
+		bhruntime.SharedResourceProjectName(targetName+"-core"),
 		capability.ProviderPlacement{Scope: capability.ScopeShared, Ownership: capability.OwnershipBaseHarbor},
 	)
 	if err != nil {
@@ -173,6 +186,67 @@ func TestIdentityDashboardWitnessTwoValidTargetsIsolation(t *testing.T) {
 	}
 }
 
+// TestIdentityDashboardWitnessTwoValidDottedTargetsIsolation is the w267
+// CHANGES (comment 7194027071, requirement 3) collision case: TWO valid
+// Targets whose names normalize to the SAME network token — "a.b" and "a-b"
+// (deployment.ValidateTargetName admits dots;
+// application.IdentityProviderNetworkNameForPlacement maps dots to hyphens,
+// identity_network.go:40) — share one plain consumer-network grammar output.
+// The witness's target-scoped lookup scope carries the RAW Target name as an
+// injective suffix, so the foreign Target's registered signal must fail
+// closed here while the matching Target's own signal stays eligible. This is
+// the residual forgery class the ordinary-name regression cannot express.
+func TestIdentityDashboardWitnessTwoValidDottedTargetsIsolation(t *testing.T) {
+	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
+	t.Setenv("BASEHARBOR_TARGET", "")
+
+	owner := "identity-provider"
+	dottedRoot, err := deployment.TargetStateRoot("a.b")
+	if err != nil || dottedRoot == "" {
+		t.Fatalf("resolve a.b state root: %v", err)
+	}
+	hyphenRoot, err := deployment.TargetStateRoot("a-b")
+	if err != nil || hyphenRoot == "" {
+		t.Fatalf("resolve a-b state root: %v", err)
+	}
+	if filepath.Clean(dottedRoot) == filepath.Clean(hyphenRoot) {
+		t.Fatal("the two valid Target roots must be distinct")
+	}
+	// The normalization collision premise: after the network grammar's dot
+	// map the plain Target names share one network token — the property the
+	// raw-name suffix must break.
+	placement := capability.ProviderPlacement{Scope: capability.ScopeShared, Ownership: capability.OwnershipBaseHarbor}
+	plainDotted, err := application.IdentityProviderNetworkNameForPlacement(
+		application.New(owner, "dev", false, false, false), "a.b", placement)
+	if err != nil {
+		t.Fatalf("plain a.b network: %v", err)
+	}
+	plainHyphen, err := application.IdentityProviderNetworkNameForPlacement(
+		application.New(owner, "dev", false, false, false), "a-b", placement)
+	if err != nil {
+		t.Fatalf("plain a-b network: %v", err)
+	}
+	if plainDotted != plainHyphen {
+		t.Fatalf("test premise wrong: the plain grammar already separates a.b from a-b (%q vs %q)", plainDotted, plainHyphen)
+	}
+
+	m := manifestForIdentityDashboardWitness(owner, owner)
+
+	// The FOREIGN Target ("a-b") registers its signal: same project-scoped
+	// ID, same endpoint, colliding plain network. It must NOT make the
+	// dotted Target eligible.
+	seedKeycloakMetricsSourceForTarget(t, owner, owner, hyphenRoot, "a-b")
+	if w := IdentityDashboardWitnessAt(m, placement, dottedRoot, "a.b"); w.NonForgeableAvailable() {
+		t.Fatalf("the normalization-colliding foreign Target's signal must not make a.b eligible, got %+v", w)
+	}
+	// The MATCHING Target's own signal keeps it eligible, foreign record
+	// present.
+	seedKeycloakMetricsSourceForTarget(t, owner, owner, dottedRoot, "a.b")
+	if w := IdentityDashboardWitnessAt(m, placement, dottedRoot, "a.b"); !w.NonForgeableAvailable() {
+		t.Fatalf("a.b's own signal must keep it eligible alongside the colliding foreign record, got %+v", w)
+	}
+}
+
 // TestIdentityDashboardWitnessForeignTargetFailsClosed asserts the per-Target
 // binding the review requires: the same signal registered for a DIFFERENT
 // Target's state root must NOT satisfy a witness asked about this Target. The
@@ -196,10 +270,11 @@ func TestIdentityDashboardWitnessForeignTargetFailsClosed(t *testing.T) {
 		Ownership: capability.OwnershipBaseHarbor,
 	}
 
-	// A foreign Target's state root (unresolvable here) must not satisfy the
-	// witness asked about the real target.
-	foreignRoot := filepath.Join(t.TempDir(), "foreign-target")
-	witness := IdentityDashboardWitnessAt(m, placement, foreignRoot, "docker-dev")
+	// A foreign Target's state root (unresolvable here, and it never belongs
+	// to "docker-dev") must not satisfy the witness asked about the real
+	// target — neither the root pin nor the per-Target attribution can hold
+	// for it.
+	witness := IdentityDashboardWitnessAt(m, placement, filepath.Join(realRoot, "-foreign"), "docker-dev")
 	if witness.NonForgeableAvailable() {
 		t.Fatalf("a foreign target state root must not make the witness available, got %+v", witness)
 	}
@@ -273,13 +348,65 @@ func TestIdentityDashboardWitnessExternalPlacementFailsClosed(t *testing.T) {
 // root and endpoint guards, is genuinely target-scoped. A foreign Target cannot
 // present a signal it does not own.
 func TestIdentityDashboardWitnessNonEmptyRegistrationIDIsTargetScoped(t *testing.T) {
+	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
+	t.Setenv("BASEHARBOR_TARGET", "")
+
 	m := manifestForIdentityDashboardWitness("identity-provider", "identity-provider")
 	placement := capability.ProviderPlacement{Scope: capability.ScopeShared, Ownership: capability.OwnershipBaseHarbor}
-	id := keycloakMetricsRegistrationIDAt(m, placement, "some-root", "docker-dev")
-	if id != "keycloak:identity-provider" {
+	root, err := deployment.TargetStateRoot("docker-dev")
+	if err != nil || root == "" {
+		t.Fatalf("resolve target state root: %v", err)
+	}
+	if id := keycloakMetricsRegistrationIDAt(m, placement, root, "docker-dev"); id != "keycloak:identity-provider" {
 		t.Fatalf("registration id = %q, want the per-project production id %q", id, "keycloak:identity-provider")
 	}
-	if empty := keycloakMetricsRegistrationIDAt(m, placement, "some-root", ""); empty != "" {
+	if empty := keycloakMetricsRegistrationIDAt(m, placement, root, ""); empty != "" {
 		t.Fatalf("an empty target name must yield an empty registration id, got %q", empty)
+	}
+}
+
+// TestIdentityDashboardWitnessRootAttributionResolvers pins the collision
+// class w267 CHANGES (comment 7194027071) requires the attribution to
+// separate: "a.b" and "a-b" share one consumer-network token (the grammar
+// maps dots to hyphens, identity_network.go:40) but their installation
+// projects and roots are directory-unique, so each record attributes to its
+// OWN root only.
+func TestIdentityDashboardWitnessRootAttributionResolvers(t *testing.T) {
+	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
+	t.Setenv("BASEHARBOR_TARGET", "")
+
+	dottedRoot, err := deployment.TargetStateRoot("a.b")
+	if err != nil || dottedRoot == "" {
+		t.Fatalf("resolve a.b root: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(dottedRoot, "providers", "keycloak"), 0o700); err != nil {
+		t.Fatalf("materialize a.b identity state: %v", err)
+	}
+	hyphenRoot, err := deployment.TargetStateRoot("a-b")
+	if err != nil || hyphenRoot == "" {
+		t.Fatalf("resolve a-b root: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(hyphenRoot, "providers", "keycloak"), 0o700); err != nil {
+		t.Fatalf("materialize a-b identity state: %v", err)
+	}
+	for _, tc := range []struct {
+		name      string
+		project   string
+		witnessed string
+		want      string
+	}{
+		{"dotted attributes to dotted", keycloakInstallationProject(dottedRoot), dottedRoot, dottedRoot},
+		{"hyphen attributes to hyphen", keycloakInstallationProject(hyphenRoot), hyphenRoot, hyphenRoot},
+		{"dotted record never attributes to hyphen", keycloakInstallationProject(dottedRoot), hyphenRoot, ""},
+		{"hyphen record never attributes to dotted", keycloakInstallationProject(hyphenRoot), dottedRoot, ""},
+	} {
+		source := observability.SignalSource{Target: observability.RuntimeTarget(tc.project, keycloakSignalRuntimeService)}
+		if got := keycloakRecordTargetRoot(source, tc.witnessed, filepath.Base(tc.witnessed)); got != tc.want {
+			t.Fatalf("%s: attribution = %q, want %q", tc.name, got, tc.want)
+		}
+	}
+	// The unattributed plain-endpoint form resolves no root at all.
+	if got := keycloakRecordTargetRoot(observability.SignalSource{Target: "keycloak:9000"}, dottedRoot, "a.b"); got != "" {
+		t.Fatalf("unattributed record must resolve no root, got %q", got)
 	}
 }
