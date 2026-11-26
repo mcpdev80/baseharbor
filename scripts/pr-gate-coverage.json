@@ -2739,6 +2739,126 @@
         "source.gate.atomic.docker.data.capabilities",
         "source.gate.atomic.podman.data.capabilities"
       ]
+    },
+    {
+      "id": "source.contracts.navigation_pagination_contract_test_go",
+      "path": "contracts/navigation_pagination_contract_test.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
+      "id": "source.docs.de.spec.runtime_list_pagination_v1_md",
+      "path": "docs/de/spec/runtime-list-pagination-v1.md",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
+      "id": "source.docs.spec.runtime_list_pagination_v1_md",
+      "path": "docs/spec/runtime-list-pagination-v1.md",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
+      "id": "source.docs_spec_readme_md",
+      "path": "docs/spec/README.md",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
+      "id": "source.internal_apierror_pagination_go",
+      "path": "internal/apierror/pagination.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
+      "id": "source.internal_apierror_pagination_test_go",
+      "path": "internal/apierror/pagination_test.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
+      "id": "source.internal_applicationruntimeapi_pagination_contract_test_go",
+      "path": "internal/applicationruntimeapi/pagination_contract_test.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
+      "id": "source.internal_applicationruntimeapi_handler_go",
+      "path": "internal/applicationruntimeapi/handler.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
+      "id": "source.internal_applicationsecretapi_pagination_contract_test_go",
+      "path": "internal/applicationsecretapi/pagination_contract_test.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
+      "id": "source.internal_applicationsecretapi_handler_go",
+      "path": "internal/applicationsecretapi/handler.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
+      "id": "source.internal_machine_navigation_go",
+      "path": "internal/machine/navigation.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
+      "id": "source.internal_machine_pagination_contract_test_go",
+      "path": "internal/machine/pagination_contract_test.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
+      "id": "source.internal_machinehttp_source_transfer_go",
+      "path": "internal/machinehttp/source_transfer.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
+      "id": "source.internal_machinereadmodels_artifacts_go",
+      "path": "internal/machinereadmodels/artifacts.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
+      "id": "source.internal_sourcetransfer_transfer_go",
+      "path": "internal/sourcetransfer/transfer.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
     }
   ],
   "gates": [
