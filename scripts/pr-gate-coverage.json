@@ -1515,6 +1515,15 @@
       ]
     },
     {
+      "id": "source.internal_runtime_project_names_go",
+      "path": "internal/runtime/project_names.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ],
+      "runtime_specific": true
+    },
+    {
       "id": "runtime.container-identity-tests",
       "path": "internal/runtime/container_identity_test.go",
       "surfaces": [
@@ -2552,6 +2561,7 @@
     {
       "id": "source.internal_application_manifest_validation_go",
       "path": "internal/application/manifest_validation.go",
+      "runtime_specific": true,
       "surfaces": [
         "source.gate.atomic.docker.data.capabilities",
         "source.gate.atomic.podman.data.capabilities"
@@ -2560,6 +2570,7 @@
     {
       "id": "source.internal_application_workload_go",
       "path": "internal/application/workload.go",
+      "runtime_specific": true,
       "surfaces": [
         "source.gate.atomic.docker.data.capabilities",
         "source.gate.atomic.podman.data.capabilities"
@@ -2568,6 +2579,7 @@
     {
       "id": "source.internal_application_workload_test_go",
       "path": "internal/application/workload_test.go",
+      "runtime_specific": true,
       "surfaces": [
         "source.gate.atomic.docker.data.capabilities",
         "source.gate.atomic.podman.data.capabilities"
