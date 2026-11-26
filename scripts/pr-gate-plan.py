@@ -1181,12 +1181,28 @@ def targeted_plan(diff, requirements, mapping, repository='.',
                 'validation_contract': 'All authenticated current-integration CI checks must execute and pass.',
                 'reasons': ['Trusted target record: exact repository, branch, head, full '
                             'inventory, raw SHA-256 blobs and clean integration verified.']}
+    # The demo source pin is release-scoped. Read the active release from the
+    # trusted release-requirements.json so a v0.4.28 pin is matched against the
+    # same selector the trusted runner schedules, not a hard-coded v0.4.27.
+    active_release = None
+    try:
+        import importlib.util
+        _spec = importlib.util.spec_from_file_location(
+            'pr_check_runner', Path(__file__).with_name('pr-check-runner.py'))
+        _runner = importlib.util.module_from_spec(_spec)
+        _spec.loader.exec_module(_runner)
+        active_release = _runner._current_release(repository)
+    except Exception:
+        active_release = None
     for path in paths:
-        if path == 'docs/releases/{}.demo-ref'.format(release):
+        if path == 'docs/releases/{}.demo-ref'.format(
+                active_release or release):
             area = 'release-demo-source-pin'
             require(DEMO_SOURCE_PIN_VALIDATION)
             if len(paths) != 1 or path_status.get(path) != 'modified':
-                unresolved.append('v0.4.27 Demo source pin must be a standalone modified file')
+                unresolved.append(
+                    '{} Demo source pin must be a standalone modified file'.format(
+                        active_release or release))
         elif re.fullmatch(r'docs/releases/v0\.4\.(?:23|24|25|26)\.consumer-pins\.json', path):
             area = 'pins-data'
             require(PINNED_PINS_VALIDATION)
