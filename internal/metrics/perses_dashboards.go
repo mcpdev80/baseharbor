@@ -381,6 +381,31 @@ func persesPanelTempo() PersesPanel {
 	}
 }
 
+// persesPanelKeycloakIdentity is the minimal Perses-native dashboard panel for
+// the identity-keycloak dashboard. It queries the verified current Keycloak
+// native metrics signal (openmetrics, port 9000) the same way the prometheus
+// panel queries Prometheus, so the identity dashboard stays a native Perses
+// OpenMetrics panel for the identity provider — never a Grafana-API assumption.
+func persesPanelKeycloakIdentity() PersesPanel {
+	return PersesPanel{
+		Kind: PersesPanelKind,
+		Spec: PersesPanelSpec{
+			Display: PersesDisplay{Name: "BaseHarbor Keycloak identity"},
+			Plugin:  PersesPanelPlugin{Kind: PersesPanelPluginStatChart, Spec: mustJSON(map[string]any{})},
+			Queries: []PersesQueryWrapper{{
+				Kind: PersesQueryWrapperTimeSeries,
+				Spec: PersesQuerySpec{
+					Plugin: PersesQueryPlugin{
+						Kind: PersesQueryPrometheus,
+						Spec: mustJSON(map[string]any{"query": `up{job="baseharbor-identity",baseharbor_application="$application",baseharbor_environment="$env"}`}),
+					},
+					Datasource: &PersesDatasourceRef{Kind: PersesDatasourcePrometheus, Name: "keycloak"},
+				},
+			}},
+		},
+	}
+}
+
 // persesUnavailableEntry builds the explicit UNAVAILABLE entry for a database
 // with no native metrics signal. It carries no panel/dashboard; Reason names
 // the missing signal so the CLI can expose it deterministically.
@@ -519,6 +544,17 @@ func persesDashboardCatalog() map[string]PersesPanelCatalogEntry {
 		// MongoDB has no native metrics signal at all. Explicitly UNAVAILABLE.
 		"mongodb-targets": persesUnavailableEntry("mongodb-targets", "mongodb",
 			"MongoDB has no metrics signal in BaseHarbor (no collector metrics signal in the pinned reference catalog); the dashboard is explicitly unavailable and no exporter is installed"),
+		// Identity keycloak dashboard: a real, native Keycloak metrics panel for
+		// the verified current Keycloak surface. Only shipped when observability
+		// is selected and Perses is pinned (persesDashboardCatalogWithResolved);
+		// otherwise the status face reports the identity dashboard unavailable.
+		"keycloak-identity": {
+			Key:            "keycloak-identity",
+			Backend:        "keycloak",
+			Datasource:     "keycloak",
+			DatasourceName: "keycloak",
+			Dashboard:      persesDashboardForBackend(resolved, "keycloak-identity"),
+		},
 	}
 }
 
@@ -554,6 +590,8 @@ func backendForKey(key string) capability.ProviderKind {
 		return capability.ProviderLoki
 	case "tempo-traces":
 		return capability.ProviderTempo
+	case "keycloak-identity":
+		return capability.ProviderKeycloak
 	default:
 		return ""
 	}
@@ -625,6 +663,19 @@ func persesDashboardForBackend(m application.Manifest, key string) PersesDashboa
 				Panels:      map[string]PersesPanel{"app-traces": persesPanelTempo()},
 				Layouts:     []PersesLayout{{Kind: PersesGridLayoutKind, Spec: PersesLayoutSpec{Items: []PersesGridItem{{X: 0, Y: 0, Width: 24, Height: 12, Content: PersesGridContent{Ref: "#/spec/panels/app-traces"}}}}}},
 				Variables:   persesDashboardVariables(m),
+			},
+		}
+	case capability.ProviderKeycloak:
+		return PersesDashboard{
+			Kind:     PersesDashboardKind,
+			Metadata: PersesDashboardMetadata{Name: "keycloak-identity", Version: 0},
+			Spec: PersesDashboardSpec{
+				Display:     PersesDisplay{Name: "BaseHarbor Keycloak identity", Description: "Identity-provider panels for the verified current Keycloak surface."},
+				Datasources: map[string]PersesDatasource{"keycloak": {Default: true, Plugin: PersesDatasourcePlugin{Kind: PersesDatasourcePrometheus, Spec: mustJSON(map[string]any{})}}},
+				Panels:      map[string]PersesPanel{"keycloak-identity": persesPanelKeycloakIdentity()},
+				Layouts:     []PersesLayout{{Kind: PersesGridLayoutKind, Spec: PersesLayoutSpec{Items: []PersesGridItem{{X: 0, Y: 0, Width: 24, Height: 8, Content: PersesGridContent{Ref: "#/spec/panels/keycloak-identity"}}}}}},
+				Variables:   persesDashboardVariables(m),
+				Duration:    "5m",
 			},
 		}
 	default:

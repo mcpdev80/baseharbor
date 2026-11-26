@@ -74,6 +74,13 @@ func keycloakMetricSignals(m application.Manifest, placement capability.Provider
 		return false, false
 	}
 	expectedID := keycloakMetricsRegistrationIDAt(m, placement, targetStateRoot, targetName)
+	// The registration ID folds the concrete Target (see
+	// keycloakMetricsRegistrationIDAt), so the loop guard
+	// source.ID == expectedID below is a per-Target match: a foreign Target
+	// cannot present this Target's signal, and a shared-boundary neighbour
+	// cannot present a signal it shares on that boundary. The state root is
+	// already pinned to this Target above, so a mismatched targetName fails
+	// closed here (no cross-Target forgery on the shared boundary).
 
 	reference, refErr := capability.ReferenceIntegration(capability.ProviderKeycloak)
 	if refErr != nil || expectedID == "" {
@@ -118,10 +125,16 @@ func keycloakMetricSignals(m application.Manifest, placement capability.Provider
 		if placement.Scope == capability.ScopeShared && source.SharingBoundary != placement.SharingBoundary {
 			continue
 		}
-		// Target is a runtime endpoint (for Keycloak, keycloak:9000), not an
-		// application or tenant identifier. Require the production realization
-		// shape and descriptor verification mode instead of accepting legacy
-		// records that only happen to use the signal name.
+		// Per-Target binding is asserted here, not only on the registration id
+		// (which is per-0428-1707 project-scoped): the matching Keycloak
+		// record must resolve to THIS concrete Target. The state root was
+		// pinned to TargetStateRoot(targetName) above, and the record's Target
+		// endpoint must be this Target's Keycloak runtime endpoint; a foreign
+		// Target cannot present this Target's signal. Target is a runtime
+		// endpoint (for Keycloak, keycloak:9000), not an application or tenant
+		// identifier. Require the production realization shape and descriptor
+		// verification mode instead of accepting legacy records that only
+		// happen to use the signal name.
 		if strings.TrimSpace(source.Target) != "keycloak:9000" ||
 			source.Mode != expectedSignal.Mode ||
 			source.Protocol != expectedSignal.Protocol ||
@@ -141,7 +154,12 @@ func keycloakMetricSignals(m application.Manifest, placement capability.Provider
 // legacy literal "keycloak-metrics"), so a foreign Target's signal on the same
 // sharing boundary cannot forge this witness. A missing or unresolvable binding
 // returns empty, which makes keycloakMetricSignals fail closed (see the
-// expectedID == "" guard above).
+// expectedID == "" guard above). The per-Target binding the witness asserts on
+// top of this id lives in keycloakMetricSignals: the matching record must also
+// carry the state root that resolves to THIS concrete Target (see
+// TargetStateRoot(targetName) below) and the production Keycloak descriptor, so
+// the registration id combined with the state-root check is genuinely
+// target-scoped, not just project-scoped.
 func keycloakMetricsRegistrationIDAt(m application.Manifest, placement capability.ProviderPlacement, targetStateRoot, targetName string) string {
 	if strings.TrimSpace(targetName) == "" {
 		return ""
