@@ -1,0 +1,38 @@
+{
+  "id": "w245-0428-284-1842alt",
+  "title": "READ-ONLY routing alternatives for #1842 - which already-selected Hosted job actually executes test_pr_gate_coverage.py and the demo-source pin validator",
+  "steps": [
+    {
+      "done": true,
+      "text": "1. Read live develop scripts/pr-gate-plan.py + pr-gate-map-v1.json + pr-stage-boundary.py; record file:line for every mapping decision touching test_pr_gate_coverage.py and the demo pin validator"
+    },
+    {
+      "done": true,
+      "text": "2. Read scripts/pr-check-runner.py to learn how a mapped suite becomes an executed job step (and what makes a suite 'actually executed')"
+    },
+    {
+      "done": true,
+      "text": "3. Enumerate Hosted job lists of recent green baseharbor PR runs (per_page=100) and correlate which named jobs ran for which path sets"
+    },
+    {
+      "done": true,
+      "text": "4. Determine which already-selected job would run (a) scripts/test_pr_gate_coverage.py and (b) the _current_release + demo pin validation path on a #1842-shaped diff"
+    },
+    {
+      "done": true,
+      "text": "5. Decide whether a route without editing .github is possible for #1842 (yes/no + reason) and the minimal change per candidate suite"
+    },
+    {
+      "done": true,
+      "text": "6. Write the akte evidence in an isolated baseharbor-plan worktree (no .github edits, no CI triggers) and open the plan-PR branch"
+    },
+    {
+      "done": true,
+      "text": "7. After the plan-PR merge, place the akte under e6ca7696-b1f8-492d-b226-876b16925fc5/ and record git show <merged-sha>:<path> plus origin/main ls-tree witnesses (MERGED state alone is not presence proof)"
+    },
+    {
+      "done": true,
+      "text": "8. Publish the candidate-suite table and one-line answer in the plan repo and post the END line to the coordinator"
+    }
+  ]
+}
