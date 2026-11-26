@@ -2705,8 +2705,8 @@
       "runtime_specific": true
     },
     {
-      "id": "source.internal_applicationbackup_recovery_manifest_workload_test_go",
-      "path": "internal/applicationbackup/recovery_manifest_workload_test.go",
+      "id": "source.internal_application_backup_recovery_manifest_workload_test_go",
+      "path": "internal/application/backup/recovery_manifest_workload_test.go",
       "surfaces": [
         "source.gate.atomic.docker.data.capabilities",
         "source.gate.atomic.podman.data.capabilities"
