@@ -1,0 +1,103 @@
+{
+  "kind": "Dashboard",
+  "metadata": {
+    "name": "keycloak-identity",
+    "version": 0
+  },
+  "spec": {
+    "display": {
+      "name": "BaseHarbor Keycloak identity",
+      "description": "Identity-provider panels for the verified current Keycloak surface."
+    },
+    "datasources": {
+      "keycloak": {
+        "default": true,
+        "plugin": {
+          "kind": "PrometheusDatasource",
+          "spec": {}
+        }
+      }
+    },
+    "panels": {
+      "keycloak-identity": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "BaseHarbor Keycloak identity"
+          },
+          "plugin": {
+            "kind": "StatChart",
+            "spec": {}
+          },
+          "queries": [
+            {
+              "kind": "TimeSeries",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusQuery",
+                  "spec": {
+                    "query": "up{job=\"baseharbor-identity\",baseharbor_application=\"$application\",baseharbor_environment=\"$env\"}"
+                  }
+                },
+                "datasource": {
+                  "kind": "PrometheusDatasource",
+                  "name": "keycloak"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "layouts": [
+      {
+        "kind": "Grid",
+        "spec": {
+          "items": [
+            {
+              "x": 0,
+              "y": 0,
+              "width": 24,
+              "height": 8,
+              "content": {
+                "$ref": "#/spec/panels/keycloak-identity"
+              }
+            }
+          ]
+        }
+      }
+    ],
+    "variables": [
+      {
+        "kind": "ListVariable",
+        "spec": {
+          "name": "$application",
+          "allowMultiple": false,
+          "allowAllValue": false,
+          "defaultValue": "perses-dashboard-databases",
+          "plugin": {
+            "kind": "ConstantVariable",
+            "spec": {
+              "value": "perses-dashboard-databases"
+            }
+          }
+        }
+      },
+      {
+        "kind": "ListVariable",
+        "spec": {
+          "name": "$env",
+          "allowMultiple": false,
+          "allowAllValue": false,
+          "defaultValue": "dev",
+          "plugin": {
+            "kind": "ConstantVariable",
+            "spec": {
+              "value": "dev"
+            }
+          }
+        }
+      }
+    ]
+  }
+}

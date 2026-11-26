@@ -26,7 +26,7 @@ func seedKeycloakMetricsSourceForTarget(t *testing.T, owner string, project stri
 		Kind:             observability.SignalMetrics,
 		Provider:         capability.ProviderKeycloak,
 		Class:            observability.SourceApplicationProvider,
-		Scope:            capability.ScopeApplication,
+		Scope:            capability.ScopeShared,
 		OwnerApplication: owner,
 		Network:          "baseharbor-dev-workload-" + owner + "-dev",
 		Target:           "keycloak:9000",
