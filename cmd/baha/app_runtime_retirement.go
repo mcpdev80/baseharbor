@@ -216,3 +216,4 @@ func removeEmptyNeverDeliveredDir(id deployment.DeploymentIdentity) {
 	}
 	_ = os.Remove(dir)
 }
+

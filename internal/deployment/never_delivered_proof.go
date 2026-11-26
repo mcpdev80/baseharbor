@@ -39,7 +39,8 @@ func neverDeliveredProofPath(target, applicationID, environment string) (string,
 	return filepath.Join(root, "never-delivered", applicationID, environment+".json"), nil
 }
 
-// neverDeliveredProofDir returns the never-delivered/<applicationID> directory
+// NeverDeliveredProofDir returns the never-delivered/<applicationID> directory
+// that holds this identity's one-shot proof.
 // that holds this identity's one-shot proof. It reuses the same validation and
 // root resolution as neverDeliveredProofPath so callers that only need to prune
 // the directory (never to read or write a proof) stay consistent with the
