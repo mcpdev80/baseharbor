@@ -959,7 +959,16 @@ jobs:
           if [ -n "$EXPLICIT_PR_DEMO_SHA" ]; then
             demo_sha="$EXPLICIT_PR_DEMO_SHA"
           else
-            demo_sha="$(gh api repos/mcpdev80/baseharbor-demo/git/ref/heads/main --jq '.object.sha')"
+            # Resolve main ONCE over anonymous https (the CI job's
+            # GH_TOKEN=${{ github.token }} cannot read the cross-repo public
+            # baseharbor-demo, and gh api would hide HTTP 422 as a missing ref).
+            # Fail-closed if the transport cannot resolve a 40-hex commit.
+            main_sha="$(git ls-remote -h https://github.com/mcpdev80/baseharbor-demo.git refs/heads/main | awk '{print $1}')"
+            if ! [[ "$main_sha" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "could not resolve baseharbor-demo main over anonymous git" >&2
+              exit 1
+            fi
+            demo_sha="$main_sha"
           fi
           [[ "$demo_sha" =~ ^[0-9a-f]{40}$ ]]
           echo "sha=$demo_sha" >> "$GITHUB_OUTPUT"
@@ -1135,8 +1144,14 @@ jobs:
           # PR qualification chooses an immutable Demo *source*; it never
           # rewrites or validates the Demo release-candidate Core pin.
           # A trusted repository variable can select a reviewed Demo SHA.
-          # Otherwise resolve main ONCE, then verify that exact commit.
-          demo_sha="${{ needs.pr_plan.outputs.demo_ref }}"
+          # Otherwise resolve main ONCE over anonymous https (the CI job's
+          # github.token cannot read the cross-repo public baseharbor-demo, and
+          # gh api would hide HTTP 422 as a missing ref), then verify that exact
+          # commit. Fail-closed: every existing check below is kept.
+          demo_sha="${{ vars.BASEHARBOR_PR_DEMO_SOURCE_SHA }}"
+          if [ -z "$demo_sha" ]; then
+            demo_sha="$(git ls-remote -h https://github.com/mcpdev80/baseharbor-demo.git refs/heads/main | awk '{print $1}')"
+          fi
           [[ "$demo_sha" =~ ^[0-9a-f]{40}$ ]]
           [[ "$EXPECTED_CORE_SHA" =~ ^[0-9a-f]{40}$ ]]
           git clone --filter=blob:none --no-checkout https://github.com/mcpdev80/baseharbor-demo.git "$RUNNER_TEMP/pr-demo"
