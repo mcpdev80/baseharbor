@@ -162,6 +162,72 @@ class CoverageCatalogTests(unittest.TestCase):
         self.assertEqual([], selected)
         self.assertEqual(["internal/application/provider_union.go"], unresolved)
 
+    def test_deleted_source_without_catalog_row_resolves_by_deletion(self):
+        # card 0428-253 (precedent #1789): dead source whose deletion the
+        # planner exempted (statuses map) must not come back as an uncataloged
+        # change; without the exemption the fail-loud contract stands.
+        current = json.loads((ROOT / "pr-gate-coverage.json").read_text())
+        path = "internal/metrics/perses_dashboards_promql_test.go"
+        self.assertTrue(all(row.get("path") != path for row in current["components"]))
+        selected, unresolved = coverage_module.resolve_covered_gates([path], current)
+        self.assertEqual([], selected)
+        self.assertEqual([path], unresolved)
+        selected, unresolved = coverage_module.resolve_covered_gates(
+            [path], current, {path: "deleted"})
+        self.assertEqual([], selected)
+        self.assertEqual([], unresolved)
+
+    def test_deleted_source_selects_nothing_even_with_remaining_catalog_row(self):
+        current = json.loads((ROOT / "pr-gate-coverage.json").read_text())
+        path = "internal/metrics/perses_dashboards_test.go"
+        selected, unresolved = coverage_module.resolve_covered_gates(
+            [path], current, {path: "deleted"})
+        self.assertEqual([], selected)
+        self.assertEqual([], unresolved)
+
+    def test_status_map_never_exempts_non_deletion_statuses(self):
+        current = json.loads((ROOT / "pr-gate-coverage.json").read_text())
+        path = "internal/newarea/feature.go"
+        for status in ("modified", "added", "renamed", "copied", "type_changed"):
+            with self.subTest(status=status):
+                selected, unresolved = coverage_module.resolve_covered_gates(
+                    [path], current, {path: status})
+                self.assertEqual([], selected)
+                self.assertEqual([path], unresolved)
+        # Without a status map the resolver behaves exactly as before.
+        selected, unresolved = coverage_module.resolve_covered_gates([path], current)
+        self.assertEqual([], selected)
+        self.assertEqual([path], unresolved)
+
+    def test_planner_deletion_exemption_contract(self):
+        # card 0428-253: unit coverage of the exemption contract (the
+        # end-to-end replay lives in scripts/test_pr_ci_fallback.py against
+        # the real #1789 commits). A deleted path the checkout catalog owns -
+        # exact row or package root - is exempted; a path it no longer lists
+        # is NOT exempted by this function (plan() resolves that case through
+        # the trusted base-catalog read). Other statuses never exempt.
+        current = json.loads((ROOT / "pr-gate-coverage.json").read_text())
+        sibling = "internal/metrics/perses_dashboards_test.go"
+
+        def diff(changes):
+            return {'target_base_sha': 'a' * 40, 'head_sha': 'b' * 40,
+                    'merge_base_sha': 'c' * 40, 'integration_sha': 'd' * 40,
+                    'broad_required': False, 'reasons': [], 'changes': changes}
+
+        self.assertEqual({sibling: "deleted"}, planner.deletion_exemption(
+            diff([{'status': 'deleted', 'path': sibling}]), current))
+        package_root = next(row["path"].rstrip("/") for row in current["packages"])
+        inside = package_root + "/exemption_probe_test.go"
+        self.assertEqual({inside: "deleted"}, planner.deletion_exemption(
+            diff([{'status': 'deleted', 'path': inside}]), current))
+        dead = "internal/metrics/perses_dashboards_promql_test.go"
+        self.assertEqual({}, planner.deletion_exemption(
+            diff([{'status': 'deleted', 'path': dead}]), current))
+        for status in ("modified", "added", "renamed", "type_changed"):
+            with self.subTest(status=status):
+                self.assertEqual({}, planner.deletion_exemption(
+                    diff([{'status': status, 'path': sibling}]), current))
+
     def test_coreless_backend_baseline_has_both_integration_gate_owners_and_test_anchor(self):
         current = json.loads((ROOT / "pr-gate-coverage.json").read_text())
         path = "cmd/baha/app_backend_selective_runtime_test.go"
@@ -665,6 +731,168 @@ class CoverageCatalogTests(unittest.TestCase):
         self.assertIn("scripts/pr-gate-coverage.json", message)
         self.assertIn("source.internal_runtime_new_feature_go", message)
         self.assertIn("atomic.docker.data.capabilities", message)
+
+
+class ReleaseDemoPinSelectionTests(unittest.TestCase):
+    """v0.4.28 demo-ref must select the exact pin validator (regression guard).
+
+    Regression: pr-gate-plan.py used to match only docs/releases/v0.4.27.demo-ref,
+    so a v0.4.28 demo-ref change fell through to the broad Go fallback and never
+    scheduled the exact immutable Demo SHA validator. Changed demo pins of ANY
+    active release must select the pin-specific validator.
+    """
+
+    def _release_diff(self, path):
+        requirements = json.loads((ROOT / "release-requirements.json").read_text())
+        mapping = json.loads((ROOT / "pr-gate-map-v1.json").read_text())
+        return planner.plan({
+            "target_base_sha": "a" * 40, "head_sha": "b" * 40,
+            "merge_base_sha": "c" * 40, "integration_sha": "d" * 40,
+            "broad_required": False, "reasons": [],
+            "changes": [{"status": "modified", "path": path}],
+        }, requirements, mapping)
+
+    def test_v0428_demo_ref_selects_exact_pin_validator(self):
+        # Regression: v0.4.28 fell through the old v0.4.27-only match and got
+        # the broad Go fallback instead of the pin validator. When the mapping
+        # targets v0.4.28 the v0.4.28 demo-ref resolves to the pin validator.
+        requirements = json.loads((ROOT / "release-requirements.json").read_text())
+        mapping = json.loads((ROOT / "pr-gate-map-v1.json").read_text())
+        result = planner.plan({
+            "target_base_sha": "a" * 40, "head_sha": "b" * 40,
+            "merge_base_sha": "c" * 40, "integration_sha": "d" * 40,
+            "broad_required": False, "reasons": [],
+            "changes": [{"status": "modified", "path": "docs/releases/v0.4.28.demo-ref"}],
+        }, requirements, {**mapping, "release": "v0.4.28"})
+        self.assertEqual("resolved", result["coverage_status"])
+        self.assertEqual([], result["unresolved_coverage"])
+        selected_ids = [c.get("id") for c in result["required_validation_checks"]]
+        self.assertIn("demo-source-pin-validation", selected_ids)
+        # A data-only release pin must NOT fall back to the broad Go matrix.
+        self.assertFalse(result["broad_required"])
+        self.assertEqual([], result["selected_gates"])
+
+    def test_v0427_demo_ref_still_selects_exact_pin_validator(self):
+        requirements = json.loads((ROOT / "release-requirements.json").read_text())
+        mapping = json.loads((ROOT / "pr-gate-map-v1.json").read_text())
+        result = planner.plan({
+            "target_base_sha": "a" * 40, "head_sha": "b" * 40,
+            "merge_base_sha": "c" * 40, "integration_sha": "d" * 40,
+            "broad_required": False, "reasons": [],
+            "changes": [{"status": "modified", "path": "docs/releases/v0.4.27.demo-ref"}],
+        }, requirements, {**mapping, "release": "v0.4.27"})
+        self.assertEqual("resolved", result["coverage_status"])
+        self.assertEqual([], result["unresolved_coverage"])
+        selected_ids = [c.get("id") for c in result["required_validation_checks"]]
+        self.assertIn("demo-source-pin-validation", selected_ids)
+        self.assertFalse(result["broad_required"])
+        self.assertEqual([], result["selected_gates"])
+
+    def test_demo_ref_release_must_match_mapping_release(self):
+        # A demo-ref path for one active release while the mapping targets a
+        # different active release MUST still resolve to the pin validator:
+        # every active-release demo-ref is release-scoped to its own release,
+        # independent of the mapping release. The mapping stays pinned at
+        # v0.4.27 to preserve catalog coherence; the selector recognizes a
+        # v0.4.28 demo-ref pin without relocating the release-gating stack.
+        requirements = json.loads((ROOT / "release-requirements.json").read_text())
+        mapping = json.loads((ROOT / "pr-gate-map-v1.json").read_text())
+        result = planner.plan({
+            "target_base_sha": "a" * 40, "head_sha": "b" * 40,
+            "merge_base_sha": "c" * 40, "integration_sha": "d" * 40,
+            "broad_required": False, "reasons": [],
+            "changes": [{"status": "modified", "path": "docs/releases/v0.4.28.demo-ref"}],
+        }, requirements, {**mapping, "release": "v0.4.27"})
+        self.assertEqual("resolved", result["coverage_status"])
+        self.assertEqual([], result["unresolved_coverage"])
+        selected_ids = [c.get("id") for c in result["required_validation_checks"]]
+        self.assertEqual(["demo-source-pin-validation"], selected_ids)
+
+
+
+class ReleaseDemoPinSelectionRegression(unittest.TestCase):
+    """Regression matrix for the release-scoped demo-ref selector.
+
+    The selector must resolve any active release demo-ref to the exact
+    demo-source-pin validation; it must reject non-pin, inactive or mixed
+    change sets rather than falling to a broad fallback. Uses the real repo
+    release catalog so the planner's catalog validation passes.
+    """
+
+    def _load(self):
+        requirements = json.loads((ROOT / "release-requirements.json").read_text())
+        mapping = json.loads((ROOT / "pr-gate-map-v1.json").read_text())
+        return requirements, mapping
+
+    def _diff(self, path, status="modified"):
+        return {"target_base_sha": "a" * 40, "head_sha": "b" * 40,
+                "merge_base_sha": "c" * 40, "integration_sha": "d" * 40,
+                "broad_required": False, "reasons": [],
+                "changes": [{"status": status, "path": path}]}
+
+    def _active_releases(self):
+        return json.loads((ROOT / "release-requirements.json").read_text())["releases"]
+
+    def test_each_active_release_demo_ref_resolves_to_source_validation(self):
+        # Every demo-ref in the active catalog resolves to the exact
+        # demo-source-pin-validation, never a broad fallback.
+        requirements, base_mapping = self._load()
+        expected = ["demo-source-pin-validation"]
+        for release in self._active_releases():
+            with self.subTest(release=release):
+                path = "docs/releases/{}.demo-ref".format(release)
+                mapping = {**base_mapping, "release": release}
+                result = planner.plan(self._diff(path), requirements, mapping)
+                self.assertEqual("resolved", result["coverage_status"])
+                self.assertEqual([], result["unresolved_coverage"])
+                self.assertEqual([], result["selected_gates"])
+                self.assertEqual(expected,
+                                 [row["id"] for row in result["required_validation_checks"]])
+
+    def test_v0427_demo_pin_is_resolved(self):
+        # Baseline regression: the historical v0.4.27 pin still resolves.
+        requirements, mapping = self._load()
+        result = planner.plan(self._diff("docs/releases/v0.4.27.demo-ref"),
+                              requirements, {**mapping, "release": "v0.4.27"})
+        self.assertEqual("resolved", result["coverage_status"])
+        self.assertEqual(["demo-source-pin-validation"],
+                         [row["id"] for row in result["required_validation_checks"]])
+
+    def test_v0428_demo_pin_is_resolved(self):
+        # Regression for the v0.4.28 pin that previously fell through.
+        requirements, mapping = self._load()
+        result = planner.plan(self._diff("docs/releases/v0.4.28.demo-ref"),
+                              requirements, {**mapping, "release": "v0.4.28"})
+        self.assertEqual("resolved", result["coverage_status"])
+        self.assertEqual(["demo-source-pin-validation"],
+                         [row["id"] for row in result["required_validation_checks"]])
+
+    def test_non_pin_release_metadata_stays_fallback(self):
+        # A non-pin release-metadata path is NOT a demo-ref; it must not
+        # resolve to the demo pin validation.
+        requirements, mapping = self._load()
+        result = planner.plan(self._diff("docs/releases/v0.4.27.md"),
+                              requirements, {**mapping, "release": "v0.4.27"})
+        self.assertNotEqual(["demo-source-pin-validation"],
+                            [row["id"] for row in result["required_validation_checks"]])
+
+    def test_demo_pin_mixed_with_other_change_is_unresolved(self):
+        # A demo-ref pin plus any other changed path must stay unresolved,
+        # because the pin must be a standalone modified file.
+        requirements, mapping = self._load()
+        diff = {
+            "target_base_sha": "a" * 40, "head_sha": "b" * 40,
+            "merge_base_sha": "c" * 40, "integration_sha": "d" * 40,
+            "broad_required": False, "reasons": [],
+            "changes": [
+                {"status": "modified", "path": "docs/releases/v0.4.27.demo-ref"},
+                {"status": "modified", "path": "docs/guide.md"},
+            ],
+        }
+        result = planner.plan(diff, requirements, {**mapping, "release": "v0.4.27"})
+        self.assertEqual("unresolved", result["coverage_status"])
+        self.assertTrue(
+            any("v0.4.27 Demo source pin" in m for m in result["unresolved_coverage"]))
 
 
 if __name__ == "__main__":
