@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -20,6 +21,14 @@ const (
 	ExecutorURL        = "https://baseharbor-runtime-executor:9443"
 	DefaultImage       = "ghcr.io/mcpdev80/baseharbor-runtime:edge"
 )
+
+// runtimeImageRegex is the allow-list for BASEHARBOR_RUNTIME_IMAGE. It accepts a
+// single image reference (registry/repo:tag) whose host and repo contain only
+// alphanumerics and the usual Docker reference separators, and whose tag is an
+// alphanumeric dotted-decimal label. It deliberately rejects '=', path
+// separators and any control/injection characters so the value cannot inject a
+// second key into the rendered executor compose.yaml.
+var runtimeImageRegex = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._/-]*:[A-Za-z0-9][A-Za-z0-9._-]*$`)
 
 type Files struct {
 	Dir            string
@@ -93,6 +102,17 @@ func EnsureFilesAt(dataDir, namespace string, identity openbao.RuntimeExecutorMT
 	if err != nil {
 		return Files{}, err
 	}
+	// FUND-D (H-V43): the runtime.executor image references this projected file at
+	// BASEHARBOR_EXECUTOR_S3_ADMIN_CREDENTIALS_FILE. The compose.yaml is rendered
+	// after this projection, so assert the projected S3 admin file exists and is
+	// non-empty here — before any image/compose write — so a corrupt/empty
+	// credential cannot be referenced by a runnable executor image.
+	s3AdminProjection := filepath.Join(dir, "s3-admin.env")
+	if fi, err := os.Stat(s3AdminProjection); err != nil {
+		return Files{}, fmt.Errorf("inspect projected S3 admin credentials: %w", err)
+	} else if fi.Size() == 0 {
+		return Files{}, errors.New("projected S3 admin credentials file is empty")
+	}
 	executorKeyProjection, err := projectContainerReadableSecret(dir, identity.Key, "executor-key.pem", "runtime executor private key")
 	if err != nil {
 		return Files{}, err
@@ -120,11 +140,15 @@ func EnsureFilesAt(dataDir, namespace string, identity openbao.RuntimeExecutorMT
 		return Files{}, err
 	}
 
+	// FUND-C (H-V43): the executor image flows verbatim into the rendered
+	// compose.yaml (composeYAMLForNetworks). The previous newline/NUL-only guard
+	// let a value such as "tag\n  inject: x" add a second key. Validate against an
+	// allow-list instead: empty is fine (use DefaultImage), otherwise the image
+	// must be a single registry/repo:tag reference.
 	image := strings.TrimSpace(os.Getenv("BASEHARBOR_RUNTIME_IMAGE"))
 	if image == "" {
 		image = DefaultImage
-	}
-	if strings.ContainsAny(image, "\r\n\x00") {
+	} else if !runtimeImageRegex.MatchString(image) {
 		return Files{}, errors.New("BASEHARBOR_RUNTIME_IMAGE is invalid")
 	}
 

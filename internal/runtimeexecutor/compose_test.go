@@ -9,6 +9,89 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/openbao"
 )
 
+func writeNonEmpty(t *testing.T, path, contents string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestEnsureFilesRejectsInjectableRuntimeImage(t *testing.T) {
+	root := t.TempDir()
+	write := func(name string, contents string) string {
+		t.Helper()
+		p := filepath.Join(root, name)
+		writeNonEmpty(t, p, contents)
+		return p
+	}
+	identity := openbao.RuntimeExecutorMTLSFiles{
+		CA:         write("ca.pem", "ca"),
+		Cert:       write("executor-cert.pem", "cert"),
+		Key:        write("executor-key.pem", "key"),
+		ClientCert: write("observer-client-cert.pem", "cc"),
+		ClientKey:  write("observer-client-key.pem", "ck"),
+	}
+	admin := write("s3-admin.env", "key=value")
+	trust := write("s3-ca.pem", "trust")
+	t.Setenv("BASEHARBOR_RUNTIME_IMAGE", "baseharbor-runtime:test\n  inject: \"x\"\n")
+
+	if _, err := EnsureFiles(filepath.Join(root, "data"), identity, admin, "https://seaweedfs-access:8443", trust); err == nil {
+		t.Fatalf("EnsureFiles: injecting a second key into the executor image was accepted, want error")
+	}
+}
+
+func TestEnsureFilesAcceptsCanonicalRuntimeImage(t *testing.T) {
+	root := t.TempDir()
+	write := func(name string, contents string) string {
+		t.Helper()
+		p := filepath.Join(root, name)
+		writeNonEmpty(t, p, contents)
+		return p
+	}
+	identity := openbao.RuntimeExecutorMTLSFiles{
+		CA:         write("ca.pem", "ca"),
+		Cert:       write("executor-cert.pem", "cert"),
+		Key:        write("executor-key.pem", "key"),
+		ClientCert: write("observer-client-cert.pem", "cc"),
+		ClientKey:  write("observer-client-key.pem", "ck"),
+	}
+	admin := write("s3-admin.env", "key=value")
+	trust := write("s3-ca.pem", "trust")
+	t.Setenv("BASEHARBOR_RUNTIME_IMAGE", "ghcr.io/mcpdev80/baseharbor-runtime:0.4.28")
+
+	files, err := EnsureFiles(filepath.Join(root, "data"), identity, admin, "https://seaweedfs-access:8443", trust)
+	if err != nil {
+		t.Fatalf("EnsureFiles with canonical image returned error: %v", err)
+	}
+	if files.Image != "ghcr.io/mcpdev80/baseharbor-runtime:0.4.28" {
+		t.Fatalf("image = %q, want canonical", files.Image)
+	}
+}
+
+func TestEnsureFilesRejectsEmptyProject3AdminCredentials(t *testing.T) {
+	root := t.TempDir()
+	write := func(name string, contents string) string {
+		t.Helper()
+		p := filepath.Join(root, name)
+		writeNonEmpty(t, p, contents)
+		return p
+	}
+	identity := openbao.RuntimeExecutorMTLSFiles{
+		CA:         write("ca.pem", "ca"),
+		Cert:       write("executor-cert.pem", "cert"),
+		Key:        write("executor-key.pem", "key"),
+		ClientCert: write("observer-client-cert.pem", "cc"),
+		ClientKey:  write("observer-client-key.pem", "ck"),
+	}
+	// Empty source credential: the projected S3 admin file would be empty.
+	admin := write("s3-admin.env", "")
+	trust := write("s3-ca.pem", "trust")
+
+	if _, err := EnsureFiles(filepath.Join(root, "data"), identity, admin, "https://seaweedfs-access:8443", trust); err == nil {
+		t.Fatalf("EnsureFiles: empty projected S3 admin credentials accepted, want error")
+	}
+}
+
 func TestComposeYAMLUsesNonRootPreparedStateVolume(t *testing.T) {
 	got := composeYAML(
 		"baseharbor-runtime:test",
