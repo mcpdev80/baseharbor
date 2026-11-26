@@ -299,21 +299,26 @@ class CoverageCatalogTests(unittest.TestCase):
                 self.assertEqual(expected, selected)
                 self.assertEqual([], unresolved)
 
-    def test_runtime_suite_workflow_selects_both_docker_and_podman_gates(self):
+    def test_runtime_suite_workflow_selects_docker_and_podman_light_gates(self):
         # Card 0428-352 (PR #1812 run 45771862723): a candidate that modifies
         # ONLY the reusable runtime suite fell through the planner's workflow
         # catch-all with selected_gates=[], so the PR Selected Runtime matrix
-        # was [not-required] and the Docker/Podman Light gates never executed.
-        # The catalog is the sole runtime-gate authority: the planner replaces
-        # selected_gates with the resolve_covered_gates output (pr-gate-plan.py
-        # plan(): "The catalog is the sole authority for runtime gate
-        # selection."), so this row - and no planner change - arms the route.
+        # was [not-required] and the fourteen PR-scope Light runtime gates
+        # (the seven families guided, lifecycle, policy, connectivity,
+        # reconciliation, failure and full-destroy on both docker and podman,
+        # jobs runtime_light_gates_* in the release requirements) never
+        # executed. The catalog is the sole runtime-gate
+        # authority: the planner replaces selected_gates with the
+        # resolve_covered_gates output (pr-gate-plan.py plan(): "The catalog is
+        # the sole authority for runtime gate selection."), so the catalog rows
+        # - and no planner change, no workflow change - arm the route.
         current = json.loads((ROOT / "pr-gate-coverage.json").read_text())
         requirements = json.loads((ROOT / "release-requirements.json").read_text())
         mapping = json.loads((ROOT / "pr-gate-map-v1.json").read_text())
-        expected = ["atomic/docker/data-capabilities", "atomic/docker/guided",
-                    "atomic/docker/lifecycle", "atomic/podman/data-capabilities",
-                    "atomic/podman/guided", "atomic/podman/lifecycle"]
+        expected = sorted(gate["id"] for gate in requirements["gates"]
+                         if any("light" in job for job in gate.get("jobs", []))
+                         and "v0.4.27" in gate["required_for"])
+        self.assertEqual(14, len(expected))
         path = ".github/workflows/pre-release-runtime-suite.yml"
         selected, unresolved = coverage_module.resolve_covered_gates([path], current)
         self.assertEqual(expected, selected)
@@ -322,7 +327,7 @@ class CoverageCatalogTests(unittest.TestCase):
         self.assertTrue(set(expected) <= {gate["id"] for gate in requirements["gates"]
                                          if "v0.4.27" in gate["required_for"]})
         # The full trusted planner (real mapping, same inputs CI uses) resolves
-        # the exact single-workflow-file diff shape to those six gates.
+        # the exact single-workflow-file diff shape to those fourteen gates.
         diff = {
             "target_base_sha": "a" * 40, "head_sha": "b" * 40,
             "merge_base_sha": "c" * 40, "integration_sha": "d" * 40,
