@@ -44,11 +44,22 @@ func neverDeliveredRetireFixture(t *testing.T) (resolvedApplication, string, str
 	m = application.WithHTTPExposure(m, "demo-app", "demo-app", 8080, "https")
 	mustWriteInitializedAuthoredManifest(t, application.RepositoryManifestName, m)
 
-	// Initialize the identity. This writes the application store entry AND the
-	// one-shot never-delivered proof.
+	// Initialize the identity. resolveApplication writes the application store
+	// entry (matching the guided-adoption choke) but NOT the one-shot proof,
+	// which the production adoption flow writes separately. Simulate the exact
+	// never-delivered bug state here — identity created, proof written, but no
+	// deployment record ever persisted — by seeding the proof as adoption does.
 	resolved, err := resolveApplication(context.Background(), application.DefaultStore(), nil, "apply")
 	if err != nil {
 		t.Fatalf("resolve for init: %v", err)
+	}
+	if err := deployment.CreateNeverDeliveredProof(
+		resolved.DeploymentIdentity.Target,
+		resolved.DeploymentIdentity.ApplicationID,
+		resolved.DeploymentIdentity.Application,
+		resolved.DeploymentIdentity.Environment,
+	); err != nil {
+		t.Fatalf("seed never-delivered proof: %v", err)
 	}
 	proofFile := filepath.Join(neverDeliveredProofDirFor(t, resolved.DeploymentIdentity), resolved.DeploymentIdentity.Environment+".json")
 	if _, statErr := os.Stat(proofFile); statErr != nil {
