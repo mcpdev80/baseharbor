@@ -39,6 +39,25 @@ func neverDeliveredProofPath(target, applicationID, environment string) (string,
 	return filepath.Join(root, "never-delivered", applicationID, environment+".json"), nil
 }
 
+// neverDeliveredProofDir returns the never-delivered/<applicationID> directory
+// that holds this identity's one-shot proof. It reuses the same validation and
+// root resolution as neverDeliveredProofPath so callers that only need to prune
+// the directory (never to read or write a proof) stay consistent with the
+// production path.
+func NeverDeliveredProofDir(target, applicationID string) (string, error) {
+	if err := ValidateTargetName(target); err != nil {
+		return "", err
+	}
+	if err := stableid.ValidateUUIDv4("application", applicationID); err != nil {
+		return "", err
+	}
+	root, err := TargetStateRoot(target)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(root, "never-delivered", applicationID), nil
+}
+
 func CreateNeverDeliveredProof(target, applicationID, application, environment string) error {
 	path, err := neverDeliveredProofPath(target, applicationID, environment)
 	if err != nil {
