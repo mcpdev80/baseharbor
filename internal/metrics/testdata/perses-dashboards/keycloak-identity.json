@@ -31,10 +31,10 @@
           },
           "queries": [
             {
-              "kind": "TimeSeries",
+              "kind": "TimeSeriesQuery",
               "spec": {
                 "plugin": {
-                  "kind": "PrometheusQuery",
+                  "kind": "PrometheusTimeSeriesQuery",
                   "spec": {
                     "query": "up{job=\"baseharbor-identity\",baseharbor_application=\"$application\",baseharbor_environment=\"$env\"}"
                   }
