@@ -212,7 +212,7 @@ func runApplicationApplyLifecycle(ctx context.Context, store application.Store, 
 	// this run and the consent is carried straight to the write below; otherwise
 	// the apply requires --confirm-candidate with that exact digest and fails
 	// closed without the flag.
-	promptConfirmCandidateSubmission(ctx, execution.resolved, applicationInput(ctx, runtimeInput), out)
+	promptConfirmCandidateSubmissionInput(ctx, execution.resolved, applicationInput(ctx, runtimeInput), out)
 	pending, err := recordDeploymentBeforeMutation(ctx, execution.resolved, "applying", candidateConsentOverride(ctx))
 	if err != nil {
 		return evidence, fmt.Errorf("record deployment before mutation: %w", err)

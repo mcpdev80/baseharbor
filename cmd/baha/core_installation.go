@@ -300,9 +300,29 @@ func applicationInput(ctx context.Context, fallback io.Reader) io.Reader {
 	return fallback
 }
 
+// withInteractiveApplicationInput threads an explicit reader as THIS
+// invocation's application input, bypassing the terminal heuristic. Production
+// CLI entry points use withApplicationInput; the leaf prompt and the
+// same-stream consent gate still decide interactivity from the reader itself,
+// so this seam is test-only (0428-292 CODEX-static finding 2 remote-route
+// regression).
+func withInteractiveApplicationInput(ctx context.Context, in io.Reader) context.Context {
+	return context.WithValue(ctx, applicationInputKey{}, in)
+}
+
 func withApplicationInput(ctx context.Context, in io.Reader) context.Context {
 	if readerIsTerminal(in) {
-		return context.WithValue(ctx, applicationInputKey{}, bufio.NewReader(in))
+		// The CLI boundary keeps the terminal FILE identity explicit in the
+		// typed wrapper (sameTerminalStream, 0428-292 finding 1): a stream
+		// already wrapped once (terminalStdinReader) is threaded as-is so
+		// buffered prompt state is never forked and the witness stays intact.
+		if wrapped, ok := in.(*terminalStdinReader); ok {
+			return context.WithValue(ctx, applicationInputKey{}, wrapped)
+		}
+		if file, ok := in.(*os.File); ok {
+			return context.WithValue(ctx, applicationInputKey{}, &terminalStdinReader{Reader: bufio.NewReader(file), File: file})
+		}
+		return ctx
 	}
 	return ctx
 }

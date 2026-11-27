@@ -158,12 +158,16 @@ func executeRemoteApplicationApply(ctx context.Context, resolved resolvedApplica
 		issuer = brokerIssuer
 	}
 	// Operator confirmation before any candidate submission is persisted (same
-	// fail-closed choke point as the local apply path). The remote transport
-	// attests the candidate consent from the CLI's --confirm-candidate override
-	// only (management_remote_apply_cli.go), so this call stays display-only:
-	// the returned context is deliberately discarded and the remote behaviour,
-	// including any interactive answer, is unchanged.
-	promptConfirmCandidateSubmission(ctx, resolved, applicationInput(ctx, runtimeInput), out)
+	// fail-closed choke point as the local apply path, CODEX-static finding (2)
+	// contract correction): this route DOES accept inline operator consent. An
+	// interactive terminal stdin answering the bind question with "y" binds the
+	// exact candidate for THIS invocation (same one-shot, identity-keyed,
+	// re-verified binding the local apply uses); without that consent — or on a
+	// non-terminal/piped stdin — the write boundary stays fail-closed and only
+	// the CLI's --confirm-candidate override authorises it. The earlier
+	// "display-only, answer not part of remote behavior" claim contradicted the
+	// code; it is removed, not the gate.
+	promptConfirmCandidateSubmissionInput(ctx, resolved, applicationInput(ctx, runtimeInput), out)
 	pending, err := recordDeploymentBeforeMutation(ctx, resolved, "applying", candidateConsentOverride(ctx))
 	if err != nil {
 		return err

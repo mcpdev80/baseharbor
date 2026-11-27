@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"reflect"
 	"regexp"
 	"strings"
 	"time"
@@ -84,7 +85,22 @@ func candidateConsentOverride(ctx context.Context) string {
 // from the current source. A nil record still fingerprints the freshly resolved
 // source, so a nil-record prompt shows the digest of the new submission, not
 // an empty value.
-func promptConfirmCandidateSubmission(ctx context.Context, resolved resolvedApplication, in io.Reader, out io.Writer) {
+//
+// promptConfirmCandidateSubmission asks the operator to confirm the EXACT
+// candidate before the write. It is fail-closed: without a real terminal stdin,
+// with --no-input, or on a threaded reader that is not the terminal stream, it
+// prints the re-run-with-flag contract and binds nothing. The bind answer is
+// read from the same stream whose terminal identity the gate checked (see
+// interactiveCandidatePromptAllowed), never from a different context reader.
+func promptConfirmCandidateSubmission(ctx context.Context, resolved resolvedApplication, out io.Writer) {
+	promptConfirmCandidateSubmissionInput(ctx, resolved, os.Stdin, out)
+}
+
+// promptConfirmCandidateSubmissionInput is the leaf of the bind prompt with an
+// explicit reader: the local apply and the remote lifecycle thread their
+// interactive stdin (applicationInput(ctx, runtimeInput)) so the question and
+// the answer share one stream; every other caller keeps the historical default.
+func promptConfirmCandidateSubmissionInput(ctx context.Context, resolved resolvedApplication, in io.Reader, out io.Writer) {
 	submission, current := candidateSubmissionForResolvedApp(ctx, resolved)
 	if submission.SourceRevision == "" {
 		return
@@ -248,12 +264,100 @@ var interactiveCandidateStdin = func() bool {
 }
 
 // interactiveCandidatePromptAllowed reports whether the bind prompt may run for
-// this invocation: the caller reached the leaf with a real reader, the session
-// is not forced non-interactive (--no-input, machine/JSON mode), and an
-// interactive candidate stdin is available.
+// this invocation. The decision AND the consumed answer must concern the SAME
+// stream (CODEX-static finding (1) on PR #1884): deciding on os.Stdin while the
+// prompt consumes a different threaded reader would let a queued 'y' on an
+// internal seam reader pass as operator consent nobody typed.
+//
+// Shapes: (a) the canonical process stdin — an *os.File equal to os.Stdin — is
+// interactive iff the production-pinned terminal check says so; (b) a threaded
+// *os.File (the same-terminal wrapper, or a test-threaded stdin file): the
+// reader must BE a terminal file (term.IsTerminal via the pinned os.Stdin check
+// only for the os.Stdin identity, otherwise the reader's own terminal state);
+// (c) any other stream (pipe, bytes.Buffer seam, file) is non-interactive and
+// keeps the --confirm-candidate re-run contract. --no-input always refuses.
 func interactiveCandidatePromptAllowed(ctx context.Context, in io.Reader) bool {
 	if in == nil || noInput(ctx) {
 		return false
 	}
-	return interactiveCandidateStdin()
+	// The terminal decision and the consumed stream must be the SAME stream
+	// (CODEX-static finding (1) on PR #1884): deciding on os.Stdin while the
+	// prompt consumes `in` would let an internal context reader (a
+	// bytes.Buffer seam) whose queue holds a 'y' nobody typed pass as operator
+	// consent. Production therefore decides on the very reader it hands to the
+	// prompt. The interactiveCandidateStdin seam stays the deterministic test
+	// switch for the terminal property of the canonical *os.File stdin shape.
+	if file, ok := in.(*os.File); ok {
+		if file != os.Stdin {
+			// A threaded stdin file: interactive only when that very file is a
+			// terminal (the pinned os.Stdin check says nothing about it).
+			return terminalFileReader(file)
+		}
+		return interactiveCandidateStdin()
+	}
+	if wrapped, ok := in.(*terminalStdinReader); ok {
+		if wrapped.File != os.Stdin {
+			return terminalFileReader(wrapped.File)
+		}
+		return interactiveCandidateStdin()
+	}
+	return false
+}
+
+// terminalFileReader reports whether an *os.File is a terminal, through the
+// same IsTerminal call readerIsTerminal uses for the *os.File shape.
+func terminalFileReader(file *os.File) bool {
+	return readerIsTerminal(file)
+}
+
+// sameTerminalStream reports whether the reader the prompt would consume is the
+// very terminal file the interactive decision was made on. A buffered wrapper
+// (bufio.Reader) over the same *os.File qualifies — withApplicationInput reuses
+// it so identity survives — but any other stream (an internal bytes.Buffer
+// seam, a pipe, a file) does not, even when the process runs on a terminal.
+func sameTerminalStream(in io.Reader, tty *os.File) bool {
+	if tty == nil {
+		return false
+	}
+	switch r := in.(type) {
+	case *os.File:
+		return r == tty
+	case *terminalStdinReader:
+		return r.File == tty && r.Reader != nil
+	case *bufio.Reader:
+		// Unwrap exactly one buffering layer (the *os.File / wrapper / default
+		// arms terminate this single step — no unbounded recursion): a pipe or
+		// file stream directly under the buffer qualifies only when it IS the
+		// terminal file; a bytes.Buffer seam or anything else fails closed.
+		return sameTerminalStream(underlyingSource(r), tty)
+	default:
+		return false
+	}
+}
+
+// underlyingSource discloses the immediate source of a bufio.Reader without
+// consuming a byte: the prompt's own Read path is io.Reader-agnostic, and the
+// identity question only has a meaningful answer for readers built over
+// streams. Reflection is limited to bufio's unexported 'rd' field, which is
+// stable across Go versions (documented in the test akte); a missing or
+// unreadable field means "foreign stream".
+func underlyingSource(r *bufio.Reader) io.Reader {
+	v := reflect.Indirect(reflect.ValueOf(r)).FieldByName("rd")
+	if !v.IsValid() || v.IsZero() || !v.CanInterface() {
+		return nil
+	}
+	src, ok := v.Interface().(io.Reader)
+	if !ok {
+		return nil
+	}
+	return src
+}
+
+// terminalStdinReader is the typed CLI-boundary wrapper (0428-292 finding 1/2):
+// withApplicationInput buffers the terminal stdin for the lifecycle while
+// keeping the *os.File identity explicit, so sameTerminalStream can prove the
+// prompt consumes exactly the stream the terminal decision was made on.
+type terminalStdinReader struct {
+	*bufio.Reader
+	File *os.File
 }

@@ -143,7 +143,7 @@ func TestPromptDigestEqualsBindDigest(t *testing.T) {
 	bound := delivery.CandidateConsentDigest(submission)
 
 	var prompt strings.Builder
-	promptConfirmCandidateSubmission(context.Background(), r, nil, &prompt)
+	promptConfirmCandidateSubmissionInput(context.Background(), r, nil, &prompt)
 	if !strings.Contains(prompt.String(), bound) {
 		t.Fatalf("prompt does not contain the bound digest %q; prompt=%q", bound, prompt.String())
 	}
@@ -356,7 +356,9 @@ func TestInteractiveCandidateConsentCarriesToWriteWithoutSecondFlag(t *testing.T
 	withInteractiveCandidateStdin(t)
 	r := repoCandidateFixture(t)
 	var out strings.Builder
-	promptConfirmCandidateSubmission(context.Background(), r, interactiveBindReader(t, "y\n"), &out)
+	stdin, feed := withTerminalStdinFake(t)
+	feed("y\n")
+	promptConfirmCandidateSubmissionInput(context.Background(), r, stdin, &out)
 	if err := r.DeploymentIdentity.Validate(); err != nil {
 		t.Fatalf("fixture deployment identity: %v", err)
 	}
@@ -403,7 +405,9 @@ func TestInteractiveCandidateConsentRefusalKeepsFailClosed(t *testing.T) {
 	r := repoCandidateFixture(t)
 	var out strings.Builder
 	ctx := context.Background()
-	promptConfirmCandidateSubmission(ctx, r, interactiveBindReader(t, "n\n"), &out)
+	stdin, feed := withTerminalStdinFake(t)
+	feed("n\n")
+	promptConfirmCandidateSubmissionInput(ctx, r, stdin, &out)
 	if got := takeInteractiveCandidateConsentDigest(r.DeploymentIdentity.ApplicationID, r.DeploymentIdentity.Target); got != "" {
 		t.Fatalf("refusal carried consent: %q", got)
 	}
@@ -437,7 +441,7 @@ func TestNonInteractiveCandidateConsentKeepsFlagContract(t *testing.T) {
 	// non-interactive invocation interactive).
 	var pipedOut strings.Builder
 	ctxPiped := context.Background()
-	promptConfirmCandidateSubmission(ctxPiped, r, strings.NewReader("y\n"), &pipedOut)
+	promptConfirmCandidateSubmissionInput(ctxPiped, r, strings.NewReader("y\n"), &pipedOut)
 	if got := candidateConsentOverride(ctxPiped); got != "" {
 		t.Fatal("piped stdin carried candidate consent")
 	}
@@ -455,7 +459,9 @@ func TestNonInteractiveCandidateConsentKeepsFlagContract(t *testing.T) {
 	// an interactive binding must never linger unclaimed afterwards.
 	ctxNoInput := machineNoninteractiveContext(context.Background())
 	var discarded strings.Builder
-	promptConfirmCandidateSubmission(ctxNoInput, r, interactiveBindReader(t, "y\n"), &discarded)
+	stdin, feed := withTerminalStdinFake(t)
+	feed("y\n")
+	promptConfirmCandidateSubmissionInput(ctxNoInput, r, stdin, &discarded)
 	if got := candidateConsentOverride(ctxNoInput); got != "" {
 		t.Fatal("--no-input carried interactive candidate consent")
 	}
@@ -588,6 +594,34 @@ func withInteractiveCandidateStdin(t *testing.T) {
 	t.Cleanup(func() { interactiveCandidateStdin = previous })
 }
 
+// withTerminalStdinFake makes a fresh pipe the process os.Stdin and returns the
+// production-shaped CLI-boundary reader over it (terminalStdinReader: the typed
+// wrapper withApplicationInput threads through the lifecycle) plus a feed func.
+// Together with withInteractiveCandidateStdin this reproduces the real terminal
+// shape: the interactivity seam says "terminal stdin" AND the threaded reader
+// IS that stdin file, so the bind question is reachable exactly as on a
+// keyboard.
+func withTerminalStdinFake(t *testing.T) (*terminalStdinReader, func(string)) {
+	t.Helper()
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	previous := os.Stdin
+	os.Stdin = reader
+	t.Cleanup(func() {
+		os.Stdin = previous
+		_ = reader.Close()
+		_ = writer.Close()
+	})
+	return &terminalStdinReader{Reader: bufio.NewReader(reader), File: reader}, func(answer string) {
+		t.Helper()
+		if _, err := writer.Write([]byte(answer)); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
 // withNonInteractiveCandidateStdin pins the production shape: the bind prompt is
 // only ever reachable through a terminal os.Stdin, so a *bytes.Buffer that
 // happens to satisfy readerIsTerminal (the internal-input-resolver seam) must
@@ -597,4 +631,119 @@ func withNonInteractiveCandidateStdin(t *testing.T) {
 	previous := interactiveCandidateStdin
 	interactiveCandidateStdin = func() bool { return false }
 	t.Cleanup(func() { interactiveCandidateStdin = previous })
+}
+
+// TestQueuedNonTerminalReaderNeverGrantsBindConsent is the CODEX-static
+// finding-(1)/(2) negative regression: the process stdin IS a terminal (the
+// seam reports interactive), while the reader threaded through the lifecycle
+// context is a DIFFERENT buffered stream whose queue already holds "y" — the
+// shape of an internal input-resolver seam or a pre-seeded pipe. That queued
+// answer is not operator consent: the bind question must not be answered from
+// it, no binding may exist, and the write boundary must fail closed.
+func TestQueuedNonTerminalReaderNeverGrantsBindConsent(t *testing.T) {
+	withInteractiveCandidateStdin(t)
+	r := repoCandidateFixture(t)
+	var out strings.Builder
+	// in: the production threaded shape (withApplicationInput yields a
+	// bufio.Reader) over a foreign pipe that already contains "y" — the stream
+	// is NOT os.Stdin, so sameTerminalStream must refuse it and no binding may
+	// exist.
+	queued := bufio.NewReader(interactiveBindReader(t, "y\n"))
+	promptConfirmCandidateSubmissionInput(context.Background(), r, queued, &out)
+	if got := takeInteractiveCandidateConsentDigest(r.DeploymentIdentity.ApplicationID, r.DeploymentIdentity.Target); got != "" {
+		t.Fatalf("a queued non-terminal 'y' must never bind consent, got digest %q", got)
+	}
+	if _, err := recordDeploymentBeforeMutation(context.Background(), r, "applying", ""); err == nil {
+		t.Fatal("write without consent must fail closed after a refused non-terminal reader")
+	}
+	// The fail-closed re-run-with-flag contract is intact (no silent bind).
+	if !strings.Contains(out.String(), "--confirm-candidate") {
+		t.Fatalf("refused route must keep the --confirm-candidate contract; output=%q", out.String())
+	}
+}
+
+// TestWithApplicationInputPreservesTerminalIdentity locks the reader-identity
+// contract the bind gate depends on: withApplicationInput over a terminal
+// reader must hand back a reader that still passes sameTerminalStream (an
+// already-buffered terminal reader is reused, never re-wrapped behind a foreign
+// stream), while a non-terminal reader never enters the context at all.
+func TestWithApplicationInputPreservesTerminalIdentity(t *testing.T) {
+	previous := os.Stdin
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		os.Stdin = previous
+		_ = reader.Close()
+		_ = writer.Close()
+	})
+	// (a) terminal-shaped stdin file threaded twice: the SAME bufio.Reader must
+	// come back, and it must remain the same terminal stream.
+	os.Stdin = reader
+	buffered := &terminalStdinReader{Reader: bufio.NewReader(os.Stdin), File: os.Stdin}
+	ctx := withApplicationInput(context.Background(), buffered)
+	got, ok := ctx.Value(applicationInputKey{}).(*terminalStdinReader)
+	if !ok || got != buffered {
+		t.Fatal("withApplicationInput must thread the typed terminal wrapper as-is (identity + no forked buffering)")
+	}
+	if !sameTerminalStream(got, os.Stdin) {
+		t.Fatal("the threaded reader must still pass the same-terminal-stream check")
+	}
+	// The raw terminal file threads through the wrapper too (the leaf fallback
+	// shape): equality with os.Stdin is the witness.
+	if !sameTerminalStream(os.Stdin, os.Stdin) {
+		t.Fatal("the bare terminal stdin file must satisfy the identity check")
+	}
+	// (b) a foreign pipe stream: withApplicationInput must never thread it (the
+	// *os.File arm requires the exact os.Stdin file; a pipe is foreign). The
+	// readerIsTerminal heuristic still calls it interactive — which is exactly
+	// why the file-identity arm, not the heuristic, is the real gate.
+	foreign := strings.NewReader("y\n")
+	if !readerIsTerminal(foreign) {
+		t.Fatal("fixture: the heuristic reports any non-*os.File reader as terminal")
+	}
+	ctx2 := withApplicationInput(context.Background(), foreign)
+	if _, leaked := ctx2.Value(applicationInputKey{}).(io.Reader); leaked {
+		t.Fatal("a non-file stream must never become the application input")
+	}
+
+	_ = writer
+}
+
+// TestRemoteApplyRouteInlineBindContractIsTruthful locks the CODEX-static
+// finding-(2) contract correction on the remote 'app up' route
+// (app_remote_lifecycle.go): the bind question on that route IS operator
+// consent (one-shot, identity-keyed, re-verified at the write boundary), and
+// the display-only comment that contradicted the code is gone. The test
+// proves BOTH directions against the production leaf the remote path calls:
+// (a) a non-terminal invocation of the remote shape keeps the fail-closed
+// --confirm-candidate contract (a remote apply without consent never binds);
+// (b) an inline 'y' on the terminal shape binds exactly once for THIS
+// invocation's identity — the same gate the remote route runs.
+func TestRemoteApplyRouteInlineBindContractIsTruthful(t *testing.T) {
+	r := repoCandidateFixture(t)
+	t.Chdir(r.repositoryRoot())
+	ctx, core, _ := remoteApplicationCoreFixture(t)
+	remote := r
+	remote.Target = core
+	remote.TargetStateRoot = r.TargetStateRoot
+
+	// (a) non-interactive remote shape: the leaf must refuse and keep the flag
+	// contract; the write boundary fails closed for this remote candidate.
+	withNonInteractiveCandidateStdin(t)
+	var discarded strings.Builder
+	promptConfirmCandidateSubmissionInput(ctx, remote, applicationInput(ctx, nil), &discarded)
+	if !strings.Contains(discarded.String(), "--confirm-candidate") {
+		t.Fatalf("non-interactive remote route lost the --confirm-candidate contract: %q", discarded.String())
+	}
+	if got := takeInteractiveCandidateConsentDigest(r.DeploymentIdentity.ApplicationID, r.DeploymentIdentity.Target); got != "" {
+		t.Fatal("a non-interactive remote prompt must never bind consent")
+	}
+	if _, err := recordDeploymentBeforeMutation(ctx, remote, "applying", candidateConsentOverride(ctx)); err == nil {
+		t.Fatal("remote apply without consent must fail closed")
+	}
+	if strings.Contains(discarded.String(), "Bind this exact candidate") {
+		t.Fatal("the bind question must not be asked on a non-terminal stdin")
+	}
 }
