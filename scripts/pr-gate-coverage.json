@@ -2077,6 +2077,22 @@
       ]
     },
     {
+      "id": "source.internal.deployment.damaged.state.skip.test",
+      "path": "internal/deployment/damaged_namespace_test.go",
+      "surfaces": [
+        "source.gate.atomic.docker.lifecycle",
+        "source.gate.atomic.podman.lifecycle"
+      ]
+    },
+    {
+      "id": "source.internal.deployment.damaged.state.network.skip.test",
+      "path": "internal/deployment/damaged_namespace_network_test.go",
+      "surfaces": [
+        "source.gate.atomic.docker.lifecycle",
+        "source.gate.atomic.podman.lifecycle"
+      ]
+    },
+    {
       "id": "cmd.baha.application_lifecycle_lock_test",
       "path": "cmd/baha/application_lifecycle_lock_test.go",
       "runtime_specific": true,

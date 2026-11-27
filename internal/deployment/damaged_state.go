@@ -211,6 +211,15 @@ func DamagedDirectoryState(root string) (bool, error) {
 // application instead of inventing one from the requesting manifest.
 const RetainedOwnershipBandName = ".owner"
 
+// reservedNeverDeliveredNamespace is the name of the subdirectory of a Target's
+// deployments namespace that the adoption writer reserves for the never-delivered
+// one-shot proof (never-delivered/<applicationID>/<environment>.json). It is not a
+// deployment record, so the damaged-state namespace scan must skip it: a
+// protected-state file sitting directly under the reserved namespace (no
+// deployment.json) is the legitimate absence of a record, never a damaged
+// deployment.
+const reservedNeverDeliveredNamespace = "never-delivered"
+
 // LoadRetainedOwnerBand reads the retained ownership band from a damaged deploy
 // directory and returns the application identity that production recorded when
 // the deployment was materialized. It returns (application, environment, true)
@@ -265,6 +274,16 @@ func DamagedDeploymentNamespace(targetName, applicationID, environment string) (
 	}
 	for _, entry := range entries {
 		if !entry.IsDir() {
+			continue
+		}
+		// The never-delivered namespace is reserved by the adoption writer:
+		// never-delivered/<applicationID>/<environment>.json holds the one-shot
+		// fresh-init proof, and the directory itself is intentionally not a
+		// deployment record. A protected-state file sitting directly under the
+		// reserved namespace (no deployment.json) must therefore never be read as
+		// damaged deployment state, so skip the reserved subdirectory here, before
+		// the per-directory DamagedDirectoryState scan runs.
+		if entry.Name() == reservedNeverDeliveredNamespace {
 			continue
 		}
 		damaged, damageErr := DamagedDirectoryState(filepath.Join(deployDir, entry.Name()))
