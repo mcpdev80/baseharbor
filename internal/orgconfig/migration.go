@@ -56,6 +56,13 @@ var (
 	orgconfigRename      = func(from, to string) error { return os.Rename(from, to) }
 	orgconfigMarkerEvent = func(string) {}
 	orgconfigSyncDir     = func(dir string) error { return syncDir(dir) }
+	// orgconfigSyncDirFault, when non-nil, is the deterministic fault injected
+	// through the REAL syncDir node in the regression test. syncDir wraps it
+	// into a *syncDurabilityError so the seam returns the same contract the
+	// production path does (errors.As-conform); the test replaces syncDir's
+	// directory open with this hook rather than swapping the whole seam, so the
+	// error is never returned unwrapped.
+	orgconfigSyncDirFault = func(dir string) error { return nil }
 )
 
 // errSyncDirFailure is the deterministic data-directory-sync fault injected
@@ -234,6 +241,12 @@ func isUnsupportedDirectorySync(err error) bool {
 // no-op.
 func syncDir(dir string) error {
 	orgconfigFsync("dir:" + filepath.Base(dir))
+	if fault := orgconfigSyncDirFault(dir); fault != nil {
+		// Wrap the injected fault into the contract type so the seam returns
+		// exactly what a real open/Sync/Close failure returns: a
+		// *syncDurabilityError the caller can errors.As on.
+		return &syncDurabilityError{err: fault}
+	}
 	handle, err := os.Open(dir)
 	if err != nil {
 		return &syncDurabilityError{err: fmt.Errorf("open orgconfig directory for fsync: %w", err), unsupported: true}

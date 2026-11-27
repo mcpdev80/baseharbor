@@ -436,16 +436,15 @@ func TestWriteDurableCanonicalDataFsyncsBeforeRename(t *testing.T) {
 	}
 }
 
-// withSyncDirFault swaps the data-directory-sync seam for one test body. A fault
-// stands in for a real open/Sync/Close I/O error on the canonical data
-// directory: the data could not be confirmed durable, so the once-only
-// completion marker must not be created and the migration must NOT be reported
-// complete.
+// withSyncDirFault installs a deterministic data-directory-sync fault through
+// the real syncDir node for one test body. The fault is wrapped by syncDir into
+// a *syncDurabilityError, so the seam returns the same error contract the
+// production path does (errors.As-conform) — never unwrapped.
 func withSyncDirFault(t *testing.T, fn func()) {
 	t.Helper()
-	previous := orgconfigSyncDir
-	orgconfigSyncDir = func(string) error { return errSyncDirFailure }
-	defer func() { orgconfigSyncDir = previous }()
+	previous := orgconfigSyncDirFault
+	orgconfigSyncDirFault = func(string) error { return errSyncDirFailure }
+	defer func() { orgconfigSyncDirFault = previous }()
 	fn()
 }
 
@@ -454,8 +453,9 @@ func withSyncDirFault(t *testing.T, fn func()) {
 // injected data-directory-sync failure (a) aborts migrateToCanonical with the
 // real error, (b) never writes the once-only completion marker, and (c) leaves
 // the completion claim false — so a missing canonical file is never silently
-// accepted as complete. The injected error type is the syncDurabilityError so a
-// future caller can tell an explicitly directory-fsync-unsupported platform
+// accepted as complete. The injected error flows through the real syncDir node
+// and is wrapped into a *syncDurabilityError (errors.As-conform), so a future
+// caller can tell an explicitly directory-fsync-unsupported platform
 // (unsupported=true) from a transient I/O error.
 func TestSyncDirFailureFailsClosedNoCompleteMarker(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "canon")
