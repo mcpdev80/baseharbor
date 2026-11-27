@@ -2717,6 +2717,15 @@
       "runtime_specific": true
     },
     {
+      "id": "source.internal_applicationbackup_recovery_manifest_workload_test_go",
+      "path": "internal/applicationbackup/recovery_manifest_workload_test.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ],
+      "runtime_specific": true
+    },
+    {
       "id": "source.cmd_baha_app_identity_dashboard_status_test_go",
       "path": "cmd/baha/app_identity_dashboard_status_test.go",
       "surfaces": [
