@@ -8,12 +8,27 @@ import (
 	"time"
 
 	"github.com/google/jsonschema-go/jsonschema"
+	"github.com/mcpdev80/baseharbor/internal/apierror"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/machine"
 	"github.com/mcpdev80/baseharbor/internal/runtimeexplorer"
 )
 
 const SchemaID = "https://github.com/mcpdev80/baseharbor/blob/HEAD/contracts/machine/v1/read-models.schema.json"
+
+// fullPage answers the contract default for a result built without a page
+// request: one bounded page covering the whole observation.
+func fullPage(total int) apierror.Pagination {
+	return apierror.Pagination{Page: apierror.FirstPage, PageSize: total, Total: total, TotalPages: apierror.FirstPage}
+}
+
+// RuntimeListResult is the machine read-model envelope for runtime.list: the
+// same pagination contract object every navigation list result carries, next
+// to the provider-neutral resource collection.
+type RuntimeListResult struct {
+	Pagination apierror.Pagination        `json:"pagination"`
+	Resources  []runtimeexplorer.Resource `json:"resources"`
+}
 
 type Example struct {
 	Operation string `json:"operation"`
@@ -25,17 +40,17 @@ func Examples() []Example {
 	exit := 0
 	scope := machine.OperationContext{Environment: "prod", Target: "synthetic-target", Resource: "synthetic-container"}
 	return []Example{
-		{"app.list", machine.ApplicationListResult{ContractVersion: "v1", Deployments: []machine.DeploymentSummary{{ContractVersion: "v1", DeploymentID: "synthetic-deployment", ApplicationID: "synthetic-application", Target: "synthetic-target", Application: "synthetic-demo", Environment: "prod", RuntimeProvider: "podman", State: "running", Ready: true, SourceKind: "repository", SourceAvailable: true}}}},
+		{"app.list", machine.ApplicationListResult{Pagination: fullPage(1), ContractVersion: "v1", Deployments: []machine.DeploymentSummary{{ContractVersion: "v1", DeploymentID: "synthetic-deployment", ApplicationID: "synthetic-application", Target: "synthetic-target", Application: "synthetic-demo", Environment: "prod", RuntimeProvider: "podman", State: "running", Ready: true, SourceKind: "repository", SourceAvailable: true}}}},
 		{"app.versions", ApplicationVersionsResult{ContractVersion: ReleaseViewContractVersion, Releases: []VersionView{{ContractVersion: ReleaseViewContractVersion, Identity: ViewIdentity{Target: "synthetic-target", Application: "synthetic-demo", Environment: "prod", SourceKind: "repository"}, Source: ViewSourceState{Available: true}, Stages: ViewStages{
 			Wanted:   &ViewStageCell{Kind: deployment.ReferenceIntended, Reference: "sha256:synthetic-intended", ObservedAt: now},
 			Applied:  &ViewStageCell{Kind: deployment.ReferenceApplied, Reference: "sha256:synthetic-applied", ObservedAt: now.Add(-time.Hour)},
 			Observed: &ViewStageCell{Kind: deployment.ReferenceObserved, Reference: "sha256:synthetic-applied", ObservedAt: now.Add(-time.Hour)},
 		}}}}},
-		{"app.list", machine.ApplicationListResult{ContractVersion: "v1", Deployments: []machine.DeploymentSummary{}, Warnings: []string{"Synthetic partial source observation"}}},
-		{"target.list", machine.TargetListResult{ContractVersion: "v1", Targets: []machine.TargetSummary{{ContractVersion: "v1", Name: "synthetic-target", RuntimeProvider: "podman", AccessReference: "synthetic-node", Scope: "synthetic-scope", Default: true, Effective: true}}}},
-		{"workspace.list", machine.WorkspaceListResult{ContractVersion: "v1", Workspaces: []machine.WorkspaceSummary{{ContractVersion: "v1", Application: "synthetic-demo", Manifest: "/synthetic/baseharbor.yaml", SourceCount: 1, Sources: map[string]string{"app": "/synthetic/app"}}}}},
-		{"runtime.list", []runtimeexplorer.Resource{{ContractVersion: runtimeexplorer.ContractVersion, Ref: runtimeexplorer.ResourceRef{Provider: "podman", Target: "synthetic-target", Kind: runtimeexplorer.KindContainer, ResourceID: "synthetic-container"}, DisplayName: "synthetic-api", Ownership: runtimeexplorer.OwnershipManaged, Relationship: runtimeexplorer.Relationship{ApplicationID: "synthetic-application", DeploymentID: "synthetic-deployment", Environment: "prod"}, State: runtimeexplorer.ResourceState{Observed: "running"}}}},
-		{"runtime.list", []runtimeexplorer.Resource(nil)},
+		{"app.list", machine.ApplicationListResult{Pagination: fullPage(0), ContractVersion: "v1", Deployments: []machine.DeploymentSummary{}, Warnings: []string{"Synthetic partial source observation"}}},
+		{"target.list", machine.TargetListResult{Pagination: fullPage(1), ContractVersion: "v1", Targets: []machine.TargetSummary{{ContractVersion: "v1", Name: "synthetic-target", RuntimeProvider: "podman", AccessReference: "synthetic-node", Scope: "synthetic-scope", Default: true, Effective: true}}}},
+		{"workspace.list", machine.WorkspaceListResult{Pagination: fullPage(1), ContractVersion: "v1", Workspaces: []machine.WorkspaceSummary{{ContractVersion: "v1", Application: "synthetic-demo", Manifest: "/synthetic/baseharbor.yaml", SourceCount: 1, Sources: map[string]string{"app": "/synthetic/app"}}}}},
+		{"runtime.list", RuntimeListResult{Pagination: fullPage(1), Resources: []runtimeexplorer.Resource{{ContractVersion: runtimeexplorer.ContractVersion, Ref: runtimeexplorer.ResourceRef{Provider: "podman", Target: "synthetic-target", Kind: runtimeexplorer.KindContainer, ResourceID: "synthetic-container"}, DisplayName: "synthetic-api", Ownership: runtimeexplorer.OwnershipManaged, Relationship: runtimeexplorer.Relationship{ApplicationID: "synthetic-application", DeploymentID: "synthetic-deployment", Environment: "prod"}, State: runtimeexplorer.ResourceState{Observed: "running"}}}}},
+		{"runtime.list", RuntimeListResult{Pagination: fullPage(0), Resources: []runtimeexplorer.Resource{}}},
 		{"runtime.capabilities", runtimeexplorer.CapabilitySet{ContractVersion: runtimeexplorer.ContractVersion, Provider: "podman", Target: "synthetic-target", Capabilities: []runtimeexplorer.Capability{runtimeexplorer.CapabilityResourceInspect, runtimeexplorer.CapabilityContainerTerminal}, ResourceKinds: []runtimeexplorer.ResourceKind{runtimeexplorer.KindContainer}}},
 		{"stream.descriptor", machine.StreamDescriptor{ContractVersion: "v1", StreamID: "stream_0123456789abcdef0123456789abcdef", Kind: machine.StreamExec, Actor: machine.ActorRef{Mode: "authenticated", Issuer: "https://identity.example", Subject: "synthetic-operator"}, Context: scope, ResourceKind: "container", ResourceID: "synthetic-container", CreatedAt: now}},
 		{"terminal.event", machine.TerminalEvent{ContractVersion: "v1", StreamID: "stream_0123456789abcdef0123456789abcdef", Sequence: 1, Kind: "terminal.ready", OccurredAt: now}},
@@ -60,7 +75,7 @@ func Schema() ([]byte, error) {
 		"app.versions":         reflect.TypeFor[ApplicationVersionsResult](),
 		"target.list":          reflect.TypeFor[machine.TargetListResult](),
 		"workspace.list":       reflect.TypeFor[machine.WorkspaceListResult](),
-		"runtime.list":         reflect.TypeFor[[]runtimeexplorer.Resource](),
+		"runtime.list":         reflect.TypeFor[RuntimeListResult](),
 		"runtime.capabilities": reflect.TypeFor[runtimeexplorer.CapabilitySet](),
 		"stream.descriptor":    reflect.TypeFor[machine.StreamDescriptor](),
 		"terminal.event":       reflect.TypeFor[machine.TerminalEvent](),
@@ -79,9 +94,6 @@ func Schema() ([]byte, error) {
 		var definition map[string]any
 		if err := json.Unmarshal(raw, &definition); err != nil {
 			return nil, err
-		}
-		if operation == "runtime.list" {
-			definition = map[string]any{"anyOf": []any{definition, map[string]any{"type": "null"}}}
 		}
 		definitions[operation] = definition
 	}

@@ -5,6 +5,13 @@
     {
       "operation": "app.list",
       "value": {
+        "pagination": {
+          "page": 1,
+          "page_size": 1,
+          "total": 1,
+          "total_pages": 1,
+          "next_page": null
+        },
         "contract_version": "v1",
         "deployments": [
           {
@@ -64,6 +71,13 @@
     {
       "operation": "app.list",
       "value": {
+        "pagination": {
+          "page": 1,
+          "page_size": 0,
+          "total": 0,
+          "total_pages": 1,
+          "next_page": null
+        },
         "contract_version": "v1",
         "deployments": [],
         "warnings": [
@@ -74,6 +88,13 @@
     {
       "operation": "target.list",
       "value": {
+        "pagination": {
+          "page": 1,
+          "page_size": 1,
+          "total": 1,
+          "total_pages": 1,
+          "next_page": null
+        },
         "contract_version": "v1",
         "targets": [
           {
@@ -91,6 +112,13 @@
     {
       "operation": "workspace.list",
       "value": {
+        "pagination": {
+          "page": 1,
+          "page_size": 1,
+          "total": 1,
+          "total_pages": 1,
+          "next_page": null
+        },
         "contract_version": "v1",
         "workspaces": [
           {
@@ -107,32 +135,50 @@
     },
     {
       "operation": "runtime.list",
-      "value": [
-        {
-          "contract_version": "baseharbor.runtime-explorer/v1",
-          "ref": {
-            "provider": "podman",
-            "target": "synthetic-target",
-            "kind": "container",
-            "resource_id": "synthetic-container"
-          },
-          "display_name": "synthetic-api",
-          "ownership": "managed",
-          "relationship": {
-            "application_id": "synthetic-application",
-            "deployment_id": "synthetic-deployment",
-            "environment": "prod"
-          },
-          "state": {
-            "observed": "running"
-          },
-          "reconciliation": {}
-        }
-      ]
+      "value": {
+        "pagination": {
+          "page": 1,
+          "page_size": 1,
+          "total": 1,
+          "total_pages": 1,
+          "next_page": null
+        },
+        "resources": [
+          {
+            "contract_version": "baseharbor.runtime-explorer/v1",
+            "ref": {
+              "provider": "podman",
+              "target": "synthetic-target",
+              "kind": "container",
+              "resource_id": "synthetic-container"
+            },
+            "display_name": "synthetic-api",
+            "ownership": "managed",
+            "relationship": {
+              "application_id": "synthetic-application",
+              "deployment_id": "synthetic-deployment",
+              "environment": "prod"
+            },
+            "state": {
+              "observed": "running"
+            },
+            "reconciliation": {}
+          }
+        ]
+      }
     },
     {
       "operation": "runtime.list",
-      "value": null
+      "value": {
+        "pagination": {
+          "page": 1,
+          "page_size": 0,
+          "total": 0,
+          "total_pages": 1,
+          "next_page": null
+        },
+        "resources": []
+      }
     },
     {
       "operation": "runtime.capabilities",
