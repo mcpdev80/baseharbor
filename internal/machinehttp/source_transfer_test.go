@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/sourcetransfer"
@@ -71,5 +72,31 @@ func TestSourceTransferAuthenticatedHTTPSDeltaAndHashGate(t *testing.T) {
 	got, err := os.ReadFile(filepath.Join(root, "baseharbor.yaml"))
 	if err != nil || !bytes.Equal(got, raw) {
 		t.Fatal("committed bytes differ")
+	}
+}
+
+// TestSourceTransferRoutesContracted declares the four machine-side source-transfer
+// routes in the machine-http-v1 contract and asserts the spec documents every
+// route the Core management listener registers (internal/machinehttp/handler.go).
+// This keeps the documentation in lock-step with the registration so a route is
+// never registered without a contract entry and never contracted without a
+// registered route. Runs under go test ./internal/machinehttp in CI.
+func TestSourceTransferRoutesContracted(t *testing.T) {
+	specPath := filepath.FromSlash("../../docs/spec/machine-http-v1.md")
+	data, err := os.ReadFile(specPath)
+	if err != nil {
+		t.Fatalf("cannot read machine-http-v1 contract: %v", err)
+	}
+	spec := string(data)
+
+	for _, route := range []string{
+		"GET /api/v1/machine/source-transfers",
+		"POST /api/v1/machine/source-transfers",
+		"PUT /api/v1/machine/source-transfers/{id}",
+		"POST /api/v1/machine/source-transfers/{id}/commit",
+	} {
+		if !strings.Contains(spec, route) {
+			t.Fatalf("machine-http-v1 contract missing declared route %q", route)
+		}
 	}
 }
