@@ -1,7 +1,7 @@
 # Runtime-Listen-Seitennummerierung v1
 
 Diese Seite ist die deutsche Paritätsreferenz zum kanonischen englischen
-Vertragstext: [Runtime List Pagination v1 (EN)](../../spec/runtime-list-pagination-v1.md).
+Vertragstext: [Runtime List Pagination v1 (EN)](../spec/runtime-list-pagination-v1.md).
 Der englische Text bleibt die normative Autorität.
 
 Geltungsbereich: every JSON collection a client can list on the Core listeners:

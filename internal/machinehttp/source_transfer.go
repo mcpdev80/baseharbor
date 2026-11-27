@@ -7,7 +7,6 @@ import (
 	"os"
 	"strings"
 
-	"github.com/mcpdev80/baseharbor/internal/apierror"
 	"github.com/mcpdev80/baseharbor/internal/identity"
 	"github.com/mcpdev80/baseharbor/internal/machine"
 	"github.com/mcpdev80/baseharbor/internal/operatorauth"
@@ -77,11 +76,6 @@ func (h *Handler) handleSourceTransferCurrent(w http.ResponseWriter, r *http.Req
 		sourceTransferError(w, err)
 		return
 	}
-	params, invalid := apierror.ParsePageParams(q)
-	if invalid != nil {
-		sourceTransferError(w, invalid)
-		return
-	}
 	current, _, err := h.sourceTransfers.Current(m.Target, m.Application, m.Environment)
 	if errors.Is(err, os.ErrNotExist) {
 		w.WriteHeader(http.StatusNotFound)
@@ -91,20 +85,14 @@ func (h *Handler) handleSourceTransferCurrent(w http.ResponseWriter, r *http.Req
 		sourceTransferError(w, err)
 		return
 	}
-	pending, err := h.sourceTransfers.PendingPaths(m.Target, m.Application, m.Environment)
-	if err != nil {
-		sourceTransferError(w, err)
-		return
-	}
-	if pending == nil {
-		pending = []string{}
-	}
-	window, meta := apierror.Paginate(pending, params)
+	// The current source snapshot envelope is a byte-for-byte client contract:
+	// the CLI decodes it with json.DisallowUnknownFields and reads only
+	// `digest`. Pagination of the `missing` pending-delta list lives in the
+	// separate paged view (docs/spec/runtime-list-pagination-v1.md); this
+	// discovery endpoint keeps the minimal `{digest}` envelope unchanged.
 	writeJSON(w, http.StatusOK, struct {
-		Digest     string              `json:"digest"`
-		Missing    []string            `json:"missing"`
-		Pagination apierror.Pagination `json:"pagination"`
-	}{Digest: current.Digest, Missing: window, Pagination: meta})
+		Digest string `json:"digest"`
+	}{current.Digest})
 }
 func (h *Handler) sourceTransferFromRequest(w http.ResponseWriter, r *http.Request) (string, bool) {
 	if h.sourceTransfers == nil {
