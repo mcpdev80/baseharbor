@@ -212,6 +212,16 @@ func adoptLegacySelection(legacyPath, canonical string) (bool, error) {
 		return false, fmt.Errorf("read legacy organization selection %q: %w", legacyPath, err)
 	}
 	if err := migrateToCanonical(legacyPath, canonical, data); err != nil {
+		// The marker step can only fail AFTER the canonical selection has
+		// landed (ordering contract: data before marker). The migrated value
+		// is then preserved on the private path: report adopted=true together
+		// with the error so no caller re-runs the adoption against the legacy
+		// path, while the failure stays visible. Without a canonical file
+		// nothing was migrated, so the ordinary fail-closed false+error path
+		// applies.
+		if _, statErr := os.Lstat(canonical); statErr == nil {
+			return true, err
+		}
 		return false, err
 	}
 	return true, nil
@@ -277,6 +287,80 @@ func validateLegacyAncestors(dir string, uid uint32) error {
 	return nil
 }
 
+// canonicalMarkerContent is the exact content of the durable once-only
+// migration marker. writeFrozenMarker writes it through the seam, syncs and
+// re-verifies it by read-back so a crash during the write can never leave a
+// completion claim that later reads would honour while unreadable or empty.
+const canonicalMarkerContent = "# One-time world-writable migration marker.\n" +
+	"Wrote the adopted selection into this private directory. Do NOT re-read\n" +
+	"any legacy /tmp selection, even if active.json is missing.\n"
+
+// canonicalMarkerFilesystem is the seam through which the migration marker is
+// created (0428-310). Production keeps defaultCanonicalMarkerFS; tests inject a
+// deterministic fault at the marker-write step only, without widening
+// permissions anywhere.
+type canonicalMarkerFilesystem interface {
+	// writeMarker creates path with content mode 0600. A failure must leave no
+	// readable completion claim behind.
+	writeMarker(path string, content []byte) error
+}
+
+type defaultCanonicalMarkerFS struct{}
+
+func (defaultCanonicalMarkerFS) writeMarker(path string, content []byte) error {
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
+	if err != nil {
+		return fmt.Errorf("create frozen migration marker: %w", err)
+	}
+	if err := file.Chmod(0o600); err != nil {
+		_ = file.Close()
+		return fmt.Errorf("secure frozen migration marker: %w", err)
+	}
+	if _, err := file.Write(content); err != nil {
+		_ = file.Close()
+		return fmt.Errorf("write frozen migration marker: %w", err)
+	}
+	if err := file.Sync(); err != nil {
+		_ = file.Close()
+		return fmt.Errorf("sync frozen migration marker: %w", err)
+	}
+	if err := file.Close(); err != nil {
+		return fmt.Errorf("close frozen migration marker: %w", err)
+	}
+	return nil
+}
+
+var canonicalMarkerFS canonicalMarkerFilesystem = defaultCanonicalMarkerFS{}
+
+// writeFrozenMarker durably writes the migration marker through the seam and
+// verifies its content afterwards (read-back). A marker that cannot be
+// verified is NOT a completion claim: an error is returned so the caller never
+// treats a half-written migration as finished. A pre-existing unreadable
+// residue (e.g. a directory at the marker path) is reported, not deleted.
+func writeFrozenMarker(path string) error {
+	if err := canonicalMarkerFS.writeMarker(path, []byte(canonicalMarkerContent)); err != nil {
+		return err
+	}
+	if _, err := os.ReadFile(path); err != nil {
+		// The content is not readable: never present a half-written
+		// completion claim to later loads.
+		return fmt.Errorf("verify frozen migration marker: %w", err)
+	}
+	return nil
+}
+
+// frozenMarkerComplete reports whether path holds a readable marker file (not
+// a directory, not an unreadable residue). This is the predicate the loader
+// honours as a completion claim.
+func frozenMarkerComplete(path string) bool {
+	info, err := os.Lstat(path)
+	if err != nil || info.IsDir() {
+		return false
+	}
+	_, err = os.ReadFile(path)
+	return err == nil
+}
+
 // migrateToCanonical writes data into canonical using a temp+rename within the
 // canonical directory, freezes the source as a read-only tombstone so it can
 // never receive a further write, and writes the durable once-only marker into
@@ -287,12 +371,30 @@ func migrateToCanonical(src, dst string, data []byte) error {
 		return fmt.Errorf("create organization config directory: %w", err)
 	}
 	tmp := dst + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o600); err != nil {
+	// The data migration must HOLD (be durable on disk) before the marker is
+	// attempted: write+chmod+sync, then the atomic rename.
+	tmpFile, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
+	if err != nil {
 		return fmt.Errorf("write active organization configuration: %w", err)
 	}
-	if err := os.Chmod(tmp, 0o600); err != nil {
+	if err := tmpFile.Chmod(0o600); err != nil {
+		_ = tmpFile.Close()
 		_ = os.Remove(tmp)
 		return fmt.Errorf("secure active organization configuration: %w", err)
+	}
+	if _, err := tmpFile.Write(data); err != nil {
+		_ = tmpFile.Close()
+		_ = os.Remove(tmp)
+		return fmt.Errorf("write active organization configuration: %w", err)
+	}
+	if err := tmpFile.Sync(); err != nil {
+		_ = tmpFile.Close()
+		_ = os.Remove(tmp)
+		return fmt.Errorf("sync active organization configuration: %w", err)
+	}
+	if err := tmpFile.Close(); err != nil {
+		_ = os.Remove(tmp)
+		return fmt.Errorf("close active organization configuration: %w", err)
 	}
 	if err := os.Rename(tmp, dst); err != nil {
 		_ = os.Remove(tmp)
@@ -306,16 +408,18 @@ func migrateToCanonical(src, dst string, data []byte) error {
 		"This file exists to prevent a second migration.\n"+
 		"Original location: "+src+"\n"), 0o600)
 	// Durable once-only marker in the private canonical namespace. Write it
-	// last (after the canonical file is in place) so a crash before the file
-	// lands cannot leave a marker without the migrated selection. Ignore
-	// failure to write it: a missing marker only makes the once-only
-	// guarantee best-effort, never incorrect — the canonical file is already
-	// authoritative.
-	if err := os.WriteFile(filepath.Join(filepath.Dir(dst), canonicalFrozenMarker), []byte(
-		"# One-time world-writable migration marker.\n"+
-			"Wrote the adopted selection into this private directory. Do NOT re-read\n"+
-			"any legacy /tmp selection, even if active.json is missing.\n"), 0o600); err != nil {
-		return fmt.Errorf("write frozen migration marker: %w", err)
+	// last (after the canonical data rename has landed and been synced) so a
+	// crash before the data lands can never leave a marker whose completion
+	// claim would hide an un-migrated state: the data migration holds BEFORE
+	// the marker. writeFrozenMarker additionally verifies the marker content,
+	// so a half-written marker never counts as done; a marker that already
+	// reads back complete is left untouched (idempotent re-run).
+	markerPath := filepath.Join(filepath.Dir(dst), canonicalFrozenMarker)
+	if frozenMarkerComplete(markerPath) {
+		return nil
+	}
+	if err := writeFrozenMarker(markerPath); err != nil {
+		return err
 	}
 	return nil
 }
