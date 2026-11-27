@@ -377,6 +377,90 @@ func TestExpandQuadletComposeStringSupportsComposeDefaultsAndDollarEscape(t *tes
 	}
 }
 
+// TestRenderComposeProjectQuadletsKeepsAmbientSecretOutOfEnvFile is the card
+// 0428-316 (hunt H-V43 FUND-A) regression guard: a service environment entry
+// written as ${VAR} whose value comes from the AMBIENT process environment
+// must never be materialised in plaintext into the on-disk Quadlet .env file.
+// The reference survives to the unit via EnvironmentFile consumption at
+// service start instead, and entries backed by the project envFile keep their
+// existing resolved behaviour.
+func TestRenderComposeProjectQuadletsKeepsAmbientSecretOutOfEnvFile(t *testing.T) {
+	root := t.TempDir()
+	compose := filepath.Join(root, "compose.yaml")
+	if err := os.WriteFile(compose, []byte(`services:
+  api:
+    image: docker.io/library/alpine:3.22
+    environment:
+      AMBIT: ${W396_AMBIENT_SECRET}
+      LITERAL: plain-value
+      WITH_DEFAULT: ${W396_MISSING_SECRET:-public-fallback}
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("W396_AMBIENT_SECRET", "ambient-super-secret")
+	got, err := RenderComposeProjectQuadlets(compose, "", "envleak-guard")
+	if err != nil {
+		t.Fatal(err)
+	}
+	env := got.Files["envleak-guard-api.env"]
+	if strings.Contains(env, "ambient-super-secret") {
+		t.Fatalf("ambient secret materialised into the on-disk env file:\n%s", env)
+	}
+	for _, want := range []string{
+		"LITERAL=plain-value",
+		"WITH_DEFAULT=public-fallback",
+	} {
+		if !strings.Contains(env, want) {
+			t.Fatalf("env file missing %q:\n%s", want, env)
+		}
+	}
+	if strings.Contains(env, "AMBIT=") {
+		t.Fatalf("ambient entry must not be in the env file at all:\n%s", env)
+	}
+	container := got.Files["envleak-guard-api.container"]
+	if !strings.Contains(container, `Environment="AMBIT"`) {
+		t.Fatalf("ambient entry missing the unit Environment projection:\n%s", container)
+	}
+	if err := WriteQuadletProject(root, got); err != nil {
+		t.Fatal(err)
+	}
+	onDisk, err := os.ReadFile(filepath.Join(root, "envleak-guard-api.env"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(onDisk), "ambient-super-secret") {
+		t.Fatalf("ambient secret reached the persisted file:\n%s", onDisk)
+	}
+}
+
+func TestComposeEnvSequenceFormKeepsAmbientReference(t *testing.T) {
+	root := t.TempDir()
+	compose := filepath.Join(root, "compose.yaml")
+	if err := os.WriteFile(compose, []byte(`services:
+  api:
+    image: docker.io/library/alpine:3.22
+    environment:
+      - SEQ=${W396_SEQ_SECRET}
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("W396_SEQ_SECRET", "seq-super-secret")
+	got, err := RenderComposeProjectQuadlets(compose, "", "envleak-seq")
+	if err != nil {
+		t.Fatal(err)
+	}
+	env := got.Files["envleak-seq-api.env"]
+	if strings.Contains(env, "seq-super-secret") {
+		t.Fatalf("ambient secret materialised via sequence form:\n%s", env)
+	}
+	if strings.Contains(env, "SEQ=") {
+		t.Fatalf("ambient sequence entry must not be in the env file:\n%s", env)
+	}
+	if !strings.Contains(got.Files["envleak-seq-api.container"], `Environment="SEQ"`) {
+		t.Fatalf("sequence ambient entry missing unit Environment projection:\n%s", got.Files["envleak-seq-api.container"])
+	}
+}
+
 func TestRenderComposeProjectFilesQuadletsMergesBaseHarborOverride(t *testing.T) {
 	root := t.TempDir()
 	base := filepath.Join(root, "compose.yaml")
