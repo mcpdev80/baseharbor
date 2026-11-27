@@ -46,7 +46,10 @@ permissions:
   contents: read
 
 concurrency:
-  group: baseharbor-release-qualification
+  # Accepted edit set (card 0428-249): run-unique, non-cancelling orchestrator
+  # group; the `resolve` job already emits the tested candidate SHA, so each
+  # downstream evidence job keys its own group by that resolved output.
+  group: targeted-demo-orchestrator-${{ github.run_id }}
   cancel-in-progress: false
 
 jobs:
@@ -160,6 +163,9 @@ jobs:
     name: Develop · Four-repo immutable source compatibility
     if: needs.resolve.outputs.runtime == 'both'
     needs: resolve
+    concurrency:
+      group: targeted-demo-${{ needs.resolve.outputs.ref }}-ecosystem-source-${{ github.run_id }}
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -183,6 +189,9 @@ jobs:
   selected_gate:
     if: always() && needs.resolve.result == 'success' && needs.resolve.outputs.gate != 'reference-journey' && (needs.resolve.outputs.runtime != 'both' || needs.ecosystem_source.result == 'success')
     needs: [resolve, ecosystem_source]
+    concurrency:
+      group: targeted-demo-${{ needs.resolve.outputs.ref }}-${{ matrix.runtime }}-${{ matrix.gate }}-${{ github.run_id }}
+      cancel-in-progress: false
     strategy:
       fail-fast: false
       max-parallel: 2
@@ -200,6 +209,9 @@ jobs:
     name: Develop · Native Console and Connector (Docker + Podman)
     if: always() && needs.resolve.result == 'success' && needs.ecosystem_source.result == 'success' && needs.resolve.outputs.runtime == 'both'
     needs: [resolve, ecosystem_source]
+    concurrency:
+      group: targeted-demo-${{ needs.resolve.outputs.ref }}-consumer-${{ github.run_id }}
+      cancel-in-progress: false
     uses: ./.github/workflows/pre-release.yml
     with:
       develop_mode: true
@@ -214,6 +226,9 @@ jobs:
     name: Develop · Required four-repo runtime result
     if: always() && github.event_name == 'workflow_dispatch' && inputs.runtime == 'both'
     needs: [resolve, ecosystem_source, selected_gate, consumer_integration]
+    concurrency:
+      group: targeted-demo-${{ needs.resolve.outputs.ref }}-develop-result-${{ github.run_id }}
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -229,6 +244,9 @@ jobs:
     name: Reference Journey · ${{ needs.resolve.outputs.runtime }} · Full E2E
     if: needs.resolve.outputs.gate == 'reference-journey'
     needs: resolve
+    concurrency:
+      group: targeted-demo-${{ needs.resolve.outputs.ref }}-reference-journey-${{ github.run_id }}
+      cancel-in-progress: false
     runs-on: ${{ needs.resolve.outputs.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
     timeout-minutes: 120
     env:

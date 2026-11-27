@@ -633,7 +633,7 @@ jobs:
   focused:
     needs: resolve_candidate
     concurrency:
-      group: targeted-${{ needs.resolve_candidate.outputs.head_sha }}-focused-${{ matrix.runtime }}-${{ github.run_id }}
+      group: targeted-${{ needs.resolve_candidate.outputs.head_sha }}-focused-${{ inputs.gate }}-${{ github.run_id }}
       cancel-in-progress: false
     if: ${{ github.event_name == 'workflow_dispatch' && !startsWith(inputs.gate, 'adoption-') && inputs.gate != 'coreless-runtime' && inputs.gate != 'app-backup-restore-podman' }}
     name: ${{ inputs.gate }}
@@ -1167,7 +1167,7 @@ jobs:
   v0421_ha:
     needs: resolve_candidate
     concurrency:
-      group: targeted-${{ needs.resolve_candidate.outputs.head_sha }}-v0421_ha-${{ matrix.group }}-${{ matrix.runtime }}-${{ github.run_id }}
+      group: targeted-${{ needs.resolve_candidate.outputs.head_sha }}-v0421_ha-${{ github.ref_name }}-${{ matrix.runtime }}-${{ github.run_id }}
       cancel-in-progress: false
     if: ${{ github.event_name == 'push' && ((startsWith(github.ref_name, 'runtime-validation/ha/control-plane/') || startsWith(github.ref_name, 'runtime-validation/ha/control-plane-single/')) || startsWith(github.ref_name, 'runtime-validation/ha/tempo/') || startsWith(github.ref_name, 'runtime-validation/ha/loki/') || startsWith(github.ref_name, 'runtime-validation/ha/keycloak/') || startsWith(github.ref_name, 'runtime-validation/ha/otel/') || startsWith(github.ref_name, 'runtime-validation/ha/gateway/') || startsWith(github.ref_name, 'runtime-validation/ha/shared-postgres/') || startsWith(github.ref_name, 'runtime-validation/ha/owned-volumes/')) }}
     name: Targeted runtime · ${{ matrix.runtime }}
@@ -1283,7 +1283,7 @@ jobs:
   adoption:
     needs: resolve_candidate
     concurrency:
-      group: targeted-${{ needs.resolve_candidate.outputs.head_sha }}-adoption-${{ matrix.gate }}-${{ github.run_id }}
+      group: targeted-${{ needs.resolve_candidate.outputs.head_sha }}-adoption-${{ inputs.gate }}-${{ github.run_id }}
       cancel-in-progress: false
     if: ${{ github.event_name == 'workflow_dispatch' && startsWith(inputs.gate, 'adoption-') }}
     name: ${{ inputs.gate }}
