@@ -5,12 +5,22 @@ permissions:
 jobs:
   validate:
     name: supplemental-release-validation
+    # Accepted edit set (card 0428-249): the pushed event commit is the
+    # already-resolved proven candidate; group by it plus the run and never
+    # cancel an evidence run.
+    concurrency:
+      group: supplemental-validation-${{ github.sha }}-${{ github.run_id }}
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     steps:
     - name: Checkout exact candidate
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       with:
         fetch-depth: 0
+    - name: Assert exact candidate
+      env:
+        EXPECTED_CANDIDATE_SHA: ${{ github.sha }}
+      run: test "$(git rev-parse HEAD)" = "$EXPECTED_CANDIDATE_SHA"
     - name: Set up Go
       uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
       with:

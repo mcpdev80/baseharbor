@@ -88,7 +88,10 @@ class RuntimeMatrix(unittest.TestCase):
             targeted,
         )
         self.assertIsNotNone(coreless_job)
-        self.assertIn('needs: pr_selected_coreless_lifecycle_shards', coreless_job.group(1))
+        self.assertTrue(
+            re.search(r"needs: \[resolve_candidate, pr_selected_coreless_lifecycle_shards\]",
+                      coreless_job.group(1)),
+            'coreless aggregator must depend on the resolver and its shards (edit set 0428-249)')
         self.assertIn('SHARDS_RESULT: ${{ needs.pr_selected_coreless_lifecycle_shards.result }}',
                       coreless_job.group(1))
         self.assertIn('git show "$controller:scripts/pr-selected-runtime-matrix.py"',ci)
@@ -119,25 +122,27 @@ class RuntimeMatrix(unittest.TestCase):
     def test_targeted_integration_concurrency_isolated_by_gate_and_runtime(self):
         workflow=(Path(__file__).resolve().parent.parent/
                   ".github/workflows/targeted-integration.yml").read_text()
-        match=re.search(r"(?m)^  group: (.+)$",workflow)
-        self.assertIsNotNone(match)
-        group=match.group(1)
-        self.assertIn("${{ inputs.gate || 'default' }}",group)
-        self.assertIn("${{ inputs.runtime || 'default' }}",group)
-        self.assertIn("cancel-in-progress:",workflow)
+        # Accepted edit set (card 0428-249): the workflow-level orchestrator
+        # group is run-unique and non-cancelling; gate/runtime identity lives
+        # in every evidence job's own group, keyed by the resolver SHA.
+        orchestrator=re.search(r"(?m)^  group: (.+)$",workflow)
+        self.assertIsNotNone(orchestrator)
+        self.assertIn("targeted-integration-orchestrator-${{ github.run_id }}",workflow)
+        self.assertIn("cancel-in-progress: false",workflow)
 
-        def concurrency_key(ref, sha, gate, runtime):
-            return (f"targeted-integration-{ref}-{sha}-"
-                    f"{gate or 'default'}-{runtime or 'default'}")
+        def evidence_job_group(job):
+            block=re.search(rf"(?ms)^  {job}:\n.*?(?=^  [a-z0-9_]+:\n|\Z)",workflow)
+            self.assertIsNotNone(block)
+            group=re.search(r"(?m)^      group: (.+)$",block.group(0))
+            self.assertIsNotNone(group)
+            return group.group(1)
 
-        docker=concurrency_key("refs/pull/1649/merge","candidate-sha",
-                               "integration/docker/coreless-lifecycle","docker")
-        podman=concurrency_key("refs/pull/1649/merge","candidate-sha",
-                               "integration/podman/coreless-lifecycle","podman")
+        docker=evidence_job_group("pr_selected_coreless_lifecycle_shards")
+        self.assertIn("${{ inputs.gate }}",docker)
+        self.assertIn("${{ inputs.runtime }}",docker)
+        self.assertIn("needs.resolve_candidate.outputs.head_sha",docker)
+        podman=evidence_job_group("pr_selected_coreless_lifecycle")
         self.assertNotEqual(docker,podman)
-        self.assertEqual(docker,concurrency_key(
-            "refs/pull/1649/merge","candidate-sha",
-            "integration/docker/coreless-lifecycle","docker"))
 
     def test_executor_job_fetches_the_source_used_by_runtime_regressions(self):
         workflow=(Path(__file__).resolve().parent.parent/".github/workflows/ci.yml").read_text()
@@ -227,6 +232,10 @@ class PodmanBackupWorkflowRoute(unittest.TestCase):
                         self.workflow.split('\njobs:\n', 1)[1], flags=re.M)
         selected = []
         for name, body in zip(jobs[1::2], jobs[2::2]):
+            if name == 'resolve_candidate':
+                # Accepted edit set (card 0428-249): the resolver is a shared
+                # prerequisite job, not a routed evidence gate; it always runs.
+                continue
             match = re.search(r'^    if: \$\{\{ (.+) \}\}$', body, re.M)
             self.assertIsNotNone(match, 'every native job needs explicit routing: ' + name)
             expression = match.group(1)

@@ -224,7 +224,22 @@ func ciIntegrationManagedLocalGateReason(args []string, target deployment.Resolv
 	if !managedWorkload && gate == "reconciliation" && ciIntegrationTargetOutputJSON(args) {
 		managedWorkload = true
 	}
+	// The full-destroy gate cleans up its disposable Target with a destructive
+	// `destroy --all --yes --json` plus an initial read-only ownership-preview
+	// `destroy --all --json`. Admit only those two exact canonical forms on the
+	// single full-destroy consumer, so the destructive command is authorized
+	// through the same synthetic managed operator as the other managed gates
+	// (ciIntegrationOperatorContext) instead of falling through to the fail-closed
+	// operator-auth boundary at operatorauth/authorization.go:281. No other
+	// command, flag, or gate is widened: any other destroy form stays outside the
+	// synthetic operator and fails closed.
 	if !managedWorkload && gate == "full-destroy" && ciIntegrationAppListAllTargets(args) {
+		managedWorkload = true
+	}
+	if !managedWorkload && gate == "full-destroy" && ciIntegrationFullDestroy(args) {
+		managedWorkload = true
+	}
+	if !managedWorkload && gate == "full-destroy" && ciIntegrationFullDestroyPreview(args) {
 		managedWorkload = true
 	}
 	// Root doctor inspects the control plane and is authorized as
@@ -496,6 +511,25 @@ func ciIntegrationRootDestroy(args []string) bool {
 }
 
 func ciIntegrationRootDestroyPreview(args []string) bool {
+	return len(args) == 3 && args[0] == "destroy" && args[1] == "--all" && args[2] == "--json"
+}
+
+// ciIntegrationFullDestroy admits the exact destructive `baha destroy --all
+// --yes --json` used by the full-destroy acceptance gate to tear down its
+// disposable Target. Scoped to gate=="full-destroy" only, so the destructive
+// command is authorized through the synthetic managed operator instead of the
+// fail-closed operator-auth boundary. Any other flag, count, or gate stays
+// outside the synthetic operator and fails closed.
+func ciIntegrationFullDestroy(args []string) bool {
+	return len(args) == 4 && args[0] == "destroy" && args[1] == "--all" && args[2] == "--yes" && args[3] == "--json"
+}
+
+// ciIntegrationFullDestroyPreview admits the exact read-only ownership-preview
+// `baha destroy --all --json` the full-destroy gate issues before its confirmed
+// destroy call. Scoped to gate=="full-destroy" only, mirroring
+// ciIntegrationRootDestroyPreview. Any other flag, count, or gate stays outside
+// the synthetic operator and fails closed.
+func ciIntegrationFullDestroyPreview(args []string) bool {
 	return len(args) == 3 && args[0] == "destroy" && args[1] == "--all" && args[2] == "--json"
 }
 

@@ -21,14 +21,44 @@ on:
       - 'runtime-validation/podman/**'
 
 concurrency:
-  group: ${{ github.workflow }}-podman-${{ github.ref }}
-  cancel-in-progress: true
+  # Run-unique, non-cancelling orchestrator group (card 0428-249 accepted edit
+  # set): evidence jobs below key on the resolver-verified candidate SHA.
+  group: podman-runtime-orchestrator-${{ github.run_id }}
+  cancel-in-progress: false
 
 permissions:
   contents: read
 
 jobs:
+  # Accepted edit set (card 0428-249): the resolver is the only place where a
+  # branch-shaped input becomes a verified commit SHA; resolution or checkout
+  # equality failure admits no gate.
+  resolve_candidate:
+    runs-on: ubuntu-latest
+    outputs:
+      candidate_sha: ${{ steps.resolve.outputs.candidate_sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - id: resolve
+        shell: bash
+        env:
+          CANDIDATE_REF: ${{ inputs.ref || github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "$CANDIDATE_REF"
+          candidate_sha="$(git rev-parse --verify 'FETCH_HEAD^{commit}')"
+          [[ "$candidate_sha" =~ ^[0-9a-f]{40}$ ]]
+          echo "candidate_sha=$candidate_sha" >> "$GITHUB_OUTPUT"
+
   select_develop:
+    needs: resolve_candidate
+    concurrency:
+      group: podman-runtime-${{ needs.resolve_candidate.outputs.candidate_sha }}-select_develop-${{ github.run_id }}
+      cancel-in-progress: false
     name: Select native single-default impact
     if: github.event_name == 'push' && github.ref_name == 'develop'
     runs-on: ubuntu-latest
@@ -61,18 +91,23 @@ jobs:
 
   keycloak_single_native:
     name: Native Keycloak+SQL single · Podman
-    needs: select_develop
+    needs: [resolve_candidate, select_develop]
+    concurrency:
+      group: podman-runtime-${{ needs.resolve_candidate.outputs.candidate_sha }}-keycloak_single_native-${{ github.run_id }}
+      cancel-in-progress: false
     if: ${{ github.event_name == 'push' && github.ref_name == 'develop' && needs.select_develop.outputs.identity_required == 'true' }}
     runs-on: ubuntu-26.04
     timeout-minutes: 22
     env:
       BASEHARBOR_TEST_RUNTIME: podman
       BASEHARBOR_KEYCLOAK_SINGLE_NATIVE_ACCEPTANCE: "1"
+      EXPECTED_CANDIDATE_SHA: ${{ needs.resolve_candidate.outputs.candidate_sha }}
       DOCKER_CONTEXT: ""
     steps:
       - name: Checkout exact develop source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ needs.resolve_candidate.outputs.candidate_sha }}
           persist-credentials: false
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
@@ -85,7 +120,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git rev-parse HEAD)" = "$EXPECTED_CANDIDATE_SHA"
           docker context use default
           export DOCKER_CONTEXT=
           export DOCKER_HOST=unix:///var/run/docker.sock
@@ -103,20 +138,29 @@ jobs:
         if: always()
         run: bash scripts/ci-runtime-reset.sh podman
 
-  single_default_native:
-    name: Native single-default · Podman
-    needs: select_develop
+  single_default_native_sql_secrets:
+    name: Native single-default SQL/Secrets · Podman
+    needs: [resolve_candidate, select_develop]
     if: ${{ github.event_name == 'push' && github.ref_name == 'develop' && needs.select_develop.outputs.required == 'true' }}
+    concurrency:
+      group: podman-runtime-${{ needs.resolve_candidate.outputs.candidate_sha }}-single_default_native_sql_secrets-${{ github.run_id }}
+      cancel-in-progress: false
     runs-on: ubuntu-26.04
-    timeout-minutes: 65
+    timeout-minutes: 25
     env:
       BASEHARBOR_TEST_RUNTIME: podman
       BASEHARBOR_SINGLE_DEFAULT_NATIVE_ACCEPTANCE: "1"
+      EXPECTED_CANDIDATE_SHA: ${{ needs.resolve_candidate.outputs.candidate_sha }}
     steps:
       - name: Checkout exact develop commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ needs.resolve_candidate.outputs.candidate_sha }}
           persist-credentials: false
+      - name: Assert exact candidate
+        env:
+          EXPECTED_CANDIDATE_SHA: ${{ needs.resolve_candidate.outputs.candidate_sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_CANDIDATE_SHA"
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
@@ -130,7 +174,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git rev-parse HEAD)" = "$EXPECTED_CANDIDATE_SHA"
           docker context use default
           export DOCKER_CONTEXT=
           export DOCKER_HOST=unix:///var/run/docker.sock
@@ -144,12 +188,120 @@ jobs:
           if not any(event.get('Test') == test and event.get('Action') == 'pass' for event in events):
               raise SystemExit('Native single-default test did not execute')
           PY
+      - name: Clean up isolated runtime
+        if: always()
+        run: bash scripts/ci-runtime-reset.sh podman
+
+  single_default_native_node_https:
+    name: Native Node HTTPS enrollment/remote CLI · Podman
+    needs: [resolve_candidate, select_develop]
+    if: ${{ github.event_name == 'push' && github.ref_name == 'develop' && needs.select_develop.outputs.required == 'true' }}
+    concurrency:
+      group: podman-runtime-${{ needs.resolve_candidate.outputs.candidate_sha }}-single_default_native_node_https-${{ github.run_id }}
+      cancel-in-progress: false
+    runs-on: ubuntu-26.04
+    timeout-minutes: 20
+    env:
+      BASEHARBOR_TEST_RUNTIME: podman
+      BASEHARBOR_SINGLE_DEFAULT_NATIVE_ACCEPTANCE: "1"
+      EXPECTED_CANDIDATE_SHA: ${{ needs.resolve_candidate.outputs.candidate_sha }}
+    steps:
+      - name: Checkout exact develop commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.resolve_candidate.outputs.candidate_sha }}
+          persist-credentials: false
+      - name: Assert exact candidate
+        env:
+          EXPECTED_CANDIDATE_SHA: ${{ needs.resolve_candidate.outputs.candidate_sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_CANDIDATE_SHA"
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Prepare verified rootless Podman
+        run: bash scripts/ci-core-rootless-runtime.sh
+      - name: Install verified ORAS for native Core bootstrap
+        run: bash scripts/ci-install-oras.sh
       - name: Validate Node HTTPS enrollment and remote CLI contract
         shell: bash
         run: bash scripts/ci-node-contract-acceptance.sh
+      - name: Clean up isolated runtime
+        if: always()
+        run: bash scripts/ci-runtime-reset.sh podman
+
+  single_default_native_install_destroy:
+    name: Native installation destroy/interrupted retry · Podman
+    needs: [resolve_candidate, select_develop]
+    if: ${{ github.event_name == 'push' && github.ref_name == 'develop' && needs.select_develop.outputs.required == 'true' }}
+    concurrency:
+      group: podman-runtime-${{ needs.resolve_candidate.outputs.candidate_sha }}-single_default_native_install_destroy-${{ github.run_id }}
+      cancel-in-progress: false
+    runs-on: ubuntu-26.04
+    timeout-minutes: 20
+    env:
+      BASEHARBOR_TEST_RUNTIME: podman
+      BASEHARBOR_SINGLE_DEFAULT_NATIVE_ACCEPTANCE: "1"
+      EXPECTED_CANDIDATE_SHA: ${{ needs.resolve_candidate.outputs.candidate_sha }}
+    steps:
+      - name: Checkout exact develop commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.resolve_candidate.outputs.candidate_sha }}
+          persist-credentials: false
+      - name: Assert exact candidate
+        env:
+          EXPECTED_CANDIDATE_SHA: ${{ needs.resolve_candidate.outputs.candidate_sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_CANDIDATE_SHA"
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Prepare verified rootless Podman
+        run: bash scripts/ci-core-rootless-runtime.sh
+      - name: Install verified ORAS for native Core bootstrap
+        run: bash scripts/ci-install-oras.sh
       - name: Validate real installation destroy and interrupted retry
         shell: bash
         run: bash scripts/ci-native-installation-destroy.sh
+      - name: Clean up isolated runtime
+        if: always()
+        run: bash scripts/ci-runtime-reset.sh podman
+
+  single_default_native_pinned_workload:
+    name: Native pinned-workload lifecycle/backup · Podman
+    needs: [resolve_candidate, select_develop]
+    if: ${{ github.event_name == 'push' && github.ref_name == 'develop' && needs.select_develop.outputs.required == 'true' }}
+    concurrency:
+      group: podman-runtime-${{ needs.resolve_candidate.outputs.candidate_sha }}-single_default_native_pinned_workload-${{ github.run_id }}
+      cancel-in-progress: false
+    runs-on: ubuntu-26.04
+    timeout-minutes: 25
+    env:
+      BASEHARBOR_TEST_RUNTIME: podman
+      BASEHARBOR_SINGLE_DEFAULT_NATIVE_ACCEPTANCE: "1"
+      EXPECTED_CANDIDATE_SHA: ${{ needs.resolve_candidate.outputs.candidate_sha }}
+    steps:
+      - name: Checkout exact develop commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.resolve_candidate.outputs.candidate_sha }}
+          persist-credentials: false
+      - name: Assert exact candidate
+        env:
+          EXPECTED_CANDIDATE_SHA: ${{ needs.resolve_candidate.outputs.candidate_sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_CANDIDATE_SHA"
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Prepare verified rootless Podman
+        run: bash scripts/ci-core-rootless-runtime.sh
+      - name: Install verified ORAS for native Core bootstrap
+        run: bash scripts/ci-install-oras.sh
       - name: Validate native pinned workload lifecycle and backup
         shell: bash
         timeout-minutes: 20
@@ -175,6 +327,10 @@ jobs:
         run: bash scripts/ci-runtime-reset.sh podman
 
   podman-quadlet:
+    needs: resolve_candidate
+    concurrency:
+      group: podman-runtime-${{ needs.resolve_candidate.outputs.candidate_sha }}-podman-quadlet-${{ github.run_id }}
+      cancel-in-progress: false
     if: github.event_name != 'push' || github.ref_name != 'develop'
     env:
       BASEHARBOR_TEST_RUNTIME: podman
@@ -188,7 +344,11 @@ jobs:
         id: checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.ref || github.sha }}
+          ref: ${{ needs.resolve_candidate.outputs.candidate_sha }}
+      - name: Assert exact candidate
+        env:
+          EXPECTED_CANDIDATE_SHA: ${{ needs.resolve_candidate.outputs.candidate_sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_CANDIDATE_SHA"
 
       - name: Resolve tested commit
         id: tested_ref

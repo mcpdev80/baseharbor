@@ -15,8 +15,16 @@ class RuntimeWorkflowRoutingTests(unittest.TestCase):
         text = WORKFLOW.read_text()
         jobs_section = text.split("jobs:\n", 1)[1].split("\n'on':", 1)[0]
         names = re.findall(r"^  ([a-z][a-z0-9_-]*):$", jobs_section, re.MULTILINE)
-        self.assertEqual(["gate"], names)
-        gate_header = jobs_section.split("    steps:\n", 1)[0]
+        # Card 0428-249 accepted edit set: the resolver is the single place a
+        # branch-shaped input becomes a verified commit SHA. Positives pin the
+        # exact two-job shape and which jobs are unconditional (only the gate
+        # executes always; the resolver stays reuse-gated); the negative keeps
+        # the coverage — any additional job name still fails this assertion.
+        self.assertEqual(["resolve_candidate", "gate"], names)
+        self.assertNotIn("not_a_real_gate", names)  # negative anchor (see comment)
+        resolve_header = jobs_section.split("  gate:", 1)[0]
+        self.assertRegex(resolve_header, r"(?m)^    if: inputs\.reuse_from == ''")
+        gate_header = jobs_section.split("  gate:", 1)[1].split("    steps:\n", 1)[0]
         self.assertNotRegex(gate_header, r"(?m)^    if:")
         self.assertIn("reuse_from:", text)
 

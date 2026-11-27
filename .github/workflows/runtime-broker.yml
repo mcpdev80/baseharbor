@@ -23,7 +23,34 @@ permissions:
   contents: read
 
 jobs:
+  # Accepted edit set (card 0428-249): resolve the branch-shaped input.ref to
+  # a verified 40-hex SHA before any evidence job starts.
+  resolve_candidate:
+    runs-on: ubuntu-latest
+    outputs:
+      candidate_sha: ${{ steps.resolve.outputs.candidate_sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - id: resolve
+        shell: bash
+        env:
+          CANDIDATE_REF: ${{ inputs.ref }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "$CANDIDATE_REF"
+          candidate_sha="$(git rev-parse --verify 'FETCH_HEAD^{commit}')"
+          [[ "$candidate_sha" =~ ^[0-9a-f]{40}$ ]]
+          echo "candidate_sha=$candidate_sha" >> "$GITHUB_OUTPUT"
+
   acceptance:
+    needs: resolve_candidate
+    concurrency:
+      group: broker-${{ needs.resolve_candidate.outputs.candidate_sha }}-acceptance-${{ github.run_id }}
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     if: inputs.mode == 'acceptance'
     timeout-minutes: 30
@@ -34,7 +61,11 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.ref }}
+          ref: ${{ needs.resolve_candidate.outputs.candidate_sha }}
+      - name: Assert exact candidate
+        env:
+          EXPECTED_CANDIDATE_SHA: ${{ needs.resolve_candidate.outputs.candidate_sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_CANDIDATE_SHA"
       - name: Prepare verified rootless runtime
         # The setuptool's systemd unit follows XDG_CONFIG_HOME at generation
         # time; clear the job-pinned state dirs so docker.service lands in
@@ -319,6 +350,10 @@ jobs:
 
 
   performance:
+    needs: resolve_candidate
+    concurrency:
+      group: broker-${{ needs.resolve_candidate.outputs.candidate_sha }}-performance-${{ github.run_id }}
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     if: inputs.mode == 'performance'
     timeout-minutes: 20
@@ -329,7 +364,11 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.ref }}
+          ref: ${{ needs.resolve_candidate.outputs.candidate_sha }}
+      - name: Assert exact candidate
+        env:
+          EXPECTED_CANDIDATE_SHA: ${{ needs.resolve_candidate.outputs.candidate_sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_CANDIDATE_SHA"
       - name: Prepare verified rootless runtime
         # The setuptool's systemd unit follows XDG_CONFIG_HOME at generation
         # time; clear the job-pinned state dirs so docker.service lands in

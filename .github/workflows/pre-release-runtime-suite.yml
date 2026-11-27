@@ -2,7 +2,37 @@ name: Atomic Acceptance Gate
 permissions:
   contents: read
 jobs:
+  # Accepted edit set (card 0428-249): resolve the supplied ref (branch/tag or
+  # SHA) once to a verified 40-hex commit; the gate depends on it, checks out
+  # and asserts that exact SHA, and its concurrency group carries it instead of
+  # any raw branch-shaped input. Reuse paths (reuse_from set) already pin the
+  # exact candidate through the validated evidence manifest.
+  resolve_candidate:
+    if: inputs.reuse_from == ''
+    runs-on: ubuntu-latest
+    outputs:
+      head_sha: ${{ steps.resolve.outputs.head_sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - id: resolve
+        shell: bash
+        env:
+          CANDIDATE_REF: ${{ inputs.ref }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "$CANDIDATE_REF"
+          head_sha="$(git rev-parse --verify 'FETCH_HEAD^{commit}')"
+          [[ "$head_sha" =~ ^[0-9a-f]{40}$ ]]
+          echo "head_sha=$head_sha" >> "$GITHUB_OUTPUT"
   gate:
+    needs: resolve_candidate
+    concurrency:
+      group: atomic-${{ needs.resolve_candidate.outputs.head_sha }}-${{ inputs.runtime }}-${{ inputs.gate }}-${{ github.run_id }}
+      cancel-in-progress: false
     name: ${{ inputs.reuse_from != '' && 'Reused' || 'Executed' }} ${{ inputs.runtime }} · ${{ inputs.gate }}
     runs-on: ${{ inputs.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
     timeout-minutes: 60
@@ -110,9 +140,14 @@ jobs:
       id: checkout
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       with:
-        ref: ${{ inputs.ref }}
+        ref: ${{ needs.resolve_candidate.outputs.head_sha }}
         persist-credentials: false
         fetch-depth: 0
+    - name: Assert exact candidate
+      if: inputs.reuse_from == ''
+      env:
+        EXPECTED_HEAD_SHA: ${{ needs.resolve_candidate.outputs.head_sha }}
+      run: test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD_SHA"
     - name: Prepare verified rootless runtime
       if: inputs.reuse_from == '' && inputs.runtime != 'static'
       run: bash scripts/ci-core-rootless-runtime.sh
@@ -350,6 +385,16 @@ jobs:
           fi
           if [ "$backup_changed" = true ]; then
             bash scripts/ci-runtime-reset.sh "$RUNTIME"
+            if ! "$RUNTIME" image inspect localhost/baseharbor-runtime:pre-release >/dev/null 2>&1; then
+              archive="$RUNNER_TEMP/pre-release-candidate/baseharbor-runtime-pre-release.tar"
+              if [ -s "$archive" ]; then
+                if [ "$RUNTIME" = "podman" ]; then
+                  env -u XDG_CONFIG_HOME -u XDG_DATA_HOME podman load -i "$archive"
+                else
+                  docker load -i "$archive"
+                fi
+              fi
+            fi
             bash scripts/ci-local-oci-registry.sh publish localhost/baseharbor-runtime:pre-release localhost:5000/baseharbor-runtime:pre-release
             unset BASEHARBOR_TARGET
             export XDG_CONFIG_HOME="$RUNNER_TEMP/baseharbor-backup-cli-xdg/config"
@@ -381,6 +426,16 @@ jobs:
             internal/runtime/service_stop_test.go > "$changed"
           if [ -s "$changed" ]; then
             bash scripts/ci-runtime-reset.sh "$RUNTIME"
+            if ! "$RUNTIME" image inspect localhost/baseharbor-runtime:pre-release >/dev/null 2>&1; then
+              archive="$RUNNER_TEMP/pre-release-candidate/baseharbor-runtime-pre-release.tar"
+              if [ -s "$archive" ]; then
+                if [ "$RUNTIME" = "podman" ]; then
+                  env -u XDG_CONFIG_HOME -u XDG_DATA_HOME podman load -i "$archive"
+                else
+                  docker load -i "$archive"
+                fi
+              fi
+            fi
             bash scripts/ci-local-oci-registry.sh publish localhost/baseharbor-runtime:pre-release localhost:5000/baseharbor-runtime:pre-release
             unset BASEHARBOR_TARGET
             export XDG_CONFIG_HOME="$RUNNER_TEMP/baseharbor-native-xdg/config"

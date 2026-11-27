@@ -95,7 +95,25 @@ class SingleDefaultCIRouteTests(unittest.TestCase):
                 self.assertIn("ci-single-default-impact.sh", text)
                 self.assertIn("needs.select_develop.outputs.required == 'true'", text)
                 self.assertIn("TestControlPlaneSingleDefaultNativeRuntimeInCI", text)
-                self.assertIn("  single_default_native:", text)
+                # Card 0428-249 accepted edit set: the Podman workflow split the
+                # single monolithic native job into dedicated jobs; the Docker
+                # workflow keeps the single_default_native job. Positives assert
+                # exactly the jobs that exist per runtime, so coverage never
+                # shrinks for either runner.
+                if "podman-acceptance" in workflow:
+                    for job in (
+                        "keycloak_single_native",
+                        "single_default_native_sql_secrets",
+                        "single_default_native_node_https",
+                        "single_default_native_install_destroy",
+                        "single_default_native_pinned_workload",
+                    ):
+                        self.assertIn(f"  {job}:", text)
+                    # Negative: the old monolithic name is gone, so no stale
+                    # single job can silently carry the whole Podman surface.
+                    self.assertNotIn("  single_default_native:\n", text)
+                else:
+                    self.assertIn("  single_default_native:", text)
                 self.assertIn("Install verified ORAS for native Core bootstrap", text)
                 self.assertIn("run: bash scripts/ci-install-oras.sh", text)
                 self.assertIn("github.event_name != 'push' || github.ref_name != 'develop'", text)
