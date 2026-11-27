@@ -1,10 +1,12 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"regexp"
 	"strings"
 	"time"
@@ -64,9 +66,13 @@ func candidateConsentOverride(ctx context.Context) string {
 
 // promptConfirmCandidateSubmission shows the exact candidate identity that will
 // be bound to this deployment before any state is written. For a
-// repository-owned candidate submission it prints the canonical content hash so
-// the operator can confirm it and pass --confirm-candidate with that digest;
-// the apply then fails closed without that flag. Non-candidate sources are
+// repository-owned candidate submission it prints the canonical content hash.
+// On an interactive terminal the operator confirms that exact digest inline: an
+// explicit "y" answer carries the consent straight into the write (the displayed
+// digest IS the digest the choke point binds), so no second command run with
+// --confirm-candidate is required. Any other input, and every non-interactive
+// path, keeps the original contract unchanged: the apply fails closed and asks
+// for a re-run with --confirm-candidate <digest>. Non-candidate sources are
 // unaffected.
 //
 // The displayed digest is derived from the SAME desired-state input the write
@@ -78,7 +84,7 @@ func candidateConsentOverride(ctx context.Context) string {
 // from the current source. A nil record still fingerprints the freshly resolved
 // source, so a nil-record prompt shows the digest of the new submission, not
 // an empty value.
-func promptConfirmCandidateSubmission(ctx context.Context, resolved resolvedApplication, out io.Writer) {
+func promptConfirmCandidateSubmission(ctx context.Context, resolved resolvedApplication, in io.Reader, out io.Writer) {
 	submission, current := candidateSubmissionForResolvedApp(ctx, resolved)
 	if submission.SourceRevision == "" {
 		return
@@ -95,7 +101,53 @@ func promptConfirmCandidateSubmission(ctx context.Context, resolved resolvedAppl
 	fmt.Fprintf(out, "  target.name %s\n", submission.TargetName)
 	fmt.Fprintf(out, "  source %s\n", current)
 	fmt.Fprintf(out, "  confirm-hash %s\n", digest)
+	// The interactive operator reviews the EXACT digest printed above and
+	// confirms it here; the confirmation is then carried into the same
+	// invocation's write. The prompt is reached only while the Target lifecycle
+	// lock is held and only on an interactive terminal stdin, and the
+	// lifecycle's own earlier prompts run before this point on the same stream,
+	// so an explicit "y" on the next line is the operator's answer to THIS bind
+	// question. The interactive reachability check (interactiveCandidateStdin)
+	// is production-pinned to a terminal os.Stdin; non-os.File readers (piped
+	// stdin, and the internal-input-resolver seam's bytes.Buffer, which
+	// readerIsTerminal alone would treat as a terminal) never get the question.
+	// Every other input — EOF, refuse, or no interactive terminal at all — binds
+	// nothing and keeps the re-run-with-flag contract below.
+	if interactiveCandidatePromptAllowed(ctx, in) {
+		fmt.Fprintf(out, "Confirm this exact candidate to apply it now (y), or refuse to bind it and finish with --confirm-candidate %s instead.\n", digest)
+		fmt.Fprintf(out, "Bind this exact candidate (confirm-hash above)? [y/N]: ")
+		if answer, err := bufio.NewReader(in).ReadString('\n'); err == nil && isAffirmativeAnswer(answer) {
+			bindCandidateConsentForSubmission(submission)
+		}
+		return
+	}
 	fmt.Fprintf(out, "Re-run with --confirm-candidate %s to acknowledge this exact submission.\n", digest)
+}
+
+// isAffirmativeAnswer is the promptYesNo vocabulary (cmd/baha/app_init_prompts.go):
+// the empty answer keeps the default No, so only an explicit yes binds.
+func isAffirmativeAnswer(line string) bool {
+	switch strings.ToLower(strings.TrimSpace(line)) {
+	case "y", "yes", "j", "ja":
+		return true
+	default:
+		return false
+	}
+}
+
+// bindCandidateConsentForSubmission is the single place the interactive bind
+// prompt records the operator's confirmation of an EXACT candidate submission:
+// the write boundary (recordDeploymentBeforeMutation) consumes this one-shot
+// binding for the same deployment identity, re-derives the digest from the
+// CURRENT source and constant-time-compares it, so a confirmation is only ever
+// carried into the invocation that asked for it. An already-supplied
+// --confirm-candidate flag always wins and is never replaced here.
+func bindCandidateConsentForSubmission(submission delivery.CandidateSubmission) {
+	digest := delivery.CandidateConsentDigest(submission)
+	if digest == "" {
+		return
+	}
+	setInteractiveCandidateConsentBinding(submission.ApplicationID, submission.TargetName, digest)
 }
 
 // candidateSubmissionForResolved builds the repository-owned CandidateSubmission
@@ -183,4 +235,25 @@ func finalizeCandidateConsent(rawDigest, by string, submission delivery.Candidat
 		At:     time.Now().UTC(),
 		Digest: computed,
 	}, nil
+}
+
+// interactiveCandidateStdin reports whether this invocation runs against an
+// interactive terminal. It is a var so tests can exercise the bind prompt while
+// production stays pinned to the real os.Stdin.
+var interactiveCandidateStdin = func(in io.Reader) bool {
+	if file, ok := in.(*os.File); ok {
+		return file == os.Stdin && readerIsTerminal(file)
+	}
+	return false
+}
+
+// interactiveCandidatePromptAllowed reports whether the bind prompt may run for
+// this invocation: the caller reached the leaf with a real reader, the session
+// is not forced non-interactive (--no-input, machine/JSON mode), and an
+// interactive candidate stdin is available.
+func interactiveCandidatePromptAllowed(ctx context.Context, in io.Reader) bool {
+	if in == nil || noInput(ctx) {
+		return false
+	}
+	return interactiveCandidateStdin(in)
 }

@@ -398,6 +398,17 @@ var errCandidateAlreadyImmutable = errors.New(
 )
 
 func recordDeploymentBeforeMutation(ctx context.Context, resolved resolvedApplication, state string, rawCandidateConsent string) (deployment.DeploymentRecord, error) {
+	// Consent resolution order at the write boundary: the explicit argument,
+	// then the lifecycle-context override (every CLI entry point strips
+	// --confirm-candidate onto it via withCandidateConsentDigest), then the
+	// one-shot interactive bind of this same invocation — so the consent the
+	// operator already gave can never be lost at an internal caller and force a
+	// second run with the flag. With none of the three, the candidate choke
+	// point below fails closed exactly as before.
+	if strings.TrimSpace(rawCandidateConsent) == "" {
+		rawCandidateConsent = candidateConsentOverride(ctx)
+	}
+	rawCandidateConsent = candidateConsentForWrite(resolved.DeploymentIdentity.ApplicationID, resolved.DeploymentIdentity.Target, rawCandidateConsent)
 	// Defense in depth: every admission path must pass before writing a pending
 	// deployment. The legacy caller has no trusted provenance yet, so configured
 	// restrictive Targets are refused instead of trusting user-provided fields.
@@ -518,12 +529,29 @@ func recordDeploymentBeforeMutation(ctx context.Context, resolved resolvedApplic
 	// so a later app destroy can still resolve Core runtime files and tear
 	// down cleanly, and a follow-up apply with valid consent reaches READY.
 	if record.Source.Kind == "repository" && state == "applying" {
+		// Freshness gate: the operator's confirm — the CLI flag or the
+		// interactive prompt answer in this same invocation — binds the EXACT
+		// desired state reviewed at the prompt. Re-derive that identity at this
+		// write boundary from the freshly resolved source (the same
+		// repositoryDesiredStateFingerprint helper promptConfirmCandidateSubmission
+		// shows) instead of the persisted record's stored digest, so a source
+		// that changed between review and write can never be bound under the
+		// earlier confirmation. finalizeCandidateConsent compares the confirm
+		// against this digest in constant time and persists the computed value,
+		// never the raw input, so an absent or mismatching confirm still fails
+		// closed exactly as before.
+		currentDigest := record.Source.Digest
+		if fingerprint, fingerprintErr := repositoryDesiredStateFingerprint(ctx, resolved); fingerprintErr != nil {
+			return deployment.DeploymentRecord{}, fingerprintErr
+		} else if fingerprint != "" {
+			currentDigest = fingerprint
+		}
 		submission := delivery.CandidateSubmission{
 			ContractVersion:  delivery.CandidateContractVersion,
 			ApplicationID:    record.Identity.ApplicationID,
 			TargetName:       record.Identity.Target,
 			SourceRepository: record.Source.Repository,
-			SourceRevision:   record.Source.Digest,
+			SourceRevision:   currentDigest,
 			ImageDigest:      "",
 		}
 		// Finalize the operator's confirm digest into an ECHT consent: pin the

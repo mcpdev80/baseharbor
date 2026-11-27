@@ -158,8 +158,12 @@ func executeRemoteApplicationApply(ctx context.Context, resolved resolvedApplica
 		issuer = brokerIssuer
 	}
 	// Operator confirmation before any candidate submission is persisted (same
-	// fail-closed choke point as the local apply path).
-	promptConfirmCandidateSubmission(ctx, resolved, out)
+	// fail-closed choke point as the local apply path). The remote transport
+	// attests the candidate consent from the CLI's --confirm-candidate override
+	// only (management_remote_apply_cli.go), so this call stays display-only:
+	// the returned context is deliberately discarded and the remote behaviour,
+	// including any interactive answer, is unchanged.
+	promptConfirmCandidateSubmission(ctx, resolved, applicationInput(ctx, runtimeInput), out)
 	pending, err := recordDeploymentBeforeMutation(ctx, resolved, "applying", candidateConsentOverride(ctx))
 	if err != nil {
 		return err
