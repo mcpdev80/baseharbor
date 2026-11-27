@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -281,6 +282,44 @@ func (c *Command) Help(w io.Writer) {
 	var buffer bytes.Buffer
 	c.renderHelp(&buffer)
 	writeMaybePaged(w, buffer.String())
+}
+
+// HelpSurface lists every publicly documented command path together with the
+// exact text its --help rendering produces, in stable sorted order. Hidden
+// commands and later duplicate registrations (the router uses the first
+// matching name) contribute no second entry. The golden help guard in
+// cmd/baha uses this one traversal so a drift in any --help page fails the
+// package suite.
+func (c *Command) HelpSurface() []HelpSurfaceEntry {
+	var entries []HelpSurfaceEntry
+	var walk func(*Command, string)
+	seen := map[string]bool{}
+	walk = func(command *Command, parent string) {
+		if command == nil || command.Hidden {
+			return
+		}
+		path := strings.TrimSpace(parent + " " + command.Name)
+		if seen[path] {
+			return
+		}
+		seen[path] = true
+		var out bytes.Buffer
+		command.renderHelp(&out)
+		entries = append(entries, HelpSurfaceEntry{Path: path, Text: out.String()})
+		for _, child := range command.Children {
+			walk(child, path)
+		}
+	}
+	walk(c, "")
+	sort.Slice(entries, func(i, j int) bool { return entries[i].Path < entries[j].Path })
+	return entries
+}
+
+// HelpSurfaceEntry is one public command path and its exact rendered --help
+// text.
+type HelpSurfaceEntry struct {
+	Path string
+	Text string
 }
 
 func (c *Command) renderHelp(w io.Writer) {
