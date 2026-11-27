@@ -326,10 +326,6 @@ jobs:
         if: always()
         run: bash scripts/ci-runtime-reset.sh podman
 
-      - name: Clean up isolated runtime
-        if: always()
-        run: bash scripts/ci-runtime-reset.sh podman
-
   podman-quadlet:
     needs: resolve_candidate
     concurrency:
