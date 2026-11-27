@@ -512,6 +512,17 @@ func persesDashboardCatalog() map[string]PersesPanelCatalogEntry {
 			DatasourceName: "tempo",
 			Dashboard:      persesDashboardForBackend(resolved, "tempo-traces"),
 		},
+		// The Keycloak identity dashboard realizes the identity provider, not a
+		// metrics/logs/traces backend, so its own backend is
+		// DashboardBackendIdentity. It scrapes Keycloak's native openmetrics
+		// endpoint and must key on the provider-class job + provider label.
+		"keycloak-identity": {
+			Key:            "keycloak-identity",
+			Backend:        "keycloak",
+			Datasource:     "keycloak",
+			DatasourceName: "keycloak",
+			Dashboard:      persesDashboardForBackend(resolved, "keycloak-identity"),
+		},
 		// PostgreSQL has no native metrics signal (ObservabilityUnsupported).
 		// It is explicitly UNAVAILABLE; no panel, no exporter.
 		"postgresql-targets": persesUnavailableEntry("postgresql-targets", "postgresql",
@@ -554,6 +565,8 @@ func backendForKey(key string) capability.ProviderKind {
 		return capability.ProviderLoki
 	case "tempo-traces":
 		return capability.ProviderTempo
+	case "keycloak-identity":
+		return capability.ProviderKeycloak
 	default:
 		return ""
 	}
@@ -625,6 +638,19 @@ func persesDashboardForBackend(m application.Manifest, key string) PersesDashboa
 				Panels:      map[string]PersesPanel{"app-traces": persesPanelTempo()},
 				Layouts:     []PersesLayout{{Kind: PersesGridLayoutKind, Spec: PersesLayoutSpec{Items: []PersesGridItem{{X: 0, Y: 0, Width: 24, Height: 12, Content: PersesGridContent{Ref: "#/spec/panels/app-traces"}}}}}},
 				Variables:   persesDashboardVariables(m),
+			},
+		}
+	case capability.ProviderKeycloak:
+		return PersesDashboard{
+			Kind:     PersesDashboardKind,
+			Metadata: PersesDashboardMetadata{Name: "keycloak-identity", Version: 0},
+			Spec: PersesDashboardSpec{
+				Display:     PersesDisplay{Name: "BaseHarbor Keycloak identity", Description: "Keycloak identity provider HTTP requests scraped by BaseHarbor Prometheus."},
+				Datasources: map[string]PersesDatasource{"keycloak": {Default: true, Plugin: PersesDatasourcePlugin{Kind: PersesDatasourceKeycloak, Spec: mustJSON(map[string]any{})}}},
+				Panels:      map[string]PersesPanel{"keycloak-requests": persesPanelKeycloak()},
+				Layouts:     []PersesLayout{{Kind: PersesGridLayoutKind, Spec: PersesLayoutSpec{Items: []PersesGridItem{{X: 0, Y: 0, Width: 24, Height: 6, Content: PersesGridContent{Ref: "#/spec/panels/keycloak-requests"}}}}}},
+				Variables:   persesDashboardVariables(m),
+				Duration:    "5m",
 			},
 		}
 	default:

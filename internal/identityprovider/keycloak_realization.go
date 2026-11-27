@@ -205,6 +205,17 @@ func (r *localKeycloakRealization) registerKeycloakSignals() error {
 	return observability.RegisterProviderSignals(registration)
 }
 
+// RegisterKeycloakMetricsSignalsAt registers the native Keycloak metrics
+// signal for a realized Target. The local realization calls this same
+// production path after Apply; keeping it package-visible also lets integration
+// tests verify that the metrics consumer observes the producer's real registry
+// record rather than a hand-built SignalSource.
+func RegisterKeycloakMetricsSignalsAt(app application.Manifest, files KeycloakFiles, dataDir, namespace string) error {
+	return (&localKeycloakRealization{
+		app: app, files: files, dataDir: dataDir, namespace: namespace,
+	}).registerKeycloakSignals()
+}
+
 // ownerProjectMaps lists the owner->project maps the migration consults. The
 // caller's own canonical project comes first; the state scan (providers/
 // keycloak/applications/<name>/<environment>) enumerates the Target's other

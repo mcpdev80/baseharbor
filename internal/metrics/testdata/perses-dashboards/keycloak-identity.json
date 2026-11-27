@@ -1,0 +1,134 @@
+{
+  "kind": "Dashboard",
+  "metadata": {
+    "name": "keycloak-identity",
+    "version": 0
+  },
+  "spec": {
+    "display": {
+      "name": "BaseHarbor Keycloak identity",
+      "description": "Keycloak identity provider HTTP requests scraped by BaseHarbor Prometheus."
+    },
+    "datasources": {
+      "keycloak": {
+        "default": true,
+        "plugin": {
+          "kind": "PrometheusDatasource",
+          "spec": {}
+        }
+      }
+    },
+    "panels": {
+      "keycloak-requests": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "BaseHarbor Keycloak identity"
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {}
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "http_server_requests_seconds_count{job=\"baseharbor-providers\",baseharbor_provider=\"keycloak\"}"
+                  }
+                },
+                "datasource": {
+                  "kind": "PrometheusDatasource",
+                  "name": "keycloak"
+                }
+              }
+            },
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "http_server_requests_seconds_sum{job=\"baseharbor-providers\",baseharbor_provider=\"keycloak\"}"
+                  }
+                },
+                "datasource": {
+                  "kind": "PrometheusDatasource",
+                  "name": "keycloak"
+                }
+              }
+            },
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "http_server_active_requests{job=\"baseharbor-providers\",baseharbor_provider=\"keycloak\"}"
+                  }
+                },
+                "datasource": {
+                  "kind": "PrometheusDatasource",
+                  "name": "keycloak"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "layouts": [
+      {
+        "kind": "Grid",
+        "spec": {
+          "items": [
+            {
+              "x": 0,
+              "y": 0,
+              "width": 24,
+              "height": 6,
+              "content": {
+                "$ref": "#/spec/panels/keycloak-requests"
+              }
+            }
+          ]
+        }
+      }
+    ],
+    "variables": [
+      {
+        "kind": "ListVariable",
+        "spec": {
+          "name": "$application",
+          "allowMultiple": false,
+          "allowAllValue": false,
+          "defaultValue": "perses-dashboard-databases",
+          "plugin": {
+            "kind": "ConstantVariable",
+            "spec": {
+              "value": "perses-dashboard-databases"
+            }
+          }
+        }
+      },
+      {
+        "kind": "ListVariable",
+        "spec": {
+          "name": "$env",
+          "allowMultiple": false,
+          "allowAllValue": false,
+          "defaultValue": "dev",
+          "plugin": {
+            "kind": "ConstantVariable",
+            "spec": {
+              "value": "dev"
+            }
+          }
+        }
+      }
+    ],
+    "duration": "5m"
+  }
+}
