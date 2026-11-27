@@ -127,13 +127,13 @@ Der Server bindet TLS 1.2 oder neuer, lauscht standardmäßig auf
 | `GET /metrics` | Runtime-Executor | OpenMetrics-Scrape-Endpunkt für den Ressourcen-Manager des Executors |
 
 Der Runtime-Executor bietet seine eigene Bediene-API-Oberfläche auf
-`0.0.0.0:9443` (Überschreibbar mit `BASEHARBOR_RUNTIME_EXECUTOR_LISTEN_ADDR`),
+`0.0.0.0:9443` (überschreibbar über `BASEHARBOR_EXECUTOR_LISTEN_ADDR`),
 nicht auf dem Bediene-Listener `127.0.0.1:8443` von Core. Sein `GET /metrics`
-gibt OpenMetrics vom Executor-Observer behind demselben TLS 1.2-oder-neuer- und
+gibt OpenMetrics vom Executor-Observer hinter derselben TLS 1.2-oder-neuer- und
 Client-Zertifikat-Authentifizierung wie die `/internal/`- und `/healthz`-Routen
-des Executors zurück; ein Scrape muss einen verifizierten Executor-Blatt-Blatt
-präsentieren. Dies ist ein provider-interner Bediene-Endpunkt, getrennt von der
-obigen Bediene-API-Routentabelle.
+des Executors zurück; ein Scrape muss einen verifizierten Executor-Blatt-
+Ausweis präsentieren. Dies ist ein provider-interner Bediene-Endpunkt, getrennt
+von der obigen Bediene-API-Routentabelle.
 
 
 Jede `/api`-Anfrage durchläuft TLS, Bearer-OIDC-Prüfung, Mitgliedschaft,

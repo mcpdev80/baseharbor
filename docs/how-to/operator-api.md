@@ -122,7 +122,7 @@ with `BASEHARBOR_API_LISTEN_ADDR`), and serves:
 | `GET /metrics` | runtime executor | OpenMetrics scrape endpoint for the executor's runtime resource manager |
 
 The runtime executor exposes its own operator HTTP surface on `0.0.0.0:9443`
-(override with `BASEHARBOR_RUNTIME_EXECUTOR_LISTEN_ADDR`), not on the Core operator
+(override with `BASEHARBOR_EXECUTOR_LISTEN_ADDR`), not on the Core operator
 `127.0.0.1:8443` listener. Its `GET /metrics` serves OpenMetrics from the executor
 observer behind the same TLS 1.2+ and client-certificate authentication as the
 executor's `/internal/` and `/healthz` routes; a scrape must present a verified
