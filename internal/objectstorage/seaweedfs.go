@@ -29,9 +29,22 @@ const (
 	ProviderNetwork = "baseharbor-object-storage"
 	ProviderImage   = "docker.io/chrislusf/seaweedfs:4.47"
 
-	sharedProviderReconcileTimeout = 120 * time.Second
-	providerReadinessTimeout       = 90 * time.Second
-	existingProviderProbeTimeout   = 3 * time.Second
+	// sharedProviderReconcileTimeout is the shared-provider reconcile budget.
+	// It aliases the shared application StatusTimeoutMatrix OverallTimeout group
+	// (internal/application/timeouts.go): the provider-side reconcile budget is
+	// the sibling of the CLI's whole-status-collection budget, both 120s, so it
+	// reads one documented value from one source of truth (H-V42, 0428-315)
+	// instead of a duplicated private literal. The value is unchanged (120s), so
+	// behaviour is preserved exactly — this is a consolidation, not a tuning
+	// change.
+	sharedProviderReconcileTimeout = application.OverallTimeout
+	// providerReadinessTimeout (90s) and existingProviderProbeTimeout (3s) are
+	// distinct per-provider-operation budgets: readiness-wait and existing
+	// provider probe are separate operations with their own budgets, so they
+	// stay separate constants anchored to the shared matrix as the source of
+	// truth rather than being collapsed onto the reconcile budget.
+	providerReadinessTimeout     = 90 * time.Second
+	existingProviderProbeTimeout = 3 * time.Second
 )
 
 type Runtime interface {

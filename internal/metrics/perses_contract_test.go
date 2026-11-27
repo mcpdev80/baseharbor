@@ -2,7 +2,9 @@ package metrics
 
 import (
 	"testing"
+	"time"
 
+	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
 )
 
@@ -19,6 +21,19 @@ func TestPersesReleaseIsPinnedAndCurrent(t *testing.T) {
 	}
 	if err := capability.ValidatePersesRelease(release); err != nil {
 		t.Fatalf("pinned perses release must validate: %v", err)
+	}
+}
+
+// TestTempoTraceQueryTimeoutReadsFastServiceMatrix asserts the Tempo trace-query
+// probe reads the shared application StatusTimeoutMatrix FastServiceTimeout
+// group (10s) rather than a private duplicated literal (H-V42, 0428-315). The
+// value is unchanged; this is a consolidation assertion, not a tuning change.
+func TestTempoTraceQueryTimeoutReadsFastServiceMatrix(t *testing.T) {
+	if tempoTraceQueryTimeout != application.FastServiceTimeout {
+		t.Fatalf("tempo trace-query timeout = %s, want matrix FastServiceTimeout %s (single source of truth)", tempoTraceQueryTimeout, application.FastServiceTimeout)
+	}
+	if tempoTraceQueryTimeout != 10*time.Second {
+		t.Fatalf("tempo trace-query timeout = %s, want 10s (value preserved through consolidation)", tempoTraceQueryTimeout)
 	}
 }
 

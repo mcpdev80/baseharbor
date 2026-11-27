@@ -11,7 +11,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
@@ -62,8 +61,14 @@ const (
 	PersesTempoTraceQueryPath = "/api/search"
 )
 
-// tempoTraceQueryTimeout bounds one real trace-query probe.
-const tempoTraceQueryTimeout = 10 * time.Second
+// tempoTraceQueryTimeout bounds one real trace-query probe. It is an alias for
+// the shared application StatusTimeoutMatrix FastServiceTimeout group
+// (internal/application/timeouts.go); the Tempo trace-query probe is the same
+// 10s probe budget the CLI fast-service probes use, so every consumer reads one
+// documented value from one source of truth (H-V42, 0428-315) instead of a
+// duplicated private literal. The value is unchanged (10s), so behaviour is
+// preserved exactly — this is a consolidation, not a tuning change.
+var tempoTraceQueryTimeout = application.FastServiceTimeout
 
 // PersesTempoResource is the native Perses Datasource resource BaseHarbor
 // registers for the Tempo backend. kind/metadata/spec is the exact Perses

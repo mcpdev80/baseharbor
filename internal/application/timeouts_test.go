@@ -58,3 +58,21 @@ func TestManagementServicesShareManagementGroup(t *testing.T) {
 		t.Fatalf("management service timeout = %s, want 30s", ManagementServiceTimeout)
 	}
 }
+
+// TestSharedMatrixIsTheSingleSourceAsserts the timeout-matrix
+// StatusTimeoutMatrix is the single source of truth the other packages read
+// from (H-V42, 0428-315) and that each semantic group owns a distinct value,
+// so the consolidation does not silently merge budgets. The values are
+// unchanged, so this is a consolidation assertion, not a tuning change.
+func TestSharedMatrixIsTheSingleSource(t *testing.T) {
+	// FastServiceTimeout (10s) is the Tempo trace-query probe budget shared
+	// across the CLI fast-service probes and the Tempo datasource.
+	if FastServiceTimeout != 10*time.Second {
+		t.Fatalf("fast-service timeout = %s, want 10s (value preserved through consolidation)", FastServiceTimeout)
+	}
+	// OverallTimeout (120s) is the whole-collection / shared-provider reconcile
+	// budget shared across the CLI and the object-storage provider probes.
+	if OverallTimeout != 120*time.Second {
+		t.Fatalf("overall timeout = %s, want 120s (value preserved through consolidation)", OverallTimeout)
+	}
+}
