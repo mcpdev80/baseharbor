@@ -3,6 +3,7 @@ package application
 import (
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/capability"
@@ -425,6 +426,73 @@ func validateWorkloadComponentName(name string) error {
 		}
 	}
 	return nil
+}
+
+// joinSortedKeys returns the sorted, comma-joined keys of a string set so
+// ambiguous-instance diagnostics list the conflicting raw Compose keys in a
+// stable order.
+func joinSortedKeys(set map[string]struct{}) string {
+	keys := make([]string, 0, len(set))
+	for key := range set {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return strings.Join(keys, ", ")
+}
+
+// getOrInitSet returns the set registered under key in m, creating it if absent.
+// selectWorkloadServices indexes available compose keys by canonical id so a
+// single canonical form may only ever share one raw key.
+func getOrInitSet(m map[string]map[string]struct{}, key string) map[string]struct{} {
+	if _, ok := m[key]; !ok {
+		m[key] = make(map[string]struct{})
+	}
+	return m[key]
+}
+
+// resolveWorkloadServiceKey maps a requested logical workload ID to the single
+// raw Compose service key it names. A missing canonical form fails closed;
+// a canonical form shared by more than one raw key is ambiguous and fails
+// closed. The raw key is what override generation and runtime service
+// selection address, never the manifest's hyphen-presentation id.
+func resolveWorkloadServiceKey(service string, availableSet map[string]map[string]struct{}) (string, error) {
+	canonical := canonicalComposeServiceID(service)
+	rawKeys, known := availableSet[canonical]
+	if !known {
+		return "", fmt.Errorf("workload service %q is not present in the application Compose file", service)
+	}
+	if len(rawKeys) > 1 {
+		return "", fmt.Errorf("application Compose service %q names multiple ambiguous instances %s", canonical, joinSortedKeys(rawKeys))
+	}
+	for key := range rawKeys {
+		return key, nil
+	}
+	return "", fmt.Errorf("workload service %q is not present in the application Compose file", service)
+}
+
+// canonicalComposeServiceID maps a service identifier to its canonical logical
+// form so a manifest component ID (which stores hyphen-presentation identifiers
+// such as "vector-db") matches the raw Compose service key it names (such as
+// "vector_db"). It normalizes neither the Compose key nor the manifest ID in
+// place: callers keep passing the original identifiers; this only drives the
+// membership comparison. Underscores and other separators collapse to a single
+// dash and the result is lower-cased, mirroring the presentation/logical
+// separation already used when workload components are detected.
+func canonicalComposeServiceID(service string) string {
+	value := strings.ToLower(strings.ReplaceAll(strings.TrimSpace(service), "_", "-"))
+	var b strings.Builder
+	lastDash := false
+	for _, r := range value {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
+			b.WriteRune(r)
+			lastDash = false
+		case b.Len() > 0 && !lastDash:
+			b.WriteByte('-')
+			lastDash = true
+		}
+	}
+	return strings.Trim(b.String(), "-")
 }
 
 func validateComposeServiceName(name string) error {
