@@ -350,6 +350,16 @@ jobs:
           fi
           if [ "$backup_changed" = true ]; then
             bash scripts/ci-runtime-reset.sh "$RUNTIME"
+            if ! "$RUNTIME" image inspect localhost/baseharbor-runtime:pre-release >/dev/null 2>&1; then
+              archive="$RUNNER_TEMP/pre-release-candidate/baseharbor-runtime-pre-release.tar"
+              if [ -s "$archive" ]; then
+                if [ "$RUNTIME" = "podman" ]; then
+                  env -u XDG_CONFIG_HOME -u XDG_DATA_HOME podman load -i "$archive"
+                else
+                  docker load -i "$archive"
+                fi
+              fi
+            fi
             bash scripts/ci-local-oci-registry.sh publish localhost/baseharbor-runtime:pre-release localhost:5000/baseharbor-runtime:pre-release
             unset BASEHARBOR_TARGET
             export XDG_CONFIG_HOME="$RUNNER_TEMP/baseharbor-backup-cli-xdg/config"
@@ -381,6 +391,16 @@ jobs:
             internal/runtime/service_stop_test.go > "$changed"
           if [ -s "$changed" ]; then
             bash scripts/ci-runtime-reset.sh "$RUNTIME"
+            if ! "$RUNTIME" image inspect localhost/baseharbor-runtime:pre-release >/dev/null 2>&1; then
+              archive="$RUNNER_TEMP/pre-release-candidate/baseharbor-runtime-pre-release.tar"
+              if [ -s "$archive" ]; then
+                if [ "$RUNTIME" = "podman" ]; then
+                  env -u XDG_CONFIG_HOME -u XDG_DATA_HOME podman load -i "$archive"
+                else
+                  docker load -i "$archive"
+                fi
+              fi
+            fi
             bash scripts/ci-local-oci-registry.sh publish localhost/baseharbor-runtime:pre-release localhost:5000/baseharbor-runtime:pre-release
             unset BASEHARBOR_TARGET
             export XDG_CONFIG_HOME="$RUNNER_TEMP/baseharbor-native-xdg/config"
