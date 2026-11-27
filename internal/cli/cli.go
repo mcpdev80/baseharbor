@@ -307,14 +307,12 @@ func (c *Command) HelpSurface() []HelpSurfaceEntry {
 		}
 		path := strings.TrimSpace(parent + " " + command.Name)
 		if seen[path] {
-			return
+			return // router-first-match: later duplicate registrations add no second surface
 		}
+		seen[path] = true
 		var out bytes.Buffer
 		command.renderHelp(&out)
 		entries = append(entries, HelpSurfaceEntry{Path: path, Text: out.String()})
-		// Mark only after rendering: the shared visibility helper records every
-		// path it has shown, which is exactly the golden deduplication.
-		seen[path] = true
 		for _, child := range command.Children {
 			walk(child, path)
 		}

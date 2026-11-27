@@ -2859,6 +2859,51 @@
         "source.gate.atomic.docker.data.capabilities",
         "source.gate.atomic.podman.data.capabilities"
       ]
+    },
+    {
+      "id": "source.cmd_baha_help_golden_guard_test_go",
+      "path": "cmd/baha/help_golden_guard_test.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ],
+      "required_test_names": [
+        "TestCLIHelpGoldenSurface",
+        "TestCLIHelpGoldenFileInventoryPinsEveryCommand",
+        "TestCLIHelpSurfaceCoversEveryDocumentedCommandPath"
+      ]
+    },
+    {
+      "id": "source.cmd_baha_help_golden_invocation_test_go",
+      "path": "cmd/baha/help_golden_invocation_test.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ],
+      "required_test_names": [
+        "TestCLIHelpGoldenMatchesEveryExecutableHelpInvocation"
+      ]
+    },
+    {
+      "id": "source.cmd_baha_testdata_cli_help_golden_txt",
+      "path": "cmd/baha/testdata/cli-help-golden.txt",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
+      "id": "source.internal_cli_help_surface_test_go",
+      "path": "internal/cli/help_surface_test.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ],
+      "required_test_names": [
+        "TestCLIHelpSurfaceWalksTheRealCommandTree",
+        "TestCLIHelpSurfaceIsStableUnderRepeatedWalks"
+      ],
+      "runtime_specific": true
     }
   ],
   "gates": [
