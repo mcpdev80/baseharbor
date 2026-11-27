@@ -156,22 +156,6 @@
   ],
   "components": [
     {
-      "id": "source.internal_runtimeexecutor_compose_go",
-      "path": "internal/runtimeexecutor/compose.go",
-      "surfaces": [
-        "source.gate.atomic.docker.data.capabilities",
-        "source.gate.atomic.podman.data.capabilities"
-      ]
-    },
-    {
-      "id": "source.internal_runtimeexecutor_compose_test_go",
-      "path": "internal/runtimeexecutor/compose_test.go",
-      "surfaces": [
-        "source.gate.atomic.docker.data.capabilities",
-        "source.gate.atomic.podman.data.capabilities"
-      ]
-    },
-    {
       "id": "source.cmd_baha_app_status_collect_go",
       "path": "cmd/baha/app_status_collect.go",
       "surfaces": [
