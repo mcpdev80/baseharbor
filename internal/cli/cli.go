@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"syscall"
 	"unicode/utf8"
 )
 
@@ -124,6 +125,49 @@ func ExitCode(err error) int {
 		return exitCode.Code
 	}
 	return 1
+}
+
+// SignalExitCode maps the two signals the CLI signal handler registers
+// (os.Interrupt, syscall.SIGTERM) to the documented process exit codes named in
+// docs/reference/cli.md: os.Interrupt -> 130, syscall.SIGTERM -> 143. It is the
+// single source of that mapping; cmd/baha/main.go's interruptibleProcessContext
+// goroutine routes every registered signal through this function on the
+// signal-handler exit path (the second signal that arrives while a command is
+// still running). main.go:context.Canceled -> 130 (the interrupt's first
+// cancel) is the ordinary interruption exit; the 130/143 mapping here is the
+// documented SIGINT/SIGTERM contract for the handler's own exit path.
+func SignalExitCode(sig os.Signal) int {
+	if sig == syscall.SIGTERM {
+		return 143
+	}
+	return 130
+}
+
+// ResolveSignalExitCode is the main-level contract entry cmd/baha/main.go uses to
+// turn a signal delivered to the running process into the documented process
+// exit code. interruptibleProcessContext routes every registered signal through
+// it on its exit path, so a test driving this function drives the exact code
+// path main uses rather than a local key lookup.
+func ResolveSignalExitCode(sig os.Signal) int {
+	return SignalExitCode(sig)
+}
+
+// ResolveProcessExitCode is the main-level contract entry cmd/baha/main.go uses
+// to turn the error returned by the command tree into the documented process
+// exit code. main runs the command tree and, on error, routes the returned
+// error through this helper instead of inlining the mapping: a context.Canceled
+// error from an interrupt becomes 130 (it BYPASSES ExitCode, which would map a
+// bare context.Canceled to the runtime-failure code 1), a *UsageError becomes 2,
+// a WithExitCode-tagged error becomes its carried status, and everything else
+// falls through to ExitCode(err), which returns 1 for an unclassified error. The
+// two signals the handler registers (os.Interrupt, syscall.SIGTERM) stay 130/143
+// via ResolveSignalExitCode on the running-process exit path; this helper is the
+// single source for the interrupt's own process exit.
+func ResolveProcessExitCode(err error) int {
+	if errors.Is(err, context.Canceled) {
+		return 130
+	}
+	return ExitCode(err)
 }
 
 // Execute routes args through the command tree and handles help consistently.

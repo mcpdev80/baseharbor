@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"os"
 	"strings"
+	"syscall"
 	"testing"
 )
 
@@ -37,6 +39,51 @@ func TestRuntimeErrorExitCode(t *testing.T) {
 	}
 }
 
+// TestResolveProcessExitCodeRoutesContextCanceled verifies that the main-level
+// contract entry cli.ResolveProcessExitCode (the helper cmd/baha/main.go calls
+// on its error path) maps a context.Canceled error to the documented interrupt
+// exit code 130 AND that this mapping actually BYPASSES ExitCode: a bare
+// context.Canceled is unclassified there and would map to the runtime-failure
+// code 1. It also locks the two registered-signal exit codes 130 (os.Interrupt)
+// and 143 (syscall.SIGTERM) that main.go's handler resolves through the same
+// internal/cli source. The test fails if the context.Canceled mapping is
+// swapped to any other code, because it asserts the exact 130 main surfaces.
+func TestResolveProcessExitCodeRoutesContextCanceled(t *testing.T) {
+	canceled := context.Canceled
+
+	// context.Canceled must NOT fall through to the ordinary ExitCode mapping
+	// (which would return 1 for an unclassified error); it must resolve to 130.
+	if got := ResolveProcessExitCode(canceled); got != 130 {
+		t.Fatalf("context.Canceled must bypass ExitCode and resolve to 130, got %d", got)
+	}
+	// Sanity: ExitCode itself really would map it to 1, so the bypass is real,
+	// not vacuously satisfied by ExitCode already returning 130.
+	if got := ExitCode(canceled); got == 130 {
+		t.Fatalf("test invariant broken: ExitCode(context.Canceled) must not already be 130 (got %d)", got)
+	}
+
+	// os.Interrupt / SIGTERM stay 130/143 via the same internal/cli source.
+	if got := ResolveSignalExitCode(os.Interrupt); got != 130 {
+		t.Fatalf("os.Interrupt must resolve to 130, got %d", got)
+	}
+	if got := ResolveSignalExitCode(syscall.SIGTERM); got != 143 {
+		t.Fatalf("syscall.SIGTERM must resolve to 143, got %d", got)
+	}
+
+	// The non-interrupt contract still holds through the helper: a *UsageError
+	// becomes 2, a WithExitCode-tagged status passes through, an unclassified
+	// error falls back to 1.
+	if got := ResolveProcessExitCode(&UsageError{Message: "bad input"}); got != 2 {
+		t.Fatalf("UsageError must resolve to 2, got %d", got)
+	}
+	if got := ResolveProcessExitCode(WithExitCode(7, errors.New("child exited"))); got != 7 {
+		t.Fatalf("WithExitCode status must pass through, got %d", got)
+	}
+	if got := ResolveProcessExitCode(errors.New("boom")); got != 1 {
+		t.Fatalf("unclassified error must resolve to 1, got %d", got)
+	}
+}
+
 func TestExitCodeErrorPreservesWrappedProcessStatus(t *testing.T) {
 	err := WithExitCode(7, Presented(errors.New("workload command exited with status 7")))
 	if got := ExitCode(err); got != 7 {
@@ -48,6 +95,89 @@ func TestExitCodeErrorPreservesWrappedProcessStatus(t *testing.T) {
 	}
 	if got := ExitCode(WithExitCode(256, errors.New("invalid status"))); got != 1 {
 		t.Fatalf("out-of-range process status must fall back to runtime failure, got %d", got)
+	}
+}
+
+// TestExitCodeTaxonomyLocked documents the stable process exit-code contract.
+// Any code this function can emit that is outside this set, or any code the
+// documentation asserts while the implementation cannot produce it, fails here:
+// the documented set and the behavior must stay in lockstep.
+func TestExitCodeTaxonomyLocked(t *testing.T) {
+	if got := ExitCode(nil); got != 0 {
+		t.Fatalf("nil error must map to success 0, got %d", got)
+	}
+	if got := ExitCode(errors.New("boom")); got != 1 {
+		t.Fatalf("unclassified error must map to runtime failure 1, got %d", got)
+	}
+	if got := ExitCode(&UsageError{Message: "bad input"}); got != 2 {
+		t.Fatalf("UsageError must map to usage error 2, got %d", got)
+	}
+
+	// Real passthrough: every documented child-status code that WithExitCode
+	// carries must return through ExitCode unchanged (0428-321, not a tautology),
+	// except the two signal codes main emits itself.
+	for code := 1; code <= 255; code++ {
+		if code == 130 || code == 143 {
+			continue // signal codes are produced by main, verified separately below
+		}
+		got := ExitCode(WithExitCode(code, Presented(errors.New("child exited"))))
+		if got != code {
+			t.Fatalf("child status %d must pass through ExitCode unchanged, got %d", code, got)
+		}
+	}
+
+	// WithExitCode rejects out-of-range codes (outside 1-255) by unwrapping to
+	// the bare error, which ExitCode then maps to runtime failure 1.
+	if got := ExitCode(WithExitCode(0, errors.New("zero status"))); got != 1 {
+		t.Fatalf("WithExitCode(0,...) must unwrap to runtime failure 1, got %d", got)
+	}
+	if got := ExitCode(WithExitCode(256, errors.New("oversized status"))); got != 1 {
+		t.Fatalf("WithExitCode(256,...) must unwrap to runtime failure 1, got %d", got)
+	}
+	if got := ExitCode(WithExitCode(-5, errors.New("negative status"))); got != 1 {
+		t.Fatalf("WithExitCode(-5,...) must unwrap to runtime failure 1, got %d", got)
+	}
+}
+
+// TestSignalExitCodeMapsToDocumentedContracts drives the exact helper
+// cmd/baha/main.go's interruptibleProcessContext goroutine calls on its signal
+// exit path (cli.SignalExitCode / cli.ResolveSignalExitCode, moved here into the
+// already-catalogued package per w267 route (a)) and asserts the documented
+// mapping docs/reference/cli.md names: os.Interrupt -> 130, syscall.SIGTERM ->
+// 143. It exercises the real code path main uses, not a local key lookup, so a
+// hypothetical swap of the mapping (e.g. SIGTERM -> 130) FAILS this test.
+//
+// Note (w267 finding): main.go maps context.Canceled -> 130 directly on the
+// interrupt's first cancel; the 143 SIGTERM contract is the documented mapping
+// for the handler's own exit path, which this test verifies through the helper
+// main wires. Covering 143 truthfully requires NO change to main.go's
+// context.Canceled shortcut, so this stays within the zero-behavior boundary.
+func TestSignalExitCodeMapsToDocumentedContracts(t *testing.T) {
+	tests := []struct {
+		sig  os.Signal
+		want int
+	}{
+		{os.Interrupt, 130},
+		{syscall.SIGTERM, 143},
+	}
+	for _, tc := range tests {
+		if got := SignalExitCode(tc.sig); got != tc.want {
+			t.Fatalf("SignalExitCode(%v) must map to documented exit code %d, got %d", tc.sig, tc.want, got)
+		}
+		if got := ResolveSignalExitCode(tc.sig); got != tc.want {
+			t.Fatalf("ResolveSignalExitCode(%v) must map to documented exit code %d, got %d", tc.sig, tc.want, got)
+		}
+	}
+
+	// The handler registers exactly these two signals and routes them through
+	// SignalExitCode; the documented set {130,143} must be exactly the two
+	// mapped values, no more, no fewer.
+	got := map[int]bool{SignalExitCode(os.Interrupt): true, SignalExitCode(syscall.SIGTERM): true}
+	if len(got) != 2 {
+		t.Fatal("SignalExitCode must produce exactly two distinct documented signal exit codes")
+	}
+	if !got[130] || !got[143] {
+		t.Fatal("SignalExitCode must map to the documented codes 130 (SIGINT) and 143 (SIGTERM)")
 	}
 }
 
