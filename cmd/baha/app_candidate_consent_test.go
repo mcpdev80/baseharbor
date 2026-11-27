@@ -584,7 +584,7 @@ func TestCandidateConsentBindsCurrentDesiredStateNotStoredRecord(t *testing.T) {
 func withInteractiveCandidateStdin(t *testing.T) {
 	t.Helper()
 	previous := interactiveCandidateStdin
-	interactiveCandidateStdin = func(io.Reader) bool { return true }
+	interactiveCandidateStdin = func() bool { return true }
 	t.Cleanup(func() { interactiveCandidateStdin = previous })
 }
 
@@ -595,6 +595,6 @@ func withInteractiveCandidateStdin(t *testing.T) {
 func withNonInteractiveCandidateStdin(t *testing.T) {
 	t.Helper()
 	previous := interactiveCandidateStdin
-	interactiveCandidateStdin = func(io.Reader) bool { return false }
+	interactiveCandidateStdin = func() bool { return false }
 	t.Cleanup(func() { interactiveCandidateStdin = previous })
 }

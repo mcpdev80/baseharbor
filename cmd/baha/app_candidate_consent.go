@@ -237,14 +237,14 @@ func finalizeCandidateConsent(rawDigest, by string, submission delivery.Candidat
 	}, nil
 }
 
-// interactiveCandidateStdin reports whether this invocation runs against an
-// interactive terminal. It is a var so tests can exercise the bind prompt while
-// production stays pinned to the real os.Stdin.
-var interactiveCandidateStdin = func(in io.Reader) bool {
-	if file, ok := in.(*os.File); ok {
-		return file == os.Stdin && readerIsTerminal(file)
-	}
-	return false
+// interactiveCandidateStdin reports whether this invocation runs against a
+// terminal stdin. Production pins the check to os.Stdin — the CLI's real
+// interactive stream: the bind question must never be asked when stdin is
+// piped, regardless of which reader a caller threaded through the lifecycle
+// (an internal seam reader may be a bytes.Buffer that readerIsTerminal treats
+// as a terminal). Interactive tests replace this check wholesale.
+var interactiveCandidateStdin = func() bool {
+	return os.Stdin != nil && readerIsTerminal(os.Stdin)
 }
 
 // interactiveCandidatePromptAllowed reports whether the bind prompt may run for
@@ -255,5 +255,5 @@ func interactiveCandidatePromptAllowed(ctx context.Context, in io.Reader) bool {
 	if in == nil || noInput(ctx) {
 		return false
 	}
-	return interactiveCandidateStdin(in)
+	return interactiveCandidateStdin()
 }
