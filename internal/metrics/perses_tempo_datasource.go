@@ -88,17 +88,25 @@ type tempoTraceQueryTimeoutMatrixAlias [tempoTraceQueryTimeout - application.Fas
 // and the alias (in whole seconds), so the type exists only while the alias is
 // a compile-time constant NOT GREATER than the matrix group value — an upward
 // drift gives a negative length and fails the build; a mutable var alias gives
-// a non-constant length and fails the build.
+// a non-constant length and fails the build. A sub-second upward drift (d = 0
+// in whole seconds) is caught by tempoTraceQueryTimeoutMatrixAliasNanos below.
 type tempoTraceQueryTimeoutMatrixAliasExact [application.FastServiceTimeout/time.Second - tempoTraceQueryTimeout/time.Second]struct{}
+
+// tempoTraceQueryTimeoutMatrixAliasNanos closes the sub-second gap: its length
+// is the CONSTANT nanosecond difference matrix − alias, so ANY positive drift,
+// however small, gives a negative length and fails the build. (Negative drift
+// fails via tempoTraceQueryTimeoutMatrixAlias above.)
+type tempoTraceQueryTimeoutMatrixAliasNanos [application.FastServiceTimeout - tempoTraceQueryTimeout]struct{}
 
 // assertTempoAliasMatrixEquality is the referenced assertion: taking its type
 // (TestTempoTraceQueryTimeoutIsCompileTimeConstant) forces the compiler to
-// evaluate both drift guards, whose zero sizes are the compile-time equality
+// evaluate all drift guards, whose zero sizes are the compile-time equality
 // of alias and matrix value (downward drift via the alias-side guard, upward
-// drift via the matrix-side guard). Together with the const declaration and
-// the package value tests, the alias cannot drift silently (Codex re-review fix).
-func assertTempoAliasMatrixEquality() (tempoTraceQueryTimeoutMatrixAlias, tempoTraceQueryTimeoutMatrixAliasExact) {
-	return tempoTraceQueryTimeoutMatrixAlias{}, tempoTraceQueryTimeoutMatrixAliasExact{}
+// drift via the matrix-side guards, any magnitude). Together with the const
+// declaration and the package value tests, the alias cannot drift silently
+// (Codex re-review fix).
+func assertTempoAliasMatrixEquality() (tempoTraceQueryTimeoutMatrixAlias, tempoTraceQueryTimeoutMatrixAliasExact, tempoTraceQueryTimeoutMatrixAliasNanos) {
+	return tempoTraceQueryTimeoutMatrixAlias{}, tempoTraceQueryTimeoutMatrixAliasExact{}, tempoTraceQueryTimeoutMatrixAliasNanos{}
 }
 
 // PersesTempoResource is the native Perses Datasource resource BaseHarbor
