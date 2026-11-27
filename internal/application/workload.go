@@ -212,19 +212,30 @@ func composeServiceNames(path string) ([]string, error) {
 }
 
 func selectWorkloadServices(m Manifest, available, requested []string) ([]string, error) {
-	availableSet := make(map[string]struct{}, len(available))
+	// availableSet maps the canonical logical form of each available key to the
+	// raw Compose service keys that share it. A canonical ID may only ever map
+	// to a single raw key: two different Compose keys that name the same logical
+	// service (for example "vector_db" and "vector-db") are ambiguous and must be
+	// rejected rather than silently collapsed into one member.
+	availableSet := make(map[string]map[string]struct{}, len(available))
 	for _, service := range available {
 		if strings.HasPrefix(service, "baseharbor-internal-") {
 			return nil, fmt.Errorf("application Compose service %q uses the reserved BaseHarbor internal service namespace", service)
 		}
-		availableSet[service] = struct{}{}
+		set := getOrInitSet(availableSet, canonicalComposeServiceID(service))
+		set[service] = struct{}{}
 	}
 	if len(requested) > 0 {
-		selected := append([]string(nil), requested...)
-		for _, service := range selected {
-			if _, ok := availableSet[service]; !ok {
-				return nil, fmt.Errorf("workload service %q is not present in the application Compose file", service)
+		selected := make([]string, 0, len(requested))
+		for _, service := range requested {
+			// Resolve the requested logical ID to the exact raw Compose key so the
+			// returned set carries the keys override generation and runtime service
+			// selection actually address, not the manifest's hyphen-presentation ID.
+			rawKey, err := resolveWorkloadServiceKey(service, availableSet)
+			if err != nil {
+				return nil, err
 			}
+			selected = append(selected, rawKey)
 		}
 		sort.Strings(selected)
 		return selected, nil
