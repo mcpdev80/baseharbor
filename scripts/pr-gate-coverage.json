@@ -2859,6 +2859,38 @@
         "source.gate.atomic.docker.data.capabilities",
         "source.gate.atomic.podman.data.capabilities"
       ]
+    },
+    {
+      "id": "source.internal_repositoryinspect_capability_detection_runtime_go",
+      "path": "internal/repositoryinspect/capability_detection_runtime.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
+      "id": "source.internal_repositoryinspect_compose_analysis_go",
+      "path": "internal/repositoryinspect/compose_analysis.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
+      "id": "source.internal_repositoryinspect_compose_detection_go",
+      "path": "internal/repositoryinspect/compose_detection.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
+      "id": "source.internal_repositoryinspect_w399_provider_discovery_repro_test_go",
+      "path": "internal/repositoryinspect/w399_provider_discovery_repro_test.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
     }
   ],
   "gates": [
