@@ -440,6 +440,16 @@ func joinSortedKeys(set map[string]struct{}) string {
 	return strings.Join(keys, ", ")
 }
 
+// getOrInitSet returns the set registered under key in m, creating it if absent.
+// selectWorkloadServices indexes available compose keys by canonical id so a
+// single canonical form may only ever share one raw key.
+func getOrInitSet(m map[string]map[string]struct{}, key string) map[string]struct{} {
+	if _, ok := m[key]; !ok {
+		m[key] = make(map[string]struct{})
+	}
+	return m[key]
+}
+
 // resolveWorkloadServiceKey maps a requested logical workload ID to the single
 // raw Compose service key it names. A missing canonical form fails closed;
 // a canonical form shared by more than one raw key is ambiguous and fails

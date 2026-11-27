@@ -222,7 +222,8 @@ func selectWorkloadServices(m Manifest, available, requested []string) ([]string
 		if strings.HasPrefix(service, "baseharbor-internal-") {
 			return nil, fmt.Errorf("application Compose service %q uses the reserved BaseHarbor internal service namespace", service)
 		}
-		availableSet[canonicalComposeServiceID(service)][service] = struct{}{}
+		set := getOrInitSet(availableSet, canonicalComposeServiceID(service))
+		set[service] = struct{}{}
 	}
 	if len(requested) > 0 {
 		selected := make([]string, 0, len(requested))
