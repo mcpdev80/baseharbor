@@ -127,7 +127,7 @@ class CheckRoutingTests(unittest.TestCase):
         self.assertIn('required: false', dispatch)
         self.assertNotIn('default:', dispatch)
         self.assertNotIn('release/v0.4.21', dispatch)
-        self.assertIn('ref: ${{ inputs.ref || github.sha }}', workflow)
+        self.assertIn('ref: ${{ needs.resolve_candidate.outputs.candidate_sha }}', workflow)
         check = workflow.split('      - name: Verify all eight executed runtime tests\n', 1)[1]
         for step in ['runtime_preflight', 'runtime_integration', 'recovery',
                      'log_ingestion', 'trace_ingestion']:
@@ -136,7 +136,7 @@ class CheckRoutingTests(unittest.TestCase):
         podman_dispatch = podman.split('  workflow_dispatch:\n', 1)[1].split('\n  push:\n', 1)[0]
         self.assertIn('required: false', podman_dispatch)
         self.assertNotIn('default:', podman_dispatch)
-        self.assertIn('ref: ${{ inputs.ref || github.sha }}', podman)
+        self.assertIn('ref: ${{ needs.resolve_candidate.outputs.candidate_sha }}', podman)
 
     def test_candidate_checks_are_advisory_and_final_uses_only_trusted_base_plan(self):
         workflow = (ROOT / '.github/workflows/ci.yml').read_text()
