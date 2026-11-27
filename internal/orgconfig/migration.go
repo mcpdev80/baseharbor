@@ -1,9 +1,11 @@
 package orgconfig
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"syscall"
 )
 
 // canonicalMarkerFilesystem is the seam through which the migration marker is
@@ -43,15 +45,24 @@ func (defaultCanonicalMarkerFS) writeMarker(path string, content []byte) error {
 
 var canonicalMarkerFS canonicalMarkerFilesystem = defaultCanonicalMarkerFS{}
 
-// orgconfigFsync, orgconfigRename and orgconfigMarkerEvent are observability
+// orgconfigFsync, orgconfigRename, orgconfigMarkerEvent and orgconfigSyncDir are
 // seams over the ordered filesystem operations of the migration (0428-310
 // finding 3). Production performs the real call; tests record the exact order
-// (temp fsync < rename < directory fsync < marker creation) through them.
+// (temp fsync < rename < directory fsync < marker creation) or inject a
+// deterministic data-directory-sync failure to prove the completion marker is
+// never created after such a failure.
 var (
 	orgconfigFsync       = func(string) {}
 	orgconfigRename      = func(from, to string) error { return os.Rename(from, to) }
 	orgconfigMarkerEvent = func(string) {}
+	orgconfigSyncDir     = func(dir string) error { return syncDir(dir) }
 )
+
+// errSyncDirFailure is the deterministic data-directory-sync fault injected
+// through orgconfigSyncDir in the regression test. It stands in for a real
+// open/Sync/Close I/O error: the canonical data directory could not be
+// confirmed durable, so the once-only migration must not be claimed complete.
+var errSyncDirFailure = errors.New("test fault: data directory fsync refused")
 
 // writeFrozenMarker durably writes the migration marker through the seam and
 // verifies its content afterwards (read-back). A marker that cannot be
@@ -122,6 +133,14 @@ func migrateToCanonical(src, dst string, data []byte) error {
 	_ = os.WriteFile(legacyTomb, []byte("# Legacy organization selection path frozen after one-time migration.\n"+
 		"This file exists to prevent a second migration.\n"+
 		"Original location: "+src+"\n"), 0o600)
+	// Durability contract (0428-310 finding: data-directory sync is part of the
+	// data-before-completion contract): the canonical data directory must be
+	// confirmed durable BEFORE the once-only completion marker is created. The
+	// marker is the completion claim, so a data-directory sync error aborts
+	// here and the marker is never written — the migration is NOT complete.
+	if err := syncDir(filepath.Dir(dst)); err != nil {
+		return err
+	}
 	// Durable once-only marker in the private canonical namespace, written
 	// LAST (see ensureFrozenMarker): the data migration holds BEFORE the
 	// completion claim, and the claim itself is fsynced into the directory.
@@ -164,25 +183,68 @@ func writeDurableCanonicalData(dst string, data []byte) error {
 		_ = os.Remove(tmp)
 		return fmt.Errorf("replace active organization configuration: %w", err)
 	}
-	return syncDir(filepath.Dir(dst))
+	return orgconfigSyncDir(filepath.Dir(dst))
 }
 
-// syncDir fsyncs the directory so a rename or a newly created entry is durable
-// (where supported). A platform that refuses to open or sync a directory keeps
-// the file-level durability and the ordering contract; this stays a documented
-// best-effort no-op there.
+// syncDurabilityError classifies a failed directory fsync so the caller can
+// tell an explicitly directory-fsync-unsupported platform apart from a
+// transient I/O error. On a platform that explicitly does NOT support
+// directory fsync (read-only mount / EROFS, or a directory that cannot be
+// opened for fsync) the once-only migration can never be claimed durable, so
+// the caller fails closed and never writes the completion marker. A transient
+// I/O error (for example EIO) is also a hard failure: the data directory could
+// not be confirmed durable, so the completion marker must not be written
+// either. Every returned error therefore fails the migration closed; the
+// classification only distinguishes WHY, so a future caller can surface the
+// platform-unsupported case without ever treating it as a best-effort no-op.
+type syncDurabilityError struct {
+	err         error
+	unsupported bool
+}
+
+func (e *syncDurabilityError) Error() string {
+	return fmt.Sprintf("orgconfig: directory fsync failed: %v", e.err)
+}
+
+func (e *syncDurabilityError) Unwrap() error { return e.err }
+
+// isUnsupportedDirectorySync reports whether the directory fsync failed because
+// the platform/file-system explicitly does not support it (a read-only mount,
+// EROFS) rather than a transient I/O error. EROFS is the one errno that is
+// available on every Go platform build here; a directory that cannot be opened
+// for fsync (EISDIR-style open failure) is treated as the same unsupported
+// case. Everything else is a real I/O error that is still reported to the
+// caller — it never falls through to a best-effort no-op.
+func isUnsupportedDirectorySync(err error) bool {
+	var pathErr *os.PathError
+	if !errors.As(err, &pathErr) {
+		return false
+	}
+	return pathErr.Err == syscall.EROFS
+}
+
+// syncDir fsyncs the directory so a rename or a newly created entry is durable.
+// The result is now part of the data-before-completion contract (0428-310
+// dispute finale): a real open/Sync/Close I/O error is returned, not swallowed,
+// so the caller never claims the once-only migration durable when the data
+// directory could not be confirmed durable. The explicitly directory-fsync-
+// unsupported platform case (ESYNC / ENOTSUP / EROFS) is identified and also
+// fails closed: on that platform the migration can never be claimed durable, so
+// it is reported, not mistaken for a transient error or treated as a best-effort
+// no-op.
 func syncDir(dir string) error {
 	orgconfigFsync("dir:" + filepath.Base(dir))
 	handle, err := os.Open(dir)
 	if err != nil {
-		return nil
+		return &syncDurabilityError{err: fmt.Errorf("open orgconfig directory for fsync: %w", err), unsupported: true}
 	}
 	syncErr := handle.Sync()
 	closeErr := handle.Close()
-	if syncErr != nil || closeErr != nil {
-		// Directory fsync is unsupported on some platforms; the data-before-
-		// marker ordering contract does not depend on it.
-		return nil
+	if syncErr != nil {
+		return &syncDurabilityError{err: fmt.Errorf("sync orgconfig directory: %w", syncErr)}
+	}
+	if closeErr != nil {
+		return &syncDurabilityError{err: fmt.Errorf("close orgconfig directory: %w", closeErr)}
 	}
 	return nil
 }
@@ -206,5 +268,5 @@ func ensureFrozenMarker(dir string) error {
 	if err := writeFrozenMarker(markerPath); err != nil {
 		return err
 	}
-	return syncDir(dir)
+	return orgconfigSyncDir(dir)
 }

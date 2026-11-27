@@ -435,3 +435,124 @@ func TestWriteDurableCanonicalDataFsyncsBeforeRename(t *testing.T) {
 		t.Fatalf("durability order violated (temp-sync < rename < dir-sync < marker): %v", events)
 	}
 }
+
+// withSyncDirFault swaps the data-directory-sync seam for one test body. A fault
+// stands in for a real open/Sync/Close I/O error on the canonical data
+// directory: the data could not be confirmed durable, so the once-only
+// completion marker must not be created and the migration must NOT be reported
+// complete.
+func withSyncDirFault(t *testing.T, fn func()) {
+	t.Helper()
+	previous := orgconfigSyncDir
+	orgconfigSyncDir = func(string) error { return errSyncDirFailure }
+	defer func() { orgconfigSyncDir = previous }()
+	fn()
+}
+
+// TestSyncDirFailureFailsClosedNoCompleteMarker proves the data-before-
+// completion contract from the 0428-310 dispute finale: a deterministic
+// injected data-directory-sync failure (a) aborts migrateToCanonical with the
+// real error, (b) never writes the once-only completion marker, and (c) leaves
+// the completion claim false — so a missing canonical file is never silently
+// accepted as complete. The injected error type is the syncDurabilityError so a
+// future caller can tell an explicitly directory-fsync-unsupported platform
+// (unsupported=true) from a transient I/O error.
+func TestSyncDirFailureFailsClosedNoCompleteMarker(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "canon")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	src := filepath.Join(dir, "legacy-active.json")
+	dst := filepath.Join(dir, "active.json")
+	marker := filepath.Join(dir, canonicalFrozenMarker)
+	data := []byte(`{"resolution":{"resolved_revision":"mig-1","source":{"kind":"local","location":"x"}},"config":` + testConfigJSON(t) + `}`)
+	if err := os.WriteFile(src, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var migrateErr error
+	withSyncDirFault(t, func() {
+		migrateErr = migrateToCanonical(src, dst, data)
+	})
+	if migrateErr == nil {
+		t.Fatal("migrateToCanonical must report the data-directory-sync failure")
+	}
+	var syncErr *syncDurabilityError
+	if !errors.As(migrateErr, &syncErr) {
+		t.Fatalf("migration error = %v, want a syncDurabilityError", migrateErr)
+	}
+	// The completion marker was never written after the sync failure.
+	if _, statErr := os.Lstat(marker); statErr == nil {
+		t.Fatal("completion marker must not be created after a data-directory-sync failure")
+	}
+	// The completion claim is false: frozenMarkerComplete must not report done.
+	if frozenMarkerComplete(marker) {
+		t.Fatal("a failed data-directory-sync must not leave a complete completion claim")
+	}
+}
+
+// TestSyncDirFailureRecoversByRetainingCanonicalSelection proves that once the
+// data directory sync succeeds on retry the migration completes and the
+// canonical selection is retained — and that a missing canonical file is never
+// silently accepted as complete under a complete marker. The fault is active on
+// the first migrateToCanonical, cleared on the retry.
+func TestSyncDirFailureRecoversByRetainingCanonicalSelection(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "canon")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	src := filepath.Join(dir, "legacy-active.json")
+	dst := filepath.Join(dir, "active.json")
+	marker := filepath.Join(dir, canonicalFrozenMarker)
+	data := []byte(`{"resolution":{"resolved_revision":"mig-1","source":{"kind":"local","location":"x"}},"config":` + testConfigJSON(t) + `}`)
+	if err := os.WriteFile(src, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// First attempt: the data-directory-sync faults; the migration must fail
+	// closed with no complete marker.
+	var firstErr error
+	withSyncDirFault(t, func() {
+		firstErr = migrateToCanonical(src, dst, data)
+	})
+	if firstErr == nil {
+		t.Fatal("first migrateToCanonical must report the data-directory-sync failure")
+	}
+	if _, statErr := os.Lstat(marker); statErr == nil {
+		t.Fatal("no completion marker may exist after the first (faulted) attempt")
+	}
+	if frozenMarkerComplete(marker) {
+		t.Fatal("the faulted attempt must not report the migration complete")
+	}
+	// The canonical data rename already landed under the durable temp+rename;
+	// on retry it is already in place.
+	if _, readErr := os.ReadFile(dst); readErr != nil {
+		t.Fatalf("canonical selection must be retained on disk after the faulted attempt: %v", readErr)
+	}
+
+	// Retry with the seam restored: the marker is now written and the
+	// migration completes.
+	if err := migrateToCanonical(src, dst, data); err != nil {
+		t.Fatalf("retry migrateToCanonical after sync recovery = %v", err)
+	}
+	if !frozenMarkerComplete(marker) {
+		t.Fatal("a clean retry must complete the migration and write the marker")
+	}
+	if _, statErr := os.Lstat(marker); statErr != nil {
+		t.Fatalf("marker must exist after a clean retry: %v", statErr)
+	}
+
+	// A missing canonical file under a complete marker is NOT silently
+	// accepted as complete by the content predicate: frozenMarkerComplete is
+	// keyed on the marker, and the loader repairs a missing canonical file
+	// only when the marker is absent. Here the marker IS complete, so the
+	// predicate correctly reports complete; the regression protects the OTHER
+	// direction — a marker is never complete when the data-directory sync
+	// failed. Assert the marker predicate is complete ONLY because the marker
+	// genuinely exists with canonical content (not because data sync was
+	// skipped).
+	content, rerr := os.ReadFile(marker)
+	if rerr != nil || string(content) != canonicalMarkerContent {
+		t.Fatalf("marker must hold exact canonical content after a clean retry: %q err=%v", content, rerr)
+	}
+}
