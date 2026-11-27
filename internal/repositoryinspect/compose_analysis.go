@@ -38,6 +38,10 @@ func detectedLogicalInstanceName(serviceName, kind string) string {
 	name := slugify(serviceName)
 	prefixes := []string{kind + "-"}
 	suffixes := []string{"-" + kind}
+	// Provider kinds carry additional name affixes. The bare "pg" token is
+	// intentionally absent: "-db" style service names and pgvector images are
+	// resolved from the Compose image, never inferred from a database-suffix
+	// that would erase the valid application binding name.
 	switch kind {
 	case "postgres":
 		prefixes = append(prefixes, "postgresql-", "pg-")

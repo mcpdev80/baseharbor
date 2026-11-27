@@ -18,6 +18,7 @@ type composeService struct {
 	MongoDB                 bool
 	RabbitMQ                bool
 	ObjectStorage           bool
+	ScrapingService         bool
 	AmbiguousInfrastructure bool
 	Unresolved              bool
 	HasBuild                bool
@@ -72,11 +73,22 @@ func detectComposeServices(data []byte) ([]composeService, error) {
 		}
 		item := composeService{Name: name}
 		lowerName := strings.ToLower(name)
-		item.Postgres = strings.Contains(lowerName, "postgres") || strings.Contains(lowerName, "postgresql")
-		item.Redis = strings.Contains(lowerName, "redis") || strings.Contains(lowerName, "valkey")
-		item.MongoDB = strings.Contains(lowerName, "mongodb") || lowerName == "mongo" || strings.HasPrefix(lowerName, "mongo-")
-		item.RabbitMQ = strings.Contains(lowerName, "rabbitmq")
-		item.ObjectStorage = composeObjectStorageMarker(lowerName)
+		// A build-only service with no published base image is application
+		// source, not a replaceable infrastructure provider; its service name
+		// may still carry an infrastructure word (e.g. "app-db-migrate").
+		// Capability detection is image-driven and must not classify it.
+		semanticName := lowerName
+		if _, hasImage := definition["image"]; !hasImage {
+			if _, hasBuild := definition["build"]; hasBuild {
+				semanticName = ""
+			}
+		}
+		item.Postgres = composePostgresMarker(semanticName)
+		item.Redis = strings.Contains(semanticName, "redis") || strings.Contains(semanticName, "valkey")
+		item.MongoDB = composeMongoDBMarker(semanticName)
+		item.RabbitMQ = strings.Contains(semanticName, "rabbitmq")
+		item.ObjectStorage = composeObjectStorageMarker(semanticName)
+		item.ScrapingService = composeScraperMarker(lowerName)
 		item.AmbiguousInfrastructure = !item.Postgres && !item.Redis && !item.MongoDB && !item.RabbitMQ && !item.ObjectStorage &&
 			(composeAmbiguousInfrastructureMarker(lowerName) || composeUnsupportedDatabaseMarker(lowerName))
 
@@ -87,11 +99,18 @@ func detectComposeServices(data []byte) ([]composeService, error) {
 				item.HasImage = true
 				item.Image = image
 				lowerImage := strings.ToLower(image)
-				item.Postgres = item.Postgres || strings.Contains(lowerImage, "postgres") || strings.Contains(lowerImage, "postgresql")
+				item.Postgres = item.Postgres || composePostgresMarker(lowerImage)
 				item.Redis = item.Redis || strings.Contains(lowerImage, "redis") || strings.Contains(lowerImage, "valkey")
-				item.MongoDB = item.MongoDB || strings.Contains(lowerImage, "mongodb") || strings.Contains(lowerImage, "/mongo:") || strings.HasPrefix(lowerImage, "mongo:")
+				item.MongoDB = item.MongoDB || composeMongoDBMarker(lowerImage)
 				item.RabbitMQ = item.RabbitMQ || strings.Contains(lowerImage, "rabbitmq")
 				item.ObjectStorage = item.ObjectStorage || composeObjectStorageMarker(lowerImage)
+				// An image word alone ("*-scraper") is not Postgres evidence:
+				// drop the name-derived SQL marker when the image only shows a
+				// scraping tool. Object-storage and MongoDB markers stay set
+				// because they come from the image, never from the name.
+				if !composePostgresMarker(lowerImage) && composeScraperMarker(lowerImage) {
+					item.Postgres = false
+				}
 				if !item.Postgres && !item.Redis && !item.MongoDB && !item.RabbitMQ && !item.ObjectStorage && composeUnsupportedDatabaseMarker(lowerImage) {
 					item.AmbiguousInfrastructure = true
 				}
@@ -502,6 +521,35 @@ func composeUnsupportedDatabaseMarker(value string) bool {
 		}
 	}
 	return false
+}
+
+// composePostgresMarker reports whether a normalized Compose service name or
+// image reference selects a PostgreSQL provider. It deliberately excludes the
+// bare "pg" token: pgvector images and "-db" suffixed services would otherwise
+// misclassify a scraper or other consumer service as a Postgres provider.
+func composePostgresMarker(value string) bool {
+	value = strings.ToLower(strings.TrimSpace(value))
+	for _, marker := range []string{"postgres", "postgresql", "pgvector"} {
+		if strings.Contains(value, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+// composeMongoDBMarker reports whether a normalized service name or image
+// reference selects a MongoDB document database.
+func composeMongoDBMarker(value string) bool {
+	value = strings.ToLower(strings.TrimSpace(value))
+	return strings.Contains(value, "mongo")
+}
+
+// composeScraperMarker reports whether a service name or image is a scraping
+// tool that merely connects to a database; it must not be counted as a SQL
+// provider instance.
+func composeScraperMarker(value string) bool {
+	value = strings.ToLower(strings.TrimSpace(value))
+	return strings.Contains(value, "scraper")
 }
 
 func composeUsesDatabaseInitDirectory(raw any) bool {

@@ -193,7 +193,10 @@ func composeAmbiguousInfrastructureMarker(value string) bool {
 
 func composeObjectStorageMarker(value string) bool {
 	value = strings.ToLower(strings.TrimSpace(value))
-	for _, marker := range []string{"minio/minio", "seaweedfs", "chrislusf/seaweedfs", "radosgw", "ceph-rgw"} {
+	for _, marker := range []string{
+		"minio/minio", "seaweedfs", "chrislusf/seaweedfs", "radosgw", "ceph-rgw",
+		"localstack", "moto", "zenko", "storageos",
+	} {
 		if strings.Contains(value, marker) {
 			return true
 		}
