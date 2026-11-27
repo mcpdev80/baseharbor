@@ -85,6 +85,11 @@ func (h *Handler) handleSourceTransferCurrent(w http.ResponseWriter, r *http.Req
 		sourceTransferError(w, err)
 		return
 	}
+	// The current source snapshot envelope is a byte-for-byte client contract:
+	// the CLI decodes it with json.DisallowUnknownFields and reads only
+	// `digest`. Pagination of the `missing` pending-delta list lives in the
+	// separate paged view (docs/spec/runtime-list-pagination-v1.md); this
+	// discovery endpoint keeps the minimal `{digest}` envelope unchanged.
 	writeJSON(w, http.StatusOK, struct {
 		Digest string `json:"digest"`
 	}{current.Digest})

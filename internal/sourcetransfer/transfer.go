@@ -253,6 +253,33 @@ func NewStore(root string) (*Store, error) {
 	}
 	return &Store{root: absolute, active: map[string]*activeTransfer{}}, nil
 }
+
+// PendingPaths returns the upload-pending file paths of the active transfers
+// in a namespace. A committed transfer is no longer active, so an empty result
+// means "no delta upload is open" rather than an error. The selectors are the
+// same identity triple Current uses and fail closed when invalid.
+func (s *Store) PendingPaths(target, app, env string) ([]string, error) {
+	if !validSelector(target) || !validSelector(app) || !validSelector(env) {
+		return nil, errors.New("invalid source identity")
+	}
+	ns := s.namespace(Manifest{Target: target, Application: app, Environment: env})
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var paths []string
+	for _, transfer := range s.active {
+		if filepath.Dir(transfer.root) != filepath.Join(ns, "pending") {
+			continue
+		}
+		for path := range transfer.needed {
+			if transfer.next[path] == 0 {
+				paths = append(paths, path)
+			}
+		}
+	}
+	sort.Strings(paths)
+	return paths, nil
+}
+
 func (s *Store) namespace(m Manifest) string {
 	return filepath.Join(s.root, m.Target, m.Application, m.Environment)
 }
