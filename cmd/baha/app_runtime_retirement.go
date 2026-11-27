@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
@@ -78,9 +79,21 @@ func (e *applicationDestroyExecution) retireRuntimePreservingData(ctx context.Co
 		if err := application.ReleaseApplicationProviderRegistryAt(e.resolved.TargetStateRoot, e.manifest); err != nil {
 			return fmt.Errorf("application was never delivered but provider registry cleanup failed: %w", err)
 		}
+		// Consume the one-shot never-delivered proof before leaving the clean
+		// retire path: an app initialized but destroyed before delivery must not
+		// leave a stale O_EXCL witness behind for the next adoption with the same
+		// identity. Consumed only by the same lane that verified the proof here.
+		if err := deployment.ConsumeNeverDeliveredProof(e.resolved.DeploymentIdentity); err != nil {
+			return fmt.Errorf("application was never delivered but never-delivered proof cleanup failed: %w", err)
+		}
 		if err := recordApplicationAudit(ctx, e.resolved, applicationRuntimeRetirementOperation(ctx), "success", "ownership verified; nothing was ever delivered", "refused or never-applied application stopped; no runtime or provider state existed to remove"); err != nil {
 			return err
 		}
+		// Remove a now-empty never-delivered/<applicationID> directory left behind
+		// by the consumed one-shot proof. Best-effort: a non-empty sibling (a
+		// foreign proof the verify gate did not clear) must never be pruned, so
+		// only an empty directory is removed and any error is logged, not fatal.
+		removeEmptyNeverDeliveredDir(e.resolved.DeploymentIdentity)
 		e.term.Section("Application")
 		e.term.Result("RETIRED", "application", e.manifest.Name+" never delivered; no runtime state to remove")
 		return nil
@@ -184,3 +197,23 @@ func applicationRuntimeRetirementOperation(ctx context.Context) string {
 	}
 	return "destroy"
 }
+
+// removeEmptyNeverDeliveredDir removes the now-empty never-delivered directory
+// that holds the consumed one-shot proof during a clean never-delivered retire.
+// It is best-effort and safe: only the directory that holds the proof is
+// considered, and it is removed only when empty, so a foreign never-delivered
+// proof owned by another identity (which the verify gate never cleared) is
+// never pruned. Any error (missing dir, unreadable sibling, ...) is logged
+// only, never fatal.
+func removeEmptyNeverDeliveredDir(id deployment.DeploymentIdentity) {
+	dir, err := deployment.NeverDeliveredProofDir(id.Target, id.ApplicationID)
+	if err != nil {
+		return
+	}
+	entries, statErr := os.ReadDir(dir)
+	if statErr != nil || len(entries) != 0 {
+		return
+	}
+	_ = os.Remove(dir)
+}
+
