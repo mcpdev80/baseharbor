@@ -1,8 +1,11 @@
 package metrics
 
 import (
+	"reflect"
 	"testing"
+	"time"
 
+	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
 )
 
@@ -19,6 +22,41 @@ func TestPersesReleaseIsPinnedAndCurrent(t *testing.T) {
 	}
 	if err := capability.ValidatePersesRelease(release); err != nil {
 		t.Fatalf("pinned perses release must validate: %v", err)
+	}
+}
+
+// TestTempoTraceQueryTimeoutReadsFastServiceMatrix asserts the Tempo trace-query
+// probe reads the shared application StatusTimeoutMatrix FastServiceTimeout
+// group (10s) rather than a private duplicated literal (H-V42, 0428-315). The
+// value is unchanged; this is a consolidation assertion, not a tuning change.
+func TestTempoTraceQueryTimeoutReadsFastServiceMatrix(t *testing.T) {
+	if tempoTraceQueryTimeout != application.FastServiceTimeout {
+		t.Fatalf("tempo trace-query timeout = %s, want matrix FastServiceTimeout %s (single source of truth)", tempoTraceQueryTimeout, application.FastServiceTimeout)
+	}
+	if tempoTraceQueryTimeout != 10*time.Second {
+		t.Fatalf("tempo trace-query timeout = %s, want 10s (value preserved through consolidation)", tempoTraceQueryTimeout)
+	}
+}
+
+// TestTempoTraceQueryTimeoutIsCompileTimeConstant is the static companion of
+// the runtime assertion above: it references the package-level compile-time
+// guards. The drift-guard type only exists while both the alias and the matrix
+// group are compile-time constants with the SAME value (array lengths must be
+// constant expressions, and a negative length fails the build), and the
+// constant-array guard only exists while the alias is a constant. Turning the
+// alias back into a mutable var, or drifting it away from the matrix, breaks
+// compilation — this is no longer a point-in-time value assertion (Codex
+// re-review correction, 0428-315).
+func TestTempoTraceQueryTimeoutIsCompileTimeConstant(t *testing.T) {
+	// The guard function returns one zero-sized type per drift direction:
+	// both exist (size 0) only while the alias is a compile-time constant
+	// equal to the matrix group value. A mutated or drifted alias means this
+	// file does not compile at all.
+	returns := reflect.TypeOf(assertTempoAliasMatrixEquality)
+	for i := 0; i < returns.NumOut(); i++ {
+		if size := returns.Out(i).Size(); size != 0 {
+			t.Fatalf("drift-guard type %d size = %d, want 0 (alias must equal the matrix constant at compile time)", i, size)
+		}
 	}
 }
 

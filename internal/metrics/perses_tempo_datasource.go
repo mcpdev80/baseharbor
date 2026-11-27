@@ -11,7 +11,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
@@ -62,8 +61,42 @@ const (
 	PersesTempoTraceQueryPath = "/api/search"
 )
 
-// tempoTraceQueryTimeout bounds one real trace-query probe.
-const tempoTraceQueryTimeout = 10 * time.Second
+// tempoTraceQueryTimeout bounds one real trace-query probe. It is a compile-time
+// alias of the shared application StatusTimeoutMatrix FastServiceTimeout group
+// (internal/application/timeouts.go): the Tempo trace-query probe is the same
+// 10s probe budget the CLI fast-service probes use, so every consumer reads one
+// documented value from one source of truth (H-V42, 0428-315) instead of a
+// duplicated private literal. Declared as a const, not a var, so no package
+// code can mutate it at runtime and the matrix aliasing is a compile-time
+// invariant (Codex re-review correction). The value is unchanged (10s), so
+// behaviour is preserved exactly — this is a consolidation, not a tuning change.
+// The matrix group is a typed time.Duration constant, so this alias keeps that
+// exact type.
+const tempoTraceQueryTimeout = application.FastServiceTimeout
+
+// tempoTraceQueryTimeoutMatrixAlias is the static drift guard for the matrix
+// alias: its length is the CONSTANT difference alias − matrix. A mutable var
+// alias makes the length non-constant and a downward drift makes it negative;
+// either one fails the build.
+type tempoTraceQueryTimeoutMatrixAlias [tempoTraceQueryTimeout - application.FastServiceTimeout]struct{}
+
+// tempoTraceQueryTimeoutMatrixAliasExact is the upward half of the guard: the
+// same difference taken the other way round (matrix − alias), so an upward
+// drift gives a negative length and a mutation a non-constant length; both
+// fail the build.
+type tempoTraceQueryTimeoutMatrixAliasExact [application.FastServiceTimeout - tempoTraceQueryTimeout]struct{}
+
+// assertTempoAliasMatrixEquality is the referenced assertion: taking its type
+// (TestTempoTraceQueryTimeoutIsCompileTimeConstant) forces the compiler to
+// evaluate both guards; each has size 0 exactly while the alias is a
+// compile-time constant equal to the matrix group value. Mutation (array
+// length not constant) and drift in either direction (array length negative)
+// therefore break compilation, not just a point-in-time test. The package
+// value tests keep the runtime equality assertion as well (Codex re-review
+// fix).
+func assertTempoAliasMatrixEquality() (tempoTraceQueryTimeoutMatrixAlias, tempoTraceQueryTimeoutMatrixAliasExact) {
+	return tempoTraceQueryTimeoutMatrixAlias{}, tempoTraceQueryTimeoutMatrixAliasExact{}
+}
 
 // PersesTempoResource is the native Perses Datasource resource BaseHarbor
 // registers for the Tempo backend. kind/metadata/spec is the exact Perses

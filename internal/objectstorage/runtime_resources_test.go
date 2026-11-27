@@ -10,6 +10,9 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
+
+	"github.com/mcpdev80/baseharbor/internal/application"
 )
 
 type fakeRuntimeS3IAM struct {
@@ -160,5 +163,27 @@ func TestRuntimeResourceManagerCreateGetDeleteIsIdempotent(t *testing.T) {
 	}
 	if err := manager.Delete(context.Background(), "mailflow", "dev", "user-4711"); err != nil {
 		t.Fatalf("idempotent delete: %v", err)
+	}
+}
+
+// TestSharedProviderReconcileReadsOverallMatrixAndBudgetsDistinct asserts the
+// SeaweedFS provider budgets read the shared application StatusTimeoutMatrix as
+// the single source of truth (H-V42, 0428-315): the shared-provider reconcile
+// budget aliases the OverallTimeout group (120s), while the per-operation
+// readiness (90s) and existing-provider probe (3s) budgets stay distinct so
+// distinct operations keep their own budgets. Values are unchanged; this is a
+// consolidation assertion, not a tuning change.
+func TestSharedProviderReconcileReadsOverallMatrixAndBudgetsDistinct(t *testing.T) {
+	if sharedProviderReconcileTimeout != application.OverallTimeout {
+		t.Fatalf("shared provider reconcile timeout = %s, want matrix OverallTimeout %s (single source of truth)", sharedProviderReconcileTimeout, application.OverallTimeout)
+	}
+	if sharedProviderReconcileTimeout != 120*time.Second {
+		t.Fatalf("shared provider reconcile timeout = %s, want 120s (value preserved through consolidation)", sharedProviderReconcileTimeout)
+	}
+	if providerReadinessTimeout != 90*time.Second {
+		t.Fatalf("provider readiness timeout = %s, want 90s (distinct per-op budget preserved)", providerReadinessTimeout)
+	}
+	if existingProviderProbeTimeout != 3*time.Second {
+		t.Fatalf("existing provider probe timeout = %s, want 3s (distinct per-op budget preserved)", existingProviderProbeTimeout)
 	}
 }
