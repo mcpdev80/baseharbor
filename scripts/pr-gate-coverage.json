@@ -183,14 +183,16 @@
       "id": "source.internal_application_timeouts_go",
       "path": "internal/application/timeouts.go",
       "surfaces": [
-        "source.gate.integration.static.public.contracts"
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
       ]
     },
     {
       "id": "source.internal_application_timeouts_test_go",
       "path": "internal/application/timeouts_test.go",
       "surfaces": [
-        "source.gate.integration.static.public.contracts"
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
       ]
     },
     {
@@ -2878,28 +2880,32 @@
       "id": "source.internal_metrics_perses_contract_test_go",
       "path": "internal/metrics/perses_contract_test.go",
       "surfaces": [
-        "source.gate.integration.static.public.contracts"
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
       ]
     },
     {
       "id": "source.internal_metrics_perses_tempo_datasource_go",
       "path": "internal/metrics/perses_tempo_datasource.go",
       "surfaces": [
-        "source.gate.integration.static.public.contracts"
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
       ]
     },
     {
       "id": "source.internal_objectstorage_runtime_resources_test_go",
       "path": "internal/objectstorage/runtime_resources_test.go",
       "surfaces": [
-        "source.gate.integration.static.public.contracts"
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
       ]
     },
     {
       "id": "source.internal_objectstorage_seaweedfs_go",
       "path": "internal/objectstorage/seaweedfs.go",
       "surfaces": [
-        "source.gate.integration.static.public.contracts"
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
       ]
     }
   ],
