@@ -100,24 +100,67 @@ func TestSelectWorkloadServicesMatchesUnderscoreComposeKeysToHyphenComponents(t 
 	if err != nil {
 		t.Fatalf("manifest component id must resolve against the underscore compose key: %v", err)
 	}
-	if strings.Join(selected, ",") != "vector-db,web" {
-		t.Fatalf("unexpected selected services %q", selected)
+	// The returned set must carry the exact raw Compose keys, not the manifest
+	// hyphen-presentation ids: the override generation and runtime selection
+	// address the compose key that actually exists.
+	if strings.Join(selected, ",") != "vector_db,web" {
+		t.Fatalf("selected ids must resolve to raw compose keys, got %#v", selected)
 	}
 }
 
 func TestSelectWorkloadServicesMixedGraphPreservesRequestedIds(t *testing.T) {
 	m := New("mixedgraph", "dev", true, true, false)
 	m = WithWorkloadComponents(m, "vector-db", "api_service")
-	// Mixed underscore/dash compose keys must match the requested hyphen ids and
-	// the returned selected ids must stay exactly the requested identifiers
-	// (no silent unsafe aliasing that rewrites the manifest contract).
+	// Mixed underscore/dash compose keys must resolve: the requested logical id
+	// maps to the exact raw compose key it names, and the returned selected ids
+	// are the raw compose keys the override and service selection address (the
+	// compose key that actually exists), not the manifest's hyphen presentation.
 	available := []string{"vector_db", "api_service"}
 	selected, err := selectWorkloadServices(m, available, WorkloadComponentNames(m))
 	if err != nil {
 		t.Fatalf("mixed graph must resolve: %v", err)
 	}
-	if strings.Join(selected, ",") != "api_service,vector-db" {
-		t.Fatalf("selected ids were rewritten: %#v", selected)
+	if strings.Join(selected, ",") != "api_service,vector_db" {
+		t.Fatalf("selected ids must resolve to raw compose keys: %#v", selected)
+	}
+}
+
+// TestMaterializedWorkloadOverrideTargetsRawComposeKey
+// is the materialization regression for the v0.4.28 override-key defect: the
+// manifest stores the hyphen-presentation component id "vector-db", but the raw
+// Compose service key is "vector_db". The generated Compose override must key
+// the service on the exact raw compose key and must never emit the presentation
+// id, which would address a service that does not exist.
+func TestMaterializedWorkloadOverrideTargetsRawComposeKey(t *testing.T) {
+	root := t.TempDir()
+	composePath := filepath.Join(root, "docker-compose.yml")
+	if err := os.WriteFile(composePath, []byte("services:\n  vector_db:\n    image: vector:1\n  web:\n    image: web:1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	store := Store{Root: filepath.Join(root, ".baseharbor", "apps")}
+	m := New("vectorstore", "dev", true, true, false)
+	m = WithWorkloadComponents(m, "vector-db", "web")
+	files, err := EnsureRuntime(context.Background(), serviceissuer.New(t), store, m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	workload, found, err := MaterializeWorkload(root, m, files)
+	if err != nil || !found {
+		t.Fatalf("materialize workload: found=%v err=%v", found, err)
+	}
+	override, err := os.ReadFile(workload.Override)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(override)
+	// The override must address the raw compose key that exists in the source.
+	if !strings.Contains(text, "vector_db") {
+		t.Fatalf("override must target raw compose key vector_db:\n%s", text)
+	}
+	// The presentation id must never appear as a compose service key; emitting
+	// it would select a service that does not exist.
+	if strings.Contains(text, "vector-db") {
+		t.Fatalf("override emitted manifest presentation id instead of raw compose key:\n%s", text)
 	}
 }
 
@@ -133,6 +176,20 @@ func TestSelectWorkloadServicesStillRejectsAbsentService(t *testing.T) {
 	available2 := []string{"search_db"}
 	if _, err := selectWorkloadServices(m, available2, []string{"vector-db"}); err == nil {
 		t.Fatal("expected error when requested id has no matching compose key")
+	}
+}
+
+// TestSelectWorkloadServicesRejectsAmbiguousCanonicalDuplication
+// is the collision-rejection case for the v0.4.28 membership defect: a Compose
+// file declaring both "vector_db" and "vector-db" names the same logical
+// service under two different raw keys. That ambiguity must fail closed rather
+// than collapse the two into a single collapsed member.
+func TestSelectWorkloadServicesRejectsAmbiguousCanonicalDuplication(t *testing.T) {
+	m := New("vectorstore", "dev", true, true, false)
+	m = WithWorkloadComponents(m, "vector-db", "web")
+	available := []string{"vector_db", "vector-db", "web"}
+	if _, err := selectWorkloadServices(m, available, WorkloadComponentNames(m)); err == nil {
+		t.Fatal("expected ambiguous canonical duplication to fail closed")
 	}
 }
 

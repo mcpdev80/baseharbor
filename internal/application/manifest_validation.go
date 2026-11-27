@@ -3,6 +3,7 @@ package application
 import (
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/capability"
@@ -425,6 +426,18 @@ func validateWorkloadComponentName(name string) error {
 		}
 	}
 	return nil
+}
+
+// joinSortedKeys returns the sorted, comma-joined keys of a string set so
+// ambiguous-instance diagnostics list the conflicting raw Compose keys in a
+// stable order.
+func joinSortedKeys(set map[string]struct{}) string {
+	keys := make([]string, 0, len(set))
+	for key := range set {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return strings.Join(keys, ", ")
 }
 
 // canonicalComposeServiceID maps a service identifier to its canonical logical
