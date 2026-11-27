@@ -1712,6 +1712,22 @@
       "runtime_specific": true
     },
     {
+      "id": "source.cmd.baha.app.workload.go",
+      "path": "cmd/baha/app_workload.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
+      "id": "source.cmd_baha_app_workload_runtime_identity_fallback_test_go",
+      "path": "cmd/baha/app_workload_runtime_identity_fallback_test.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
       "id": "source.cmd.baha.core.installation.runtime.test.go",
       "path": "cmd/baha/core_installation_runtime_test.go",
       "surfaces": [
