@@ -222,30 +222,18 @@ func selectWorkloadServices(m Manifest, available, requested []string) ([]string
 		if strings.HasPrefix(service, "baseharbor-internal-") {
 			return nil, fmt.Errorf("application Compose service %q uses the reserved BaseHarbor internal service namespace", service)
 		}
-		canonical := canonicalComposeServiceID(service)
-		if _, present := availableSet[canonical]; !present {
-			availableSet[canonical] = make(map[string]struct{})
-		}
-		availableSet[canonical][service] = struct{}{}
+		availableSet[canonicalComposeServiceID(service)][service] = struct{}{}
 	}
 	if len(requested) > 0 {
 		selected := make([]string, 0, len(requested))
 		for _, service := range requested {
-			canonical := canonicalComposeServiceID(service)
-			rawKeys, known := availableSet[canonical]
-			if !known {
-				return nil, fmt.Errorf("workload service %q is not present in the application Compose file", service)
-			}
-			if len(rawKeys) > 1 {
-				return nil, fmt.Errorf("application Compose service %q names multiple ambiguous instances %s", canonical, joinSortedKeys(rawKeys))
-			}
-			var rawKey string
-			for key := range rawKeys {
-				rawKey = key
-			}
 			// Resolve the requested logical ID to the exact raw Compose key so the
 			// returned set carries the keys override generation and runtime service
 			// selection actually address, not the manifest's hyphen-presentation ID.
+			rawKey, err := resolveWorkloadServiceKey(service, availableSet)
+			if err != nil {
+				return nil, err
+			}
 			selected = append(selected, rawKey)
 		}
 		sort.Strings(selected)

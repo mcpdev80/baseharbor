@@ -440,6 +440,26 @@ func joinSortedKeys(set map[string]struct{}) string {
 	return strings.Join(keys, ", ")
 }
 
+// resolveWorkloadServiceKey maps a requested logical workload ID to the single
+// raw Compose service key it names. A missing canonical form fails closed;
+// a canonical form shared by more than one raw key is ambiguous and fails
+// closed. The raw key is what override generation and runtime service
+// selection address, never the manifest's hyphen-presentation id.
+func resolveWorkloadServiceKey(service string, availableSet map[string]map[string]struct{}) (string, error) {
+	canonical := canonicalComposeServiceID(service)
+	rawKeys, known := availableSet[canonical]
+	if !known {
+		return "", fmt.Errorf("workload service %q is not present in the application Compose file", service)
+	}
+	if len(rawKeys) > 1 {
+		return "", fmt.Errorf("application Compose service %q names multiple ambiguous instances %s", canonical, joinSortedKeys(rawKeys))
+	}
+	for key := range rawKeys {
+		return key, nil
+	}
+	return "", fmt.Errorf("workload service %q is not present in the application Compose file", service)
+}
+
 // canonicalComposeServiceID maps a service identifier to its canonical logical
 // form so a manifest component ID (which stores hyphen-presentation identifiers
 // such as "vector-db") matches the raw Compose service key it names (such as
