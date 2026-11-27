@@ -339,9 +339,12 @@ func repositoryWorkloadBindingPlan(ctx context.Context, compose bhruntime.Runtim
 		if _, ok := selected[service]; !ok {
 			continue
 		}
-		_, explicitlyAuthorized := runtimePermissionServices[service]
-		_, legacyRuntimeBinding := definition.Environment["BASEHARBOR_RUNTIME_TOKEN_FILE"]
-		if explicitlyAuthorized || legacyRuntimeBinding {
+		// Only an explicit runtime permission admits a service into
+		// RuntimeIdentityServices. A legacy BASEHARBOR_RUNTIME_TOKEN_FILE binding
+		// is not authorization: admitting a service through it would project the
+		// shared per-application app token and downgrade the scoped service
+		// identity, so such a service fails closed instead.
+		if _, explicitlyAuthorized := runtimePermissionServices[service]; explicitlyAuthorized {
 			plan.RuntimeIdentityServices = append(plan.RuntimeIdentityServices, service)
 		}
 		for _, requirement := range resolved.Manifest.Secrets.Required {
