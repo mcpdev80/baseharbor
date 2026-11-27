@@ -2869,6 +2869,14 @@
       ]
     },
     {
+      "id": "source.internal_orgconfig_migration_go",
+      "path": "internal/orgconfig/migration.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
       "id": "source.internal_orgconfig_migration_marker_test_go",
       "path": "internal/orgconfig/migration_marker_test.go",
       "surfaces": [
