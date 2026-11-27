@@ -8,7 +8,6 @@ import (
 	"io"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/cli"
@@ -17,16 +16,20 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/preflight"
 )
 
+// Application status-probe timeouts are bound to the shared application
+// StatusTimeoutMatrix (internal/application/timeouts.go); the per-service
+// literals here are now aliases to the semantic groups so callers keep their
+// exact symbol names and behaviour.
 const (
-	applicationStatusTimeout         = 120 * time.Second
-	applicationOpenBaoStatusTimeout  = 30 * time.Second
-	applicationRequiredSecretTimeout = 40 * time.Second
-	applicationBrokerStatusTimeout   = 10 * time.Second
-	applicationPostgresStatusTimeout = 15 * time.Second
-	applicationValkeyStatusTimeout   = 10 * time.Second
-	applicationRabbitMQStatusTimeout = 30 * time.Second
-	applicationMongoDBStatusTimeout  = 30 * time.Second
-	applicationLogsStatusTimeout     = 10 * time.Second
+	applicationStatusTimeout         = application.OverallTimeout
+	applicationOpenBaoStatusTimeout  = application.ManagementServiceTimeout
+	applicationRequiredSecretTimeout = application.RequiredSecretTimeout
+	applicationBrokerStatusTimeout   = application.FastServiceTimeout
+	applicationPostgresStatusTimeout = application.PostgresStatusTimeout
+	applicationValkeyStatusTimeout   = application.FastServiceTimeout
+	applicationRabbitMQStatusTimeout = application.ManagementServiceTimeout
+	applicationMongoDBStatusTimeout  = application.ManagementServiceTimeout
+	applicationLogsStatusTimeout     = application.FastServiceTimeout
 )
 
 func collectApplicationStatus(ctx context.Context, store application.Store, args []string) (application.StatusResult, error) {
