@@ -81,6 +81,12 @@ func restoreRemoteApplication(ctx context.Context, resolved resolvedApplication)
 }
 
 func executeRemoteApplicationApply(ctx context.Context, resolved resolvedApplication, out io.Writer) error {
+	// Invocation scoping (CODEX re-review finding): clear any binding a previous
+	// invocation left at entry and retire any residue unconditionally at exit
+	// (success AND failure), exactly like the local apply lifecycle. The bind
+	// prompt below can only ever bind for THIS invocation.
+	clearInteractiveCandidateConsentBinding()
+	defer clearInteractiveCandidateConsentBinding()
 	if err := deployment.EvaluateDeploymentAdmission(resolved.Target.DeploymentPolicy, nil); err != nil {
 		return err
 	}

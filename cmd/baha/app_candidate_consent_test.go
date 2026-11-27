@@ -747,3 +747,126 @@ func TestRemoteApplyRouteInlineBindContractIsTruthful(t *testing.T) {
 		t.Fatal("the bind question must not be asked on a non-terminal stdin")
 	}
 }
+
+// TestSecondInvocationSameCandidateRequiresFreshPrompt is the CODEX re-review
+// regression for the stale-consent finding: an interactive binding must never
+// cross an apply-invocation boundary for the SAME unchanged candidate. Three
+// sequential-invocation shapes are locked:
+// (a) bind A with a real "y" in invocation 1, invocation 2 for A never answers
+// its prompt (EOF) — the prior "y" may NOT be reused and the write fails
+// closed;
+// (b) an explicit --confirm-candidate read path CONSUMES a pending binding of
+// the same identity instead of letting it survive into a later, refused
+// invocation;
+// (c) a write attempt for an unrelated identity B consumes (clears) the saved
+// binding of A, so a later A without a new affirmative answer fails closed.
+// Digest recomputation at the write boundary and the constant-time comparison
+// are unchanged (the successful re-confirm in (b) proves it).
+func TestSecondInvocationSameCandidateRequiresFreshPrompt(t *testing.T) {
+	// (a) stale 'y' must not cross into a second, unanswered invocation. The
+	// identity of this scenario is rA; the pipe reader lives for the whole
+	// test, each invocation reads its own line.
+	withInteractiveCandidateStdin(t)
+	rA := repoCandidateFixture(t)
+	stdin, feed := withTerminalStdinFake(t)
+	feed("y\n")
+	var out strings.Builder
+	promptConfirmCandidateSubmissionInput(context.Background(), rA, stdin, &out)
+	if got := candidateConsentForWrite(rA.DeploymentIdentity.ApplicationID, rA.DeploymentIdentity.Target, ""); got == "" {
+		t.Fatalf("interactive 'y' did not bind (fixture precondition); output=%q", out.String())
+	}
+	// Invocation 2 for the identical candidate: the prompt is reached but the
+	// operator never answers (EOF) — nothing new may bind, and the write must
+	// fail closed instead of consuming invocation 1's answer.
+	var out2 strings.Builder
+	promptConfirmCandidateSubmissionInput(context.Background(), rA, stdin, &out2)
+	if _, err := recordDeploymentBeforeMutation(context.Background(), rA, "applying", ""); !errors.Is(err, errConsentRequiredForCandidateSubmission) {
+		t.Fatalf("a second invocation reused a stale interactive consent: %v", err)
+	}
+
+	// (b) an explicit-flag read path consumes the same-identity binding. Use an
+	// identity DISTINCT from (a)'s fixture (a fresh configureTestTarget resets
+	// the test store) and a syntactically valid, never-computable digest, so
+	// the explicit flag never touches a real submission.
+	rB := repoCandidateFixture(t)
+	explicitDigest := "f" + strings.Repeat("0", 63)
+	feed("y\n")
+	var outB strings.Builder
+	promptConfirmCandidateSubmissionInput(context.Background(), rB, stdin, &outB)
+	if got := candidateConsentForWrite(rB.DeploymentIdentity.ApplicationID, rB.DeploymentIdentity.Target, explicitDigest); got != explicitDigest {
+		t.Fatalf("fixture: the explicit flag must win the resolution order; got %q", got)
+	}
+	if got := takeInteractiveCandidateConsentDigest(rB.DeploymentIdentity.ApplicationID, rB.DeploymentIdentity.Target); got != "" {
+		t.Fatalf("the explicit-flag read path left the binding for a later invocation: %q", got)
+	}
+	// The NEXT invocation answers the prompt with a refusal: nothing may bind
+	// and the write fails closed (no stale binding from the explicit-flag run).
+	feed("n\n")
+	var outC strings.Builder
+	promptConfirmCandidateSubmissionInput(context.Background(), rB, stdin, &outC)
+	if _, err := recordDeploymentBeforeMutation(context.Background(), rB, "applying", ""); !errors.Is(err, errConsentRequiredForCandidateSubmission) {
+		t.Fatalf("a refusal after a consumed explicit-flag bind reused stale consent: %v", err)
+	}
+
+	// (c) an identity-mismatched attempt consumes the binding.
+	rC := repoCandidateFixture(t)
+	feed("y\n")
+	var outD strings.Builder
+	promptConfirmCandidateSubmissionInput(context.Background(), rC, stdin, &outD)
+	if got := candidateConsentForWrite(rC.DeploymentIdentity.ApplicationID, rC.DeploymentIdentity.Target, ""); got == "" {
+		t.Fatalf("interactive 'y' did not bind for C (fixture precondition); output=%q", outD.String())
+	}
+	if got := takeInteractiveCandidateConsentDigest("other-application", rC.DeploymentIdentity.Target); got != "" {
+		t.Fatal("fixture: the mismatched attempt must return no digest")
+	}
+	if got := takeInteractiveCandidateConsentDigest(rC.DeploymentIdentity.ApplicationID, rC.DeploymentIdentity.Target); got != "" {
+		t.Fatalf("the mismatched identity attempt left A's binding alive: %q", got)
+	}
+}
+
+// TestApplyLifecycleRetiresConsentOnEveryExit locks the CODEX re-review
+// "a successful lifecycle has no corresponding unconditional cleanup" half of
+// the finding from both sides of the apply lifecycle boundary:
+// (a) entry clear — a binding that survived a previous invocation (the defect:
+// the old success path never cleaned up) is retired at the entry of the next
+// invocation, so its write fails closed without a fresh prompt answer;
+// (b) exit clear — after a full lifecycle invocation completes (whatever its
+// result), no unconsumed binding may linger for a later invocation.
+func TestApplyLifecycleRetiresConsentOnEveryExit(t *testing.T) {
+	r := repoCandidateFixture(t)
+	submission, _ := candidateSubmissionForResolved(t, r)
+	digest := delivery.CandidateConsentDigest(submission)
+	if digest == "" {
+		t.Fatal("fixture: candidate has no confirmable digest")
+	}
+	applyCtx := withCandidateConsentDigest(context.Background(), digest)
+
+	// (a) stale binding crossing an invocation boundary: the entry clear of
+	// runApplicationApplyLifecycle retires it, so the invocation's write fails
+	// closed even though the context carries the same digest — the failure must
+	// NOT be the digest-mismatch error (that would mean the flag path bound).
+	setInteractiveCandidateConsentBinding(r.DeploymentIdentity.ApplicationID, r.DeploymentIdentity.Target, digest)
+	_, err := runApplicationApplyLifecycle(applyCtx, application.DefaultStore(), nil, io.Discard, io.Discard, applicationApplyLifecycleHooks{})
+	if err == nil {
+		t.Fatal("a stale interactive binding survived into a new lifecycle invocation")
+	}
+	if errors.Is(err, errCandidateConsentDigestMismatch) {
+		t.Fatalf("stale-binding scenario must fail on missing consent, not a digest mismatch: %v", err)
+	}
+	if got := takeInteractiveCandidateConsentDigest(r.DeploymentIdentity.ApplicationID, r.DeploymentIdentity.Target); got != "" {
+		t.Fatalf("the lifecycle entry did not clear the stale binding: %q", got)
+	}
+
+	// (b) exit clear: seed a binding mid-invocation (the mutate hook runs
+	// inside the lifecycle lock after entry) and verify the invocation retires
+	// it at exit, success OR failure.
+	_, _ = runApplicationApplyLifecycle(applyCtx, application.DefaultStore(), nil, io.Discard, io.Discard, applicationApplyLifecycleHooks{
+		Mutate: func(context.Context, resolvedApplication) error {
+			setInteractiveCandidateConsentBinding(r.DeploymentIdentity.ApplicationID, r.DeploymentIdentity.Target, digest)
+			return nil
+		},
+	})
+	if got := takeInteractiveCandidateConsentDigest(r.DeploymentIdentity.ApplicationID, r.DeploymentIdentity.Target); got != "" {
+		t.Fatalf("the lifecycle exit left an unconsumed binding: %q", got)
+	}
+}

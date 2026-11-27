@@ -113,6 +113,12 @@ type applicationApplyLifecycleEvidence struct {
 
 func executeApplicationApplyLifecycle(ctx context.Context, store application.Store, args []string, out, errOut io.Writer) error {
 	ctx, args = prepareApplicationApplyArgs(ctx, args)
+	// The remote branch of the lifecycle never reaches runApplicationApplyLifecycle
+	// (executeRemoteApplicationApply return, app_apply.go above), so it gets the
+	// same unconditional entry/exit cleanup here; runApplicationApplyLifecycle
+	// clearing again is a harmless idempotent no-op.
+	clearInteractiveCandidateConsentBinding()
+	defer clearInteractiveCandidateConsentBinding()
 	_, err := runApplicationApplyLifecycle(ctx, store, args, out, errOut, applicationApplyLifecycleHooks{})
 	return err
 }
@@ -131,6 +137,13 @@ func prepareApplicationApplyArgs(ctx context.Context, args []string) (context.Co
 // runApplicationApplyLifecycle uses named result slots so the deferred
 // post-observation writes evidence.After into the returned value on every path.
 func runApplicationApplyLifecycle(ctx context.Context, store application.Store, args []string, out, errOut io.Writer, hooks applicationApplyLifecycleHooks) (evidence applicationApplyLifecycleEvidence, lifecycleErr error) {
+	// Invocation scoping (CODEX re-review finding): an interactive bind from a
+	// previous invocation — refused, interrupted, or one that finished
+	// successfully without any write consuming it — must never be readable by
+	// this one. Clear at every lifecycle entry and retire any residue
+	// unconditionally at every exit, success AND failure.
+	clearInteractiveCandidateConsentBinding()
+	defer clearInteractiveCandidateConsentBinding()
 	execution, err := newApplicationApplyExecution(ctx, store, args, out, errOut)
 	if err != nil {
 		return evidence, err
@@ -268,7 +281,8 @@ func runApplicationApplyLifecycle(ctx context.Context, store application.Store, 
 func (e *applicationApplyExecution) recordFailedDeployment(cause error) error {
 	// No write boundary consumed an interactive bind in this invocation (or the
 	// lifecycle failed at all): drop any unconsumed confirmation so it can never
-	// authorize a later apply.
+	// authorize a later apply. runApplicationApplyLifecycle additionally defers
+	// the same unconditional clear on its success exit path.
 	clearInteractiveCandidateConsentBinding()
 	if cause == nil {
 		return nil
