@@ -2845,6 +2845,14 @@
       ]
     },
     {
+      "id": "source.internal_machinehttp_source_transfer_test_go",
+      "path": "internal/machinehttp/source_transfer_test.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
       "id": "source.internal_machinereadmodels_artifacts_go",
       "path": "internal/machinereadmodels/artifacts.go",
       "surfaces": [

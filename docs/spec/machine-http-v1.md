@@ -230,6 +230,21 @@ Runtime-resource discovery and concrete log/exec implementations are supplied by
 
 Remote execution or observation reaches a Target only through the Target Access Provider boundary selected by Core. Console and HTTP clients MUST NOT connect directly to a Target Access implementation.
 
+## Source transfer routes
+
+`GET /api/v1/machine/source-transfers`, `POST /api/v1/machine/source-transfers`, `PUT /api/v1/machine/source-transfers/{id}` and `POST /api/v1/machine/source-transfers/{id}/commit` are the machine-side source-transfer routes the Core management listener serves on the same TLS origin as the other machine endpoints (registered in `internal/machinehttp/handler.go`). They move a source snapshot off the browser and onto durable Core operation storage in bounded, ordered chunks.
+
+Each route is authorized per the immutable `application`/`target`/`environment` selector and reuses the shared machine operator boundary. Plaintext HTTP is rejected with no downgrade; a request without a verified operator identity is rejected with `426 Upgrade Required`. The routes MUST NOT introduce a second lifecycle, desired-state store, authorization model or runtime abstraction.
+
+| Method | Path | Result |
+| --- | --- | --- |
+| `GET` | `/api/v1/machine/source-transfers` | The current committed source snapshot `{ "digest": "…" }`. `404` when no snapshot is committed for the selector. |
+| `POST` | `/api/v1/machine/source-transfers` | Begin a transfer from a validated `Manifest`; returns `{ "id": "32-hex", "missing": [ "…" ] }` with `201 Created`. |
+| `PUT` | `/api/v1/machine/source-transfers/{id}` | Accept one bounded, ordered `{ "path", "offset", "data" }` chunk; returns `{ "accepted": true }` with `200`. |
+| `POST` | `/api/v1/machine/source-transfers/{id}/commit` | Commit the transfer with an empty body; returns `{ "digest": "…" }` with `200`. |
+
+The `{id}` path value is the 32-hex transfer identifier. A `POST` begin requires a manifest that passes `Manifest.Validate`; the `missing` list names entries that Core already holds. Uploads must be sent in order; a changed sequence returns conflict. Commit rejects any non-empty body so clients cannot substitute unverified content. Pagination of the source-transfer pending-delta list lives in the Runtime List Pagination v1 contract (`docs/spec/runtime-list-pagination-v1.md`); the current-snapshot discovery endpoint keeps the minimal `{ digest }` envelope unchanged.
+
 ## Interactive container terminal
 
 `POST /api/v1/machine/terminals` admits a bounded terminal and returns a
