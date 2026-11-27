@@ -1,0 +1,4246 @@
+# Golden --help surface for card 0428-306 (hunt H-V36).
+# Rendered by (*cli.Command).HelpSurface at COLUMNS=100 outside an application repository.
+# Regenerate with:
+# BASEHARBOR_UPDATE_MACHINE_DOCS=1 go test ./cmd/baha -run TestCLIHelpGoldenSurface
+# Help: 185 commands
+
+=== baha ===
+sha256 c3805471d17fbfa6286ce04b9c80d8bd373fdefcc68463e8cadb029b55ef86b8
+baha - BaseHarbor command-line interface
+
+Manage BaseHarbor and isolated application backend runtimes from one binary. Commands are
+fail-closed: validation and preflight happen before mutation.
+
+Usage:
+  baha <command> [options]
+
+Get started:
+  new             Create an application, stack, target, provider, or workspace
+  init            Initialize or adopt the application in the current repository
+  list            List managed applications on the selected Target
+  up              Converge selected application intent, or explicitly start the management Core
+
+Understand and maintain:
+  status          Show application status in a repository, otherwise control-plane status
+  inspect         Inspect the current repository and its application requirements
+  plan            Show the application plan in the current repository
+  doctor          Diagnose the current application repository, otherwise the control plane
+  update          Safely inspect or update BaseHarbor itself
+  backup          Back up the current application through its managed lifecycle
+  restore         Restore an application through the ownership-safe managed lifecycle
+  destroy         Remove the complete BaseHarbor installation with explicit consequence consent
+  down            Stop the current application, or the local control plane outside a repository
+
+Advanced and operator commands:
+  open            Open a verified HTTPS application endpoint
+  logs            Show application logs for the current workload
+  provider        Author and validate Capability Provider extensions
+  stack           Discover and manage reusable development Stack Profiles
+  workspace       Configure local workspace sources and repository mappings
+  target          Inspect and manage BaseHarbor deployment targets
+  env             Inspect and manage deployment-target environments
+  use             Select and persist the active Core or deployment target
+  node            Enroll and manage remote Docker or Podman nodes
+  onboard         Guided onboarding: attach a workstation to a BaseHarbor installation
+  workstation     Invite, list and revoke developer workstations connected to this Core
+  user            Manage people and their enrolled workstations
+  dev             Manage local development conveniences
+  config          Configure BaseHarbor user preferences
+  context         Select the per-terminal BaseHarbor context (Bash, Zsh or Fish)
+  shell-init      Generate BaseHarbor shell integration for Bash, Zsh or Fish
+  policy          Inspect the effective BaseHarbor policy for an application environment
+  access          Guide profile assignment and deliberate offboarding of a person on a target
+  agent           Discover the stable BaseHarbor machine interface
+  mcp             Expose BaseHarbor semantic operations over MCP
+  serve           Run the TLS-protected BaseHarbor runtime/control-plane API
+  app             Manage declarative application backend runtimes
+  connect         Allow one explicit application service to reach another
+  disconnect      Remove one explicit cross-application connectivity exception
+  connections     List explicit cross-application connectivity policy
+  openbao         Bootstrap and operate the BaseHarbor OpenBao trust plane
+  trust           Inspect, export or explicitly install the managed local BaseHarbor CA
+  login           Authenticate the BaseHarbor operator through OIDC
+  logout          Remove a local BaseHarbor operator session
+  whoami          Show the authenticated BaseHarbor operator identity
+  version         Print build version
+  tui             Open the interactive BaseHarbor status dashboard
+  completion      Generate shell completion for Bash, Zsh or Fish
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha access ===
+sha256 79734c5dc0222e5d2a84caf7964771b34f587a1073eaf031f83188c99d5fea7b
+access - Guide profile assignment and deliberate offboarding of a person on a target
+
+Guided, fail-closed profile assignment and offboarding. The wizard names the person, searches and
+selects declared Targets, confirms the effective rights, and reviews before any write. It never
+grants a right on its own: every assignment folds into the single production policy authority and
+every removal re-checks the current configuration at submit time.
+
+Usage:
+  baha access assign|--assign PERSON [--json] | baha access offboard|--offboard PERSON [--json]
+
+Commands:
+  assign    Guided assignment of an access profile to a person on selected Targets
+  offboard  Guided deliberate offboarding of a person from a target
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha access assign ===
+sha256 4fa27b3b70b1f5df338a8d36d9802f8bdbce7e42f58b5bc505b2d8f3255b89cb
+assign - Guided assignment of an access profile to a person on selected Targets
+
+Usage:
+  baha access assign PERSON [--json]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha access offboard ===
+sha256 685380db8e65a6f47ba18af6acb38d74553a722ace36dcf3d457dbfd2a05c753
+offboard - Guided deliberate offboarding of a person from a target
+
+Usage:
+  baha access offboard PERSON [--json]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha agent ===
+sha256 14573b875ff0c07621b9756d9fb155b477aa1051821e95a811f5c4a95dd55292
+agent - Discover the stable BaseHarbor machine interface
+
+Exposes the versioned semantic operations that coding agents and automation may use safely.
+Discovery describes BaseHarbor operations; it does not expose shell, Docker or Compose execution.
+
+Usage:
+  baha agent describe [-o json|--output json]
+
+Commands:
+  describe  Describe supported machine operations and contracts
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha agent describe ===
+sha256 03c74db742cea81f17a0d56a7f9bdbabad2297f3c3edde49cf5a08acbaa302b1
+describe - Describe supported machine operations and contracts
+
+Usage:
+  baha agent describe [-o json|--output json]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha app ===
+sha256 84b582c9cc1d88a9c811665cde9b718946d963e1dfdc2c9cf629b510e69e26ce
+app - Manage declarative application backend runtimes
+
+Applications are independent consumers of BaseHarbor. Put baseharbor.yaml in the application
+repository and run app commands without NAME, or pass NAME explicitly for compatibility with stored
+application state. Manifests contain desired backend services and required secret names, never
+plaintext credentials.
+
+Usage:
+  baha app <command> [options]
+
+Commands:
+  new               Create a new ecosystem-native application from a BaseHarbor contract
+  workspace         Manage local multi-repository workspace mappings
+  init              Create the application contract or initialize deployment settings
+  create            Create an application manifest in BaseHarbor state
+  list              List registered deployments for the effective target
+  show              Show a coherent application overview
+  plan              Show desired resources without changing anything
+  preflight         Validate an application before mutation
+  edit              Edit current application needs with preview and impact consent
+  footprint         Read the current application footprint
+  inspect           Inspect a repository without changing it
+  apply             Converge and verify an application's backend runtime
+  backup            Create one encrypted recovery unit for an application
+  restore           Restore and verify an encrypted application recovery unit
+  env               Show the standard environment contract for an application
+  sql               Open the managed SQL console for the current application
+  cache             Open the managed cache console for the current application
+  creds             Show connection metadata without revealing credentials by default
+  secure-profile    Encrypt explicitly selected local credentials into a password-locked export
+  export            Export selected local application credentials into an encrypted file
+  logs              Show logs for the current application workload
+  shell             Open a shell in an application workload service
+  exec              Execute a command in an application workload service
+  update            Safely inspect or update a Git-backed application
+  pull              Safely pull Git source for the application, optionally bringing it up
+  tls               Inspect and maintain application TLS certificates
+  perses            Guide enable/status/disable and ownership-safe removal of the optional Perses
+                    surface
+  status            Show application runtime, readiness and version status
+  doctor            Diagnose and safely repair an application's runtime
+  down              Stop application runtimes while preserving data for reactivation
+  stop              Stop application runtimes while preserving data for reactivation
+  up                Start an existing application runtime and verify readiness
+  destroy           Permanently remove an application and its exclusively owned data
+  secret            Manage application secret values without printing them
+  runtime-identity  Manage the app-scoped credential used for dynamic secret references
+  evidence          Export secret-safe application lifecycle and verification evidence
+  version           Show separated wanted/applied/observed release and component versions
+  versions          Show readable wanted/applied/observed versions for recorded deployments
+  prune             Remove a dangling deployment record whose source repository is gone
+  urls              List verified application and service GUI URLs with their accessibility
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha app apply ===
+sha256 e5c4d009530145451ce0e8705ab8640b2a63bf485e2873f1116ac74856b7f34a
+apply - Converge and verify an application's backend runtime
+
+Runs plan, preflight, apply and verification. Without NAME it resolves the nearest baseharbor.yaml
+in the current repository, synchronizes a protected internal copy for runtime services, and treats
+the repository manifest as the source of truth. When an unambiguous application Compose workload
+exists, BaseHarbor generates a protected override, attaches it to the application backend network
+when managed backend services exist and injects container-routable native service URLs.
+Workload-only applications remain valid without inventing a managed database or cache. Declared
+secrets.required entries are readiness gates. Explicit secrets.required[].generate entries are
+created only when missing and are stored directly in OpenBao without printing their values.
+Managed-secret workloads start only after the per-application mTLS broker has proven app-scoped
+OpenBao readiness. For remote targets, --workload-port NAME=PORT selects and persists an explicit
+free host port for this deployment. A repository-owned candidate submission is bound only on
+explicit operator/automation confirmation: the apply prints the candidate's canonical content hash
+and requires --confirm-candidate with that exact hash before writing any deployment state; without
+the flag the apply fails closed.
+
+Usage:
+  baha app apply [NAME] [--skip-memory-preflight] [--confirm-candidate <digest>] [--workload-port NAME=PORT]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha app backup ===
+sha256 07903374a862a852ee7f4fc9b8596c9cb2fe889a378f63af88facfefc9204b8d
+backup - Create one encrypted recovery unit for an application
+
+Creates one encrypted application recovery unit. In an interactive terminal, omitting
+--password-file starts a guided flow with hidden password entry and safe output defaults. Automation
+keeps using an owner-only --password-file; backup passwords are never accepted as command-line
+values.
+
+Usage:
+  baha app backup [NAME] [--output FILE] [--password-file FILE] [--include-state CLASS] [--exclude-state CLASS]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha app cache ===
+sha256 742fb1f3345c71a4eab6a7d83e6013d368f0e273c4bc5b02e016265562b9ac26
+cache - Open the managed cache console for the current application
+
+Usage:
+  baha app cache [INSTANCE] [--app NAME]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha app create ===
+sha256 76914f9b04e073a9a93833f8c37e6f29fc18c8904d82e28d43d88edbd1b3484c
+create - Create an application manifest in BaseHarbor state
+
+Creates BaseHarbor-managed declarative application source on the effective Target; it does not start
+containers. For a repository-owned source-of-truth manifest prefer 'baha app init'. Services are
+requested explicitly; application identity is assigned by BaseHarbor.
+
+Usage:
+  baha app create NAME [--environment ENV] [--sql|--sql-instance NAME] [--cache|--cache-instance NAME] [--key-value|--key-value-instance NAME] [--document-db|--document-db-instance NAME] [--messaging-queue|--messaging-queue-instance NAME] [--messaging-pubsub|--messaging-pubsub-instance NAME] [--messaging-stream|--messaging-stream-instance NAME] [--s3|--s3-bucket NAME] [--secrets|--require-secret NAME]...
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha app creds ===
+sha256 454e456333eb2c1871b1782b2a6e258acffb2b4fa23d0407830f66231ca912a1
+creds - Show connection metadata without revealing credentials by default
+
+Usage:
+  baha app creds postgres|valkey [INSTANCE] [--app NAME] [--reveal]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha app destroy ===
+sha256 3d6b75e0af23bc9c089716e8791c9cff69eed98098d3903525a4a5d978807da3
+destroy - Permanently remove an application and its exclusively owned data
+
+Permanently removes the application, its BaseHarbor-owned runtime resources, application data,
+credentials, recovery state and deployment registration. Exclusively app-owned Compose data volumes
+are removed too. Shared, foreign or ambiguously owned resources are preserved and reported. Use
+'baha app stop' to stop runtime services while preserving data. Provider changes and permanent data
+deletion require explicit approval of the current plan.
+
+Usage:
+  baha app destroy [NAME] [--uuid DEPLOYMENT-ID] [--yes]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha app doctor ===
+sha256 90034c3dd8245275b1141e2c4d1acce861267371c6f78ba2973c49fbd26492ab
+doctor - Diagnose and safely repair an application's runtime
+
+Runs the existing application doctor, including required-secret presence/usability checks,
+classifies failures using the same repair classes as root doctor, and with --fix only invokes the
+normal guarded app apply lifecycle when every remaining failure is safely repairable. External
+secrets, manifest or permission problems, and platform prerequisites remain fail-closed.
+
+Usage:
+  baha app doctor [NAME] [--fix --yes]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha app down ===
+sha256 1c0ff69908f5badbacd5522199adbdd3835904ab15076a553d51d78633331a4d
+down - Stop application runtimes while preserving data for reactivation
+
+Stops the owned workload and provider runtime, releases its active provider references, and retains
+persistent data, credentials, recovery material and the deployment owner so 'baha app apply' can
+reactivate it. Pass --yes to execute; the current provider consequence plan still requires its own
+acknowledgement. Use 'baha app destroy' to permanently delete app-owned data.
+
+Usage:
+  baha app down [NAME] [--yes]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha app edit ===
+sha256 d65301b3a0f5fdc42d2f8dced69154a9b19b19739aaa1a0569363f49bee33530
+edit - Edit current application needs with preview and impact consent
+
+Cancellation, No and EOF remain write-free; only the existing confirmed Edit handler applies a fresh
+approved plan.
+
+Usage:
+  baha app edit [NAME] [-e ENV|--environment ENV]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha app env ===
+sha256 c7356fe08e9ca409316d75e574fa4b313b8ca752deb1493e4caba23e43c2b61f
+env - Show the standard environment contract for an application
+
+Shows the native runtime contract generated by 'baha app apply'. Without NAME it resolves the
+nearest repository baseharbor.yaml. Credential-bearing service URLs are masked by default; --reveal
+prints the real values. --path prints only the absolute owner-only dotenv file path.
+
+Usage:
+  baha app env [NAME] [--format dotenv|shell|json|yaml] [--reveal] [--path]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha app evidence ===
+sha256 fe233dfe18f6e9a1babdbcc55d0f9117ffe23b283b9f29268fc7a93fe9985eaa
+evidence - Export secret-safe application lifecycle and verification evidence
+
+Builds one deterministic, secret-safe evidence bundle from desired state, effective policy, observed
+runtime state, verification results, recovery metadata and bounded lifecycle audit records. JSON
+output is the generic export boundary; BaseHarbor does not provision a SIEM or vendor-specific
+evidence sink.
+
+Usage:
+  baha app evidence [NAME] [-e ENV|--environment ENV] [-o json|--output json]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha app exec ===
+sha256 a17c2ca1cfa59e12c2109874e6c6689c5dca0db6578e8ea16d14082dd65f3c5d
+exec - Execute a command in an application workload service
+
+Runs COMMAND in the guided workload component; with no COMMAND the default interactive shell opens,
+same as 'baha app shell'. Choose a component with COMPONENT or -c NAME. Put selector options before
+COMMAND; once COMMAND starts, its remaining arguments, including flags such as Python's -c, are
+passed through unchanged. A missing COMPONENT follows the same guidance and never blocks scripts.
+--cmd takes exactly one command string and runs it through the workload's POSIX shell; it cannot be
+combined with positional command arguments. The command's exit status is preserved: baha exits with
+the same code the command returned.
+
+Usage:
+  baha app exec [--app NAME] [-e ENV|--environment ENV] [COMPONENT|-c NAME] [--cmd CMD|COMMAND [ARG...]]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha app export ===
+sha256 d9847b22d0bd6d0b917f577f94c6758e648656575f7989a0ce910359ab13a264
+export - Export selected local application credentials into an encrypted file
+
+Opt-in, password-encrypted export of the eligible local credentials that exist for one application.
+Selects only the local developer credentials that exist for the target/environment; never exports
+remote provider secrets or fresh device identities by default, and never carries managed secret
+values unless the caller passes the fail-closed human-authorization reveal seam. The export password
+is read from a file (never argv); the ciphertext is unreadable without it. An export without any
+selected source fails closed.
+
+Usage:
+  baha app export [NAME] [--include STATE]... --password-file FILE [--output FILE]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha app footprint ===
+sha256 b1551c77c2f9088f0e198871bb6a8fd1ea7bf34b5b8aab273dfb26fc22d985f0
+footprint - Read the current application footprint
+
+Usage:
+  baha app footprint show [NAME] [-o json|--output json] [--details]
+
+Commands:
+  show  Display the authoritative Target footprint without mutation
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha app footprint show ===
+sha256 83baa2da9e1ee9ea32deb7069c1bb4c5c73ac1223a221cd7c7a0836533452bfa
+show - Display the authoritative Target footprint without mutation
+
+Usage:
+  baha app footprint show [NAME] [-o json|--output json] [--details]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha app init ===
+sha256 70bf4c9156eb5dfbd920de5b22790c5a5453daa20a2cf9bf09ca7e469dcecfda
+init - Create the application contract or initialize deployment settings
+
+Without an existing baseharbor.yaml, runs the normal guided application-contract generator. With an
+existing repository manifest, asks only for the public FQDN and TLS settings. The --hostname flag is
+kept for compatibility and accepts the public FQDN. Existing certificate mode accepts one directory;
+BaseHarbor detects and validates the matching certificate/key pair and normalizes it under protected
+local state. Deployment inputs are resolved through the reusable input resolver. --input supports
+automation-safe injection for declared non-secret inputs such as hostname, tls_mode and cert_dir.
+--agents creates or idempotently updates only the bounded BaseHarbor section in AGENTS.md. Without
+baseharbor.yaml, the existing manifest flags remain available for deterministic repository-contract
+creation.
+
+Usage:
+  baha app init --agents [--json] | baha app init [--quick] [--json] | baha app init [--input NAME=VALUE]... [--hostname HOST] [--tls acme|existing|local] [--cert-dir DIR] [--yes] | baha app init [NAME] [-e ENV|--environment ENV] [--sql|--sql-instance NAME] [--cache|--cache-instance NAME] [--key-value|--key-value-instance NAME] [--document-db|--document-db-instance NAME] [--messaging-queue|--messaging-queue-instance NAME] [--messaging-pubsub|--messaging-pubsub-instance NAME] [--messaging-stream|--messaging-stream-instance NAME] [--s3|--s3-bucket NAME] [--secrets|--require-secret NAME] [--workload-component NAME]... [--workload-source KIND:PATH]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha app inspect ===
+sha256 c16c4587852b858167d586af0a51955cc5c207268fea3b473be11937c8f5c208
+inspect - Inspect a repository without changing it
+
+Analyzes a local repository/path or remote Git URL read-only. Human output summarizes source-neutral
+workload evidence and detected capability intent; --verbose adds source provenance and detailed
+evidence. -o json, --output json and --json emit the complete shared machine-readable result.
+
+Usage:
+  baha app inspect [PATH] [--verbose] [-o json|--output json|--json]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha app list ===
+sha256 bb265f49b9041a0b126e9e61cbf64c6fab8f2e1677768bcd3924490c91386d0b
+list - List registered deployments for the effective target
+
+Usage:
+  baha app list [--all-targets]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha app logs ===
+sha256 d2533c36076445924deb0c6d06dfbe9dd79f54b77d1b466f71cf7fb0f75eda6d
+logs - Show logs for the current application workload
+
+Reads application logs through the same read-view logic 'baha app status' renders: the deployment
+log policy decides the source and the application contract decides the streamable components. A
+missing COMPONENT is guided - a unique declared component is derived, ambiguity lists the options in
+a terminal, and --no-input or scripts never block and fail closed with the options. --tail N bounds
+the output to the N most recent lines and finishes. -c filters the stream to the named components.
+JSON output never follows: unbounded streaming has no JSON contract; bounded --tail reads do.
+Managed (Loki) collection is reported explicitly, never silently rerouted.
+
+Usage:
+  baha app logs [COMPONENT] [--follow] [--tail N] [-c NAME]... [--app NAME] [-e ENV|--environment ENV] [--json]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha app new ===
+sha256 dda14c8c0336c16985e81203bbcdb9b6413c76ccf73673c7c65aa36ff595ff9b
+new - Create a new ecosystem-native application from a BaseHarbor contract
+
+Creates a normal ecosystem-native source repository plus baseharbor.yaml. Without arguments, guided
+setup requires an interactive terminal. Explicit NAME, --directory PARENT and deterministic flags
+work non-interactively, including with --no-input; piped input is not interpreted as wizard consent.
+The parent directory must already exist. Development integration is authoring-time only: generated
+applications use standard ecosystem libraries and do not depend on a BaseHarbor application
+framework.
+
+Usage:
+  baha app new [NAME] [--directory PARENT] [--stack go|nextjs|python|quarkus | --stack-profile NAME] [--emit-backstage --backstage-owner OWNER [--backstage-lifecycle LIFECYCLE]] [-e ENV|--environment ENV] [--http] [--sql] [--cache] [--key-value] [--document-db] [--queue] [--pubsub] [--stream] [--s3] [--secrets] [--require-secret NAME]... [--telemetry] [--all] [-o json|--output json]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha app perses ===
+sha256 31499850fcaf6915bb4763c2492921deff0dbf04b67d0f3041635f40ceb1c379
+perses - Guide enable/status/disable and ownership-safe removal of the optional Perses surface
+
+Guided lifecycle for the optional Perses observability management surface. Enable selects the
+optional Perses realization of the observability management-ui surface; disable deselects it (the
+surface returns to not_configured); status reports the public three-state contract; remove disables
+the surface and retires only the BaseHarbor-owned Perses runtime resources, preserving Prometheus,
+Loki, Tempo and foreign data. Fail-closed: an unauthorized or unresolved-ownership caller fails
+before any manifest mutation. Perses remains optional and never forces a new application capability.
+
+Usage:
+  baha app perses <command> [NAME] [--json]
+
+Commands:
+  enable   Select the optional Perses management-ui surface
+  disable  Deselect the optional Perses management-ui surface
+  status   Report Perses state and live alert-rule health
+  remove   Ownership-safe retirement of the owned Perses surface
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha app perses disable ===
+sha256 ac069abd294827e1b2c88e97ce046f5becabc56c5a47d680f5294cf50fc970d8
+disable - Deselect the optional Perses management-ui surface
+
+Deselects the optional Perses realization of the observability management-ui surface by clearing
+services.perses in the repository manifest. Machine transports converge runtime through the shared
+apply lifecycle; the direct human CLI defers it to 'baha app apply' and reports the deferred action.
+The backend observability surface (Prometheus) is preserved. Reports not_configured.
+
+Usage:
+  baha app perses disable [NAME] [--json]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha app perses enable ===
+sha256 a8aa250f15874760a01bffcd11b7ebaca8b7720a2d7a959e3d6c0739741161a3
+enable - Select the optional Perses management-ui surface
+
+Selects the optional Perses realization of the observability management-ui surface by setting
+services.perses in the repository manifest. Machine transports converge runtime through the shared
+apply lifecycle; the direct human CLI defers it to 'baha app apply' and reports the deferred action.
+Fail-closed: requires a verified application owner and the observability management-ui surface with
+managed Prometheus metrics sources.
+
+Usage:
+  baha app perses enable [NAME] [--json]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha app perses remove ===
+sha256 812b2a13e4a64e59b5335a81e6775a73b150b165c2216635c0f99de45bcabdd3
+remove - Ownership-safe retirement of the owned Perses surface
+
+Disables the optional Perses surface and retires only the BaseHarbor-owned Perses runtime resources.
+Prometheus, Loki, Tempo and foreign data are preserved and never removed. Fail-closed: requires a
+verified application owner. Machine transports converge runtime through the shared apply lifecycle;
+the direct human CLI defers it to 'baha app apply' and reports the deferred action. This operation
+converges the manifest and ownership-safe removal plan.
+
+Usage:
+  baha app perses remove [NAME] [--json]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha app perses status ===
+sha256 de54ed7e4ffd841e5a0fd201604ca60ef4655cfb06de24e4d810b416827678de
+status - Report Perses state and live alert-rule health
+
+Reports the optional Perses surface state and probes the applied Prometheus alert rule through the
+Target-scoped health verifier.
+
+Usage:
+  baha app perses status [NAME] [--json]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha app plan ===
+sha256 edd9cb339c2813fb2768c15513d1eae7f3c53baf7c7630a067e4dc60d64a2c9c
+plan - Show desired resources without changing anything
+
+Builds a deterministic desired-state plan, including required secret readiness gates. Without NAME
+it resolves the nearest baseharbor.yaml from the current repository.
+
+Usage:
+  baha app plan [NAME] [-o json|--output json]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha app preflight ===
+sha256 95c181bb16b809adcfe6320ff797a13bb99358ffbebb2af8574e920d08fa3fe9
+preflight - Validate an application before mutation
+
+Checks manifest integrity, supported desired services, local state, the container runtime, OpenBao
+application-provisioning prerequisites and required-secret readiness. Without NAME it resolves the
+nearest repository baseharbor.yaml.
+
+Usage:
+  baha app preflight [NAME]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha app prune ===
+sha256 90d1238e07389f16629f88f63b0ad933c7f6d09ec4308c07943723fed22a2b43
+prune - Remove a dangling deployment record whose source repository is gone
+
+Removes a SINGLE dangling deployment record whose source repository is no longer available. The
+record can no longer be resolved by the source-required lifecycle commands
+(apply/update/plan/preflight/init) and cannot be destroyed or downed, so it stays permanently
+uncollectable and `baha app list` keeps showing MISSING. prune removes ONLY that registry record: it
+never touches runtime, containers, volumes, identities, secrets, provider bindings or any other
+deployment record. It refuses when the source repository is still present (the deployment is
+recoverable) and when the given name matches more than one record (naming each). Exactly one name is
+required.
+
+Usage:
+  baha app prune <name>
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha app pull ===
+sha256 3e213edcfa8c10005a7f00c4f797f9ce0741aea48d426dde9929628877657143
+pull - Safely pull Git source for the application, optionally bringing it up
+
+Selects repository or local sources by component and pulls each selected source as a strict
+fast-forward to its upstream, inspecting working-tree, branch, upstream and divergence first. The
+working tree must be clean; a dirty, ahead or diverged source blocks that source without touching
+others. --check previews the pull plan without changing source. With --up the application is brought
+up using the same app-up operation as 'baha app update', only after every selected source pulled
+successfully. Non-interactive: a blocker is an actionable error, never a prompt. No secret values
+are printed.
+
+Usage:
+  baha app pull [-c COMPONENT[,COMPONENT...]] [--up] [--check] [--manifest PATH] [-o json|--output json]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha app restore ===
+sha256 e7106c1c412c15b4d45bd5efd0b54192de90c880bb803912a3a7810bd37c0a64
+restore - Restore and verify an encrypted application recovery unit
+
+Validates and decrypts the complete archive before mutation. In an interactive terminal, omitting
+--password-file starts a guided flow with hidden password entry, shows the backup identity, included
+durable resources and mutation impact, and requires confirmation before restore. Automation keeps
+the deterministic --password-file path. A successful restore reports READY only after verification
+and records the verified recovery metadata.
+
+Usage:
+  baha app restore [BACKUP] [NAME] [--password-file FILE] [--json]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha app runtime-identity ===
+sha256 101ecf1c2a4bada1d8af47feeb3cc7fa058a1974e90ddb92450fba7412aec5a6
+runtime-identity - Manage the app-scoped credential used for dynamic secret references
+
+Rotates or revokes the generated application runtime credential without changing any stored
+baseharbor:// secret references. The credential is an application identity only and never grants
+operator API access.
+
+Usage:
+  baha app runtime-identity <rotate|revoke> [NAME] [--yes]
+
+Commands:
+  rotate  Rotate the application runtime credential
+  revoke  Immediately revoke the application runtime credential
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha app runtime-identity revoke ===
+sha256 a0d11bc30542c3adf1c6040bf32ce83dd727d98f961da0c7b175c8f1fc8d2b77
+revoke - Immediately revoke the application runtime credential
+
+Usage:
+  baha app runtime-identity revoke [NAME] [--yes]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha app runtime-identity rotate ===
+sha256 5202e93557fdd5464426bbf1beea4f743d16a12970bde740dd6403af1c095c93
+rotate - Rotate the application runtime credential
+
+Usage:
+  baha app runtime-identity rotate [NAME] [--yes]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha app secret ===
+sha256 d875120baa650546747be5113ce4517b415e854c6dfe889e06284abd9cef7224
+secret - Manage application secret values without printing them
+
+Stores application secret values in the application's isolated managed secret namespace. Inside a
+repository containing baseharbor.yaml the application NAME may be omitted.
+
+Usage:
+  baha app secret <command> [options]
+
+Commands:
+  set      Create or replace one secret value from stdin or a file
+  list     List secret key names without values
+  delete   Permanently delete one secret and all of its KV versions
+  tls-set  Validate and store a TLS certificate chain and private key
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha app secret delete ===
+sha256 e1568b02026a039faf41b633b092e69311f6632957a30ef56cbd4bef0aaa6d1f
+delete - Permanently delete one secret and all of its KV versions
+
+Without --yes, validates the application secret scope and prints a read-only deletion preview.
+Inside a repository omit NAME.
+
+Usage:
+  baha app secret delete [NAME] KEY [--yes]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha app secret list ===
+sha256 e9cb69121ad836817ef818b59f6daa6b88d19578ae9e460d4a4d6518521d7404
+list - List secret key names without values
+
+Lists only managed secret key names. Secret values are never returned.
+
+Usage:
+  baha app secret list [NAME]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha app secret set ===
+sha256 c7014ad5bc9dca6862724d97921f17b3ad5396c9daeeb1cdc0d346b28a350381
+set - Create or replace one secret value from stdin or a file
+
+In an interactive terminal, omitting an input option securely prompts with terminal echo disabled.
+--stdin and --file remain deterministic automation paths. Secret values are never accepted as
+command-line arguments or printed.
+
+Usage:
+  baha app secret set [NAME] KEY [--stdin | --file PATH]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha app secret tls-set ===
+sha256 500e881b447f0862b9696e02a9e7f0cca4ab4e12f7db8d60550a2d52444299dd
+tls-set - Validate and store a TLS certificate chain and private key
+
+Validates certificate parsing, certificate/private-key matching and the leaf validity window before
+storing TLS_CERT_FILE and TLS_KEY_FILE in the application's OpenBao-backed secret scope. Certificate
+input may be PEM or DER; an optional chain file may contain PEM or DER certificate data.
+
+Usage:
+  baha app secret tls-set [NAME] --cert-file PATH --key-file PATH [--chain-file PATH]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha app secure-profile ===
+sha256 42001f2368c0e3c1acb753965c22d09b04840c111da03c7ced68c5984a3a9471
+secure-profile - Encrypt explicitly selected local credentials into a password-locked export
+
+Opt-in, password-encrypted export of the eligible local credentials for one application. Selects
+only the local developer credentials that exist for the target/environment; never exports remote
+provider secrets or fresh device identities by default. The export password is read from a file
+(never argv); the ciphertext is unreadable without it.
+
+Usage:
+  baha app secure-profile export [NAME] --password-file FILE --output FILE
+
+Commands:
+  export  Encrypt selected local credentials into a password-locked export file
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha app secure-profile export ===
+sha256 abb8a6ea155cfd3c69fe063d9db0e17c69c49a9987c0397461ad94f5e6e1eddf
+export - Encrypt selected local credentials into a password-locked export file
+
+Opt-in, password-encrypted export of the eligible local credentials for one application. Selects
+only the local developer credentials that exist for the target/environment; never exports remote
+provider secrets or fresh device identities by default. The export password is read from a file
+(never argv); the ciphertext is unreadable without it.
+
+Usage:
+  baha app secure-profile export [NAME] --password-file FILE [--output FILE]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha app shell ===
+sha256 fd94a27c6c5c742a6051128038d455d355b786c7f4d7f8eacd675f4459a90f0e
+shell - Open a shell in an application workload service
+
+Opens the default interactive shell in the guided workload component. -c names the component;
+without it the same guidance as 'baha app logs' applies: a unique declared component is derived, a
+terminal lists the options, and --no-input or scripts fail closed with the options instead of
+blocking. The shell's exit status is preserved.
+
+Usage:
+  baha app shell [COMPONENT] [-c NAME] [--app NAME] [-e ENV|--environment ENV]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha app show ===
+sha256 ea9630392420baeb4a2a8c9f23da3c982e7a6e008644f8c530bf4eb279792d80
+show - Show a coherent application overview
+
+Shows application identity, backend readiness, repository workload state, secret readiness, the last
+recorded successful backup and the last verified recovery without revealing secret values or
+credential-bearing URLs. It uses the same repository workload readiness model as app status and app
+doctor.
+
+Usage:
+  baha app show [NAME]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha app sql ===
+sha256 61bd6fb0eb642a26d1e8f68814f3659b8aca12dde4d10563254af694ae55237e
+sql - Open the managed SQL console for the current application
+
+Usage:
+  baha app sql [INSTANCE] [--app NAME]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha app status ===
+sha256 48c85d83a3d74d717be4c3ca8e1a70fc388402d323eb2c11613dc5cd85d8dd24
+status - Show application runtime, readiness and version status
+
+Reports materialized backend state, repository workload state, protocol-level readiness and the
+unified version section (wanted/applied/observed reference dimensions plus component rows with their
+source-model provenance). Human and structured output are rendered from the same secret-safe
+readiness result. An unknown -c component fails closed. Repository deployment TLS mode and
+certificate state are rendered as part of the same status view.
+
+Usage:
+  baha app status [NAME] [-c COMPONENT[,COMPONENT]] [-o json|--output json]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha app stop ===
+sha256 a839cd53c88de4154f40e1f9047cb631f81e7067d801de19aae06aeb03805b92
+stop - Stop application runtimes while preserving data for reactivation
+
+Stops the owned workload and provider runtime, releases its active provider references, and retains
+persistent data, credentials, recovery material and the deployment owner so 'baha app apply' can
+reactivate it. Pass --yes to execute; the current provider consequence plan still requires its own
+acknowledgement. Use 'baha app destroy' to permanently delete app-owned data.
+
+Usage:
+  baha app stop [NAME] [--yes]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha app tls ===
+sha256 c86ed231a8ef7e09a88dc5bdf357b5c9aa28d34c218375c43cb04fdde72e16d9
+tls - Inspect and maintain application TLS certificates
+
+Manages deployment TLS state without exposing private keys to the application. Existing-certificate
+deployments can inspect a newer certificate in the configured source directory and safely import it
+into protected BaseHarbor state.
+
+Usage:
+  baha app tls <command>
+
+Commands:
+  update  Check for or install a newer existing TLS certificate
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha app tls update ===
+sha256 19ef86aa0ba055b93fb19075820442a6c9d1f950c43417c901bbaab45ae5975a
+update - Check for or install a newer existing TLS certificate
+
+For TLS mode 'existing', validates the certificate/key pair in the configured source directory,
+compares it with the installed certificate and refuses certificate downgrades. Without --check, a
+newer certificate is copied into protected BaseHarbor state and the repository workload is restarted
+so the new certificate is actually served.
+
+Usage:
+  baha app tls update [--check]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha app up ===
+sha256 08f372972e75507f3f0306c1200fb2db6db5c0584e98c57707d4078457f93052
+up - Start an existing application runtime and verify readiness
+
+Starts a previously materialized BaseHarbor application runtime using its existing runtime
+definition, credentials and persistent data; required application secrets are verified before
+workload start and missing values fail closed. Repository workloads are started after their
+BaseHarbor backend and per-application secret broker are ready. Workload-only applications skip the
+empty managed-runtime start and resume their repository Compose workload directly. Without NAME it
+resolves the nearest repository baseharbor.yaml. --yes accepts allowed confirmations but never
+invents unresolved selections or operator authentication configuration.
+
+Usage:
+  baha app up [NAME] [--yes|-y] [--skip-memory-preflight]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha app update ===
+sha256 e8ce8c86a4b25d0f4eef44890431e220414f51bd92fbfa63a39528d45a7eef47
+update - Safely inspect or update a Git-backed application
+
+Fetches only the configured upstream remote and verifies repository, branch, revision and
+working-tree state before any mutation. --check reports the update plan without changing source. For
+applications with durable managed PostgreSQL or secrets, mutation requires either an encrypted
+pre-update recovery point through --backup-password-file FILE or an explicit --no-backup
+acknowledgement. The source update is strict fast-forward-only to the exact fetched target revision,
+followed by the normal application apply/readiness lifecycle. BaseHarbor never resets, stashes,
+discards local changes, switches branches, merges divergent history or rebases implicitly.
+
+Usage:
+  baha app update [--check] [--backup-password-file FILE | --no-backup]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha app urls ===
+sha256 29232d6e3f7b69490f1e01fd7c3289e4c123d696e75d2c6d06c273353f53138d
+urls - List verified application and service GUI URLs with their accessibility
+
+Lists the application's own URLs and the GUI URLs of its bound app/shared services from the same
+secret-safe read view 'baha app status' renders. Every entry carries verified or unverified
+accessibility; nothing is guessed, invented or opened. --print emits only the verified URLs
+(scriptable), --json emits the structured list. -c filters to named components or bound services and
+fails closed on an unknown name. This surface is presentation-only: typed clients inspect app status
+instead. Opening the primary endpoint in the system browser remains 'baha open'.
+
+Usage:
+  baha app urls [NAME] [-c NAME]... [--print] [--json] [-e ENV|--environment ENV]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha app version ===
+sha256 5c4b2d1c087c189b76cea75a45a76395b4cb433a2fa994ce8d0a67b7870504c8
+version - Show separated wanted/applied/observed release and component versions
+
+Read-only version view of one deployment. Wanted, applied and observed come from the three
+independent recorded reference dimensions and are never copied between each other. A dimension
+without a recorded version shows an explicit UNCLEAR cell instead of a blank. Component rows carry
+their portable source-model provenance (source id, kind, identity) or an explicit unmapped state;
+observed runtime identity enriches the same rows when reachable. An unknown -c component fails
+closed. Metadata claims are labeled unverified; no Git revision is inferred from a tag.
+
+Usage:
+  baha app version [NAME] [-c COMPONENT[,COMPONENT]] [-o json|--output json]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha app versions ===
+sha256 ef85fd8b3c1abe732fce581d33f78f370b69cbf612159b918c07da2e8b6e3d64
+versions - Show readable wanted/applied/observed versions for recorded deployments
+
+Renders each deployment's three independent reference dimensions (wanted, applied, observed) as
+separate cells sourced from the recorded stage versions, followed by the unified component rows with
+their source-model provenance. A missing dimension shows UNCLEAR instead of a blank cell; an
+unmapped component says unmapped. --all-targets widens the listing to every configured Target
+through the existing display seam. An unknown -c component fails closed.
+
+Usage:
+  baha app versions [--all-targets] [-c COMPONENT[,COMPONENT]] [-o json|--output json]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha app workspace ===
+sha256 856279047eff9b8bee3c5cdb0351698d0ae03e41657404f781df706c8dd661c4
+workspace - Manage local multi-repository workspace mappings
+
+With no subcommand, opens the guided multi-repository workspace setup. Portable source identity is
+kept in .baseharbor/sources.yaml while developer-local checkout paths stay in XDG configuration and
+never become Application Intent. Sources are Git repositories, local directories or OCI images;
+components are optional unique identities and several components may share one source.
+
+Usage:
+  baha app workspace [<init|map|show|resolve|status|update|path|source|component> [options]]
+
+Commands:
+  init       Create versioned source identity metadata for a multi-repository application
+  map        Map one repository source identity to an existing local checkout/worktree
+  show       Show canonical source identities and local workspace mappings
+  resolve    Resolve component source identity to local worktrees without using the current working
+             directory
+  status     Inspect Git state for all mapped repository sources
+  update     Safely fast-forward mapped Git repositories
+  path       Set or show the local path of one source (checkout mapping or directory source)
+  source     Add or remove individual application sources
+  component  Inspect and maintain unique component-to-source mappings
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha app workspace component ===
+sha256 060c2a93331220f951988391e6d581b350ee0425b690cf220f085174d8723294
+component - Inspect and maintain unique component-to-source mappings
+
+Usage:
+  baha app workspace component <list|add|remove> [options]
+
+Commands:
+  list    List unique components and the source identity each one maps to
+  add     Add or retarget the unique mapping of one component without inventing it implicitly
+  remove  Detach one component mapping without deleting sources or local files
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha app workspace component add ===
+sha256 8a78c0f4db2c905e85c90305de5f2bd8fbc03205367e413d1c7ee12817f08460
+add - Add or retarget the unique mapping of one component without inventing it implicitly
+
+Usage:
+  baha app workspace component add COMPONENT SOURCE[@SUBPATH] [--manifest PATH] [-o json]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha app workspace component list ===
+sha256 decfe15630f264856b2b5ac14da3d2b2f98a63f639ea9b87f1a33ca3ac936113
+list - List unique components and the source identity each one maps to
+
+Usage:
+  baha app workspace component list [COMPONENT] [--manifest PATH] [--source ID] [-o json]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha app workspace component remove ===
+sha256 c6908791ce1eaac5f3edf5a3ed72ffdfb94cdd2b40afcd5f986a9fbacdf79644
+remove - Detach one component mapping without deleting sources or local files
+
+Usage:
+  baha app workspace component remove COMPONENT [--manifest PATH] [-o json]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha app workspace init ===
+sha256 acf6956cb083fe06ba1c75d18cc2ff4079deee8351a43d9089c85eaca4dbeea8
+init - Create versioned source identity metadata for a multi-repository application
+
+Usage:
+  baha app workspace init [--manifest PATH] --source ID=REPOSITORY [--source ...] [--local ID=PATH] [--local ...] [--oci ID=IMAGE] --component COMPONENT=SOURCE[@SUBPATH]... [-o json]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha app workspace map ===
+sha256 485d772308e8c4570ad7874795bcf6026466fc1e73fa6b967522ff003663abab
+map - Map one repository source identity to an existing local checkout/worktree
+
+Usage:
+  baha app workspace map SOURCE PATH [--manifest PATH] [-o json]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha app workspace path ===
+sha256 725e3d7f0d49eccda7d1e1f326b410cdbe3c6843aca3f6d5299c676977490486
+path - Set or show the local path of one source (checkout mapping or directory source)
+
+Usage:
+  baha app workspace path SOURCE [PATH] [--manifest PATH] [--show-current] [-o json]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha app workspace resolve ===
+sha256 42d5e31c184062c7644d75885878a61196191d78ca624987800a65c4e3fb8d99
+resolve - Resolve component source identity to local worktrees without using the current working directory
+
+Usage:
+  baha app workspace resolve [--manifest PATH] [-o json|--output json]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha app workspace show ===
+sha256 38c0a9dc8dc59dc2a5cdc7993186cecaa94cad92e3b78deed25fc91cdcae63ae
+show - Show canonical source identities and local workspace mappings
+
+Usage:
+  baha app workspace show [--manifest PATH] [-o json|--output json]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha app workspace source ===
+sha256 25ff480234be4309f2de7691c7b8ebd70cf28941d20398377eef84e5df7dcaba
+source - Add or remove individual application sources
+
+Usage:
+  baha app workspace source <add|remove> [options]
+
+Commands:
+  add     Add or update one source identity without recreating the source model
+  remove  Remove one source and detach its component mappings without deleting local files
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha app workspace source add ===
+sha256 dc02037355b0ef3eb1684fa0763b931f5591570cbdc91c0baa000ca177623746
+add - Add or update one source identity without recreating the source model
+
+Usage:
+  baha app workspace source add [--manifest PATH] [--source ID=REPOSITORY] [--local ID=PATH] [--oci ID=IMAGE] [-o json]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha app workspace source remove ===
+sha256 f198c05a5d8a10132f949ba0f249392fc3033bd97c95ee61f42fb4236f5a3443
+remove - Remove one source and detach its component mappings without deleting local files
+
+Usage:
+  baha app workspace source remove SOURCE [--manifest PATH] [--keep-components] [-o json]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha app workspace status ===
+sha256 d02f1d00574dba46d24e31d53f3594af04922f9e8a68ece6ba20313d4786013f
+status - Inspect Git state for all mapped repository sources
+
+Usage:
+  baha app workspace status [--manifest PATH] [--fetch] [-o json|--output json]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha app workspace update ===
+sha256 1b2dab0494ab87ba29f90b7f6dd3c674fc78ed32a6a738c30ee6edf7be6bfe09
+update - Safely fast-forward mapped Git repositories
+
+Fetches each mapped repository using native Git. Clean branches with a configured upstream are
+updated only when a strict fast-forward is possible. BaseHarbor never stashes, resets, switches
+branches, rebases, merges divergent history or resolves conflicts.
+
+Usage:
+  baha app workspace update [--manifest PATH] [--check] [-o json|--output json]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha backup ===
+sha256 7b394ff79fc78763be3634bdbeadb7d13219ca338270ec4e6bcb55592f0b911a
+backup - Back up the current application through its managed lifecycle
+
+Usage:
+  baha backup [options]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha completion ===
+sha256 aa3f838a56c605b3ddf1921d43c1cd3560954ff1b9bd07de43543b8557e77a43
+completion - Generate shell completion for Bash, Zsh or Fish
+
+Prints shell completion code to stdout. Completion is deterministic, read-only and never invokes
+application mutation.
+
+Usage:
+  baha completion bash|zsh|fish
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha config ===
+sha256 16eacdea5402c7fb062b8403ca08b8c6eb4517736c8ed3856658a4215f3d1ba8
+config - Configure BaseHarbor user preferences
+
+Usage:
+  baha config prompt [options]
+
+Commands:
+  prompt        Configure the optional BaseHarbor shell prompt segment
+  organization  Configure versioned organization/platform defaults and references
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha config organization ===
+sha256 09a5480c371a3f4ccc5f46af1e4e0dc082b2603c6cbfdc4f9a2a84b8c5e94482
+organization - Configure versioned organization/platform defaults and references
+
+Organization configuration composes existing BaseHarbor targets, providers, stack profiles, trust
+and policy references. It never changes portable Application Intent and never stores plaintext
+credentials or private keys.
+
+Usage:
+  baha config organization set|show|check|update [options]
+
+Commands:
+  set     Resolve and activate an organization configuration source
+  show    Show the active organization configuration and effective defaults
+  check   Resolve the configured source without changing the active organization configuration
+  update  Explicitly activate the currently configured source at its newly resolved immutable
+          version
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha config organization check ===
+sha256 4047ff8a5ddda35f0877fbdfa12ef280e2ea8aabe79f2ff35c70a2d39a6d13d3
+check - Resolve the configured source without changing the active organization configuration
+
+Usage:
+  baha config organization check [-o json]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha config organization set ===
+sha256 00ab7df1c87b22c9b2f92c9881d6319cf6894fca0cc28529be3001e08f9e3ebb
+set - Resolve and activate an organization configuration source
+
+Usage:
+  baha config organization set --source oci|git|local|system [--location LOCATION] [--requested TAG|REF] [--environment ENV] [-o json]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha config organization show ===
+sha256 caab45a366afc204d12b54515ab114a41b3a1e766b77486c83f06318100c54e6
+show - Show the active organization configuration and effective defaults
+
+Usage:
+  baha config organization show [--environment ENV] [--preferences FILE] [-o json]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha config organization update ===
+sha256 0e792497ad625d9113abfc7e83cdaeadaa04f770d0c7771793f66b768287a0f7
+update - Explicitly activate the currently configured source at its newly resolved immutable version
+
+Usage:
+  baha config organization update --yes [--environment ENV] [-o json]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha config prompt ===
+sha256 171f01888cb6b64f0a245050533a559f76f6fdabb77e2a7e2b1734065b343789
+prompt - Configure the optional BaseHarbor shell prompt segment
+
+Configures prompt presentation only. Target identity, lifecycle ownership and deployment selection
+are never changed by prompt labels or colors. With no options, interactive terminals open a compact
+setup wizard with a live preview.
+
+Usage:
+  baha config prompt [--enable|--disable] [--preset minimal|compact|accessible|detailed|none] [--position before-path|after-path|right] [--environment never|critical-only|always] [--show-application|--hide-application] [--text-only|--color-output] [--prod-indicator TEXT] [--label TARGET=LABEL] [--color KEY=VALUE]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha connect ===
+sha256 b9907d63bc86870d10699f00a2c452341665c23780e8d71c3fb346b97a357f13
+connect - Allow one explicit application service to reach another
+
+Creates one directional deny-by-default exception such as 'baha connect app-a/api app-b/sql'.
+BaseHarbor resolves environment, runtime network and target port from current runtime state. Qualify
+app@environment/service or service:port only when runtime state is ambiguous.
+
+Usage:
+  baha connect SOURCE TARGET
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha connections ===
+sha256 ae1bd7373c5c31b5ac68dfc00bcaa90d7aa75724f481110bb352a14003786d9f
+connections - List explicit cross-application connectivity policy
+
+Usage:
+  baha connections
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha context ===
+sha256 df5c313f39403cc881ff627cabfe98d3bbbd9aa65b6d47bdcb431a9cec1d4e69
+context - Select the per-terminal BaseHarbor context (Bash, Zsh or Fish)
+
+Select the per-terminal deployment context without changing the per-user persisted selection.
+'context use' prints the shell snippet that sets BASEHARBOR_TARGET for the current shell process
+only; with the one-time hook installed via 'baha completion bash|zsh|fish' the shell evaluates that
+snippet automatically, so each independent terminal keeps its own selection in its own environment.
+'context clear' unsets the selection in the current process and prints a hint. 'context show'
+reports the effective selection and which precedence level won.
+
+Usage:
+  baha context use [--shell bash|zsh|fish] TARGET | clear | show
+
+Commands:
+  use    Emit the per-terminal activation snippet for TARGET
+  clear  Clear the per-terminal selection in the current process
+  show   Report the effective per-terminal selection and winning precedence level
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha context clear ===
+sha256 3211a08e3474d3efcf5ac9a3fd92c776dde045eeb67c948dec21bd6a37b8f7e7
+clear - Clear the per-terminal selection in the current process
+
+Usage:
+  baha context clear [--shell bash|zsh|fish]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha context show ===
+sha256 ba6623c08e33d5cfbcfa2edbb6fbb8f44d7e6d899103f18d9739fad1c3712377
+show - Report the effective per-terminal selection and winning precedence level
+
+Usage:
+  baha context show
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha context use ===
+sha256 acbdb42862931afd98485d7915b45774d8a5aa3d2a586ce832f205509abeba83
+use - Emit the per-terminal activation snippet for TARGET
+
+Usage:
+  baha context use [--shell bash|zsh|fish] TARGET
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha destroy ===
+sha256 cf2f943dbc8b5b2a5665d5fb91af0bbdacc284444a653df1c57a8836dbc0946f
+destroy - Remove the complete BaseHarbor installation with explicit consequence consent
+
+Removes registered applications, owned providers and runtime resources, Core services, and
+BaseHarbor configuration/state across all configured Targets. Application source repositories and
+external infrastructure are preserved. Use 'baha app destroy NAME' to remove one application while
+keeping the installation. The command shows the concrete impact plan and requires its
+acknowledgements plus separate data-deletion consent; --yes skips none of them. Targets that cannot
+be inventoried are left untouched and retain ownership state for retry. --all remains as a
+compatibility alias.
+
+Usage:
+  baha destroy [--yes]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha dev ===
+sha256 b461b8b9248c6d0e4b03ff9be33fff6c38abf5596116eb3850e4d4061b338474
+dev - Manage local development conveniences
+
+Usage:
+  baha dev <credentials|domain|hosts|cleanup>
+
+Commands:
+  hosts        Opt in to target-scoped workstation name resolution
+  cleanup      Remove this Target's owned workstation hosts and CA trust
+  credentials  Show or rotate the target-scoped development management login
+  domain       Show or configure the target-scoped development domain
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha dev cleanup ===
+sha256 79015954a959b2d0f44ad7c02fc0275dd4f93e229f139a960a72b1fe2f5c1665
+cleanup - Remove this Target's owned workstation hosts and CA trust
+
+Local only; keeps Core, apps, data, device enrollment and unrelated workstation settings. Modified
+hosts entries/certificates are preserved. CAs still referenced by another connection are retained.
+
+Usage:
+  baha dev cleanup --yes
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha dev credentials ===
+sha256 59ea099fdce87c4f83d1b37e4a375d8cc24d927f47d38420426d2f1828985b0e
+credentials - Show or rotate the target-scoped development management login
+
+Shows the explicit local development management login for the effective Target. The secret is
+revealed only by this command and is never included in status, plan, doctor, evidence or application
+manifests. --reset generates a new strong password. --password-file installs an explicit password
+from an owner-only file.
+
+Usage:
+  baha dev credentials [--reset] [--username USER] [--password-file FILE]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha dev domain ===
+sha256 2cd0896395119e36429f6c2d801dd44ebea58467eeba7fb50d5d32f44ef1b77c
+domain - Show or configure the target-scoped development domain
+
+Shows the development domain used to derive canonical local application and management URLs.
+Supplying DOMAIN updates the target-wide value; application manifests are not modified.
+
+Usage:
+  baha dev domain [DOMAIN]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha dev hosts ===
+sha256 f4ad1602ae10c449752f94f75ce738bba448c70c84feac1b8e76ea8a39b6693c
+hosts - Opt in to target-scoped workstation name resolution
+
+Linux only. Explicitly enables managed /etc/hosts entries for observed routes of the selected
+verified Core. No DNS service is installed. Successful deployments refresh entries after opt-in;
+remove preserves unrelated or modified entries.
+
+Usage:
+  baha dev hosts <status|sync|remove> [--yes]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha disconnect ===
+sha256 f6b076a76b5c52a396ec9f749522b43ea5d43609f311e3d7344b69d48667956d
+disconnect - Remove one explicit cross-application connectivity exception
+
+Usage:
+  baha disconnect SOURCE TARGET
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha doctor ===
+sha256 bea4a68a3bfd5f1f66891f0bfa4663b0f0005457a97989fcf85a1ef2644d1c64
+doctor - Diagnose the current application repository, otherwise the control plane
+
+Inside an application repository, runs the same application doctor used by 'baha app doctor'.
+Outside a repository it keeps the control-plane doctor behavior. Structured output is read-only and
+cannot be combined with --fix.
+
+Usage:
+  baha doctor [--fix --yes] [-o json|--output json]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha down ===
+sha256 466b47e4fa90b89aee4b4b367ffac4bda7b9fec32e184aa919ce0035739ecd5a
+down - Stop the current application, or the local control plane outside a repository
+
+Usage:
+  baha down [options]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha env ===
+sha256 cd03a806537e54ac1ec8dd626dc51059254bce6706a8a4f5563c1092fbfcf6b7
+env - Inspect and manage deployment-target environments
+
+Usage:
+  baha env [show|destroy <NAME>] [-o json|--output json|--json]
+
+Commands:
+  destroy  Destroy an environment and its environment-scoped deployments
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha env destroy ===
+sha256 cb82df390b69ebc456e13d5744495a9505dcd95eed861786ed813bbe94ff1356
+destroy - Destroy an environment and its environment-scoped deployments
+
+Retires the selected environment's deployments before removing its identity. KEEP stops each
+selected runtime while retaining persistent data, recovery material and deployment owners;
+--delete-data permanently destroys selected deployments and requires separate explicit consent.
+Deployments in other environments, shared services and node hosts are preserved.
+
+Usage:
+  baha env destroy [NAME] [--keep-data | --delete-data [--confirm-delete-data]] [--yes | --no-input] [-o json|--output json|--json]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha init ===
+sha256 2ca773e81efaec8636602df63fb539e28a55a8d0d366c098795f91f1efad11ef
+init - Initialize or adopt the application in the current repository
+
+Canonical application initialization. Reuses the same repository inspection and guided input
+resolution as application initialization; explicit flags remain available for non-interactive use.
+Providers are resolved from selected intent during apply.
+
+Usage:
+  baha init --agents [--json] | baha init [--quick] [--json] [--input NAME=VALUE]... [--yes]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha inspect ===
+sha256 48795e36c13c4b166f95e18bf16450a265094267d5b666bd3465457e0075a6af
+inspect - Inspect the current repository and its application requirements
+
+Usage:
+  baha inspect [options]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha list ===
+sha256 df264ed6c9e7d5256b8065233cdf0fb5c065b586b7771a7c4abcee0dca3cad81
+list - List managed applications on the selected Target
+
+Lists applications on the selected Target by default. With multiple configured Targets and no
+effective selection, listing deliberately fails closed. Use 'baha list --all-targets' for a
+read-only inventory with an explicit TARGET column, or run 'baha target list' and 'baha target
+activate NAME' (or set BASEHARBOR_TARGET) to select one Target.
+
+Usage:
+  baha list [--all-targets]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha login ===
+sha256 3ccfabf731601ce84a8ee9cbc4278280cb106cde61ce0f41abd7bc15083abcbf
+login - Authenticate the BaseHarbor operator through OIDC
+
+Authenticates through Authorization Code + PKCE. --init-tenant is an explicit first-owner operation,
+restricted to the locally owned management Core after real OIDC login; it creates exactly one
+initial tenant and editor membership. --ca trusts the managed CA the Core bootstrapped without OS
+system-trust surgery (BASEHARBOR_OPERATOR_OIDC_CA_FILE is the state-wide alias). On non-browser
+hosts complete the PKCE flow headless with --auth-code-file (or
+BASEHARBOR_OPERATOR_OIDC_AUTH_CODE_FILE) and --no-browser; a fixed loopback callback port is honored
+via BASEHARBOR_OPERATOR_OIDC_CALLBACK_PORT. Existing trusted local dev without an operator OIDC
+configuration remains login-free.
+
+Usage:
+  baha login -e ENV|--environment ENV [--init-tenant] [--tenant-slug SLUG] [--tenant-name NAME] [--ca FILE] [--auth-code-file FILE] [--no-browser]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha logout ===
+sha256 fc27e43e87a15c31bb45751db8c23a5588a5200387644aacc7332e1486a5be0b
+logout - Remove a local BaseHarbor operator session
+
+Usage:
+  baha logout -e ENV|--environment ENV
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha logs ===
+sha256 d897e54f0c988e4b931bdb0108a95a48069a949538e18d15b6051c8efbb66b5a
+logs - Show application logs for the current workload
+
+Repository-aware shorthand for 'baha app logs'. It resolves the nearest application and streams the
+same workload logs the explicit app command provides.
+
+Usage:
+  baha logs [SERVICE] [--follow] [--app NAME]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha mcp ===
+sha256 7935029df9cb7a3a5c4d00c046c5eeb47053b39f6960e635b4372e1e2da8427e
+mcp - Expose BaseHarbor semantic operations over MCP
+
+Runs a local stdio Model Context Protocol server exposing a deliberately small BaseHarbor semantic
+tool surface. It never exposes generic shell, Docker, Compose or Podman execution.
+
+Usage:
+  baha mcp serve
+
+Commands:
+  serve  Run the local stdio MCP server
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha mcp serve ===
+sha256 cb045c480e69e0908448df8683bf0436b695e6acbed69e1708c0595ba6a93502
+serve - Run the local stdio MCP server
+
+Uses stdin/stdout only. stdout is reserved exclusively for MCP protocol messages; diagnostics are
+returned as structured tool errors or written to stderr by the process entrypoint.
+
+Usage:
+  baha mcp serve
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha new ===
+sha256 16966f48e33c13616cc49fd5b4d372360d8504bf0c449a13ea04b3142de0fc3e
+new - Create an application, stack, target, provider, or workspace
+
+Interactively choose the object to create, then continue through the existing domain flow. Use an
+explicit object type and options for automation.
+
+Usage:
+  baha new [application|stack|target|provider|workspace] [options]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha node ===
+sha256 3497f58fe79edc8fb80edaf07b0cc66f5956985789520f91b24645c1518b3887
+node - Enroll and manage remote Docker or Podman nodes
+
+Usage:
+  baha node [add|connect|list|status|disconnect]
+
+Commands:
+  add         Create a remote Target and one-use enrollment bundle
+  connect     Enroll this host and start the rootless connector service
+  list        List configured remote connector nodes
+  status      Inspect Core enrollment state for a remote node
+  disconnect  Revoke node access after impact acknowledgement and retain recovery owners
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha node add ===
+sha256 d026a8f600d54999ee7c7ca2b8f89091c80b7ff4b174dd0db87dc471a6fff6cc
+add - Create a remote Target and one-use enrollment bundle
+
+Usage:
+  baha node add [NODE] --runtime docker|podman [--target NAME] [--core-url https://HOST:PORT] [--core-address HOST:PORT] [--ca-file FILE] [--tenant-id UUID] [--environment ENV] [--output FILE] [--json]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha node connect ===
+sha256 e2a496e04d44ece1e4b68f0150d6e26241d3a611b7e178b98537f10bf7623c81
+connect - Enroll this host and start the rootless connector service
+
+Usage:
+  baha node connect [ENROLLMENT-FILE] [--connector-bin FILE] [--json]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha node disconnect ===
+sha256 02082a90cba8fbffc01a67da60cd567b403b53f4da3261a0ce896d574d54f21d
+disconnect - Revoke node access after impact acknowledgement and retain recovery owners
+
+Usage:
+  baha node disconnect TARGET --yes [--json]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha node list ===
+sha256 1702792d9defbb064efd3b469f3e59f2c339f582ccfd8dcf04bb478bdfa42f83
+list - List configured remote connector nodes
+
+Usage:
+  baha node list [--json]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha node status ===
+sha256 87c7481abaf8119080cb568d53f8cd42bed090b8998347ce9d06d4b645bf3735
+status - Inspect Core enrollment state for a remote node
+
+Usage:
+  baha node status TARGET [--json]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha onboard ===
+sha256 ddcd3ce7a71b19fbb656f0548ebb6da1f719d17d0f99269b2ee91458a6190441
+onboard - Guided onboarding: attach a workstation to a BaseHarbor installation
+
+On the Core host, --invite creates a new Keycloak user and first workstation. It asks for the
+person's full name, login, email, device name and certificate lifetime, then securely prompts for an
+initial password. The password is temporary and must be changed at first login. Email is contact
+information only; SMTP is not required. Use baha workstation new to add another device for an
+existing person. On a developer workstation, --import redeems the private one-use device invitation.
+
+Usage:
+  baha onboard [--target NAME] [--json] | baha onboard --import PRIVATE_FILE [--target-name NAME] [--trust-host-ca|--skip-host-trust] [--configure-hosts|--skip-hosts] | baha onboard --invite [--name PERSON] [--login LOGIN] [--email EMAIL] [--station DEVICE] [--certificate-ttl 5y] [--output PRIVATE_FILE] | baha onboard --init-tenant [-e ENV] [--tenant-slug SLUG --tenant-name NAME]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha open ===
+sha256 544ab5b3a32160eacd051c219f443430d6e8e0b21f74a95f9acbe7495dedeeec
+open - Open a verified HTTPS application endpoint
+
+Uses the selected repository application and its verified TLS deployment state; never invents a URL
+or opens an unverified endpoint. --print only emits the URL.
+
+Usage:
+  baha open [--print] [--json]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha openbao ===
+sha256 8fdc3de5d04fea4677311f927651a57111b551ef06e5b82c06a7e85f2acc0d80
+openbao - Bootstrap and operate the BaseHarbor OpenBao trust plane
+
+Manages the bundled OpenBao HA trust plane. Bootstrap, unseal and rotation are explicit
+security-sensitive operations; secret material is never printed by these commands.
+
+Usage:
+  baha openbao <command> [options]
+
+Commands:
+  status     Show OpenBao initialization, seal and manager-auth state
+  bootstrap  Initialize OpenBao and establish the BaseHarbor manager identity
+  unseal     Unseal OpenBao from an operator-held recovery file
+  rotate     Rotate OpenBao/control-plane credentials and managed service PKI
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha openbao bootstrap ===
+sha256 e51c5847ac5df1e03ee00acdad8a457ce5e7245098c806d1454c16b3640dd52e
+bootstrap - Initialize OpenBao and establish the BaseHarbor manager identity
+
+Initializes the bundled single-node OpenBao instance with one Shamir key share, stores only the
+unseal material in the explicitly selected owner-only recovery file, configures the baseharbor KV v2
+mount and a restricted manager AppRole, verifies that identity, and revokes the initial root token.
+The recovery file must be outside .baseharbor state. Options: --recovery-file PATH Required
+destination for OpenBao unseal recovery material
+
+Usage:
+  baha openbao bootstrap --recovery-file PATH
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha openbao rotate ===
+sha256 639a295913c3396b66a11b6fd3101961645c31776aed7d1270d67a685dc79908
+rotate - Rotate OpenBao/control-plane credentials and managed service PKI
+
+Rotates the restricted OpenBao manager AppRole credential, PostgreSQL control-plane
+administration/replication/OpenBao-storage credentials, and the managed service CA. Replacement
+credentials and trust are verified before previous material is retired. Secret values are never
+printed. Options: --recovery-file PATH Required owner-only OpenBao recovery file used if a rolling
+member restart requires unseal
+
+Usage:
+  baha openbao rotate --recovery-file PATH
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha openbao status ===
+sha256 47f41f69c030b801f61b3cdb391afde42cc858e95459e9a569ffd765f705fe3c
+status - Show OpenBao initialization, seal and manager-auth state
+
+Usage:
+  baha openbao status
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha openbao unseal ===
+sha256 7a217c8bba3f3e1bb5c9179dcc6d3367bd3415710927c4d1505ea797e1b401fe
+unseal - Unseal OpenBao from an operator-held recovery file
+
+Reads owner-only recovery material from the explicitly supplied file and sends the unseal key to
+OpenBao over stdin. The key is never printed or placed in the host command argument list. Options:
+--recovery-file PATH Required owner-only OpenBao recovery file
+
+Usage:
+  baha openbao unseal --recovery-file PATH
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha plan ===
+sha256 8a02eea051fa0892562d3bba6baccb4bff20d275fe38c10fcf7a75751d7769eb
+plan - Show the application plan in the current repository
+
+Repository-aware shorthand for 'baha app plan'. It is read-only and uses the same application
+planning core.
+
+Usage:
+  baha plan [NAME] [-o json|--output json]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha policy ===
+sha256 ad10468b11c05dfa2a9ada8c3b58f353bc28dab8044e2d779928d4ca827b0dda
+policy - Inspect the effective BaseHarbor policy for an application environment
+
+Usage:
+  baha policy <check|explain> [NAME] [-e ENV|--environment ENV] [-o json|--output json]
+
+Commands:
+  check    Evaluate effective policy against the selected application
+  explain  Explain effective policy, defaults and bounded overrides
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha policy check ===
+sha256 74412e8d88d370780340446ce2f36ebefb0bf3f6777cb36722a9ed01d4e991eb
+check - Evaluate effective policy against the selected application
+
+Usage:
+  baha policy check [NAME] [-e ENV|--environment ENV] [-o json|--output json]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha policy explain ===
+sha256 0aaa57bcc04cac79f87da813fbe9052f1f853ac515cbe4dedbae7adf0f8e0dca
+explain - Explain effective policy, defaults and bounded overrides
+
+Usage:
+  baha policy explain [NAME] [-e ENV|--environment ENV] [-o json|--output json]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha provider ===
+sha256 c84d83dc58e6dcd300f7bf415227df25012c2657dbac50d3b06ca59d26532640
+provider - Author and validate Capability Provider extensions
+
+Provider authoring reuses the same baseharbor.provider/v1 descriptor and capability conformance
+model used by BaseHarbor Core.
+
+Usage:
+  baha provider <command> [options]
+
+Commands:
+  add      Register an externally owned Capability Provider
+  list     List registered external Capability Providers
+  inspect  Inspect one registered external Capability Provider
+  verify   Verify endpoint and trust for an external Capability Provider
+  remove   Remove an external provider registration without destroying foreign infrastructure
+  init     Create a minimal Capability Provider authoring skeleton
+  test     Run provider contract conformance checks
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha provider add ===
+sha256 4179ea895f76f71da48f068db5730f47b1decbda17aeeca3019483d24c092a8c
+add - Register an externally owned Capability Provider
+
+Registers deployment/operator state only. Credentials, trust and certificate material are referenced
+and never written into portable Application Intent.
+
+Usage:
+  baha provider add ID [--descriptor DIR | --provider-id ID --kind KIND --capability NAME] --endpoint URL [trust options] [-o json]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha provider init ===
+sha256 eab56363ac742867396e5c4897054a1c247dfe186e50d8967cb55f2a443ed135
+init - Create a minimal Capability Provider authoring skeleton
+
+Usage:
+  baha provider init ID [--path DIR] [-o json|--output json]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha provider inspect ===
+sha256 4e068ed025c38a5c4619279de6ec156c372efe0a17acf379332b3e1f1682c9ec
+inspect - Inspect one registered external Capability Provider
+
+Usage:
+  baha provider inspect ID [-o json]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha provider list ===
+sha256 93c8ee21b85b5a1f79ee6168aa5a011bdb2c66c29d96a61a99d93ed3c3fec3f5
+list - List registered external Capability Providers
+
+Usage:
+  baha provider list [-o json]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha provider remove ===
+sha256 52468b5a64e6545495304b848ba54543c2be0a26617a40ebc99d3541ebd3a508
+remove - Remove an external provider registration without destroying foreign infrastructure
+
+Removes only BaseHarbor registration state. It never provisions, upgrades, backs up or destroys the
+externally owned provider.
+
+Usage:
+  baha provider remove ID --yes [-o json]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha provider test ===
+sha256 cb7798e2671e18dfbea36785a0e02feab7e12752c48621d833d11f8544f481ff
+test - Run provider contract conformance checks
+
+Loads provider.yaml and runs the existing transport-independent provider contract conformance
+checks. Runtime lifecycle conformance extends the same report model.
+
+Usage:
+  baha provider test [PATH] [-o json|--output json]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha provider verify ===
+sha256 55628553a0af4720b5a45067b44ef48708a5aa3066b7a0178fb4e8db99452de9
+verify - Verify endpoint and trust for an external Capability Provider
+
+Usage:
+  baha provider verify ID [-o json]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha restore ===
+sha256 b06b515bf19579ef58a0294b89706315f5501c0037703c7ac10d52ac26169050
+restore - Restore an application through the ownership-safe managed lifecycle
+
+Usage:
+  baha restore [options]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha serve ===
+sha256 4d2163dd8fe21b69c8bbd0eb10aabce47f11e999aa06bdd378b5c9c972b1a221
+serve - Run the TLS-protected BaseHarbor runtime/control-plane API
+
+Starts the TLS-protected BaseHarbor application runtime API. A managed per-application broker is
+bound to one app/environment, requires mTLS plus the app runtime token, and authenticates to OpenBao
+only with that application's AppRole. Configure OIDC audiences plus a database URL only for the
+separate operator control-plane API. For the operator API on a Core host, see the runbook:
+https://mcpdev80.github.io/baseharbor/how-to/operator-api/.
+
+Usage:
+  baha serve
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha shell-init ===
+sha256 fb77ab0b001f29e39aac33ee7b5fae3c23ab3faf890e3962662c9390486fa7b7
+shell-init - Generate BaseHarbor shell integration for Bash, Zsh or Fish
+
+Generates shell-local target activation helpers and optional prompt integration. Prompt rendering
+reads only local config and repository metadata and never contacts a runtime.
+
+Usage:
+  baha shell-init bash|zsh|fish
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha stack ===
+sha256 07a3d255cc1bfff82c864900d8d644a11e47d9c08f9b0ec2e3502b6035ee6e90
+stack - Discover and manage reusable development Stack Profiles
+
+Usage:
+  baha stack list|show|create
+
+Commands:
+  list    List built-in, user and repository Stack Profiles
+  show    Show a resolved Stack Profile
+  create  Create a reusable Stack Profile
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha stack create ===
+sha256 c85fa3d4a919aba7fdba315b0c4ffb186587ed1d6bfb57fb3c8f14912bc6b173
+create - Create a reusable Stack Profile
+
+Usage:
+  baha stack create [NAME --component ID:ROLE:STACK ...] [--extends NAME] [--scope user|repository] [-o json|--output json]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha stack list ===
+sha256 d1e1809b69031e255023352353981beb3dd454863748487e0c5b428b3945cc77
+list - List built-in, user and repository Stack Profiles
+
+Usage:
+  baha stack list [-o json|--output json]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha stack show ===
+sha256 c4cc57d124356081b31e4c15820dbc1c2e29b491d46665cc1537920e49998401
+show - Show a resolved Stack Profile
+
+Usage:
+  baha stack show NAME [-o json|--output json]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha status ===
+sha256 85eacd2bd929938a1bf6f823842d66a59530b9ee72411bf00e1b87bd6021e8f1
+status - Show application status in a repository, otherwise control-plane status
+
+Usage:
+  baha status [-o json|--output json]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha target ===
+sha256 f70fab18d1f2891b1d90ad1d469ec1db0f97aaa34997f07a038a634ef4b78c62
+target - Inspect and manage BaseHarbor deployment targets
+
+Usage:
+  baha target [list|show|policy|create|delete|activate|deactivate] [-o json|--output json|--json]
+
+Commands:
+  list        List configured targets
+  show        Show one target
+  policy      Inspect or change editable Target deployment policy
+  create      Create a deployment target
+  delete      Detach target configuration with protected recovery; preserve runtime and data
+  activate    Persist the active deployment target for this user
+  deactivate  Clear persisted active deployment target
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha target activate ===
+sha256 7b36445132e329e1a56e58a73197175164408477521f09522908ca8154eb9e1e
+activate - Persist the active deployment target for this user
+
+Persists per-user target selection across CLI processes. --target and BASEHARBOR_TARGET override the
+persisted selection.
+
+Usage:
+  baha target activate NAME
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha target create ===
+sha256 f80a2d6c00b2704409239aea7e1ed3afe938f4ba00a6e6f9a314c7ce669915b6
+create - Create a deployment target
+
+Usage:
+  baha target create NAME --runtime-provider PROVIDER --access ACCESS --access-provider PROVIDER --reference REFERENCE [--scope SCOPE] [--tenant-id UUID] [--deployment-preset development|test|staging|production|custom] [--default] [--docker-endpoint SOCKET | --docker-context CONTEXT] [--docker-mode rootless|rootful]; baha target create NAME --from-recovery PATH
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha target deactivate ===
+sha256 132b52c1c52bc4da955844579fa29ab679502a4aee0b8437c7988dfd185f9876
+deactivate - Clear persisted active deployment target
+
+Usage:
+  baha target deactivate
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha target delete ===
+sha256 98f4644785c98fad721504a99a3dc533274e1c3aecbc7311a8563ab541ac544c
+delete - Detach target configuration with protected recovery; preserve runtime and data
+
+Usage:
+  baha target delete NAME
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha target list ===
+sha256 bc22a8ef242de5c9bdfd2bc66fe2359e7f57bd906d0a50df811a5efdb391b496
+list - List configured targets
+
+Usage:
+  baha target list [-o json|--output json|--json]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha target policy ===
+sha256 e8d11a20a17b108ee7895469b9c20fbb65cd09d121f200bba10ecd18eef5b5ff
+policy - Inspect or change editable Target deployment policy
+
+Usage:
+  baha target policy <show|set> NAME
+
+Commands:
+  show  Show the persisted deployment policy of a Target
+  set   Update the protected deployment policy without changing Runtime or Access
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha target policy set ===
+sha256 521ec735deab7ab5dff245a2b3bbf09641e798106cab4c855b3042d0ba35900d
+set - Update the protected deployment policy without changing Runtime or Access
+
+Usage:
+  baha target policy set NAME [--deployment-preset development|test|staging|production|custom|none] [--deployment-branches BRANCHES] [--deployment-dirty yes|no] [--deployment-commit yes|no] [--deployment-remote-commit yes|no] [--deployment-approval yes|no] [--deployment-image-digest yes|no]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha target policy show ===
+sha256 3d0de3cf3b7a6a72b9a697109e5fdff557520e27691213fac253082d25d01fc8
+show - Show the persisted deployment policy of a Target
+
+Usage:
+  baha target policy show NAME
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha target show ===
+sha256 dfccef2c46cef5b678885ab4087882dd16c10b57f58a0f65108cf9e37c269849
+show - Show one target
+
+Usage:
+  baha target show [NAME] [-o json|--output json|--json]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha trust ===
+sha256 501cfe3771b9c7b0fac14b51cc0fc596d25a01947adf83260097319d9df7af35
+trust - Inspect, export or explicitly install the managed local BaseHarbor CA
+
+Operates only on public trust material for the managed-local issuer. Private CA keys remain inside
+the issuer provider. External PKI and BYOC trust roots are never claimed or installed as
+BaseHarbor-owned host trust.
+
+Usage:
+  baha trust <status|export|install|uninstall> [options]
+
+Commands:
+  status     Show whether the managed-local CA is trusted by this host
+  export     Export only the public managed-local CA certificate
+  install    Explicitly install the public CA into system and supported browser trust stores
+  uninstall  Remove only BaseHarbor-owned host trust anchors
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha trust export ===
+sha256 1d0bda259250ffc5068aaf4eef34c519c6041d46489c39e861aec437edd93f99
+export - Export only the public managed-local CA certificate
+
+Exports the public CA certificate/bundle for another developer machine or client trust store.
+Private CA keys and issuer state are never exported.
+
+Usage:
+  baha trust export --output PATH
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha trust install ===
+sha256 3dea1cf2dcceaa7a942047143bf783fe9bfabb1290d4d36bbd1155c44a2905bb
+install - Explicitly install the public CA into system and supported browser trust stores
+
+Installs only the public CA from the selected local or verified remote Core into system trust and
+detected supported browser stores, and records BaseHarbor ownership. Requires --yes; browser
+certificate tools must already be installed.
+
+Usage:
+  baha trust install --yes
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha trust status ===
+sha256 4be3b96a3feef6b674c530b41da122e28a9e90e39de9bbaee68cf4372dd7dfab
+status - Show whether the managed-local CA is trusted by this host
+
+Usage:
+  baha trust status
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha trust uninstall ===
+sha256 9e994b1d928091f0acd1e07be8015b6381387deaacb84cc56758cda4ac6f6ef6
+uninstall - Remove only BaseHarbor-owned host trust anchors
+
+Inspects recorded BaseHarbor host-trust ownership before mutation. Removes only matching owned trust
+anchors; manually installed and unrelated CA certificates remain untouched. Requires explicit
+consent to uninstall; non-TTY requires --yes.
+
+Usage:
+  baha trust uninstall [--yes] [--json]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha tui ===
+sha256 81421a4301fcbe44f7f47c9f5b9b99658348a010c44b0f39500a9d44e017f865
+tui - Open the interactive BaseHarbor status dashboard
+
+Opens a read-only terminal dashboard backed by the same application status model as 'baha status'.
+Use Tab or left/right to switch views, r to refresh and q or Ctrl-C to quit.
+
+Usage:
+  baha tui [--json]
+
+Examples:
+  baha tui
+  BASEHARBOR_REDUCED_MOTION=1 baha tui
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha up ===
+sha256 348857ee185d33f95074f4c8684c87b9c123a006f259bc56d1c7255e1b7527c6
+up - Converge selected application intent, or explicitly start the management Core
+
+Inside an application repository, converges selected capabilities and genuine dependencies through
+the same current-plan acknowledgement, authorization and verification as app apply. It does not
+install a management Core merely because an application exists. Unresolved deployment inputs use the
+existing guided resolver; --yes does not replace provider-consequence or data-deletion consent. In a
+detected project without baseharbor.yaml, interactive use initializes the application through the
+existing guided flow; --yes uses unambiguous safe defaults. Directories without application signals
+retain explicit management setup. --control-plane-only explicitly selects the independent
+SQL/Secrets/Identity management installation and its HA, port, recovery and host-trust options.
+--trust-host-ca remains a separate explicit opt-in; --yes never changes host trust. -e/--environment
+selects resolved deployment state without rewriting authored intent.
+
+Usage:
+  baha up [NAME] [-e ENV|--environment ENV] [--yes] [--skip-memory-preflight] [--control-plane-only] [--ha] [--trust-host-ca] [--postgres-port PORT] [--openbao-port PORT] [--recovery-file PATH]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha update ===
+sha256 81c16fea2690a985ad1913b6d1ec9a5423cc56a124f74b6819e9fec98bc54862
+update - Safely inspect or update BaseHarbor itself
+
+Checks or installs published BaseHarbor releases. Stable is the default channel; prereleases are
+considered only when --channel rc or an explicit prerelease --version is supplied. Mutation requires
+--yes, verifies release checksums and the candidate binary before replacement, retains a recovery
+binary, and verifies the updated CLI/runtime before reporting success. --recover --version VERSION
+--yes explicitly restores the owned Core HA PostgreSQL and DCS to that update's verified backup
+point, retains displaced volumes, and does not replace the CLI. Transactions after that backup point
+are not included.
+
+Usage:
+  baha update [--check] [--yes] [--channel stable|rc | --version VERSION] [--recover]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha use ===
+sha256 784b4b00c66e877c3ef861cc744097bf8e66aba7361bb845a88a128a07dd4172
+use - Select and persist the active Core or deployment target
+
+Select a configured Target interactively or persist an explicit selection. Equivalent to baha target
+activate.
+
+Usage:
+  baha use [TARGET]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha user ===
+sha256 f8f6f478d5be092d4246340d22ae18839a02401783823691e400854f680bdd46
+user - Manage people and their enrolled workstations
+
+Usage:
+  baha user list | baha user offboard LOGIN [--yes]
+
+Commands:
+  list      List people and their enrolled workstation counts
+  offboard  Disable a person and revoke all their workstations
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha user list ===
+sha256 e70da7305de0778feb6702f377b0decd947aabd4a2407bfc9e0c48214ea1ed26
+list - List people and their enrolled workstation counts
+
+Usage:
+  baha user list
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha user offboard ===
+sha256 4b56ee72e3b6f5ba0fc185542ed0a74ae7c2649b4a49531b068ade52c263a602
+offboard - Disable a person and revoke all their workstations
+
+Usage:
+  baha user offboard LOGIN [--yes]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha version ===
+sha256 879a64376d28c2dcea7c36d9d5e3f1d5e39b07ac3fcf6f34f93f45e3d9483a45
+version - Print build version
+
+Usage:
+  baha version [-o json|--output json|--json]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha whoami ===
+sha256 1e0c77ec2b7bcc63da8bcfffef79a4af5bb755b657e3131c239fc40d89bf8080
+whoami - Show the authenticated BaseHarbor operator identity
+
+Usage:
+  baha whoami -e ENV|--environment ENV
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha workspace ===
+sha256 5310f5a1e4d65e77555679918cbf0abcc5aa7647da4c9737c7db3b9300e46e01
+workspace - Configure local workspace sources and repository mappings
+
+With no subcommand, opens the guided multi-repository workspace setup. Portable source identity is
+kept in .baseharbor/sources.yaml while developer-local checkout paths stay in XDG configuration and
+never become Application Intent. Sources are Git repositories, local directories or OCI images;
+components are optional unique identities and several components may share one source.
+
+Usage:
+  baha workspace [<init|map|show|resolve|status|update|path|source|component> [options]]
+
+Commands:
+  init       Create versioned source identity metadata for a multi-repository application
+  map        Map one repository source identity to an existing local checkout/worktree
+  show       Show canonical source identities and local workspace mappings
+  resolve    Resolve component source identity to local worktrees without using the current working
+             directory
+  status     Inspect Git state for all mapped repository sources
+  update     Safely fast-forward mapped Git repositories
+  path       Set or show the local path of one source (checkout mapping or directory source)
+  source     Add or remove individual application sources
+  component  Inspect and maintain unique component-to-source mappings
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha workspace component ===
+sha256 9d799751f121bd4f0a469e7a1ac734635f7a8c290ac897972b1350f0f0fde457
+component - Inspect and maintain unique component-to-source mappings
+
+Usage:
+  baha workspace component <list|add|remove> [options]
+
+Commands:
+  list    List unique components and the source identity each one maps to
+  add     Add or retarget the unique mapping of one component without inventing it implicitly
+  remove  Detach one component mapping without deleting sources or local files
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha workspace component add ===
+sha256 ab7a4f4123470e5fdcccfc096bf2ead4d6ae56beecb2897b450a391c438c515f
+add - Add or retarget the unique mapping of one component without inventing it implicitly
+
+Usage:
+  baha workspace component add COMPONENT SOURCE[@SUBPATH] [--manifest PATH] [-o json]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha workspace component list ===
+sha256 4905c39dcb5bdda62a591c59393a9d26b5a7608b8a7c3b422682089389c190bd
+list - List unique components and the source identity each one maps to
+
+Usage:
+  baha workspace component list [COMPONENT] [--manifest PATH] [--source ID] [-o json]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha workspace component remove ===
+sha256 1796c61969fbd3f38f5078f27314e7c8f467db82a2bdd6c12c70960179851d32
+remove - Detach one component mapping without deleting sources or local files
+
+Usage:
+  baha workspace component remove COMPONENT [--manifest PATH] [-o json]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha workspace init ===
+sha256 e2414684a1c57e8ed13edd00e57c2d3ebc411b61d652c2295f8baf0fe081ce3f
+init - Create versioned source identity metadata for a multi-repository application
+
+Usage:
+  baha workspace init [--manifest PATH] --source ID=REPOSITORY [--source ...] [--local ID=PATH] [--local ...] [--oci ID=IMAGE] --component COMPONENT=SOURCE[@SUBPATH]... [-o json]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha workspace map ===
+sha256 024dd70650d408010576ec0fec8f185ec15fd194ded975862583ac6478fb3693
+map - Map one repository source identity to an existing local checkout/worktree
+
+Usage:
+  baha workspace map SOURCE PATH [--manifest PATH] [-o json]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha workspace path ===
+sha256 eba7cfae36d9a2e59c0f14524d8869756f216beabf8f10f9bc36e8ce5badfc36
+path - Set or show the local path of one source (checkout mapping or directory source)
+
+Usage:
+  baha workspace path SOURCE [PATH] [--manifest PATH] [--show-current] [-o json]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha workspace resolve ===
+sha256 cb24086ad00190a4a5e631a4a1e7e11f0e158a9a6d60a95779e923081153ec84
+resolve - Resolve component source identity to local worktrees without using the current working directory
+
+Usage:
+  baha workspace resolve [--manifest PATH] [-o json|--output json]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha workspace show ===
+sha256 8dffe3b6b9fced0de17c3ecfd29e217646e1c77ff8fae2a9ea046eebd0830b66
+show - Show canonical source identities and local workspace mappings
+
+Usage:
+  baha workspace show [--manifest PATH] [-o json|--output json]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha workspace source ===
+sha256 a8ad333b8385d7acf16017a326614e15a5f5661dbd28395e6db8ac46a12d9ab6
+source - Add or remove individual application sources
+
+Usage:
+  baha workspace source <add|remove> [options]
+
+Commands:
+  add     Add or update one source identity without recreating the source model
+  remove  Remove one source and detach its component mappings without deleting local files
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha workspace source add ===
+sha256 e7bf431290eb8d8dfc76131a121650c412a76c496c35601032b7d14f3bdd549a
+add - Add or update one source identity without recreating the source model
+
+Usage:
+  baha workspace source add [--manifest PATH] [--source ID=REPOSITORY] [--local ID=PATH] [--oci ID=IMAGE] [-o json]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha workspace source remove ===
+sha256 8a2eb88c2516e35a62899e623f1ed80eda60bedf60e0660a3e55feb0729b195d
+remove - Remove one source and detach its component mappings without deleting local files
+
+Usage:
+  baha workspace source remove SOURCE [--manifest PATH] [--keep-components] [-o json]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha workspace status ===
+sha256 995f56089f3816b6779c2a96a5c5de6db5b1f20eea26c7677b6aad97333686d3
+status - Inspect Git state for all mapped repository sources
+
+Usage:
+  baha workspace status [--manifest PATH] [--fetch] [-o json|--output json]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha workspace update ===
+sha256 88c3061c92e76916b6b7343488df8b1f729b2c7ba3a845f0f2ad9236d0cfbe7b
+update - Safely fast-forward mapped Git repositories
+
+Fetches each mapped repository using native Git. Clean branches with a configured upstream are
+updated only when a strict fast-forward is possible. BaseHarbor never stashes, resets, switches
+branches, rebases, merges divergent history or resolves conflicts.
+
+Usage:
+  baha workspace update [--manifest PATH] [--check] [-o json|--output json]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha workstation ===
+sha256 fdc9e04ac8b451cf71c31cec658698d8ee93dee86a16f9ecc7715c232b76a585
+workstation - Invite, list and revoke developer workstations connected to this Core
+
+Run on the Core host. New adds a device for an existing user. List shows each enrolled workstation,
+its owner and certificate expiry. Revoke disables that workstation's current certificate and
+immediately verifies the result.
+
+Usage:
+  baha workstation new | baha workstation list | baha workstation revoke NAME [--yes]
+
+Commands:
+  new     Issue a one-use invitation for another workstation owned by an existing user
+  list    List enrolled workstations and certificate expiry
+  revoke  Revoke a workstation's current certificate
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha workstation list ===
+sha256 4499b5b02959da27007deeaf3d4594953a71f052c6eaf90af0d4a702260cb38d
+list - List enrolled workstations and certificate expiry
+
+Usage:
+  baha workstation list
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha workstation new ===
+sha256 3933135cc2f3edb6590d7234860665363d30654df9213471c82efbeb29609308
+new - Issue a one-use invitation for another workstation owned by an existing user
+
+Usage:
+  baha workstation new [--user LOGIN] [--name DEVICE] [--certificate-ttl 5y] [--output PRIVATE_FILE]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
+
+=== baha workstation revoke ===
+sha256 4157e8ebf39b915de53151e89d34c13fe68441a97630b1c4b866a46529b8e044
+revoke - Revoke a workstation's current certificate
+
+Usage:
+  baha workstation revoke NAME [--yes]
+
+Global options:
+  -q, --quiet         Suppress progress and non-essential human output
+  --silent            Alias for --quiet
+  -v, --verbose       Show diagnostic runtime details
+  --plain             Stable styling-free line-oriented human output
+  --no-color          Disable ANSI color
+  --no-input          Never prompt; fail with an actionable error instead
+  --version           Print the BaseHarbor version
+
+Help:
+  Use '<command> --help' for command-specific help.
