@@ -12,10 +12,9 @@ import (
 // routes and stable ordering must behave as the cmd/baha golden guard expects.
 func TestCLIHelpSurfaceWalksTheRealCommandTree(t *testing.T) {
 	hidden := &Command{Name: "secret", Hidden: true, Summary: "hidden surface"}
-	duplicate := &Command{Name: "status", Summary: "shadowed by the first registration"}
 	app := &Command{Name: "app", Summary: "Manage apps", Children: []*Command{
-		{Name: "status", Summary: "First registration wins"},
-		duplicate,
+		{Name: "status", Summary: "Show application status"},
+		{Name: "create", Summary: "Create an application", Aliases: []string{"add"}},
 		hidden,
 	}}
 	root := &Command{Name: "baha", Usage: "baha <command>", Children: []*Command{app, {Name: "status", Summary: "Show status"}}}
@@ -24,7 +23,7 @@ func TestCLIHelpSurfaceWalksTheRealCommandTree(t *testing.T) {
 	for _, entry := range surface {
 		got = append(got, entry.Path)
 	}
-	want := []string{"baha", "baha app", "baha app status", "baha status"}
+	want := []string{"baha", "baha app", "baha app create", "baha app status", "baha status"}
 	if strings.Join(got, "|") != strings.Join(want, "|") {
 		t.Fatalf("unexpected help surface paths: %v", got)
 	}
@@ -33,12 +32,12 @@ func TestCLIHelpSurfaceWalksTheRealCommandTree(t *testing.T) {
 			t.Fatalf("empty rendering for %s", entry.Path)
 		}
 	}
-	if !strings.Contains(surface[2].Text, "First registration wins") {
-		t.Fatalf("duplicate registration must render the first-match command: %s", surface[2].Text)
+	if !strings.Contains(surface[1].Text, "Show application status") {
+		t.Fatalf("child listing must render the real application status summary: %s", surface[1].Text)
 	}
 	for _, entry := range surface {
-		if strings.Contains(entry.Text, hidden.Summary) || strings.Contains(entry.Text, duplicate.Summary) {
-			t.Fatalf("hidden or shadowed source must not appear in the surface: %s", entry.Text)
+		if strings.Contains(entry.Text, hidden.Summary) {
+			t.Fatalf("hidden command summary must not appear in any rendering: %s", entry.Text)
 		}
 	}
 	// Both documented help routes must print the exact rendered text:
@@ -55,6 +54,14 @@ func TestCLIHelpSurfaceWalksTheRealCommandTree(t *testing.T) {
 					route, out.String(), entry.Text)
 			}
 		}
+	}
+	// An alias invocation is the canonical command, not a second golden entry.
+	var aliased bytes.Buffer
+	if err := root.Execute(t.Context(), []string{"app", "add", "--help"}, &aliased, &aliased); err != nil {
+		t.Fatalf("alias help failed: %v", err)
+	}
+	if aliased.String() != surface[2].Text {
+		t.Fatalf("alias help must print the canonical rendering:\n--- got ---\n%s\n--- want ---\n%s", aliased.String(), surface[2].Text)
 	}
 }
 

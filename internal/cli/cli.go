@@ -192,6 +192,13 @@ func (c *Command) helpPath(path []string, out io.Writer) error {
 }
 
 func (c *Command) find(name string) *Command {
+	return c.CommandChild(name)
+}
+
+// CommandChild resolves one routing step (a child name or alias) exactly the
+// way Execute does, so tests and documentation checks share the first-match
+// semantics instead of re-implementing the walk.
+func (c *Command) CommandChild(name string) *Command {
 	for _, child := range c.Children {
 		if child.Name == name {
 			return child
@@ -286,10 +293,10 @@ func (c *Command) Help(w io.Writer) {
 
 // HelpSurface lists every publicly documented command path together with the
 // exact text its --help rendering produces, in stable sorted order. Hidden
-// commands and later duplicate registrations (the router uses the first
-// matching name) contribute no second entry. The golden help guard in
-// cmd/baha uses this one traversal so a drift in any --help page fails the
-// package suite.
+// commands contribute no entry. The rendering happens while walking the tree,
+// so it must not mutate any command data: a live baha process keeps the same
+// HelpGroups as before the walk. The golden help guard in cmd/baha uses this
+// one traversal so a drift in any --help page fails the package suite.
 func (c *Command) HelpSurface() []HelpSurfaceEntry {
 	var entries []HelpSurfaceEntry
 	var walk func(*Command, string)
@@ -302,10 +309,12 @@ func (c *Command) HelpSurface() []HelpSurfaceEntry {
 		if seen[path] {
 			return
 		}
-		seen[path] = true
 		var out bytes.Buffer
 		command.renderHelp(&out)
 		entries = append(entries, HelpSurfaceEntry{Path: path, Text: out.String()})
+		// Mark only after rendering: the shared visibility helper records every
+		// path it has shown, which is exactly the golden deduplication.
+		seen[path] = true
 		for _, child := range command.Children {
 			walk(child, path)
 		}

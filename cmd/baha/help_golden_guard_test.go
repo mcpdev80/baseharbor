@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -26,8 +27,24 @@ import (
 
 const helpGoldenPath = "testdata/cli-help-golden.txt"
 
+// goldenWorkingDirectory remembers the package working directory that the test
+// binary starts in. Individual guard tests chdir into empty temporary
+// repositories for a deterministic root-help layout, so the golden file must
+// keep addressing the checkout location instead of the current directory.
+var goldenWorkingDirectory = func() string {
+	dir, err := os.Getwd()
+	if err != nil {
+		panic(err)
+	}
+	return dir
+}()
+
+var resolveHelpGolden = sync.OnceValue(func() string {
+	return filepath.Join(goldenWorkingDirectory, helpGoldenPath)
+})
+
 func helpGoldenPathOnDisk() string {
-	return filepath.Join("..", "..", "cmd", "baha", helpGoldenPath)
+	return resolveHelpGolden()
 }
 
 func readHelpGolden(t *testing.T) string {
@@ -87,14 +104,20 @@ func TestCLIHelpGoldenSurface(t *testing.T) {
 	t.Chdir(t.TempDir())
 	path := helpGoldenPathOnDisk()
 	if os.Getenv("BASEHARBOR_UPDATE_MACHINE_DOCS") == "1" {
-		if err := os.WriteFile(path, []byte(renderHelpGolden(t)), 0644); err != nil {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 			t.Fatal(err)
 		}
+		golden := renderHelpGolden(t)
+		if err := os.WriteFile(path, []byte(golden), 0644); err != nil {
+			t.Fatal(err)
+		}
+		t.Logf("golden help file regenerated at %s (%d bytes)", path, len(golden))
+		return
 	}
 	golden := renderHelpGolden(t)
 	actual, err := os.ReadFile(path)
 	if err != nil {
-		t.Fatalf("golden help file missing: %v", err)
+		t.Fatalf("golden help file missing at %s: %v", path, err)
 	}
 	if string(actual) != golden {
 		t.Fatalf("golden help surface drift; regenerate with BASEHARBOR_UPDATE_MACHINE_DOCS=1 go test ./cmd/baha -run TestCLIHelpGoldenSurface")
@@ -119,6 +142,11 @@ func TestCLIHelpGoldenFileInventoryPinsEveryCommand(t *testing.T) {
 	}
 }
 
+// TestCLIHelpSurfaceCoversEveryDocumentedCommandPath cross-checks the golden
+// help inventory against the existing documentation generators: the human
+// command index and the machine coverage inventory. A path either inventory
+// publishes must exist in the golden help surface with a non-empty rendering.
+// Alias rows resolve to their canonical command.
 func TestCLIHelpSurfaceCoversEveryDocumentedCommandPath(t *testing.T) {
 	t.Chdir(t.TempDir())
 	root := rootCommand()
@@ -129,15 +157,31 @@ func TestCLIHelpSurfaceCoversEveryDocumentedCommandPath(t *testing.T) {
 		}
 		surface[entry.Path] = entry.Text
 	}
-	// Every command path the human documentation walks must also appear in the
-	// golden help surface with a non-empty rendering.
+	documented := map[string]bool{}
 	for _, row := range humanCommandDocumentationRows(root) {
-		text, ok := surface[row.path]
+		path := row.path
+		if strings.HasPrefix(row.summary, "Alias: ") {
+			path = strings.TrimPrefix(row.summary, "Alias: ")
+		}
+		documented[path] = true
+	}
+	for _, row := range currentCommandCoverage() {
+		path := row.Command
+		if row.Classification == "alias" {
+			path = strings.TrimPrefix(row.Reason, "Canonical command: ")
+			if index := strings.Index(path, ";"); index >= 0 {
+				path = path[:index]
+			}
+		}
+		documented[path] = true
+	}
+	for path := range documented {
+		text, ok := surface[path]
 		if !ok {
-			t.Fatalf("documented command %s is absent from the golden help surface", row.path)
+			t.Fatalf("documented command %s is absent from the golden help surface", path)
 		}
 		if text == "" {
-			t.Fatalf("golden help text is empty for %s", row.path)
+			t.Fatalf("golden help text is empty for %s", path)
 		}
 	}
 	// The root and a stable sample of nested paths must be present.
