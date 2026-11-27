@@ -15,11 +15,12 @@ import (
 
 func emptyQuadletProject(project string) QuadletProject {
 	return QuadletProject{
-		Project:           project,
-		Files:             map[string]string{},
-		ServiceUnits:      map[string]string{},
-		Containers:        map[string]string{},
-		CompletedServices: map[string]bool{},
+		Project:            project,
+		Files:              map[string]string{},
+		ServiceUnits:       map[string]string{},
+		Containers:         map[string]string{},
+		CompletedServices:  map[string]bool{},
+		AmbientEnvironment: map[string][]string{},
 	}
 }
 
@@ -173,7 +174,8 @@ func quadletRenderProjectService(result *QuadletProject, composePath, project st
 	}
 
 	var unit strings.Builder
-	quadletRenderServiceUnitHeader(&unit, project, serviceName, image, containerName, envName, model, service, selected)
+	ambientEnvironment := result.AmbientEnvironment[unitBase]
+	quadletRenderServiceUnitHeader(&unit, project, serviceName, image, containerName, envName, ambientEnvironment, model, service, selected)
 	quadletRenderServiceSecurity(&unit, service)
 	if err := quadletRenderServiceNetworks(&unit, project, serviceName, model, service); err != nil {
 		return err
@@ -256,24 +258,80 @@ func quadletRenderServiceEnvironment(result *QuadletProject, unitBase string, se
 		return "", nil
 	}
 	envName := unitBase + ".env"
+	// Card 0428-316 (hunt H-V43 FUND-A): an environment entry whose whole
+	// text the Compose model expansion resolved FROM an ambient operator
+	// variable must not persist as plaintext in this on-disk file.
+	// ambientResolvedEnvironment reverses the resolution (a value only one
+	// process-environment variable carries identifies its source name);
+	// such entries move to the generated unit instead, as valueless
+	// Environment=KEY lines: `podman run --env KEY` takes the value from
+	// the systemd unit process environment at container start — the same
+	// host-environment resolution compose applies (verified against this
+	// runtime, alongside `--env-file` and systemd EnvironmentFile= NOT
+	// substituting ${VAR} text, which is why the reference form itself
+	// could not stay in the file either). Project envFile and managed
+	// entries keep the established projection byte-for-byte: where they
+	// define a name, the model value is the PROJECT value, which differs
+	// from the ambient snapshot, so they never enter this branch. Mixed
+	// text or shared values have no unambiguous single ambient source and
+	// likewise keep the established projection (the H-V43 FUND-A shape is
+	// the bare ${NAME} ambient reference). Auth/consent semantics are
+	// untouched.
+	ambientValues := ambientResolvedEnvironment()
 	keys := make([]string, 0, len(service.Environment))
 	for key := range service.Environment {
 		keys = append(keys, key)
 	}
 	sort.Strings(keys)
 	var envOut strings.Builder
+	ambientEnvironment := []string{}
 	for _, key := range keys {
 		value := service.Environment[key]
+		if name, ok := ambientValues[value]; ok && name != "" {
+			ambientEnvironment = append(ambientEnvironment, key+"="+name)
+			continue
+		}
 		if strings.ContainsAny(value, "\r\n") {
 			return "", fmt.Errorf("Compose service environment %s contains a multiline value unsupported by Podman env files; encode structured values on one line", key)
 		}
 		fmt.Fprintf(&envOut, "%s=%s\n", key, value)
 	}
-	result.Files[envName] = envOut.String()
+	if envOut.Len() == 0 {
+		envName = ""
+	} else {
+		result.Files[envName] = envOut.String()
+	}
+	if len(ambientEnvironment) > 0 {
+		if result.AmbientEnvironment == nil {
+			result.AmbientEnvironment = map[string][]string{}
+		}
+		result.AmbientEnvironment[unitBase] = ambientEnvironment
+	}
 	return envName, nil
 }
 
-func quadletRenderServiceUnitHeader(unit *strings.Builder, project, serviceName, image, containerName, envName string, model quadletComposeProject, service quadletComposeService, selected map[string]struct{}) {
+// ambientResolvedEnvironment snapshots the process environment by value
+// (values shared by several variables map to "", empty values never map).
+// The disk writer uses it to identify text the Compose model expansion
+// resolved FROM an ambient operator variable (card 0428-316, hunt H-V43
+// FUND-A).
+func ambientResolvedEnvironment() map[string]string {
+	byValue := map[string]string{}
+	for _, item := range os.Environ() {
+		key, value, ok := strings.Cut(item, "=")
+		if !ok || value == "" {
+			continue
+		}
+		if previous, clash := byValue[value]; !clash {
+			byValue[value] = key
+		} else if previous != key {
+			byValue[value] = ""
+		}
+	}
+	return byValue
+}
+
+func quadletRenderServiceUnitHeader(unit *strings.Builder, project, serviceName, image, containerName, envName string, ambientEnvironment []string, model quadletComposeProject, service quadletComposeService, selected map[string]struct{}) {
 	unit.WriteString("[Unit]\n")
 	fmt.Fprintf(unit, "Description=BaseHarbor Quadlet service %s/%s\n", project, serviceName)
 	deps := append([]string(nil), service.DependsOn.Names...)
@@ -323,6 +381,14 @@ func quadletRenderServiceUnitHeader(unit *strings.Builder, project, serviceName,
 	fmt.Fprintf(unit, "Label=io.podman.compose.service=%s\n", serviceName)
 	if envName != "" {
 		fmt.Fprintf(unit, "EnvironmentFile=./%s\n", envName)
+	}
+	for _, entry := range ambientEnvironment {
+		key, _, _ := strings.Cut(entry, "=")
+		// Valueless Environment= is documented podman behaviour: podman
+		// reads the value from the host (systemd unit) environment at
+		// container start, so the ambient secret never touches disk
+		// (card 0428-316, hunt H-V43 FUND-A).
+		fmt.Fprintf(unit, "Environment=%q\n", systemdEscapeValue(key))
 	}
 }
 
@@ -610,8 +676,6 @@ func quadletRenderServiceRestart(unit *strings.Builder, project string, service 
 	return nil
 }
 
-// An active (exited) init service is complete, while an inactive service may
-// never have run. Neither is-active nor its negation proves successful exit.
 func quadletCompletedDependencyScript(unit string) string {
 	const complete = `BEGIN { FS="=" } { p[$1]=$2 } END { exit !((p["SubState"]=="exited" || p["SubState"]=="dead") && (p["ActiveState"]=="active" || p["ActiveState"]=="inactive") && p["Result"]=="success" && p["ExecMainCode"]=="1" && p["ExecMainStatus"]=="0" && p["ExecMainExitTimestampMonotonic"] ~ /^[1-9][0-9]*$/) }`
 	return fmt.Sprintf(`for i in $(seq 1 240); do if systemctl --user is-failed --quiet %s; then exit 1; fi; state=$(systemctl --user show %s --property=ActiveState,SubState,Result,ExecMainCode,ExecMainStatus,ExecMainExitTimestampMonotonic --no-pager) || exit 1; if printf '%%s\n' "$state" | awk '%s'; then exit 0; fi; sleep 0.5; done; exit 1`, unit, unit, complete)

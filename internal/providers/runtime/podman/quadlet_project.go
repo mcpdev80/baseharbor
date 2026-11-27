@@ -19,6 +19,13 @@ type QuadletProject struct {
 	ServiceUnits      map[string]string
 	Containers        map[string]string
 	CompletedServices map[string]bool
+	// AmbientEnvironment records, per unit base, the environment entries the
+	// Compose model resolved from the ambient operator environment (card
+	// 0428-316, hunt H-V43 FUND-A). They stay OUT of the on-disk {service}.env
+	// file and are projected as valueless [Container] Environment=KEY lines
+	// on the generated unit; podman fills KEY from the unit process
+	// environment at container start.
+	AmbientEnvironment map[string][]string
 }
 
 type quadletComposeProject struct {
@@ -336,6 +343,8 @@ func WriteQuadletProject(dir string, project QuadletProject) error {
 }
 
 func quadletComposeEnvironment(envFile string) (map[string]string, error) {
+	// envFile + ambient process environment, the compose-style expansion map
+	// (project envFile values win per key).
 	result := map[string]string{}
 	for _, item := range os.Environ() {
 		key, value, ok := strings.Cut(item, "=")
@@ -621,12 +630,12 @@ func cloneQuadletYAMLNode(node *yaml.Node) *yaml.Node {
 	if node == nil {
 		return nil
 	}
-	copy := *node
-	copy.Content = make([]*yaml.Node, len(node.Content))
+	clone := *node
+	clone.Content = make([]*yaml.Node, len(node.Content))
 	for i, child := range node.Content {
-		copy.Content[i] = cloneQuadletYAMLNode(child)
+		clone.Content[i] = cloneQuadletYAMLNode(child)
 	}
-	return &copy
+	return &clone
 }
 
 func RenderComposeProjectFilesJSON(composePaths []string, environment map[string]string) (string, error) {
