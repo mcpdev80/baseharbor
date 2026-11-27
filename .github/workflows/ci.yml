@@ -22,8 +22,11 @@ on:
       - 'w0*'
 
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  # Evidence-producing candidate runs must not be cancelled by a newer event
+  # (card 0428-249, accepted edit set): the group keys the verified candidate
+  # SHA (PR head when present, else the pushed/commit SHA) plus the run ID.
+  group: ci-${{ github.event.pull_request.head.sha || github.sha }}-${{ github.run_id }}
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -178,7 +181,7 @@ jobs:
   targeted_ha_docker:
     name: Targeted HA · docker
     concurrency:
-      group: baseharbor-release-qualification
+      group: targeted-ha-docker-${{ github.event.pull_request.head.sha || github.sha }}-${{ github.run_id }}
       cancel-in-progress: false
     if: github.event_name == 'push' && startsWith(github.ref_name, 'runtime-validation/ha/') && (contains(github.ref_name, '/docker/') || contains(github.ref_name, '/both/'))
     runs-on: ubuntu-latest
@@ -220,7 +223,7 @@ jobs:
   targeted_ha_podman:
     name: Targeted HA · podman
     concurrency:
-      group: baseharbor-release-qualification
+      group: targeted-ha-podman-${{ github.event.pull_request.head.sha || github.sha }}-${{ github.run_id }}
       cancel-in-progress: false
     if: github.event_name == 'push' && startsWith(github.ref_name, 'runtime-validation/ha/') && (contains(github.ref_name, '/podman/') || contains(github.ref_name, '/both/'))
     runs-on: ubuntu-26.04

@@ -26,14 +26,45 @@ on:
       - 'runtime-validation/mcp/**'
 
 concurrency:
-  group: mcp-lifecycle-${{ github.ref }}-${{ inputs.ref || github.ref_name }}
-  cancel-in-progress: true
+  # Run-unique, non-cancelling orchestrator group: a workflow-level expression
+  # cannot read the resolver job's output, so the resolved candidate SHA is
+  # keyed only in the evidence jobs below (card 0428-249 accepted edit set).
+  group: mcp-orchestrator-${{ github.run_id }}
+  cancel-in-progress: false
 
 permissions:
   contents: read
 
 jobs:
+  # Accepted edit set (card 0428-249): the resolver is the only place where a
+  # branch-shaped input becomes a verified commit SHA. Resolution failure or a
+  # checkout that differs from the resolver output fails every gate.
+  resolve_candidate:
+    runs-on: ubuntu-latest
+    outputs:
+      candidate_sha: ${{ steps.resolve.outputs.candidate_sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - id: resolve
+        shell: bash
+        env:
+          CANDIDATE_REF: ${{ inputs.ref || github.sha }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "$CANDIDATE_REF"
+          candidate_sha="$(git rev-parse --verify 'FETCH_HEAD^{commit}')"
+          [[ "$candidate_sha" =~ ^[0-9a-f]{40}$ ]]
+          echo "candidate_sha=$candidate_sha" >> "$GITHUB_OUTPUT"
+
   docker:
+    needs: resolve_candidate
+    concurrency:
+      group: mcp-${{ needs.resolve_candidate.outputs.candidate_sha }}-docker-${{ github.run_id }}
+      cancel-in-progress: false
     if: ${{ inputs.all_runtimes || !contains(github.ref_name, '/podman/') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -45,7 +76,11 @@ jobs:
       - name: Checkout requested ref
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.ref || github.sha }}
+          ref: ${{ needs.resolve_candidate.outputs.candidate_sha }}
+      - name: Assert exact candidate
+        env:
+          EXPECTED_CANDIDATE_SHA: ${{ needs.resolve_candidate.outputs.candidate_sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_CANDIDATE_SHA"
 
       - name: Prepare verified rootless runtime
         timeout-minutes: 10
@@ -77,6 +112,10 @@ jobs:
         run: bash scripts/ci-runtime-reset.sh docker
 
   podman:
+    needs: resolve_candidate
+    concurrency:
+      group: mcp-${{ needs.resolve_candidate.outputs.candidate_sha }}-podman-${{ github.run_id }}
+      cancel-in-progress: false
     if: ${{ inputs.all_runtimes || contains(github.ref_name, '/podman/') }}
     runs-on: ubuntu-26.04
     timeout-minutes: 15
@@ -88,7 +127,11 @@ jobs:
       - name: Checkout requested ref
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.ref || github.sha }}
+          ref: ${{ needs.resolve_candidate.outputs.candidate_sha }}
+      - name: Assert exact candidate
+        env:
+          EXPECTED_CANDIDATE_SHA: ${{ needs.resolve_candidate.outputs.candidate_sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_CANDIDATE_SHA"
 
       - name: Prepare verified rootless runtime
         timeout-minutes: 10

@@ -22,14 +22,44 @@ on:
       - 'runtime-validation/docker/**'
 
 concurrency:
-  group: ${{ github.workflow }}-docker-${{ github.ref }}
-  cancel-in-progress: true
+  # Run-unique, non-cancelling orchestrator group (card 0428-249 accepted edit
+  # set): evidence jobs below key on the resolver-verified candidate SHA.
+  group: docker-runtime-orchestrator-${{ github.run_id }}
+  cancel-in-progress: false
 
 permissions:
   contents: read
 
 jobs:
+  # Accepted edit set (card 0428-249): the resolver is the only place where a
+  # branch-shaped input becomes a verified commit SHA; resolution or checkout
+  # equality failure admits no gate.
+  resolve_candidate:
+    runs-on: ubuntu-latest
+    outputs:
+      candidate_sha: ${{ steps.resolve.outputs.candidate_sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - id: resolve
+        shell: bash
+        env:
+          CANDIDATE_REF: ${{ inputs.ref || github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "$CANDIDATE_REF"
+          candidate_sha="$(git rev-parse --verify 'FETCH_HEAD^{commit}')"
+          [[ "$candidate_sha" =~ ^[0-9a-f]{40}$ ]]
+          echo "candidate_sha=$candidate_sha" >> "$GITHUB_OUTPUT"
+
   select_develop:
+    needs: resolve_candidate
+    concurrency:
+      group: docker-runtime-${{ needs.resolve_candidate.outputs.candidate_sha }}-select_develop-${{ github.run_id }}
+      cancel-in-progress: false
     name: Select native single-default impact
     if: github.event_name == 'push' && github.ref_name == 'develop'
     runs-on: ubuntu-latest
@@ -62,7 +92,10 @@ jobs:
 
   keycloak_single_native:
     name: Native Keycloak+SQL single · Docker
-    needs: select_develop
+    needs: [resolve_candidate, select_develop]
+    concurrency:
+      group: docker-runtime-${{ needs.resolve_candidate.outputs.candidate_sha }}-keycloak_single_native-${{ github.run_id }}
+      cancel-in-progress: false
     if: ${{ github.event_name == 'push' && github.ref_name == 'develop' && needs.select_develop.outputs.identity_required == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 22
@@ -74,6 +107,7 @@ jobs:
       - name: Checkout exact develop source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ needs.resolve_candidate.outputs.candidate_sha }}
           persist-credentials: false
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
@@ -103,7 +137,10 @@ jobs:
 
   single_default_native:
     name: Native single-default · Docker
-    needs: select_develop
+    needs: [resolve_candidate, select_develop]
+    concurrency:
+      group: docker-runtime-${{ needs.resolve_candidate.outputs.candidate_sha }}-single_default_native-${{ github.run_id }}
+      cancel-in-progress: false
     if: ${{ github.event_name == 'push' && github.ref_name == 'develop' && needs.select_develop.outputs.required == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -115,6 +152,7 @@ jobs:
       - name: Checkout exact develop commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ needs.resolve_candidate.outputs.candidate_sha }}
           persist-credentials: false
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
@@ -171,6 +209,10 @@ jobs:
         run: bash scripts/ci-runtime-reset.sh docker
 
   docker-runtime:
+    needs: resolve_candidate
+    concurrency:
+      group: docker-runtime-${{ needs.resolve_candidate.outputs.candidate_sha }}-docker-runtime-${{ github.run_id }}
+      cancel-in-progress: false
     if: ${{ (github.event_name != 'push' || github.ref_name != 'develop') && (github.event_name != 'push' || (!startsWith(github.ref_name, 'runtime-validation/docker/provider-ha/') && !startsWith(github.ref_name, 'runtime-validation/docker/mcp-edit-native/'))) }}
     env:
       BASEHARBOR_TEST_RUNTIME: docker
@@ -186,7 +228,11 @@ jobs:
         id: checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.ref || github.sha }}
+          ref: ${{ needs.resolve_candidate.outputs.candidate_sha }}
+      - name: Assert exact candidate
+        env:
+          EXPECTED_CANDIDATE_SHA: ${{ needs.resolve_candidate.outputs.candidate_sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_CANDIDATE_SHA"
 
       - name: Set up Go
         id: setup_go
@@ -419,6 +465,10 @@ jobs:
           PYTHON
 
   provider-ha:
+    needs: resolve_candidate
+    concurrency:
+      group: docker-runtime-${{ needs.resolve_candidate.outputs.candidate_sha }}-provider-ha-${{ matrix.provider }}-${{ github.run_id }}
+      cancel-in-progress: false
     if: github.event_name == 'push' && startsWith(github.ref_name, 'runtime-validation/docker/provider-ha/')
     strategy:
       fail-fast: false
@@ -522,6 +572,10 @@ jobs:
 
 
   mcp-edit-native:
+    needs: resolve_candidate
+    concurrency:
+      group: docker-runtime-${{ needs.resolve_candidate.outputs.candidate_sha }}-mcp-edit-native-${{ github.run_id }}
+      cancel-in-progress: false
     if: github.event_name == 'push' && startsWith(github.ref_name, 'runtime-validation/docker/mcp-edit-native/')
     runs-on: ubuntu-24.04
     timeout-minutes: 50

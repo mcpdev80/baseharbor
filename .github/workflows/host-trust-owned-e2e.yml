@@ -21,8 +21,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: host-trust-owned-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  group: host-trust-owned-${{ github.event.pull_request.head.sha || github.sha }}-${{ github.run_id }}
+  cancel-in-progress: false
 
 jobs:
   atomic-host-trust:

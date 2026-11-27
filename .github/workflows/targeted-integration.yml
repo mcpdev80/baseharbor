@@ -58,13 +58,39 @@ permissions:
   contents: read
 
 concurrency:
-  # Independent exact-source proofs must not evict another candidate pending
-  # in GitHub's one-slot concurrency queue. Identical source refs still deduplicate.
-  group: targeted-integration-${{ github.ref }}-${{ inputs.ref || github.sha }}-${{ inputs.gate || 'default' }}-${{ inputs.runtime || 'default' }}
-  cancel-in-progress: ${{ github.ref_name != 'work/v0.4.24-core-ha-updates' && github.ref_name != 'work/v0.4.25-contract-minimal-core' }}
+  # Run-unique, non-cancelling orchestrator group (card 0428-249 accepted edit
+  # set): a workflow-level expression cannot read the resolver output, so each
+  # evidence job below keys its own group by the verified candidate SHA.
+  group: targeted-integration-orchestrator-${{ github.run_id }}
+  cancel-in-progress: false
 
 jobs:
+  resolve_candidate:
+    runs-on: ubuntu-latest
+    outputs:
+      head_sha: ${{ steps.resolve.outputs.head_sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - id: resolve
+        shell: bash
+        env:
+          CANDIDATE_REF: ${{ inputs.ref || github.sha }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "$CANDIDATE_REF"
+          head_sha="$(git rev-parse --verify 'FETCH_HEAD^{commit}')"
+          [[ "$head_sha" =~ ^[0-9a-f]{40}$ ]]
+          echo "head_sha=$head_sha" >> "$GITHUB_OUTPUT"
+
   compose_isolation_exact:
+    needs: resolve_candidate
+    concurrency:
+      group: targeted-${{ needs.resolve_candidate.outputs.head_sha }}-compose_isolation-${{ matrix.runtime }}-${{ github.run_id }}
+      cancel-in-progress: false
     name: Compose isolation · ${{ matrix.runtime }}
     if: ${{ github.event_name == 'push' && startsWith(github.ref_name, 'runtime-validation/compose-isolation/') }}
     runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
@@ -125,6 +151,10 @@ jobs:
         run: bash scripts/ci-runtime-reset.sh "${{ matrix.runtime }}"
 
   registered_otlp_handoff:
+    needs: resolve_candidate
+    concurrency:
+      group: targeted-${{ needs.resolve_candidate.outputs.head_sha }}-otlp-handoff-${{ matrix.runtime }}-${{ github.run_id }}
+      cancel-in-progress: false
     if: ${{ github.event_name == 'push' && github.ref_name == 'work/v0.4.25-contract-minimal-core' && (contains(github.event.head_commit.message, '[otlp-handoff-runtime]') || contains(github.event.head_commit.message, '[otlp-handoff-podman]')) }}
     name: Native OTLP handoff · ${{ matrix.runtime }}
     runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
@@ -170,6 +200,10 @@ jobs:
           assert any(event.get('Test')=='TestManagedRegisteredOTLPNativeConsumerHandoff' and event.get('Action')=='pass' for event in events)
           PY
   up_dispatch_source:
+    needs: resolve_candidate
+    concurrency:
+      group: targeted-${{ needs.resolve_candidate.outputs.head_sha }}-up_dispatch_source-${{ github.run_id }}
+      cancel-in-progress: false
     if: ${{ github.event_name == 'push' && github.ref_name == 'work/v0.4.25-contract-minimal-core' && contains(github.event.head_commit.message, '[up-dispatch-source]') }}
     name: Repository up source qualification
     runs-on: ubuntu-latest
@@ -192,6 +226,10 @@ jobs:
       - name: Verify affected application CLI races
         run: go test -race ./cmd/baha
   application_full_reset:
+    needs: resolve_candidate
+    concurrency:
+      group: targeted-${{ needs.resolve_candidate.outputs.head_sha }}-application_full_reset-${{ github.run_id }}
+      cancel-in-progress: false
     if: ${{ github.event_name == 'push' && github.ref_name == 'work/v0.4.25-contract-minimal-core' && contains(github.event.head_commit.message, '[app-full-reset-runtime]') }}
     name: Application full reset · ${{ matrix.runtime }}
     runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
@@ -221,6 +259,10 @@ jobs:
           git rev-parse HEAD > "$RUNNER_TEMP/application-reset-checks/source.txt"
           go test ./cmd/baha -run '^TestApplicationFullResetRequiresNativeCurrentScopeAndDeletesSelectedData$' -count=1 -v -timeout 12m 2>&1 | tee "$RUNNER_TEMP/application-reset-checks/reset.log"
   core_stop:
+    needs: resolve_candidate
+    concurrency:
+      group: targeted-${{ needs.resolve_candidate.outputs.head_sha }}-core_stop-${{ github.run_id }}
+      cancel-in-progress: false
     if: ${{ github.event_name == 'push' && github.ref_name == 'work/v0.4.25-contract-minimal-core' && (contains(github.event.head_commit.message, '[core-stop-runtime]') || contains(github.event.head_commit.message, '[core-destroy-ha]')) }}
     name: Selected Core stop · ${{ matrix.runtime }}
     runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
@@ -256,6 +298,10 @@ jobs:
           "$BASEHARBOR_TEST_RUNTIME" version > "$RUNNER_TEMP/core-stop-checks/runtime-version.txt"
           go test ./cmd/baha -run '^TestCoreStopRetainsOriginalSQLCredentialsAndRunningSibling$' -count=1 -timeout 18m -v 2>&1 | tee "$RUNNER_TEMP/core-stop-checks/core-stop.log"
   standalone_retirement:
+    needs: resolve_candidate
+    concurrency:
+      group: targeted-${{ needs.resolve_candidate.outputs.head_sha }}-standalone_retirement-${{ github.run_id }}
+      cancel-in-progress: false
     if: ${{ github.event_name == 'push' && github.ref_name == 'work/v0.4.25-contract-minimal-core' && contains(github.event.head_commit.message, '[standalone-retirement-runtime]') }}
     name: Retained standalone data · ${{ matrix.runtime }}
     runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
@@ -299,6 +345,10 @@ jobs:
           fi
           exit "$status"
   observability_consumers:
+    needs: resolve_candidate
+    concurrency:
+      group: targeted-${{ needs.resolve_candidate.outputs.head_sha }}-observability_consumers-${{ github.run_id }}
+      cancel-in-progress: false
     if: ${{ github.event_name == 'push' && github.ref_name == 'work/v0.4.25-contract-minimal-core' && contains(github.event.head_commit.message, '[observability-consumers-runtime]') }}
     name: Observability consumers · ${{ matrix.runtime }}
     runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
@@ -344,6 +394,10 @@ jobs:
           fi
           exit "$status"
   installation_destroy:
+    needs: resolve_candidate
+    concurrency:
+      group: targeted-${{ needs.resolve_candidate.outputs.head_sha }}-installation_destroy-${{ github.run_id }}
+      cancel-in-progress: false
     if: ${{ github.event_name == 'push' && github.ref_name == 'work/v0.4.25-contract-minimal-core' && (contains(github.event.head_commit.message, '[installation-destroy-runtime]') || contains(github.event.head_commit.message, '[installation-destroy-podman]')) }}
     name: Installation partial destruction · ${{ matrix.runtime }}
     runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
@@ -375,6 +429,10 @@ jobs:
           "$BASEHARBOR_TEST_RUNTIME" version > "$RUNNER_TEMP/installation-destroy-checks/runtime-version.txt"
           go test ./cmd/baha -run '^TestInstallationDestroyCurrentChildrenInterruptedVolumeAndRetry$' -count=1 -v -timeout 15m 2>&1 | tee "$RUNNER_TEMP/installation-destroy-checks/destroy.log"
   shared_network:
+    needs: resolve_candidate
+    concurrency:
+      group: targeted-${{ needs.resolve_candidate.outputs.head_sha }}-shared_network-${{ github.run_id }}
+      cancel-in-progress: false
     if: ${{ github.event_name == 'push' && github.ref_name == 'work/v0.4.25-contract-minimal-core' && contains(github.event.head_commit.message, '[shared-network-runtime]') }}
     name: Retained shared network · ${{ matrix.runtime }}
     runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
@@ -416,6 +474,10 @@ jobs:
           set -euo pipefail
           go test ./cmd/baha -run '^TestCoreBootstrapRetainsApplicationSharedNetworkAndSQL$' -count=1 -v -timeout 20m 2>&1 | tee "$RUNNER_TEMP/shared-network-checks/network.log"
   coreless_runtime:
+    needs: resolve_candidate
+    concurrency:
+      group: targeted-${{ needs.resolve_candidate.outputs.head_sha }}-coreless_runtime-${{ github.run_id }}
+      cancel-in-progress: false
     if: ${{ (github.event_name == 'workflow_dispatch' && inputs.gate == 'coreless-runtime') || (github.event_name == 'push' && github.ref_name == 'work/v0.4.25-contract-minimal-core' && contains(github.event.head_commit.message, '[coreless-runtime]')) }}
     name: Core-less application · ${{ matrix.runtime }}
     runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
@@ -434,10 +496,10 @@ jobs:
       - name: Checkout integrated exact SHA
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.ref || github.sha }}
+          ref: ${{ needs.resolve_candidate.outputs.head_sha }}
       - name: Verify exact SHA input
         env:
-          CANDIDATE_SHA: ${{ inputs.ref || github.sha }}
+          CANDIDATE_SHA: ${{ needs.resolve_candidate.outputs.head_sha }}
         shell: bash
         run: |
           set -euo pipefail
@@ -547,6 +609,10 @@ jobs:
           set -euo pipefail
           go test ./cmd/baha -run '^TestApplicationCapabilityLifecycleExistingCore$' -count=1 -v 2>&1 | tee "$RUNNER_TEMP/coreless-checks/managed-capabilities.log"
   shared_provider_contracts:
+    needs: resolve_candidate
+    concurrency:
+      group: targeted-${{ needs.resolve_candidate.outputs.head_sha }}-shared_provider_contracts-${{ github.run_id }}
+      cancel-in-progress: false
     if: ${{ github.event_name == 'push' && (github.ref_name == 'work/v0.4.24-core-ha-updates' || github.ref_name == 'work/v0.4.25-contract-minimal-core') && contains(github.event.head_commit.message, '[provider-contracts]') }}
     name: Shared provider unit and contract verification
     runs-on: ubuntu-latest
@@ -565,6 +631,10 @@ jobs:
           go vet ./...
 
   focused:
+    needs: resolve_candidate
+    concurrency:
+      group: targeted-${{ needs.resolve_candidate.outputs.head_sha }}-focused-${{ matrix.runtime }}-${{ github.run_id }}
+      cancel-in-progress: false
     if: ${{ github.event_name == 'workflow_dispatch' && !startsWith(inputs.gate, 'adoption-') && inputs.gate != 'coreless-runtime' && inputs.gate != 'app-backup-restore-podman' }}
     name: ${{ inputs.gate }}
     runs-on: ubuntu-latest
@@ -576,7 +646,11 @@ jobs:
       - name: Checkout requested ref
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.ref }}
+          ref: ${{ needs.resolve_candidate.outputs.head_sha }}
+      - name: Assert exact candidate
+        env:
+          EXPECTED_HEAD_SHA: ${{ needs.resolve_candidate.outputs.head_sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD_SHA"
 
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
@@ -706,6 +780,10 @@ jobs:
         run: bash scripts/ci-runtime-reset.sh docker
 
   app_backup_restore_podman:
+    needs: resolve_candidate
+    concurrency:
+      group: targeted-${{ needs.resolve_candidate.outputs.head_sha }}-app_backup_restore_podman-${{ github.run_id }}
+      cancel-in-progress: false
     # Focused Podman opt-in: native backup/restore acceptance on Podman/Quadlet.
     # Proves disaster-recovery on Podman (SQL data, secrets, consumer access,
     # token/certificate regeneration and automatic owned cleanup) without
@@ -724,7 +802,7 @@ jobs:
       - name: Checkout exact candidate
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.ref || github.sha }}
+          ref: ${{ needs.resolve_candidate.outputs.head_sha }}
           persist-credentials: false
 
       - name: Set up Go
@@ -852,6 +930,10 @@ jobs:
           PYTHON
 
   core_bootstrap:
+    needs: resolve_candidate
+    concurrency:
+      group: targeted-${{ needs.resolve_candidate.outputs.head_sha }}-core_bootstrap-${{ github.run_id }}
+      cancel-in-progress: false
     if: ${{ github.event_name == 'push' && (startsWith(github.ref_name, 'runtime-validation/ha/core-bootstrap/') || (github.ref_name == 'work/v0.4.25-contract-minimal-core' && contains(github.event.head_commit.message, '[management-union-runtime]'))) }}
     name: Core bootstrap · ${{ matrix.runtime }}
     runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
@@ -889,6 +971,10 @@ jobs:
           fi
           go test -race -json ./cmd/baha -run "$pattern" -count=1 -timeout 28m 2>&1 | tee "$RUNNER_TEMP/core-bootstrap/tests.jsonl"
   core_ha_recovery:
+    needs: resolve_candidate
+    concurrency:
+      group: targeted-${{ needs.resolve_candidate.outputs.head_sha }}-core_ha_recovery-${{ github.run_id }}
+      cancel-in-progress: false
     if: ${{ github.event_name == 'push' && github.ref_name == 'work/v0.4.24-core-ha-updates' && contains(github.event.head_commit.message, '[ha-cutover]') }}
     name: HA cutover and SQL rollback · ${{ matrix.runtime }}
     runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
@@ -920,6 +1006,10 @@ jobs:
           mkdir -p "$RUNNER_TEMP/ha-recovery"
           go test -race -json ./cmd/baha -run '^TestCoreHACutoverRollbackRuntimeAcceptance$' -count=1 -timeout 25m 2>&1 | tee "$RUNNER_TEMP/ha-recovery/tests.jsonl"
   provider_topology:
+    needs: resolve_candidate
+    concurrency:
+      group: targeted-${{ needs.resolve_candidate.outputs.head_sha }}-provider_topology-${{ github.run_id }}
+      cancel-in-progress: false
     if: ${{ github.event_name == 'push' && github.ref_name == 'work/v0.4.24-core-ha-updates' && contains(github.event.head_commit.message, '[topology-runtime]') }}
     name: Explicit provider topology · ${{ matrix.runtime }}
     runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
@@ -961,6 +1051,10 @@ jobs:
           mkdir -p "$RUNNER_TEMP/provider-topology"
           go test -p 1 -race -json ./internal/objectstorage ./internal/metrics ./internal/telemetry ./internal/logs ./internal/traces ./internal/identityprovider -run '(DefaultTopologyRuntimeAcceptanceInCI|HARuntime.*AcceptanceInCI)$' -count=1 -timeout 40m 2>&1 | tee "$RUNNER_TEMP/provider-topology/tests.jsonl"
   application_provider_topology:
+    needs: resolve_candidate
+    concurrency:
+      group: targeted-${{ needs.resolve_candidate.outputs.head_sha }}-application_provider_topology-${{ github.run_id }}
+      cancel-in-progress: false
     if: ${{ github.event_name == 'push' && github.ref_name == 'work/v0.4.24-core-ha-updates' && contains(github.event.head_commit.message, '[application-topology-runtime]') }}
     name: Application providers and HA overrides · ${{ matrix.runtime }}
     runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
@@ -992,6 +1086,10 @@ jobs:
           mkdir -p "$RUNNER_TEMP/application-topology"
           go test -p 1 -race -json ./internal/application ./internal/logs ./internal/traces -run '^(TestApplicationDataDefaultTopologyRuntimeAcceptanceInCI|TestLokiComponentOverrideRuntimeAcceptanceInCI|TestTempoComponentOverrideRuntimeAcceptanceInCI)$' -count=1 -timeout 50m 2>&1 | tee "$RUNNER_TEMP/application-topology/tests.jsonl"
   core_provider_versions:
+    needs: resolve_candidate
+    concurrency:
+      group: targeted-${{ needs.resolve_candidate.outputs.head_sha }}-core_provider_versions-${{ github.run_id }}
+      cancel-in-progress: false
     if: ${{ github.event_name == 'push' && github.ref_name == 'work/v0.4.24-core-ha-updates' && (contains(github.event.head_commit.message, '[provider-runtime]') || contains(github.event.head_commit.message, '[provider-docker-runtime]')) }}
     name: Provider versions and SQL recovery · ${{ matrix.runtime }}
     runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
@@ -1023,6 +1121,10 @@ jobs:
           mkdir -p "$RUNNER_TEMP/provider-versions"
           go test -race -json ./cmd/baha -run '^TestCoreProviderVersionsRuntimeAcceptance$' -count=1 -timeout 35m 2>&1 | tee "$RUNNER_TEMP/provider-versions/tests.jsonl"
   core_ha_openbao_versions:
+    needs: resolve_candidate
+    concurrency:
+      group: targeted-${{ needs.resolve_candidate.outputs.head_sha }}-core_ha_openbao_versions-${{ github.run_id }}
+      cancel-in-progress: false
     if: ${{ github.event_name == 'push' && ((github.ref_name == 'work/v0.4.24-core-ha-updates' && (contains(github.event.head_commit.message, '[bao-ha-runtime]') || contains(github.event.head_commit.message, '[bao-ha-docker-runtime]'))) || startsWith(github.ref_name, 'runtime-validation/ha/openbao-versions/')) }}
     name: HA OpenBao versions and SQL recovery · ${{ matrix.runtime }}
     runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
@@ -1063,6 +1165,10 @@ jobs:
               raise SystemExit("required OpenBao HA/SQL recovery test missing PASS")
           PY
   v0421_ha:
+    needs: resolve_candidate
+    concurrency:
+      group: targeted-${{ needs.resolve_candidate.outputs.head_sha }}-v0421_ha-${{ matrix.group }}-${{ matrix.runtime }}-${{ github.run_id }}
+      cancel-in-progress: false
     if: ${{ github.event_name == 'push' && ((startsWith(github.ref_name, 'runtime-validation/ha/control-plane/') || startsWith(github.ref_name, 'runtime-validation/ha/control-plane-single/')) || startsWith(github.ref_name, 'runtime-validation/ha/tempo/') || startsWith(github.ref_name, 'runtime-validation/ha/loki/') || startsWith(github.ref_name, 'runtime-validation/ha/keycloak/') || startsWith(github.ref_name, 'runtime-validation/ha/otel/') || startsWith(github.ref_name, 'runtime-validation/ha/gateway/') || startsWith(github.ref_name, 'runtime-validation/ha/shared-postgres/') || startsWith(github.ref_name, 'runtime-validation/ha/owned-volumes/')) }}
     name: Targeted runtime · ${{ matrix.runtime }}
     runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
@@ -1175,6 +1281,10 @@ jobs:
         run: bash scripts/ci-runtime-reset.sh "${{ matrix.runtime }}"
 
   adoption:
+    needs: resolve_candidate
+    concurrency:
+      group: targeted-${{ needs.resolve_candidate.outputs.head_sha }}-adoption-${{ matrix.gate }}-${{ github.run_id }}
+      cancel-in-progress: false
     if: ${{ github.event_name == 'workflow_dispatch' && startsWith(inputs.gate, 'adoption-') }}
     name: ${{ inputs.gate }}
     runs-on: ubuntu-latest
@@ -1183,7 +1293,11 @@ jobs:
       - name: Checkout requested ref
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.ref }}
+          ref: ${{ needs.resolve_candidate.outputs.head_sha }}
+      - name: Assert exact candidate
+        env:
+          EXPECTED_HEAD_SHA: ${{ needs.resolve_candidate.outputs.head_sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD_SHA"
 
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
@@ -1213,6 +1327,10 @@ jobs:
           esac
 
   bug_hunt_templates:
+    needs: resolve_candidate
+    concurrency:
+      group: targeted-${{ needs.resolve_candidate.outputs.head_sha }}-bug_hunt_templates-${{ github.run_id }}
+      cancel-in-progress: false
     if: ${{ github.event_name == 'push' && startsWith(github.ref_name, 'runtime-validation/ha/bug-hunt/') }}
     name: Bug hunt templates · ${{ matrix.runtime }}
     runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
@@ -1243,6 +1361,10 @@ jobs:
           go test -race -json ./cmd/baha -run 'Test(PreflightNewTargetRecoveryFile|TargetRecoveryFile|RequiredSecret(NullInput|RealPTY)|OverviewUsesCanonical|PromptAndStoreMissingRequiredSecrets)' -count=1 | tee "$RUNNER_TEMP/bug-hunt/source.jsonl"
           go test -json ./internal/development -run '^TestGeneratedTemplates' -count=1 -timeout 40m | tee "$RUNNER_TEMP/bug-hunt/templates.jsonl"
   rootless_engine_isolation:
+    needs: resolve_candidate
+    concurrency:
+      group: targeted-${{ needs.resolve_candidate.outputs.head_sha }}-rootless_engine_isolation-${{ github.run_id }}
+      cancel-in-progress: false
     if: ${{ !startsWith(github.ref_name, 'runtime-validation/recovery-podman/') && contains(github.event.head_commit.message, '[rootless-runtime]') }}
     name: Engine isolation · ${{ matrix.runtime }}
     runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
@@ -1292,6 +1414,10 @@ jobs:
           fi
           go test -p 2 -race -json ./cmd/baha -run "$selection" -count=1 -timeout 24m 2>&1 | tee "$RUNNER_TEMP/engine-isolation/tests.jsonl"
   identity_trust:
+    needs: resolve_candidate
+    concurrency:
+      group: targeted-${{ needs.resolve_candidate.outputs.head_sha }}-identity_trust-${{ github.run_id }}
+      cancel-in-progress: false
     if: ${{ !startsWith(github.ref_name, 'runtime-validation/recovery-podman/') && (contains(github.event.head_commit.message, '[identity-runtime]') || contains(github.event.head_commit.message, '[identity-ha-runtime]')) }}
     name: Shared Identity SQL trust · ${{ matrix.runtime }}
     runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
@@ -1333,6 +1459,10 @@ jobs:
           fi
           go test -p 2 -race -json ./cmd/baha -run "$selection" -count=1 -timeout 32m 2>&1 | tee "$RUNNER_TEMP/identity-trust/tests.jsonl"
   final_bug_acceptance:
+    needs: resolve_candidate
+    concurrency:
+      group: targeted-${{ needs.resolve_candidate.outputs.head_sha }}-final_bug_acceptance-${{ github.run_id }}
+      cancel-in-progress: false
     if: ${{ github.event_name == 'push' && github.ref_name == 'work/v0.4.24-core-ha-updates' && contains(github.event.head_commit.message, '[final-bug-runtime]') }}
     name: Final product bug acceptance · ${{ matrix.runtime }}
     runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
@@ -1364,6 +1494,10 @@ jobs:
           mkdir -p "$RUNNER_TEMP/final-bugs"
           go test -p 2 -json ./cmd/baha ./internal/deployment ./internal/repositoryinspect ./internal/cli -run 'Test(Bug|CoreOnlyBootstrapRuntimeAcceptance|InspectFailsClosedOnComposeInclude|PreflightRepositoryWorkloadPublishedPorts|TargetRecovery|PreflightNewTargetRecovery)' -count=1 -timeout 25m 2>&1 | tee "$RUNNER_TEMP/final-bugs/tests.jsonl"
   provider_observation:
+    needs: resolve_candidate
+    concurrency:
+      group: targeted-${{ needs.resolve_candidate.outputs.head_sha }}-provider_observation-${{ github.run_id }}
+      cancel-in-progress: false
     if: ${{ github.event_name == 'push' && github.ref_name == 'work/v0.4.25-contract-minimal-core' && contains(github.event.head_commit.message, '[provider-observation-runtime]') }}
     name: Provider observation · ${{ matrix.runtime }}
     runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
@@ -1399,6 +1533,10 @@ jobs:
           go version > "$RUNNER_TEMP/provider-observation/go-version.txt"
           go test -race -json ./cmd/baha -run '^TestProviderObservationNativePartialModule$' -count=1 -timeout 18m 2>&1 | tee "$RUNNER_TEMP/provider-observation/tests.jsonl"
   external_provider_handoff:
+    needs: resolve_candidate
+    concurrency:
+      group: targeted-${{ needs.resolve_candidate.outputs.head_sha }}-external_provider_handoff-${{ github.run_id }}
+      cancel-in-progress: false
     if: ${{ github.event_name == 'push' && github.ref_name == 'work/v0.4.25-contract-minimal-core' && (contains(github.event.head_commit.message, '[external-provider-handoff-runtime]') || contains(github.event.head_commit.message, '[external-provider-handoff-podman]')) }}
     name: External provider consumer handoff · ${{ matrix.runtime }}
     runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
@@ -1435,6 +1573,10 @@ jobs:
           go test -race -json ./internal/identityprovider -run '^TestRegisteredExternalOIDCNativeConsumerHandoff$' -count=1 -timeout 18m 2>&1 | tee "$RUNNER_TEMP/external-provider-handoff/tests.jsonl"
 
   pr_selected_coreless_lifecycle_shards:
+    needs: resolve_candidate
+    concurrency:
+      group: targeted-${{ needs.resolve_candidate.outputs.head_sha }}-coreless-lifecycle-${{ inputs.gate }}-${{ inputs.runtime }}-${{ matrix.shard }}-${{ github.run_id }}
+      cancel-in-progress: false
     name: PR selected · ${{ inputs.gate }} · ${{ matrix.shard }}
     if: ${{ (inputs.gate == 'integration/docker/coreless-lifecycle' || inputs.gate == 'integration/podman/coreless-lifecycle') && (inputs.runtime == 'docker' || inputs.runtime == 'podman') }}
     runs-on: ${{ inputs.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
@@ -1450,13 +1592,17 @@ jobs:
       - name: Checkout exact candidate
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.ref }}
+          ref: ${{ needs.resolve_candidate.outputs.head_sha }}
           fetch-depth: 0
           persist-credentials: false
+      - name: Assert exact candidate
+        env:
+          EXPECTED_HEAD_SHA: ${{ needs.resolve_candidate.outputs.head_sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD_SHA"
       - name: Verify exact immutable selection
         shell: bash
         env:
-          EXPECTED_SHA: ${{ inputs.ref }}
+          EXPECTED_SHA: ${{ needs.resolve_candidate.outputs.head_sha }}
           GATE: ${{ inputs.gate }}
           RUNTIME: ${{ inputs.runtime }}
         run: |
@@ -1489,7 +1635,7 @@ jobs:
           bash scripts/ci-local-oci-registry.sh publish "$BASEHARBOR_RUNTIME_IMAGE" localhost:5000/baseharbor-runtime:coreless-lifecycle
       - name: Run exact selected Core-less lifecycle gate
         env:
-          CANDIDATE_SHA: ${{ inputs.ref }}
+          CANDIDATE_SHA: ${{ needs.resolve_candidate.outputs.head_sha }}
           DEMO_REF: ${{ inputs.demo_ref }}
           TAG: ${{ inputs.tag }}
           GATE: ${{ inputs.gate }}
@@ -1505,7 +1651,10 @@ jobs:
 
   pr_selected_coreless_lifecycle:
     name: PR selected · ${{ inputs.gate }}
-    needs: pr_selected_coreless_lifecycle_shards
+    concurrency:
+      group: targeted-${{ needs.resolve_candidate.outputs.head_sha }}-coreless-lifecycle-${{ inputs.gate }}-${{ inputs.runtime }}-${{ github.run_id }}
+      cancel-in-progress: false
+    needs: [resolve_candidate, pr_selected_coreless_lifecycle_shards]
     if: ${{ always() && !cancelled() && (inputs.gate == 'integration/docker/coreless-lifecycle' || inputs.gate == 'integration/podman/coreless-lifecycle') && (inputs.runtime == 'docker' || inputs.runtime == 'podman') }}
     runs-on: ubuntu-latest
     steps:
