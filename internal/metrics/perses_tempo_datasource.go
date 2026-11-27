@@ -11,7 +11,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
@@ -75,38 +74,28 @@ const (
 // exact type.
 const tempoTraceQueryTimeout = application.FastServiceTimeout
 
-// tempoTraceQueryTimeoutMatrixAlias is the static value-drift guard for the
-// matrix alias: its length is the CONSTANT difference of the two sides (typed
-// time.Duration subtraction), so the type exists only while the alias is a
-// compile-time constant NOT SMALLER than the matrix group value — a mutable var
-// alias gives a non-constant length and a downward drift a negative length;
-// both fail the build.
+// tempoTraceQueryTimeoutMatrixAlias is the static drift guard for the matrix
+// alias: its length is the CONSTANT difference alias − matrix. A mutable var
+// alias makes the length non-constant and a downward drift makes it negative;
+// either one fails the build.
 type tempoTraceQueryTimeoutMatrixAlias [tempoTraceQueryTimeout - application.FastServiceTimeout]struct{}
 
-// tempoTraceQueryTimeoutMatrixAliasExact is the static value-drift guard for
-// the matrix alias: its length is the CONSTANT difference of the matrix group
-// and the alias (in whole seconds), so the type exists only while the alias is
-// a compile-time constant NOT GREATER than the matrix group value — an upward
-// drift gives a negative length and fails the build; a mutable var alias gives
-// a non-constant length and fails the build. A sub-second upward drift (d = 0
-// in whole seconds) is caught by tempoTraceQueryTimeoutMatrixAliasNanos below.
-type tempoTraceQueryTimeoutMatrixAliasExact [application.FastServiceTimeout/time.Second - tempoTraceQueryTimeout/time.Second]struct{}
-
-// tempoTraceQueryTimeoutMatrixAliasNanos closes the sub-second gap: its length
-// is the CONSTANT nanosecond difference matrix − alias, so ANY positive drift,
-// however small, gives a negative length and fails the build. (Negative drift
-// fails via tempoTraceQueryTimeoutMatrixAlias above.)
-type tempoTraceQueryTimeoutMatrixAliasNanos [application.FastServiceTimeout - tempoTraceQueryTimeout]struct{}
+// tempoTraceQueryTimeoutMatrixAliasExact is the upward half of the guard: the
+// same difference taken the other way round (matrix − alias), so an upward
+// drift gives a negative length and a mutation a non-constant length; both
+// fail the build.
+type tempoTraceQueryTimeoutMatrixAliasExact [application.FastServiceTimeout - tempoTraceQueryTimeout]struct{}
 
 // assertTempoAliasMatrixEquality is the referenced assertion: taking its type
 // (TestTempoTraceQueryTimeoutIsCompileTimeConstant) forces the compiler to
-// evaluate all drift guards, whose zero sizes are the compile-time equality
-// of alias and matrix value (downward drift via the alias-side guard, upward
-// drift via the matrix-side guards, any magnitude). Together with the const
-// declaration and the package value tests, the alias cannot drift silently
-// (Codex re-review fix).
-func assertTempoAliasMatrixEquality() (tempoTraceQueryTimeoutMatrixAlias, tempoTraceQueryTimeoutMatrixAliasExact, tempoTraceQueryTimeoutMatrixAliasNanos) {
-	return tempoTraceQueryTimeoutMatrixAlias{}, tempoTraceQueryTimeoutMatrixAliasExact{}, tempoTraceQueryTimeoutMatrixAliasNanos{}
+// evaluate both guards; each has size 0 exactly while the alias is a
+// compile-time constant equal to the matrix group value. Mutation (array
+// length not constant) and drift in either direction (array length negative)
+// therefore break compilation, not just a point-in-time test. The package
+// value tests keep the runtime equality assertion as well (Codex re-review
+// fix).
+func assertTempoAliasMatrixEquality() (tempoTraceQueryTimeoutMatrixAlias, tempoTraceQueryTimeoutMatrixAliasExact) {
+	return tempoTraceQueryTimeoutMatrixAlias{}, tempoTraceQueryTimeoutMatrixAliasExact{}
 }
 
 // PersesTempoResource is the native Perses Datasource resource BaseHarbor
