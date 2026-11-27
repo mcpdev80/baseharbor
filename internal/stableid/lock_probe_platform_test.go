@@ -3,6 +3,7 @@ package stableid
 import (
 	"errors"
 	"os"
+	"os/exec"
 	"runtime"
 	"strings"
 	"testing"
@@ -62,5 +63,41 @@ func TestProbeEnvDropsInheritedPATH(t *testing.T) {
 	}
 	if !strings.HasSuffix(finalPATH, "/usr/local/bin") {
 		t.Fatalf("probeEnv PATH does not end at the anchored prefix /usr/local/bin\n%s", got)
+	}
+}
+
+// TestToolchainProbeReportsGoPrerequisiteWhenGoAbsent proves the fail-closed
+// contract card 0428-299 hunt33-go-runtime-prereq closes: a Go toolchain absent
+// from PATH must not surface a raw "executable file not found in $PATH"; the
+// caller must instead learn that the Go toolchain is the missing prerequisite.
+// The build step seam is injected with the exact *exec.Error the OS returns when
+// `go` cannot be located, so the detection maps it to errGoToolchainMissing.
+func TestToolchainProbeReportsGoPrerequisiteWhenGoAbsent(t *testing.T) {
+	orig := runToolchainBuildFunc
+	t.Cleanup(func() { runToolchainBuildFunc = orig })
+	runToolchainBuildFunc = func(build *exec.Cmd) error {
+		return &exec.Error{Err: exec.ErrNotFound}
+	}
+	_, err := runToolchainProbe("/unused")
+	if err == nil {
+		t.Fatal("expected a fail-closed error when the Go toolchain is absent")
+	}
+	if !strings.Contains(err.Error(), "Go toolchain") {
+		t.Fatalf("error does not document the Go toolchain prerequisite: %v", err)
+	}
+}
+
+// TestToolchainProbePreservesNonMissingBuildFailure proves the detection only
+// rewrites the not-found case: any other build failure keeps its original
+// message so unrelated failures (a broken toolchain, a probe-source compile
+// error) are not masked as a missing-toolchain prerequisite.
+func TestToolchainProbePreservesNonMissingBuildFailure(t *testing.T) {
+	orig := runToolchainBuildFunc
+	t.Cleanup(func() { runToolchainBuildFunc = orig })
+	boom := errors.New("compiler exploded")
+	runToolchainBuildFunc = func(build *exec.Cmd) error { return boom }
+	_, err := runToolchainProbe("/unused")
+	if !errors.Is(err, boom) {
+		t.Fatalf("expected the original build failure to pass through, got %v", err)
 	}
 }

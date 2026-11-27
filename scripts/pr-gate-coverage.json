@@ -2533,6 +2533,22 @@
       "runtime_specific": true
     },
     {
+      "id": "source.internal_stableid_lock_probe_go",
+      "path": "internal/stableid/lock_probe.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
+      "id": "source.internal_stableid_lock_probe_platform_test_go",
+      "path": "internal/stableid/lock_probe_platform_test.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
       "id": "source.cmd_baha_app_candidate_consent_go",
       "path": "cmd/baha/app_candidate_consent.go",
       "surfaces": [
