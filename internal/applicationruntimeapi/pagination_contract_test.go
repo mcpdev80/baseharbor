@@ -13,7 +13,7 @@ import (
 // envelope next to the `capabilities` collection and invalid page parameters
 // fail closed with the canonical bad_request envelope.
 func TestCapabilitiesPaginationContract(t *testing.T) {
-	h, err := New(&fakeSecrets{}, fakeVerifier{app: "alpha", token: "runtime-token"})
+	h, err := NewBound(&fakeSecrets{}, fakeVerifier{app: "alpha", token: "runtime-token"}, "alpha")
 	if err != nil {
 		t.Fatal(err)
 	}
