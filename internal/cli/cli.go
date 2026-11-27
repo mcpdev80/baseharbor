@@ -291,42 +291,90 @@ func (c *Command) Help(w io.Writer) {
 	writeMaybePaged(w, buffer.String())
 }
 
-// HelpSurface lists every publicly documented command path together with the
-// exact text its --help rendering produces, in stable sorted order. Hidden
-// commands contribute no entry. The rendering happens while walking the tree,
-// so it must not mutate any command data: a live baha process keeps the same
-// HelpGroups as before the walk. The golden help guard in cmd/baha uses this
-// one traversal so a drift in any --help page fails the package suite.
+// HelpSurface renders the --help page of this command and of every public
+// descendant, and returns each page together with the exact argument vector
+// that reaches it through Execute. It is the single shared traversal for help
+// consumers: the golden help guard (card 0428-306) and every command-tree
+// inventory derive their path sets from this one router-faithful walk instead
+// of re-implementing child, alias, hidden and duplicate-name filtering.
+//
+// Routing rules it reproduces exactly:
+//   - a Hidden command has no public help page and contributes no entry;
+//   - a second registration of an already-visible name or alias is shadowed by
+//     the first one (Execute's find returns the first match), so the shadowed
+//     command contributes no entry, while its alias still resolves to the
+//     first command's page;
+//   - every public page is reachable as `baha <sub path> --help`; below the
+//     root, the routed `baha help <sub path>` form is exposed as well.
+//
+// Entries come back sorted by path, so the result is deterministic.
 func (c *Command) HelpSurface() []HelpSurfaceEntry {
 	var entries []HelpSurfaceEntry
-	var walk func(*Command, string)
+	var walk func(*Command, []string)
 	seen := map[string]bool{}
-	walk = func(command *Command, parent string) {
+	walk = func(command *Command, names []string) {
 		if command == nil || command.Hidden {
 			return
 		}
-		path := strings.TrimSpace(parent + " " + command.Name)
+		path := strings.Join(names, " ")
 		if seen[path] {
-			return // router-first-match: later duplicate registrations add no second surface
+			return // shadowed duplicate registration: no public page of its own
 		}
 		seen[path] = true
 		var out bytes.Buffer
 		command.renderHelp(&out)
-		entries = append(entries, HelpSurfaceEntry{Path: path, Text: out.String()})
+		entries = append(entries, HelpSurfaceEntry{Path: path, Text: out.String(), Invocations: helpInvocations(c, names)})
 		for _, child := range command.Children {
-			walk(child, path)
+			walk(child, append(append([]string{}, names...), child.Name))
 		}
 	}
-	walk(c, "")
+	walk(c, []string{c.Name})
 	sort.Slice(entries, func(i, j int) bool { return entries[i].Path < entries[j].Path })
 	return entries
 }
 
-// HelpSurfaceEntry is one public command path and its exact rendered --help
-// text.
+// helpInvocations returns the argument vectors that print one command page.
+// The first is always the flag form `baha <sub path> --help`, which Execute
+// answers for every command, the root included. The second form, the routed
+// `baha help <sub path>`, is proven through the real router instead of
+// assumed: Execute resolves it with its own first-match find, so the vector is
+// exposed only when that routing reaches exactly this command (the root has no
+// help-path form). Commands reachable through an alias print the same page as
+// their canonical path, which the alias-walk cases in the shared-walk unit
+// test lock down.
+func helpInvocations(root *Command, names []string) [][]string {
+	flag := append(append([]string{}, names[1:]...), "--help")
+	if len(names) == 1 {
+		return [][]string{flag}
+	}
+	target := root
+	for _, part := range names[1:] {
+		target = target.CommandChild(part)
+		if target == nil {
+			return [][]string{flag}
+		}
+	}
+	if current := root; current != nil {
+		for _, part := range names[1:] {
+			next := current.CommandChild(part)
+			if next == nil {
+				return [][]string{flag}
+			}
+			current = next
+		}
+		if current != target {
+			return [][]string{flag}
+		}
+	}
+	return [][]string{flag, append([]string{"help"}, names[1:]...)}
+}
+
+// HelpSurfaceEntry is one public command path, its exact rendered --help text
+// and the Execute argument vectors that reach that page.
 type HelpSurfaceEntry struct {
-	Path string
-	Text string
+	Path        string
+	Text        string
+	Invocations [][]string
 }
 
 func (c *Command) renderHelp(w io.Writer) {

@@ -2893,6 +2893,22 @@
       ]
     },
     {
+      "id": "source.docs_reference_help_surface_md",
+      "path": "docs/reference/help-surface.md",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
+      "id": "source.docs_de_reference_help_surface_md",
+      "path": "docs/de/reference/help-surface.md",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
       "id": "source.internal_cli_help_surface_test_go",
       "path": "internal/cli/help_surface_test.go",
       "surfaces": [

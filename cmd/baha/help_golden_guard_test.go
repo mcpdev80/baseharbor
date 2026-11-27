@@ -86,12 +86,28 @@ func outsideApplicationRepository(t *testing.T, body func()) {
 	if err := os.Chdir(t.TempDir()); err != nil {
 		t.Fatal(err)
 	}
+	// t.TempDir removes the directory during test cleanup, which runs AFTER
+	// the deferred statements below. When body aborts with FailNow (a runtime.Goexit),
+	// the process working directory would otherwise stay at that deleted path
+	// and every later test in the package would fail on the next os.Getwd.
+	// The cleanup (registered while the body still runs) therefore restores the
+	// directory on the abort path too; on the normal path it is a no-op.
+	finished := false
+	t.Cleanup(func() {
+		if finished {
+			return
+		}
+		if restoreErr := os.Chdir(previous); restoreErr != nil {
+			t.Errorf("restore working directory: %v", restoreErr)
+		}
+	})
 	defer func() {
 		if restoreErr := os.Chdir(previous); restoreErr != nil {
 			t.Errorf("restore working directory: %v", restoreErr)
 		}
 	}()
 	body()
+	finished = true
 }
 
 // renderHelpGolden renders the complete public help surface at the fixed
