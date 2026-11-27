@@ -180,6 +180,20 @@
       ]
     },
     {
+      "id": "source.internal_application_timeouts_go",
+      "path": "internal/application/timeouts.go",
+      "surfaces": [
+        "source.gate.integration.static.public.contracts"
+      ]
+    },
+    {
+      "id": "source.internal_application_timeouts_test_go",
+      "path": "internal/application/timeouts_test.go",
+      "surfaces": [
+        "source.gate.integration.static.public.contracts"
+      ]
+    },
+    {
       "id": "source.internal_application_perses_lifecycle_go",
       "path": "internal/application/perses_lifecycle.go",
       "surfaces": [
