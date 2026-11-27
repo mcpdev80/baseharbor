@@ -65,14 +65,21 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
+	params, invalid := apierror.ParsePageRequest(r)
+	if invalid != nil {
+		writeError(w, invalid)
+		return
+	}
 	items, err := h.secrets.List(r.Context(), app)
 	if err != nil {
 		writeServiceError(w, err)
 		return
 	}
+	window, meta := apierror.Paginate(items, params)
 	writeJSON(w, http.StatusOK, struct {
-		Secrets []applicationsecret.Metadata `json:"secrets"`
-	}{Secrets: items})
+		Secrets    []applicationsecret.Metadata `json:"secrets"`
+		Pagination apierror.Pagination          `json:"pagination"`
+	}{Secrets: window, Pagination: meta})
 }
 
 func (h *Handler) set(w http.ResponseWriter, r *http.Request) {
