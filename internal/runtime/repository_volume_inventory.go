@@ -70,12 +70,6 @@ func (c Compose) InventoryRepositoryVolumes(ctx context.Context, project string,
 		if volume.Project == "" {
 			volume.Reason = "mounted volume without verified Compose ownership"
 		}
-		for key, value := range metadata.Labels {
-			if strings.Contains(strings.ToLower(key), "recovery") || strings.Contains(strings.ToLower(key), "backup") || strings.Contains(strings.ToLower(value), "recovery") {
-				volume.Shared = true
-				volume.Reason = "recovery/backup data; preserved"
-			}
-		}
 		result = append(result, volume)
 	}
 	sort.Slice(result, func(i, j int) bool { return result[i].Name < result[j].Name })
