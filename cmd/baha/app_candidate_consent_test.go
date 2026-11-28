@@ -746,6 +746,106 @@ func TestRemoteApplyRouteInlineBindContractIsTruthful(t *testing.T) {
 	if strings.Contains(discarded.String(), "Bind this exact candidate") {
 		t.Fatal("the bind question must not be asked on a non-terminal stdin")
 	}
+
+	// (b) the terminal answer pair at the route's write boundary (CODEX
+	// Option-3 disposition): the production route executeRemoteApplicationApply
+	// is unit-inaccessible on its success side — a live enrolled Connector node
+	// must answer NodeMemory + Publish + ApplyApplication
+	// (app_remote_up_success_discriminator_test.go:21-30 documents this); no
+	// seam is added and full remote app-up success stays an E2E evidence
+	// limitation (native gates only). What the unit CAN lock is the route's
+	// exact prompt→write SEQUENCE (app_remote_lifecycle.go: promptConfirm-
+	// CandidateSubmissionInput over the threaded terminal stdin, then
+	// recordDeploymentBeforeMutation on the same context and resolved
+	// application): an affirmative terminal 'y' answers the bind question and
+	// the route write CONSUMES that one-shot binding, persisting the consent
+	// whose digest is the shown candidate digest; a refusal binds nothing and
+	// fails closed with the consent-required error. The Core-side gates stay
+	// unchanged on every path: deployment admission before persisting
+	// (EvaluateDeploymentAdmission) and the current-source digest
+	// re-derivation with constant-time comparison (finalizeCandidateConsent).
+	t.Run("terminal bind consumed by the route write", func(t *testing.T) {
+		withInteractiveCandidateStdin(t)
+		for _, answer := range []struct {
+			text     string
+			converge bool
+		}{
+			{text: "n", converge: false},
+			{text: "y", converge: true},
+		} {
+			t.Run("answer "+answer.text, func(t *testing.T) {
+				// Fresh deployment state per round: a consented candidate is
+				// immutable, so a round must not inherit the other's record.
+				record, err := deployment.LoadDeploymentRecord(remote.DeploymentIdentity)
+				if err != nil {
+					t.Fatal(err)
+				}
+				record.Consent = nil
+				record.Observed = deployment.ObservedDeployment{State: "pending"}
+				if err := deployment.SaveDeploymentRecord(record); err != nil {
+					t.Fatal(err)
+				}
+				routed := remote
+				reloaded, err := deployment.LoadDeploymentRecord(remote.DeploymentIdentity)
+				if err != nil {
+					t.Fatal(err)
+				}
+				routed.DeploymentRecord = &reloaded
+
+				stdin, feed := withTerminalStdinFake(t)
+				feed(answer.text + "\n")
+				var routeOut strings.Builder
+				// The route's exact sequence on ONE context: the bind prompt
+				// over this invocation's terminal stdin, then the route write
+				// consuming the binding through the production resolution
+				// order. No explicit consent exists anywhere in this context.
+				promptConfirmCandidateSubmissionInput(ctx, routed, stdin, &routeOut)
+				if !strings.Contains(routeOut.String(), "Bind this exact candidate") {
+					t.Fatalf("the bind question must be asked on the terminal stream: %q", routeOut.String())
+				}
+				_, writeErr := recordDeploymentBeforeMutation(ctx, routed, "applying", candidateConsentOverride(ctx))
+				if !answer.converge {
+					// Refusal: nothing binds and the write fails closed.
+					if !errors.Is(writeErr, errConsentRequiredForCandidateSubmission) {
+						t.Fatalf("a refused terminal bind must fail closed with the consent-required error, got %v", writeErr)
+					}
+					if got := takeInteractiveCandidateConsentDigest(routed.DeploymentIdentity.ApplicationID, routed.DeploymentIdentity.Target); got != "" {
+						t.Fatalf("the refusal left a live binding: %q", got)
+					}
+					return
+				}
+				if writeErr != nil {
+					t.Fatalf("the route write rejected this invocation's terminal bind: %v\n%s", writeErr, routeOut.String())
+				}
+				applied, err := deployment.LoadDeploymentRecord(routed.DeploymentIdentity)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if applied.Consent == nil {
+					t.Fatal("the terminal-y route write persisted no consent")
+				}
+				if applied.Consent.By != "operator" {
+					t.Fatalf("consent by=%q, want operator", applied.Consent.By)
+				}
+				submission, _ := candidateSubmissionForResolvedApp(ctx, routed)
+				want := delivery.CandidateConsentDigest(submission)
+				if applied.Consent.Digest != want {
+					t.Fatalf("persisted consent digest %q != the candidate digest %q the route bound", applied.Consent.Digest, want)
+				}
+				if !strings.Contains(routeOut.String(), want) {
+					t.Fatalf("the shown confirm-hash is not the digest the write bound; output=%q", routeOut.String())
+				}
+				if strings.Contains(routeOut.String(), "Re-run with --confirm-candidate") {
+					t.Fatalf("the affirmative answer still printed the display-only re-run contract: %q", routeOut.String())
+				}
+				// The binding is one-shot: the route write consumed it, so
+				// nothing lingers for a later invocation.
+				if got := takeInteractiveCandidateConsentDigest(routed.DeploymentIdentity.ApplicationID, routed.DeploymentIdentity.Target); got != "" {
+					t.Fatalf("the interactive bind survived the write that consumed it: %q", got)
+				}
+			})
+		}
+	})
 }
 
 // TestSecondInvocationSameCandidateRequiresFreshPrompt is the CODEX re-review
