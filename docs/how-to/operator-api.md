@@ -119,15 +119,6 @@ with `BASEHARBOR_API_LISTEN_ADDR`), and serves:
 | `POST /api/v1/connectors/authorizations`, `/owner-context` (GET), `/renewal-authorizations`, `/status`, `/disconnect-plan`, `/disconnect` | connector enrollment on | Node Connector grants and lifecycle behind operator authentication |
 | `POST /api/v1/workstations/enroll` | `BASEHARBOR_WORKSTATION_ENROLLMENT_ENABLED=true` | redeems one already-minted invitation, once |
 | `POST /api/v1/workstations/bootstrap`, `POST /api/v1/workstations/renew` | workstation enrollment on | grant creation and mTLS device renewal |
-| `GET /metrics` | runtime executor | OpenMetrics scrape endpoint for the executor's runtime resource manager |
-
-The runtime executor exposes its own operator HTTP surface on `0.0.0.0:9443`
-(override with `BASEHARBOR_EXECUTOR_LISTEN_ADDR`), not on the Core operator
-`127.0.0.1:8443` listener. Its `GET /metrics` serves OpenMetrics from the executor
-observer behind the same TLS 1.2+ and client-certificate authentication as the
-executor's `/internal/` and `/healthz` routes; a scrape must present a verified
-executor leaf identity. This is a provider-internal operator endpoint, separate
-from the Core operator API route table above.
 
 Every `/api/` request passes TLS, bearer-OIDC verification, membership
 resolution, tenant context, RBAC and ownership checks; plaintext HTTP never

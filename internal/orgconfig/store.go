@@ -212,6 +212,16 @@ func adoptLegacySelection(legacyPath, canonical string) (bool, error) {
 		return false, fmt.Errorf("read legacy organization selection %q: %w", legacyPath, err)
 	}
 	if err := migrateToCanonical(legacyPath, canonical, data); err != nil {
+		// The marker step can only fail AFTER the canonical selection has
+		// landed (ordering contract: data before marker). The migrated value
+		// is then preserved on the private path: report adopted=true together
+		// with the error so no caller re-runs the adoption against the legacy
+		// path, while the failure stays visible. Without a canonical file
+		// nothing was migrated, so the ordinary fail-closed false+error path
+		// applies.
+		if _, statErr := os.Lstat(canonical); statErr == nil {
+			return true, err
+		}
 		return false, err
 	}
 	return true, nil
@@ -277,48 +287,13 @@ func validateLegacyAncestors(dir string, uid uint32) error {
 	return nil
 }
 
-// migrateToCanonical writes data into canonical using a temp+rename within the
-// canonical directory, freezes the source as a read-only tombstone so it can
-// never receive a further write, and writes the durable once-only marker into
-// the private canonical directory so adoption can never fire a second time,
-// even if the canonical active.json is deleted.
-func migrateToCanonical(src, dst string, data []byte) error {
-	if err := os.MkdirAll(filepath.Dir(dst), 0o700); err != nil {
-		return fmt.Errorf("create organization config directory: %w", err)
-	}
-	tmp := dst + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o600); err != nil {
-		return fmt.Errorf("write active organization configuration: %w", err)
-	}
-	if err := os.Chmod(tmp, 0o600); err != nil {
-		_ = os.Remove(tmp)
-		return fmt.Errorf("secure active organization configuration: %w", err)
-	}
-	if err := os.Rename(tmp, dst); err != nil {
-		_ = os.Remove(tmp)
-		return fmt.Errorf("replace active organization configuration: %w", err)
-	}
-	// Freeze the source as a tombstone; ignore failure to chmod (best effort)
-	// but leave the tombstone marker regardless.
-	_ = os.Chmod(src, 0o400)
-	legacyTomb := filepath.Join(filepath.Dir(src), "active.world-writable.tombstone")
-	_ = os.WriteFile(legacyTomb, []byte("# Legacy organization selection path frozen after one-time migration.\n"+
-		"This file exists to prevent a second migration.\n"+
-		"Original location: "+src+"\n"), 0o600)
-	// Durable once-only marker in the private canonical namespace. Write it
-	// last (after the canonical file is in place) so a crash before the file
-	// lands cannot leave a marker without the migrated selection. Ignore
-	// failure to write it: a missing marker only makes the once-only
-	// guarantee best-effort, never incorrect — the canonical file is already
-	// authoritative.
-	if err := os.WriteFile(filepath.Join(filepath.Dir(dst), canonicalFrozenMarker), []byte(
-		"# One-time world-writable migration marker.\n"+
-			"Wrote the adopted selection into this private directory. Do NOT re-read\n"+
-			"any legacy /tmp selection, even if active.json is missing.\n"), 0o600); err != nil {
-		return fmt.Errorf("write frozen migration marker: %w", err)
-	}
-	return nil
-}
+// canonicalMarkerContent is the exact content of the durable once-only
+// migration marker. writeFrozenMarker writes it through the seam, syncs and
+// re-verifies it by read-back so a crash during the write can never leave a
+// completion claim that later reads would honour while unreadable or empty.
+const canonicalMarkerContent = "# One-time world-writable migration marker.\n" +
+	"Wrote the adopted selection into this private directory. Do NOT re-read\n" +
+	"any legacy /tmp selection, even if active.json is missing.\n"
 
 func LoadActive() (ActiveState, error) {
 	state, ok, err := LoadActiveOptional()
@@ -359,7 +334,34 @@ func LoadActiveOptional() (ActiveState, bool, error) {
 		}
 		adopted, adoptErr := adoptLegacySelection(legacy, canonical)
 		if adoptErr != nil {
-			return ActiveState{}, false, adoptErr
+			// Preserve-and-report (0428-310 finding 2): the marker step can
+			// only fail AFTER the canonical selection has landed (ordering
+			// contract: data before marker), so adopted=true alongside the
+			// error means the migration is REAL. The value already lives on the
+			// private canonical path: the loader returns it (never an
+			// error-only discard), completes the once-only marker in the same
+			// call so the claim can never be lost, and keeps the fault
+			// visible. Only a fail-closed adopted=false keeps the pure
+			// error path.
+			if !adopted {
+				return ActiveState{}, false, adoptErr
+			}
+			migrated, readErr := os.ReadFile(canonical)
+			if readErr != nil {
+				return ActiveState{}, false, errors.Join(adoptErr, fmt.Errorf("read active organization configuration after migration: %w", readErr))
+			}
+			markerErr := ensureFrozenMarker(filepath.Dir(canonical))
+			state, ok, decodeErr := decodeActive(migrated)
+			if markerErr != nil {
+				if decodeErr == nil && ok {
+					return state, true, errors.Join(adoptErr, markerErr)
+				}
+				return ActiveState{}, false, errors.Join(adoptErr, markerErr, decodeErr)
+			}
+			if decodeErr != nil || !ok {
+				return ActiveState{}, false, errors.Join(adoptErr, decodeErr)
+			}
+			return state, true, adoptErr
 		}
 		if !adopted {
 			return ActiveState{}, false, nil
@@ -369,6 +371,28 @@ func LoadActiveOptional() (ActiveState, bool, error) {
 		if err != nil {
 			return ActiveState{}, false, fmt.Errorf("read active organization configuration after migration: %w", err)
 		}
+	} else if !frozenMarkerComplete(filepath.Join(filepath.Dir(canonical), canonicalFrozenMarker)) {
+		// Direct canonical read succeeded while the completion claim is
+		// missing or damaged: the migration REALLY happened (data before
+		// marker), so the load repairs the marker before anything else and
+		// NEVER discards the canonical selection for a repair fault — the
+		// value rides along with the joined error; only an undecodable
+		// selection without a claim fails closed.
+		markerErr := ensureFrozenMarker(filepath.Dir(canonical))
+		state, ok, decodeErr := decodeActive(data)
+		if markerErr != nil {
+			if decodeErr == nil && ok {
+				return state, true, markerErr
+			}
+			return ActiveState{}, false, errors.Join(markerErr, decodeErr)
+		}
+		if decodeErr != nil || !ok {
+			return state, ok, decodeErr
+		}
+		if StateRootSelected() && !state.Resolution.selectsWithin(stateRootOverride()) {
+			return ActiveState{}, false, nil
+		}
+		return state, true, nil
 	}
 	state, ok, err := decodeActive(data)
 	if err != nil || !ok {
@@ -522,9 +546,11 @@ func isWorldFrozenTombstone(dir string) bool {
 // deleted in the meantime. This is consulted before any legacy-path access so
 // a deleted canonical file cannot restore the stale legacy selection.
 func canonicalMigrationFrozen(canonical string) bool {
+	// The completion claim is the CONTENT of the marker, not mere existence:
+	// an empty or wrong-content residue must not freeze the migration path
+	// (the next migration/re-load pass repairs it through ensureFrozenMarker).
 	marker := filepath.Join(filepath.Dir(canonical), canonicalFrozenMarker)
-	info, err := os.Lstat(marker)
-	return err == nil && !info.Mode().IsDir()
+	return frozenMarkerComplete(marker)
 }
 
 // isWorldWritableDir reports whether dir is a directory that any local user may
