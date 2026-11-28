@@ -2859,6 +2859,62 @@
         "source.gate.atomic.docker.data.capabilities",
         "source.gate.atomic.podman.data.capabilities"
       ]
+    },
+    {
+      "id": "source.internal_orgconfig_store_go",
+      "path": "internal/orgconfig/store.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
+      "id": "source.internal_orgconfig_migration_go",
+      "path": "internal/orgconfig/migration.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
+      "id": "source.internal_orgconfig_migration_marker_test_go",
+      "path": "internal/orgconfig/migration_marker_test.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
+      "id": "source.cmd_baha_app_candidate_consent_interactive_go",
+      "path": "cmd/baha/app_candidate_consent_interactive.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
+      "id": "source.cmd_baha_app_candidate_consent_test_go",
+      "path": "cmd/baha/app_candidate_consent_test.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
+      "id": "source.cmd_baha_app_remote_lifecycle_go",
+      "path": "cmd/baha/app_remote_lifecycle.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
+    },
+    {
+      "id": "source.cmd_baha_core_installation_go",
+      "path": "cmd/baha/core_installation.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.podman.data.capabilities"
+      ]
     }
   ],
   "gates": [
