@@ -184,9 +184,7 @@ func appEditRuntimeExecuteAuthority(store application.Store, args []string, reso
 		// candidate choke below can bind the exact edit submission on confirm;
 		// without the flag the choke fails closed, exactly like app apply.
 		lifecycleCtx := withProviderChangeConsent(ctx, &consent)
-		if override := candidateConsentOverride(ctx); override != "" {
-			lifecycleCtx = withCandidateConsentDigest(lifecycleCtx, override)
-		}
+		lifecycleCtx, args = prepareApplicationApplyArgs(lifecycleCtx, args)
 		outcomes, runErr := runLifecycle(lifecycleCtx, store, args, plan, mutate, out, errOut)
 		if runErr != nil {
 			return outcomes, runErr

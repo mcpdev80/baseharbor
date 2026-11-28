@@ -2543,6 +2543,36 @@
       ]
     },
     {
+      "id": "source.cmd_baha_app_candidate_consent_interactive_go",
+      "path": "cmd/baha/app_candidate_consent_interactive.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.docker.guided",
+        "source.gate.atomic.podman.data.capabilities",
+        "source.gate.atomic.podman.guided"
+      ]
+    },
+    {
+      "id": "source.cmd_baha_app_candidate_consent_test_go",
+      "path": "cmd/baha/app_candidate_consent_test.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.docker.guided",
+        "source.gate.atomic.podman.data.capabilities",
+        "source.gate.atomic.podman.guided"
+      ]
+    },
+    {
+      "id": "source.cmd_baha_app_remote_lifecycle_go",
+      "path": "cmd/baha/app_remote_lifecycle.go",
+      "surfaces": [
+        "source.gate.atomic.docker.data.capabilities",
+        "source.gate.atomic.docker.guided",
+        "source.gate.atomic.podman.data.capabilities",
+        "source.gate.atomic.podman.guided"
+      ]
+    },
+    {
       "id": "source.cmd_baha_app_input_resolver_go",
       "path": "cmd/baha/app_input_resolver.go",
       "surfaces": [

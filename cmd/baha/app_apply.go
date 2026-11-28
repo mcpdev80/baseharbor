@@ -112,13 +112,38 @@ type applicationApplyLifecycleEvidence struct {
 }
 
 func executeApplicationApplyLifecycle(ctx context.Context, store application.Store, args []string, out, errOut io.Writer) error {
+	ctx, args = prepareApplicationApplyArgs(ctx, args)
+	// The remote branch of the lifecycle never reaches runApplicationApplyLifecycle
+	// (executeRemoteApplicationApply return, app_apply.go above), so it gets the
+	// same unconditional entry/exit cleanup here; runApplicationApplyLifecycle
+	// clearing again is a harmless idempotent no-op.
+	clearInteractiveCandidateConsentBinding()
+	defer clearInteractiveCandidateConsentBinding()
 	_, err := runApplicationApplyLifecycle(ctx, store, args, out, errOut, applicationApplyLifecycleHooks{})
 	return err
+}
+
+// prepareApplicationApplyArgs strips the --confirm-candidate flag from the
+// lifecycle args and carries a supplied digest on the context, the same way the
+// CLI entry point does, so every internal caller of the apply lifecycle reaches
+// the candidate choke point with the operator's consent instead of losing it
+// and being forced to a second run with the flag. An empty flag value is a
+// no-op and keeps the fail-closed contract unchanged.
+func prepareApplicationApplyArgs(ctx context.Context, args []string) (context.Context, []string) {
+	confirm, remaining := stripConfirmCandidateOverride(args)
+	return withCandidateConsentDigest(ctx, confirm), remaining
 }
 
 // runApplicationApplyLifecycle uses named result slots so the deferred
 // post-observation writes evidence.After into the returned value on every path.
 func runApplicationApplyLifecycle(ctx context.Context, store application.Store, args []string, out, errOut io.Writer, hooks applicationApplyLifecycleHooks) (evidence applicationApplyLifecycleEvidence, lifecycleErr error) {
+	// Invocation scoping (CODEX re-review finding): an interactive bind from a
+	// previous invocation — refused, interrupted, or one that finished
+	// successfully without any write consuming it — must never be readable by
+	// this one. Clear at every lifecycle entry and retire any residue
+	// unconditionally at every exit, success AND failure.
+	clearInteractiveCandidateConsentBinding()
+	defer clearInteractiveCandidateConsentBinding()
 	execution, err := newApplicationApplyExecution(ctx, store, args, out, errOut)
 	if err != nil {
 		return evidence, err
@@ -196,9 +221,11 @@ func runApplicationApplyLifecycle(ctx context.Context, store application.Store, 
 	}
 	// Operator confirmation before any candidate submission is persisted: show
 	// the exact candidate identity that will be bound (its canonical content
-	// hash) so the operator can confirm it, then require --confirm-candidate
-	// with that exact digest. Without the flag the apply fails closed.
-	promptConfirmCandidateSubmission(ctx, execution.resolved, out)
+	// hash). On an interactive terminal the operator confirms that digest in
+	// this run and the consent is carried straight to the write below; otherwise
+	// the apply requires --confirm-candidate with that exact digest and fails
+	// closed without the flag.
+	promptConfirmCandidateSubmissionInput(ctx, execution.resolved, applicationInput(ctx, runtimeInput), out)
 	pending, err := recordDeploymentBeforeMutation(ctx, execution.resolved, "applying", candidateConsentOverride(ctx))
 	if err != nil {
 		return evidence, fmt.Errorf("record deployment before mutation: %w", err)
@@ -252,6 +279,11 @@ func runApplicationApplyLifecycle(ctx context.Context, store application.Store, 
 }
 
 func (e *applicationApplyExecution) recordFailedDeployment(cause error) error {
+	// No write boundary consumed an interactive bind in this invocation (or the
+	// lifecycle failed at all): drop any unconsumed confirmation so it can never
+	// authorize a later apply. runApplicationApplyLifecycle additionally defers
+	// the same unconditional clear on its success exit path.
+	clearInteractiveCandidateConsentBinding()
 	if cause == nil {
 		return nil
 	}

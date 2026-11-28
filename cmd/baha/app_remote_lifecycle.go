@@ -81,6 +81,12 @@ func restoreRemoteApplication(ctx context.Context, resolved resolvedApplication)
 }
 
 func executeRemoteApplicationApply(ctx context.Context, resolved resolvedApplication, out io.Writer) error {
+	// Invocation scoping (CODEX re-review finding): clear any binding a previous
+	// invocation left at entry and retire any residue unconditionally at exit
+	// (success AND failure), exactly like the local apply lifecycle. The bind
+	// prompt below can only ever bind for THIS invocation.
+	clearInteractiveCandidateConsentBinding()
+	defer clearInteractiveCandidateConsentBinding()
 	if err := deployment.EvaluateDeploymentAdmission(resolved.Target.DeploymentPolicy, nil); err != nil {
 		return err
 	}
@@ -158,8 +164,16 @@ func executeRemoteApplicationApply(ctx context.Context, resolved resolvedApplica
 		issuer = brokerIssuer
 	}
 	// Operator confirmation before any candidate submission is persisted (same
-	// fail-closed choke point as the local apply path).
-	promptConfirmCandidateSubmission(ctx, resolved, out)
+	// fail-closed choke point as the local apply path, CODEX-static finding (2)
+	// contract correction): this route DOES accept inline operator consent. An
+	// interactive terminal stdin answering the bind question with "y" binds the
+	// exact candidate for THIS invocation (same one-shot, identity-keyed,
+	// re-verified binding the local apply uses); without that consent — or on a
+	// non-terminal/piped stdin — the write boundary stays fail-closed and only
+	// the CLI's --confirm-candidate override authorises it. The earlier
+	// "display-only, answer not part of remote behavior" claim contradicted the
+	// code; it is removed, not the gate.
+	promptConfirmCandidateSubmissionInput(ctx, resolved, applicationInput(ctx, runtimeInput), out)
 	pending, err := recordDeploymentBeforeMutation(ctx, resolved, "applying", candidateConsentOverride(ctx))
 	if err != nil {
 		return err
