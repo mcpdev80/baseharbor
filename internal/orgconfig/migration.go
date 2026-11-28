@@ -145,7 +145,9 @@ func migrateToCanonical(src, dst string, data []byte) error {
 	// confirmed durable BEFORE the once-only completion marker is created. The
 	// marker is the completion claim, so a data-directory sync error aborts
 	// here and the marker is never written — the migration is NOT complete.
-	if err := syncDir(filepath.Dir(dst)); err != nil {
+	// This goes through orgconfigSyncDir so the ordered-operations seam records
+	// it and the deterministic fault hook applies here as well.
+	if err := orgconfigSyncDir(filepath.Dir(dst)); err != nil {
 		return err
 	}
 	// Durable once-only marker in the private canonical namespace, written
